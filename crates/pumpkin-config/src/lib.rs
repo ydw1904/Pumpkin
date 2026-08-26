@@ -41,6 +41,7 @@ pub use networking::rcon::RCONConfig;
 pub use plugins::{PluginOverride, PluginsConfig};
 pub use pvp::PVPConfig;
 pub use server_links::ServerLinksConfig;
+pub use servux::ServuxConfig;
 
 mod commands;
 
@@ -56,6 +57,7 @@ mod advancement;
 mod player_data;
 mod pvp;
 mod server_links;
+mod servux;
 /// Whitelist configuration options.
 pub mod whitelist;
 /// World generation and dimension configuration options.
@@ -166,6 +168,8 @@ pub struct AdvancedConfiguration {
     pub plugins: PluginsConfig,
     /// Advancement configuration
     pub advancement: AdvancementConfig,
+    /// Servux plugin-channel configuration for malilib-based clients.
+    pub servux: ServuxConfig,
 }
 
 /// Basic configuration for core server settings.

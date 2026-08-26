@@ -59,6 +59,7 @@ pub mod login;
 pub mod pending;
 pub mod play;
 pub mod recipe_helper;
+pub mod servux;
 pub mod status;
 
 use arc_swap::ArcSwap;
@@ -1003,6 +1004,9 @@ impl JavaClient {
             }
             id if id == SCustomPayload::to_id(version) => {
                 let payload = SCustomPayload::read(&mut payload, &version)?;
+                if payload.channel == servux::CHANNEL {
+                    servux::handle_payload(server, player, payload.data).await;
+                }
                 let mut event = PlayerCustomPayloadEvent::new(
                     player.clone(),
                     payload.channel.to_string(),
