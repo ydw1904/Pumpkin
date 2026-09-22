@@ -85,6 +85,11 @@ pub struct ChunkData {
     /// Positions generation marked for `LevelChunk.postProcessGeneration`, one list per section
     /// from the bottom, packed with [`pack_offset_coordinates`]. Emptied once the chunk ticks.
     pub post_processing: std::sync::Mutex<Vec<Vec<u16>>>,
+    /// Root tags this server does not model, kept verbatim so a save does not
+    /// strip them. A vanilla chunk carries `structures`, `carving_mask` and
+    /// others; writing the chunk back without them loses map data that nothing
+    /// here can regenerate.
+    pub preserved_tags: std::sync::Mutex<NbtCompound>,
 }
 
 /// Vanilla `ProtoChunk.packOffsetCoordinates`: a block position within its section.
@@ -671,6 +676,7 @@ impl ChunkData {
             inhabited_time: std::sync::atomic::AtomicU64::new(0),
             custom_data: std::sync::Mutex::new(NbtCompound::new()),
             post_processing: std::sync::Mutex::default(),
+            preserved_tags: std::sync::Mutex::new(NbtCompound::new()),
         }
     }
 
