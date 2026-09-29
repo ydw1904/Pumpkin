@@ -750,6 +750,14 @@ impl MobEntity {
 
     pub fn check_despawn(&self, mob: &dyn Mob) {
         let entity = &self.living_entity.entity;
+        let world = entity.world.load();
+
+        if world.level_info.load().difficulty == Difficulty::Peaceful
+            && !entity.entity_type.allowed_in_peaceful
+        {
+            entity.remove();
+            return;
+        }
 
         if self.persistence_required.load(Relaxed) {
             return;
@@ -759,7 +767,6 @@ impl MobEntity {
             return;
         }
 
-        let world = entity.world.load();
         let pos = entity.pos.load();
         let players = world.players.load();
 

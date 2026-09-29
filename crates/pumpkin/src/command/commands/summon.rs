@@ -55,7 +55,7 @@ impl CommandExecutor for SummonExecutor {
 
         let world = context.source.world();
         let difficulty = world.level_info.load().difficulty;
-        if difficulty == Difficulty::Peaceful && !entity_type.category.is_friendly {
+        if difficulty == Difficulty::Peaceful && !entity_type.allowed_in_peaceful {
             return Err(ERROR_FAILED_PEACEFUL.create_without_context());
         }
 

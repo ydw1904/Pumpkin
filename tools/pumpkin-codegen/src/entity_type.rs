@@ -34,6 +34,8 @@ pub struct EntityType {
     pub category: MobCategory,
     /// Whether this entity can spawn far from the player (beyond normal spawn range).
     pub can_spawn_far_from_player: bool,
+    /// Whether this entity may exist on peaceful difficulty (vanilla `isAllowedInPeaceful`).
+    pub allowed_in_peaceful: bool,
     /// Client tracking range in chunks.
     pub client_tracking_range: u32,
     /// Update interval in ticks.
@@ -183,6 +185,7 @@ impl ToTokens for NamedEntityType<'_> {
         let mob = entity.mob.unwrap_or(false);
         let limit_per_chunk = entity.limit_per_chunk.unwrap_or(0);
         let can_spawn_far_from_player = entity.can_spawn_far_from_player;
+        let allowed_in_peaceful = entity.allowed_in_peaceful;
 
         let dimension0 = entity.dimension[0];
         let dimension1 = entity.dimension[1];
@@ -207,6 +210,7 @@ impl ToTokens for NamedEntityType<'_> {
                 fire_immune: #fire_immune,
                 category: &#spawn_category,
                 can_spawn_far_from_player: #can_spawn_far_from_player,
+                allowed_in_peaceful: #allowed_in_peaceful,
                 client_tracking_range: #client_tracking_range,
                 update_interval: #update_interval,
                 track_deltas: #track_deltas,
@@ -281,6 +285,7 @@ pub fn build() -> TokenStream {
             pub fire_immune: bool,
             pub category: &'static MobCategory,
             pub can_spawn_far_from_player: bool,
+            pub allowed_in_peaceful: bool,
             pub client_tracking_range: u32,
             pub update_interval: u32,
             pub track_deltas: bool,
