@@ -5,7 +5,7 @@ use crate::block::entities::mob_spawner::MobSpawnerBlockEntity;
 use crate::entity::EntityBase;
 use crate::entity::mob::spawn::finalize_spawn;
 use crate::entity::player::Player;
-use crate::entity::r#type::from_type;
+use crate::entity::r#type::{can_spawn, from_type};
 use crate::item::{ItemBehaviour, ItemMetadata};
 use crate::plugin::api::events::entity::creature_spawn::CreatureSpawnReason;
 use crate::server::Server;
@@ -230,6 +230,10 @@ impl ItemBehaviour for SpawnEggItem {
     ) -> BlockActionResult {
         if let Some(entity_type) = entity_from_egg(item.item.id) {
             let world = player.world();
+            // Vanilla `SpawnEggItem.useOn` checks `canSpawn` before the spawner branch.
+            if !can_spawn(entity_type, &world) {
+                return BlockActionResult::Fail;
+            }
 
             if let Some(block_entity) = player.world().get_block_entity(&location) {
                 if let Some(spawner) = block_entity

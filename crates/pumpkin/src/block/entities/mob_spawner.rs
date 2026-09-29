@@ -168,6 +168,10 @@ impl BlockEntity for MobSpawnerBlockEntity {
                 )) {
                     continue;
                 }
+                // Vanilla `SpawnPlacements.checkSpawnRules` fails on peaceful for these types.
+                if !crate::entity::r#type::can_spawn(entity_type, world) {
+                    continue;
+                }
                 let entity = crate::entity::r#type::from_type(
                     entity_type,
                     spawn_pos,

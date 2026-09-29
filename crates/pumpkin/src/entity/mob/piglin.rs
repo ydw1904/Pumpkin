@@ -983,8 +983,10 @@ impl PiglinEntity {
             }
         }
 
-        world.spawn_entity(zombified);
-        entity.remove();
+        // Vanilla `Mob.convertTo` keeps the piglin when the new mob can't be created.
+        if world.spawn_entity(zombified) {
+            entity.remove();
+        }
     }
 }
 

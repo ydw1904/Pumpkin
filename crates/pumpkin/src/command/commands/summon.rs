@@ -21,7 +21,7 @@ use crate::world::World;
 const DESCRIPTION: &str = "Spawns an entity at position.";
 const PERMISSION: &str = "minecraft:command.summon";
 
-const ERROR_FAILED_PEACEFUL: CommandErrorType<0> = CommandErrorType::new(
+pub const ERROR_FAILED_PEACEFUL: CommandErrorType<0> = CommandErrorType::new(
     translation::java::COMMANDS_SUMMON_FAILED_PEACEFUL,
     translation::bedrock::COMMANDS_SUMMON_FAILED,
 );

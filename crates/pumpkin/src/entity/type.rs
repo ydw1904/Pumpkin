@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::tag::Taggable;
+use pumpkin_util::Difficulty;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use uuid::Uuid;
@@ -349,6 +350,11 @@ pub fn from_type(
     };
 
     mob
+}
+
+/// Vanilla `EntityType.canSpawn`: types not allowed in peaceful are never created there.
+pub fn can_spawn(entity_type: &EntityType, world: &World) -> bool {
+    entity_type.allowed_in_peaceful || world.level_info.load().difficulty != Difficulty::Peaceful
 }
 
 #[expect(clippy::too_many_lines)]

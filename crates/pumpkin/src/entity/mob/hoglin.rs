@@ -164,8 +164,10 @@ impl HoglinEntity {
             mob.spawn_as_baby();
         }
 
-        world.spawn_entity(zoglin);
-        entity.remove();
+        // Vanilla `Mob.convertTo` keeps the hoglin when the new mob can't be created.
+        if world.spawn_entity(zoglin) {
+            entity.remove();
+        }
     }
 }
 

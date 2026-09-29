@@ -2,6 +2,7 @@ use pumpkin_data::{
     Block, BlockDirection, BlockState, BlockStateId, entity::EntityType, world::WorldEvent,
 };
 use pumpkin_macros::pumpkin_block;
+use pumpkin_util::Difficulty;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::world::BlockFlags;
 use std::sync::Arc;
@@ -92,7 +93,10 @@ impl BlockBehaviour for WitherSkeletonSkullBlock {
         args.world
             .add_block_entity(Arc::new(SkullBlockEntity::new(*args.position)));
 
-        if let Some(pattern) = find_wither_pattern(args.world, args.position) {
+        // Vanilla `WitherSkullBlock.checkSpawn` leaves the pattern intact on peaceful.
+        if args.world.level_info.load().difficulty != Difficulty::Peaceful
+            && let Some(pattern) = find_wither_pattern(args.world, args.position)
+        {
             spawn_wither(args.world, &pattern);
         }
     }

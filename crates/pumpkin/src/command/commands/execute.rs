@@ -35,6 +35,7 @@ use crate::command::argument_types::score_holder::ScoreHolderArgumentType;
 use crate::command::commands::data::{
     BlockDataAccessor, DataAccessor, EntityDataAccessor, StorageDataAccessor,
 };
+use crate::command::commands::summon::ERROR_FAILED_PEACEFUL;
 use crate::command::context::command_context::CommandContext;
 use crate::command::errors::command_syntax_error::CommandSyntaxError;
 use crate::command::errors::error_types::CommandErrorType;
@@ -53,6 +54,7 @@ use pumpkin_data::tag::{self, RegistryKey};
 use pumpkin_data::translation;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::PermissionLvl;
+use pumpkin_util::difficulty::Difficulty;
 use pumpkin_util::identifier::Identifier;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector2::Vector2;
@@ -913,6 +915,12 @@ fn execute_summon_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
     let entity_type = ResourceArgument::get_summonable_entity_type(context, "entity_type")?;
+    // Vanilla shares `SummonCommand.createEntity` with `/summon`, including its peaceful check.
+    if context.source.world().level_info.load().difficulty == Difficulty::Peaceful
+        && !entity_type.allowed_in_peaceful
+    {
+        return Err(ERROR_FAILED_PEACEFUL.create_without_context());
+    }
     let entity = from_type(
         entity_type,
         context.source.position,

@@ -4840,10 +4840,16 @@ impl World {
         }
     }
 
-    /// Returns `false` when a plugin cancels the [`EntitySpawnEvent`].
+    /// Returns `false` when the type can't spawn on this difficulty or a plugin cancels the
+    /// [`EntitySpawnEvent`].
     ///
     /// [`EntitySpawnEvent`]: crate::plugin::api::events::entity::entity_spawn::EntitySpawnEvent
     pub fn spawn_entity(self: &Arc<Self>, entity: Arc<dyn EntityBase>) -> bool {
+        // Vanilla gates this in `EntityType.create`, which every spawn path goes through.
+        if !crate::entity::r#type::can_spawn(entity.get_entity().entity_type, self) {
+            return false;
+        }
+
         let mut event = crate::plugin::api::events::entity::entity_spawn::EntitySpawnEvent::new(
             entity.get_entity().entity_id,
             entity.get_entity().entity_type.id.to_string(),
