@@ -236,6 +236,7 @@ pub mod argument_type;
 pub mod attribute;
 pub mod block;
 pub mod block_predicate;
+pub mod block_state;
 pub mod client_parsed;
 pub mod component;
 pub mod coordinates;
