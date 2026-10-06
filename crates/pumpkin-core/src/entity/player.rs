@@ -5485,7 +5485,7 @@ impl Player {
             (EquipmentSlot::OFF_HAND, off_hand_item),
         ];
         self.living_entity.send_equipment_changes(equipment);
-        // todo this.player.stopUsingItem();
+        self.stop_using_item();
     }
 
     #[must_use]
