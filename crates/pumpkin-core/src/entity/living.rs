@@ -2143,6 +2143,10 @@ impl LivingEntity {
         {
             return;
         }
+        // Vanilla does this in `LivingEntity.updateFallFlying`; the movement delta stands in for velocity.
+        if self.entity.is_fall_flying() {
+            self.check_fall_distance_accumulation(height_difference);
+        }
         // Vanilla's Entity.checkFallDamage adds this move's drop before handling the landing, so
         // the move that reaches the ground still counts towards the fall.
         if height_difference < 0.0 {
@@ -2191,6 +2195,13 @@ impl LivingEntity {
             } else {
                 self.handle_fall_damage(caller, fall_distance, 1.0);
             }
+        }
+    }
+
+    /// Mirrors vanilla `Entity.checkFallDistanceAccumulation`.
+    fn check_fall_distance_accumulation(&self, velocity_y: f64) {
+        if velocity_y > -0.5 && self.fall_distance.load() > 1.0 {
+            self.fall_distance.store(1.0);
         }
     }
 
