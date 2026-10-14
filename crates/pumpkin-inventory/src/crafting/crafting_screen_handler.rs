@@ -486,6 +486,9 @@ impl Slot for ResultSlot {
         for i in 0..self.inventory.size() {
             self.inventory.remove_stack_specific(i, 1);
         }
+        // Throw-all keeps taking until the slot's stack changes, so the result must
+        // follow the inputs now rather than on the next content update.
+        self.refill_output();
         self.mark_dirty();
     }
     fn can_insert(&self, _stack: &ItemStack) -> bool {
@@ -698,10 +701,12 @@ mod tests {
         }
 
         fn drop_item(&self, item: ItemStack, _retain_ownership: bool) {
-            self.dropped
+            let mut dropped = self
+                .dropped
                 .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .push(item);
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            assert!(dropped.len() < 1_000, "throw-all did not stop");
+            dropped.push(item);
         }
 
         fn get_inventory(&self) -> Arc<PlayerInventory> {
@@ -784,6 +789,28 @@ mod tests {
 
         assert_eq!(handler.crafting_inventory.get_stack(0).item_count, 1);
         assert_eq!(player.dropped.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn throwing_all_from_the_result_slot_stops_when_the_inputs_run_out() {
+        // Two oak logs craft four planks twice.
+        let (mut handler, player) = handler_with_logs(2);
+        let result = handler.get_behaviour().slots[0].get_cloned_stack();
+        assert_eq!(result.item.id, Item::OAK_PLANKS.id);
+        assert_eq!(result.item_count, 4);
+
+        handler.on_slot_click(0, 1, SlotActionType::Throw, &player);
+
+        let dropped: usize = player
+            .dropped
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|stack| usize::from(stack.item_count))
+            .sum();
+        assert_eq!(dropped, 8);
+        assert!(handler.crafting_inventory.is_empty());
+        assert!(!handler.get_behaviour().slots[0].has_stack());
     }
 
     #[test]
