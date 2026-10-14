@@ -193,6 +193,8 @@ impl PistonBlockEntity {
 
     pub fn finish(&self, world: &Arc<World>) {
         if self.last_progress.load() < 1.0 {
+            self.current_progress.store(1.0);
+            self.last_progress.store(1.0);
             let pos = self.position;
             world.remove_block_entity(&pos);
             if world.get_block(&pos) == &Block::MOVING_PISTON {
@@ -202,7 +204,7 @@ impl PistonBlockEntity {
                     world.update_from_neighbor_shapes(self.pushed_block_state.id, &pos)
                 };
                 world.set_block_state(&pos, state, BlockFlags::NOTIFY_ALL);
-                world.update_neighbors(&pos, None);
+                world.update_neighbor(&pos, Block::from_state_id(state));
             }
         }
     }
@@ -230,21 +232,28 @@ impl BlockEntity for PistonBlockEntity {
             let pos = self.position;
             world.remove_block_entity(&pos);
             if world.get_block(&pos) == &Block::MOVING_PISTON {
-                if self.pushed_block_state.is_air() {
+                let new_state = world.update_from_neighbor_shapes(self.pushed_block_state.id, &pos);
+                if new_state.to_state().is_air() {
+                    // The moved block can't survive here, so it is placed and then broken with drops.
                     world.set_block_state(
                         &pos,
                         self.pushed_block_state.id,
-                        BlockFlags::FORCE_STATE | BlockFlags::MOVED,
+                        BlockFlags::SKIP_BLOCK_ENTITY_REPLACED_CALLBACK
+                            | BlockFlags::MOVED
+                            | BlockFlags::UPDATE_KNOWN_SHAPE,
                     );
+                    world.break_block(&pos, None, BlockFlags::NOTIFY_ALL);
                 } else {
-                    let updated_state =
-                        world.update_from_neighbor_shapes(self.pushed_block_state.id, &pos);
+                    let new_block = Block::from_state_id(new_state);
+                    let new_state = new_block
+                        .set_waterlogged(new_state, false)
+                        .unwrap_or(new_state);
                     world.set_block_state(
                         &pos,
-                        updated_state,
+                        new_state,
                         BlockFlags::NOTIFY_ALL | BlockFlags::MOVED,
                     );
-                    world.update_neighbors(&pos, None);
+                    world.update_neighbor(&pos, new_block);
                 }
             }
             return;
