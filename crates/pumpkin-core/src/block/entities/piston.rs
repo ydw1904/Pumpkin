@@ -295,6 +295,11 @@ impl BlockEntity for PistonBlockEntity {
         Some(nbt)
     }
 
+    // The client animates moving blocks itself from the piston block event.
+    fn update_packet_nbt(&self) -> Option<NbtCompound> {
+        None
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
