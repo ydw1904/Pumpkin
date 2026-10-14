@@ -2880,7 +2880,8 @@ impl Player {
                 .is_ok_and(|screen_handler| {
                     screen_handler.as_any().is::<MerchantScreenHandler>()
                         && !screen_handler.can_use(self)
-                });
+                })
+                || !self.is_open_container_in_reach();
 
             if is_invalid {
                 if let Some(p) = self.world().get_player_by_uuid(self.gameprofile.id) {
@@ -4520,6 +4521,14 @@ impl Player {
             y: entity_pos.y + eye_height,
             z: entity_pos.z,
         }) < d * d
+    }
+
+    /// Vanilla's `stillValid` for block containers: the opened block must stay in reach.
+    #[must_use]
+    pub fn is_open_container_in_reach(&self) -> bool {
+        self.open_container_pos
+            .load()
+            .is_none_or(|pos| self.can_interact_with_block_at(&pos, 4.0))
     }
 
     #[must_use]
@@ -6228,7 +6237,8 @@ impl Player {
 
             let b = screen_handler.get_behaviour();
             let sync_id = b.sync_id;
-            let can_use = screen_handler.can_use(self.as_ref());
+            let can_use =
+                screen_handler.can_use(self.as_ref()) && self.is_open_container_in_reach();
             let is_slot_valid = screen_handler.is_slot_valid(i32::from(packet.slot));
             let available_slots = b.slots.len();
 
