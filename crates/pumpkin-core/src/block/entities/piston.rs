@@ -5,6 +5,7 @@ use crossbeam::atomic::AtomicCell;
 use pumpkin_data::{Block, BlockDirection, BlockState};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3};
+use pumpkin_world::generation::structure::template::{BlockStateResolver, PaletteEntry};
 
 use crate::world::{BlockFlags, World};
 
@@ -207,6 +208,7 @@ impl PistonBlockEntity {
     }
 }
 
+const BLOCK_STATE: &str = "blockState";
 const FACING: &str = "facing";
 const LAST_PROGRESS: &str = "progress";
 const EXTENDING: &str = "extending";
@@ -256,8 +258,11 @@ impl BlockEntity for PistonBlockEntity {
     where
         Self: Sized,
     {
-        // TODO
-        let pushed_block_state = Block::AIR.default_state;
+        let pushed_block_state = nbt
+            .get_compound(BLOCK_STATE)
+            .and_then(|state| PaletteEntry::from_nbt_compound(state).ok())
+            .and_then(|entry| BlockStateResolver::resolve_simple(&entry))
+            .unwrap_or(Block::AIR.default_state);
         let facing = nbt.get_byte(FACING).unwrap_or(0);
         let last_progress = nbt.get_float(LAST_PROGRESS).unwrap_or(0.0);
         let extending = nbt.get_bool(EXTENDING).unwrap_or(false);
@@ -274,7 +279,10 @@ impl BlockEntity for PistonBlockEntity {
     }
 
     fn write_nbt(&self, nbt: &mut NbtCompound) {
-        // TODO: pushed_block_state
+        nbt.put_compound(
+            BLOCK_STATE,
+            PaletteEntry::from_state_id(self.pushed_block_state.id).to_nbt_compound(),
+        );
         nbt.put_byte(FACING, self.facing.to_index() as i8);
         nbt.put_float(LAST_PROGRESS, self.last_progress.load());
         nbt.put_bool(EXTENDING, self.extending);
@@ -283,12 +291,7 @@ impl BlockEntity for PistonBlockEntity {
 
     fn chunk_data_nbt(&self) -> Option<NbtCompound> {
         let mut nbt = NbtCompound::new();
-        // TODO: pushed_block_state
-        nbt.put_byte(FACING, self.facing.to_index() as i8);
-        nbt.put_float(LAST_PROGRESS, self.last_progress.load());
-        nbt.put_bool(EXTENDING, self.extending);
-        nbt.put_bool(SOURCE, self.source);
-        // TODO: duplicated code because of async :c
+        self.write_nbt(&mut nbt);
         Some(nbt)
     }
 

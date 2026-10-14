@@ -6,7 +6,7 @@
 use std::io::Cursor;
 use std::sync::OnceLock;
 
-use pumpkin_data::{Mirror, Rotation};
+use pumpkin_data::{Block, BlockStateId, Mirror, Rotation};
 use pumpkin_nbt::{compound::NbtCompound, nbt_compress::read_gzip_compound_tag, tag::NbtTag};
 use pumpkin_util::math::{block_box::BlockBox, vector3::Vector3};
 use thiserror::Error;
@@ -248,6 +248,23 @@ impl PaletteEntry {
     #[must_use]
     pub const fn with_properties(name: String, properties: Vec<pumpkin_data::Property>) -> Self {
         Self { name, properties }
+    }
+
+    /// Creates a palette entry describing the given block state.
+    #[must_use]
+    pub fn from_state_id(state_id: BlockStateId) -> Self {
+        let block = Block::from_state_id(state_id);
+        let properties = block.properties(state_id).map_or_else(Vec::new, |props| {
+            props
+                .to_props()
+                .into_iter()
+                .map(|(key, value)| (key.to_string(), value.to_string()))
+                .collect()
+        });
+        Self {
+            name: format!("minecraft:{}", block.name),
+            properties,
+        }
     }
 
     /// Parses a block state string (e.g. "`minecraft:oak_log`[axis=x]") into a palette entry.
@@ -1421,6 +1438,7 @@ mod tests {
     use pumpkin_data::block_properties::{Facing, Half, Property};
 
     use super::*;
+    use crate::generation::structure::template::BlockStateResolver;
 
     #[test]
     fn palette_entry_creation() {
@@ -1459,5 +1477,23 @@ mod tests {
                 .any(|entry| !entry.properties.is_empty() && entry.name.contains("trapdoor")),
             "the palette must keep the block properties"
         );
+    }
+
+    #[test]
+    fn palette_entry_from_state_id_matches_vanilla_template() {
+        let bytes = include_bytes!(
+            "../../../../../../assets/datapack/data/minecraft/structure/igloo/top.nbt"
+        );
+        let template = StructureTemplate::from_nbt_bytes(bytes).expect("failed to load template");
+
+        for entry in &template.palette {
+            let state = BlockStateResolver::resolve_simple(entry)
+                .expect("vanilla palette entries must resolve");
+            let mut expected = entry.clone();
+            let mut written = PaletteEntry::from_state_id(state.id);
+            expected.properties.sort();
+            written.properties.sort();
+            assert_eq!(written, expected);
+        }
     }
 }
