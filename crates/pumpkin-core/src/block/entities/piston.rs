@@ -268,8 +268,8 @@ impl BlockEntity for PistonBlockEntity {
         Self: Sized,
     {
         let pushed_block_state = nbt
-            .get_compound(BLOCK_STATE)
-            .and_then(|state| PaletteEntry::from_nbt_compound(state).ok())
+            .get(BLOCK_STATE)
+            .and_then(PaletteEntry::from_nbt_tag)
             .and_then(|entry| BlockStateResolver::resolve_simple(&entry))
             .unwrap_or(Block::AIR.default_state);
         let facing = nbt.get_byte(FACING).unwrap_or(0);
@@ -288,9 +288,9 @@ impl BlockEntity for PistonBlockEntity {
     }
 
     fn write_nbt(&self, nbt: &mut NbtCompound) {
-        nbt.put_compound(
+        nbt.put(
             BLOCK_STATE,
-            PaletteEntry::from_state_id(self.pushed_block_state.id).to_nbt_compound(),
+            PaletteEntry::state_to_nbt_tag(self.pushed_block_state.id),
         );
         nbt.put_byte(FACING, self.facing.to_index() as i8);
         nbt.put_float(LAST_PROGRESS, self.last_progress.load());

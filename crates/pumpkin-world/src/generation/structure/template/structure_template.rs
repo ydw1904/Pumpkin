@@ -254,13 +254,9 @@ impl PaletteEntry {
     #[must_use]
     pub fn from_state_id(state_id: BlockStateId) -> Self {
         let block = Block::from_state_id(state_id);
-        let properties = block.properties(state_id).map_or_else(Vec::new, |props| {
-            props
-                .to_props()
-                .into_iter()
-                .map(|(key, value)| (key.to_string(), value.to_string()))
-                .collect()
-        });
+        let properties = block
+            .properties(state_id)
+            .map_or_else(Vec::new, |props| props.to_props());
         Self {
             name: format!("minecraft:{}", block.name),
             properties,
@@ -319,6 +315,28 @@ impl PaletteEntry {
         Self {
             name: self.name.clone(),
             properties,
+        }
+    }
+
+    /// Reads a block state stored as a bare block id (its default state) or as an `id`/`properties` compound.
+    #[must_use]
+    pub fn from_nbt_tag(tag: &NbtTag) -> Option<Self> {
+        match tag {
+            NbtTag::String(name) => Some(Self::new(name.to_string())),
+            NbtTag::Compound(compound) => Self::from_nbt_compound(compound).ok(),
+            _ => None,
+        }
+    }
+
+    /// Writes a block state as a bare block id when it is the block's default state, otherwise as an
+    /// `id`/`properties` compound.
+    #[must_use]
+    pub fn state_to_nbt_tag(state_id: BlockStateId) -> NbtTag {
+        let block = Block::from_state_id(state_id);
+        if block.default_state.id == state_id {
+            NbtTag::String(format!("minecraft:{}", block.name).into())
+        } else {
+            NbtTag::Compound(Self::from_state_id(state_id).to_nbt_compound())
         }
     }
 
@@ -1491,9 +1509,38 @@ mod tests {
                 .expect("vanilla palette entries must resolve");
             let mut expected = entry.clone();
             let mut written = PaletteEntry::from_state_id(state.id);
-            expected.properties.sort();
-            written.properties.sort();
+            expected.properties.sort_by_key(|property| property.key());
+            written.properties.sort_by_key(|property| property.key());
             assert_eq!(written, expected);
         }
+    }
+
+    #[test]
+    fn block_state_tag_uses_the_bare_id_only_for_default_states() {
+        let stone = Block::STONE.default_state.id;
+        assert_eq!(
+            PaletteEntry::state_to_nbt_tag(stone),
+            NbtTag::String("minecraft:stone".into())
+        );
+        for name in ["minecraft:stone", "stone"] {
+            let entry = PaletteEntry::from_nbt_tag(&NbtTag::String(name.into()))
+                .expect("a bare block id is a valid block state");
+            assert_eq!(
+                BlockStateResolver::resolve_simple(&entry).map(|state| state.id),
+                Some(stone)
+            );
+        }
+
+        let piston = Block::STICKY_PISTON
+            .from_properties(&[pumpkin_data::Property::from_str_pair("facing", "east")
+                .expect("facing is a property")]);
+        let piston = piston.to_state_id(&Block::STICKY_PISTON);
+        let NbtTag::Compound(compound) = PaletteEntry::state_to_nbt_tag(piston) else {
+            panic!("a non default state must be written as a compound");
+        };
+        assert_eq!(compound.get_string("id"), Some("minecraft:sticky_piston"));
+        let properties = compound.get_compound("properties").expect("properties");
+        assert_eq!(properties.get_string("facing"), Some("east"));
+        assert_eq!(properties.get_string("extended"), Some("false"));
     }
 }
