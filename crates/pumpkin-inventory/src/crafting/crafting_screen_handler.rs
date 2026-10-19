@@ -679,28 +679,40 @@ impl CraftingScreenHandler<CraftingInventory> for CraftingTableScreenHandler {}
 mod tests {
     use super::*;
     use crate::entity_equipment::EntityEquipment;
+    use pumpkin_data::data_component_impl::EquipmentSlot;
     use pumpkin_data::item::Item;
     use pumpkin_protocol::java::client::play::{
         CSetContainerContent, CSetContainerProperty, CSetContainerSlot, CSetCursorItem,
         CSetPlayerInventory, CSetSelectedSlot,
     };
+    use pumpkin_protocol::java::server::play::SlotActionType;
 
-    struct DummyPlayer {
+    struct TestPlayer {
         inventory: Arc<PlayerInventory>,
+        dropped: Mutex<Vec<ItemStack>>,
     }
 
-    impl InventoryPlayer for DummyPlayer {
+    impl InventoryPlayer for TestPlayer {
         fn as_any(&self) -> &dyn Any {
             self
         }
 
-        fn drop_item(&self, _item: ItemStack, _retain_ownership: bool) {}
+        fn drop_item(&self, item: ItemStack, _retain_ownership: bool) {
+            self.dropped
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(item);
+        }
 
-        fn is_creative(&self) -> bool {
-            false
+        fn get_inventory(&self) -> Arc<PlayerInventory> {
+            self.inventory.clone()
         }
 
         fn has_infinite_materials(&self) -> bool {
+            false
+        }
+
+        fn is_creative(&self) -> bool {
             false
         }
 
@@ -715,10 +727,6 @@ mod tests {
         }
 
         fn set_enchantment_seed(&self, _seed: i32) {}
-
-        fn get_inventory(&self) -> Arc<PlayerInventory> {
-            self.inventory.clone()
-        }
 
         fn enqueue_inventory_packet(
             &self,
@@ -743,12 +751,7 @@ mod tests {
 
         fn enqueue_set_held_item_packet(&self, _packet: &CSetSelectedSlot) {}
 
-        fn enqueue_equipment_change(
-            &self,
-            _slot: &pumpkin_data::data_component_impl::EquipmentSlot,
-            _stack: &ItemStack,
-        ) {
-        }
+        fn enqueue_equipment_change(&self, _slot: &EquipmentSlot, _stack: &ItemStack) {}
 
         fn award_experience(&self, _amount: i32) {}
 
@@ -757,15 +760,35 @@ mod tests {
         fn play_block_sound(&self, _sound: pumpkin_data::sound::Sound, _pitch: f32) {}
     }
 
-    #[test]
-    fn quick_move_partial_fit_writes_remainder_back() {
-        let player = DummyPlayer {
+    fn handler_with_logs(count: u8) -> (CraftingTableScreenHandler, TestPlayer) {
+        let player = TestPlayer {
             inventory: Arc::new(PlayerInventory::new(
                 Arc::new(Mutex::new(EntityEquipment::new())),
                 Arc::new(rustc_hash::FxHashMap::default()),
             )),
+            dropped: Mutex::new(Vec::new()),
         };
         let mut handler = CraftingTableScreenHandler::new(1, &player.inventory, None);
+        handler
+            .crafting_inventory
+            .set_stack(0, ItemStack::new(count, &Item::OAK_LOG));
+        handler.send_content_updates();
+        (handler, player)
+    }
+
+    #[test]
+    fn throw_one_from_result_crafts_once() {
+        let (mut handler, player) = handler_with_logs(2);
+
+        handler.on_slot_click(0, 0, SlotActionType::Throw, &player);
+
+        assert_eq!(handler.crafting_inventory.get_stack(0).item_count, 1);
+        assert_eq!(player.dropped.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn quick_move_partial_fit_writes_remainder_back() {
+        let (mut handler, player) = handler_with_logs(0);
 
         // The grid has room for one cobblestone and the hotbar (slots 37..46) is full.
         handler
@@ -792,6 +815,5 @@ mod tests {
         let source = player.inventory.get_stack(9).item_count;
         assert_eq!(grid, 64);
         assert_eq!(source, 63);
-        assert_eq!(grid + source, 63 + 64);
     }
 }
