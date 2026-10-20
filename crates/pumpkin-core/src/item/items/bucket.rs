@@ -19,6 +19,7 @@ use pumpkin_data::{
     sound::{Sound, SoundCategory},
     statistic::StatisticCategory,
 };
+use pumpkin_inventory::screen_handler::InventoryPlayer;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::{
     GameMode, Hand,
@@ -236,6 +237,15 @@ fn apply_mob_bucket_components(bucket_stack: &ItemStack, mob: &dyn EntityBase, p
             .get_mob_entity()
             .persistence_required
             .store(true, Ordering::Relaxed);
+    }
+}
+
+/// Mirrors vanilla's `BucketItem.getEmptySuccessItem`.
+pub(crate) fn get_empty_success_item(item: ItemStack, player: &Player) -> ItemStack {
+    if player.has_infinite_materials() {
+        item
+    } else {
+        ItemStack::new(1, &Item::BUCKET)
     }
 }
 
@@ -626,6 +636,15 @@ impl ItemBehaviour for FilledBucketItem {
                 fill_mob_bucket_stack(item, player, mob_bucket, entity.as_ref());
                 ent.remove();
             }
+        }
+    }
+
+    // Powder snow is vanilla's only `SolidBucketItem`; mirrors its `useOn` override.
+    fn on_placed_as_block(&self, stack: &mut ItemStack, player: &Player) {
+        if stack.item.id == Item::POWDER_SNOW_BUCKET.id {
+            *stack = get_empty_success_item(stack.clone(), player);
+        } else {
+            stack.decrement_unless_creative(player.gamemode.load(), 1);
         }
     }
 
