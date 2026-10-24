@@ -114,7 +114,12 @@ impl BreedGoal {
         mate.reset_love();
         mate.set_breeding_cooldown(6000);
 
-        baby.get_entity().set_age(-24000);
+        // Vanilla `Animal.spawnChildFromBreeding` calls `setBaby(true)`, which runs the
+        // offspring's `ageBoundaryReached`.
+        match baby.get_mob().and_then(Mob::as_ageable) {
+            Some(ageable) => ageable.set_baby(true),
+            None => baby.get_entity().set_age(-24000),
+        }
         world_full.spawn_entity(baby);
 
         world_full.send_entity_status(
