@@ -2,6 +2,7 @@ mod bot;
 mod bot_tests;
 mod gametests;
 mod harness;
+mod parity;
 
 use std::{net::SocketAddr, process::ExitCode, sync::Arc, time::Instant};
 
@@ -31,6 +32,22 @@ async fn main() -> ExitCode {
     let _ = rayon::ThreadPoolBuilder::new()
         .thread_name(|i| format!("Rayon-Tester-{i}"))
         .build_global();
+
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("parity") {
+        let result = match parity::ParityArgs::parse(&args[1..]) {
+            Ok(parity_args) => parity::run_on_large_stack(parity_args),
+            Err(err) => Err(err),
+        };
+        return match result {
+            Ok(true) => ExitCode::SUCCESS,
+            Ok(false) => ExitCode::FAILURE,
+            Err(err) => {
+                eprintln!("pumpkin-tester parity FAILED: {err}");
+                ExitCode::FAILURE
+            }
+        };
+    }
 
     let start = Instant::now();
     println!("Starting pumpkin-tester (single server + headless bots + Mojang GameTests)...");
