@@ -1,4 +1,5 @@
-use pumpkin_data::Block;
+use pumpkin_data::block_properties::BLOCK_ENTITY_TYPES;
+use pumpkin_data::{Block, BlockState, BlockStateId};
 use pumpkin_nbt::{NbtCompound, tag::NbtTag};
 use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
 use pumpkin_world::world::BlockFlags;
@@ -243,6 +244,13 @@ pub async fn place_structure_with_controller_rotation(
             nbt.put_string("message", String::new());
             nbt.put_bool("powered", false);
             world.set_block_entity_nbt(&position, &nbt).await?;
+        } else if let Some(id) = block_entity_id(state) {
+            // Vanilla's setBlock creates the block entity even when the template has no NBT
+            // for it, e.g. a comparator that needs one to hold its output signal. Types
+            // Pumpkin doesn't implement yet are left without one rather than failing the test.
+            let mut nbt = NbtCompound::new();
+            nbt.put_string("id", format!("minecraft:{id}"));
+            let _ = world.set_block_entity_nbt(&position, &nbt).await;
         }
     }
 
@@ -415,4 +423,10 @@ async fn clear_box(
     }
 
     Ok(())
+}
+
+/// The block entity type of `state`, if its block has one.
+fn block_entity_id(state: BlockStateId) -> Option<&'static str> {
+    let index = BlockState::from_id(state).block_entity_type;
+    BLOCK_ENTITY_TYPES.get(usize::from(index)).copied()
 }
