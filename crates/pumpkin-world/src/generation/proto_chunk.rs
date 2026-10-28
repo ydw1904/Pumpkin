@@ -165,7 +165,7 @@ pub struct ProtoChunk {
     pub light: ChunkLight,
     pub blending_data: Option<crate::generation::blender::blending_data::BlendingData>,
     pub pending_block_entities: Vec<NbtCompound>,
-    pending_structure_entities: Vec<NbtCompound>,
+    pending_structure_entities: Vec<StructureEntity>,
     pub block_ticks: Vec<ScheduledTick<&'static Block>>,
     pub fluid_ticks: Vec<ScheduledTick<&'static Fluid>>,
     /// See [`ChunkData::post_processing`].
@@ -182,6 +182,14 @@ pub const fn post_process_pos(state: BlockStateId, pos: &Vector3<i32>) -> Option
         BlockId::SOUL_SAND | BlockId::MAGMA_BLOCK => Some(Vector3::new(pos.x, pos.y + 1, pos.z)),
         _ => None,
     }
+}
+
+/// An entity a structure placed, spawned once its chunk is generated.
+pub struct StructureEntity {
+    pub nbt: NbtCompound,
+    /// Vanilla runs `finalizeSpawn` (reason `STRUCTURE`) on a mob spawned by a structure's
+    /// data marker or jigsaw piece, but not on one from a plain template.
+    pub finalize: bool,
 }
 
 pub struct TerrainCache {
@@ -475,11 +483,12 @@ impl ProtoChunk {
         std::mem::take(&mut self.pending_block_entities)
     }
 
-    pub fn add_structure_entity(&mut self, nbt: NbtCompound) {
-        self.pending_structure_entities.push(nbt);
+    pub fn add_structure_entity(&mut self, nbt: NbtCompound, finalize: bool) {
+        self.pending_structure_entities
+            .push(StructureEntity { nbt, finalize });
     }
 
-    pub fn take_pending_structure_entities(&mut self) -> Vec<NbtCompound> {
+    pub fn take_pending_structure_entities(&mut self) -> Vec<StructureEntity> {
         std::mem::take(&mut self.pending_structure_entities)
     }
 
