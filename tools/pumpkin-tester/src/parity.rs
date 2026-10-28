@@ -7,6 +7,7 @@
 //! superflat world.
 
 use std::{
+    collections::HashSet,
     fmt::Write as _,
     fs,
     path::{Path, PathBuf},
@@ -16,7 +17,6 @@ use std::{
 
 use pumpkin_core::server::{
     Server,
-    builtin_game_tests::builtin_game_test_ids,
     server_test_manager::{
         GameTestBatchReport, GameTestQueueEntry, GameTestRetryOptions,
         prepare_test_run_with_reporter,
@@ -150,6 +150,44 @@ fn prepare_world(world_dir: &Path, args: &ParityArgs) -> Result<(), String> {
         .map_err(|err| format!("Failed to copy packs: {err}"))
 }
 
+/// Lists the test instance ids defined under `<pack>/data/<namespace>/test_instance/`.
+fn pack_test_ids(packs: &Path) -> HashSet<String> {
+    fn collect(namespace: &str, root: &Path, dir: &Path, ids: &mut HashSet<String>) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect(namespace, root, &path, ids);
+            } else if path.extension().is_some_and(|ext| ext == "json")
+                && let Ok(relative) = path.with_extension("").strip_prefix(root)
+            {
+                let name = relative.to_string_lossy().replace('\\', "/");
+                ids.insert(format!("{namespace}:{name}"));
+            }
+        }
+    }
+
+    let mut ids = HashSet::new();
+    for pack in fs::read_dir(packs).into_iter().flatten().flatten() {
+        for namespace in fs::read_dir(pack.path().join("data"))
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            let root = namespace.path().join("test_instance");
+            collect(
+                &namespace.file_name().to_string_lossy(),
+                &root,
+                &root,
+                &mut ids,
+            );
+        }
+    }
+    ids
+}
+
 fn xml_escape(text: &str) -> String {
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -207,14 +245,14 @@ async fn run_tests(
 ) -> Result<Vec<(TestRun, Outcome, f64)>, String> {
     let world = server.get_world_from_dimension(&Dimension::OVERWORLD);
     let selector = args.tests.as_bytes();
-    // Pumpkin's Rust function tests share the registry but don't exist on vanilla.
-    let builtin = builtin_game_test_ids();
+    // The registry also holds Pumpkin's embedded and Rust tests, which vanilla doesn't have.
+    let from_packs = pack_test_ids(&args.packs);
     let ids: Vec<(String, bool)> = server
         .datapack_manager
         .get_test_instance_names()
         .into_iter()
         .filter(|id| selector_matches(selector, id.as_bytes()))
-        .filter(|id| !builtin.contains(&id.as_str()))
+        .filter(|id| from_packs.contains(id))
         .filter_map(|id| {
             let instance = server.datapack_manager.get_test_instance(&id)?;
             (!instance.manual_only).then_some((id, instance.required))
