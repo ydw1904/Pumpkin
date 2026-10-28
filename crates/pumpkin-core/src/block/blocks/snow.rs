@@ -20,12 +20,14 @@ impl BlockBehaviour for LayeredSnowBlock {
     }
 
     fn can_update_at(&self, args: CanUpdateAtArgs<'_>) -> bool {
+        // Vanilla SnowLayerBlock.canBeReplaced: a snow item adds a layer up to 8, through the top
+        // face when the snow itself was clicked and from any side when it's the block in front.
         let props = SnowLikeProperties::from_state_id(args.state_id);
-        if props.layers < 8 {
-            args.direction == BlockDirection::Down
-        } else {
-            false
+        if props.layers >= 8 {
+            return false;
         }
+        let replacing_clicked_block = *args.position == args.use_item_on.position;
+        !replacing_clicked_block || args.direction == BlockDirection::Up
     }
 
     fn on_place(&self, args: OnPlaceArgs<'_>) -> BlockStateId {
