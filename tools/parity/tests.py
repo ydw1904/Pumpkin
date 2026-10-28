@@ -82,6 +82,17 @@ def qc_dispenser(name):
     )
 
 
+# The furnace sits in the floor under a dropper the start block fires, so cooking starts a fixed
+# time after the test does instead of whenever the structure was placed.
+FURNACE_POS = (1, 0, 0)
+
+
+def smelting_furnace(test):
+    return (
+        test.container(FURNACE_POS, "minecraft:furnace[facing=north,lit=false]", {1: ("minecraft:coal", 1)})
+        .container((1, 1, 0), "minecraft:dropper[facing=down,triggered=false]", {0: ("minecraft:raw_iron", 1)})
+    )
+
 TESTS = [
     # Vanilla's start block stays powered for the rest of the test (TestBlockEntity.trigger
     # never schedules the tick that would reset it).
@@ -270,4 +281,12 @@ TESTS = [
     .setup((QC_POWER, "minecraft:redstone_block"))
     .after(1, (QC_UPDATE, "minecraft:stone"))
     .check_after(2, (QC_FRONT, "minecraft:water[level=0]", "budded dispenser fires once a neighbour updates it")),
+
+    # A furnace cooks on its own 200-tick counter, not scheduled ticks, so racing it against a
+    # repeater line catches scheduled ticks running late. The dropper fires 4 ticks after the start.
+    smelting_furnace(Test("repeaters_beat_the_furnace"))
+    .check_after(24, (FURNACE_POS, 'minecraft:furnace{Items:[{Slot:0b,id:"minecraft:raw_iron"}]}', "raw iron still smelting after 24 repeaters")),
+
+    smelting_furnace(Test("furnace_beats_the_repeaters"))
+    .check_after(27, (FURNACE_POS, 'minecraft:furnace{Items:[{Slot:2b,id:"minecraft:iron_ingot"}]}', "ingot smelted after 27 repeaters")),
 ]
