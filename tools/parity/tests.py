@@ -22,6 +22,66 @@ def row_of_planks(test, x_from, x_to):
     return test
 
 
+def update_order_race(name, source, first, first_facing, second, second_facing):
+    """Two pistons next to `source` both want to push the same block. Placing a redstone block at
+    `source` updates them in NeighborUpdater.UPDATE_ORDER (west, east, down, up, north, south);
+    both queue a block event, and only the piston updated first gets to move the block.
+    `first` must come before `second` in that order."""
+    offsets = {"north": (0, 0, -1), "south": (0, 0, 1), "east": (1, 0, 0), "west": (-1, 0, 0),
+               "up": (0, 1, 0), "down": (0, -1, 0)}
+
+    def step(pos, facing, n=1):
+        d = offsets[facing]
+        return (pos[0] + d[0] * n, pos[1] + d[1] * n, pos[2] + d[2] * n)
+
+    shared = step(first, first_facing)
+    assert shared == step(second, second_facing), "both pistons must face the shared block"
+    won, lost = step(first, first_facing, 2), step(second, second_facing, 2)
+    return (
+        Test(name)
+        .set(first, f"minecraft:piston[extended=false,facing={first_facing}]")
+        .set(second, f"minecraft:piston[extended=false,facing={second_facing}]")
+        .set(shared, "minecraft:oak_planks")
+        .set(won, "minecraft:air")
+        .set(lost, "minecraft:air")
+        .setup((source, "minecraft:redstone_block"))
+        .check_after(
+            2,
+            (won, "minecraft:oak_planks", f"block pushed {first_facing} by the piston updated first"),
+            (lost, "minecraft:air", f"nothing pushed {second_facing} by the piston updated second"),
+            (first, "minecraft:piston[extended=true]", "first piston extended"),
+            (second, "minecraft:piston[extended=false]", "second piston blocked by the first one's head"),
+        )
+    )
+
+
+# Quasi-connectivity: pistons and dispensers also count power reaching the block above them,
+# but only re-check it on a neighbour update, so power arriving two blocks up leaves them budded.
+QC_POS = (4, 1, 3)
+QC_POWER = (4, 3, 3)
+QC_UPDATE = (4, 1, 4)
+QC_FRONT = (5, 1, 3)
+
+
+def qc_piston(name):
+    return (
+        Test(name)
+        .set(QC_POS, "minecraft:piston[extended=false,facing=east]")
+        .set(QC_FRONT, "minecraft:oak_planks")
+        .set((6, 1, 3), "minecraft:air")
+        .set(QC_POWER, "minecraft:air")
+    )
+
+
+def qc_dispenser(name):
+    return (
+        Test(name)
+        .container(QC_POS, "minecraft:dispenser[facing=east,triggered=false]", {0: ("minecraft:water_bucket", 1)})
+        .set(QC_FRONT, "minecraft:air")
+        .set(QC_POWER, "minecraft:air")
+    )
+
+
 TESTS = [
     # Vanilla's start block stays powered for the rest of the test (TestBlockEntity.trigger
     # never schedules the tick that would reset it).
@@ -122,7 +182,7 @@ TESTS = [
 
     # Flowing water loses one level per block and spreads every 5 ticks.
     water_channel(Test("water_spreads_along_channel"))
-    .command((1, 1, 0), "setblock ~2 ~ ~2 minecraft:water")
+    .setup(((3, 1, 2), "minecraft:water"))
     .check_after(
         3,
         ((3, 1, 2), "minecraft:water[level=0]", "water source where it was placed"),
@@ -132,12 +192,12 @@ TESTS = [
 
     water_channel(Test("water_turns_lava_source_to_obsidian"))
     .set((5, 1, 2), "minecraft:lava[level=0]")
-    .command((1, 1, 0), "setblock ~2 ~ ~2 minecraft:water")
+    .setup(((3, 1, 2), "minecraft:water"))
     .check_after(3, ((5, 1, 2), "minecraft:obsidian", "obsidian where the lava source was")),
 
     Test("sand_falls_to_the_floor")
     .set((3, 4, 2), "minecraft:air")
-    .command((1, 1, 0), "setblock ~2 ~3 ~2 minecraft:sand")
+    .setup(((3, 4, 2), "minecraft:sand"))
     .check_after(
         3,
         ((3, 1, 2), "minecraft:sand", "sand landed on the floor"),
@@ -167,4 +227,47 @@ TESTS = [
     .set((2, 1, 0), "minecraft:air")
     .set((2, 2, 0), "minecraft:observer[facing=down,powered=false]")
     .accept((2, 3, 0)),
+
+    update_order_race("update_order_west_before_north", (5, 1, 3), (4, 1, 3), "north", (5, 1, 2), "west"),
+    update_order_race("update_order_east_before_south", (5, 1, 3), (6, 1, 3), "south", (5, 1, 4), "east"),
+    update_order_race("update_order_down_before_north", (5, 3, 3), (5, 2, 3), "north", (5, 3, 2), "down"),
+    update_order_race("update_order_up_before_south", (5, 1, 3), (5, 2, 3), "south", (5, 1, 4), "up"),
+
+    qc_piston("qc_piston_stays_budded")
+    .setup((QC_POWER, "minecraft:redstone_block"))
+    .check_after(
+        2,
+        (QC_POS, "minecraft:piston[extended=false]", "piston powered two blocks up stays retracted without an update"),
+        (QC_FRONT, "minecraft:oak_planks", "planks not moved"),
+    ),
+
+    qc_piston("qc_piston_extends_on_update")
+    .setup((QC_POWER, "minecraft:redstone_block"))
+    .after(1, (QC_UPDATE, "minecraft:stone"))
+    .check_after(
+        2,
+        (QC_POS, "minecraft:piston[extended=true]", "budded piston extends once a neighbour updates it"),
+        ((6, 1, 3), "minecraft:oak_planks", "planks pushed one block"),
+    ),
+
+    qc_piston("qc_piston_stays_extended_after_power_removed")
+    .setup((QC_POWER, "minecraft:redstone_block"), (QC_UPDATE, "minecraft:stone"))
+    .after(2, (QC_POWER, "minecraft:air"))
+    .check_after(
+        4,
+        (QC_POS, "minecraft:piston[extended=true]", "piston stays extended when its quasi power goes without an update"),
+    ),
+
+    qc_dispenser("qc_dispenser_stays_budded")
+    .setup((QC_POWER, "minecraft:redstone_block"))
+    .check_after(
+        2,
+        (QC_POS, "minecraft:dispenser[triggered=false]", "dispenser powered two blocks up not triggered"),
+        (QC_FRONT, "minecraft:air", "no water dispensed"),
+    ),
+
+    qc_dispenser("qc_dispenser_fires_on_update")
+    .setup((QC_POWER, "minecraft:redstone_block"))
+    .after(1, (QC_UPDATE, "minecraft:stone"))
+    .check_after(2, (QC_FRONT, "minecraft:water[level=0]", "budded dispenser fires once a neighbour updates it")),
 ]
