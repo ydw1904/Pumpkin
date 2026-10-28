@@ -16,7 +16,7 @@
 use crate::command::argument_builder::{
     ArgumentBuilder, RequiredArgumentBuilder, argument, command, literal,
 };
-use crate::command::argument_types::block::BlockArgumentType;
+use crate::command::argument_types::block_predicate::BlockPredicateArgumentType;
 use crate::command::argument_types::coordinates::block_pos::BlockPosArgumentType;
 use crate::command::argument_types::coordinates::rotation::RotationArgumentType;
 use crate::command::argument_types::coordinates::swizzle::SwizzleArgumentType;
@@ -51,6 +51,7 @@ use crate::world::stopwatches::Stopwatches;
 use pumpkin_data::biome::Biome;
 use pumpkin_data::tag::{self, RegistryKey};
 use pumpkin_data::translation;
+use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::identifier::Identifier;
@@ -277,14 +278,8 @@ fn execute_facing_entity_modifier(
 fn execute_if_block_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    let pos = BlockPosArgumentType::get_block_pos(context, "pos")?;
-    let expected_block = BlockArgumentType::get(context, "block")?;
-
-    if let Some(ref world) = context.source.world {
-        let block = world.get_block(&pos);
-        if block == expected_block {
-            return Ok(vec![context.source.clone()]);
-        }
+    if block_predicate_matches(context)? == Some(true) {
+        return Ok(vec![context.source.clone()]);
     }
     Ok(vec![])
 }
@@ -292,18 +287,27 @@ fn execute_if_block_modifier(
 fn execute_unless_block_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    let pos = BlockPosArgumentType::get_block_pos(context, "pos")?;
-    let expected_block = BlockArgumentType::get(context, "block")?;
-
-    if let Some(ref world) = context.source.world {
-        let block = world.get_block(&pos);
-        if block != expected_block {
-            return Ok(vec![context.source.clone()]);
-        }
-    } else {
+    if block_predicate_matches(context)? != Some(true) {
         return Ok(vec![context.source.clone()]);
     }
     Ok(vec![])
+}
+
+/// Tests the `block` predicate at `pos`, or returns `None` without a world.
+fn block_predicate_matches(context: &CommandContext) -> Result<Option<bool>, CommandSyntaxError> {
+    let pos = BlockPosArgumentType::get_block_pos(context, "pos")?;
+    let predicate = BlockPredicateArgumentType::get(context, "block")?;
+    let Some(world) = &context.source.world else {
+        return Ok(None);
+    };
+    let (block, state_id) = world.get_block_and_state_id(&pos);
+    Ok(Some(predicate.test(block, state_id, || {
+        world.get_block_entity(&pos).map(|entity| {
+            let mut nbt = NbtCompound::new();
+            entity.write_internal(&mut nbt);
+            nbt
+        })
+    })))
 }
 
 fn execute_if_loaded_modifier(
@@ -1236,7 +1240,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                 ))
                 .then(
                     literal("block").then(argument("pos", BlockPosArgumentType).then(
-                        argument("block", BlockArgumentType).redirect_with_modifier(
+                        argument("block", BlockPredicateArgumentType).redirect_with_modifier(
                             Redirection::Root,
                             RedirectModifier::Custom(Arc::new(execute_if_block_modifier)),
                         ),
@@ -1392,7 +1396,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                 ))
                 .then(
                     literal("block").then(argument("pos", BlockPosArgumentType).then(
-                        argument("block", BlockArgumentType).redirect_with_modifier(
+                        argument("block", BlockPredicateArgumentType).redirect_with_modifier(
                             Redirection::Root,
                             RedirectModifier::Custom(Arc::new(execute_unless_block_modifier)),
                         ),

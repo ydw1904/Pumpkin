@@ -1,5 +1,6 @@
 use pumpkin_data::translation;
 use pumpkin_data::{Block, BlockStateId};
+use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector2::Vector2;
@@ -142,8 +143,33 @@ fn fill_blocks(
                                         }
                                     }
                                     _ => {
+                                        // This runs under the chunk's read lock, so the block
+                                        // entity comes from the world map or the chunk's
+                                        // pending NBT rather than World::get_block_entity.
                                         if let Some(f) = filter
-                                            && !f.test(current_block)
+                                            && !f.test(current_block, current_state_id, || {
+                                                world
+                                                    .block_entities
+                                                    .get(&chunk_pos)
+                                                    .and_then(|entities| {
+                                                        entities.get(&pos).cloned()
+                                                    })
+                                                    .map(|entity| {
+                                                        let mut nbt = NbtCompound::new();
+                                                        entity.write_internal(&mut nbt);
+                                                        nbt
+                                                    })
+                                                    .or_else(|| {
+                                                        chunk
+                                                            .pending_block_entities
+                                                            .lock()
+                                                            .unwrap_or_else(
+                                                                std::sync::PoisonError::into_inner,
+                                                            )
+                                                            .get(&pos)
+                                                            .cloned()
+                                                    })
+                                            })
                                         {
                                             continue;
                                         }
