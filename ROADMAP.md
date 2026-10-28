@@ -12,7 +12,7 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 | Target version | Java 26.3 (protocol 777), vanilla server needs JDK 25 |
 | Parity harness | `python tools/parity/parity.py` runs the same datapack GameTests on vanilla and Pumpkin and diffs the results |
 | Parity pack | 29 generated tests in `tools/parity/tests.py`; all 29 pass on vanilla and Pumpkin |
-| Bot checks | `python tools/parity/bot_parity.py <check>` runs a headless 26.3 Mineflayer bot on vanilla and Pumpkin and diffs what it saw. `smoke`, `falling/landing-sand.js`, `scaffolding/landing-overhang.js`, `scaffolding/landing-pane-fence.js` and `beacon/stale-heightmap.js` match fully; the remaining differences are #23 to #29 |
+| Bot checks | `python tools/parity/bot_parity.py <check>` runs a headless 26.3 Mineflayer bot on vanilla and Pumpkin and diffs what it saw. `smoke`, `falling/landing-sand.js`, `scaffolding/landing-overhang.js`, `scaffolding/landing-pane-fence.js` and `beacon/stale-heightmap.js` match fully; the remaining differences are #25 to #30 |
 | Pumpkin's own suite | `cargo run -p pumpkin-tester`: all bot tests and built-in GameTests pass |
 
 ### How the harness works
@@ -67,7 +67,7 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 | 11 | The `max-chained-neighbor-updates` limit (vanilla's `CollectingNeighborUpdater`) isn't implemented. | Reading code | Open |
 | 12 | Gameplay RNG can't be seeded. There's no per-entity or per-world RNG; about 500 call sites use the thread-local `rand::rng()`, and random ticks run in parallel. | RNG survey | Open, see future work |
 | 13 | Pumpkin reads structure palettes with `Name`/`Properties` even at data version 5023, where vanilla places air. | Building the pack | Won't fix for now: more lenient than vanilla, nothing breaks |
-| 14 | `execute if block` doesn't reject unloaded positions (vanilla uses `getLoadedBlockPos`). I also haven't checked whether `if/unless block` work as terminal conditions without `run`. | Reading code | Open, unverified |
+| 14 | `execute if block` doesn't reject unloaded positions (vanilla uses `getLoadedBlockPos`). | Reading code | Open, unverified. The terminal-condition part is fixed by #24 |
 | 15 | Every scheduled block and fluid tick ran one tick late. `ChunkTickScheduler::step_tick` advanced its offset after taking the current slot, so ticks scheduled during that tick landed at `delay + 1`. A delay-4 repeater took 9 game ticks instead of 8. This affected all redstone, fluid and falling-block timing. | Timing probes (`8k + 2` on vanilla, `9k + 2` on Pumpkin) | Fixed in `36222e976`, with unit tests that fail on the old code and two furnace race tests |
 | 16 | GameTest structure placement only created a block entity when the template had NBT for it. Vanilla's `setBlock` always creates one, so a comparator from a template had nowhere to store its output and never powered anything. | Parity pack | Fixed in `d7223a56e` |
 | 17 | Pumpkin's GameTest runner reports test ticks one lower than vanilla (`8k + 1` against `8k + 2` with identical in-world timing). It also starts a test one tick after placing it, where vanilla's `startExecution(1)` gives two. | Timing probes | Open, low priority: it only affects reported ticks and `max_ticks` margins |
@@ -76,13 +76,15 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 | 20 | After a ~215 block teleport, Pumpkin takes longer to send the chunks around the destination: 2.4 s on a release build against 0.7 to 0.9 s on vanilla (11 s on a debug build). | Smoke bot (timing line in the bot output) | Open: worth profiling chunk generation and sending after a teleport, possibly related to #4345 |
 | 21 | Pumpkin keeps `fall_distance` as `f32`; vanilla 26.3 uses a `double` (adding `float` deltas). This can flip the floor in fall damage at exact block boundaries. | Reading code | Open, low priority |
 | 22 | Using a snow item on a snow layer's top face didn't add a layer. `LayeredSnowBlock::can_update_at` only accepted `Down`, which is the neighbour case; clicking the snow itself passes `Up`. | `falling/landing-sand.js` | Fixed in `e40068855` |
-| 23 | An entity whose vehicle was removed (e.g. `/kill`) still counts as riding it, and a pig can't mount a new minecart afterwards. | `dismount/dismount.js` | Open, no upstream PR found |
-| 24 | `execute if entity @e[tag=...]` used as a condition without `run` fails to parse ("Unknown or incomplete command"). Vanilla answers "Test passed. Count: N". | `drowned/drowned.js` | Open, no upstream PR found; also see #14 |
+| 23 | An entity whose vehicle was removed (e.g. `/kill`) still counts as riding it, and a pig can't mount a new minecart afterwards. Vanilla's `Entity.setRemoved` makes a destroyed entity stop riding and drops its passengers, and `LivingEntity.dismountVehicle` teleports a living rider to its own position (raised to the vehicle's height, moved out of blocks). | `dismount/dismount.js` | Fixed in `46d51aa10`; A and B match vanilla. Not ported: unload and dimension-change removals (they don't go through `World::remove_entity`), and the plugin dismount events, which the existing `remove_passenger_sync` callers don't fire either. The remaining check difference is #30 |
+| 24 | `execute if entity @e[tag=...]` used as a condition without `run` fails to parse ("Unknown or incomplete command"). Vanilla answers "Test passed. Count: N". Only `score` conditions could end a command; `entity`, `block`, `blocks`, `loaded`, `dimension`, `biome`, `data` and `stopwatch` couldn't. `if data` also failed with "no elements" instead of counting zero matches. | `drowned/drowned.js` | Fixed in `73364c6bd`, branch only: upstream draft #4378 (opened 2026-10-28) makes the same change, so don't offer this one upstream; drop it when #4378 lands. Not ported: `blocks` still compares block types rather than states and block entities, and has no 32768-block limit |
 | 25 | Zombies don't turn into drowned under water, and husks don't turn into zombies. Neither the shaking flag nor the conversion sounds appear. | `drowned/drowned.js`, `drowned/gear.js` | Open; ydw's checks cover it, and upstream #4039 covers drowned swimming AI. Check with ydw before starting |
 | 26 | `/summon` with equipment NBT still rolls random spawn gear on top, skeletons get a bow over the NBT sword, and `CanPickUpLoot:1b` is lost. | `summon/summon-nbt.js`, `summon-gear/summon-gear.js` | Open; upstream #4391 ("roll spawn equipment only when a mob is finalized") looks like it covers it |
 | 27 | Beacons don't open their window, apply effects or play their sounds. | `beacon/beacon.js` | Covered by ydw's upstream #3860 |
 | 28 | A wither killed with `mob_drops false` still drops its nether star. | `wither/wither-star.js` | Probably covered by ydw's upstream #3865 |
 | 29 | Scaffolding placement (stacking, extending, sneak placement, falling at distance 7, waterlogging, the top layer) is mostly missing. | `scaffolding/*` | Covered by upstream #3810 |
+| 30 | A riding player's server-side position doesn't follow the vehicle. After a dismount, vanilla puts the player at the vehicle (x 1.5 in `dismount.js`) while Pumpkin still has the spot where they mounted (x 0.5). The check's last step ("server sees the bot walk") fails on vanilla too, so only the position is a real difference. | `dismount/dismount.js` | Open. Upstream draft #4378 adds `position_riders` but leaves players client authoritative |
+| 31 | Suspected self-deadlock: in `minecart.rs` the activator-rail branch holds `passengers.try_lock()` and calls `remove_passenger_sync` on the same minecart, which locks `passengers` again. | Reading code | Unverified; the console-only repro didn't load the chunk. Needs a bot or player next to a ridden minecart on a powered activator rail |
 
 ## Future work
 
@@ -99,7 +101,7 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 
 ### Fixes
 
-- Fix #23 (stale vehicles) and #24 (`execute if entity` as a condition).
+- Verify #31 (minecart activator rail lock) with a bot.
 - Investigate #9 (the creeper test), #18 (block entities in generated structures) and #20 (teleport chunk delay).
 - Coordinate with upstream #4010 before offering the scheduler fix (#15): both change `tick/scheduler.rs`.
 - Block states in `/setblock` and `/fill` (#7).
