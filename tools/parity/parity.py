@@ -116,6 +116,16 @@ def read_report(path):
     return results
 
 
+def pack_test_ids(packs):
+    """Ids of the test instances defined in `packs`, so built-in tests on either side are left out."""
+    ids = set()
+    for instance in packs.glob("*/data/*/test_instance/**/*.json"):
+        namespace = instance.relative_to(packs).parts[2]
+        root = packs / instance.relative_to(packs).parts[0] / "data" / namespace / "test_instance"
+        ids.add(f"{namespace}:{instance.relative_to(root).with_suffix('').as_posix()}")
+    return ids
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--packs", type=Path,
@@ -146,8 +156,9 @@ def main():
     print("Running Pumpkin...")
     pumpkin_report = run_pumpkin(tester, args.packs.resolve(), args.tests, template, run_dir / "pumpkin")
 
-    vanilla = read_report(vanilla_report)
-    pumpkin = read_report(pumpkin_report)
+    in_packs = pack_test_ids(args.packs.resolve())
+    vanilla = {k: v for k, v in read_report(vanilla_report).items() if k in in_packs}
+    pumpkin = {k: v for k, v in read_report(pumpkin_report).items() if k in in_packs}
     mismatches = 0
     rows = []
     for test in sorted(set(vanilla) | set(pumpkin)):
