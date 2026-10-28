@@ -139,42 +139,62 @@ def run_check(server, check, port, mineflayer, out_path, timeout):
     return output
 
 
+CHECK_LINE = re.compile(r"^(PASS|FAIL) (.+?): got (.*?)(?: expected .*)?$")
+INFO_LINE = re.compile(r"^INFO (.+?): (.*)$")
+
+
 def results(output):
-    """Collects `RESULT <key> <value>` lines in the order the check printed them."""
+    """Collects what a check observed, in the order it printed it.
+
+    Besides `RESULT <key> <value>`, this reads the `PASS|FAIL <label>: got <value>` and
+    `INFO <label>: <value>` lines of the pumpkin-checks in the mineflayer-26.3 workspace. For
+    those only the observed value is compared, so vanilla stays the reference rather than the
+    expectation written into the check.
+    """
     found = {}
     for line in (output or "").splitlines():
         if line.startswith("RESULT "):
             key, _, value = line[len("RESULT "):].partition(" ")
             found[key] = value.strip()
+        elif match := CHECK_LINE.match(line):
+            found[match.group(2)] = match.group(3)
+        elif match := INFO_LINE.match(line):
+            found[f"info: {match.group(1)}"] = match.group(2)
     return found
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("check", help="bot check name in tools/parity/bots, without .js")
+    parser.add_argument("check", help="check name in tools/parity/bots without .js, or a path inside "
+                        "the workspace's pumpkin-checks such as falling/landing-sand.js")
     parser.add_argument("--cache", type=Path, default=parity.DEFAULT_CACHE)
     parser.add_argument("--mineflayer", type=Path, help="mineflayer-26.3 workspace (default: <cache>/mineflayer-26.3)")
     parser.add_argument("--seed", default="1792386707805314503")
     parser.add_argument("--java", help="java executable to run vanilla with")
     parser.add_argument("--timeout", type=int, default=300, help="seconds a check may run")
     parser.add_argument("--no-build", action="store_true", help="skip cargo build of pumpkin")
+    parser.add_argument("--release", action="store_true", help="use a release build of pumpkin")
     args = parser.parse_args()
 
-    check = BOTS / f"{args.check}.js"
+    mineflayer = (args.mineflayer or args.cache / "mineflayer-26.3").resolve()
+    # A bare name is one of ours; a path like `falling/landing-sand.js` is one of the workspace's
+    # pumpkin-checks, run unchanged.
+    check = BOTS / f"{args.check}.js" if "/" not in args.check else mineflayer / "pumpkin-checks" / args.check
     if not check.exists():
         sys.exit(f"No bot check {check}")
-    mineflayer = (args.mineflayer or args.cache / "mineflayer-26.3").resolve()
     if not (mineflayer / "node_modules" / "mineflayer").exists():
         sys.exit(f"No installed mineflayer-26.3 workspace at {mineflayer}")
 
     version = parity.target_version()
     jar, java_major = parity.ensure_server_jar(version, args.cache)
     java = parity.find_java(java_major, args.java)
+    profile = "release" if args.release else "debug"
     if not args.no_build:
-        subprocess.run(["cargo", "build", "-p", "pumpkin"], cwd=parity.REPO, check=True)
-    binary = parity.REPO / "target" / "debug" / ("pumpkin.exe" if os.name == "nt" else "pumpkin")
+        subprocess.run(["cargo", "build", "-p", "pumpkin"] + (["--release"] if args.release else []),
+                       cwd=parity.REPO, check=True)
+    binary = parity.REPO / "target" / profile / ("pumpkin.exe" if os.name == "nt" else "pumpkin")
 
-    run_dir = args.cache / "bot-runs" / f"{time.strftime('%Y%m%d-%H%M%S')}-{args.check}"
+    run_dir = args.cache / "bot-runs" / f"{time.strftime('%Y%m%d-%H%M%S')}-{check.stem}"
     outputs = {}
     for name, start, port in (
         ("vanilla", lambda d, p: start_vanilla(java, jar, d, p, args.seed), 25566),
