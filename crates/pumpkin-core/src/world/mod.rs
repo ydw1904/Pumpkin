@@ -5130,6 +5130,25 @@ impl World {
         }
         base_entity.removed.store(true, Ordering::Release);
 
+        // Vanilla `Entity.setRemoved`: a destroyed entity leaves its vehicle and drops its passengers.
+        if let Some(vehicle) = base_entity.get_vehicle() {
+            vehicle
+                .get_entity()
+                .remove_passenger_sync(base_entity.entity_id);
+        }
+        let passengers = base_entity
+            .passengers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        for passenger in passengers {
+            let passenger_entity = passenger.get_entity();
+            base_entity.remove_passenger_sync(passenger_entity.entity_id);
+            if passenger.get_living_entity().is_some() && !passenger_entity.is_removed() {
+                passenger_entity.dismount_from_removed_vehicle(base_entity.pos.load().y);
+            }
+        }
+
         self.spawn_state.load().remove_entity(self, entity);
         self.entity_tracker.remove_entity(entity, self);
         self.entities.rcu(|current_entities| {

@@ -1607,6 +1607,33 @@ impl Entity {
         false
     }
 
+    /// Vanilla `LivingEntity.dismountVehicle` when the vehicle was removed: the rider stays in
+    /// place, raised to the vehicle's height and moved out of blocks it would overlap.
+    pub fn dismount_from_removed_vehicle(&self, vehicle_y: f64) {
+        let world = self.world.load_full();
+        let Some(this) = world.get_entity_by_id(self.entity_id) else {
+            return;
+        };
+        let pos = self.pos.load();
+        let mut target = Vector3::new(pos.x, pos.y.max(vehicle_y), pos.z);
+        let dimensions = self.entity_dimension.load();
+        let width = f64::from(dimensions.width);
+        let height = f64::from(dimensions.height);
+        if width <= 4.0 && height <= 4.0 {
+            let center = target.add_raw(0.0, height / 2.0, 0.0);
+            let allowed_centers = BoundingBox::of_size(center, width, height, width);
+            if let Some(free_position) = world.find_free_position(
+                this.as_ref(),
+                &allowed_centers,
+                center,
+                Vector3::new(width, height, width),
+            ) {
+                target = free_position.add_raw(0.0, -height / 2.0, 0.0);
+            }
+        }
+        this.teleport(target, None, None, world);
+    }
+
     pub fn get_eye_height(&self) -> f64 {
         f64::from(self.entity_dimension.load().eye_height)
     }
