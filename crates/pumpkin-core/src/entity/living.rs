@@ -2067,6 +2067,19 @@ impl LivingEntity {
         {
             return;
         }
+        // Vanilla's Entity.checkFallDamage adds this move's drop before handling the landing, so
+        // the move that reaches the ground still counts towards the fall.
+        if height_difference < 0.0 {
+            let new_fall_distance = if !self.should_prevent_fall_damage()
+                && !self.should_prevent_fall_damage_in_area()
+            {
+                let distance = self.fall_distance.load();
+                distance - (height_difference as f32)
+            } else {
+                0f32
+            };
+            self.fall_distance.store(new_fall_distance);
+        }
         if ground {
             let fall_distance = self.fall_distance.swap(0.0);
             if fall_distance > 0.0 {
@@ -2092,16 +2105,6 @@ impl LivingEntity {
             } else {
                 self.handle_fall_damage(caller, fall_distance, 1.0);
             }
-        } else if height_difference < 0.0 {
-            let new_fall_distance = if !self.should_prevent_fall_damage()
-                && !self.should_prevent_fall_damage_in_area()
-            {
-                let distance = self.fall_distance.load();
-                distance - (height_difference as f32)
-            } else {
-                0f32
-            };
-            self.fall_distance.store(new_fall_distance);
         }
     }
 
