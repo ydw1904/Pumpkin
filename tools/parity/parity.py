@@ -4,6 +4,7 @@
 Vanilla runs through its headless runner (net.minecraft.gametest.Main), Pumpkin through
 `pumpkin-tester parity`. Both write JUnit-like XML, which this script diffs.
 
+    python tools/parity/parity.py                      # the generated pumpkin-parity pack
     python tools/parity/parity.py --packs assets/tests/datapacks --tests "pumpkin:*"
 """
 
@@ -117,9 +118,11 @@ def read_report(path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--packs", type=Path, default=REPO / "assets/tests/datapacks",
-                        help="folder of datapacks containing test_instance definitions")
-    parser.add_argument("--tests", default="*", help="vanilla test selector, e.g. 'pumpkin:*'")
+    parser.add_argument("--packs", type=Path,
+                        help="folder of datapacks with test_instance definitions (default: build tests.py)")
+    parser.add_argument("--tests", default="*:*",
+                        # java.exe on Windows expands a bare * against files in the working directory.
+                        help="vanilla test selector with a namespace, e.g. 'pumpkin:*'")
     parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE, help="where jars and runs are kept")
     parser.add_argument("--java", help="java executable to run vanilla with")
     parser.add_argument("--no-build", action="store_true", help="skip cargo build of pumpkin-tester")
@@ -134,6 +137,10 @@ def main():
     tester = REPO / "target" / "debug" / ("pumpkin-tester.exe" if os.name == "nt" else "pumpkin-tester")
 
     run_dir = args.cache / "runs" / time.strftime("%Y%m%d-%H%M%S")
+    if args.packs is None:
+        subprocess.run([sys.executable, str(Path(__file__).with_name("build_pack.py")),
+                        "--out", str(run_dir / "packs-src")], check=True)
+        args.packs = run_dir / "packs-src"
     print(f"Running vanilla {version}...")
     vanilla_report, template = run_vanilla(java, jar, args.packs.resolve(), args.tests, run_dir / "vanilla")
     print("Running Pumpkin...")
