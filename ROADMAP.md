@@ -11,7 +11,7 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 | :--- | :---- |
 | Target version | Java 26.3 (protocol 777), vanilla server needs JDK 25 |
 | Parity harness | `python tools/parity/parity.py` runs the same datapack GameTests on vanilla and Pumpkin and diffs the results |
-| Parity pack | 27 generated tests in `tools/parity/tests.py`; all 27 pass on vanilla, 25 on Pumpkin |
+| Parity pack | 29 generated tests in `tools/parity/tests.py`; all 29 pass on vanilla and Pumpkin |
 | Pumpkin's own suite | `cargo run -p pumpkin-tester`: all bot tests and built-in GameTests pass |
 
 ### How the harness works
@@ -49,13 +49,17 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 | 5 | `rustfmt` overflows its 1 MiB main-thread stack on Windows when formatting generated `block.rs`. `format_code` then silently writes the unformatted file, so you get a ~620k-line diff. | Running codegen | Open. Regenerate on Linux or WSL. `55cc36d13` was applied to the formatted file by hand and checked against the codegen output. |
 | 6 | Debug `pumpkin-tester` overflowed the Windows main-thread stack when loading a superflat world. The real server was fine. | Parity harness | Worked around in the tester: parity runs on a 64 MiB thread |
 | 7 | `/setblock` and `/fill` use `BlockArgumentType`, which has no block states. `setblock ~ ~ ~ repeater[delay=4]` fails to parse, and the target is always the default state. | Reading code | Open |
-| 8 | `hopper_fills_chest` and `furnace_smelts_into_hopper` fail on Pumpkin. Either the hopper transfer or the comparator reading the container differs. | Parity pack | Open, not investigated |
+| 8 | `hopper_fills_chest` and `furnace_smelts_into_hopper` failed on Pumpkin. The hopper and comparator were fine; the comparator had no block entity to hold its output (see #16). | Parity pack | Fixed by #16 |
 | 9 | `pumpkin:creeper_should_run_from_cat` fails on vanilla (5/5) and passes about 4/6 on Pumpkin. It only passes in `pumpkin-tester` because of a hand-built arena (`prepare_flat_test_surroundings`). | Parity harness | Open: either the test or Pumpkin's flee AI is wrong |
 | 10 | Pumpkin's GameTest runner stores a test's `environment` (game rules, weather, time, difficulty, functions) but doesn't apply it. | Reading code | Open |
 | 11 | The `max-chained-neighbor-updates` limit (vanilla's `CollectingNeighborUpdater`) isn't implemented. | Reading code | Open |
 | 12 | Gameplay RNG can't be seeded. There's no per-entity or per-world RNG; about 500 call sites use the thread-local `rand::rng()`, and random ticks run in parallel. | RNG survey | Open, see future work |
 | 13 | Pumpkin reads structure palettes with `Name`/`Properties` even at data version 5023, where vanilla places air. | Building the pack | Won't fix for now: more lenient than vanilla, nothing breaks |
 | 14 | `execute if block` doesn't reject unloaded positions (vanilla uses `getLoadedBlockPos`). I also haven't checked whether `if/unless block` work as terminal conditions without `run`. | Reading code | Open, unverified |
+| 15 | Every scheduled block and fluid tick ran one tick late. `ChunkTickScheduler::step_tick` advanced its offset after taking the current slot, so ticks scheduled during that tick landed at `delay + 1`. A delay-4 repeater took 9 game ticks instead of 8. This affected all redstone, fluid and falling-block timing. | Timing probes (`8k + 2` on vanilla, `9k + 2` on Pumpkin) | Fixed in `36222e976`, with unit tests that fail on the old code and two furnace race tests |
+| 16 | GameTest structure placement only created a block entity when the template had NBT for it. Vanilla's `setBlock` always creates one, so a comparator from a template had nowhere to store its output and never powered anything. | Parity pack | Fixed in `d7223a56e` |
+| 17 | Pumpkin's GameTest runner reports test ticks one lower than vanilla (`8k + 1` against `8k + 2` with identical in-world timing). It also starts a test one tick after placing it, where vanilla's `startExecution(1)` gives two. | Timing probes | Open, low priority: it only affects reported ticks and `max_ticks` margins |
+| 18 | Natural world-generation structures may have the same gap as #16 (block-entity blocks placed from templates without NBT). | Reading code | To check |
 
 ## Future work
 
@@ -67,12 +71,12 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
   - Log every draw on both sides and diff the logs to find the first divergent call.
 - **Bot layer.** Mineflayer stops at 26.1, but Pumpkin's tester bot speaks 26.3 and can log into vanilla too. That needs `online-mode=false`, `network-compression-threshold=-1` and keep-alive replies. It would cover login, chunk loading, movement and combat.
 - **Update limits.** The 512-deep shape-update limit could be tested. The chained neighbour limit can't be set per test in 26.3, so it needs a different approach.
-- **More tests:** comparators (compare and subtract modes), observers on piston movement, rails and minecarts, sticky piston pull timing, spitting, slime and honey block movement, redstone wire update order, crops and other random ticks (after the RNG lockdown), and entities.
+- **More tests:** blast furnace and smoker speed (26.x `cooking_fuel` speed multiplier), comparators (compare and subtract modes), observers on piston movement, rails and minecarts, sticky piston pull timing, spitting, slime and honey block movement, redstone wire update order, crops and other random ticks (after the RNG lockdown), and entities.
 - **Repeat runs** (`--repeat N`, vanilla's `--repeatCount`) to measure flakiness.
 
 ### Fixes
 
-- Investigate #8 (hopper/comparator) and #9 (creeper test).
+- Investigate #9 (the creeper test) and #18 (block entities in generated structures).
 - Block states in `/setblock` and `/fill` (#7).
 - Apply test environments in the GameTest runner (#10).
 - Per-entity and per-world RNG matching vanilla (#12). This is a larger refactor, separate from the harness hooks.
