@@ -12,6 +12,7 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 | Target version | Java 26.3 (protocol 777), vanilla server needs JDK 25 |
 | Parity harness | `python tools/parity/parity.py` runs the same datapack GameTests on vanilla and Pumpkin and diffs the results |
 | Parity pack | 29 generated tests in `tools/parity/tests.py`; all 29 pass on vanilla and Pumpkin |
+| Bot checks | `python tools/parity/bot_parity.py smoke` runs a headless 26.3 Mineflayer bot on vanilla and Pumpkin and diffs what it saw; the smoke check matches fully |
 | Pumpkin's own suite | `cargo run -p pumpkin-tester`: all bot tests and built-in GameTests pass |
 
 ### How the harness works
@@ -23,6 +24,15 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
   - directly, when the mechanic powers an accept block, or
   - through a timed check, where a repeater line fires a command block that runs `execute if block` checks.
 - The vanilla jar, run logs and decompiled sources live outside the repo, in `~/pumpkin-parity`.
+
+### Bot checks
+
+- `tools/parity/bot_parity.py <check>` boots a vanilla server (offline mode, whitelist off) and a Pumpkin server (online mode, encryption, telemetry and Bedrock off) one after the other, with the same seed.
+- For each server it runs `tools/parity/bots/<check>.js` and compares the `RESULT <key> <value>` lines the check prints.
+- Checks can send console commands by appending lines to the file in `$CMDS`.
+- Mineflayer comes from ydw's private 26.3 workspace (`ydw1904/mineflayer-26.3`). Clone it into `~/pumpkin-parity` with `gh repo clone` (plain `git` uses an account without access), then run `npm ci --ignore-scripts` and `npm run prepare -w node-minecraft-data`.
+- On Windows, replace `node-minecraft-data/minecraft-data` with a directory junction to `../minecraft-data`. Git checks the symlink out as a text file.
+- Avoid comparing values that vanilla randomises itself, such as the exact spawn point. Take readings before something else changes them; for example, measure fall damage from the first health update, before natural regeneration heals it.
 
 ### Status values
 
@@ -60,6 +70,9 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 | 16 | GameTest structure placement only created a block entity when the template had NBT for it. Vanilla's `setBlock` always creates one, so a comparator from a template had nowhere to store its output and never powered anything. | Parity pack | Fixed in `d7223a56e` |
 | 17 | Pumpkin's GameTest runner reports test ticks one lower than vanilla (`8k + 1` against `8k + 2` with identical in-world timing). It also starts a test one tick after placing it, where vanilla's `startExecution(1)` gives two. | Timing probes | Open, low priority: it only affects reported ticks and `max_ticks` margins |
 | 18 | Natural world-generation structures may have the same gap as #16 (block-entity blocks placed from templates without NBT). | Reading code | To check |
+| 19 | Fall damage came up short. `LivingEntity::fall` only added a move's drop when the move didn't end on the ground, so the move that lands was never counted. Vanilla's `Entity.checkFallDamage` adds it first. A 10 block drop dealt 6 damage instead of 7, for players and mobs. | Smoke bot | Fixed in `667bb777a` |
+| 20 | After a ~215 block teleport, Pumpkin took about 11 s to send the chunks around the destination; vanilla took 0.7 s. | Smoke bot (timing line in the bot output) | Open: only measured on a debug build, compare with a release build first |
+| 21 | Pumpkin keeps `fall_distance` as `f32`; vanilla 26.3 uses a `double` (adding `float` deltas). This can flip the floor in fall damage at exact block boundaries. | Reading code | Open, low priority |
 
 ## Future work
 
@@ -69,7 +82,7 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
   - Post-hook every RNG call on both servers and return values from isolated Java-LCG streams, keyed per owner (entity index in the test, block position, level).
   - Vanilla side: a `-javaagent` using the JDK ClassFile API. Pumpkin side: a `pumpkin_util` wrapper in place of `rand::rng()`, with a thread-local current owner.
   - Log every draw on both sides and diff the logs to find the first divergent call.
-- **Bot layer.** Mineflayer stops at 26.1, but Pumpkin's tester bot speaks 26.3 and can log into vanilla too. That needs `online-mode=false`, `network-compression-threshold=-1` and keep-alive replies. It would cover login, chunk loading, movement and combat.
+- **More bot checks:** port ydw's `pumpkin-checks` (falling blocks, scaffolding, summoning, beacons, dismounting, drowned, withers) to the RESULT format, then add combat, inventories and containers, the "Loading Terrain" case (#4345), and chunk streaming while moving.
 - **Update limits.** The 512-deep shape-update limit could be tested. The chained neighbour limit can't be set per test in 26.3, so it needs a different approach.
 - **More tests:** blast furnace and smoker speed (26.x `cooking_fuel` speed multiplier), comparators (compare and subtract modes), observers on piston movement, rails and minecarts, sticky piston pull timing, spitting, slime and honey block movement, redstone wire update order, crops and other random ticks (after the RNG lockdown), and entities.
 - **Repeat runs** (`--repeat N`, vanilla's `--repeatCount`) to measure flakiness.
