@@ -313,6 +313,10 @@ impl LivingEntity {
     }
 
     fn make_voice_sound(&self, caller: &dyn EntityBase, sound: Sound) {
+        if let Some(cube) = caller.get_mob().and_then(|mob| mob.as_cube_mob()) {
+            cube.play_sound(sound, cube.get_sound_volume(), cube.get_sound_pitch());
+            return;
+        }
         let custom_sound = caller.get_mob().and_then(|mob| mob.as_custom_sound());
         self.make_sound(
             sound,
@@ -666,11 +670,24 @@ impl LivingEntity {
             .entity_equipment
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        guard
+        let mut equipment: Vec<_> = guard
             .equipment
             .iter()
             .map(|(slot, stack)| (slot.clone(), stack.clone()))
-            .collect()
+            .collect();
+        drop(guard);
+
+        // Cleared inventories omit slots, but their old modifiers still need removal.
+        let modifiers = self
+            .equipment_attribute_modifier_ids
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for slot in modifiers.keys() {
+            if !equipment.iter().any(|(equipped, _)| equipped == slot) {
+                equipment.push((slot.clone(), ItemStack::EMPTY.clone()));
+            }
+        }
+        equipment
     }
 
     fn apply_equipment_slot_attribute_modifiers(
@@ -1370,8 +1387,7 @@ impl LivingEntity {
         }
     }
 
-    /// Returns the computed value for `attribute` using the local instance, falling back
-    /// to `attribute.default_value` if no local instance exists.
+    /// Returns the computed attribute value clamped to its vanilla registry limits.
     pub fn get_attribute_value(&self, attribute: &Attributes) -> f64 {
         let map = self
             .attributes
@@ -1379,6 +1395,7 @@ impl LivingEntity {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         map.get(&attribute.id)
             .map_or(attribute.default_value, AttributeInstance::value)
+            .clamp(attribute.min_value, attribute.max_value)
     }
 
     #[must_use]
@@ -2166,13 +2183,7 @@ impl LivingEntity {
             let on_ground = self.entity.on_ground.load(SeqCst);
 
             if (in_water || in_lava) && (!on_ground || fluid_height > swim_height) {
-                // Swim upward
-
-                let mut velo = self.entity.velocity.load();
-
-                velo.y += 0.04;
-
-                self.entity.velocity.store(velo);
+                self.jump_in_liquid(caller, in_lava);
             } else if (on_ground || in_water && fluid_height <= swim_height)
                 && self.jumping_cooldown.load(SeqCst) == 0
             {
@@ -2693,10 +2704,30 @@ impl LivingEntity {
     /// jump override.
     pub(crate) fn jump(&self, caller: &dyn EntityBase) {
         let mob = caller.get_mob();
+        if let Some(cube) = mob.and_then(crate::entity::mob::Mob::as_cube_mob) {
+            cube.jump_from_ground();
+            return;
+        }
         self.jump_from_ground(mob.map_or(1.0, crate::entity::mob::Mob::jump_power_multiplier));
         if let Some(mob) = mob {
             mob.on_jump_from_ground();
         }
+    }
+
+    /// Vanilla `LivingEntity.jumpInLiquid`, with the `MagmaCube` override for lava.
+    fn jump_in_liquid(&self, caller: &dyn EntityBase, lava: bool) {
+        if lava
+            && let Some(cube) = caller
+                .get_mob()
+                .and_then(crate::entity::mob::Mob::as_cube_mob)
+            && cube.is_magma_cube()
+        {
+            cube.jump_in_lava();
+            return;
+        }
+        let mut velo = self.entity.velocity.load();
+        velo.y += 0.04;
+        self.entity.velocity.store(velo);
     }
 
     fn jump_from_ground(&self, multiplier: f32) {
@@ -5535,6 +5566,62 @@ mod tests {
         assert_eq!(amplifiers_and_durations(&chain), [(0, 500)]);
     }
 
+    #[tokio::test]
+    async fn inventory_clear_on_respawn_removes_equipment_modifiers()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use crate::entity::ai::test_support::world;
+        use pumpkin_data::item::Item;
+        use pumpkin_inventory::inventory::Clearable;
+
+        let folder = tempfile::tempdir()?;
+        let world = world(&folder);
+        let living = LivingEntity::new(Entity::new(
+            world.clone(),
+            Vector3::new(0.0, 64.0, 0.0),
+            &EntityType::PLAYER,
+        ));
+        let inventory = PlayerInventory::new(
+            living.entity_equipment.clone(),
+            living.equipment_slots.clone(),
+        );
+        for notify_clients in [false, true] {
+            living
+                .entity_equipment
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .put(
+                    &EquipmentSlot::CHEST,
+                    ItemStack::new(1, &Item::DIAMOND_CHESTPLATE),
+                );
+            living.apply_current_equipment_attribute_modifiers();
+            assert_eq!(living.get_attribute_value(&Attributes::ARMOR), 8.0);
+            assert_eq!(
+                living.get_attribute_value(&Attributes::ARMOR_TOUGHNESS),
+                2.0
+            );
+
+            living.health.store(0.0);
+            living.reset_state();
+            inventory.clear();
+            if notify_clients {
+                living.send_current_equipment_attribute_modifiers();
+            } else {
+                living.apply_current_equipment_attribute_modifiers();
+            }
+            assert_eq!(living.get_attribute_value(&Attributes::ARMOR), 0.0);
+            assert_eq!(
+                living.get_attribute_value(&Attributes::ARMOR_TOUGHNESS),
+                0.0
+            );
+            assert_eq!(
+                living.get_damage_after_armor_absorb(&living, 10.0, &DamageType::MOB_ATTACK, None),
+                10.0
+            );
+        }
+        world.level.shutdown().await;
+        Ok(())
+    }
+
     #[test]
     fn hurt_sound_for_entity_uses_zombie_family_sounds() {
         let cases = [
@@ -5839,6 +5926,50 @@ mod ai_step_tests {
 
         assert_eq!(calls.load(Ordering::Relaxed), 0);
         assert_eq!(living.entity.pos.load(), position);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn magma_jumps_use_size_boost_on_ground_and_set_lava_velocity() -> TestResult {
+        use crate::entity::mob::magma_cube::MagmaCubeEntity;
+        let folder = tempfile::tempdir()?;
+        let world = world(&folder);
+        for (in_lava, in_water, expected_rise) in [
+            (false, false, 0.82),
+            (true, false, 0.42),
+            (false, true, 0.04),
+        ] {
+            let cube = MagmaCubeEntity::new(Entity::new(
+                world.clone(),
+                Vector3::new(0.0, 64.0, 0.0),
+                &EntityType::MAGMA_CUBE,
+            ));
+            cube.slime.set_size(4, true);
+            let mob = cube.get_mob_entity();
+            mob.clear_ai_goals(&*cube);
+            mob.goals_selector.add_goal(0, Box::new(JumpOnceGoal(true)));
+            let living = &mob.living_entity;
+            living
+                .entity
+                .on_ground
+                .store(!in_lava && !in_water, Ordering::Relaxed);
+            living
+                .entity
+                .touching_lava
+                .store(in_lava, Ordering::Relaxed);
+            living
+                .entity
+                .touching_water
+                .store(in_water, Ordering::Relaxed);
+            living.entity.lava_height.store(1.0);
+            living.entity.water_height.store(1.0);
+            living.tick_movement(&*cube);
+            assert!(
+                (living.entity.pos.load().y - 64.0 - expected_rise).abs() < 1.0e-6,
+                "lava={in_lava}, water={in_water}"
+            );
+        }
+        world.level.shutdown().await;
         Ok(())
     }
 
