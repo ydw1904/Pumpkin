@@ -95,6 +95,7 @@ class Test:
         self.blocks = {}
         self.checks = []
         self.check_delay = 0
+        self.actions = {}
         self.set((0, 1, 0), "minecraft:test_block[mode=start]", self._test_block_nbt("start"))
 
     @staticmethod
@@ -128,6 +129,16 @@ class Test:
         }
         return self.set(pos, f"minecraft:command_block[conditional=false,facing={facing}]", nbt)
 
+    def setup(self, *placements):
+        """Runs `/setblock` for each (pos, state) when the test starts, in the order given."""
+        return self.after(0, *placements)
+
+    def after(self, repeaters, *placements):
+        """Runs `/setblock` for each (pos, state) once `repeaters` delay-4 repeaters have carried
+        the start signal along x=0. Each setblock updates the neighbours like the command does."""
+        self.actions.setdefault(repeaters, []).extend(placements)
+        return self
+
     def check_after(self, repeaters, *conditions):
         """Checks `conditions` (pos, state, description) once `repeaters` delay-4 repeaters have
         carried the start signal along x=0 to a command block."""
@@ -135,30 +146,61 @@ class Test:
         self.checks = list(conditions)
         return self
 
-    def _build_checks(self):
+    @staticmethod
+    def _rel(pos, origin):
+        return "~{} ~{} ~{}".format(pos[0] - origin[0], pos[1] - origin[1], pos[2] - origin[2])
+
+    def _action_function(self, cmd, placements):
+        return "".join(f"setblock {self._rel(pos, cmd)} {state}\n" for pos, state in placements)
+
+    def _build_timeline(self):
+        """Lays out the delay line and returns the functions it runs, keyed by path."""
+        functions = {}
+        if 0 in self.actions:
+            cmd = (1, 1, 0)
+            if cmd in self.blocks:
+                raise ValueError(f"{self.name}: setup needs (1, 1, 0) free for its command block")
+            functions[f"action/{self.name}_0"] = self._action_function(cmd, self.actions[0])
+            self.command(cmd, f"function {NAMESPACE}:action/{self.name}_0")
         if not self.checks:
-            return None
-        k = self.check_delay
-        for z in range(1, k + 1):
-            # A diode's facing points at its input, so these carry the signal towards +z.
-            self.set((0, 1, z), "minecraft:repeater[delay=4,facing=north,locked=false,powered=false]")
-        cmd = (0, 1, k + 1)
+            return functions
+
+        timed = sorted(d for d in self.actions if d > 0)
+        if timed and timed[-1] >= self.check_delay:
+            raise ValueError(f"{self.name}: the check has to come after the last action")
+        z, placed = 1, 0
+        for delay in timed + [self.check_delay]:
+            for _ in range(delay - placed):
+                # A diode's facing points at its input, so these carry the signal towards +z.
+                self.set((0, 1, z), "minecraft:repeater[delay=4,facing=north,locked=false,powered=false]")
+                z += 1
+            placed = delay
+            if delay == self.check_delay:
+                break
+            # The repeater strongly powers this block, which fires the command block beside it and
+            # feeds the next repeater.
+            self.set((0, 1, z), FLOOR)
+            cmd = (1, 1, z)
+            functions[f"action/{self.name}_{delay}"] = self._action_function(cmd, self.actions[delay])
+            self.command(cmd, f"function {NAMESPACE}:action/{self.name}_{delay}")
+            z += 1
+
+        cmd = (0, 1, z)
         self.command(cmd, f"function {NAMESPACE}:check/{self.name}")
-        self.accept((0, 3, k + 1))
+        self.accept((0, 3, z))
         lines = []
         for i, (pos, state, description) in enumerate(self.checks):
-            self.fail((0, 3, k + 2 + i), f"expected {description}")
-            rel = "~{} ~{} ~{}".format(pos[0] - cmd[0], pos[1] - cmd[1], pos[2] - cmd[2])
-            lines.append(f"execute unless block {rel} {state} run setblock ~ ~1 ~{1 + i} minecraft:redstone_block")
-        conditions = " ".join(
-            "if block ~{} ~{} ~{} {}".format(p[0] - cmd[0], p[1] - cmd[1], p[2] - cmd[2], s)
-            for p, s, _ in self.checks
-        )
+            self.fail((0, 3, z + 1 + i), f"expected {description}")
+            lines.append(
+                f"execute unless block {self._rel(pos, cmd)} {state} run setblock ~ ~1 ~{1 + i} minecraft:redstone_block"
+            )
+        conditions = " ".join(f"if block {self._rel(p, cmd)} {s}" for p, s, _ in self.checks)
         lines.append(f"execute {conditions} run setblock ~ ~1 ~ minecraft:redstone_block")
-        return "\n".join(lines) + "\n"
+        functions[f"check/{self.name}"] = "\n".join(lines) + "\n"
+        return functions
 
     def build(self, data_dir):
-        function = self._build_checks()
+        functions = self._build_timeline()
         xs, ys, zs = zip(*self.blocks)
         size = [max(xs) + 1, max(ys) + 1, max(zs) + 1]
         for x in range(size[0]):
@@ -181,9 +223,10 @@ class Test:
         (data_dir / "structure").mkdir(parents=True, exist_ok=True)
         write_nbt(data_dir / "structure" / f"{self.name}.nbt", structure)
 
-        if function:
-            (data_dir / "function" / "check").mkdir(parents=True, exist_ok=True)
-            (data_dir / "function" / "check" / f"{self.name}.mcfunction").write_text(function)
+        for path, body in functions.items():
+            target = data_dir / "function" / f"{path}.mcfunction"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(body)
 
         max_ticks = max(self.max_ticks, self.check_delay * REPEATER_GAME_TICKS + 20)
         instance = {
