@@ -1,4 +1,5 @@
 use rustc_hash::FxHashMap;
+use std::sync::atomic::Ordering;
 
 use pumpkin_data::scoreboard::ScoreboardDisplaySlot;
 use pumpkin_data::translation;
@@ -24,6 +25,9 @@ use crate::entity::EntityBase;
 use crate::entity::player::Player;
 use crate::net::ClientPlatform;
 
+#[cfg(test)]
+mod join_tests;
+
 pub trait ScoreboardTarget: Send + Sync {
     fn send_editioned<J: ClientPacket + Sync, B: BClientPacket + Sync>(
         &self,
@@ -42,20 +46,30 @@ impl ScoreboardTarget for World {
         je_packet: &J,
         be_packet: &B,
     ) {
-        if let Some(server) = self.server.upgrade() {
-            for world in server.worlds.load().iter() {
-                world.broadcast_editioned(je_packet, be_packet);
-            }
-        } else {
-            self.broadcast_editioned(je_packet, be_packet);
-        }
+        self.send_je(je_packet);
+        self.send_be(be_packet);
     }
 
     fn send_je<J: ClientPacket + Sync>(&self, je_packet: &J) {
+        // Players still logging in get the whole scoreboard once their login snapshot is sent.
+        let initialized = |player: &&std::sync::Arc<Player>| {
+            player.scoreboard_initialized.load(Ordering::Acquire)
+        };
         if let Some(server) = self.server.upgrade() {
-            server.broadcast_packet_all(je_packet);
+            let worlds = server.worlds.load();
+            let players: Vec<_> = worlds.iter().map(|world| world.players.load()).collect();
+            let recipients = Self::collect_java_recipients_by_version(
+                players
+                    .iter()
+                    .flat_map(|players| players.iter())
+                    .filter(initialized),
+            );
+            Self::broadcast_java_grouped(je_packet, recipients);
         } else {
-            self.broadcast_packet_all(je_packet);
+            let players = self.players.load();
+            let recipients =
+                Self::collect_java_recipients_by_version(players.iter().filter(initialized));
+            Self::broadcast_java_grouped(je_packet, recipients);
         }
     }
 
@@ -125,11 +139,15 @@ impl ScoreboardTarget for Player {
         je_packet: &J,
         be_packet: &B,
     ) {
-        self.try_enqueue_packet_editioned(je_packet, be_packet);
+        if self.scoreboard_initialized.load(Ordering::Acquire) {
+            self.try_enqueue_packet_editioned(je_packet, be_packet);
+        }
     }
 
     fn send_je<J: ClientPacket + Sync>(&self, je_packet: &J) {
-        self.try_send_client_packet(je_packet);
+        if self.scoreboard_initialized.load(Ordering::Acquire) {
+            self.try_send_client_packet(je_packet);
+        }
     }
 
     fn send_be<B: BClientPacket + Sync>(&self, be_packet: &B) {
@@ -147,11 +165,11 @@ impl ScoreboardTarget for std::sync::Arc<Player> {
         je_packet: &J,
         be_packet: &B,
     ) {
-        self.try_enqueue_packet_editioned(je_packet, be_packet);
+        ScoreboardTarget::send_editioned(self.as_ref(), je_packet, be_packet);
     }
 
     fn send_je<J: ClientPacket + Sync>(&self, je_packet: &J) {
-        self.try_send_client_packet(je_packet);
+        ScoreboardTarget::send_je(self.as_ref(), je_packet);
     }
 
     fn send_be<B: BClientPacket + Sync>(&self, be_packet: &B) {
