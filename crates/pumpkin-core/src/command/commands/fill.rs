@@ -194,12 +194,11 @@ fn fill_blocks(
                                     }
                                     FillMode::Destroy => {
                                         if current_state_id != target_state_id {
+                                            // Vanilla `level.destroyBlock(pos, true)`: drops items.
                                             world.break_block(
                                                 &pos,
                                                 None,
-                                                BlockFlags::SKIP_DROPS
-                                                    | BlockFlags::NOTIFY_ALL
-                                                    | BlockFlags::FORCE_STATE,
+                                                BlockFlags::NOTIFY_ALL | BlockFlags::FORCE_STATE,
                                             );
                                         }
                                         Some(target_state_id)

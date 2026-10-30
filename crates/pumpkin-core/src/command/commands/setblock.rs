@@ -47,11 +47,8 @@ impl CommandExecutor for SetBlockExecutor {
 
         let success = match mode {
             Mode::Destroy => {
-                world.break_block(
-                    &pos,
-                    None,
-                    BlockFlags::SKIP_DROPS | BlockFlags::NOTIFY_ALL | BlockFlags::FORCE_STATE,
-                );
+                // Vanilla `level.destroyBlock(pos, true)`: the old block drops its items.
+                world.break_block(&pos, None, BlockFlags::NOTIFY_ALL | BlockFlags::FORCE_STATE);
                 world.set_block_state(
                     &pos,
                     block_state_id,
