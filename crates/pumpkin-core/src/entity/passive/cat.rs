@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicBool, AtomicU8, Ordering},
@@ -12,7 +13,6 @@ use pumpkin_data::tag::{self, Taggable};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::bedrock::server::actor_event::ActorEventID;
 use pumpkin_protocol::codec::var_int::VarInt;
-use rand::RngExt;
 use uuid::Uuid;
 
 use crate::entity::custom_sound::CustomSound;
@@ -401,7 +401,7 @@ impl Mob for CatEntity {
             item_stack.decrement_unless_creative(player.gamemode.load(), 1);
             self.play_eating_sound();
 
-            let mut rng = rand::rng();
+            let rng = game_random();
             if rng.random_range(0..3) == 0 {
                 self.set_tame(true, Some(player.gameprofile.id));
                 self.set_sitting(true);

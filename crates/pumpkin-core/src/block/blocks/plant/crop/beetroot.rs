@@ -3,8 +3,8 @@ use pumpkin_data::BlockStateId;
 use pumpkin_data::block_properties::NetherWartLikeProperties;
 use pumpkin_macros::pumpkin_block;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::world::BlockAccessor;
-use rand::RngExt;
 
 use crate::block::blocks::plant::PlantBlockBase;
 use crate::block::blocks::plant::crop::CropBlockBase;
@@ -48,7 +48,7 @@ impl BlockBehaviour for BeetrootBlock {
     }
 
     fn random_tick(&self, args: RandomTickArgs<'_>) {
-        if rand::rng().random_range(0..3) != 0 {
+        if game_random().random_range(0..3) != 0 {
             <Self as CropBlockBase>::random_tick(self, args.world, args.position);
         }
     }
@@ -64,7 +64,7 @@ impl PlantBlockBase for BeetrootBlock {
 
 impl CropBlockBase for BeetrootBlock {
     fn bonemeal_age_increase(&self) -> i32 {
-        rand::rng().random_range(2..=5) / 3
+        game_random().random_range(2..=5) / 3
     }
 
     fn max_age(&self) -> i32 {

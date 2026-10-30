@@ -18,6 +18,7 @@ use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::Difficulty;
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 
@@ -159,12 +160,13 @@ impl Mob for ZombieEntityBase {
         difficulty: &RegionalDifficulty,
     ) {
         // Default armor slots (super.populateDefaultEquipmentSlots)
-        if rand::random::<f32>()
+        if game_random().random::<f32>()
             < MobEntity::MAX_WEARING_ARMOR_CHANCE * difficulty.special_multiplier
         {
-            let mut armor_type = rand::random_range(0..3);
+            let mut armor_type = game_random().random_range(0..3);
             for _ in 1..=3 {
-                if rand::random::<f32>() < MobEntity::WEARING_ARMOR_UPGRADE_MATERIAL_CHANCE {
+                if game_random().random::<f32>() < MobEntity::WEARING_ARMOR_UPGRADE_MATERIAL_CHANCE
+                {
                     armor_type += 1;
                 }
             }
@@ -184,7 +186,7 @@ impl Mob for ZombieEntityBase {
 
             for slot in &MobEntity::EQUIPMENT_POPULATION_ORDER {
                 let current = equipment.get(slot);
-                if !first && rand::random::<f32>() < partial_chance {
+                if !first && game_random().random::<f32>() < partial_chance {
                     break;
                 }
                 first = false;
@@ -201,8 +203,8 @@ impl Mob for ZombieEntityBase {
         } else {
             0.01f32
         };
-        if rand::random::<f32>() < weapon_chance {
-            let r = rand::random_range(0..6);
+        if game_random().random::<f32>() < weapon_chance {
+            let r = game_random().random_range(0..6);
             let weapon_item = match r {
                 0 => &Item::IRON_SWORD,
                 1 => &Item::IRON_SPEAR,

@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 
@@ -8,7 +9,6 @@ use pumpkin_data::tracked_data;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
-use rand::RngExt;
 
 use crate::entity::ai::goal::active_target::ActiveTargetGoal;
 use crate::entity::living::LivingEntity;
@@ -105,7 +105,7 @@ impl GhastEntity {
         if world.level_info.load().difficulty == pumpkin_util::Difficulty::Peaceful {
             return false;
         }
-        if rand::random_range(0..20) != 0 {
+        if game_random().random_range(0..20) != 0 {
             return false;
         }
         let state = world.get_block_state(pos);
@@ -380,7 +380,7 @@ impl Goal for RandomFloatAroundGoal {
         };
         let pos = ghast.mob_entity.living_entity.entity.pos.load();
         let new_target = {
-            let mut rng = rand::rng();
+            let rng = game_random();
             let target_x = pos.x + (rng.random::<f64>() * 2.0 - 1.0) * 16.0;
             let target_y = pos.y + (rng.random::<f64>() * 2.0 - 1.0) * 16.0;
             let target_z = pos.z + (rng.random::<f64>() * 2.0 - 1.0) * 16.0;
@@ -429,7 +429,7 @@ impl Goal for RandomFloatAroundGoal {
         self.float_duration -= 1;
 
         if self.float_duration <= 0 {
-            self.float_duration = rand::random_range(2..=6);
+            self.float_duration = game_random().random_range(2..=6);
             let travel = Vector3::new(target.x - pos.x, target.y - pos.y, target.z - pos.z);
             let dist = travel.length();
             if dist > 0.001 {

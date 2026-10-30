@@ -10,7 +10,7 @@ use pumpkin_data::{
 };
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3};
-use rand::{RngExt, seq::IndexedRandom};
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicI64, Ordering},
@@ -147,7 +147,7 @@ impl ConduitBlockEntity {
                     && entity.is_in_water_or_rain()
             })
             .collect();
-        candidates.choose(&mut rand::rng()).cloned()
+        game_random().choose(&candidates).cloned()
     }
 
     fn update_destroy_target(
@@ -255,7 +255,7 @@ impl BlockEntity for ConduitBlockEntity {
             }
             if game_time > self.next_ambient_sound_activation.load(Ordering::Relaxed) {
                 self.next_ambient_sound_activation.store(
-                    game_time + 60 + rand::rng().random_range(0..40),
+                    game_time + 60 + game_random().random_range(0..40),
                     Ordering::Relaxed,
                 );
                 world.play_sound(

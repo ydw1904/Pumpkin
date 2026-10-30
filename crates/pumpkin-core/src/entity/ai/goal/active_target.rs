@@ -11,7 +11,6 @@ use crate::entity::{EntityBase, mob::MobEntity, player::Player};
 use crate::world::World;
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::entity::EntityType;
-use rand::RngExt;
 use std::sync::Arc;
 use uuid::Uuid;
 

@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
@@ -292,7 +293,10 @@ impl ArrowEntity {
 
     pub fn set_velocity(&self, x: f64, y: f64, z: f64, power: f64, uncertainty: f64) {
         fn next_triangular(mode: f64, deviation: f64) -> f64 {
-            deviation.mul_add(rand::random::<f64>() - rand::random::<f64>(), mode)
+            deviation.mul_add(
+                game_random().random::<f64>() - game_random().random::<f64>(),
+                mode,
+            )
         }
 
         let velocity = Vector3::new(x, y, z)
@@ -344,7 +348,10 @@ impl ArrowEntity {
 
     pub fn set_base_damage_from_mob(&self, power: f64, difficulty_id: i32) {
         fn next_triangular(mode: f64, deviation: f64) -> f64 {
-            deviation.mul_add(rand::random::<f64>() - rand::random::<f64>(), mode)
+            deviation.mul_add(
+                game_random().random::<f64>() - game_random().random::<f64>(),
+                mode,
+            )
         }
         let diff_factor = f64::from(difficulty_id) * 0.11;
         let base = power * 2.0 + next_triangular(diff_factor, 0.57425);
@@ -602,9 +609,9 @@ impl EntityBase for ArrowEntity {
                         false,
                     );
                     let mut vel = entity.velocity.load();
-                    vel.x *= rand::random::<f64>() * 0.2;
-                    vel.y *= rand::random::<f64>() * 0.2;
-                    vel.z *= rand::random::<f64>() * 0.2;
+                    vel.x *= game_random().random::<f64>() * 0.2;
+                    vel.y *= game_random().random::<f64>() * 0.2;
+                    vel.z *= game_random().random::<f64>() * 0.2;
                     entity.velocity.store(vel);
                 }
             }
@@ -861,7 +868,7 @@ impl EntityBase for ArrowEntity {
                 entity.set_synced_data(pumpkin_data::tracked_data::abstract_arrow::IN_GROUND, true);
 
                 // Play sound with vanilla pitch formula
-                let sound_pitch = 1.2 / (rand::random::<f32>() * 0.2 + 0.9);
+                let sound_pitch = 1.2 / (game_random().random::<f32>() * 0.2 + 0.9);
                 let sound_packet = CSoundEffect::new(
                     IdOr::Id(Sound::EntityArrowHit as u16),
                     SoundCategory::Neutral,
@@ -899,7 +906,8 @@ impl EntityBase for ArrowEntity {
 
                 // Apply critical hit bonus
                 if self.is_critical.load(Ordering::Relaxed) {
-                    let bonus = (rand::random::<u32>() % (damage.max(0) / 2 + 2) as u32) as i32;
+                    let bonus =
+                        (game_random().random::<u32>() % (damage.max(0) / 2 + 2) as u32) as i32;
                     damage = damage.saturating_add(bonus);
                 }
 
@@ -940,7 +948,7 @@ impl EntityBase for ArrowEntity {
                     }
 
                     // Play hit sound
-                    let sound_pitch = 1.2 / (rand::random::<f32>() * 0.2 + 0.9);
+                    let sound_pitch = 1.2 / (game_random().random::<f32>() * 0.2 + 0.9);
                     let sound_packet = CSoundEffect::new(
                         IdOr::Id(Sound::EntityArrowHit as u16),
                         SoundCategory::Neutral,

@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::any::Any;
 use std::sync::atomic::Ordering;
 
@@ -103,7 +104,7 @@ impl ItemBehaviour for CrossbowItem {
                 SoundCategory::Players,
                 &player.position(),
                 1.0,
-                1.0 / (rand::random::<f32>() * 0.5 + 1.0) + 0.2,
+                1.0 / (game_random().random::<f32>() * 0.5 + 1.0) + 0.2,
             );
         }
     }

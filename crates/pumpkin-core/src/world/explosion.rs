@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use pumpkin_data::{
@@ -268,7 +269,7 @@ impl Explosion {
                     let mut pos_y = self.pos.y;
                     let mut pos_z = self.pos.z;
 
-                    let random_val = rand::random::<f32>();
+                    let random_val = game_random().random::<f32>();
                     let mut h = self.power * random_val.mul_add(0.6, 0.7);
 
                     while h > 0.0 {

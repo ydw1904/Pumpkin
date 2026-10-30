@@ -5,7 +5,6 @@ use crate::entity::mob::Mob;
 use crate::entity::player::Player;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
-use rand::RngExt;
 use std::sync::Arc;
 
 const TELEPORT_DISTANCE_SQ: f64 = 144.0;
@@ -76,7 +75,7 @@ impl FollowOwnerGoal {
         let world = mob_entity.world.load_full();
 
         let offsets: [(i32, i32, i32); 10] = {
-            let mut rng = mob.get_random();
+            let rng = mob.get_random();
             std::array::from_fn(|_| {
                 (
                     rng.random_range(-3..=3),

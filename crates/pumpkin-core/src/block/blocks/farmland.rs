@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use crate::block::{
@@ -15,7 +16,6 @@ use pumpkin_util::math::vector3::Vector3;
 use pumpkin_world::tick::TickPriority;
 use pumpkin_world::world::BlockAccessor;
 use pumpkin_world::world::BlockFlags;
-use rand::RngExt;
 
 type FarmlandProperties = FarmlandLikeProperties;
 
@@ -68,7 +68,7 @@ impl BlockBehaviour for FarmlandBlock {
                 ))
             });
             if args.world.get_block(&pos) == &Block::FARMLAND
-                && rand::rng().random::<f32>() < args.fall_distance - 0.5
+                && game_random().random::<f32>() < args.fall_distance - 0.5
             {
                 let can_trample = args.entity.get_player().map_or_else(
                     || args.world.level_info.load().game_rules.mob_griefing,

@@ -15,7 +15,6 @@ use pumpkin_util::{
     Hand,
     math::{position::BlockPos, vector3::Vector3},
 };
-use rand::RngExt;
 
 use crate::entity::{
     Entity, EntityBase,
@@ -300,7 +299,7 @@ impl AllayEntity {
                 item_id: format!("minecraft:{}", stack.item.registry_key),
             });
         }
-        let mut rng = self.get_random();
+        let rng = self.get_random();
         if world.get_world_age() % 7 == 0 && rng.random::<f64>() < 0.9 {
             world.play_sound_raw(
                 Sound::EntityAllayItemThrown as u16,

@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use pumpkin_data::{
@@ -6,7 +7,7 @@ use pumpkin_data::{
 };
 use pumpkin_macros::pumpkin_block;
 use pumpkin_util::math::position::BlockPos;
-use pumpkin_util::random::{RandomGenerator, xoroshiro128::Xoroshiro};
+use pumpkin_util::random::RandomGenerator;
 use pumpkin_world::{
     tick::TickPriority,
     world::{BlockAccessor, BlockFlags},
@@ -79,8 +80,7 @@ impl MangrovePropaguleBlock {
                     return;
                 }
             }
-            let mut random =
-                RandomGenerator::Xoroshiro(Xoroshiro::from_seed(rand::random::<u64>()));
+            let mut random = RandomGenerator::Gameplay(game_random());
             TreeGrower::MANGROVE.grow_tree(
                 world,
                 pos,
@@ -130,7 +130,7 @@ impl BlockBehaviour for MangrovePropaguleBlock {
         let state_id = args.world.get_block_state_id(args.position);
         let mut props = MangrovePropaguleLikeProperties::from_state_id(state_id);
         if !props.hanging {
-            if rand::random::<u8>().is_multiple_of(7) {
+            if game_random().random::<u8>().is_multiple_of(7) {
                 Self::advance_tree(args.world, args.position, args.block, props, false);
             }
         } else if props.age < MAX_AGE {
@@ -153,7 +153,7 @@ impl BlockBehaviour for MangrovePropaguleBlock {
         if props.hanging {
             props.age < MAX_AGE
         } else {
-            rand::random::<f32>() < 0.45
+            game_random().random::<f32>() < 0.45
         }
     }
 

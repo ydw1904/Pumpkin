@@ -1,6 +1,6 @@
 use super::World;
 use pumpkin_protocol::java::client::play::{CGameEvent, GameEvent};
-use rand::RngExt;
+use pumpkin_util::random::gameplay::game_random;
 
 // Weather timing constants
 const RAIN_DELAY_MIN: i32 = 12_000;
@@ -131,9 +131,10 @@ impl Weather {
                 }
             } else if self.thundering {
                 self.thunder_time =
-                    rand::rng().random_range(THUNDER_DURATION_MIN..=THUNDER_DURATION_MAX);
+                    game_random().random_range(THUNDER_DURATION_MIN..=THUNDER_DURATION_MAX);
             } else {
-                self.thunder_time = rand::rng().random_range(THUNDER_DELAY_MIN..=THUNDER_DELAY_MAX);
+                self.thunder_time =
+                    game_random().random_range(THUNDER_DELAY_MIN..=THUNDER_DELAY_MAX);
             }
 
             // Handle rain timing
@@ -143,9 +144,9 @@ impl Weather {
                     self.raining = !self.raining;
                 }
             } else if self.raining {
-                self.rain_time = rand::rng().random_range(RAIN_DURATION_MIN..=RAIN_DURATION_MAX);
+                self.rain_time = game_random().random_range(RAIN_DURATION_MIN..=RAIN_DURATION_MAX);
             } else {
-                self.rain_time = rand::rng().random_range(RAIN_DELAY_MIN..=RAIN_DELAY_MAX);
+                self.rain_time = game_random().random_range(RAIN_DELAY_MIN..=RAIN_DELAY_MAX);
             }
         }
     }

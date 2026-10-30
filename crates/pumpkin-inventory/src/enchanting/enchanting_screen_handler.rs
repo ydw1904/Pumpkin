@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::any::Any;
 use std::sync::Arc;
 
@@ -381,14 +382,14 @@ impl ScreenHandler for EnchantingTableScreenHandler {
         self.inventory.set_stack(0, item_stack);
 
         // Update seed
-        player.set_enchantment_seed(rand::random());
+        player.set_enchantment_seed(game_random().random());
         self.enchantment_seed = player.enchantment_seed();
 
         self.update_enchantments(player);
         self.send_content_updates();
 
         // Vanilla plays the table use sound at a random pitch in [0.9, 1.0)
-        let pitch = rand::random::<f32>().mul_add(0.1, 0.9);
+        let pitch = game_random().random::<f32>().mul_add(0.1, 0.9);
         player.play_block_sound(Sound::BlockEnchantmentTableUse, pitch);
 
         player.increment_stat(

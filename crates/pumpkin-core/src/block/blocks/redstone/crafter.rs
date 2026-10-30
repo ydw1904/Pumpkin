@@ -1,4 +1,4 @@
-use rand::{Rng, RngExt, rng};
+use pumpkin_util::random::gameplay::{GameRandom, game_random};
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -58,7 +58,7 @@ impl ScreenHandlerFactory for CrafterScreenFactory {
     }
 }
 
-fn triangle<R: Rng>(rng: &mut R, min: f64, max: f64) -> f64 {
+fn triangle(rng: GameRandom, min: f64, max: f64) -> f64 {
     (rng.random::<f64>() - rng.random::<f64>()).mul_add(max, min)
 }
 
@@ -214,11 +214,11 @@ impl CrafterBlock {
             };
 
             let entity = Entity::new(world.clone(), spawn_pos, &EntityType::ITEM);
-            let rd = rng().random::<f64>().mul_add(0.1, 0.2);
+            let rd = game_random().random::<f64>().mul_add(0.1, 0.2);
             let velocity = Vector3::new(
-                triangle(&mut rng(), facing_normal.x * rd, 0.017_227_5 * 6.),
-                triangle(&mut rng(), 0.2, 0.017_227_5 * 6.),
-                triangle(&mut rng(), facing_normal.z * rd, 0.017_227_5 * 6.),
+                triangle(game_random(), facing_normal.x * rd, 0.017_227_5 * 6.),
+                triangle(game_random(), 0.2, 0.017_227_5 * 6.),
+                triangle(game_random(), facing_normal.z * rd, 0.017_227_5 * 6.),
             );
 
             let item_entity = Arc::new(ItemEntity::new_with_velocity(

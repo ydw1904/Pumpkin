@@ -1,8 +1,8 @@
 use pumpkin_data::tag::Taggable;
 use pumpkin_data::{Block, BlockDirection, BlockId, BlockStateId, tag};
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::world::{BlockAccessor, BlockFlags};
-use rand::seq::SliceRandom;
 
 use crate::block::{
     BlockBehaviour, BlockMetadata, CanPlaceAtArgs, GetStateForNeighborUpdateArgs,
@@ -45,7 +45,7 @@ impl BlockBehaviour for DryVegetationBlock {
             }
 
             let mut directions = horizontal_directions();
-            directions.shuffle(&mut rand::rng());
+            game_random().shuffle(&mut directions);
             if let Some(position) = directions.into_iter().find_map(|direction| {
                 let position = args.position.offset(direction.to_offset());
                 can_spread_to(args.world, position).then_some(position)

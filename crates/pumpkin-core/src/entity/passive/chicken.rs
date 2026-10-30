@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicBool, AtomicI32, AtomicU8, Ordering},
@@ -11,7 +12,6 @@ use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::{entity::EntityType, item::Item};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::var_int::VarInt;
-use rand::RngExt;
 
 use crate::entity::ai::pathfinder::node::PathType;
 use crate::entity::custom_sound::CustomSound;
@@ -57,7 +57,7 @@ pub struct ChickenEntity {
 impl ChickenEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
         let mob_entity = MobEntity::new(entity);
-        let egg_lay_time = rand::rng().random_range(EGG_LAY_TIME);
+        let egg_lay_time = game_random().random_range(EGG_LAY_TIME);
         let chicken = Self {
             mob_entity,
             variant: AtomicU8::new(ChickenVariant::default().id()),
@@ -344,7 +344,7 @@ impl Mob for ChickenEntity {
             && !self.is_chicken_jockey()
             && self.egg_lay_time.fetch_sub(1, Ordering::Relaxed) <= 1
         {
-            let mut rng = self.get_random();
+            let rng = self.get_random();
             if self.lay_egg() {
                 entity.world.load().play_sound_fine(
                     Sound::EntityChickenEgg,

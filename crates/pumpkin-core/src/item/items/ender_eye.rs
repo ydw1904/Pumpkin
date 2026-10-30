@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use crate::block::registry::BlockActionResult;
@@ -114,7 +115,7 @@ impl ItemBehaviour for EnderEyeItem {
 
         world.spawn_entity(eye);
 
-        let sound_pitch = 0.33f32 + rand::random::<f32>() * (0.5 - 0.33);
+        let sound_pitch = 0.33f32 + game_random().random::<f32>() * (0.5 - 0.33);
         world.play_sound_fine(
             Sound::EntityEnderEyeLaunch,
             SoundCategory::Neutral,

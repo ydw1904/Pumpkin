@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::{GameRandom, game_random};
 use rustc_hash::FxHashMap;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, Ordering};
 use std::sync::{Arc, Weak};
@@ -61,14 +62,13 @@ pub(crate) fn trigger_trade_advancement(player: &Player) {
 }
 
 fn enchanted_book_offer_items(
-    rng: &mut impl rand::Rng,
+    rng: GameRandom,
 ) -> Option<(ItemStack, ItemStack, Option<ItemStack>)> {
     use pumpkin_data::data_component::DataComponent;
     use pumpkin_data::data_component_impl::StoredEnchantmentsImpl;
-    use rand::{RngExt, seq::IndexedRandom};
     use std::borrow::Cow;
 
-    let enchantment_id = *EnchantmentTag::MINECRAFT_TRADEABLE.1.choose(rng)? as u8;
+    let enchantment_id = *rng.choose(EnchantmentTag::MINECRAFT_TRADEABLE.1)? as u8;
     let enchantment = Enchantment::from_id(enchantment_id)?;
     let level = rng.random_range(1..=enchantment.max_level);
     let mut emeralds = 2 + rng.random_range(0..5 + level * 10) + 3 * level;
@@ -95,13 +95,12 @@ fn enchanted_book_offer_items(
 }
 
 fn enchant_trade_item(
-    rng: &mut impl rand::Rng,
+    rng: GameRandom,
     item: &'static Item,
     min_level: i32,
     max_level: i32,
 ) -> Option<(ItemStack, i32)> {
     use pumpkin_data::data_component_impl::EnchantableImpl;
-    use rand::RngExt;
 
     let mut stack = ItemStack::new(1, item);
     let enchantability = stack
@@ -161,10 +160,9 @@ fn enchant_trade_item(
     Some((stack, additional_cost))
 }
 
-pub(crate) fn apply_random_dye(rng: &mut impl rand::Rng, stack: &mut ItemStack) {
+pub(crate) fn apply_random_dye(rng: GameRandom, stack: &mut ItemStack) {
     use pumpkin_data::data_component::DataComponent;
     use pumpkin_data::data_component_impl::{DataComponentImpl, DyedColorImpl};
-    use rand::RngExt;
 
     const COLORS: [i32; 16] = [
         0xF9FFFE, 0xF9801D, 0xC74EBD, 0x3AB3DA, 0xFED83D, 0x80C71F, 0xF38BAA, 0x474F52, 0x9D9D97,
@@ -194,12 +192,11 @@ pub(crate) fn apply_random_dye(rng: &mut impl rand::Rng, stack: &mut ItemStack) 
     ));
 }
 
-pub(crate) fn apply_random_stew_effect(rng: &mut impl rand::Rng, stack: &mut ItemStack) {
+pub(crate) fn apply_random_stew_effect(rng: GameRandom, stack: &mut ItemStack) {
     use pumpkin_data::data_component::DataComponent;
     use pumpkin_data::data_component_impl::{
         DataComponentImpl, SuspiciousStewEffect, SuspiciousStewEffectsImpl,
     };
-    use rand::RngExt;
     use std::borrow::Cow;
 
     const EFFECTS: [(&str, i32); 6] = [
@@ -659,8 +656,6 @@ impl VillagerEntity {
     pub fn add_trades(&self, profession: VillagerProfession, level: i32) {
         use crate::data::datapack::trade_loader::{DynamicTradeModifier, DynamicVillagerTradeSet};
         use pumpkin_protocol::codec::item_stack_seralizer::ItemStackSerializer;
-        use rand::seq::IndexedRandom;
-        use rand::{RngExt, SeedableRng, rngs::StdRng};
         use std::borrow::Cow;
 
         let villager_type = self
@@ -688,7 +683,7 @@ impl VillagerEntity {
             });
 
         if let Some(trade_set) = trade_set {
-            let mut rng = StdRng::from_rng(&mut rand::rng());
+            let rng = game_random();
             let mut remaining_trades = trade_set.trades.clone();
             let mut added = 0;
             while added < trade_set.amount && !remaining_trades.is_empty() {
@@ -708,14 +703,14 @@ impl VillagerEntity {
                 match &trade.modifier {
                     DynamicTradeModifier::None => {}
                     DynamicTradeModifier::EnchantRandomly => {
-                        let Some(items) = enchanted_book_offer_items(&mut rng) else {
+                        let Some(items) = enchanted_book_offer_items(rng) else {
                             continue;
                         };
                         (base_cost_a, output, cost_b) = items;
                     }
                     DynamicTradeModifier::EnchantWithLevels { min, max } => {
                         let Some((enchanted, additional_cost)) =
-                            enchant_trade_item(&mut rng, trade.gives.item, *min, *max)
+                            enchant_trade_item(rng, trade.gives.item, *min, *max)
                         else {
                             continue;
                         };
@@ -734,18 +729,17 @@ impl VillagerEntity {
                         };
                         output = map;
                     }
-                    DynamicTradeModifier::RandomDyes => apply_random_dye(&mut rng, &mut output),
+                    DynamicTradeModifier::RandomDyes => apply_random_dye(rng, &mut output),
                     DynamicTradeModifier::RandomPotion => {
-                        let Some(potion_name) = pumpkin_data::tag::Potion::MINECRAFT_TRADEABLE
-                            .0
-                            .choose(&mut rng)
+                        let Some(potion_name) =
+                            rng.choose(pumpkin_data::tag::Potion::MINECRAFT_TRADEABLE.0)
                         else {
                             continue;
                         };
                         apply_potion(&mut output, potion_name);
                     }
                     DynamicTradeModifier::SuspiciousStew => {
-                        apply_random_stew_effect(&mut rng, &mut output);
+                        apply_random_stew_effect(rng, &mut output);
                     }
                     DynamicTradeModifier::Potion(potion) => apply_potion(&mut output, potion),
                 }
@@ -1037,11 +1031,9 @@ impl VillagerEntity {
     }
 
     fn work_at_job_site(&self, game_time: i64, day_time: i64, day: i64) {
-        use rand::RngExt;
-
         if !(2_000..9_000).contains(&day_time)
             || game_time - self.last_worked_at_poi.load(Ordering::Relaxed) < 300
-            || !rand::rng().random_bool(0.5)
+            || !game_random().random_bool(0.5)
         {
             return;
         }
@@ -2423,7 +2415,7 @@ mod tests {
 
     #[test]
     fn enchanted_book_offer_has_vanilla_items_and_a_nonzero_price() {
-        let (emeralds, enchanted_book, book) = enchanted_book_offer_items(&mut rand::rng())
+        let (emeralds, enchanted_book, book) = enchanted_book_offer_items(game_random())
             .expect("the generated tradeable-enchantment tag is populated");
         let stored = enchanted_book
             .get_data_component::<StoredEnchantmentsImpl>()
@@ -2526,7 +2518,7 @@ mod tests {
     fn traded_equipment_is_enchanted_and_reports_its_additional_price() {
         for _ in 0..32 {
             let (stack, additional_price) =
-                enchant_trade_item(&mut rand::rng(), &Item::DIAMOND_SWORD, 5, 19).unwrap();
+                enchant_trade_item(game_random(), &Item::DIAMOND_SWORD, 5, 19).unwrap();
             let enchantments = stack.get_data_component::<EnchantmentsImpl>().unwrap();
 
             assert!((5..=19).contains(&additional_price));

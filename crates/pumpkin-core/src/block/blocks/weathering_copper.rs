@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use pumpkin_data::block_properties::{
@@ -536,10 +537,8 @@ pub fn scan_neighbor_oxidation_levels(
 
 /// Executes a random tick change-over-time attempt on a weathering copper block using vanilla's probability formula.
 pub fn change_over_time(world: &Arc<World>, position: &BlockPos, block: &Block) {
-    use rand::RngExt;
-
     // 1. Roll base degradation chance (~5.69%)
-    if rand::rng().random::<f32>() >= BASE_DEGRADATION_CHANCE {
+    if game_random().random::<f32>() >= BASE_DEGRADATION_CHANCE {
         return;
     }
 
@@ -562,7 +561,7 @@ pub fn change_over_time(world: &Arc<World>, position: &BlockPos, block: &Block) 
     let ratio = (higher_age_count + 1) as f32 / (higher_age_count + same_age_count + 1) as f32;
     let chance = ratio * ratio * get_chance_modifier(current_age);
 
-    if rand::rng().random::<f32>() >= chance {
+    if game_random().random::<f32>() >= chance {
         return;
     }
 

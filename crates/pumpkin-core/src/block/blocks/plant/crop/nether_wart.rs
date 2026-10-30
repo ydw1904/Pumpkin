@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use pumpkin_data::{
@@ -8,7 +9,6 @@ use pumpkin_data::{
 use pumpkin_macros::pumpkin_block;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::world::{BlockAccessor, BlockFlags};
-use rand::RngExt;
 
 use crate::{
     block::{
@@ -73,7 +73,7 @@ impl CropBlockBase for NetherWartBlock {
     fn random_tick(&self, world: &Arc<World>, pos: &BlockPos) {
         let (block, state) = world.get_block_and_state_id(pos);
         let age = self.get_age(state, block);
-        if age < self.max_age() && rand::rng().random_range(0..10) == 0 {
+        if age < self.max_age() && game_random().random_range(0..10) == 0 {
             world.set_block_state(
                 pos,
                 self.state_with_age(block, state, age + 1),

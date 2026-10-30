@@ -10,7 +10,6 @@ use pumpkin_data::sound::Sound;
 use pumpkin_data::{entity::EntityType, item::Item};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::var_int::VarInt;
-use rand::RngExt;
 
 use crate::entity::{
     Entity, EntityBase,

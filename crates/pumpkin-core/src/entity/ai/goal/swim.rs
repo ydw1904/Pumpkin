@@ -2,7 +2,6 @@ use std::sync::atomic::Ordering;
 
 use super::{Controls, Goal, GoalReach};
 use crate::entity::mob::Mob;
-use rand::RngExt;
 
 pub struct SwimGoal {
     goal_control: Controls,

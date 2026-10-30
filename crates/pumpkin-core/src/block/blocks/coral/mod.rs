@@ -2,7 +2,7 @@ use pumpkin_data::Block;
 use pumpkin_data::BlockDirection;
 use pumpkin_data::tag::Taggable;
 use pumpkin_util::math::position::BlockPos;
-use rand::RngExt;
+use pumpkin_util::random::gameplay::game_random;
 
 use crate::world::World;
 
@@ -43,7 +43,7 @@ fn is_dead_coral(block: &Block) -> bool {
         || block == &Block::DEAD_TUBE_CORAL_WALL_FAN
 }
 pub fn try_schedule_die_tick(block: &Block, world: &World, pos: &BlockPos) {
-    let tick_delay = 60 + rand::rng().random_range(0..40);
+    let tick_delay = 60 + game_random().random_range(0..40);
     world.schedule_block_tick(
         block,
         *pos,

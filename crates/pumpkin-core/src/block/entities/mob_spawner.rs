@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc,
     atomic::{AtomicI32, Ordering},
@@ -81,7 +82,7 @@ impl MobSpawnerBlockEntity {
             if max_delay <= min_delay {
                 min_delay
             } else {
-                min_delay + rand::random_range(0..max_delay - min_delay)
+                min_delay + game_random().random_range(0..max_delay - min_delay)
             },
             Ordering::Relaxed,
         );
@@ -154,11 +155,13 @@ impl BlockEntity for MobSpawnerBlockEntity {
 
                 let spawn_pos = Vector3::new(
                     pos.x as f64
-                        + (rand::random::<f64>() - rand::random::<f64>()) * spawn_range as f64
+                        + (game_random().random::<f64>() - game_random().random::<f64>())
+                            * spawn_range as f64
                         + 0.5,
-                    (pos.y + rand::random_range(0..3) - 1) as f64,
+                    (pos.y + game_random().random_range(0..3) - 1) as f64,
                     pos.z as f64
-                        + (rand::random::<f64>() - rand::random::<f64>()) * spawn_range as f64
+                        + (game_random().random::<f64>() - game_random().random::<f64>())
+                            * spawn_range as f64
                         + 0.5,
                 );
                 if !world.is_space_empty(entity_type.get_spawn_bounding_box(
@@ -174,7 +177,7 @@ impl BlockEntity for MobSpawnerBlockEntity {
                     world,
                     uuid::Uuid::new_v4(),
                 );
-                let yaw = rand::random::<f32>() * 360.0;
+                let yaw = game_random().random::<f32>() * 360.0;
                 entity.get_entity().set_rotation(yaw, 0.0);
 
                 let mut event =

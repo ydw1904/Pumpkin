@@ -1,4 +1,5 @@
 use crossbeam::atomic::AtomicCell;
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Mutex, Weak,
     atomic::{AtomicBool, AtomicI32, Ordering},
@@ -356,7 +357,7 @@ impl WitherEntity {
                     let attack_timer = self.main_attack_timer.load(Ordering::Relaxed);
                     if attack_timer <= 0 {
                         self.main_attack_timer.store(40, Ordering::Relaxed);
-                        let dangerous = rand::random_range(0.0..1.0) < 0.001;
+                        let dangerous = game_random().random_range(0.0..1.0) < 0.001;
                         let eye_h = target.get_entity().get_eye_height();
                         self.perform_ranged_attack(
                             0,
@@ -446,7 +447,7 @@ impl WitherEntity {
             for i in 1..=2 {
                 let next_update = self.next_head_update[i - 1].load(Ordering::Relaxed);
                 if tick_count >= next_update {
-                    let rand_delay = rand::random_range(0..10);
+                    let rand_delay = game_random().random_range(0..10);
                     self.next_head_update[i - 1]
                         .store(tick_count + 10 + rand_delay, Ordering::Relaxed);
 
@@ -454,9 +455,9 @@ impl WitherEntity {
                         && self.idle_head_updates[i - 1].fetch_add(1, Ordering::Relaxed) > 15
                     {
                         let (xt, yt, zt) = (
-                            wither_pos.x + rand::random_range(-10.0..10.0),
-                            wither_pos.y + rand::random_range(-5.0..5.0),
-                            wither_pos.z + rand::random_range(-10.0..10.0),
+                            wither_pos.x + game_random().random_range(-10.0..10.0),
+                            wither_pos.y + game_random().random_range(-5.0..5.0),
+                            wither_pos.z + game_random().random_range(-10.0..10.0),
                         );
                         self.perform_ranged_attack(i, xt, yt, zt, true);
                         self.idle_head_updates[i - 1].store(0, Ordering::Relaxed);
@@ -478,7 +479,7 @@ impl WitherEntity {
                                     t_pos.z,
                                     false,
                                 );
-                                let next_delay = 40 + rand::random_range(0..20);
+                                let next_delay = 40 + game_random().random_range(0..20);
                                 self.next_head_update[i - 1]
                                     .store(tick_count + next_delay, Ordering::Relaxed);
                                 self.idle_head_updates[i - 1].store(0, Ordering::Relaxed);
@@ -505,7 +506,7 @@ impl WitherEntity {
                             .collect();
 
                         if !candidates.is_empty() {
-                            let idx = rand::random_range(0..candidates.len());
+                            let idx = game_random().random_range(0..candidates.len());
                             self.set_alternative_target(i, candidates[idx].get_entity().entity_id);
                         }
                     }

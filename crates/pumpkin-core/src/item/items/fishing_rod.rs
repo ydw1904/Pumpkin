@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::any::Any;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -40,7 +41,7 @@ impl ItemBehaviour for FishingRodItem {
                 SoundCategory::Neutral,
                 &player.position(),
                 0.5,
-                0.4 / (rand::random::<f32>() * 0.4 + 0.8),
+                0.4 / (game_random().random::<f32>() * 0.4 + 0.8),
             );
 
             let time_reduction =
@@ -69,7 +70,9 @@ impl ItemBehaviour for FishingRodItem {
                 f64::from(-y_cos),
             );
             let dist = dir.length();
-            let triangle = || 0.5 + 0.010_336_5 * (rand::random::<f64>() - rand::random::<f64>());
+            let triangle = || {
+                0.5 + 0.010_336_5 * (game_random().random::<f64>() - game_random().random::<f64>())
+            };
             let velocity = dir.multiply(
                 0.6 / dist + triangle(),
                 0.6 / dist + triangle(),
@@ -110,7 +113,7 @@ impl ItemBehaviour for FishingRodItem {
                 SoundCategory::Neutral,
                 &player.position(),
                 1.0,
-                0.4 / (rand::random::<f32>() * 0.4 + 0.8),
+                0.4 / (game_random().random::<f32>() * 0.4 + 0.8),
             );
         }
     }

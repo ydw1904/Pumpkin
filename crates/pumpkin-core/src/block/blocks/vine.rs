@@ -15,8 +15,8 @@ use pumpkin_data::{
 };
 use pumpkin_macros::pumpkin_block;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::world::{BlockAccessor, BlockFlags};
-use rand::RngExt;
 
 #[pumpkin_block("minecraft:vine")]
 pub struct VineBlock;
@@ -361,11 +361,11 @@ impl BlockBehaviour for VineBlock {
             return;
         }
 
-        if rand::rng().random_range(0..4) != 0 {
+        if game_random().random_range(0..4) != 0 {
             return;
         }
 
-        let test_direction = BlockDirection::all()[rand::rng().random_range(0..6)];
+        let test_direction = BlockDirection::all()[game_random().random_range(0..6)];
         let above_pos = args.position.up();
         let state_id = args.world.get_block_state_id(args.position);
         let state_props = VineLikeProperties::from_state_id(state_id);
@@ -442,7 +442,7 @@ impl BlockBehaviour for VineBlock {
                                 new_props.to_state_id(args.block),
                                 BlockFlags::NOTIFY_ALL,
                             );
-                        } else if rand::rng().random_range(0.0..1.0f32) < 0.05
+                        } else if game_random().random_range(0.0..1.0f32) < 0.05
                             && is_acceptable_neighbour(
                                 args.world.get_block(&test_pos.up()),
                                 args.world.get_block_state(&test_pos.up()),
@@ -497,7 +497,7 @@ impl BlockBehaviour for VineBlock {
                     ] {
                         let rel_pos = above_pos.offset(direction.to_offset());
                         let (rel_block, rel_state) = args.world.get_block_and_state(&rel_pos);
-                        if rand::rng().random_range(0..2) == 0
+                        if game_random().random_range(0..2) == 0
                             || !is_acceptable_neighbour(rel_block, rel_state, direction)
                         {
                             set_face_property(&mut above_props, direction, false);
@@ -532,7 +532,7 @@ impl BlockBehaviour for VineBlock {
                         BlockDirection::West,
                         BlockDirection::East,
                     ] {
-                        if rand::rng().random_range(0..2) == 0
+                        if game_random().random_range(0..2) == 0
                             && has_face_property(&state_props, direction)
                         {
                             set_face_property(&mut after_props, direction, true);

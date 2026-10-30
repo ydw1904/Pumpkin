@@ -1,4 +1,4 @@
-use rand::{RngExt, rng};
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use crate::entity::Entity;
@@ -51,7 +51,7 @@ impl ItemBehaviour for EggItem {
             pumpkin_data::sound::SoundCategory::Players,
             &position,
             THROW_SOUND_VOLUME,
-            0.4 / (rng().random::<f32>() * 0.4 + 0.8),
+            0.4 / (game_random().random::<f32>() * 0.4 + 0.8),
         );
 
         let entity = Entity::new(world.clone(), position, &EntityType::EGG);

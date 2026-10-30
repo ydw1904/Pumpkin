@@ -1,7 +1,5 @@
 use std::sync::atomic::Ordering::Relaxed;
 
-use rand::RngExt;
-
 use super::super::BrainTick;
 use super::super::memory::{MemoryModuleId, MemoryStatus};
 use super::timed::Behavior;

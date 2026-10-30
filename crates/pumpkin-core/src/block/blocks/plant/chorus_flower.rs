@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use pumpkin_data::{
@@ -12,7 +13,6 @@ use pumpkin_world::{
     tick::TickPriority,
     world::{BlockAccessor, BlockFlags},
 };
-use rand::RngExt;
 
 use super::chorus_plant;
 use crate::{
@@ -93,7 +93,7 @@ impl BlockBehaviour for ChorusFlowerBlock {
                     }
 
                     let max_chance = if pillar_on_support_block { 5 } else { 4 };
-                    if height < 2 || height <= rand::rng().random_range(0..max_chance) {
+                    if height < 2 || height <= game_random().random_range(0..max_chance) {
                         grow_upwards = true;
                     }
                 } else if below_block.default_state.is_air() {
@@ -117,7 +117,7 @@ impl BlockBehaviour for ChorusFlowerBlock {
                     );
                     place_grown_flower(args.world, &above, current_age);
                 } else if current_age < 4 {
-                    let mut num_branch_attempts = rand::rng().random_range(0..4);
+                    let mut num_branch_attempts = game_random().random_range(0..4);
                     if pillar_on_support_block {
                         num_branch_attempts += 1;
                     }
@@ -125,7 +125,7 @@ impl BlockBehaviour for ChorusFlowerBlock {
                     let mut created_branch = false;
 
                     for _ in 0..num_branch_attempts {
-                        let direction = HORIZONTAL_DIRECTIONS[rand::rng().random_range(0..4)];
+                        let direction = HORIZONTAL_DIRECTIONS[game_random().random_range(0..4)];
                         let target = args.position.offset(direction.to_offset());
                         let target_below = target.down();
 

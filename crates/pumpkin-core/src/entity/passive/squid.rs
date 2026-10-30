@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{Arc, atomic::Ordering::Relaxed};
 
 use crossbeam::atomic::AtomicCell;
@@ -9,7 +10,6 @@ use pumpkin_data::{
     tag::{self, Taggable},
 };
 use pumpkin_util::math::{boundingbox::EntityDimensions, cos, sin, vector3::Vector3};
-use rand::RngExt;
 
 use super::ageable_water_creature::AgeableWaterCreature;
 use crate::entity::{
@@ -55,7 +55,7 @@ impl SquidData {
             movement_vector: AtomicCell::new(Vector3::default()),
             tentacle_movement: AtomicCell::new(0.0),
             tentacle_speed: AtomicCell::new(
-                1.0 / (rand::rng().random::<f32>() + 1.0) * TENTACLE_SPEED_SCALE,
+                1.0 / (game_random().random::<f32>() + 1.0) * TENTACLE_SPEED_SCALE,
             ),
             x_body_rot: AtomicCell::new(0.0),
             x_body_rot_o: AtomicCell::new(0.0),
@@ -178,7 +178,7 @@ pub trait Squid: AgeableWaterCreature {
         self.make_sound(self.squirt_sound());
         let entity = self.get_entity();
         let pos = self.rotate_vector(Vector3::new(0.0, -1.0, 0.0)) + entity.pos.load();
-        let mut rng = self.get_random();
+        let rng = self.get_random();
         for _ in 0..INK_PARTICLE_COUNT {
             let dir = self.rotate_vector(Vector3::new(
                 f64::from(rng.random::<f32>()) * INK_DIRECTION_SPREAD - INK_DIRECTION_SPREAD / 2.0,
@@ -244,7 +244,7 @@ impl Goal for SquidRandomMovementGoal {
 
     fn tick(&mut self, mob: &dyn Mob) {
         let entity = mob.get_entity();
-        let mut rng = mob.get_random();
+        let rng = mob.get_random();
         if mob
             .get_mob_entity()
             .living_entity

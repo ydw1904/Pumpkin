@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
@@ -10,7 +11,6 @@ use pumpkin_data::potion::Effect;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
-use rand::RngExt;
 use uuid::Uuid;
 
 use crate::entity::mob::shulker::Axis;
@@ -164,7 +164,7 @@ impl ShulkerBulletEntity {
                 }
                 r
             } else {
-                options[rand::rng().random_range(0..options.len())]
+                options[game_random().random_range(0..options.len())]
             };
 
             (
@@ -195,12 +195,12 @@ impl ShulkerBulletEntity {
         }
 
         self.current_dir.store(selected_dir, Ordering::Relaxed);
-        let steps = 10 + rand::rng().random_range(0..5) * 10;
+        let steps = 10 + game_random().random_range(0..5) * 10;
         self.flight_steps.store(steps, Ordering::Relaxed);
     }
 
     fn random_dir() -> u8 {
-        rand::rng().random_range(0u8..6)
+        game_random().random_range(0u8..6)
     }
 }
 

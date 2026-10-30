@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering::Relaxed};
@@ -10,7 +11,6 @@ use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_world::chunk::ChunkHeightmapType;
-use rand::RngExt;
 
 use crate::entity::mob::{Mob, MobEntity};
 use crate::entity::{Entity, EntityBase};
@@ -46,10 +46,10 @@ impl BatEntity {
         {
             return false;
         }
-        if rand::random_bool(0.5) {
+        if game_random().random_bool(0.5) {
             return false;
         }
-        if world.get_max_local_raw_brightness(pos) > rand::random_range(0..4) {
+        if world.get_max_local_raw_brightness(pos) > game_random().random_range(0..4) {
             return false;
         }
         let below_pos = BlockPos::new(pos.0.x, pos.0.y - 1, pos.0.z);
@@ -81,7 +81,7 @@ impl BatEntity {
         if chance <= 0 {
             self.ambient_sound_chance
                 .store(MIN_AMBIENT_SOUND_DELAY, Relaxed);
-            if !self.is_roosting() || rand::random_range(0..4) == 0 {
+            if !self.is_roosting() || game_random().random_range(0..4) == 0 {
                 world.play_sound_fine(
                     Sound::EntityBatAmbient,
                     SoundCategory::Ambient,
@@ -98,7 +98,7 @@ impl BatEntity {
         let above_state = world.get_block_state(above_pos);
         if above_state.is_solid_block() {
             let rotate_head = {
-                let mut rng = rand::rng();
+                let rng = game_random();
                 (rng.random_range(0u32..200) == 0).then(|| rng.random_range(0i32..360) as f32)
             };
             if let Some(head_yaw) = rotate_head {
@@ -145,7 +145,7 @@ impl BatEntity {
         }
 
         let (should_pick_new, new_target, try_roost) = {
-            let mut rng = rand::rng();
+            let rng = game_random();
             let should_pick = hanging_pos.is_none()
                 || rng.random_range(0u32..30) == 0
                 || hanging_pos.is_some_and(|hp| {

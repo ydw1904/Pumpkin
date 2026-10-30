@@ -9,6 +9,7 @@ use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::gameplay::game_random;
 use std::{
     f64::consts::TAU,
     sync::{
@@ -55,7 +56,7 @@ impl TNTEntity {
             f64::from(position.0.z) + 0.5,
         );
         let entity = Entity::new(world.clone(), pos, &EntityType::TNT);
-        let rot = rand::random::<f64>() * TAU;
+        let rot = game_random().random::<f64>() * TAU;
         entity
             .velocity
             .store(Vector3::new(-rot.sin() * 0.02, 0.2, -rot.cos() * 0.02));
@@ -65,7 +66,7 @@ impl TNTEntity {
     /// Vanilla `PrimedTnt.getRandomShortFuse`.
     #[must_use]
     pub fn random_short_fuse(fuse: u32) -> u32 {
-        rand::random_range(0..(fuse / 4).max(1)) + fuse / 8
+        game_random().random_range(0..(fuse / 4).max(1)) + fuse / 8
     }
 }
 

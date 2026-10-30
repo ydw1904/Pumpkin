@@ -1,4 +1,5 @@
 use crate::entity::EntityBase;
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::Ordering;
 
 #[derive(Clone, Copy)]
@@ -14,7 +15,7 @@ impl ProjectileDeflectionType {
         match self {
             Self::None => {}
             Self::Simple => {
-                let vel = rand::random::<f32>().mul_add(20.0, 170.0);
+                let vel = game_random().random::<f32>().mul_add(20.0, 170.0);
 
                 let current_velocity = projectile
                     .get_entity()

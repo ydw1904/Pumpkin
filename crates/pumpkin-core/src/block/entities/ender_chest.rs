@@ -1,8 +1,7 @@
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
-use pumpkin_util::random::xoroshiro128::Xoroshiro;
-use pumpkin_util::random::{RandomImpl, get_seed};
+use pumpkin_util::random::gameplay::game_random;
 use std::any::Any;
 use std::sync::Arc;
 
@@ -85,7 +84,7 @@ impl EnderChestBlockEntity {
     }
 
     fn play_sound(&self, world: &Arc<World>, sound: Sound) {
-        let mut rng = Xoroshiro::from_seed(get_seed());
+        let rng = game_random();
 
         world.play_sound_fine(
             sound,

@@ -8,7 +8,6 @@ use pumpkin_data::{
     sound::{Sound, SoundCategory},
 };
 use pumpkin_nbt::compound::NbtCompound;
-use rand::RngExt;
 
 use super::{
     ageable_water_creature::AgeableWaterCreature,
@@ -65,7 +64,7 @@ impl Mob for GlowSquidEntity {
             self.set_dark_ticks(dark_ticks - 1);
         }
         // The server discards GLOW particles but still draws their coordinates.
-        let mut rng = self.get_random();
+        let rng = self.get_random();
         let _ = (
             rng.random::<f64>(),
             rng.random::<f64>(),

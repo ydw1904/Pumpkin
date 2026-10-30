@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use crate::block::entities::{has_block_block_entity, piston::PistonBlockEntity};
@@ -11,7 +12,6 @@ use pumpkin_data::{
 };
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::world::BlockFlags;
-use rand::RngExt;
 use rustc_hash::FxHashMap;
 
 use crate::{
@@ -157,7 +157,7 @@ impl PistonBlock {
                 BlockFlags::NOTIFY_ALL | BlockFlags::MOVED,
             );
             // Play piston extend sound
-            let pitch = rand::rng().random_range(0.6f32..0.85);
+            let pitch = game_random().random_range(0.6f32..0.85);
             world.play_sound_fine(
                 Sound::BlockPistonExtend,
                 SoundCategory::Blocks,
@@ -266,7 +266,7 @@ impl PistonBlock {
             );
         }
         // Play piston contract sound
-        let pitch = rand::rng().random_range(0.6f32..0.75);
+        let pitch = game_random().random_range(0.6f32..0.75);
         world.play_sound_fine(
             Sound::BlockPistonContract,
             SoundCategory::Blocks,

@@ -3,6 +3,7 @@ use pumpkin_data::damage::DamageType;
 use pumpkin_data::world::WorldEvent;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::world::BlockFlags;
 use rustc_hash::FxHashSet;
 
@@ -22,15 +23,15 @@ impl MobEffect for WeavingMobEffect {
         }
 
         let center_pos = living.entity.block_pos.load();
-        let cobweb_count = (rand::random::<u32>() % 2 + 2) as usize; // 2 to 3 cobwebs
+        let cobweb_count = (game_random().random::<u32>() % 2 + 2) as usize; // 2 to 3 cobwebs
 
         let mut positions_to_transform = FxHashSet::default();
 
         // Sample up to 15 random positions in a cube of radius 1
         for _ in 0..15 {
-            let dx = (rand::random::<u32>() % 3) as i32 - 1;
-            let dy = (rand::random::<u32>() % 3) as i32 - 1;
-            let dz = (rand::random::<u32>() % 3) as i32 - 1;
+            let dx = (game_random().random::<u32>() % 3) as i32 - 1;
+            let dy = (game_random().random::<u32>() % 3) as i32 - 1;
+            let dz = (game_random().random::<u32>() % 3) as i32 - 1;
 
             let target_pos = BlockPos(center_pos.0 + Vector3::new(dx, dy, dz));
             let below_pos = BlockPos(target_pos.0 + Vector3::new(0, -1, 0));

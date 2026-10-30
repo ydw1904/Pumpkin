@@ -1,4 +1,4 @@
-use rand::RngExt;
+use pumpkin_util::random::gameplay::game_random;
 
 use super::{Goal, to_goal_ticks};
 use crate::entity::mob::Mob;
@@ -24,7 +24,7 @@ impl Default for FollowFlockLeaderGoal {
 impl FollowFlockLeaderGoal {
     fn next_start_tick() -> i32 {
         to_goal_ticks(
-            INTERVAL_TICKS + rand::rng().random_range(0..INTERVAL_TICKS) % START_TICK_VARIATION,
+            INTERVAL_TICKS + game_random().random_range(0..INTERVAL_TICKS) % START_TICK_VARIATION,
         )
     }
 }

@@ -7,11 +7,11 @@ use pumpkin_data::{
 };
 use pumpkin_macros::pumpkin_block;
 use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::{
     tick::TickPriority,
     world::{BlockAccessor, BlockFlags},
 };
-use rand::RngExt;
 use uuid::Uuid;
 
 use crate::{
@@ -97,17 +97,17 @@ impl BlockBehaviour for FrogspawnBlock {
             SoundCategory::Blocks,
             &args.position.to_f64(),
         );
-        let count = rand::rng().random_range(MIN_TADPOLES_SPAWN..=MAX_TADPOLES_SPAWN);
+        let count = game_random().random_range(MIN_TADPOLES_SPAWN..=MAX_TADPOLES_SPAWN);
         for _ in 0..count {
-            let x_offset = rand::rng().random_range(0.2..0.8);
-            let z_offset = rand::rng().random_range(0.2..0.8);
+            let x_offset = game_random().random_range(0.2..0.8);
+            let z_offset = game_random().random_range(0.2..0.8);
             let spawn_pos = Vector3::new(
                 f64::from(args.position.0.x) + x_offset,
                 f64::from(args.position.0.y) - 0.5,
                 f64::from(args.position.0.z) + z_offset,
             );
             let tadpole = from_type(&EntityType::TADPOLE, spawn_pos, args.world, Uuid::new_v4());
-            let yaw = rand::rng().random::<f32>() * 360.0;
+            let yaw = game_random().random::<f32>() * 360.0;
             tadpole.get_entity().set_rotation(yaw, 0.0);
             if let Some(mob) = tadpole.get_mob() {
                 mob.get_mob_entity()

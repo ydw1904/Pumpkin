@@ -3,7 +3,6 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use pumpkin_data::entity::EntityStatus;
-use rand::RngExt;
 
 use crate::entity::experience_orb::ExperienceOrbEntity;
 use crate::entity::{EntityBase, ai::pathfinder::NavigatorGoal, mob::Mob, r#type::from_type};

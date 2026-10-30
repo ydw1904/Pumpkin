@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::cell::Cell;
 use std::sync::Arc;
 
@@ -9,7 +10,6 @@ use pumpkin_util::identifier::Identifier;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
-use rand::RngExt;
 
 use crate::command::argument_builder::{ArgumentBuilder, argument, command, literal};
 use crate::command::argument_types::FromStringReader;
@@ -549,7 +549,7 @@ fn evaluate_compound_int(
             if min > max {
                 return Err(ERROR_EVALUATION_FAILED.create_without_context());
             }
-            Ok(rand::rng().random_range(min..=max))
+            Ok(game_random().random_range(min..=max))
         }
         Some("score") => evaluate_score_provider_int(compound, ctx),
         _ => compound.get("value").map_or_else(
@@ -869,7 +869,7 @@ fn evaluate_compound_float(
             if min > max {
                 return Err(ERROR_EVALUATION_FAILED.create_without_context());
             }
-            Ok(rand::rng().random_range(min..=max))
+            Ok(game_random().random_range(min..=max))
         }
         Some("sqrt") => {
             let input = evaluate_tag_float(

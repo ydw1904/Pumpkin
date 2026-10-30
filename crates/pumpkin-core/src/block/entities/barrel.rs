@@ -4,8 +4,7 @@ use pumpkin_data::{Block, FacingExt, item_stack::ItemStack};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
-use pumpkin_util::random::xoroshiro128::Xoroshiro;
-use pumpkin_util::random::{RandomImpl, get_seed};
+use pumpkin_util::random::gameplay::game_random;
 use std::any::Any;
 use std::sync::RwLock;
 use std::{
@@ -158,7 +157,7 @@ impl BarrelBlockEntity {
     }
 
     fn play_sound(&self, world: &Arc<World>, sound: Sound) {
-        let mut rng = Xoroshiro::from_seed(get_seed());
+        let rng = game_random();
 
         let state = world.get_block_state(&self.position);
         let properties = BarrelLikeProperties::from_state_id(state.id);

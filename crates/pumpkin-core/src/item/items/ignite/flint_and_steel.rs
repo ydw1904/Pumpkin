@@ -11,6 +11,7 @@ use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::{Block, BlockStateId};
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::world::BlockFlags;
 use std::sync::Arc;
 
@@ -60,7 +61,7 @@ impl ItemBehaviour for FlintAndSteelItem {
 
         let ignited = Ignition::ignite_block(
             |world: Arc<World>, pos: BlockPos, new_state_id: BlockStateId| {
-                let pitch = rand::RngExt::random::<f32>(&mut rand::rng()).mul_add(0.4, 0.8);
+                let pitch = game_random().random::<f32>().mul_add(0.4, 0.8);
                 world.play_sound_raw_expect(
                     player,
                     pumpkin_data::sound::Sound::ItemFlintandsteelUse as u16,

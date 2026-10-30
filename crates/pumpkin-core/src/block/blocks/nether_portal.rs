@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{Arc, atomic::Ordering};
 
 use pumpkin_data::{
@@ -8,7 +9,6 @@ use pumpkin_data::{
 };
 use pumpkin_macros::pumpkin_block;
 use pumpkin_util::{Difficulty, GameMode, math::vector3::Vector3};
-use rand::RngExt;
 use uuid::Uuid;
 
 use crate::{
@@ -79,7 +79,7 @@ impl BlockBehaviour for NetherPortalBlock {
         }
 
         let difficulty_id = difficulty as u32;
-        let roll = rand::rng().random_range(0..2000);
+        let roll = game_random().random_range(0..2000);
         if roll >= difficulty_id {
             return;
         }

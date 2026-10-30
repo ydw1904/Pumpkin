@@ -13,7 +13,6 @@ use crate::{Block, Enchantment};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::GameMode;
-use rand;
 use std::borrow::Cow;
 use std::cmp::{max, min};
 use std::num::NonZero;
@@ -1517,7 +1516,7 @@ mod tests {
 
     /// Unbreaking III tool: 25% apply probability. 4 000 trials, expect ~1 000 hits (window 865–1135).
     /// ±5σ confidence window ensures regressions are caught; CI-safe and statistically meaningful.
-    /// Note: uses thread-local rand::random().
+    /// Note: uses the gameplay random source.
     /// Could be made fully deterministic by refactoring should_apply_durability_damage_with to accept RNG parameter.
     #[test]
     fn unbreaking_iii_tool_applies_roughly_25_percent_of_hits() {

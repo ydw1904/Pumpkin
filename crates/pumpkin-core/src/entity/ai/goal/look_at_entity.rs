@@ -5,7 +5,6 @@ use crate::entity::mob::Mob;
 use crate::entity::predicate::EntityPredicate;
 use crate::entity::{EntityBase, player::Player};
 use pumpkin_data::entity::EntityType;
-use rand::RngExt;
 use std::sync::{Arc, Weak};
 
 pub struct LookAtEntityGoal {

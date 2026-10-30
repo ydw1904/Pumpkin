@@ -9,9 +9,9 @@ use pumpkin_data::fluid::Fluid;
 use pumpkin_data::tag::Taggable;
 use pumpkin_data::{Block, BlockDirection, BlockId, BlockStateId, tag};
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::tick::TickPriority;
 use pumpkin_world::world::{BlockAccessor, BlockFlags};
-use rand::RngExt;
 
 pub struct KelpBlock;
 
@@ -53,7 +53,7 @@ impl BlockBehaviour for KelpBlock {
                 return Block::KELP_PLANT.default_state.id;
             }
             let mut props = KelpProperties::default(&Block::KELP);
-            props.age = rand::rng().random_range(0..25);
+            props.age = game_random().random_range(0..25);
             props.to_state_id(&Block::KELP)
         } else {
             Block::KELP_PLANT.default_state.id
@@ -64,7 +64,7 @@ impl BlockBehaviour for KelpBlock {
         if args.block == &Block::KELP {
             let state_id = args.world.get_block_state_id(args.position);
             let mut props = KelpProperties::from_state_id(state_id);
-            if props.age < 25 && rand::rng().random::<f64>() < 0.14 {
+            if props.age < 25 && game_random().random::<f64>() < 0.14 {
                 let growth_pos = args.position.up();
                 if args.world.get_block(&growth_pos) == &Block::WATER {
                     props.age += 1;
@@ -122,7 +122,7 @@ impl BlockBehaviour for KelpBlock {
                 let neighbor_block = args.world.get_block(args.neighbor_position);
                 if neighbor_block != &Block::KELP && neighbor_block != &Block::KELP_PLANT {
                     let mut props = KelpProperties::default(&Block::KELP);
-                    props.age = rand::rng().random_range(0..25);
+                    props.age = game_random().random_range(0..25);
                     return props.to_state_id(&Block::KELP);
                 }
             }

@@ -1,4 +1,4 @@
-use rand::{Rng, RngExt, rng};
+use pumpkin_util::random::gameplay::{GameRandom, game_random};
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -58,7 +58,7 @@ pub struct DropperBlock;
 
 type DispenserLikeProperties = pumpkin_data::block_properties::DispenserLikeProperties;
 
-fn triangle<R: Rng>(rng: &mut R, min: f64, max: f64) -> f64 {
+fn triangle(rng: GameRandom, min: f64, max: f64) -> f64 {
     (rng.random::<f64>() - rng.random::<f64>()).mul_add(max, min)
 }
 
@@ -191,12 +191,12 @@ impl BlockBehaviour for DropperBlock {
                 };
 
                 let entity = Entity::new(args.world.clone(), pos, &EntityType::ITEM);
-                let rd = rng().random::<f64>().mul_add(0.1, 0.2);
+                let rd = game_random().random::<f64>().mul_add(0.1, 0.2);
 
                 let velocity = Vector3::new(
-                    triangle(&mut rng(), facing.x * rd, 0.017_227_5 * 6.),
-                    triangle(&mut rng(), 0.2, 0.017_227_5 * 6.),
-                    triangle(&mut rng(), facing.z * rd, 0.017_227_5 * 6.),
+                    triangle(game_random(), facing.x * rd, 0.017_227_5 * 6.),
+                    triangle(game_random(), 0.2, 0.017_227_5 * 6.),
+                    triangle(game_random(), facing.z * rd, 0.017_227_5 * 6.),
                 );
 
                 let item_entity = Arc::new(ItemEntity::new_with_velocity(

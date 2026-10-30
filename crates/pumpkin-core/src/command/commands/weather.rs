@@ -1,6 +1,7 @@
 use pumpkin_data::translation;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_util::text::TextComponent;
 
 use crate::command::argument_builder::{ArgumentBuilder, argument, command, literal};
@@ -42,7 +43,7 @@ impl CommandExecutor for WeatherExecutor {
             match self.mode {
                 WeatherMode::Clear => {
                     let processed_duration =
-                        duration.unwrap_or_else(|| rand::random_range(12_000..=180_000));
+                        duration.unwrap_or_else(|| game_random().random_range(12_000..=180_000));
 
                     weather.set_weather_parameters(world, processed_duration, 0, false, false);
                     (
@@ -56,7 +57,7 @@ impl CommandExecutor for WeatherExecutor {
                 }
                 WeatherMode::Rain => {
                     let processed_duration =
-                        duration.unwrap_or_else(|| rand::random_range(12_000..=24_000));
+                        duration.unwrap_or_else(|| game_random().random_range(12_000..=24_000));
 
                     weather.set_weather_parameters(world, 0, processed_duration, true, false);
                     (
@@ -70,7 +71,7 @@ impl CommandExecutor for WeatherExecutor {
                 }
                 WeatherMode::Thunder => {
                     let processed_duration =
-                        duration.unwrap_or_else(|| rand::random_range(3600..=15_600));
+                        duration.unwrap_or_else(|| game_random().random_range(3600..=15_600));
 
                     weather.set_weather_parameters(world, 0, processed_duration, true, true);
                     (

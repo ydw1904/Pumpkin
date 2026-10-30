@@ -7,9 +7,9 @@ use crate::world::World;
 use pumpkin_data::block_properties::WeepingVinesProperties;
 use pumpkin_data::{Block, BlockDirection, BlockId, BlockStateId};
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::tick::TickPriority;
 use pumpkin_world::world::{BlockAccessor, BlockFlags};
-use rand::RngExt;
 
 pub struct WeepingVinesBlock;
 
@@ -41,7 +41,7 @@ impl WeepingVinesBlock {
     fn get_blocks_to_grow_when_bonemealed() -> usize {
         let mut grow_probability = 1.0;
         let mut count = 0;
-        while rand::rng().random::<f64>() < grow_probability {
+        while game_random().random::<f64>() < grow_probability {
             count += 1;
             grow_probability *= 0.826;
         }
@@ -61,7 +61,7 @@ impl BlockBehaviour for WeepingVinesBlock {
                 return Block::WEEPING_VINES_PLANT.default_state.id;
             }
             let mut props = WeepingVinesProperties::default(&Block::WEEPING_VINES);
-            props.age = rand::rng().random_range(0..25);
+            props.age = game_random().random_range(0..25);
             props.to_state_id(&Block::WEEPING_VINES)
         } else {
             Block::WEEPING_VINES_PLANT.default_state.id
@@ -72,7 +72,7 @@ impl BlockBehaviour for WeepingVinesBlock {
         if args.block == &Block::WEEPING_VINES {
             let state_id = args.world.get_block_state_id(args.position);
             let mut props = WeepingVinesProperties::from_state_id(state_id);
-            if props.age < 25 && rand::rng().random::<f64>() < 0.1 {
+            if props.age < 25 && game_random().random::<f64>() < 0.1 {
                 let growth_pos = args.position.down();
                 if args.world.get_block_state(&growth_pos).is_air() {
                     props.age += 1;
@@ -136,7 +136,7 @@ impl BlockBehaviour for WeepingVinesBlock {
                     && neighbor_block != &Block::WEEPING_VINES_PLANT
                 {
                     let mut props = WeepingVinesProperties::default(&Block::WEEPING_VINES);
-                    props.age = rand::rng().random_range(0..25);
+                    props.age = game_random().random_range(0..25);
                     return props.to_state_id(&Block::WEEPING_VINES);
                 }
             }

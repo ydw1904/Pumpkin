@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicU8, Ordering},
@@ -11,7 +12,6 @@ use pumpkin_data::wolf_sound_variant::WolfSoundVariant;
 use pumpkin_data::wolf_variant::WolfVariant;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::var_int::VarInt;
-use rand::RngExt;
 
 use crate::entity::custom_sound::CustomSound;
 use crate::entity::{
@@ -374,7 +374,7 @@ impl Mob for WolfEntity {
             }
         } else if item == &Item::BONE && !self.mob_entity.is_attacking() {
             item_stack.decrement_unless_creative(player.gamemode.load(), 1);
-            let mut rng = rand::rng();
+            let rng = game_random();
             if rng.random_range(0..3) == 0 {
                 TamableAnimal::tame(self, player.gameprofile.id);
                 self.set_ordered_to_sit(true);

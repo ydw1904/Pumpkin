@@ -3,6 +3,7 @@ use pumpkin_data::entity::EntityType;
 use pumpkin_data::{Block, BlockStateId};
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::{chunk::ChunkHeightmapType, world::BlockFlags};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
@@ -392,7 +393,7 @@ impl EnderDragonEntity {
     }
 
     fn random_node_idx() -> usize {
-        rand::random_range(0..NODE_COUNT)
+        game_random().random_range(0..NODE_COUNT)
     }
 
     #[inline]
@@ -555,7 +556,7 @@ impl EnderDragonEntity {
         if *t > 0 {
             *t -= 1;
         } else {
-            *t = GROWL_COOLDOWN_BASE + rand::random_range(0..100);
+            *t = GROWL_COOLDOWN_BASE + game_random().random_range(0..100);
         }
     }
 

@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicI32, Ordering};
 
 use crossbeam::atomic::AtomicCell;
@@ -7,7 +8,6 @@ use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::bedrock::server::actor_event::ActorEventID;
 use pumpkin_util::math::vector3::Vector3;
-use rand::RngExt;
 
 use crate::entity::Entity;
 
@@ -90,7 +90,7 @@ impl TntMinecart {
             self.explosion_power.load(),
             self.explosion_speed_factor.load(),
             horizontal_speed_squared,
-            rand::rng().random_range(0.0..1.0),
+            game_random().random_range(0.0..1.0),
         );
         let pos = entity.pos.load();
         let primed = self.fuse.load(Ordering::Relaxed) > -1;

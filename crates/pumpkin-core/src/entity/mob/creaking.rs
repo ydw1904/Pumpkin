@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicBool, AtomicI32, Ordering},
@@ -227,8 +228,9 @@ impl CreakingEntity {
             let glowing = self.eyes_glowing.load(Ordering::Relaxed);
             let min_ticks = if glowing { 2 } else { (death_time / 4).max(1) };
             let max_ticks = if glowing { 8 } else { (death_time / 2).max(2) };
-            let added_ticks =
-                (rand::random::<u32>() as i32 % (max_ticks - min_ticks + 1)).abs() + min_ticks;
+            let added_ticks = (game_random().random::<u32>() as i32 % (max_ticks - min_ticks + 1))
+                .abs()
+                + min_ticks;
             self.next_flicker_time
                 .store(death_time + added_ticks, Ordering::Relaxed);
             self.eyes_glowing.store(!glowing, Ordering::Relaxed);

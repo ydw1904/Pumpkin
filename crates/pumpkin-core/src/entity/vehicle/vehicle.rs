@@ -1,4 +1,5 @@
 use crossbeam::atomic::AtomicCell;
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicI32, Ordering};
 
 use crate::entity::Entity;
@@ -176,7 +177,7 @@ impl VehicleEntity {
             let key = format!("minecraft:entities/{resource_name}");
             if let Some(loot_table) = pumpkin_data::loot_table::get_loot_table(&key) {
                 let pos = self.entity.block_pos.load();
-                let seed: i64 = rand::random();
+                let seed: i64 = game_random().random();
                 for stack in crate::world::loot::generate_loot_with_context(
                     loot_table,
                     seed,

@@ -3,8 +3,8 @@ use pumpkin_data::block_state::BlockStateId;
 use pumpkin_data::tag::Taggable;
 use pumpkin_data::{Block, tag};
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::world::BlockFlags;
-use rand::random;
 
 #[pumpkin_block("minecraft:netherrack")]
 pub struct NetherrackBlock;
@@ -59,7 +59,7 @@ impl BlockBehaviour for NetherrackBlock {
 
         let end_block: BlockStateId = match (warped, crimson) {
             (true, true) => {
-                if random::<bool>() {
+                if game_random().random::<bool>() {
                     Block::WARPED_NYLIUM.default_state.id
                 } else {
                     Block::CRIMSON_NYLIUM.default_state.id

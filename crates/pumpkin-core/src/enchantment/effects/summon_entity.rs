@@ -1,9 +1,9 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use pumpkin_data::entity::EntityType;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
-use rand::seq::IndexedRandom;
 use uuid::Uuid;
 
 use crate::entity::lightning::LightningBoltEntity;
@@ -29,8 +29,7 @@ impl SummonEntityEffect {
 
     #[must_use]
     pub fn select_random_entity_type(&self) -> Option<&'static EntityType> {
-        let mut rng = rand::rng();
-        self.entity_types.choose(&mut rng).copied()
+        game_random().choose(&self.entity_types).copied()
     }
 
     /// Applies the summon entity effect at the given position in the world.

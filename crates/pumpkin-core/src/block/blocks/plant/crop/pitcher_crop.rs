@@ -3,8 +3,8 @@ use pumpkin_data::entity::EntityType;
 use pumpkin_data::{Block, BlockDirection, BlockStateId, tag, tag::Taggable};
 use pumpkin_macros::pumpkin_block;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::world::{BlockAccessor, BlockFlags};
-use rand::RngExt;
 
 use crate::block::blocks::plant::crop::{get_available_moisture, has_sufficient_light};
 use crate::block::{
@@ -185,7 +185,7 @@ impl BlockBehaviour for PitcherCropBlock {
         let props = PitcherCropLikeProperties::from_state_id(state_id);
         if props.half == DoubleBlockHalf::Lower && props.age < MAX_AGE {
             let f = get_available_moisture(args.world, args.position, args.block);
-            if rand::rng().random_range(0..=(25.0 / f).floor() as i32) == 0 {
+            if game_random().random_range(0..=(25.0 / f).floor() as i32) == 0 {
                 Self::grow(args.world, args.position, props, 1);
             }
         }

@@ -1,5 +1,3 @@
-use rand::RngExt;
-
 use super::super::BrainTick;
 use super::super::memory::MemoryModuleId;
 use super::{BehaviorControl, Status};

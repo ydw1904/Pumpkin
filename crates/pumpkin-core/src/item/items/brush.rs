@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::any::Any;
 use std::sync::Arc;
 
@@ -43,7 +44,11 @@ fn get_archaeology_loot(is_sand: bool, location: BlockPos, world: &World) -> Ite
             && let Some(loot_key) = table_guard.take()
         {
             let seed = brushable.loot_table_seed.lock().map_or(0, |g| *g);
-            let actual_seed = if seed == 0 { rand::random() } else { seed };
+            let actual_seed = if seed == 0 {
+                game_random().random()
+            } else {
+                seed
+            };
             let stripped = loot_key.strip_prefix("minecraft:").unwrap_or(&loot_key);
             if let Some(table) = world
                 .get_loot_table(&loot_key)
@@ -71,7 +76,7 @@ fn get_archaeology_loot(is_sand: bool, location: BlockPos, world: &World) -> Ite
 
     if let Some(table) = world.get_loot_table(loot_key) {
         let items = table.generate_loot_with_context(
-            rand::random(),
+            game_random().random(),
             &crate::world::loot::LootContextParameters {
                 world: Some(world),
                 ..Default::default()

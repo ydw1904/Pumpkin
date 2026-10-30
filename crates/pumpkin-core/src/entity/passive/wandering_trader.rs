@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::{GameRandom, game_random};
 use std::borrow::Cow;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::{Arc, Weak};
@@ -27,8 +28,6 @@ use pumpkin_protocol::java::client::play::CMerchantOffers;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::text::TextComponent;
-use rand::RngExt;
-use rand::seq::IndexedRandom;
 
 use super::villager::{
     apply_potion, apply_random_dye, apply_random_stew_effect, trigger_trade_advancement,
@@ -62,7 +61,7 @@ fn add_offers_from_dynamic_trades(
     offers: &mut Vec<pumpkin_protocol::java::client::play::MerchantOffer>,
     trade_pool: &[DynamicVillagerTrade],
     amount: usize,
-    rng: &mut impl rand::Rng,
+    rng: GameRandom,
 ) {
     let mut remaining = trade_pool.iter().collect::<Vec<_>>();
     let mut added = 0;
@@ -81,7 +80,7 @@ fn add_offers_from_dynamic_trades(
             DynamicTradeModifier::RandomDyes => apply_random_dye(rng, &mut output),
             DynamicTradeModifier::RandomPotion => {
                 if let Some(potion_name) =
-                    pumpkin_data::tag::Potion::MINECRAFT_TRADEABLE.0.choose(rng)
+                    rng.choose(pumpkin_data::tag::Potion::MINECRAFT_TRADEABLE.0)
                 {
                     apply_potion(&mut output, potion_name);
                 }
@@ -113,7 +112,7 @@ fn add_offers_from_trade_set(
     offers: &mut Vec<pumpkin_protocol::java::client::play::MerchantOffer>,
     trade_pool: &'static [VillagerTrade],
     amount: usize,
-    rng: &mut impl rand::Rng,
+    rng: GameRandom,
 ) {
     let dynamic_trades: Vec<DynamicVillagerTrade> =
         trade_pool.iter().map(DynamicVillagerTrade::from).collect();
@@ -300,7 +299,7 @@ impl WanderingTraderEntity {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         offers.clear();
-        let mut rng = rand::rng();
+        let rng = game_random();
 
         let datapack_manager = self
             .get_entity()
@@ -318,10 +317,10 @@ impl WanderingTraderEntity {
                 &mut offers,
                 &buying.trades,
                 buying.amount as usize,
-                &mut rng,
+                rng,
             );
         } else {
-            add_offers_from_trade_set(&mut offers, TRADES_WANDERING_TRADER_BUYING, 2, &mut rng);
+            add_offers_from_trade_set(&mut offers, TRADES_WANDERING_TRADER_BUYING, 2, rng);
         }
 
         if let Some(uncommon) = datapack_manager
@@ -332,10 +331,10 @@ impl WanderingTraderEntity {
                 &mut offers,
                 &uncommon.trades,
                 uncommon.amount as usize,
-                &mut rng,
+                rng,
             );
         } else {
-            add_offers_from_trade_set(&mut offers, TRADES_WANDERING_TRADER_UNCOMMON, 2, &mut rng);
+            add_offers_from_trade_set(&mut offers, TRADES_WANDERING_TRADER_UNCOMMON, 2, rng);
         }
 
         if let Some(common) = datapack_manager
@@ -346,10 +345,10 @@ impl WanderingTraderEntity {
                 &mut offers,
                 &common.trades,
                 common.amount as usize,
-                &mut rng,
+                rng,
             );
         } else {
-            add_offers_from_trade_set(&mut offers, TRADES_WANDERING_TRADER_COMMON, 5, &mut rng);
+            add_offers_from_trade_set(&mut offers, TRADES_WANDERING_TRADER_COMMON, 5, rng);
         }
     }
 
@@ -521,7 +520,7 @@ impl WanderingTraderEntity {
                 return;
             };
             offer.uses += 1;
-            let reward_xp = rand::rng().random_range(3..=6);
+            let reward_xp = game_random().random_range(3..=6);
             (offer.reward_exp, reward_xp)
         };
 
@@ -870,7 +869,7 @@ impl Mob for WanderingTraderEntity {
 
         // Ambient sound handling
         if self.ambient_sound_timer.fetch_sub(1, Ordering::Relaxed) <= 0 {
-            let mut rng = rand::rng();
+            let rng = game_random();
             self.ambient_sound_timer
                 .store(rng.random_range(80..=160), Ordering::Relaxed);
             let sound = if self.is_trading.load(Ordering::Relaxed) {
@@ -1296,10 +1295,10 @@ mod tests {
     #[tokio::test]
     async fn generate_trades_creates_expected_trade_count() {
         let mut offers = Vec::new();
-        let mut rng = rand::rng();
-        add_offers_from_trade_set(&mut offers, TRADES_WANDERING_TRADER_BUYING, 2, &mut rng);
-        add_offers_from_trade_set(&mut offers, TRADES_WANDERING_TRADER_UNCOMMON, 2, &mut rng);
-        add_offers_from_trade_set(&mut offers, TRADES_WANDERING_TRADER_COMMON, 5, &mut rng);
+        let rng = game_random();
+        add_offers_from_trade_set(&mut offers, TRADES_WANDERING_TRADER_BUYING, 2, rng);
+        add_offers_from_trade_set(&mut offers, TRADES_WANDERING_TRADER_UNCOMMON, 2, rng);
+        add_offers_from_trade_set(&mut offers, TRADES_WANDERING_TRADER_COMMON, 5, rng);
 
         assert_eq!(offers.len(), 9);
     }

@@ -5,7 +5,6 @@ use crate::entity::{ai::goal::ParentHandle, mob::Mob};
 use crate::world::World;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
-use rand::RngExt;
 use std::sync::Arc;
 
 const GIVE_UP_TICKS: i32 = 1200;

@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicI32, AtomicU8, Ordering},
@@ -11,7 +12,6 @@ use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::var_int::VarInt;
-use rand::RngExt;
 use uuid::Uuid;
 
 use crate::entity::{
@@ -52,7 +52,7 @@ pub struct HorseEntity {
 impl HorseEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
         let mob_entity = MobEntity::new(entity);
-        let mut rng = rand::rng();
+        let rng = game_random();
         let color = rng.random_range(0..7);
         let style = rng.random_range(0..5);
         let variant = color | (style << 8);

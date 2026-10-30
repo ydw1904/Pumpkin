@@ -16,7 +16,6 @@ use pumpkin_data::{
     sound::Sound,
 };
 use pumpkin_nbt::compound::NbtCompound;
-use rand::RngExt;
 
 use super::{
     abstract_fish::{AbstractFish, FishData},
@@ -168,7 +167,7 @@ impl Mob for TropicalFishEntity {
         let variant = if let Some(SpawnGroupData::TropicalFish { variant, .. }) = group_data {
             variant
         } else {
-            let mut rng = self.get_random();
+            let rng = self.get_random();
             if f64::from(rng.random::<f32>()) < COMMON_VARIANT_CHANCE {
                 let (pattern, base_color, pattern_color) = TROPICAL_FISH_COMMON_VARIANTS
                     [rng.random_range(0..TROPICAL_FISH_COMMON_VARIANTS.len())];

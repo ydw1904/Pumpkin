@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
@@ -16,7 +17,6 @@ use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tag::Taggable;
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::vector3::Vector3;
-use rand::RngExt;
 
 pub struct FishingBobberEntity {
     pub entity: Entity,
@@ -42,7 +42,7 @@ impl FishingBobberEntity {
         owner_pos.y += owner.living_entity.entity.get_eye_height() - 0.1;
         entity.pos.store(owner_pos);
 
-        let wait_ticks = (rand::rng().random_range(100..=600) - time_reduction).max(0);
+        let wait_ticks = (game_random().random_range(100..=600) - time_reduction).max(0);
 
         Self {
             entity,
@@ -133,7 +133,7 @@ impl FishingBobberEntity {
                 world.spawn_entity(Arc::new(item_entity));
             }
 
-            let xp_amount = rand::rng().random_range(1..=6);
+            let xp_amount = game_random().random_range(1..=6);
             ExperienceOrbEntity::spawn(&world, player_pos.add_raw(0.0, 0.5, 0.5), xp_amount);
             dmg = 1;
         }
@@ -195,8 +195,10 @@ impl FishingBobberEntity {
                 } else {
                     // Start bite
                     self.bite_countdown.store(40, Ordering::Relaxed);
-                    self.wait_countdown
-                        .store(rand::random::<i32>().abs() % 600 + 100, Ordering::Relaxed);
+                    self.wait_countdown.store(
+                        game_random().random::<i32>().abs() % 600 + 100,
+                        Ordering::Relaxed,
+                    );
 
                     world.play_sound(
                         Sound::EntityFishingBobberSplash,

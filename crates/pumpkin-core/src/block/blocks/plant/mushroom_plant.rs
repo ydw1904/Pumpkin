@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::{GameRandom, game_random};
 use std::sync::Arc;
 
 use pumpkin_data::block_properties::BrownMushroomBlockLikeProperties;
@@ -5,7 +6,6 @@ use pumpkin_data::tag::Taggable;
 use pumpkin_data::{Block, BlockId, BlockState, BlockStateId, tag};
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::world::{BlockAccessor, BlockFlags};
-use rand::RngExt;
 
 use crate::block::{
     BlockBehaviour, BlockMetadata, BonemealArgs, CanPlaceAtArgs, GetStateForNeighborUpdateArgs,
@@ -22,7 +22,7 @@ impl BlockMetadata for MushroomPlantBlock {
     }
 }
 
-fn mushroom_tree_height(rng: &mut impl rand::Rng) -> i32 {
+fn mushroom_tree_height(rng: GameRandom) -> i32 {
     let mut height = rng.random_range(0..3) + 4;
     if rng.random_range(0..12) == 0 {
         height *= 2;
@@ -69,7 +69,7 @@ impl MushroomPlantBlock {
             return false;
         }
 
-        let tree_height = mushroom_tree_height(&mut rand::rng());
+        let tree_height = mushroom_tree_height(game_random());
 
         let min_y = world.get_bottom_y();
         let max_y = world.get_top_y();
@@ -237,7 +237,7 @@ impl BlockBehaviour for MushroomPlantBlock {
     }
 
     fn random_tick(&self, args: RandomTickArgs<'_>) {
-        if rand::rng().random_range(0..25) != 0 {
+        if game_random().random_range(0..25) != 0 {
             return;
         }
         let pos = *args.position;
@@ -262,9 +262,9 @@ impl BlockBehaviour for MushroomPlantBlock {
 
         let mut current_pos = pos;
         let mut offset = current_pos.add(
-            rand::rng().random_range(0..3) - 1,
-            rand::rng().random_range(0..2) - rand::rng().random_range(0..2),
-            rand::rng().random_range(0..3) - 1,
+            game_random().random_range(0..3) - 1,
+            game_random().random_range(0..2) - game_random().random_range(0..2),
+            game_random().random_range(0..3) - 1,
         );
 
         for _ in 0..4 {
@@ -275,9 +275,9 @@ impl BlockBehaviour for MushroomPlantBlock {
                 current_pos = offset;
             }
             offset = current_pos.add(
-                rand::rng().random_range(0..3) - 1,
-                rand::rng().random_range(0..2) - rand::rng().random_range(0..2),
-                rand::rng().random_range(0..3) - 1,
+                game_random().random_range(0..3) - 1,
+                game_random().random_range(0..2) - game_random().random_range(0..2),
+                game_random().random_range(0..3) - 1,
             );
         }
 
@@ -301,7 +301,7 @@ impl BlockBehaviour for MushroomPlantBlock {
     }
 
     fn is_bonemeal_success(&self, _args: BonemealArgs<'_>) -> bool {
-        rand::rng().random::<f32>() < 0.4
+        game_random().random::<f32>() < 0.4
     }
 
     fn perform_bonemeal(&self, args: BonemealArgs<'_>) {

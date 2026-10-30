@@ -9,8 +9,8 @@ use pumpkin_data::block_properties::{
 use pumpkin_data::{Block, BlockDirection, BlockStateId, HorizontalFacingExt, Mirror, Rotation};
 use pumpkin_macros::{pumpkin_block, pumpkin_block_from_tag};
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::world::{BlockAccessor, BlockFlags};
-use rand::RngExt;
 
 #[pumpkin_block_from_tag("minecraft:wool_carpets")]
 pub struct CarpetBlock;
@@ -258,7 +258,7 @@ impl BlockBehaviour for PaleMossCarpetBlock {
     }
 
     fn player_placed(&self, args: PlayerPlacedArgs<'_>) {
-        let mut rng = rand::rng();
+        let rng = game_random();
         let topper =
             Self::create_topper_with_side_chance(args.world.as_ref(), args.position, || {
                 rng.random::<bool>()

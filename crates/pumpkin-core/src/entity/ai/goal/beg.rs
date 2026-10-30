@@ -4,7 +4,6 @@ use crate::entity::mob::Mob;
 use crate::entity::player::Player;
 use pumpkin_data::item::Item;
 use pumpkin_data::tag::{self, Taggable};
-use rand::RngExt;
 use std::sync::Arc;
 
 pub struct BegGoal {

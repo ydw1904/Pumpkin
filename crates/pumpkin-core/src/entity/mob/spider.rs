@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 
@@ -5,7 +6,6 @@ use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::potion::Effect;
 use pumpkin_util::difficulty::Difficulty;
-use rand::RngExt;
 use uuid::Uuid;
 
 use crate::entity::{
@@ -99,7 +99,7 @@ pub fn finalize_spider_spawn(
     group_data: Option<SpawnGroupData>,
 ) -> Option<SpawnGroupData> {
     mob.finalize_spawn_base();
-    let mut rng = rand::rng();
+    let rng = game_random();
     let entity = &mob.living_entity.entity;
     let pos = entity.pos.load();
 

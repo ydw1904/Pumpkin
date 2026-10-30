@@ -1,4 +1,4 @@
-use rand::Rng;
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicI32, Ordering},
@@ -6,10 +6,7 @@ use std::sync::{
 
 use pumpkin_data::block_properties::{JigsawLikeProperties, Orientation};
 use pumpkin_nbt::compound::NbtCompound;
-use pumpkin_util::{
-    math::position::BlockPos,
-    random::{RandomGenerator, xoroshiro128::Xoroshiro},
-};
+use pumpkin_util::{math::position::BlockPos, random::RandomGenerator};
 use pumpkin_world::generation::structure::structures::{
     StructureGeneratorContext, StructurePosition,
     jigsaw::{JigsawJointType, PoolElementStructurePiece},
@@ -97,7 +94,7 @@ impl JigsawBlockEntity {
                 seed: world.level_info.load().world_gen_settings.seed,
                 chunk_x: position.chunk_position().x,
                 chunk_z: position.chunk_position().y,
-                random: RandomGenerator::Xoroshiro(Xoroshiro::from_seed(rand::rng().next_u64())),
+                random: RandomGenerator::Gameplay(game_random()),
                 sea_level: 63,
                 min_y: world.dimension.min_y,
                 height: world.dimension.height as u16,

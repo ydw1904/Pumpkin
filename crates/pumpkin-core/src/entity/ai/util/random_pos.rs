@@ -1,14 +1,15 @@
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
-use rand::RngExt;
+use pumpkin_util::random::gameplay::GameRandom;
 
 use crate::entity::mob::Mob;
 
 pub const RANDOM_POS_ATTEMPTS: usize = 10;
 const SQRT_OF_TWO: f64 = std::f64::consts::SQRT_2;
 
+#[must_use]
 pub fn generate_random_direction(
-    rng: &mut impl RngExt,
+    rng: GameRandom,
     horizontal_dist: i32,
     vertical_dist: i32,
 ) -> Vector3<i32> {
@@ -20,8 +21,9 @@ pub fn generate_random_direction(
 }
 
 #[allow(clippy::too_many_arguments, reason = "mirrors the upstream signature")]
+#[must_use]
 pub fn generate_random_direction_within_radians(
-    rng: &mut impl RngExt,
+    rng: GameRandom,
     min_horizontal_dist: f64,
     max_horizontal_dist: f64,
     vertical_dist: i32,
@@ -127,7 +129,7 @@ pub fn generate_random_pos(
 pub fn generate_random_pos_toward_direction(
     mob: &dyn Mob,
     xz_dist: f64,
-    rng: &mut impl RngExt,
+    rng: GameRandom,
     direction: Vector3<i32>,
 ) -> BlockPos {
     let mob_entity = mob.get_mob_entity();

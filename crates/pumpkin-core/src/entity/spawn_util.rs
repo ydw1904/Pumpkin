@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use pumpkin_data::{BlockState, entity::EntityType};
@@ -6,7 +7,6 @@ use pumpkin_util::math::{
     position::BlockPos,
     vector3::Vector3,
 };
-use rand::RngExt;
 use uuid::Uuid;
 
 use crate::entity::{Entity, EntityBase, mob::Mob};
@@ -52,7 +52,7 @@ pub fn try_spawn_mob<T: Mob + 'static>(
 ) -> Option<Arc<T>> {
     for _ in 0..spawn_attempts {
         let (dx, dz) = {
-            let mut random = rand::rng();
+            let random = game_random();
             (
                 random.random_range(-spawn_range_xz..=spawn_range_xz),
                 random.random_range(-spawn_range_xz..=spawn_range_xz),

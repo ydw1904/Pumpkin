@@ -12,6 +12,7 @@ use pumpkin_data::{Block, tag};
 use pumpkin_util::GameMode;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::world::BlockFlags;
 
 pub struct HoeItem;
@@ -62,7 +63,7 @@ impl ItemBehaviour for HoeItem {
             if let Some(loot_key) = result.entry.loot
                 && let Some(loot_table) = world.get_loot_table(loot_key)
             {
-                let seed = rand::random::<i64>();
+                let seed = game_random().random::<i64>();
                 let drops = loot_table.generate_loot_with_context(
                     seed,
                     &crate::world::loot::LootContextParameters {

@@ -24,6 +24,7 @@ use key_store::KeyStore;
 use pumpkin_config::{AdvancedConfiguration, BasicConfiguration, TelemetryConfig};
 use pumpkin_data::dimension::Dimension;
 use pumpkin_util::permission::PermissionManager;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_util::text::color::NamedColor;
 use pumpkin_world::dimension::into_level;
 use pumpkin_world::generation::generator::GeneratorInit;
@@ -39,7 +40,6 @@ use pumpkin_world::world_info::anvil::{
     AnvilLevelInfo, LEVEL_DAT_BACKUP_FILE_NAME, LEVEL_DAT_FILE_NAME,
 };
 use pumpkin_world::world_info::{LevelData, WorldInfoError, WorldInfoReader, WorldInfoWriter};
-use rand::seq::IndexedRandom;
 use rayon::prelude::*;
 use rsa::RsaPublicKey;
 use std::fs;
@@ -350,7 +350,7 @@ impl Server {
             simulation_pool,
             compute_pool,
             scheduled_functions: Arc::new(crate::server::scheduler::ScheduledFunctionQueue::new()),
-            server_guid: rand::random(),
+            server_guid: game_random().random(),
             player_idle_timeout: AtomicI32::new(0),
             mojang_public_keys: ArcSwap::from_pointee(Vec::new()),
             world_info_writer: Arc::new(AnvilLevelInfo),
@@ -1060,7 +1060,7 @@ impl Server {
     /// Returns a random player from any of the worlds, or `None` if all worlds are empty.
     pub fn get_random_player(&self) -> Option<Arc<Player>> {
         let players = self.get_all_players();
-        players.choose(&mut rand::rng()).map(Arc::<_>::clone)
+        game_random().choose(&players).map(Arc::<_>::clone)
     }
 
     /// Searches for a player by their UUID across all worlds.

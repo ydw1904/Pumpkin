@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use rustc_hash::FxHashSet;
 use std::sync::{
     Arc, Mutex,
@@ -12,7 +13,6 @@ use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_world::world::BlockFlags;
-use rand::RngExt;
 
 use crate::block::blocks::fire::FireBlockBase;
 use crate::entity::player::Player;
@@ -34,8 +34,8 @@ pub struct LightningBoltEntity {
 impl LightningBoltEntity {
     pub fn new(entity: Entity) -> Self {
         entity.no_physics.store(true, Ordering::Relaxed);
-        let seed = rand::rng().random::<i64>();
-        let flashes = rand::rng().random_range(1..=3);
+        let seed = game_random().random::<i64>();
+        let flashes = game_random().random_range(1..=3);
         Self {
             entity,
             life: AtomicI32::new(2),
@@ -112,9 +112,9 @@ impl LightningBoltEntity {
         try_place(pos);
 
         for _ in 0..additional_sources {
-            let dx = rand::rng().random_range(-1..=1);
-            let dy = rand::rng().random_range(-1..=1);
-            let dz = rand::rng().random_range(-1..=1);
+            let dx = game_random().random_range(-1..=1);
+            let dy = game_random().random_range(-1..=1);
+            let dz = game_random().random_range(-1..=1);
             let nearby_pos = pos.offset(Vector3::new(dx, dy, dz));
             try_place(nearby_pos);
         }
@@ -141,10 +141,10 @@ impl LightningBoltEntity {
                 world.set_block_state(&strike_pos, new_state_id, BlockFlags::NOTIFY_ALL);
             }
 
-            let strikes_count = rand::rng().random_range(3..=5);
+            let strikes_count = game_random().random_range(3..=5);
 
             for _ in 0..strikes_count {
-                let step_count = rand::rng().random_range(1..=8);
+                let step_count = game_random().random_range(1..=8);
                 Self::random_walk_cleaning_copper(world, &strike_pos, step_count);
             }
         }
@@ -200,7 +200,7 @@ impl EntityBase for LightningBoltEntity {
             let world = entity.world.load();
             let pos = entity.pos.load();
 
-            let pitch_thunder = 0.8 + rand::rng().random::<f32>() * 0.2;
+            let pitch_thunder = 0.8 + game_random().random::<f32>() * 0.2;
             world.play_sound_fine(
                 Sound::EntityLightningBoltThunder,
                 SoundCategory::Weather,
@@ -208,7 +208,7 @@ impl EntityBase for LightningBoltEntity {
                 10000.0,
                 pitch_thunder,
             );
-            let pitch_impact = 0.5 + rand::rng().random::<f32>() * 0.2;
+            let pitch_impact = 0.5 + game_random().random::<f32>() * 0.2;
             world.play_sound_fine(
                 Sound::EntityLightningBoltImpact,
                 SoundCategory::Weather,
@@ -234,10 +234,11 @@ impl EntityBase for LightningBoltEntity {
             if flashes == 0 {
                 entity.remove();
                 return;
-            } else if new_life < -rand::rng().random_range(0..10) {
+            } else if new_life < -game_random().random_range(0..10) {
                 self.flashes.store(flashes - 1, Ordering::Relaxed);
                 self.life.store(1, Ordering::Relaxed);
-                self.seed.store(rand::random::<i64>(), Ordering::Relaxed);
+                self.seed
+                    .store(game_random().random::<i64>(), Ordering::Relaxed);
                 let world = entity.world.load();
                 self.spawn_fire(&world, 0);
             }
@@ -285,9 +286,9 @@ impl EntityBase for LightningBoltEntity {
 fn random_in_cube(count: usize, center: &BlockPos, radius: i32) -> Vec<BlockPos> {
     let mut list = Vec::with_capacity(count);
     for _ in 0..count {
-        let dx = rand::rng().random_range(-radius..=radius);
-        let dy = rand::rng().random_range(-radius..=radius);
-        let dz = rand::rng().random_range(-radius..=radius);
+        let dx = game_random().random_range(-radius..=radius);
+        let dy = game_random().random_range(-radius..=radius);
+        let dz = game_random().random_range(-radius..=radius);
         list.push(center.offset(Vector3::new(dx, dy, dz)));
     }
     list

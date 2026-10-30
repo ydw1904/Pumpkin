@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use pumpkin_data::{
@@ -13,7 +14,6 @@ use pumpkin_util::{
     math::{position::BlockPos, vector3::Vector3},
 };
 use pumpkin_world::{tick::TickPriority, world::BlockFlags};
-use rand::RngExt;
 
 use crate::{
     block::{
@@ -133,7 +133,7 @@ pub fn try_changing_state(world: &Arc<World>, current_block: &Block, pos: &Block
         Particle::Trail,
     );
 
-    let mut rng = rand::rng();
+    let rng = game_random();
     for dx in -EYEBLOSSOM_XZ_RANGE..=EYEBLOSSOM_XZ_RANGE {
         for dy in -EYEBLOSSOM_Y_RANGE..=EYEBLOSSOM_Y_RANGE {
             for dz in -EYEBLOSSOM_XZ_RANGE..=EYEBLOSSOM_XZ_RANGE {

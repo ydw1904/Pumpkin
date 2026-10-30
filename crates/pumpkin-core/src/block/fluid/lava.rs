@@ -13,6 +13,7 @@ use pumpkin_data::{
 };
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::{tick::TickPriority, world::BlockFlags};
 use std::sync::Arc;
 type FlowingFluidProperties = pumpkin_data::fluid::FlowingWaterLikeFluidProperties;
@@ -193,15 +194,15 @@ impl FluidBehaviour for FlowingLava {
             return;
         }
 
-        let passes = rand::random_range(0..3);
+        let passes = game_random().random_range(0..3);
         if passes > 0 {
             let mut test_pos = *block_pos;
 
             for _ in 0..passes {
                 test_pos = test_pos.offset(Vector3::new(
-                    rand::random_range(-1..=1),
+                    game_random().random_range(-1..=1),
                     1,
-                    rand::random_range(-1..=1),
+                    game_random().random_range(-1..=1),
                 ));
 
                 let (block, _) = world.get_block_and_state_id(&test_pos);
@@ -222,9 +223,9 @@ impl FluidBehaviour for FlowingLava {
         } else {
             for _ in 0..3 {
                 let test_pos = block_pos.offset(Vector3::new(
-                    rand::random_range(-1..=1),
+                    game_random().random_range(-1..=1),
                     0,
-                    rand::random_range(-1..=1),
+                    game_random().random_range(-1..=1),
                 ));
 
                 if !world.is_loaded(&test_pos) {

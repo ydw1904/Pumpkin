@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
@@ -27,7 +28,6 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_world::tick::TickPriority;
 use pumpkin_world::world::{BlockAccessor, BlockFlags};
-use rand::RngExt;
 
 #[pumpkin_block("minecraft:big_dripleaf")]
 pub struct BigDripleafBlock;
@@ -64,7 +64,7 @@ impl BigDripleafBlock {
         stem_bottom_pos: &BlockPos,
         facing: HorizontalFacing,
     ) {
-        let desired_height = rand::rng().random_range(2..=5);
+        let desired_height = game_random().random_range(2..=5);
         let mut pos = *stem_bottom_pos;
         let mut height = 0;
 
@@ -277,7 +277,7 @@ fn set_tilt(state_id: BlockStateId, world: &Arc<World>, pos: &BlockPos, new_tilt
 }
 
 fn play_tilt_sound(world: &Arc<World>, pos: &BlockPos, tilt_sound: Sound) {
-    let pitch = rand::rng().random_range(0.8f32..1.2f32);
+    let pitch = game_random().random_range(0.8f32..1.2f32);
     let v = pos.as_vector3();
     let position = Vector3::new(v.x as f64, v.y as f64, v.z as f64);
     world.play_sound_fine(tilt_sound, SoundCategory::Blocks, &position, 1f32, pitch);

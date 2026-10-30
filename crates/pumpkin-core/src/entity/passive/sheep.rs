@@ -5,7 +5,6 @@ use std::sync::{
 
 use pumpkin_data::{entity::EntityType, item::Item};
 use pumpkin_nbt::compound::NbtCompound;
-use rand::RngExt;
 
 use crate::entity::{
     Entity, EntityBase,
@@ -176,7 +175,7 @@ impl SheepEntity {
             } else {
                 TEMPERATE_SPAWN_CONFIGURATION
             };
-        let mut rng = self.get_random();
+        let rng = self.get_random();
         let mut roll =
             rng.random_range(0..configuration.iter().map(|(_, weight)| weight).sum::<u32>());
         let provider = configuration
@@ -229,7 +228,7 @@ impl SheepEntity {
                 tool: Some(tool.clone()),
                 ..Default::default()
             };
-            let mut rng = self.get_random();
+            let rng = self.get_random();
             for stack in generate_loot_from_handle(&table, rng.random(), &params) {
                 for _ in 0..stack.item_count {
                     let item_entity = ItemEntity::new(

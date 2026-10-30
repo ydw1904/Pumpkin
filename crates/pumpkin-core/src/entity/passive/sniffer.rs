@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicI32, Ordering},
@@ -259,7 +260,7 @@ impl SnifferEntity {
 
         if self.drop_seed_at_tick.load(Ordering::Relaxed) == current_tick {
             let head_pos = self.get_head_position();
-            let seed_item = if rand::random::<bool>() {
+            let seed_item = if game_random().random::<bool>() {
                 &Item::TORCHFLOWER_SEEDS
             } else {
                 &Item::PITCHER_POD

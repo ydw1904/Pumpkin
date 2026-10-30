@@ -139,17 +139,14 @@ use pumpkin_protocol::{
         CBlockEvent, CParticle, CRemoveMobEffect, CSetEquipment, CUpdateMobEffect,
     },
 };
-use pumpkin_util::random::gameplay;
+use pumpkin_util::math::{get_section_cord, position::chunk_section_from_pos, vector2::Vector2};
+use pumpkin_util::random::gameplay::{self, game_random};
 use pumpkin_util::resource_location::ResourceLocation;
 use pumpkin_util::text::{TextComponent, color::NamedColor};
 use pumpkin_util::version::JavaMinecraftVersion;
 use pumpkin_util::{
     Difficulty,
     math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3},
-};
-use pumpkin_util::{
-    math::{get_section_cord, position::chunk_section_from_pos, vector2::Vector2},
-    random::{RandomImpl, get_seed, xoroshiro128::Xoroshiro},
 };
 use pumpkin_world::world::{GetBlockError, WorldPortalExt};
 use pumpkin_world::{
@@ -162,8 +159,6 @@ use pumpkin_world::{
     tick::{TickPriority, order},
 };
 pub use pumpkin_world::{world::BlockFlags, world_info::LevelData};
-use rand::seq::SliceRandom;
-use rand::{RngExt, rng};
 use scoreboard::Scoreboard;
 use time::LevelTime;
 
@@ -1315,7 +1310,7 @@ impl World {
         category: SoundCategory,
         position: &Vector3<f64>,
     ) {
-        let seed = rng().random::<i64>();
+        let seed = game_random().random::<i64>();
         let packet = CSoundEffect::new(
             data_to_proto_sound(sound),
             category,
@@ -1336,7 +1331,7 @@ impl World {
         category: SoundCategory,
         position: &Vector3<f64>,
     ) {
-        let seed = rng().random::<i64>();
+        let seed = game_random().random::<i64>();
         let packet = CSoundEffect::new(
             data_to_proto_sound(sound),
             category,
@@ -1368,7 +1363,7 @@ impl World {
         volume: f32,
         pitch: f32,
     ) {
-        let seed = rand::random::<i64>();
+        let seed = game_random().random::<i64>();
         let packet = CSoundEffect::new(
             pumpkin_protocol::IdOr::Value(pumpkin_protocol::SoundEvent {
                 sound_name: sound_name.into(),
@@ -1452,7 +1447,7 @@ impl World {
         volume: f32,
         pitch: f32,
     ) {
-        let seed = rand::rng().random::<i64>();
+        let seed = game_random().random::<i64>();
         let packet = CSoundEffect::new(IdOr::Id(sound_id), category, position, volume, pitch, seed);
 
         // Calculate the number of chunks the sound can be heard from based on its volume.
@@ -1479,7 +1474,7 @@ impl World {
         volume: f32,
         pitch: f32,
     ) {
-        let seed = rand::rng().random::<i64>();
+        let seed = game_random().random::<i64>();
         let packet = CSoundEffect::new(IdOr::Id(sound_id), category, position, volume, pitch, seed);
 
         let audible_chunks = f64::from(volume.max(1.0)).ceil() as i32;
@@ -2206,7 +2201,7 @@ impl World {
                 }
             }
 
-            spawning_chunks.shuffle(&mut rng());
+            game_random().shuffle(&mut spawning_chunks);
 
             let world = self.clone();
             spawning_chunks.par_chunks(8).for_each(|batch| {
@@ -2566,8 +2561,8 @@ impl World {
         //TODO check in simulation distance
         let (is_raining, is_thundering) = (self.is_raining(), self.is_thundering());
 
-        if is_raining && is_thundering && rng().random_range(0..100_000) == 0 {
-            let rand_value = rng().random::<i32>() >> 2;
+        if is_raining && is_thundering && game_random().random_range(0..100_000) == 0 {
+            let rand_value = game_random().random::<i32>() >> 2;
             let delta = Vector3::new(rand_value & 15, rand_value >> 16 & 15, rand_value >> 8 & 15);
             let random_pos = Vector3::new(
                 chunk_pos.x << 4,
@@ -2592,7 +2587,7 @@ impl World {
             if true {
                 // TODO biome.getPrecipitationAt(pos, this.getSeaLevel()) == Biome.Precipitation.RAIN
                 // TODO this.getCurrentDifficultyAt(blockPos);
-                if rng().random::<f32>() < 0.0675
+                if game_random().random::<f32>() < 0.0675
                     && self.get_block(&random_pos.to_block_pos().down()) != &Block::LIGHTNING_ROD
                 {
                     let entity = Entity::new(
@@ -6017,7 +6012,7 @@ impl World {
         let half_width = width / 2.0;
         let spawn_area = 1.0 - width;
 
-        let mut rng = Xoroshiro::from_seed(get_seed());
+        let rng = game_random();
 
         // TODO: Use world random here: world.random.nextDouble()
         let x = rng.next_f64().mul_add(spawn_area, x.floor()) + half_width;

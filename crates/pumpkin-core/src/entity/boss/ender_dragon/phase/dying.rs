@@ -4,6 +4,7 @@ use crate::entity::experience_orb::ExperienceOrbEntity;
 use pumpkin_data::particle::Particle;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_util::math::{vector2::Vector2, vector3::Vector3};
+use pumpkin_util::random::gameplay::game_random;
 
 pub struct DyingPhase;
 
@@ -90,9 +91,9 @@ impl super::Phase for DyingPhase {
 
         // 4. Explosion particles matching doClientTick (every 10 ticks and during final ticks)
         if death_time % 10 == 0 || (180..=200).contains(&death_time) {
-            let xo = (rand::random::<f32>() - 0.5) * 8.0;
-            let yo = (rand::random::<f32>() - 0.5) * 4.0;
-            let zo = (rand::random::<f32>() - 0.5) * 8.0;
+            let xo = (game_random().random::<f32>() - 0.5) * 8.0;
+            let yo = (game_random().random::<f32>() - 0.5) * 4.0;
+            let zo = (game_random().random::<f32>() - 0.5) * 8.0;
             world.spawn_particle(
                 Vector3::new(
                     pos.x + xo as f64,

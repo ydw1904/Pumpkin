@@ -2,6 +2,7 @@ use pumpkin_data::translation;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_util::text::TextComponent;
 use pumpkin_world::chunk::ChunkHeightmapType;
 
@@ -62,8 +63,8 @@ impl Pile {
     }
 
     fn randomize(&mut self, min_x: f64, min_z: f64, max_x: f64, max_z: f64) {
-        self.x = rand::random_range(min_x..=max_x);
-        self.z = rand::random_range(min_z..=max_z);
+        self.x = game_random().random_range(min_x..=max_x);
+        self.z = game_random().random_range(min_z..=max_z);
     }
 
     /// Clamps this pile into the spread area. Returns whether it moved.

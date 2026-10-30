@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -110,7 +111,10 @@ impl TridentEntity {
 
     pub fn set_velocity(&self, x: f64, y: f64, z: f64, power: f64, uncertainty: f64) {
         fn next_triangular(mode: f64, deviation: f64) -> f64 {
-            deviation.mul_add(rand::random::<f64>() - rand::random::<f64>(), mode)
+            deviation.mul_add(
+                game_random().random::<f64>() - game_random().random::<f64>(),
+                mode,
+            )
         }
 
         let velocity = Vector3::new(x, y, z)

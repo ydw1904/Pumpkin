@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{Arc, Weak};
 
 use pumpkin_data::data_component_impl::EquipmentSlot;
@@ -78,12 +79,13 @@ impl Mob for SkeletonEntityBase {
         difficulty: &RegionalDifficulty,
     ) {
         // Default armor slots (super.populateDefaultEquipmentSlots)
-        if rand::random::<f32>()
+        if game_random().random::<f32>()
             < MobEntity::MAX_WEARING_ARMOR_CHANCE * difficulty.special_multiplier
         {
-            let mut armor_type = rand::random_range(0..3);
+            let mut armor_type = game_random().random_range(0..3);
             for _ in 1..=3 {
-                if rand::random::<f32>() < MobEntity::WEARING_ARMOR_UPGRADE_MATERIAL_CHANCE {
+                if game_random().random::<f32>() < MobEntity::WEARING_ARMOR_UPGRADE_MATERIAL_CHANCE
+                {
                     armor_type += 1;
                 }
             }
@@ -103,7 +105,7 @@ impl Mob for SkeletonEntityBase {
 
             for slot in &MobEntity::EQUIPMENT_POPULATION_ORDER {
                 let current = equipment.get(slot);
-                if !first && rand::random::<f32>() < partial_chance {
+                if !first && game_random().random::<f32>() < partial_chance {
                     break;
                 }
                 first = false;

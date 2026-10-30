@@ -4,7 +4,6 @@ use pumpkin_data::BlockStateId;
 use pumpkin_data::world::WorldEvent;
 use pumpkin_util::Difficulty;
 use pumpkin_world::world::BlockFlags;
-use rand::RngExt;
 
 use super::door_interact::DoorInteractGoal;
 use super::{Controls, Goal};

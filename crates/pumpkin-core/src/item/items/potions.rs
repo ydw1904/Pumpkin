@@ -1,4 +1,4 @@
-use rand::{RngExt, rng};
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use crate::block::registry::BlockActionResult;
@@ -171,7 +171,7 @@ impl ItemBehaviour for SplashPotionItem {
             SoundCategory::Players,
             &position,
             THROW_SOUND_VOLUME,
-            0.4 / (rng().random::<f32>() * 0.4 + 0.8),
+            0.4 / (game_random().random::<f32>() * 0.4 + 0.8),
         );
         let entity = Entity::new(world.clone(), position, &EntityType::SPLASH_POTION);
         let splash = SplashPotionEntity::new_shot(entity, player.get_entity());
@@ -241,7 +241,7 @@ impl ItemBehaviour for LingeringPotionItem {
             SoundCategory::Neutral,
             &position,
             THROW_SOUND_VOLUME,
-            0.4 / (rng().random::<f32>() * 0.4 + 0.8),
+            0.4 / (game_random().random::<f32>() * 0.4 + 0.8),
         );
         let entity = Entity::new(world.clone(), position, &EntityType::LINGERING_POTION);
         let ling = LingeringPotionEntity::new_shot(entity, player.get_entity());

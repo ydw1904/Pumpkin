@@ -3,7 +3,6 @@ use crate::entity::ai::pathfinder::NavigatorGoal;
 use crate::entity::ai::util::{air_and_water_random_pos, hover_random_pos};
 use crate::entity::mob::Mob;
 use pumpkin_util::math::vector3::Vector3;
-use rand::RngExt;
 
 pub struct WaterAvoidingRandomFlyingGoal {
     goal_control: Controls,

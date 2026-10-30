@@ -9,7 +9,7 @@ use pumpkin_data::world::WorldEvent;
 use pumpkin_data::{BlockState, BlockStateId};
 use pumpkin_macros::pumpkin_block;
 use pumpkin_util::math::position::BlockPos;
-use rand::{RngExt, rng};
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 #[pumpkin_block("minecraft:dragon_egg")]
@@ -24,12 +24,12 @@ impl DragonEggBlock {
     fn teleport(world: &Arc<World>, pos: &BlockPos) {
         for _ in 0..1000 {
             let test_pos = pos.add(
-                rng().random_range(0..Self::TELEPORT_RADIUS_XZ)
-                    - rng().random_range(0..Self::TELEPORT_RADIUS_XZ),
-                rng().random_range(0..Self::TELEPORT_RADIUS_Y)
-                    - rng().random_range(0..Self::TELEPORT_RADIUS_Y),
-                rng().random_range(0..Self::TELEPORT_RADIUS_XZ)
-                    - rng().random_range(0..Self::TELEPORT_RADIUS_XZ),
+                game_random().random_range(0..Self::TELEPORT_RADIUS_XZ)
+                    - game_random().random_range(0..Self::TELEPORT_RADIUS_XZ),
+                game_random().random_range(0..Self::TELEPORT_RADIUS_Y)
+                    - game_random().random_range(0..Self::TELEPORT_RADIUS_Y),
+                game_random().random_range(0..Self::TELEPORT_RADIUS_XZ)
+                    - game_random().random_range(0..Self::TELEPORT_RADIUS_XZ),
             );
 
             let state = world.get_block_state(&test_pos);

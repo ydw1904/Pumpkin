@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
-use rand::RngExt;
 
 use super::super::BrainTick;
 use super::super::memory::position_tracker::PositionTracker;

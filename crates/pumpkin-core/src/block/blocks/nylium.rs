@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use pumpkin_data::tag::Taggable;
@@ -6,7 +7,6 @@ use pumpkin_macros::pumpkin_block_from_tag;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::lighting::LightEngine;
 use pumpkin_world::world::BlockFlags;
-use rand::RngExt;
 
 use crate::block::{BlockBehaviour, BonemealArgs, RandomTickArgs};
 use crate::world::World;
@@ -72,7 +72,7 @@ impl BlockBehaviour for NyliumBlock {
         } else if block == &Block::WARPED_NYLIUM {
             place_warped_vegetation(world, &above_pos);
             place_nether_sprouts(world, &above_pos);
-            if rand::rng().random_range(0..8) == 0 {
+            if game_random().random_range(0..8) == 0 {
                 place_twisting_vines(world, &above_pos);
             }
         }
@@ -81,9 +81,9 @@ impl BlockBehaviour for NyliumBlock {
 
 fn place_crimson_vegetation(world: &Arc<World>, origin: &BlockPos) {
     for _ in 0..9 {
-        let dx = rand::rng().random_range(0..3) - rand::rng().random_range(0..3);
-        let dy = rand::rng().random_range(0..1) - rand::rng().random_range(0..1);
-        let dz = rand::rng().random_range(0..3) - rand::rng().random_range(0..3);
+        let dx = game_random().random_range(0..3) - game_random().random_range(0..3);
+        let dy = game_random().random_range(0..1) - game_random().random_range(0..1);
+        let dz = game_random().random_range(0..3) - game_random().random_range(0..3);
         let target_pos = origin.add(dx, dy, dz);
 
         if !world.is_in_height_limit(target_pos.0.y)
@@ -102,7 +102,7 @@ fn place_crimson_vegetation(world: &Arc<World>, origin: &BlockPos) {
             continue;
         }
 
-        let roll = rand::rng().random_range(0..99);
+        let roll = game_random().random_range(0..99);
         let placed_block = if roll < 87 {
             &Block::CRIMSON_ROOTS
         } else if roll < 98 {
@@ -132,9 +132,9 @@ fn place_crimson_vegetation(world: &Arc<World>, origin: &BlockPos) {
 
 fn place_warped_vegetation(world: &Arc<World>, origin: &BlockPos) {
     for _ in 0..9 {
-        let dx = rand::rng().random_range(0..3) - rand::rng().random_range(0..3);
-        let dy = rand::rng().random_range(0..1) - rand::rng().random_range(0..1);
-        let dz = rand::rng().random_range(0..3) - rand::rng().random_range(0..3);
+        let dx = game_random().random_range(0..3) - game_random().random_range(0..3);
+        let dy = game_random().random_range(0..1) - game_random().random_range(0..1);
+        let dz = game_random().random_range(0..3) - game_random().random_range(0..3);
         let target_pos = origin.add(dx, dy, dz);
 
         if !world.is_in_height_limit(target_pos.0.y)
@@ -153,7 +153,7 @@ fn place_warped_vegetation(world: &Arc<World>, origin: &BlockPos) {
             continue;
         }
 
-        let roll = rand::rng().random_range(0..100);
+        let roll = game_random().random_range(0..100);
         let placed_block = if roll < 85 {
             &Block::WARPED_ROOTS
         } else if roll < 86 {
@@ -185,9 +185,9 @@ fn place_warped_vegetation(world: &Arc<World>, origin: &BlockPos) {
 
 fn place_nether_sprouts(world: &Arc<World>, origin: &BlockPos) {
     for _ in 0..9 {
-        let dx = rand::rng().random_range(0..3) - rand::rng().random_range(0..3);
-        let dy = rand::rng().random_range(0..1) - rand::rng().random_range(0..1);
-        let dz = rand::rng().random_range(0..3) - rand::rng().random_range(0..3);
+        let dx = game_random().random_range(0..3) - game_random().random_range(0..3);
+        let dy = game_random().random_range(0..1) - game_random().random_range(0..1);
+        let dz = game_random().random_range(0..3) - game_random().random_range(0..3);
         let target_pos = origin.add(dx, dy, dz);
 
         if !world.is_in_height_limit(target_pos.0.y)
@@ -228,20 +228,20 @@ fn place_nether_sprouts(world: &Arc<World>, origin: &BlockPos) {
 
 fn place_twisting_vines(world: &Arc<World>, origin: &BlockPos) {
     for _ in 0..9 {
-        let dx = rand::rng().random_range(0..3) - rand::rng().random_range(0..3);
-        let dy = rand::rng().random_range(0..1) - rand::rng().random_range(0..1);
-        let dz = rand::rng().random_range(0..3) - rand::rng().random_range(0..3);
+        let dx = game_random().random_range(0..3) - game_random().random_range(0..3);
+        let dy = game_random().random_range(0..1) - game_random().random_range(0..1);
+        let dz = game_random().random_range(0..3) - game_random().random_range(0..3);
         let mut target_pos = origin.add(dx, dy, dz);
 
         if !find_twisting_vines_target_y(world, &mut target_pos) {
             continue;
         }
 
-        let mut height = rand::rng().random_range(0..2) + 1;
-        if rand::rng().random_range(0..6) == 0 {
+        let mut height = game_random().random_range(0..2) + 1;
+        if game_random().random_range(0..6) == 0 {
             height *= 2;
         }
-        if rand::rng().random_range(0..10) == 0 {
+        if game_random().random_range(0..10) == 0 {
             height = 1;
         }
 

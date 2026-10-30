@@ -32,10 +32,9 @@ use pumpkin_util::Difficulty;
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
-use pumpkin_util::random::xoroshiro128::Xoroshiro;
-use pumpkin_util::random::{RandomGenerator, get_seed};
+use pumpkin_util::random::RandomGenerator;
+use pumpkin_util::random::gameplay::{GameRandom, game_random};
 use pumpkin_util::version::JavaMinecraftVersion;
-use rand::RngExt;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU8, Ordering};
 use std::sync::{Arc, LazyLock};
@@ -713,7 +712,7 @@ impl MobEntity {
 
     pub fn is_dark_enough_to_spawn(world: &World, pos: &BlockPos, is_thundering: bool) -> bool {
         let sky_light = world.get_sky_light_level(pos);
-        if sky_light > rand::random_range(0..32) {
+        if sky_light > game_random().random_range(0..32) {
             return false;
         }
 
@@ -732,7 +731,7 @@ impl MobEntity {
         };
 
         // TODO
-        let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(get_seed()));
+        let mut random = RandomGenerator::Gameplay(game_random());
         current_brightness <= dimension.monster_spawn_light_level.get(&mut random) as u8
     }
 
@@ -1069,8 +1068,8 @@ impl MobEntity {
 }
 
 pub trait Mob: EntityBase + Send + Sync {
-    fn get_random(&self) -> rand::rngs::ThreadRng {
-        rand::rng()
+    fn get_random(&self) -> GameRandom {
+        game_random()
     }
 
     /// Whether the species' own tick code stays within the reach `MobEntity` computes.
@@ -1522,12 +1521,13 @@ pub trait Mob: EntityBase + Send + Sync {
         _world: &Arc<World>,
         difficulty: &crate::entity::mob::equipment::RegionalDifficulty,
     ) {
-        if rand::random::<f32>()
+        if game_random().random::<f32>()
             < MobEntity::MAX_WEARING_ARMOR_CHANCE * difficulty.special_multiplier
         {
-            let mut armor_type = rand::random_range(0..3);
+            let mut armor_type = game_random().random_range(0..3);
             for _ in 1..=3 {
-                if rand::random::<f32>() < MobEntity::WEARING_ARMOR_UPGRADE_MATERIAL_CHANCE {
+                if game_random().random::<f32>() < MobEntity::WEARING_ARMOR_UPGRADE_MATERIAL_CHANCE
+                {
                     armor_type += 1;
                 }
             }
@@ -1547,7 +1547,7 @@ pub trait Mob: EntityBase + Send + Sync {
 
             for slot in &MobEntity::EQUIPMENT_POPULATION_ORDER {
                 let current = equipment.get(slot);
-                if !first && rand::random::<f32>() < partial_chance {
+                if !first && game_random().random::<f32>() < partial_chance {
                     break;
                 }
                 first = false;
@@ -1602,7 +1602,7 @@ pub trait Mob: EntityBase + Send + Sync {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(stack) = equipment.equipment.get_mut(slot)
             && !stack.is_empty()
-            && rand::random::<f32>() < chance * difficulty.special_multiplier
+            && game_random().random::<f32>() < chance * difficulty.special_multiplier
         {
             crate::entity::mob::equipment::apply_vanilla_enchantments(
                 stack,
@@ -1899,7 +1899,7 @@ impl<T: Mob + Send + 'static> EntityBase for T {
             );
             let pickup_chance = 0.55 * difficulty.special_multiplier;
             self.get_mob_entity()
-                .set_can_pick_up_loot(rand::random::<f32>() < pickup_chance);
+                .set_can_pick_up_loot(game_random().random::<f32>() < pickup_chance);
         }
     }
 

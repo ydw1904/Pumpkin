@@ -1,4 +1,5 @@
 use core::f32;
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::entity::player::Player;
@@ -165,8 +166,6 @@ impl PaintingEntity {
         location: BlockPos,
         face: BlockDirection,
     ) -> Option<PaintingVariant> {
-        use rand::seq::IndexedRandom;
-
         let mut fitting_variants = Vec::new();
         let mut max_area = 0;
 
@@ -183,8 +182,7 @@ impl PaintingEntity {
             }
         }
 
-        let mut rng = rand::rng();
-        fitting_variants.choose(&mut rng).copied()
+        game_random().choose(&fitting_variants).copied()
     }
 
     fn drop_and_remove(&self, caused_by: Option<&dyn EntityBase>) {

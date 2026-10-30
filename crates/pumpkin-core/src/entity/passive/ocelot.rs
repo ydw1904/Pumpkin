@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicBool, Ordering},
@@ -9,7 +10,6 @@ use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::bedrock::server::actor_event::ActorEventID;
-use rand::RngExt;
 
 use crate::entity::{
     Entity, EntityBase,
@@ -155,7 +155,7 @@ impl Mob for OcelotEntity {
         if !self.is_trusting() && is_food && dist_sqr < 9.0 {
             item_stack.decrement_unless_creative(player.gamemode.load(), 1);
 
-            let mut rng = rand::rng();
+            let rng = game_random();
             if rng.random_range(0..3) == 0 {
                 self.set_trusting(true);
                 self.get_entity().world.load().send_entity_status(

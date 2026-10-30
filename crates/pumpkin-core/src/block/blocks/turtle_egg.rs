@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use pumpkin_data::block_properties::TurtleEggLikeProperties;
@@ -9,7 +10,6 @@ use pumpkin_macros::pumpkin_block;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_world::world::{BlockAccessor, BlockFlags};
-use rand::RngExt;
 use uuid::Uuid;
 
 use crate::block::{
@@ -83,7 +83,7 @@ impl TurtleEggBlock {
         randomness: u32,
     ) {
         if Self::can_destroy_egg(world, entity)
-            && (randomness <= 1 || rand::random::<u32>().is_multiple_of(randomness))
+            && (randomness <= 1 || game_random().random::<u32>().is_multiple_of(randomness))
         {
             Self::decrease_eggs(world, pos, state_id, block);
         }
@@ -160,7 +160,7 @@ impl BlockBehaviour for TurtleEggBlock {
         let should_update = if (0.65..=0.69).contains(&time_of_day) {
             true
         } else {
-            rand::rng().random_range(0..500) == 0
+            game_random().random_range(0..500) == 0
         };
         if !should_update {
             return;

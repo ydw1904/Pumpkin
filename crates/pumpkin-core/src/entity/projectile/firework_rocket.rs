@@ -12,9 +12,10 @@ use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_protocol::bedrock::server::actor_event::ActorEventID;
 use pumpkin_protocol::codec::item_stack_seralizer::ItemStackSerializer;
 use pumpkin_protocol::codec::optional_int::OptionalInt;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_util::{
     math::vector3::Vector3,
-    random::{RandomGenerator, RandomImpl, get_seed, xoroshiro128::Xoroshiro},
+    random::{RandomGenerator, RandomImpl},
 };
 use std::sync::{
     RwLock,
@@ -45,7 +46,7 @@ impl FireworkRocketEntity {
     }
 
     pub fn new_with_stack(entity: Entity, stack: ItemStack) -> Self {
-        let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(get_seed()));
+        let mut random = RandomGenerator::Gameplay(game_random());
         let life_time = Self::compute_lifetime(&stack, &mut random);
 
         entity.set_velocity(Vector3::new(
@@ -74,7 +75,7 @@ impl FireworkRocketEntity {
     }
 
     pub fn new_shot_with_stack(entity: Entity, shooter: &Entity, stack: ItemStack) -> Self {
-        let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(get_seed()));
+        let mut random = RandomGenerator::Gameplay(game_random());
         let life_time = Self::compute_lifetime(&stack, &mut random);
 
         let thrown = ThrownItemEntity::new(entity, shooter, GRAVITY);
@@ -95,7 +96,7 @@ impl FireworkRocketEntity {
     }
 
     pub fn new_shot_at_angle(entity: Entity, shooter: &Entity, stack: ItemStack) -> Self {
-        let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(get_seed()));
+        let mut random = RandomGenerator::Gameplay(game_random());
         let life_time = Self::compute_lifetime(&stack, &mut random);
 
         let thrown = ThrownItemEntity::new(entity, shooter, GRAVITY);

@@ -2,6 +2,7 @@ use pumpkin_data::fluid::Fluid;
 use pumpkin_data::tag::Taggable;
 use pumpkin_data::{BlockId, BlockStateId, tag};
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::world::BlockAccessor;
 
 use crate::block::blocks::plant::PlantBlockBase;
@@ -44,7 +45,7 @@ impl BlockBehaviour for AzaleaBlock {
     }
 
     fn is_bonemeal_success(&self, _args: BonemealArgs<'_>) -> bool {
-        rand::random::<f32>() < 0.45
+        game_random().random::<f32>() < 0.45
     }
 
     fn perform_bonemeal(&self, args: BonemealArgs<'_>) {

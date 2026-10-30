@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicI32, Ordering};
 
 use crossbeam::atomic::AtomicCell;
@@ -6,7 +7,6 @@ use pumpkin_data::particle::Particle;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::vector3::Vector3;
-use rand::RngExt;
 
 use crate::entity::{Entity, EntityBase, player::Player};
 
@@ -45,7 +45,7 @@ impl FurnaceMinecart {
         if remaining == 0 {
             self.push.store(Vector3::new(0.0, 0.0, 0.0));
             Self::set_fueled(entity, false);
-        } else if rand::rng().random_range(0..4) == 0 {
+        } else if game_random().random_range(0..4) == 0 {
             let mut pos = entity.pos.load();
             pos.y += 0.8;
             entity.world.load().spawn_particle(

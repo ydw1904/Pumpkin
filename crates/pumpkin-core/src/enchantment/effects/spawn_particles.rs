@@ -1,10 +1,11 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 pub use pumpkin_data::enchantment::{PositionSource, PositionSourceType, VelocitySource};
 use pumpkin_data::particle::Particle;
 use pumpkin_util::math::float_provider::FloatProvider;
 use pumpkin_util::math::vector3::Vector3;
-use pumpkin_util::random::{RandomGenerator, get_seed, xoroshiro128::Xoroshiro};
+use pumpkin_util::random::RandomGenerator;
 
 use super::EnchantmentEntityEffectExt;
 use crate::entity::Entity;
@@ -54,7 +55,7 @@ impl SpawnParticlesEffect {
             },
         );
 
-        let mut random_gen = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(get_seed()));
+        let mut random_gen = RandomGenerator::Gameplay(game_random());
 
         let x = self.horizontal_position.get_coordinate(
             position.x,

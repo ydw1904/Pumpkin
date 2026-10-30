@@ -12,7 +12,6 @@ use crate::entity::{
 use pumpkin_data::sound::Sound;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::{boundingbox::EntityDimensions, vector3::Vector3};
-use rand::RngExt;
 
 use super::water_animal::WaterAnimal;
 
@@ -131,7 +130,7 @@ pub trait AbstractFish: WaterAnimal + crate::entity::bucketable::Bucketable {
             && entity.on_ground.load(Relaxed)
             && entity.vertical_collision.load(Relaxed)
         {
-            let mut rng = self.get_random();
+            let rng = self.get_random();
             entity.velocity.store(
                 entity.velocity.load()
                     + Vector3::new(

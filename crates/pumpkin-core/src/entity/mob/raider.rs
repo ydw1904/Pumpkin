@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 use crossbeam::atomic::AtomicCell;
@@ -315,7 +316,7 @@ impl Goal for RaiderCelebrationGoal {
         let pos = entity.pos.load();
         let world = entity.world.load();
 
-        let r: f32 = rand::random();
+        let r: f32 = game_random().random();
         if r < 0.02 && !entity.silent.load(Ordering::Relaxed) {
             world.play_sound(
                 raider.get_celebrate_sound(),
@@ -361,8 +362,8 @@ impl Goal for RaiderMoveThroughVillageGoal {
         let mut nav = steered.navigator();
 
         if nav.is_idle() {
-            let dx: f64 = (rand::random::<f64>() - 0.5) * 32.0;
-            let dz: f64 = (rand::random::<f64>() - 0.5) * 32.0;
+            let dx: f64 = (game_random().random::<f64>() - 0.5) * 32.0;
+            let dz: f64 = (game_random().random::<f64>() - 0.5) * 32.0;
             let dest = Vector3::new(pos.x + dx, pos.y, pos.z + dz);
             nav.set_progress(NavigatorGoal {
                 current_progress: pos,

@@ -1,6 +1,7 @@
 use super::EnderDragonPhase;
 use crate::entity::boss::ender_dragon::{EnderDragonEntity, Vector3Ext, find_path};
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::Ordering;
 
 pub struct CirclingPhase;
@@ -41,7 +42,7 @@ impl super::Phase for CirclingPhase {
                     .holding_pattern_clockwise
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if rand::random_range(0..8) == 0 {
+                if game_random().random_range(0..8) == 0 {
                     *clockwise = !*clockwise;
                     j = i as i32 + 6;
                 }
@@ -87,9 +88,9 @@ impl super::Phase for CirclingPhase {
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
                 if let Some(node) = nodes[next_node_idx] {
-                    let mut y_target = node.y + rand::random_range(0.0..20.0);
+                    let mut y_target = node.y + game_random().random_range(0.0..20.0);
                     while y_target < node.y {
-                        y_target = node.y + rand::random_range(0.0..20.0);
+                        y_target = node.y + game_random().random_range(0.0..20.0);
                     }
                     *target_location = Some(Vector3::new(node.x, y_target, node.z));
                 }
@@ -97,8 +98,8 @@ impl super::Phase for CirclingPhase {
         }
         drop(target_location);
 
-        if rand::random_range(0..64) == 0 {
-            if rand::random_bool(0.5) {
+        if game_random().random_range(0..64) == 0 {
+            if game_random().random_bool(0.5) {
                 dragon.set_phase(EnderDragonPhase::FlyToPortal);
             } else if let Some(player) = dragon.find_nearest_player() {
                 *dragon

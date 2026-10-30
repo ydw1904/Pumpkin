@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::RwLock;
 use std::sync::atomic::AtomicBool;
 
@@ -110,7 +111,7 @@ impl EntityBase for EggEntity {
         // r == 0 -> spawn 4 (1/256)
         // r in 1..31 -> spawn 1 (31/256)
         // else -> 0
-        let r: u8 = rand::random(); // 0..=255
+        let r: u8 = game_random().random(); // 0..=255
         let mut to_spawn = if r == 0 { 4usize } else { usize::from(r < 32) };
         let mut hatching = to_spawn > 0;
         let mut hatching_type: &'static EntityType = &EntityType::CHICKEN;
@@ -152,7 +153,7 @@ impl EntityBase for EggEntity {
             for _ in 0..to_spawn {
                 let mob = from_type(hatching_type, spawn_pos, &world, Uuid::new_v4());
 
-                let yaw = rand::random::<f32>() * 360.0;
+                let yaw = game_random().random::<f32>() * 360.0;
                 let new_entity = mob.get_entity();
                 new_entity.set_rotation(yaw, 0.0);
                 new_entity.set_age(-24000);

@@ -1,4 +1,4 @@
-use rand::{Rng, RngExt, rng};
+use pumpkin_util::random::gameplay::{GameRandom, game_random};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
@@ -112,7 +112,7 @@ struct DispenseContext<'a> {
     facing: Facing,
 }
 
-fn triangle<R: Rng>(rng: &mut R, min: f64, max: f64) -> f64 {
+fn triangle(rng: GameRandom, min: f64, max: f64) -> f64 {
     (rng.random::<f64>() - rng.random::<f64>()).mul_add(max, min)
 }
 
@@ -584,7 +584,7 @@ impl DispenserBlock {
         let spawn_pos = Self::target_position(ctx).to_f64();
 
         let mob = from_type(entity_type, spawn_pos, ctx.world, Uuid::new_v4());
-        let yaw = wrap_degrees(rng().random::<f32>() * 360.0) % 360.0;
+        let yaw = wrap_degrees(game_random().random::<f32>() * 360.0) % 360.0;
         mob.get_entity().set_rotation(yaw, 0.0);
         // A dispenser has no acting player, matching vanilla's null `user` for this source.
         prepare_egg_mob(item, &mob, ctx.world, None);
@@ -698,9 +698,9 @@ impl DispenserBlock {
         let fireball = SmallFireballEntity::new(entity);
         let facing = to_normal(ctx.facing);
         let dir = Vector3::new(
-            triangle(&mut rng(), facing.x, 0.114_850_000_000_000_01),
-            triangle(&mut rng(), facing.y, 0.114_850_000_000_000_01),
-            triangle(&mut rng(), facing.z, 0.114_850_000_000_000_01),
+            triangle(game_random(), facing.x, 0.114_850_000_000_000_01),
+            triangle(game_random(), facing.y, 0.114_850_000_000_000_01),
+            triangle(game_random(), facing.z, 0.114_850_000_000_000_01),
         )
         .normalize();
         fireball.get_entity().set_velocity(dir);
@@ -758,9 +758,9 @@ impl DispenserBlock {
         let velocity = Vector3::new(facing.x, facing.y + 0.1, facing.z)
             .normalize()
             .add_raw(
-                triangle(&mut rng(), 0.0, deviation),
-                triangle(&mut rng(), 0.0, deviation),
-                triangle(&mut rng(), 0.0, deviation),
+                triangle(game_random(), 0.0, deviation),
+                triangle(game_random(), 0.0, deviation),
+                triangle(game_random(), 0.0, deviation),
             )
             .multiply(
                 Self::FIREWORK_PROJECTILE_POWER,
@@ -1246,12 +1246,12 @@ impl DispenserBlock {
         };
 
         let entity = Entity::new(ctx.world.clone(), position, &EntityType::ITEM);
-        let rd = rng().random::<f64>().mul_add(0.1, 0.2);
+        let rd = game_random().random::<f64>().mul_add(0.1, 0.2);
 
         let velocity = Vector3::new(
-            triangle(&mut rng(), facing.x * rd, 0.017_227_5 * 6.),
-            triangle(&mut rng(), 0.2, 0.017_227_5 * 6.),
-            triangle(&mut rng(), facing.z * rd, 0.017_227_5 * 6.),
+            triangle(game_random(), facing.x * rd, 0.017_227_5 * 6.),
+            triangle(game_random(), 0.2, 0.017_227_5 * 6.),
+            triangle(game_random(), facing.z * rd, 0.017_227_5 * 6.),
         );
 
         let item_entity = Arc::new(ItemEntity::new_with_velocity(entity, stack, velocity, 40));

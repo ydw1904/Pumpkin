@@ -15,6 +15,7 @@
 //! Mobs not listed in the registry spawn with no equipment, matching vanilla
 //! (not all mob types have equipment definitions).
 
+use pumpkin_util::random::gameplay::game_random;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::LazyLock;
@@ -33,7 +34,6 @@ use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::tag::{Tag, Taggable};
 use pumpkin_util::difficulty::Difficulty;
 use pumpkin_util::math::vector3::Vector3;
-use rand::RngExt;
 
 use crate::entity::EntityBase;
 use crate::entity::mob::{Mob, MobEntity};
@@ -564,7 +564,7 @@ impl RegionalDifficulty {
     /// behaviour on fresh Normal/Easy worlds).
     #[must_use]
     pub fn should_happen(&self, base_chance: f32) -> bool {
-        rand::random::<f32>() < base_chance * self.special_multiplier
+        game_random().random::<f32>() < base_chance * self.special_multiplier
     }
 }
 
@@ -630,7 +630,7 @@ pub fn apply_vindicator_weapon_enchantments(stack: &mut ItemStack, wave: Option<
 #[must_use]
 fn weighted_select_item(items: &[WeaponEntry]) -> &'static Item {
     let total: f32 = items.iter().map(|e| e.weight).sum();
-    let mut rng = rand::rng();
+    let rng = game_random();
     let mut roll: f32 = rng.random_range(0.0..total);
     for entry in items {
         roll -= entry.weight;
@@ -649,7 +649,7 @@ fn weighted_select_item(items: &[WeaponEntry]) -> &'static Item {
 /// 3. Each piece gets the default equipment drop chance.
 #[must_use]
 fn select_vanilla_armor(difficulty: &RegionalDifficulty) -> Vec<(EquipmentSlot, ItemStack, f32)> {
-    let mut rng = rand::rng();
+    let rng = game_random();
 
     let mut armor_type = rng.random_range(0..3);
     let mut i = 1;
@@ -747,7 +747,7 @@ fn equip_mob_from_def(
             } else {
                 otherwise
             };
-            if rand::random::<f32>() < chance {
+            if game_random().random::<f32>() < chance {
                 let item = weighted_select_item(items);
                 let mut stack = create_equipment_item(item);
                 if def.enchanted && difficulty.should_happen(WEAPON_ENCHANT_CHANCE) {
@@ -786,7 +786,7 @@ fn equip_mob_from_def(
         }
         ArmorConfig::CustomPerSlot(entries) => {
             for entry in entries {
-                if rand::random::<f32>() < entry.chance {
+                if game_random().random::<f32>() < entry.chance {
                     let mut stack = create_equipment_item(entry.item);
                     if def.enchanted && difficulty.should_happen(ARMOR_ENCHANT_CHANCE) {
                         apply_vanilla_enchantments(
@@ -1051,7 +1051,7 @@ pub fn equip_item_if_possible(mob: &dyn Mob, stack: ItemStack) -> ItemStack {
     }
 
     let drop_chance = mob_entity.drop_chance(&slot);
-    if !current.is_empty() && (rand::random::<f32>() - 0.1).max(0.0) < drop_chance {
+    if !current.is_empty() && (game_random().random::<f32>() - 0.1).max(0.0) < drop_chance {
         mob_entity.living_entity.entity.spawn_at_location(current);
     }
 

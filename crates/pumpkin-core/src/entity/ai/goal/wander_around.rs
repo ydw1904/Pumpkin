@@ -2,7 +2,6 @@ use super::{Controls, Goal, GoalReach, to_goal_ticks};
 use crate::entity::ai::util::{default_random_pos, land_random_pos};
 use crate::entity::{ai::pathfinder::NavigatorGoal, mob::Mob};
 use pumpkin_util::math::vector3::Vector3;
-use rand::RngExt;
 
 pub const DEFAULT_INTERVAL: i32 = 120;
 pub const PROBABILITY: f32 = 0.001;

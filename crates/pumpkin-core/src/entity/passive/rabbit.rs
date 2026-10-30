@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicI32, Ordering},
@@ -10,7 +11,6 @@ use pumpkin_data::sound::Sound;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::var_int::VarInt;
-use rand::RngExt;
 
 use crate::entity::{
     Entity, EntityBase,
@@ -63,7 +63,7 @@ impl RabbitVariant {
 
     #[must_use]
     pub fn random_variant() -> Self {
-        let mut rng = rand::rng();
+        let rng = game_random();
         match rng.random_range(0..6) {
             1 => Self::White,
             2 => Self::Black,

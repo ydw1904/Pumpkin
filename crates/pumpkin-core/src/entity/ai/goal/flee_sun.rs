@@ -4,7 +4,6 @@ use crate::entity::mob::Mob;
 use crate::entity::mob::sun_burn;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
-use rand::RngExt;
 
 pub struct FleeSunGoal {
     goal_control: Controls,
@@ -29,7 +28,7 @@ impl FleeSunGoal {
     fn find_hide_pos(mob: &dyn Mob) -> Option<Vector3<f64>> {
         let mob_pos = mob.get_entity().block_pos.load();
         let world = mob.get_entity().world.load();
-        let mut rng = mob.get_random();
+        let rng = mob.get_random();
 
         for _ in 0..10 {
             let offset_x = rng.random_range(-10..=10);

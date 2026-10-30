@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::RwLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -11,7 +12,6 @@ use pumpkin_data::world::WorldEvent;
 use pumpkin_protocol::codec::item_stack_seralizer::ItemStackSerializer;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
-use rand::RngExt;
 
 const GRAVITY: f64 = 0.07;
 const WATER_COLOR: i32 = -13_083_194; // 0xFF385DC6
@@ -102,7 +102,7 @@ impl EntityBase for ExperienceBottleEntity {
             world.sync_world_event(WorldEvent::SoundSpellPotionSplash, block_pos, 0);
         }
 
-        let mut rng = rand::rng();
+        let rng = game_random();
         let xp_count = 3 + rng.random_range(0..5) + rng.random_range(0..5);
         ExperienceOrbEntity::spawn(&world, hit_pos, xp_count);
     }

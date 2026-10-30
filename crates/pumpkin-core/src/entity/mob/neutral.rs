@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering::Relaxed};
@@ -125,7 +126,7 @@ pub trait NeutralMob: Mob {
 
     /// `start_persistent_anger_timer` with a world age the caller already read.
     fn start_persistent_anger_timer_at(&self, now: i64) {
-        let ticks = rand::random_range(self.anger_duration());
+        let ticks = game_random().random_range(self.anger_duration());
         self.set_anger_end_time(now + i64::from(ticks));
     }
 

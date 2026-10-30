@@ -1882,9 +1882,9 @@ impl Entity {
         // This has some vanilla magic
 
         while x.mul_add(x, z * z) < 1.0E-5 {
-            x = (rand::random::<f64>() - rand::random::<f64>()) * 0.01;
+            x = (game_random().random::<f64>() - game_random().random::<f64>()) * 0.01;
 
-            z = (rand::random::<f64>() - rand::random::<f64>()) * 0.01;
+            z = (game_random().random::<f64>() - game_random().random::<f64>()) * 0.01;
         }
 
         let var8 = Vector3::new(x, 0.0, z).normalize() * strength;
@@ -2459,7 +2459,9 @@ impl Entity {
             }
         }
 
-        let amplitude = rand::random::<f64>().mul_add(PUSH_OUT_RANDOM_SPEED, PUSH_OUT_MIN_SPEED);
+        let amplitude = game_random()
+            .random::<f64>()
+            .mul_add(PUSH_OUT_RANDOM_SPEED, PUSH_OUT_MIN_SPEED);
 
         let axis = direction.to_axis().into();
 
@@ -2860,8 +2862,8 @@ impl Entity {
         let mut x = x;
         let mut z = z;
         while x.mul_add(x, z * z) < 1.0E-5 {
-            x = (rand::random::<f64>() - rand::random::<f64>()) * 0.01;
-            z = (rand::random::<f64>() - rand::random::<f64>()) * 0.01;
+            x = (game_random().random::<f64>() - game_random().random::<f64>()) * 0.01;
+            z = (game_random().random::<f64>() - game_random().random::<f64>()) * 0.01;
         }
 
         let var8 = Vector3::new(x, 0.0, z).normalize() * strength;

@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use pumpkin_data::tag::{self, Taggable};
@@ -10,7 +11,6 @@ use pumpkin_data::{
 };
 use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
 use pumpkin_world::world::{BlockAccessor, BlockFlags};
-use rand::RngExt;
 
 use crate::{
     block::{CanPlaceAtArgs, OnEntityCollisionArgs, blocks::plant::PlantBlockBase},
@@ -98,7 +98,7 @@ trait CropBlockBase: PlantBlockBase {
     }
 
     fn bonemeal_age_increase(&self) -> i32 {
-        rand::rng().random_range(2..=5)
+        game_random().random_range(2..=5)
     }
 
     fn is_valid_bonemeal_target(&self, world: &World, pos: &BlockPos) -> bool {
@@ -126,7 +126,7 @@ trait CropBlockBase: PlantBlockBase {
         let age = self.get_age(state, block);
         if age < self.max_age() {
             let f = get_available_moisture(world, pos, block);
-            if rand::rng().random_range(0..=(25.0 / f).floor() as i64) == 0 {
+            if game_random().random_range(0..=(25.0 / f).floor() as i64) == 0 {
                 let new_state_id = self.state_with_age(block, state, age + 1);
                 if let Some(server) = world.server.upgrade() {
                     let mut event =

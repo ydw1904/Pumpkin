@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
@@ -25,7 +26,6 @@ use pumpkin_util::Difficulty;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::tick::TickPriority;
 use pumpkin_world::world::BlockFlags;
-use rand::RngExt;
 
 const WARNING_SOUND_RADIUS: i32 = 10;
 const WARDEN_SPAWN_ATTEMPTS: i32 = 20;
@@ -171,7 +171,7 @@ impl SculkShriekerBlock {
         };
         let radius = WARNING_SOUND_RADIUS;
         let sound_pos = {
-            let mut random = rand::rng();
+            let random = game_random();
             pos.add(
                 random.random_range(-radius..=radius),
                 random.random_range(-radius..=radius),

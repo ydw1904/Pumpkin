@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicBool, AtomicI32, Ordering},
@@ -238,7 +239,7 @@ impl Mob for CreeperEntity {
             SoundCategory::Hostile,
             &pos,
             1.0,
-            rand::random::<f32>() * 0.4 + 0.8,
+            game_random().random::<f32>() * 0.4 + 0.8,
         );
 
         self.ignited.store(true, Ordering::Relaxed);

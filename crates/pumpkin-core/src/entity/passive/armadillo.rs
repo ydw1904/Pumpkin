@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicI32, AtomicU64, Ordering},
@@ -33,7 +34,7 @@ pub const SCARE_DISTANCE_HORIZONTAL: f64 = 7.0;
 pub const SCARE_DISTANCE_VERTICAL: f64 = 2.0;
 
 fn pick_next_scute_drop_time() -> i32 {
-    let rand_ticks = (rand::random::<u32>() % 6000) as i32;
+    let rand_ticks = (game_random().random::<u32>() % 6000) as i32;
     rand_ticks + 6000
 }
 

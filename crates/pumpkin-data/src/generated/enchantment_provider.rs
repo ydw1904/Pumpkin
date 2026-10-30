@@ -2,7 +2,7 @@
 use crate::enchantment::Enchantment;
 use crate::item::Item;
 use crate::item_stack::ItemStack;
-use rand::RngExt;
+use pumpkin_util::random::gameplay::game_random;
 #[derive(Clone, Copy, PartialEq)]
 pub enum EnchantmentProviderKind {
     Single {
@@ -295,7 +295,7 @@ impl EnchantmentProvider {
         }
         let mut cost = initial_cost;
         let mut applied: Vec<(&'static Enchantment, i32)> = Vec::new();
-        let mut rng = rand::rng();
+        let rng = game_random();
         loop {
             let available: Vec<&'static Enchantment> = candidates
                 .iter()

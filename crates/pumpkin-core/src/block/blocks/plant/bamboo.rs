@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use pumpkin_data::block_properties::{BambooLeaves, BambooLikeProperties};
@@ -10,7 +11,6 @@ use pumpkin_macros::pumpkin_block;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::tick::TickPriority;
 use pumpkin_world::world::{BlockAccessor, BlockFlags};
-use rand::RngExt;
 
 use crate::block::{
     BlockBehaviour, CanPlaceAtArgs, GetStateForNeighborUpdateArgs, OnPlaceArgs,
@@ -113,7 +113,7 @@ impl BlockBehaviour for BambooBlock {
         let props =
             BambooLikeProperties::from_state_id(args.world.get_block_state_id(args.position));
         if props.stage == 0
-            && rand::rng().random_range(0..3) == 0
+            && game_random().random_range(0..3) == 0
             && args.world.get_block_state(&args.position.up()).is_air()
             && args.world.get_raw_brightness(&args.position.up(), 0) >= 9
         {
@@ -183,7 +183,8 @@ fn update_leaves_and_grow(world: &Arc<World>, position: &BlockPos) {
 
     props.age = u8::from(!(props.age != 1 && block_two_below == &Block::BAMBOO));
 
-    props.stage = u8::from(!((height < 11 || rand::rng().random::<f32>() >= 0.25) && height != 15));
+    props.stage =
+        u8::from(!((height < 11 || game_random().random::<f32>() >= 0.25) && height != 15));
 
     world.set_block_state(&above_pos, props.to_state_id(block), BlockFlags::NOTIFY_ALL);
 }
@@ -221,7 +222,7 @@ fn count_bamboo_above(world: &World, pos: &BlockPos) -> usize {
 fn bone_meal(world: &Arc<World>, position: &BlockPos) {
     let bamboo_below = count_bamboo_below(world, position);
 
-    let growth_amount = rand::rng().random_range(1..=2);
+    let growth_amount = game_random().random_range(1..=2);
 
     for (bamboo_above, _) in (count_bamboo_above(world, position)..).zip(0..growth_amount) {
         let current_total_height = bamboo_above + bamboo_below + 1;

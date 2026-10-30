@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, Ordering};
 
@@ -64,8 +65,10 @@ impl ZombieVillagerEntity {
                 pumpkin_data::villager::VillagerType::Plains,
                 // Vanilla's `initializeZombieVillagerData` rolls a random profession
                 // so a cured villager has trades. NBT-loaded data overwrites this later.
-                pumpkin_data::villager::VillagerProfession::from_i32(rand::random_range(0..15))
-                    .unwrap_or(pumpkin_data::villager::VillagerProfession::None),
+                pumpkin_data::villager::VillagerProfession::from_i32(
+                    game_random().random_range(0..15),
+                )
+                .unwrap_or(pumpkin_data::villager::VillagerProfession::None),
                 1,
             )),
             villager_nbt: std::sync::Mutex::new(NbtCompound::new()),
@@ -133,7 +136,7 @@ impl ZombieVillagerEntity {
     #[expect(clippy::cast_possible_truncation)]
     fn conversion_progress(&self) -> i32 {
         let mut progress = 1;
-        if rand::random::<f32>() >= 0.01 {
+        if game_random().random::<f32>() >= 0.01 {
             return progress;
         }
 
@@ -151,7 +154,7 @@ impl ZombieVillagerEntity {
                     }
                     let block = world.get_block(&BlockPos::new(block_x, block_y, block_z));
                     if speeds_up_conversion(block) {
-                        if rand::random::<f32>() < 0.3 {
+                        if game_random().random::<f32>() < 0.3 {
                             progress += 1;
                         }
                         special_blocks += 1;
@@ -291,7 +294,7 @@ impl Mob for ZombieVillagerEntity {
                 item_stack.decrement_unless_creative(player.gamemode.load(), 1);
                 self.start_converting(
                     Some(player.get_entity().entity_uuid),
-                    rand::random_range(
+                    game_random().random_range(
                         Self::VILLAGER_CONVERSION_WAIT_MIN..=Self::VILLAGER_CONVERSION_WAIT_MAX,
                     ),
                 );

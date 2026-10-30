@@ -4,6 +4,7 @@ use pumpkin_data::entity::EntityType;
 use pumpkin_protocol::java::client::play::CEntityVelocity;
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
+use pumpkin_util::random::gameplay::game_random;
 use std::{
     sync::Arc,
     sync::atomic::{AtomicBool, Ordering},
@@ -115,7 +116,10 @@ impl ThrownItemEntity {
 
     pub fn set_velocity(&self, x: f64, y: f64, z: f64, power: f64, uncertainty: f64) {
         fn next_triangular(mode: f64, deviation: f64) -> f64 {
-            deviation.mul_add(rand::random::<f64>() - rand::random::<f64>(), mode)
+            deviation.mul_add(
+                game_random().random::<f64>() - game_random().random::<f64>(),
+                mode,
+            )
         }
         let velocity = Vector3::new(x, y, z)
             .normalize()

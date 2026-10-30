@@ -12,6 +12,7 @@ use pumpkin_util::Difficulty;
 use pumpkin_util::GameMode;
 use pumpkin_util::Hand;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::random::gameplay::game_random;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -68,7 +69,6 @@ use pumpkin_protocol::{
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::text::TextComponent;
-use rand::RngExt;
 use std::sync::RwLock;
 
 #[derive(Clone, Copy)]
@@ -297,7 +297,7 @@ impl LivingEntity {
     }
 
     pub(crate) fn get_pitch(&self) -> f32 {
-        let mut rng = rand::rng();
+        let rng = game_random();
         if self.is_baby() {
             (rng.random::<f32>() - rng.random::<f32>()) * 0.2 + 1.5
         } else {
@@ -1631,7 +1631,7 @@ impl LivingEntity {
         };
         if max_cramming > 0
             && pushable.len() as i64 > max_cramming - 1
-            && rand::random::<u32>().is_multiple_of(4)
+            && game_random().random::<u32>().is_multiple_of(4)
         {
             let count = pushable
                 .iter()
@@ -2383,7 +2383,7 @@ impl LivingEntity {
             // adds lootingLevel * 0.01 to the per-slot equipment drop chance.
             chance += looting_level as f32 * 0.01;
             chance = chance.min(1.0);
-            if !preserved && rand::random::<f32>() >= chance {
+            if !preserved && game_random().random::<f32>() >= chance {
                 continue;
             }
             let mut item = self
@@ -2403,7 +2403,7 @@ impl LivingEntity {
             // damage to dropped equipment using two chained random calls:
             // setDamageValue(maxDamage - random.nextInt(1 + random.nextInt(max(maxDamage - 3, 1))))
             if !preserved && let Some(max_damage) = item.get_max_damage() {
-                let mut rng = rand::rng();
+                let rng = game_random();
                 let inner = rng.random_range(0..(max_damage - 3).max(1));
                 let outer = rng.random_range(0..=inner);
                 item.set_damage((max_damage - outer).max(0));
@@ -2537,7 +2537,7 @@ impl LivingEntity {
         let key = format!("minecraft:entities/{resource_name}");
         let world = self.entity.world.load();
         if let Some(loot_table) = world.get_loot_table(&key) {
-            let seed: i64 = rand::random();
+            let seed: i64 = game_random().random();
             let pos = self.entity.block_pos.load();
             for stack in crate::world::loot::generate_loot_from_handle(&loot_table, seed, params) {
                 world.drop_stack(&pos, stack);
@@ -4017,7 +4017,7 @@ impl LivingEntity {
         for consume_effect in consumable.effects.iter() {
             match consume_effect {
                 ConsumeEffect::ApplyEffects((effects, probability)) => {
-                    if !consume_effect_probability_applies(*probability, rand::random()) {
+                    if !consume_effect_probability_applies(*probability, game_random().random()) {
                         continue;
                     }
 
@@ -4109,7 +4109,7 @@ impl LivingEntity {
         let bottom_y = world.get_bottom_y();
         let top_y = world.get_top_y();
         let dimensions = self.entity.entity_dimension.load();
-        let mut rng = rand::rng();
+        let rng = game_random();
 
         'attempts: for _ in 0..Self::RANDOM_TELEPORT_ATTEMPTS {
             let target_x = random_teleport_coordinate(center.x, diameter, rng.random());

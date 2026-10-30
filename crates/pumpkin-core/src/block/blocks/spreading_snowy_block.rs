@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use pumpkin_data::block_properties::{
@@ -8,7 +9,6 @@ use pumpkin_data::{Block, BlockDirection, BlockId, BlockState, BlockStateId};
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::lighting::LightEngine;
 use pumpkin_world::world::BlockFlags;
-use rand::RngExt;
 
 use crate::block::{
     BlockBehaviour, BlockMetadata, GetStateForNeighborUpdateArgs, OnPlaceArgs, RandomTickArgs,
@@ -136,7 +136,7 @@ impl SpreadingSnowyBlock {
         if !Self::can_stay_alive(state, world, pos) {
             world.set_block_state(pos, base_block.default_state.id, BlockFlags::NOTIFY_ALL);
         } else if world.get_max_local_raw_brightness(&pos.up()) >= 9 {
-            let mut rng = rand::rng();
+            let rng = game_random();
             for _ in 0..4 {
                 let dx = rng.random_range(0..3) - 1;
                 let dy = rng.random_range(0..5) - 3;

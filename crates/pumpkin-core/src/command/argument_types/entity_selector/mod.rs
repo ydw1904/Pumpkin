@@ -18,7 +18,7 @@ use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::bounds::{DoubleBounds, FloatDegreeBounds, IntBounds};
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::math::wrap_degrees;
-use rand::seq::SliceRandom;
+use pumpkin_util::random::gameplay::game_random;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -352,8 +352,7 @@ impl Order {
                 Self::distance_comparator(&origin, b, a)
             }),
             Self::Random => {
-                let mut rng = rand::rng();
-                entities.shuffle(&mut rng);
+                game_random().shuffle(&mut entities);
                 entities
             }
             Self::Arbitrary => entities,

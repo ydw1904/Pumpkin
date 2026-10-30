@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -293,7 +294,7 @@ impl Raid {
         let bonus_spawns = match raider_type {
             RaiderType::Vindicator | RaiderType::Pillager => {
                 if is_easy {
-                    rand::random::<u32>() % 2
+                    game_random().random::<u32>() % 2
                 } else if is_normal {
                     1
                 } else {
@@ -305,7 +306,7 @@ impl Raid {
             RaiderType::Ravager => u32::from(!is_easy && is_bonus_wave),
         };
         if bonus_spawns > 0 {
-            (rand::random::<u32>() % (bonus_spawns + 1)) as i32
+            (game_random().random::<u32>() % (bonus_spawns + 1)) as i32
         } else {
             0
         }
@@ -407,16 +408,16 @@ impl Raid {
     pub fn find_random_spawn_pos(&self, max_tries: usize) -> Option<BlockPos> {
         let seconds_remaining = self.raid_cooldown_ticks / 20;
         let how_far = 0.22 * (seconds_remaining as f32) - 0.24;
-        let start_angle = rand::random::<f32>() * std::f32::consts::PI * 2.0;
+        let start_angle = game_random().random::<f32>() * std::f32::consts::PI * 2.0;
 
         for i in 0..max_tries {
             let angle = start_angle + std::f32::consts::PI * (i as f32) / 8.0;
             let spawn_x = self.center.0.x
                 + ((angle.cos() * 32.0 * how_far) as i32)
-                + (rand::random::<i32>().rem_euclid(3)) * (how_far as i32);
+                + (game_random().random::<i32>().rem_euclid(3)) * (how_far as i32);
             let spawn_z = self.center.0.z
                 + ((angle.sin() * 32.0 * how_far) as i32)
-                + (rand::random::<i32>().rem_euclid(3)) * (how_far as i32);
+                + (game_random().random::<i32>().rem_euclid(3)) * (how_far as i32);
             let spawn_y = self.center.0.y;
 
             if (spawn_y - self.center.0.y).abs() <= 96 {

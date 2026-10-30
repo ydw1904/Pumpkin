@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::any::Any;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
@@ -28,7 +29,7 @@ impl ItemBasedSteering {
             self.boost_time.store(0, Ordering::Relaxed);
             let random_range = Self::MAX_BOOST_TIME - Self::MIN_BOOST_TIME + 1;
             let random_time =
-                (rand::random::<u32>() as i32).abs() % random_range + Self::MIN_BOOST_TIME;
+                (game_random().random::<u32>() as i32).abs() % random_range + Self::MIN_BOOST_TIME;
             self.boost_time_total.store(random_time, Ordering::Relaxed);
             true
         }

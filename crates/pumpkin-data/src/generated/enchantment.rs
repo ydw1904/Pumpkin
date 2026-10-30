@@ -311,7 +311,7 @@ impl EnchantmentValueEffect {
             Self::Set(val) => val.calculate(level),
             Self::RemoveBinomial(val) => {
                 let prob = val.calculate(level);
-                if rand::random::<f32>() < prob {
+                if pumpkin_util::random::gameplay::game_random().random::<f32>() < prob {
                     0.0
                 } else {
                     current_value

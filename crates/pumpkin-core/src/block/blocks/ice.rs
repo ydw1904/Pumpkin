@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use pumpkin_data::block_properties::{NetherWartLikeProperties, blocks_movement};
@@ -7,7 +8,6 @@ use pumpkin_util::GameMode;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::tick::TickPriority;
 use pumpkin_world::world::BlockFlags;
-use rand::RngExt;
 
 use crate::block::{
     BlockBehaviour, BlockMetadata, BrokenArgs, OnNeighborUpdateArgs, OnScheduledTickArgs,
@@ -120,14 +120,14 @@ impl BlockMetadata for FrostedIceBlock {
 impl BlockBehaviour for FrostedIceBlock {
     fn placed(&self, args: PlacedArgs<'_>) {
         {
-            let delay = rand::rng().random_range(60..=120);
+            let delay = game_random().random_range(60..=120);
             args.world
                 .schedule_block_tick(args.block, *args.position, delay, TickPriority::Normal);
         }
     }
 
     fn on_scheduled_tick(&self, args: OnScheduledTickArgs<'_>) {
-        let should_check_melt = rand::rng().random_range(0..3) == 0
+        let should_check_melt = game_random().random_range(0..3) == 0
             || fewer_neighbors_than(args.world, args.position, 4);
 
         if should_check_melt {
@@ -157,7 +157,7 @@ impl BlockBehaviour for FrostedIceBlock {
                             neighbor_block,
                             neighbor_props.r#age,
                         ) {
-                            let delay = rand::rng().random_range(20..=40);
+                            let delay = game_random().random_range(20..=40);
                             args.world.schedule_block_tick(
                                 neighbor_block,
                                 neighbor_pos,
@@ -171,7 +171,7 @@ impl BlockBehaviour for FrostedIceBlock {
             }
         }
 
-        let delay = rand::rng().random_range(20..=40);
+        let delay = game_random().random_range(20..=40);
         args.world
             .schedule_block_tick(args.block, *args.position, delay, TickPriority::Normal);
     }

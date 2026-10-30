@@ -4,6 +4,7 @@
 //! Matches vanilla `net.minecraft.world.level.dimension.end.EnderDragonFight` behaviour
 //! and `DragonRespawnStage`.
 
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info};
 use uuid::Uuid;
@@ -101,7 +102,7 @@ impl DragonFight {
             gateways.shuffle(&mut rng);
         } else {
             use rand::seq::SliceRandom;
-            let mut rng = rand::rng();
+            let mut rng = game_random();
             gateways.shuffle(&mut rng);
         }
 
@@ -906,7 +907,7 @@ impl DragonFight {
 
         if self.gateways.is_empty() {
             let mut new_gateways: Vec<i32> = (0..(GATEWAY_COUNT as i32)).collect();
-            let mut rng = rand::rng();
+            let mut rng = game_random();
             new_gateways.shuffle(&mut rng);
             self.gateways = new_gateways;
         }

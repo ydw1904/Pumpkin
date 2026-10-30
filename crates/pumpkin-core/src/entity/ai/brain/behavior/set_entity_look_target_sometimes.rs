@@ -1,5 +1,3 @@
-use rand::RngExt;
-
 use super::super::memory::{MemoryStatus, types};
 use super::{OneShot, utils};
 

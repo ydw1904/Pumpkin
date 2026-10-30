@@ -81,7 +81,6 @@ pub trait AgeableMob: Mob {
         group_data: Option<crate::entity::mob::spawn::SpawnGroupData>,
     ) -> Option<crate::entity::mob::spawn::SpawnGroupData> {
         use crate::entity::mob::spawn::SpawnGroupData;
-        use rand::RngExt;
 
         let (group_size, should_spawn_baby, baby_spawn_chance) = match group_data {
             Some(SpawnGroupData::Ageable {

@@ -1,4 +1,5 @@
 use core::f32;
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc,
     atomic::{AtomicU32, Ordering},
@@ -26,7 +27,7 @@ pub struct ExperienceOrbEntity {
 
 impl ExperienceOrbEntity {
     pub fn new(entity: Entity, amount: u32) -> Self {
-        entity.yaw.store(rand::random::<f32>() * 360.0);
+        entity.yaw.store(game_random().random::<f32>() * 360.0);
         Self {
             entity,
             amount,

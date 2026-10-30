@@ -156,7 +156,7 @@ impl LegacySplitter {
     ///
     /// # Returns
     /// A new `LegacySplitter` instance.
-    const fn new(seed: u64) -> Self {
+    pub(crate) const fn new(seed: u64) -> Self {
         Self { seed }
     }
 }

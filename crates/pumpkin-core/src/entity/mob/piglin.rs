@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Mutex, Weak,
     atomic::{AtomicBool, AtomicI32, Ordering},
@@ -645,7 +646,8 @@ impl PiglinEntity {
     fn make_sound(&self, sound: Sound) {
         let entity = &self.mob_entity.living_entity.entity;
         let base_pitch = if self.is_baby() { 1.5 } else { 1.0 };
-        let pitch = (rand::random::<f32>() - rand::random::<f32>()).mul_add(0.2, base_pitch);
+        let pitch = (game_random().random::<f32>() - game_random().random::<f32>())
+            .mul_add(0.2, base_pitch);
         entity.world.load().play_sound_fine(
             sound,
             SoundCategory::Hostile,
@@ -659,7 +661,8 @@ impl PiglinEntity {
         let living = &self.mob_entity.living_entity;
         let alive = living.entity.is_alive() && living.health.load() > 0.0;
         if alive
-            && rand::random_range(0..1000) < self.ambient_sound_time.fetch_add(1, Ordering::Relaxed)
+            && game_random().random_range(0..1000)
+                < self.ambient_sound_time.fetch_add(1, Ordering::Relaxed)
         {
             self.reset_ambient_sound_time();
             self.make_sound(PiglinAi::get_sound_for_activity(self, self.activity.load()));
@@ -1009,34 +1012,34 @@ impl Mob for PiglinEntity {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
 
-            let weapon = if rand::random::<f32>() < 0.5 {
+            let weapon = if game_random().random::<f32>() < 0.5 {
                 &Item::CROSSBOW
-            } else if rand::random_range(0..10) == 0 {
+            } else if game_random().random_range(0..10) == 0 {
                 &Item::GOLDEN_SPEAR
             } else {
                 &Item::GOLDEN_SWORD
             };
             equipment.put(&EquipmentSlot::MAIN_HAND, ItemStack::new(1, weapon));
 
-            if rand::random::<f32>() < 0.1 {
+            if game_random().random::<f32>() < 0.1 {
                 equipment.put(
                     &EquipmentSlot::HEAD,
                     ItemStack::new(1, &Item::GOLDEN_HELMET),
                 );
             }
-            if rand::random::<f32>() < 0.1 {
+            if game_random().random::<f32>() < 0.1 {
                 equipment.put(
                     &EquipmentSlot::CHEST,
                     ItemStack::new(1, &Item::GOLDEN_CHESTPLATE),
                 );
             }
-            if rand::random::<f32>() < 0.1 {
+            if game_random().random::<f32>() < 0.1 {
                 equipment.put(
                     &EquipmentSlot::LEGS,
                     ItemStack::new(1, &Item::GOLDEN_LEGGINGS),
                 );
             }
-            if rand::random::<f32>() < 0.1 {
+            if game_random().random::<f32>() < 0.1 {
                 equipment.put(&EquipmentSlot::FEET, ItemStack::new(1, &Item::GOLDEN_BOOTS));
             }
         }

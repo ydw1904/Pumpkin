@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use pumpkin_data::dimension::Dimension;
@@ -6,8 +7,6 @@ use pumpkin_data::world::WorldEvent;
 use pumpkin_data::{Block, BlockDirection, tag};
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::random::RandomGenerator;
-use pumpkin_util::random::xoroshiro128::Xoroshiro;
-use rand::RngExt;
 use soul_fire::SoulFireBlock;
 
 use crate::block::blocks::fire::fire::FireBlock;
@@ -108,10 +107,8 @@ impl FireBlockBase {
                 .to_horizontal_axis()
                 .unwrap_or(pumpkin_data::block_properties::HorizontalAxis::X)
         } else {
-            BlockDirection::random_horizontal(&mut RandomGenerator::Xoroshiro(
-                Xoroshiro::from_seed(rand::rng().random()),
-            ))
-            .to_axis()
+            BlockDirection::random_horizontal(&mut RandomGenerator::Gameplay(game_random()))
+                .to_axis()
         };
         NetherPortal::get_new_portal(world, block_pos, dir).is_some()
     }
@@ -126,7 +123,7 @@ impl FireBlockBase {
             if ticks < 0 {
                 base_entity.fire_ticks.store(ticks + 1, Ordering::Relaxed);
             } else if base_entity.entity_type == &EntityType::PLAYER {
-                let rnd_ticks = rand::rng().random_range(1..3);
+                let rnd_ticks = game_random().random_range(1..3);
                 base_entity
                     .fire_ticks
                     .store(ticks + rnd_ticks, Ordering::Relaxed);

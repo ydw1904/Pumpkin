@@ -6,7 +6,6 @@ use pumpkin_data::entity::EntityStatus;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::world::WorldEvent;
 use pumpkin_world::world::BlockFlags;
-use rand::RngExt;
 
 const MAX_TIMER: i32 = 40;
 const MAX_INTERVAL: i32 = 1000;

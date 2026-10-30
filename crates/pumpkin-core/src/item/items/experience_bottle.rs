@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::any::Any;
 use std::sync::Arc;
 
@@ -10,7 +11,6 @@ use pumpkin_data::item::Item;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::statistic::StatisticCategory;
 use pumpkin_util::Hand;
-use rand::RngExt;
 
 const ROLL: f32 = -20.0;
 const POWER: f32 = 0.7;
@@ -33,7 +33,7 @@ impl ItemBehaviour for ExperienceBottleItem {
     fn normal_use_with_hand(&self, item: &Item, player: &Player, yaw: f32, pitch: f32, hand: Hand) {
         let world = player.world();
         let position = player.position();
-        let sound_pitch = 0.4 / rand::rng().random::<f32>().mul_add(0.4, 0.8);
+        let sound_pitch = 0.4 / game_random().random::<f32>().mul_add(0.4, 0.8);
         world.play_sound_fine(
             Sound::EntityExperienceBottleThrow,
             SoundCategory::Neutral,

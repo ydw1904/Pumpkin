@@ -2,6 +2,7 @@ pub mod advancement;
 pub mod statistics;
 
 use core::f32;
+use pumpkin_util::random::gameplay::game_random;
 use std::collections::{HashMap, VecDeque};
 use std::f64::consts::TAU;
 use std::num::NonZero;
@@ -735,7 +736,7 @@ impl Player {
             current_block_destroy_stage: AtomicI32::new(-1),
             current_block_breaking_speed: AtomicU32::new(0),
             synced_mining_efficiency_level: AtomicI32::new(-1),
-            enchantment_seed: AtomicI32::new(rand::random()),
+            enchantment_seed: AtomicI32::new(game_random().random()),
             open_container: AtomicCell::new(None),
             open_container_pos: AtomicCell::new(None),
             raid_omen_position: AtomicCell::new(None),
@@ -2537,7 +2538,7 @@ impl Player {
             position,
             volume,
             pitch,
-            rand::random::<i64>(),
+            game_random().random::<i64>(),
         );
     }
 
@@ -5146,12 +5147,12 @@ impl Player {
         let pitch_cos = pitch.cos();
         let yaw_sin = yaw.sin();
         let yaw_cos = yaw.cos();
-        let horizontal_offset = rand::random::<f64>() * TAU;
-        let l = 0.02 * rand::random::<f64>();
+        let horizontal_offset = game_random().random::<f64>() * TAU;
+        let l = 0.02 * game_random().random::<f64>();
 
         let velocity = Vector3::new(
             (-yaw_sin * pitch_cos).mul_add(0.3, horizontal_offset.cos() * l),
-            (rand::random::<f64>() - rand::random::<f64>())
+            (game_random().random::<f64>() - game_random().random::<f64>())
                 .mul_add(0.1, (-pitch_sin).mul_add(0.3, 0.1)),
             (yaw_cos * pitch_cos).mul_add(0.3, horizontal_offset.sin() * l),
         );
@@ -5641,7 +5642,7 @@ impl Player {
             return xp;
         }
 
-        let idx = rand::random::<u32>() as usize % candidates.len();
+        let idx = game_random().random::<u32>() as usize % candidates.len();
         let (slot_index, equipment_slot, mut stack) = candidates.swap_remove(idx);
 
         let repaired = stack.repair_item(xp.saturating_mul(2));
@@ -7125,7 +7126,8 @@ impl EntityBase for Player {
         }
 
         self.enchantment_seed.store(
-            nbt.get_int("XpSeed").unwrap_or_else(rand::random),
+            nbt.get_int("XpSeed")
+                .unwrap_or_else(|| game_random().next_i32()),
             Ordering::Relaxed,
         );
 
@@ -8051,7 +8053,7 @@ impl InventoryPlayer for Player {
             let state = world.get_block_state(&pos);
             let block = pumpkin_data::Block::from_state_id(state.id);
             if block.has_tag(&pumpkin_data::tag::Block::MINECRAFT_ANVIL) {
-                if !self.has_infinite_materials() && rand::random::<f32>() < 0.12 {
+                if !self.has_infinite_materials() && game_random().random::<f32>() < 0.12 {
                     if let Some(new_state) =
                         crate::block::blocks::anvil::AnvilBlock::damage(state.id)
                     {

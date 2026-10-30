@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicI32, AtomicU8, Ordering};
 use std::sync::{Arc, Weak};
@@ -426,7 +427,7 @@ impl Goal for EvokerSummonSpellGoal {
             .filter(|e| *e.get_entity().entity_type == EntityType::VEX)
             .count();
 
-        let max_allowed = (rand::random::<u8>() % 8 + 1) as usize;
+        let max_allowed = (game_random().random::<u8>() % 8 + 1) as usize;
         vex_count < max_allowed
     }
 
@@ -467,8 +468,8 @@ impl Goal for EvokerSummonSpellGoal {
             let evoker_pos = evoker_ent.pos.load();
 
             for _ in 0..3 {
-                let offset_x = (rand::random::<i32>() % 5 - 2) as f64;
-                let offset_z = (rand::random::<i32>() % 5 - 2) as f64;
+                let offset_x = (game_random().random::<i32>() % 5 - 2) as f64;
+                let offset_z = (game_random().random::<i32>() % 5 - 2) as f64;
                 let spawn_pos = Vector3::new(
                     evoker_pos.x + offset_x,
                     evoker_pos.y + 1.0,

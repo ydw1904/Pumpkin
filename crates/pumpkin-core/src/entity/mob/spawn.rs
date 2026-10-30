@@ -1,10 +1,10 @@
 //! Vanilla `Mob.finalizeSpawn`: the step run on freshly created mobs before they enter the world.
 
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::effect::StatusEffect;
-use rand::RngExt;
 
 use crate::entity::EntityBase;
 use crate::entity::attributes::{Modifier, ModifierOperation};
@@ -32,7 +32,7 @@ pub enum SpawnGroupData {
 impl MobEntity {
     /// Vanilla `Mob.finalizeSpawn`: random follow range bonus and left-handedness.
     pub fn finalize_spawn_base(&self) {
-        let mut rng = rand::rng();
+        let rng = game_random();
         {
             let mut attributes = self
                 .living_entity

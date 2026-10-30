@@ -1,5 +1,4 @@
 use pumpkin_data::damage::DamageType;
-use rand::RngExt;
 
 use crate::entity::{
     EntityBase,

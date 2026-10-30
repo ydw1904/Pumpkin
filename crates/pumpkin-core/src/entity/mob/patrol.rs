@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crossbeam::atomic::AtomicCell;
@@ -74,8 +75,8 @@ pub trait PatrollingMonster: Mob {
 
     fn find_patrol_target(&self) {
         let block_pos = self.get_mob_entity().living_entity.entity.block_pos.load();
-        let dx: i32 = rand::random::<i32>().rem_euclid(1000) - 500;
-        let dz: i32 = rand::random::<i32>().rem_euclid(1000) - 500;
+        let dx: i32 = game_random().random::<i32>().rem_euclid(1000) - 500;
+        let dz: i32 = game_random().random::<i32>().rem_euclid(1000) - 500;
         let target = BlockPos(Vector3::new(
             block_pos.0.x + dx,
             block_pos.0.y,
@@ -86,7 +87,7 @@ pub trait PatrollingMonster: Mob {
 
     fn finalize_patrol_spawn(&self, is_patrol_spawn: bool) {
         if !is_patrol_spawn && self.can_be_leader() {
-            let r: f32 = rand::random();
+            let r: f32 = game_random().random();
             if r < 0.06 {
                 self.set_patrol_leader(true);
             }

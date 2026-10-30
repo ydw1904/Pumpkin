@@ -171,7 +171,6 @@ pumpkin-util.workspace = true
 pumpkin-nbt.workspace = true
 serde = {workspace = true, features = ["rc"]}
 crc32c.workspace = true
-rand.workspace = true
 
 [build-dependencies]
 reqwest = { workspace = true, features = ["blocking", "json"] }

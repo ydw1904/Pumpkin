@@ -8,7 +8,6 @@ use pumpkin_data::block_properties::is_air;
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::world::BlockFlags;
-use rand::RngExt;
 
 pub struct PlaceBlockGoal {
     enderman: Arc<EndermanEntity>,
@@ -48,7 +47,7 @@ impl Goal for PlaceBlockGoal {
         let pos = entity.pos.load();
 
         let (bx, by, bz) = {
-            let mut rng = mob.get_random();
+            let rng = mob.get_random();
             (
                 (pos.x - 1.0 + rng.random::<f64>() * 2.0).floor() as i32,
                 (pos.y + rng.random::<f64>() * 2.0).floor() as i32,

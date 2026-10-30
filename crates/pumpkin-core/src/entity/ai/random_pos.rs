@@ -1,6 +1,7 @@
 use pumpkin_data::fluid::Fluid;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::gameplay::game_random;
 
 use crate::entity::ai::pathfinder::pathfinding_context::PathfindingContext;
 use crate::entity::mob::Mob;
@@ -57,9 +58,9 @@ fn generate_random_pos(
 
 fn generate_random_direction(horizontal_dist: i32, vertical_dist: i32) -> BlockPos {
     BlockPos::new(
-        rand::random_range(0..2 * horizontal_dist + 1) - horizontal_dist,
-        rand::random_range(0..2 * vertical_dist + 1) - vertical_dist,
-        rand::random_range(0..2 * horizontal_dist + 1) - horizontal_dist,
+        game_random().random_range(0..2 * horizontal_dist + 1) - horizontal_dist,
+        game_random().random_range(0..2 * vertical_dist + 1) - vertical_dist,
+        game_random().random_range(0..2 * horizontal_dist + 1) - horizontal_dist,
     )
 }
 
@@ -101,14 +102,14 @@ fn generate_random_pos_toward_direction(
     if has_home && horizontal_dist > 1.0 {
         let home = mob_entity.position_target.load();
         if mob_pos.x > f64::from(home.0.x) {
-            xt -= rand::random::<f64>() * horizontal_dist / 2.0;
+            xt -= game_random().random::<f64>() * horizontal_dist / 2.0;
         } else {
-            xt += rand::random::<f64>() * horizontal_dist / 2.0;
+            xt += game_random().random::<f64>() * horizontal_dist / 2.0;
         }
         if mob_pos.z > f64::from(home.0.z) {
-            zt -= rand::random::<f64>() * horizontal_dist / 2.0;
+            zt -= game_random().random::<f64>() * horizontal_dist / 2.0;
         } else {
-            zt += rand::random::<f64>() * horizontal_dist / 2.0;
+            zt += game_random().random::<f64>() * horizontal_dist / 2.0;
         }
     }
     let pos = BlockPos::floored(

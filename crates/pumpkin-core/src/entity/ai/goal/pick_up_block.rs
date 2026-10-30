@@ -7,7 +7,6 @@ use pumpkin_data::BlockStateId;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
 use pumpkin_world::world::BlockFlags;
-use rand::RngExt;
 
 pub struct PickUpBlockGoal {
     enderman: Arc<EndermanEntity>,
@@ -43,7 +42,7 @@ impl Goal for PickUpBlockGoal {
         let pos = entity.pos.load();
 
         let (bx, by, bz) = {
-            let mut rng = mob.get_random();
+            let rng = mob.get_random();
             (
                 (pos.x - 2.0 + rng.random::<f64>() * 4.0).floor() as i32,
                 (pos.y + rng.random::<f64>() * 3.0).floor() as i32,

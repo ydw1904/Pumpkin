@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicI32, AtomicU8, Ordering},
@@ -10,7 +11,6 @@ use pumpkin_data::sound::Sound;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::var_int::VarInt;
-use rand::RngExt;
 
 use crate::entity::{
     Entity, EntityBase,
@@ -92,7 +92,7 @@ impl PandaGene {
 
     #[must_use]
     pub fn random_gene() -> Self {
-        let mut rng = rand::rng();
+        let rng = game_random();
         if rng.random_range(0..16) == 0 {
             Self::from_id(rng.random_range(4..=6))
         } else if rng.random_range(0..8) == 0 {

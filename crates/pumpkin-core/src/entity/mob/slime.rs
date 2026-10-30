@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::{Arc, Weak};
 
@@ -20,7 +21,6 @@ use crate::entity::{
 };
 use crate::world::World;
 use pumpkin_util::random::RandomImpl;
-use rand::RngExt;
 
 pub struct SlimeEntity {
     entity: Arc<MobEntity>,
@@ -84,8 +84,8 @@ impl SlimeEntity {
     }
 
     pub fn randomize_size(&self) {
-        let mut size_scale = rand::random_range(0..3);
-        if size_scale < 2 && rand::random_range(0.0..1.0) < 0.5 {
+        let mut size_scale = game_random().random_range(0..3);
+        if size_scale < 2 && game_random().random_range(0.0..1.0) < 0.5 {
             size_scale += 1;
         }
         let size = 1 << size_scale;
@@ -171,7 +171,7 @@ impl SlimeEntity {
         //     let time = world.level_time.lock().await.time_of_day;
         //     let moon_phase = (time / 24000) % 8;
         //     let surface_slime_spawn_chance = Self::get_spawn_chance(moon_phase);
-        //     let mut rng = rand::rng();
+        //     let mut rng = game_random();
         //     if rng.random::<f32>() < surface_slime_spawn_chance
         //         && world.get_max_local_raw_brightness(pos) <= rng.random_range(0..8)
         //     {
@@ -190,7 +190,7 @@ impl SlimeEntity {
         );
         let mut slime_rand = pumpkin_util::random::legacy_rand::LegacyRand::from_seed(slime_seed);
 
-        let mut rng = rand::rng();
+        let rng = game_random();
         if rng.random_range(0..10) == 0 && slime_rand.next_bounded_i32(10) == 0 && pos.0.y < 40 {
             return true;
         }
@@ -209,7 +209,7 @@ impl SlimeEntity {
     // }
 
     fn get_jump_delay() -> i32 {
-        rand::random_range(10..30)
+        game_random().random_range(10..30)
     }
 
     fn do_play_jump_sound(&self) -> bool {
@@ -238,7 +238,8 @@ impl SlimeEntity {
 
     fn get_sound_pitch(&self) -> f32 {
         let pitch_adjuster = if self.is_tiny() { 1.4 } else { 0.8 };
-        (rand::random_range(0.0..1.0) - rand::random_range(0.0..1.0)) * 0.2 + 1.0 * pitch_adjuster
+        (game_random().random_range(0.0..1.0) - game_random().random_range(0.0..1.0)) * 0.2
+            + 1.0 * pitch_adjuster
     }
 }
 
@@ -309,7 +310,10 @@ impl Mob for SlimeEntity {
                 SoundCategory::Hostile,
                 &self.entity.living_entity.entity.pos.load(),
                 self.get_sound_volume(),
-                ((rand::random_range(0.0..1.0) - rand::random_range(0.0..1.0)) * 0.2 + 1.0) / 0.8,
+                ((game_random().random_range(0.0..1.0) - game_random().random_range(0.0..1.0))
+                    * 0.2
+                    + 1.0)
+                    / 0.8,
             );
 
             self.target_squish.store(-0.5);
@@ -346,7 +350,7 @@ impl Mob for SlimeEntity {
             let world = self.entity.living_entity.entity.world.load();
             let pos = self.entity.living_entity.entity.pos.load();
             let half_size = size / 2;
-            let count = 2 + rand::random_range(0..3);
+            let count = 2 + game_random().random_range(0..3);
 
             let width = self
                 .entity
@@ -378,7 +382,7 @@ impl Mob for SlimeEntity {
                     .living_entity
                     .entity
                     .yaw
-                    .store(rand::random_range(0.0..360.0));
+                    .store(game_random().random_range(0.0..360.0));
                 world.spawn_entity_non_save(slime_like as Arc<dyn EntityBase>);
             }
         }
@@ -495,7 +499,7 @@ impl Goal for SlimeFloatGoal {
     }
 
     fn tick(&mut self, _mob: &dyn Mob) {
-        if rand::random_range(0.0..1.0) < 0.8 {
+        if game_random().random_range(0.0..1.0) < 0.8 {
             self.slime
                 .entity
                 .jump_control
@@ -609,8 +613,8 @@ impl Goal for SlimeRandomDirectionGoal {
     fn tick(&mut self, _mob: &dyn Mob) {
         self.next_randomize_time -= 1;
         if self.next_randomize_time <= 0 {
-            self.next_randomize_time = rand::random_range(40..100);
-            self.chosen_degrees = rand::random_range(0.0..360.0);
+            self.next_randomize_time = game_random().random_range(40..100);
+            self.chosen_degrees = game_random().random_range(0.0..360.0);
         }
         self.slime.target_yaw.store(self.chosen_degrees);
         self.slime.is_aggressive.store(false, Ordering::Relaxed);

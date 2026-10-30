@@ -1,6 +1,7 @@
 use super::EnderDragonPhase;
 use crate::entity::boss::ender_dragon::{EnderDragonEntity, NODE_Y};
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::gameplay::game_random;
 
 pub struct HoveringPhase;
 
@@ -19,7 +20,7 @@ impl super::Phase for HoveringPhase {
         };
         let target = Vector3::new(origin.x as f64, NODE_Y as f64 + 10.0, origin.z as f64);
 
-        if rand::random_bool(0.01) {
+        if game_random().random_bool(0.01) {
             dragon.set_phase(EnderDragonPhase::TakingOff);
             return;
         }

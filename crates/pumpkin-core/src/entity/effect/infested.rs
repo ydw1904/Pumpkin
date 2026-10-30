@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use uuid::Uuid;
 
 use pumpkin_data::damage::DamageType;
@@ -30,8 +31,8 @@ impl MobEffect for InfestedMobEffect {
         let world = living.entity.world.load();
 
         // 10% chance to spawn
-        if rand::random::<f32>() <= 0.1 {
-            let count = rand::random::<u32>() % 2 + 1;
+        if game_random().random::<f32>() <= 0.1 {
+            let count = game_random().random::<u32>() % 2 + 1;
             let bbox = living.entity.bounding_box.load();
             let center = Vector3::new(
                 f64::midpoint(bbox.min.x, bbox.max.x),
@@ -45,7 +46,7 @@ impl MobEffect for InfestedMobEffect {
             let vz = rot.z * 0.3;
 
             for _ in 0..count {
-                let random_angle = (rand::random::<f32>() - 0.5) * std::f32::consts::PI;
+                let random_angle = (game_random().random::<f32>() - 0.5) * std::f32::consts::PI;
                 let cos_a = random_angle.cos();
                 let sin_a = random_angle.sin();
                 let rx = vx * cos_a + vz * sin_a;

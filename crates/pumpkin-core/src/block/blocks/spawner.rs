@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use crate::block::entities::mob_spawner::MobSpawnerBlockEntity;
@@ -26,7 +27,8 @@ impl BlockBehaviour for SpawnerBlock {
         if args.player.gamemode.load() != GameMode::Creative
             && args.world.level_info.load().game_rules.block_drops
         {
-            let xp_count = 15 + rand::random_range(0..15) + rand::random_range(0..15);
+            let xp_count =
+                15 + game_random().random_range(0..15) + game_random().random_range(0..15);
             ExperienceOrbEntity::spawn(args.world, args.position.to_centered_f64(), xp_count);
         }
     }

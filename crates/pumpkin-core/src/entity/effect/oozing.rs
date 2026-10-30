@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use uuid::Uuid;
 
 use pumpkin_data::damage::DamageType;
@@ -27,7 +28,7 @@ impl MobEffect for OozingMobEffect {
             let entity_arc = from_type(&EntityType::SLIME, spawn_pos, &world, Uuid::new_v4());
             let entity = entity_arc.get_entity();
             entity.set_pos(spawn_pos);
-            entity.yaw.store(rand::random::<f32>() * 360.0);
+            entity.yaw.store(game_random().random::<f32>() * 360.0);
             entity.pitch.store(0.0);
 
             if let Some(slime) = entity_arc.cast_any().downcast_ref::<SlimeEntity>() {

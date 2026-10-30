@@ -1,6 +1,5 @@
 use crate::entity::ai::goal::{Controls, Goal};
 use crate::entity::mob::Mob;
-use rand::RngExt;
 
 pub struct AmbientStandGoal {
     goal_control: Controls,

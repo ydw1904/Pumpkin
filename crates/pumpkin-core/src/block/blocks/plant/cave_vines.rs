@@ -4,9 +4,9 @@ use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::{Block, BlockDirection, BlockId, BlockStateId};
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::tick::TickPriority;
 use pumpkin_world::world::{BlockAccessor, BlockFlags};
-use rand::RngExt;
 
 use crate::block::registry::BlockActionResult;
 use crate::block::{
@@ -46,7 +46,7 @@ impl BlockBehaviour for CaveVinesBlock {
                 return Block::CAVE_VINES_PLANT.default_state.id;
             }
             let mut props = CaveVinesLikeProperties::default(&Block::CAVE_VINES);
-            props.age = rand::rng().random_range(0..25);
+            props.age = game_random().random_range(0..25);
             props.to_state_id(&Block::CAVE_VINES)
         } else {
             Block::CAVE_VINES_PLANT.default_state.id
@@ -57,11 +57,11 @@ impl BlockBehaviour for CaveVinesBlock {
         if args.block == &Block::CAVE_VINES {
             let state_id = args.world.get_block_state_id(args.position);
             let mut props = CaveVinesLikeProperties::from_state_id(state_id);
-            if props.age < 25 && rand::rng().random::<f64>() < 0.1 {
+            if props.age < 25 && game_random().random::<f64>() < 0.1 {
                 let growth_pos = args.position.down();
                 if args.world.get_block_state(&growth_pos).is_air() {
                     props.age += 1;
-                    props.berries = rand::rng().random::<f32>() < 0.11;
+                    props.berries = game_random().random::<f32>() < 0.11;
                     args.world.set_block_state(
                         &growth_pos,
                         props.to_state_id(&Block::CAVE_VINES),
@@ -129,7 +129,7 @@ impl BlockBehaviour for CaveVinesBlock {
                 {
                     let body_props = CaveVinesPlantLikeProperties::from_state_id(args.state_id);
                     let mut head_props = CaveVinesLikeProperties::default(&Block::CAVE_VINES);
-                    head_props.age = rand::rng().random_range(0..25);
+                    head_props.age = game_random().random_range(0..25);
                     head_props.berries = body_props.berries;
                     return head_props.to_state_id(&Block::CAVE_VINES);
                 }
@@ -146,7 +146,7 @@ impl BlockBehaviour for CaveVinesBlock {
                 props.berries = false;
                 args.world
                     .drop_stack(args.position, ItemStack::new(1, &Item::GLOW_BERRIES));
-                let pitch = rand::rng().random_range(0.8f32..1.2f32);
+                let pitch = game_random().random_range(0.8f32..1.2f32);
                 args.world.play_sound_fine(
                     Sound::BlockCaveVinesPickBerries,
                     SoundCategory::Blocks,
@@ -167,7 +167,7 @@ impl BlockBehaviour for CaveVinesBlock {
                 props.berries = false;
                 args.world
                     .drop_stack(args.position, ItemStack::new(1, &Item::GLOW_BERRIES));
-                let pitch = rand::rng().random_range(0.8f32..1.2f32);
+                let pitch = game_random().random_range(0.8f32..1.2f32);
                 args.world.play_sound_fine(
                     Sound::BlockCaveVinesPickBerries,
                     SoundCategory::Blocks,

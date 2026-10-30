@@ -2,7 +2,6 @@ use std::ops::BitOr;
 
 use pumpkin_data::entity::EntityStatus;
 use pumpkin_data::tag::{self, Taggable};
-use rand::RngExt;
 
 use super::{Controls, Goal};
 use crate::entity::mob::Mob;

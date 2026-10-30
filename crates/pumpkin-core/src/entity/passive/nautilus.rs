@@ -1,4 +1,5 @@
 use crossbeam::atomic::AtomicCell;
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicI32, Ordering},
@@ -296,7 +297,7 @@ impl Mob for NautilusEntity {
             let velo = entity.velocity.load();
             let speed = velo.length();
             let prob = (speed * 2.0).clamp(0.15, 1.0);
-            if rand::random::<f64>() < prob {
+            if game_random().random::<f64>() < prob {
                 let world = entity.world.load();
                 let pos = entity.pos.load();
                 world.spawn_particle(
@@ -316,7 +317,7 @@ impl Mob for NautilusEntity {
 
         if !self.is_tame() && self.is_food(item_stack) {
             item_stack.decrement_unless_creative(player.gamemode.load(), 1);
-            if rand::random::<u32>().is_multiple_of(3) {
+            if game_random().random::<u32>().is_multiple_of(3) {
                 self.set_tame(true, Some(player.gameprofile.id));
                 let world = entity.world.load();
                 world.send_entity_status(entity, EntityStatus::TamingSucceeded, None);

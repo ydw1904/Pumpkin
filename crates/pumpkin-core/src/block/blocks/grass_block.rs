@@ -1,14 +1,14 @@
 use pumpkin_data::block_properties::{DoubleBlockHalf, TallSeagrassLikeProperties};
 use pumpkin_data::{Block, BlockId, BlockState, BlockStateId};
 use pumpkin_util::math::position::BlockPos;
-use pumpkin_util::random::{RandomGenerator, RandomImpl, xoroshiro128::Xoroshiro};
+use pumpkin_util::random::gameplay::game_random;
+use pumpkin_util::random::{RandomGenerator, RandomImpl};
 use pumpkin_world::generation::feature::{
     configured_features::{BONE_MEAL_FEATURES, CONFIGURED_FEATURES, ConfiguredFeature},
     placed_features::{Feature, PLACED_FEATURES},
 };
 use pumpkin_world::tick::TickPriority;
 use pumpkin_world::world::BlockFlags;
-use rand::RngExt;
 
 use super::spreading_snowy_block::{SnowyBlock, SpreadingSnowyBlock};
 use crate::block::{
@@ -71,10 +71,10 @@ impl BlockBehaviour for GrassBlock {
             let mut target = origin;
             let mut valid = true;
             for _ in 0..attempt / ATTEMPTS_PER_STEP {
-                let offset_x = rand::rng().random_range(0..3) - 1;
+                let offset_x = game_random().random_range(0..3) - 1;
                 let offset_y =
-                    ((rand::rng().random_range(0..3) - 1) * rand::rng().random_range(0..3)) / 2;
-                let offset_z = rand::rng().random_range(0..3) - 1;
+                    ((game_random().random_range(0..3) - 1) * game_random().random_range(0..3)) / 2;
+                let offset_z = game_random().random_range(0..3) - 1;
                 target = BlockPos::new(
                     target.0.x + offset_x,
                     target.0.y + offset_y,
@@ -95,7 +95,7 @@ impl BlockBehaviour for GrassBlock {
             }
             let target_state = args.world.get_block_state(&target);
             if Block::from_state_id(target_state.id) == &Block::SHORT_GRASS
-                && rand::rng().random_range(0..10) == 0
+                && game_random().random_range(0..10) == 0
             {
                 let above = target.up();
                 if args.world.is_in_height_limit(above.0.y)
@@ -105,7 +105,7 @@ impl BlockBehaviour for GrassBlock {
                     place_tall_grass(args.world, target);
                 }
             } else if target_state.is_air() && args.world.is_in_height_limit(target.0.y) {
-                let selected = if rand::rng().random_range(0..FLOWER_CHANCE) == 0 {
+                let selected = if game_random().random_range(0..FLOWER_CHANCE) == 0 {
                     biome_bonemeal_state(args.world, target)
                 } else {
                     Some((Block::SHORT_GRASS.default_state, false))
@@ -181,7 +181,7 @@ fn biome_bonemeal_state(
         return None;
     }
 
-    let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(rand::rng().random()));
+    let mut random = RandomGenerator::Gameplay(game_random());
     let key = features[random.next_bounded_i32(features.len() as i32) as usize];
     let ConfiguredFeature::SimpleBlock(feature) = CONFIGURED_FEATURES.get(&key)? else {
         return None;

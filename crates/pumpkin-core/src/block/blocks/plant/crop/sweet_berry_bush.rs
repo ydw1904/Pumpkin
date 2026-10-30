@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use crate::{
@@ -25,7 +26,6 @@ use pumpkin_macros::pumpkin_block;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_world::world::{BlockAccessor, BlockFlags};
-use rand::RngExt;
 
 #[pumpkin_block("minecraft:sweet_berry_bush")]
 pub struct SweetBerryBushBlock;
@@ -45,7 +45,7 @@ impl BlockBehaviour for SweetBerryBushBlock {
         match props.age {
             2 | 3 => {
                 let index = props.age;
-                let count: u8 = rand::rng().random_range((index - 1)..=(index));
+                let count: u8 = game_random().random_range((index - 1)..=(index));
                 let mut drops = vec![ItemStack::new(count, &Item::SWEET_BERRIES)];
                 if let Some(player_arc) = args.world.get_player_by_uuid(args.player.gameprofile.id)
                     && let Some(server) = args.world.server.upgrade()
@@ -66,7 +66,7 @@ impl BlockBehaviour for SweetBerryBushBlock {
                 for stack in drops {
                     args.world.drop_stack(args.position, stack);
                 }
-                let pitch = rand::rng().random_range(0.8f32..1.2f32);
+                let pitch = game_random().random_range(0.8f32..1.2f32);
                 args.world.play_sound_fine(
                     Sound::BlockSweetBerryBushPickBerries,
                     SoundCategory::Blocks,
@@ -143,7 +143,7 @@ impl BlockBehaviour for SweetBerryBushBlock {
     }
 
     fn random_tick(&self, args: RandomTickArgs<'_>) {
-        if rand::rng().random_range(0..5) == 0 {
+        if game_random().random_range(0..5) == 0 {
             <Self as CropBlockBase>::random_tick(self, args.world, args.position);
         }
     }

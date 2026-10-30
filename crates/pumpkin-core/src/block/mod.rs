@@ -1,9 +1,10 @@
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::{Block, BlockId, BlockState};
+use pumpkin_util::random::gameplay::game_random;
 
 use pumpkin_data::BlockStateId;
 use pumpkin_util::math::position::BlockPos;
-use pumpkin_util::random::{RandomGenerator, get_seed, xoroshiro128::Xoroshiro};
+use pumpkin_util::random::RandomGenerator;
 
 use crate::entity::experience_orb::ExperienceOrbEntity;
 use crate::entity::player::Player;
@@ -468,7 +469,7 @@ pub fn drop_loot(
     params: &LootContextParameters,
 ) {
     if let Some(loot_table) = block.loot_table.and_then(|key| world.get_loot_table(key)) {
-        let seed: i64 = rand::random();
+        let seed: i64 = game_random().random();
         let params = LootContextParameters {
             world: Some(world),
             tool: Some(
@@ -514,7 +515,7 @@ pub fn drop_loot(
         && !has_silk_touch
         && let Some(experience) = &block.experience
     {
-        let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(get_seed()));
+        let mut random = RandomGenerator::Gameplay(game_random());
         let amount = experience.experience.get(&mut random);
         if amount > 0 {
             let mut event = crate::plugin::block::block_exp::BlockExpEvent {

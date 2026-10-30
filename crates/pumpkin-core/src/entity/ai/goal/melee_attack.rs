@@ -5,7 +5,6 @@ use crate::entity::ai::pathfinder::NavigatorGoal;
 use crate::entity::mob::Mob;
 use crate::entity::predicate::EntityPredicate;
 use pumpkin_util::math::vector3::Vector3;
-use rand::RngExt;
 
 const MAX_ATTACK_TIME: i64 = 20;
 

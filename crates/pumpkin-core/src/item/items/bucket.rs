@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
@@ -290,7 +291,7 @@ pub(crate) fn play_bucket_evaporation(world: &Arc<World>, position: &Vector3<f64
         SoundCategory::Blocks,
         position,
         0.5,
-        (rand::random::<f32>() - rand::random::<f32>()).mul_add(0.8, 2.6),
+        (game_random().random::<f32>() - game_random().random::<f32>()).mul_add(0.8, 2.6),
     );
 }
 

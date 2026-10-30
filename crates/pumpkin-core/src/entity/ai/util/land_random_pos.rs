@@ -1,5 +1,6 @@
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::gameplay::GameRandom;
 
 use super::{goal_utils, random_pos};
 use crate::entity::ai::pathfinder::pathfinding_context::PathfindingContext;
@@ -17,19 +18,19 @@ pub fn get_pos(mob: &dyn Mob, horizontal_dist: i32, vertical_dist: i32) -> Optio
         Vector3::new(block_pos.0.x, block_pos.0.y, block_pos.0.z),
         world.clone(),
     );
-    let mut rng = mob.get_random();
+    let rng = mob.get_random();
 
     random_pos::generate_random_pos(
         || {
             let direction =
-                random_pos::generate_random_direction(&mut rng, horizontal_dist, vertical_dist);
+                random_pos::generate_random_direction(rng, horizontal_dist, vertical_dist);
             let pos = toward_direction(
                 mob,
                 &world,
                 f64::from(horizontal_dist),
                 restrict,
                 direction,
-                &mut rng,
+                rng,
             )?;
             move_pos_up_out_of_solid(mob, &world, &mut context, pos)
         },
@@ -59,7 +60,7 @@ pub fn toward_direction(
     horizontal_dist: f64,
     restrict: bool,
     direction: Vector3<i32>,
-    rng: &mut impl rand::RngExt,
+    rng: GameRandom,
 ) -> Option<BlockPos> {
     let pos =
         random_pos::generate_random_pos_toward_direction(mob, horizontal_dist, rng, direction);

@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use rustc_hash::FxHashSet;
 use std::sync::{Arc, Mutex};
 
@@ -16,7 +17,6 @@ use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::Difficulty;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
-use rand::RngExt;
 use uuid::Uuid;
 
 use super::BlockEntity;
@@ -324,7 +324,7 @@ impl TrialSpawnerConfig {
         if total_weight <= 0 {
             return self.spawn_potentials.first().map(|p| p.data.clone());
         }
-        let mut roll = rand::rng().random_range(0..total_weight);
+        let mut roll = game_random().random_range(0..total_weight);
         for potential in &self.spawn_potentials {
             let weight = potential.weight.max(1);
             if roll < weight {
@@ -348,7 +348,7 @@ impl TrialSpawnerConfig {
         if total_weight <= 0 {
             return self.loot_tables_to_eject.first().map(|p| p.data.clone());
         }
-        let mut roll = rand::rng().random_range(0..total_weight);
+        let mut roll = game_random().random_range(0..total_weight);
         for loot in &self.loot_tables_to_eject {
             let weight = loot.weight.max(1);
             if roll < weight {
@@ -1009,7 +1009,7 @@ impl TrialSpawner {
             (ent_type, active_cfg.spawn_range, equip, baby, size, only_id)
         };
 
-        let mut rng = rand::rng();
+        let rng = game_random();
 
         let mut chosen_pos = None;
         for _ in 0..20 {
@@ -1060,7 +1060,7 @@ impl TrialSpawner {
             && let Some(loot_table) = world.get_loot_table(&equip)
             && let Some(living) = entity.get_living_entity()
         {
-            let seed = rand::random::<i64>();
+            let seed = game_random().random::<i64>();
             let items = loot_table.generate_loot_with_context(
                 seed,
                 &crate::world::loot::LootContextParameters {
@@ -1139,7 +1139,7 @@ impl TrialSpawner {
         if let Some(key) = ejecting_loot_table
             && let Some(loot_table) = world.get_loot_table(key)
         {
-            let seed = rand::random::<i64>();
+            let seed = game_random().random::<i64>();
             let items = loot_table.generate_loot_with_context(
                 seed,
                 &crate::world::loot::LootContextParameters {

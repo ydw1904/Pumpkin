@@ -12,7 +12,6 @@ use pumpkin_data::{
     sound::Sound,
 };
 use pumpkin_nbt::compound::NbtCompound;
-use rand::RngExt;
 
 use super::{
     abstract_fish::{AbstractFish, FishData},

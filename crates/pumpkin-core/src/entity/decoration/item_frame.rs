@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -262,7 +263,7 @@ impl ItemFrameEntity {
 
         if !item_stack.is_empty() {
             let drop_chance = self.item_drop_chance.load();
-            if rand::random::<f32>() < drop_chance {
+            if game_random().random::<f32>() < drop_chance {
                 world.drop_stack(&pos, item_stack);
             }
         }

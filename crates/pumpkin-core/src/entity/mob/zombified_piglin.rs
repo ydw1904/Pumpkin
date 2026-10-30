@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::{Arc, Weak};
 
@@ -94,8 +95,10 @@ impl ZombifiedPiglinEntity {
             }
         }
 
-        self.ticks_until_next_alert
-            .store(rand::random_range(ALERT_INTERVAL), Ordering::Relaxed);
+        self.ticks_until_next_alert.store(
+            game_random().random_range(ALERT_INTERVAL),
+            Ordering::Relaxed,
+        );
     }
 }
 
@@ -134,7 +137,7 @@ impl Mob for ZombifiedPiglinEntity {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
 
-        let weapon = if rand::random_range(0..20) == 0 {
+        let weapon = if game_random().random_range(0..20) == 0 {
             &Item::GOLDEN_SPEAR
         } else {
             &Item::GOLDEN_SWORD
@@ -156,8 +159,10 @@ impl Mob for ZombifiedPiglinEntity {
 
         // Fresh target: wait out a full interval before spreading the word.
         if !self.had_target.swap(true, Ordering::Relaxed) {
-            self.ticks_until_next_alert
-                .store(rand::random_range(ALERT_INTERVAL), Ordering::Relaxed);
+            self.ticks_until_next_alert.store(
+                game_random().random_range(ALERT_INTERVAL),
+                Ordering::Relaxed,
+            );
         }
 
         self.maybe_alert_others(&target);

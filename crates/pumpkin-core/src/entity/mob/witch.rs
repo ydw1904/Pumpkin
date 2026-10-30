@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::{Arc, Weak};
 
@@ -147,7 +148,7 @@ impl WitchEntity {
         let mut potion = &Potion::HARMING;
 
         if let Some(target_living) = target.get_living_entity() {
-            let r: f32 = rand::random();
+            let r: f32 = game_random().random();
             if dist >= 8.0 && !target_living.has_effect(&StatusEffect::SLOWNESS) {
                 potion = &Potion::SLOWNESS;
             } else if target_living.health.load() >= 8.0
@@ -252,7 +253,7 @@ impl Mob for WitchEntity {
             }
         } else {
             let mut potion: Option<&'static Potion> = None;
-            let r: f32 = rand::random();
+            let r: f32 = game_random().random();
 
             if r < 0.15
                 && entity.touching_water.load(Ordering::Relaxed)

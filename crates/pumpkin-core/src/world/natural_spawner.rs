@@ -20,12 +20,9 @@ use pumpkin_util::math::get_section_cord;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector2::Vector2;
 use pumpkin_util::math::vector3::Vector3;
-use pumpkin_util::random::xoroshiro128::Xoroshiro;
-use pumpkin_util::random::{RandomImpl, get_seed};
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::chunk::{ChunkData, ChunkHeightmapType};
 use pumpkin_world::generation::proto_chunk::GenerationCache;
-use rand::seq::IndexedRandom;
-use rand::{RngExt, rng};
 use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, Ordering::Relaxed};
@@ -542,7 +539,7 @@ pub fn get_random_pos_within(
     chunk_pos: &Vector2<i32>,
     chunk: &Arc<ChunkData>,
 ) -> BlockPos {
-    let mut rng = Xoroshiro::from_seed(get_seed());
+    let rng = game_random();
 
     let x = (chunk_pos.x << 4) + rng.next_bounded_i32(16);
     let z = (chunk_pos.y << 4) + rng.next_bounded_i32(16);
@@ -573,13 +570,14 @@ pub fn spawn_mobs_for_chunk_generation(
     let xo = chunk_x << 4;
     let zo = chunk_z << 4;
 
-    while rand::random::<f32>() < biome.creature_spawn_probability {
-        let Some(spawner_data) = creatures.choose(&mut rand::rng()) else {
+    while game_random().random::<f32>() < biome.creature_spawn_probability {
+        let Some(spawner_data) = game_random().choose(creatures) else {
             continue;
         };
 
         let count = spawner_data.min_count
-            + rand::random_range(0..=(spawner_data.max_count - spawner_data.min_count).max(0));
+            + game_random()
+                .random_range(0..=(spawner_data.max_count - spawner_data.min_count).max(0));
         let name = spawner_data
             .r#type
             .strip_prefix("minecraft:")
@@ -588,8 +586,8 @@ pub fn spawn_mobs_for_chunk_generation(
             return;
         };
 
-        let mut x = xo + rand::random_range(0..16);
-        let mut z = zo + rand::random_range(0..16);
+        let mut x = xo + game_random().random_range(0..16);
+        let mut z = zo + game_random().random_range(0..16);
         let start_x = x;
         let start_z = z;
 
@@ -622,18 +620,20 @@ pub fn spawn_mobs_for_chunk_generation(
                         let entity = from_type(entity_type, spawn_pos_f64, world, Uuid::new_v4());
                         entity
                             .get_entity()
-                            .set_rotation(rand::random::<f32>() * 360.0, 0.0);
+                            .set_rotation(game_random().random::<f32>() * 360.0, 0.0);
                         group_data = finalize_spawn(&entity, world, group_data);
                         world.spawn_entity_non_save(entity);
                         success = true;
                     }
                 }
 
-                x += rand::random_range(0..5) - rand::random_range(0..5);
-                z += rand::random_range(0..5) - rand::random_range(0..5);
+                x += game_random().random_range(0..5) - game_random().random_range(0..5);
+                z += game_random().random_range(0..5) - game_random().random_range(0..5);
                 while x < xo || x >= xo + 16 || z < zo || z >= zo + 16 {
-                    x = start_x + rand::random_range(0..5) - rand::random_range(0..5);
-                    z = start_z + rand::random_range(0..5) - rand::random_range(0..5);
+                    x = start_x + game_random().random_range(0..5)
+                        - game_random().random_range(0..5);
+                    z = start_z + game_random().random_range(0..5)
+                        - game_random().random_range(0..5);
                 }
             }
         }
@@ -744,14 +744,14 @@ pub fn spawn_category_for_position(
         let mut x = pos.0.x;
         let mut z = pos.0.z;
         let mut current_spawner: Option<&'static Spawner> = None;
-        let mut max = (rng().random::<f32>() * 4.0).ceil() as i32;
+        let mut max = (game_random().random::<f32>() * 4.0).ceil() as i32;
         let mut group_size = 0;
         let mut group_data = None;
         let mut ll = 0;
 
         while ll < max {
-            x += rng().random_range(0..6) - rng().random_range(0..6);
-            z += rng().random_range(0..6) - rng().random_range(0..6);
+            x += game_random().random_range(0..6) - game_random().random_range(0..6);
+            z += game_random().random_range(0..6) - game_random().random_range(0..6);
             let check_pos = BlockPos::new(x, y_start, z);
             let xx = f64::from(x) + 0.5;
             let zz = f64::from(z) + 0.5;
@@ -790,7 +790,8 @@ pub fn spawn_category_for_position(
                     };
                     current_spawner = Some(spawner);
                     max = spawner.min_count
-                        + rng().random_range(0..=(spawner.max_count - spawner.min_count).max(0));
+                        + game_random()
+                            .random_range(0..=(spawner.max_count - spawner.min_count).max(0));
                 }
 
                 let Some(spawner) = current_spawner else {
@@ -818,7 +819,7 @@ pub fn spawn_category_for_position(
                     let entity = from_type(entity_type, spawn_pos_f64, world, Uuid::new_v4());
                     entity
                         .get_entity()
-                        .set_rotation(rng().random::<f32>() * 360.0, 0.0);
+                        .set_rotation(game_random().random::<f32>() * 360.0, 0.0);
 
                     let is_valid_for_mob = entity.get_mob().is_none_or(|mob| {
                         let despawn_dist = f64::from(entity_type.category.despawn_distance);
@@ -941,11 +942,11 @@ pub fn get_random_spawn_mob_at(
     let biome = world.level.get_rough_biome(block_pos);
     if category == &MobCategory::WATER_AMBIENT
         && biome.has_tag(&MINECRAFT_REDUCE_WATER_AMBIENT_SPAWNS)
-        && rng().random::<f32>() < 0.98f32
+        && game_random().random::<f32>() < 0.98f32
     {
         None
     } else {
-        match category.id {
+        let spawners = match category.id {
             id if id == MobCategory::MONSTER.id => biome.spawners.monster,
             id if id == MobCategory::CREATURE.id => biome.spawners.creature,
             id if id == MobCategory::AMBIENT.id => biome.spawners.ambient,
@@ -957,8 +958,8 @@ pub fn get_random_spawn_mob_at(
             id if id == MobCategory::WATER_AMBIENT.id => biome.spawners.water_ambient,
             id if id == MobCategory::MISC.id => biome.spawners.misc,
             _ => biome.spawners.misc,
-        }
-        .choose(&mut rng())
+        };
+        game_random().choose(spawners)
     }
 }
 

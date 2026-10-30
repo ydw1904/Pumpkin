@@ -1,6 +1,7 @@
 use pumpkin_data::translation;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_util::text::TextComponent;
 
 use crate::command::argument_builder::{
@@ -80,7 +81,7 @@ impl CommandExecutor for RandomExecutor {
                 .get_or_create(&sequence, world_seed)
                 .random_between_inclusive(min, max)
         } else {
-            rand::random_range(min..=max)
+            game_random().random_range(min..=max)
         };
 
         if self.roll {

@@ -5,11 +5,11 @@ mod hopper;
 mod rideable;
 mod tnt;
 
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use pumpkin_protocol::java::server::play::SPlayerInput;
-use rand::RngExt;
 
 use crate::{
     entity::{Entity, EntityBase, living::LivingEntity, player::Player},
@@ -714,7 +714,7 @@ impl EntityBase for MinecartEntity {
                 || self.vehicle.entity.fire_ticks.load(Ordering::Relaxed) > 0;
             if ignites || speed_squared >= 0.01 {
                 self.vehicle.apply_damage_wobble(amount);
-                let fuse = rand::rng().random_range(0..20) + rand::rng().random_range(0..20);
+                let fuse = game_random().random_range(0..20) + game_random().random_range(0..20);
                 if self
                     .vehicle
                     .entity

@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::AtomicBool;
 
 use crate::entity::projectile::ProjectileHit;
@@ -78,14 +79,14 @@ impl EntityBase for EnderPearlEntity {
         let hit_pos = hit.hit_pos();
         for _ in 0..PARTICLE_COUNT {
             let offset = Vector3::new(
-                rand::random::<f32>() as f64 - 0.5,
-                rand::random::<f32>() as f64 * 2.0,
-                rand::random::<f32>() as f64 - 0.5,
+                game_random().random::<f32>() as f64 - 0.5,
+                game_random().random::<f32>() as f64 * 2.0,
+                game_random().random::<f32>() as f64 - 0.5,
             );
             let speed = Vector3::new(
-                rand::random::<f64>() - 0.5,
+                game_random().random::<f64>() - 0.5,
                 0.0,
-                rand::random::<f64>() - 0.5,
+                game_random().random::<f64>() - 0.5,
             );
 
             world.spawn_particle(
@@ -127,7 +128,7 @@ impl EntityBase for EnderPearlEntity {
                 living.health.load() > 0.0 && owner.get_entity().pose.load() != EntityPose::Sleeping
             })
         {
-            let should_spawn_endermite = rand::random::<f32>() < ENDERMITE_SPAWN_CHANCE;
+            let should_spawn_endermite = game_random().random::<f32>() < ENDERMITE_SPAWN_CHANCE;
             if world.should_spawn_monsters() && should_spawn_endermite {
                 let entity = Entity::new(
                     world.clone(),

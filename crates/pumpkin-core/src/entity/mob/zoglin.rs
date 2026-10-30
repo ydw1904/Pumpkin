@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 
@@ -143,7 +144,7 @@ impl Mob for ZoglinEntity {
         _world: &Arc<World>,
         group_data: Option<crate::entity::mob::spawn::SpawnGroupData>,
     ) -> Option<crate::entity::mob::spawn::SpawnGroupData> {
-        if rand::random::<f32>() < 0.2 {
+        if game_random().random::<f32>() < 0.2 {
             self.set_baby(true);
         }
         self.mob_entity.finalize_spawn_base();

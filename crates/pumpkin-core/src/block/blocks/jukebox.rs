@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use crate::block::entities::jukebox::JukeboxBlockEntity;
@@ -18,7 +19,6 @@ use pumpkin_macros::pumpkin_block;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_world::world::BlockFlags;
-use rand::{RngExt, rng};
 
 use tracing::error;
 
@@ -50,9 +50,9 @@ impl JukeboxBlock {
                 // Vanilla: Vec3d.add(pos, 0.5, 1.01, 0.5).addHorizontalRandom(random, 0.7F)
                 // addHorizontalRandom adds random in range [-0.35, 0.35] to x and z
                 let spawn_pos = Vector3::new(
-                    f64::from(position.0.x) + 0.5 + rng().random_range(-0.35..0.35),
+                    f64::from(position.0.x) + 0.5 + game_random().random_range(-0.35..0.35),
                     f64::from(position.0.y) + 1.01,
-                    f64::from(position.0.z) + 0.5 + rng().random_range(-0.35..0.35),
+                    f64::from(position.0.z) + 0.5 + game_random().random_range(-0.35..0.35),
                 );
 
                 let entity = Entity::new(world.clone(), spawn_pos, &EntityType::ITEM);

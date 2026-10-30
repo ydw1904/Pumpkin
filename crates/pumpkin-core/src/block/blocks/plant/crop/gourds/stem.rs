@@ -10,12 +10,9 @@ use pumpkin_data::{
     block_properties::{HorizontalFacing, WallTorchLikeProperties, WheatLikeProperties},
     tag::{self, Taggable},
 };
-use pumpkin_util::{
-    math::position::BlockPos,
-    random::{RandomGenerator, xoroshiro128::Xoroshiro},
-};
+use pumpkin_util::random::gameplay::game_random;
+use pumpkin_util::{math::position::BlockPos, random::RandomGenerator};
 use pumpkin_world::world::{BlockAccessor, BlockFlags};
-use rand::RngExt;
 
 type StemProperties = WheatLikeProperties;
 type AttachedStemProperties = WallTorchLikeProperties;
@@ -112,7 +109,7 @@ impl BlockBehaviour for StemBlock {
         }
 
         let f: f32 = get_available_moisture(args.world, args.position, args.block);
-        if rand::rng().random_range(0..=(25.0 / f).floor() as i32) == 0 {
+        if game_random().random_range(0..=(25.0 / f).floor() as i32) == 0 {
             let (block, state) = args.world.get_block_and_state_id(args.position);
             let props = StemProperties::from_state_id(state);
             let age = i32::from(props.age);
@@ -123,8 +120,8 @@ impl BlockBehaviour for StemBlock {
                     BlockFlags::NOTIFY_LISTENERS,
                 );
             } else {
-                let dir = BlockDirection::random_horizontal(&mut RandomGenerator::Xoroshiro(
-                    Xoroshiro::from_seed(rand::rng().random()),
+                let dir = BlockDirection::random_horizontal(&mut RandomGenerator::Gameplay(
+                    game_random(),
                 ));
                 let plant_block_pos = args.position.offset(dir.to_offset());
                 let plant_block_state = args.world.get_block_state(&plant_block_pos);

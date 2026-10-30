@@ -23,12 +23,12 @@ pub fn get_pos(
         Vector3::new(block_pos.0.x, block_pos.0.y, block_pos.0.z),
         world.clone(),
     );
-    let mut rng = mob.get_random();
+    let rng = mob.get_random();
 
     random_pos::generate_random_pos(
         || {
             let direction = random_pos::generate_random_direction_within_radians(
-                &mut rng,
+                rng,
                 0.0,
                 f64::from(horizontal_dist),
                 vertical_dist,
@@ -40,7 +40,7 @@ pub fn get_pos(
             let pos = random_pos::generate_random_pos_toward_direction(
                 mob,
                 f64::from(horizontal_dist),
-                &mut rng,
+                rng,
                 direction,
             );
             if goal_utils::is_outside_limits(&pos, &world)

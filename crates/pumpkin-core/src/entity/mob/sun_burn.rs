@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::Ordering::Relaxed;
 
 use pumpkin_data::item_stack::DamageResult;
@@ -28,7 +29,7 @@ fn is_sun_burn_tick(entity: &Entity) -> bool {
     // Vanilla getLightLevelDependentMagicValue: block light counts too.
     let brightness = world.light_level_dependent_magic_value_with_sky(&eye, sky_light);
     // Nearly every tick ends at the roll: the sky and wet checks stay behind it.
-    if !passes_burn_roll(brightness, rand::random()) {
+    if !passes_burn_roll(brightness, game_random().random()) {
         return false;
     }
     if !world.can_see_sky_with_light(&eye, sky_light) {
@@ -75,7 +76,7 @@ fn burn(mob: &dyn Mob) {
     }
 
     // 0 or 1 wear, thinned out by Unbreaking.
-    match stack.damage_item(rand::random_range(0..2)) {
+    match stack.damage_item(game_random().random_range(0..2)) {
         DamageResult::Untouched => {}
         DamageResult::Damaged => {
             mob_entity.set_item_slot(&slot, stack);

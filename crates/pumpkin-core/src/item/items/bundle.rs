@@ -8,6 +8,7 @@ use pumpkin_data::statistic::StatisticCategory;
 use pumpkin_data::tag;
 use pumpkin_inventory::player::player_inventory::PlayerInventory;
 use pumpkin_util::Hand;
+use pumpkin_util::random::gameplay::game_random;
 
 pub struct BundleItem;
 
@@ -72,7 +73,7 @@ impl ItemBehaviour for BundleItem {
                 SoundCategory::Players,
                 &position,
                 0.8,
-                0.8 + rand::random::<f32>() * 0.4,
+                0.8 + game_random().random::<f32>() * 0.4,
             );
             let updated_bundle = held.clone();
 

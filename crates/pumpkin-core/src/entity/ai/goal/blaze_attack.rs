@@ -1,6 +1,6 @@
-use crate::entity::ai::util::RandomExt;
 use pumpkin_protocol::java::client::play::CWorldEvent;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use crate::entity::{
@@ -163,8 +163,12 @@ fn shoot_fireball(blaze: &Entity, dx: f64, yd: f64, dz: f64, distance_sq: f64) {
     );
 
     let direction = {
-        let mut rng = rand::rng();
-        Vector3::new(rng.triangle(dx, spread), yd, rng.triangle(dz, spread))
+        let rng = game_random();
+        Vector3::new(
+            rng.next_triangular(dx, spread),
+            yd,
+            rng.next_triangular(dz, spread),
+        )
     };
 
     let blaze_pos = blaze.pos.load();

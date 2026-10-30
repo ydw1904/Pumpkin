@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use pumpkin_data::{
@@ -6,7 +7,7 @@ use pumpkin_data::{
 };
 use pumpkin_macros::pumpkin_block_from_tag;
 use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
-use pumpkin_util::random::{RandomGenerator, xoroshiro128::Xoroshiro};
+use pumpkin_util::random::RandomGenerator;
 use pumpkin_world::world::BlockFlags;
 
 use crate::block::blocks::plant::PlantBlockBase;
@@ -65,7 +66,7 @@ impl SaplingBlock {
         let Some(grower) = TreeGrower::for_block(block) else {
             return;
         };
-        let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(rand::random::<u64>()));
+        let mut random = RandomGenerator::Gameplay(game_random());
         grower.grow_tree(world, pos, block, state_id, &mut random);
     }
 }
@@ -89,7 +90,7 @@ impl BlockBehaviour for SaplingBlock {
 
     fn random_tick(&self, args: RandomTickArgs<'_>) {
         if args.world.get_max_local_raw_brightness(&args.position.up()) >= 9
-            && rand::random_range(0..7) == 0
+            && game_random().random_range(0..7) == 0
         {
             let state_id = args.world.get_block_state_id(args.position);
             Self::advance_tree(args.world, args.position, args.block, state_id, false);
@@ -100,7 +101,7 @@ impl BlockBehaviour for SaplingBlock {
         let Some(grower) = TreeGrower::for_block(args.block) else {
             return false;
         };
-        let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(rand::random::<u64>()));
+        let mut random = RandomGenerator::Gameplay(game_random());
         grower.can_grow(args.world, args.position, args.block, &mut random)
             && args
                 .world
@@ -111,7 +112,7 @@ impl BlockBehaviour for SaplingBlock {
     }
 
     fn is_bonemeal_success(&self, _args: BonemealArgs<'_>) -> bool {
-        rand::random::<f32>() < 0.45
+        game_random().random::<f32>() < 0.45
     }
 
     fn perform_bonemeal(&self, args: BonemealArgs<'_>) {

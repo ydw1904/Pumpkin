@@ -3,8 +3,8 @@ use pumpkin_data::{
     block_properties::AmethystClusterLikeProperties, fluid::Fluid,
 };
 use pumpkin_macros::pumpkin_block;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::{tick::TickPriority, world::BlockFlags};
-use rand::RngExt;
 
 use crate::block::{
     BlockBehaviour, BlockMetadata, CanPlaceAtArgs, GetStateForNeighborUpdateArgs, OnPlaceArgs,
@@ -80,9 +80,9 @@ pub struct BuddingAmethystBlock;
 
 impl BlockBehaviour for BuddingAmethystBlock {
     fn random_tick(&self, args: RandomTickArgs<'_>) {
-        if rand::rng().random_range(0..5) == 0 {
+        if game_random().random_range(0..5) == 0 {
             let grow_direction = {
-                let mut rng = rand::rng();
+                let rng = game_random();
                 ALL_DIRECTIONS[rng.random_range(0..ALL_DIRECTIONS.len())]
             };
             let grow_pos = args.position.offset(grow_direction.to_offset());

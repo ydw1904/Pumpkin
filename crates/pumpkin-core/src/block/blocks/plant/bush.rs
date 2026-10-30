@@ -1,6 +1,6 @@
 use pumpkin_data::{BlockDirection, BlockId, BlockStateId};
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::world::BlockFlags;
-use rand::seq::SliceRandom;
 
 use crate::block::{
     BlockBehaviour, BlockMetadata, BonemealArgs, CanPlaceAtArgs, GetStateForNeighborUpdateArgs,
@@ -46,7 +46,7 @@ impl BlockBehaviour for BushBlock {
 
     fn perform_bonemeal(&self, args: BonemealArgs<'_>) {
         let mut dirs = BlockDirection::horizontal();
-        dirs.shuffle(&mut rand::rng());
+        game_random().shuffle(&mut dirs);
         for dir in dirs {
             let pos = args.position.offset(dir.to_offset());
             if args.world.get_block_state(&pos).is_air()

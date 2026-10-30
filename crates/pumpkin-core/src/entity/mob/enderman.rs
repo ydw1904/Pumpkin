@@ -20,7 +20,6 @@ use pumpkin_data::{
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_util::math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3};
-use rand::RngExt;
 
 use crate::entity::{
     Entity, EntityBase,
@@ -121,7 +120,7 @@ impl EndermanEntity {
         let entity = &self.mob_entity.living_entity.entity;
         let pos = entity.pos.load();
         let (x, y, z) = {
-            let mut rng = self.get_random();
+            let rng = self.get_random();
             (
                 pos.x + (rng.random_range(0.0..1.0) - 0.5) * 64.0,
                 pos.y + (rng.random_range(0i32..64) - 32) as f64,
@@ -150,7 +149,7 @@ impl EndermanEntity {
         let ny = dy / dist;
         let nz = dz / dist;
         let (x, y, z) = {
-            let mut rng = self.get_random();
+            let rng = self.get_random();
             (
                 pos.x + (rng.random_range(0.0..1.0) - 0.5) * 8.0 - nx * 16.0,
                 pos.y + (rng.random_range(0i32..16) - 8) as f64 - ny * 16.0,

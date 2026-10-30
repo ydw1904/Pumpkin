@@ -10,9 +10,10 @@ use pumpkin_data::fluid::Fluid;
 use pumpkin_data::tag::Taggable;
 use pumpkin_data::{Block, BlockDirection, BlockState, BlockStateId, tag};
 use pumpkin_macros::pumpkin_block;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_util::{
     math::position::BlockPos,
-    random::{RandomImpl, get_seed, legacy_rand::LegacyRand},
+    random::{RandomGenerator, RandomImpl},
 };
 use pumpkin_world::{
     tick::TickPriority,
@@ -38,7 +39,7 @@ impl BlockBehaviour for SeaPickleBlock {
     }
 
     fn perform_bonemeal(&self, args: BonemealArgs<'_>) {
-        let mut random = LegacyRand::from_seed(get_seed());
+        let mut random = RandomGenerator::Gameplay(game_random());
         let mut z_span = 1;
         let x_start = args.position.0.x - 2;
         let mut z_offset = 0;

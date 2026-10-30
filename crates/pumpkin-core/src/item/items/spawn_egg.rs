@@ -1,4 +1,5 @@
 use crate::block::registry::BlockActionResult;
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use crate::block::entities::mob_spawner::MobSpawnerBlockEntity;
@@ -266,7 +267,7 @@ impl ItemBehaviour for SpawnEggItem {
                 f64::from(hit_pos.0.y),
                 f64::from(hit_pos.0.z) + 0.5,
             );
-            let spawn_yaw = wrap_degrees(rand::random::<f32>() * 360.0) % 360.0;
+            let spawn_yaw = wrap_degrees(game_random().random::<f32>() * 360.0) % 360.0;
             let mob = from_type(entity_type, pos, &world, Uuid::new_v4());
             mob.get_entity().set_rotation(spawn_yaw, 0.0);
 
@@ -342,7 +343,7 @@ impl ItemBehaviour for SpawnEggItem {
                 f64::from(spawn_block_pos.0.y),
                 f64::from(spawn_block_pos.0.z) + 0.5,
             );
-            let yaw = wrap_degrees(rand::random::<f32>() * 360.0) % 360.0;
+            let yaw = wrap_degrees(game_random().random::<f32>() * 360.0) % 360.0;
 
             let mob = from_type(entity_type, pos, &world, Uuid::new_v4());
 
@@ -382,7 +383,7 @@ impl ItemBehaviour for SpawnEggItem {
                 return;
             }
             mob.get_entity()
-                .set_rotation(rand::random::<f32>() * 360.0, 0.0);
+                .set_rotation(game_random().random::<f32>() * 360.0, 0.0);
             apply_entity_variant(item, mob.as_ref(), Some(player));
             if world.spawn_creature(
                 mob,

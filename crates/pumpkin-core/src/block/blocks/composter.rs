@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use crate::{
@@ -23,7 +24,6 @@ use pumpkin_inventory::screen_handler::InventoryPlayer;
 use pumpkin_macros::pumpkin_block;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::{tick::TickPriority, world::BlockFlags};
-use rand::RngExt;
 
 #[pumpkin_block("minecraft:composter")]
 pub struct ComposterBlock;
@@ -62,7 +62,7 @@ impl BlockBehaviour for ComposterBlock {
                     item_stack.decrement(1);
                 }
 
-                let increased = level == 0 || rand::rng().random_bool(f64::from(chance));
+                let increased = level == 0 || game_random().random_bool(f64::from(chance));
                 if increased {
                     self.update_level_composter(
                         args.world,
@@ -136,7 +136,7 @@ impl ComposterBlock {
         block: &Block,
     ) {
         let item_position = {
-            let mut rng = rand::rng();
+            let rng = game_random();
             location.to_centered_f64().add_raw(
                 rng.random_range(-0.35..=0.35),
                 rng.random_range(-0.35..=0.35) + 0.51,

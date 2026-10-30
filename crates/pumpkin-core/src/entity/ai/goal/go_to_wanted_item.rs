@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use pumpkin_util::math::position::BlockPos;
@@ -87,7 +88,8 @@ impl GoToWantedItemGoal {
 
         if navigator.is_idle() {
             if self.last_target_block.take().is_some() && navigator.is_stuck() {
-                self.remaining_cooldown = rand::random_range(0..MAX_COOLDOWN_BEFORE_RETRYING);
+                self.remaining_cooldown =
+                    game_random().random_range(0..MAX_COOLDOWN_BEFORE_RETRYING);
             }
             if self.remaining_cooldown > 0 {
                 self.remaining_cooldown -= 1;

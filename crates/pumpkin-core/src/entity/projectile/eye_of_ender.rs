@@ -13,6 +13,7 @@ use pumpkin_protocol::{
     codec::item_stack_seralizer::ItemStackSerializer, java::client::play::Metadata,
 };
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Mutex;
 use std::sync::{
     Arc,
@@ -76,7 +77,7 @@ impl EyeOfEnder {
         self.life.store(0, Ordering::Relaxed);
 
         // 4-in-5 chance to survive (drop item); 1-in-5 plays the break effect.
-        let survive = !rand::random::<u32>().is_multiple_of(SURVIVE_CHANCE);
+        let survive = !game_random().random::<u32>().is_multiple_of(SURVIVE_CHANCE);
         self.survive_after_death.store(survive, Ordering::Relaxed);
     }
 

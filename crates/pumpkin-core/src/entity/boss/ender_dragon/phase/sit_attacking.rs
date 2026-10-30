@@ -1,5 +1,6 @@
 use super::EnderDragonPhase;
 use crate::entity::boss::ender_dragon::EnderDragonEntity;
+use pumpkin_util::random::gameplay::game_random;
 
 pub struct SitAttackingPhase;
 
@@ -24,7 +25,7 @@ impl super::Phase for SitAttackingPhase {
 
         if *timer > 40 {
             *timer = 0;
-            let should_breathe = rand::random_bool(0.5);
+            let should_breathe = game_random().random_bool(0.5);
             let should_take_off = *dragon
                 .ticks_sitting
                 .lock()

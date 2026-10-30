@@ -2,7 +2,6 @@ use std::f64::consts::TAU;
 
 use crate::entity::ai::goal::{Controls, Goal, GoalReach};
 use crate::entity::mob::Mob;
-use rand::RngExt;
 
 pub struct RandomLookAroundGoal {
     goal_control: Controls,

@@ -5,8 +5,8 @@ use pumpkin_data::{
 };
 use pumpkin_macros::pumpkin_block;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::world::{BlockAccessor, BlockFlags};
-use rand::RngExt;
 
 use crate::block::{
     BlockBehaviour, CanPlaceAtArgs, GetStateForNeighborUpdateArgs, blocks::plant::PlantBlockBase,
@@ -51,7 +51,7 @@ impl BlockBehaviour for BambooSaplingBlock {
     fn random_tick(&self, args: crate::block::RandomTickArgs<'_>) {
         let above = args.position.up();
         let state_above = args.world.get_block_state(&above);
-        if rand::rng().random_range(0..3) == 0
+        if game_random().random_range(0..3) == 0
             && state_above.is_air()
             && args.world.get_raw_brightness(&above, 0) >= 9
         {

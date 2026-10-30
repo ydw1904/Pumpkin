@@ -3,7 +3,7 @@ use pumpkin_data::item_stack::ItemStack;
 use pumpkin_inventory::{Clearable, Inventory, sync_write_items_to_nbt};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
-use rand::{RngExt, rng};
+use pumpkin_util::random::gameplay::game_random;
 use std::any::Any;
 use std::array::from_fn;
 use std::sync::Arc;
@@ -124,7 +124,7 @@ impl DispenserBlockEntity {
         if non_empty.is_empty() {
             None
         } else {
-            let selected = rng().random_range(0..non_empty.len());
+            let selected = game_random().random_range(0..non_empty.len());
             Some(non_empty[selected].clone())
         }
     }

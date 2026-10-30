@@ -9,6 +9,7 @@ use pumpkin_util::PermissionLvl;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_util::text::TextComponent;
 use pumpkin_util::text::hover::HoverEvent;
 
@@ -383,7 +384,7 @@ impl CommandExecutor for LootExecutor {
                     tool: Some(tool_stack.unwrap_or_else(|| ItemStack::EMPTY.clone())),
                     ..Default::default()
                 };
-                let seed: i64 = rand::random();
+                let seed: i64 = game_random().random();
                 drops = crate::world::loot::generate_loot_from_handle(&loot_table, seed, &params);
             }
             Source::Loot => {
@@ -408,7 +409,7 @@ impl CommandExecutor for LootExecutor {
                     position: context.source.as_player().map(|p| p.position()),
                     ..Default::default()
                 };
-                let seed: i64 = rand::random();
+                let seed: i64 = game_random().random();
                 drops = crate::world::loot::generate_loot_from_handle(&loot_table, seed, &params);
             }
             Source::Kill => {
@@ -450,7 +451,7 @@ impl CommandExecutor for LootExecutor {
                             ),
                             ..params.clone()
                         };
-                        let seed: i64 = rand::random();
+                        let seed: i64 = game_random().random();
                         drops.extend(crate::world::loot::generate_loot_from_handle(
                             &loot_table,
                             seed,
@@ -506,7 +507,7 @@ impl CommandExecutor for LootExecutor {
                     )),
                     ..Default::default()
                 };
-                let seed: i64 = rand::random();
+                let seed: i64 = game_random().random();
                 drops = crate::world::loot::generate_loot_from_handle(&loot_table, seed, &params);
                 table_id_for_callback = Some(key.to_string());
             }

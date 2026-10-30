@@ -4,7 +4,6 @@ use crate::entity::EntityBase;
 use crate::entity::ai::target_predicate::TargetPredicate;
 use crate::entity::mob::Mob;
 use pumpkin_data::attributes::Attributes;
-use rand::RngExt;
 use std::sync::Arc;
 
 const UNSET: i32 = 0;

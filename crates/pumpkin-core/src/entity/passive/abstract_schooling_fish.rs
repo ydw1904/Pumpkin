@@ -3,8 +3,6 @@ use std::sync::{
     atomic::{AtomicI32, Ordering::Relaxed},
 };
 
-use rand::RngExt;
-
 use super::abstract_fish::AbstractFish;
 use crate::entity::{EntityBase, mob::spawn::SpawnGroupData};
 

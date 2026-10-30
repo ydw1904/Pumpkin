@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicI32, AtomicU8, Ordering};
 use std::sync::{Arc, Weak};
 
@@ -11,8 +12,6 @@ use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_protocol::java::client::play::CEntityPositionSync;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
-
-use rand::RngExt;
 
 use crate::entity::ai::goal::active_target::ActiveTargetGoal;
 use crate::entity::ai::goal::look_around::RandomLookAroundGoal;
@@ -227,7 +226,7 @@ impl ShulkerEntity {
         let world = entity.world.load();
 
         let candidates: Vec<(i32, i32, i32)> = {
-            let mut rng = rand::rng();
+            let rng = game_random();
             (0..20)
                 .map(|_| {
                     (
@@ -294,7 +293,7 @@ impl ShulkerEntity {
         let health = living.health.load();
         let max = living.get_max_health();
 
-        if health < max * 0.5 && rand::rng().random_range(0..4) == 0 {
+        if health < max * 0.5 && game_random().random_range(0..4) == 0 {
             self.teleport_somewhere();
         }
     }

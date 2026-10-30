@@ -1,3 +1,4 @@
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use pumpkin_data::entity::EntityType;
@@ -435,7 +436,7 @@ pub fn check_spawn_rules(
         if world.level_info.load().difficulty == pumpkin_util::Difficulty::Peaceful {
             return false;
         }
-        if rand::random_range(0..20) != 0 {
+        if game_random().random_range(0..20) != 0 {
             return false;
         }
         return mob::MobEntity::check_mob_spawn_rules(world, pos);
@@ -577,7 +578,7 @@ pub fn check_spawn_rules(
             && mob::MobEntity::is_bright_enough_to_spawn(world, pos);
     }
     if id == EntityType::OCELOT.id {
-        if rand::random_range(0..3) == 0 {
+        if game_random().random_range(0..3) == 0 {
             return false;
         }
         return mob::MobEntity::check_mob_spawn_rules(world, pos);
@@ -672,10 +673,10 @@ pub fn check_spawn_rules(
         let biome = world.get_biome(pos);
         if biome.has_tag(&pumpkin_data::tag::WorldgenBiome::MINECRAFT_MORE_FREQUENT_DROWNED_SPAWNS)
         {
-            return rand::random_range(0..15) == 0;
+            return game_random().random_range(0..15) == 0;
         }
         let sea_level = world.sea_level;
-        return pos.0.y < sea_level - 5 && rand::random_range(0..40) == 0;
+        return pos.0.y < sea_level - 5 && game_random().random_range(0..40) == 0;
     }
     if id == EntityType::GUARDIAN.id || id == EntityType::ELDER_GUARDIAN.id {
         if world.level_info.load().difficulty == pumpkin_util::Difficulty::Peaceful {
@@ -690,7 +691,7 @@ pub fn check_spawn_rules(
         {
             return false;
         }
-        return rand::random_range(0..20) == 0 || !world.can_see_sky(pos);
+        return game_random().random_range(0..20) == 0 || !world.can_see_sky(pos);
     }
 
     // Generic mob spawn rules (Iron Golem, Snow Golem, Villager, Phantom, Shulker, Wandering Trader, Ender Dragon, etc.)
