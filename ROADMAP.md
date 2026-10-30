@@ -51,8 +51,10 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 - Owners: an entity (`<type>@<block pos where it joined>#<n>`, players `player:<name>`), a scheduled tick (`block@x,y,z`, `fluid@x,y,z`), a chunk (`chunk@cx,cz`: lightning, spawning, random ticks), the chunk list (`chunks`), or `misc` (commands and everything else). Owner `K`'s stream is `LegacyRandomSource(seed ^ K.hashCode() ^ (epoch << 32))`.
 - `/tick freeze` restarts every stream and the entity numbering and bumps the epoch, so a scene built while frozen starts from the same state on both servers. Only draws after the last reset are compared. The epoch stops a restarted stream from repeating an existing entity's UUID, which vanilla refuses.
 - Vanilla: a `-javaagent` (`tools/parity/rngagent`, java.lang.classfile, built on demand) routes `Entity.random` and `Level.random` and wraps the owner methods in `ServerLevel` and `ServerChunkCache`. It runs on a flat classpath because the bundler's class loader hides Minecraft from the agent.
-- Pumpkin: `pumpkin_util::random::gameplay` (`PUMPKIN_RNG_SEED`, `PUMPKIN_RNG_LOG`). Outside the lockdown it is a per-thread `LegacyRand`. Only converted call sites use it; the rest still call `rand` and don't show up in the log.
-- Converted so far: entity UUIDs, block drops (`drop_stack`, `drop_stack_from_face`) and the item entity constructor. `trace-item-drop` matches vanilla draw for draw and tick for tick until the item rests on the ground (#43).
+- Pumpkin: `pumpkin_util::random::gameplay` (`PUMPKIN_RNG_SEED`, `PUMPKIN_RNG_LOG`). Outside the lockdown it is a per-thread `LegacyRand`.
+- Since `39a33fb47` all gameplay code in `pumpkin-core` and `pumpkin-inventory` (and the generated enchantment code) draws from `game_random()` instead of `rand`, so every gameplay draw shows up in the log. `GameRandom` has `rand`-shaped `random`, `random_range` and `random_bool` that map to vanilla's draws (`nextFloat`, `nextInt(bound)`, `Mth.nextDouble`, ...), vanilla's `Util.shuffle` and `Util.getRandom` as `shuffle` and `choose`, and `RandomGenerator::Gameplay` for APIs that take a generator (features, XP and int providers). Only networking, keys, telemetry and worldgen still use `rand` or their own seeds.
+- Routing a draw doesn't make it match: the method, count, order and arithmetic still have to follow the Java. Matching so far: entity UUIDs, block drops, the item entity constructor and unseeded loot. `trace-item-drop` matches vanilla draw for draw and tick for tick.
+- Code written against `rand`'s traits (`impl Rng` helpers, `ShufflingList`, the gate and sensor brain code) gets a `GameRandom` through a `rand::TryRng` impl. Those draws are logged as `nextInt`/`nextLong` and follow `rand`'s algorithms, so they show up as method mismatches in the diff.
 
 ### Status values
 
@@ -115,14 +117,14 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 | 41 | Item drops drew their randomness differently from vanilla: no `bobOffs` draw (a client value vanilla's server still draws before the yaw), the motion drawn before the yaw, `mul_add` rounding once where Java rounds twice, and entity UUIDs from the `uuid` crate instead of two `nextLong`s (`Mth.createInsecureUUID`). | RNG lockdown | Fixed in `707eada38` |
 | 42 | Scheduled block and fluid ticks run in parallel batches of 32; vanilla runs them one at a time in scheduled order, and redstone can depend on that order. | Reading code (RNG owner wiring) | Open, unverified in-game |
 | 43 | An item resting on the ground only moves on ticks where `(tickCount + entityId) % 4 != 0`. Entity IDs differ between the servers, so item traces drift once the item lands. | `trace-item-drop` | Harness limitation; would need matching entity IDs |
-| 44 | Block loot rolls from a generator seeded per drop (`drop_loot`) instead of the level random, and block experience from a fresh Xoroshiro, so loot draws don't line up under the lockdown. | Reading code | Open, next to convert |
+| 44 | Unseeded loot (block drops, mob deaths, shearing, `/loot`) drew a seed and rolled from its own Xoroshiro. Vanilla's `withOptionalRandomSeed` rolls from the level random when the seed is 0. Block experience and other providers also used fresh Xoroshiros. | Reading code, then the sweep (the seed draw shifted `trace-item-drop` by one draw) | Fixed in `79dbc0cdf` (loot) and `39a33fb47` (providers) |
 
 ## Future work
 
 ### Harness
 
 - **RNG lockdown, next steps** (see "RNG lockdown" above):
-  - Convert call sites to `game_random()` area by area, each checked with a trace: loot (#44), mob AI goals (random stroll, look around, ambient sounds), damage and knockback, random ticks.
+  - Make routed draws match, area by area, following `rng_diff.py`: random ticks (vanilla's first `chunk@` draw is `nextInt(48)`, Pumpkin's `nextInt(3)`), the chunk shuffle (vanilla draws 5168 times under `chunks` in `trace-item-drop`, Pumpkin none), falling blocks (vanilla only), mob AI goals, damage and knockback, then the `rand`-trait helpers listed under "RNG lockdown".
   - Players: vanilla splits a player's draws between `player:<name>` (`ServerPlayer.tick`) and `misc` (`doTick` from the connection); Pumpkin's player tick isn't wrapped yet, so its draws land in `misc`.
   - Entities loaded from disk: vanilla's constructors draw (UUID, `bobOffs`, yaw); Pumpkin's `new_empty` paths don't.
   - Chunk work: Pumpkin only shuffles the spawning chunks when spawning is on, with `rand`'s algorithm; random tick selection isn't routed on either side yet.
