@@ -19,11 +19,15 @@ import sys
 import time
 import urllib.request
 import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
+
+import rng_diff
 
 REPO = Path(__file__).resolve().parents[2]
 MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 DEFAULT_CACHE = Path.home() / "pumpkin-parity"
+RNG_AGENT_SRC = Path(__file__).with_name("rngagent") / "src"
 
 
 def target_version():
@@ -80,13 +84,70 @@ def find_java(major, explicit):
     sys.exit(f"No Java {major}+ found; pass --java or set JAVA_HOME")
 
 
-def run_vanilla(java, jar, packs, tests, run_dir):
+def flat_classpath(jar, cache):
+    """Unpacks the bundler's server jar and libraries once and returns them as a classpath list.
+
+    The bundler loads Minecraft in a child class loader, which the RNG agent's classes can't
+    see. With the lockdown on, vanilla runs from this flat classpath instead.
+    """
+    folder = cache / f"{jar.parent.name}-flat"
+    with zipfile.ZipFile(jar) as bundle:
+        entries = bundle.read("META-INF/classpath-joined").decode().split(";")
+        for entry in entries:
+            target = folder / entry
+            if not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(bundle.read(f"META-INF/{entry}"))
+    return [str(folder / entry) for entry in entries]
+
+
+def build_rng_agent(java, classpath, cache):
+    """Compiles tools/parity/rngagent into <cache>/rngagent/rngagent.jar when its sources change."""
+    sources = sorted(RNG_AGENT_SRC.rglob("*.java"))
+    digest = hashlib.sha256(b"".join(s.read_bytes() for s in sources)).hexdigest()
+    out = cache / "rngagent"
+    agent = out / "rngagent.jar"
+    stamp = out / "sources.sha256"
+    if agent.exists() and stamp.exists() and stamp.read_text() == digest:
+        return agent
+    shutil.rmtree(out, ignore_errors=True)
+    classes = out / "classes"
+    javac = Path(shutil.which(java) or java).with_name("javac.exe" if os.name == "nt" else "javac")
+    subprocess.run([str(javac), "-nowarn", "-d", str(classes), "-cp", os.pathsep.join(classpath)]
+                   + [str(s) for s in sources], check=True)
+    with zipfile.ZipFile(agent, "w") as jar:
+        jar.writestr("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\r\nPremain-Class: parity.rng.Agent\r\n\r\n")
+        for path in sorted(classes.rglob("*.class")):
+            jar.write(path, path.relative_to(classes).as_posix())
+    stamp.write_text(digest)
+    return agent
+
+
+def vanilla_command(java, jar, cache, main, rng_seed=None, rng_log=None):
+    """The java command line up to the main class. With `rng_seed`, runs the RNG agent."""
+    if rng_seed is None:
+        return [java, "-Xmx2G", f"-DbundlerMainClass={main}", "-jar", str(jar)]
+    classpath = flat_classpath(jar, cache)
+    agent = build_rng_agent(java, classpath, cache)
+    return [java, "-Xmx2G", f"-javaagent:{agent}", f"-Dparity.rng.seed={rng_seed}",
+            f"-Dparity.rng.log={rng_log}", "-cp", os.pathsep.join(classpath), main]
+
+
+def pumpkin_rng_env(rng_seed, rng_log):
+    """Environment for a Pumpkin process: the lockdown is on when PUMPKIN_RNG_SEED is set."""
+    env = dict(os.environ)
+    if rng_seed is not None:
+        env.update(PUMPKIN_RNG_SEED=str(rng_seed), PUMPKIN_RNG_LOG=str(rng_log))
+    return env
+
+
+def run_vanilla(java, jar, packs, tests, run_dir, cache, rng_seed=None):
     run_dir.mkdir(parents=True, exist_ok=True)
     shutil.copytree(packs, run_dir / "packs")
     (run_dir / "eula.txt").write_text("eula=true\n")
     report = run_dir / "report.xml"
-    cmd = [java, "-Xmx2G", "-DbundlerMainClass=net.minecraft.gametest.Main", "-jar", str(jar),
-           "--packs", "packs", "--tests", tests, "--report", str(report)]
+    cmd = vanilla_command(java, jar, cache, "net.minecraft.gametest.Main", rng_seed, run_dir / "rng.log")
+    cmd += ["--packs", "packs", "--tests", tests, "--report", str(report)]
     with open(run_dir / "run.log", "w") as log:
         subprocess.run(cmd, cwd=run_dir, stdout=log, stderr=subprocess.STDOUT)
     if not report.exists():
@@ -94,13 +155,14 @@ def run_vanilla(java, jar, packs, tests, run_dir):
     return report, run_dir / "gametestserver" / "gametestworld"
 
 
-def run_pumpkin(tester, packs, tests, template, run_dir):
+def run_pumpkin(tester, packs, tests, template, run_dir, rng_seed=None):
     run_dir.mkdir(parents=True, exist_ok=True)
     report = run_dir / "report.xml"
     cmd = [str(tester), "parity", "--packs", str(packs), "--tests", tests,
            "--report", str(report), "--world-template", str(template)]
     with open(run_dir / "run.log", "w") as log:
-        subprocess.run(cmd, cwd=run_dir, stdout=log, stderr=subprocess.STDOUT)
+        subprocess.run(cmd, cwd=run_dir, stdout=log, stderr=subprocess.STDOUT,
+                       env=pumpkin_rng_env(rng_seed, run_dir / "rng.log"))
     if not report.exists():
         sys.exit(f"Pumpkin produced no report; see {run_dir / 'run.log'}")
     return report
@@ -136,6 +198,8 @@ def main():
     parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE, help="where jars and runs are kept")
     parser.add_argument("--java", help="java executable to run vanilla with")
     parser.add_argument("--no-build", action="store_true", help="skip cargo build of pumpkin-tester")
+    parser.add_argument("--rng-seed", type=int,
+                        help="lock gameplay randomness to per-owner streams from this seed and diff the draw logs")
     args = parser.parse_args()
 
     version = target_version()
@@ -152,9 +216,11 @@ def main():
                         "--out", str(run_dir / "packs-src")], check=True)
         args.packs = run_dir / "packs-src"
     print(f"Running vanilla {version}...")
-    vanilla_report, template = run_vanilla(java, jar, args.packs.resolve(), args.tests, run_dir / "vanilla")
+    vanilla_report, template = run_vanilla(java, jar, args.packs.resolve(), args.tests, run_dir / "vanilla",
+                                           args.cache, args.rng_seed)
     print("Running Pumpkin...")
-    pumpkin_report = run_pumpkin(tester, args.packs.resolve(), args.tests, template, run_dir / "pumpkin")
+    pumpkin_report = run_pumpkin(tester, args.packs.resolve(), args.tests, template, run_dir / "pumpkin",
+                                 args.rng_seed)
 
     in_packs = pack_test_ids(args.packs.resolve())
     vanilla = {k: v for k, v in read_report(vanilla_report).items() if k in in_packs}
@@ -179,6 +245,9 @@ def main():
             print(f"{'':<26}   vanilla: {v}")
         if p is not None:
             print(f"{'':<26}   pumpkin: {p}")
+    if args.rng_seed is not None:
+        print()
+        rng_diff.report(run_dir / "vanilla" / "rng.log", run_dir / "pumpkin" / "rng.log")
     print(f"\n{len(rows)} tests, {mismatches} mismatches. Logs in {run_dir}")
     sys.exit(1 if mismatches else 0)
 

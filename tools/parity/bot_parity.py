@@ -39,12 +39,12 @@ PUMPKIN_SETTINGS = {
 class Server:
     """A server process whose console reads lines appended to a command file."""
 
-    def __init__(self, cmd, cwd, ready, log_path, cmds_path):
+    def __init__(self, cmd, cwd, ready, log_path, cmds_path, env=None):
         self.cmds_path = cmds_path
         cmds_path.write_text("")
         self.log = open(log_path, "w", encoding="utf8", errors="replace")
         self.ready = threading.Event()
-        self.proc = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        self.proc = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env,
                                      stderr=subprocess.STDOUT, text=True, encoding="utf8", errors="replace")
         threading.Thread(target=self._read, args=(ready,), daemon=True).start()
         threading.Thread(target=self._feed, daemon=True).start()
@@ -85,7 +85,7 @@ def set_toml(text, key, value):
     return re.sub(rf"(?m)^{key} = .*$", f"{key} = {value}", text)
 
 
-def start_pumpkin(binary, run_dir, port, seed):
+def start_pumpkin(binary, run_dir, port, seed, rng_seed=None):
     run_dir.mkdir(parents=True, exist_ok=True)
     config = run_dir / "pumpkin.toml"
     if not config.exists():
@@ -102,10 +102,11 @@ def start_pumpkin(binary, run_dir, port, seed):
     text = re.sub(r"(?ms)(\[telemetry\]\s*enabled = )true", r"\1false", text)
     text = re.sub(r"(?ms)(\[networking\.bedrock\]\s*enabled = )true", r"\1false", text)
     config.write_text(text)
-    return Server([str(binary)], run_dir, PUMPKIN_READY, run_dir / "server.log", run_dir / "cmds.txt")
+    return Server([str(binary)], run_dir, PUMPKIN_READY, run_dir / "server.log", run_dir / "cmds.txt",
+                  parity.pumpkin_rng_env(rng_seed, run_dir / "rng.log"))
 
 
-def start_vanilla(java, jar, run_dir, port, seed):
+def start_vanilla(java, jar, run_dir, port, seed, cache, rng_seed=None):
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "eula.txt").write_text("eula=true\n")
     (run_dir / "server.properties").write_text("\n".join([
@@ -120,8 +121,8 @@ def start_vanilla(java, jar, run_dir, port, seed):
         "enable-command-block=true",
         "sync-chunk-writes=false",
     ]) + "\n")
-    return Server([java, "-Xmx2G", "-jar", str(jar), "nogui"], run_dir, VANILLA_READY,
-                  run_dir / "server.log", run_dir / "cmds.txt")
+    cmd = parity.vanilla_command(java, jar, cache, "net.minecraft.server.Main", rng_seed, run_dir / "rng.log")
+    return Server(cmd + ["nogui"], run_dir, VANILLA_READY, run_dir / "server.log", run_dir / "cmds.txt")
 
 
 def run_check(server, check, port, mineflayer, out_path, timeout):
@@ -177,6 +178,8 @@ def main():
     parser.add_argument("--no-build", action="store_true", help="skip cargo build of pumpkin")
     parser.add_argument("--release", action="store_true", help="use a release build of pumpkin")
     parser.add_argument("--diffs-only", action="store_true", help="only print the lines that differ")
+    parser.add_argument("--rng-seed", type=int,
+                        help="lock gameplay randomness to per-owner streams from this seed and diff the draw logs")
     args = parser.parse_args()
 
     mineflayer = (args.mineflayer or args.cache / "mineflayer-26.3").resolve()
@@ -200,8 +203,8 @@ def main():
     run_dir = args.cache / "bot-runs" / f"{time.strftime('%Y%m%d-%H%M%S')}-{check.stem}"
     outputs = {}
     for name, start, port in (
-        ("vanilla", lambda d, p: start_vanilla(java, jar, d, p, args.seed), 25566),
-        ("pumpkin", lambda d, p: start_pumpkin(binary, d, p, args.seed), 25565),
+        ("vanilla", lambda d, p: start_vanilla(java, jar, d, p, args.seed, args.cache, args.rng_seed), 25566),
+        ("pumpkin", lambda d, p: start_pumpkin(binary, d, p, args.seed, args.rng_seed), 25565),
     ):
         print(f"Running {args.check} on {name}...")
         server = start(run_dir / name, port)
@@ -225,6 +228,9 @@ def main():
             print(f"{'ok ' if same else 'DIFF'} {key}: vanilla={v}" + ("" if same else f"  pumpkin={p}"))
     if first_tick is not None:
         print(f"\nTraces first differ at tick {first_tick}.")
+    if args.rng_seed is not None:
+        print()
+        parity.rng_diff.report(run_dir / "vanilla" / "rng.log", run_dir / "pumpkin" / "rng.log")
     print(f"\n{mismatches} differences. Logs in {run_dir}")
     sys.exit(1 if mismatches else 0)
 
