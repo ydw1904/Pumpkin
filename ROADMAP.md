@@ -36,6 +36,15 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 - On Windows, replace `node-minecraft-data/minecraft-data` with a directory junction to `../minecraft-data`. Git checks the symlink out as a text file.
 - Avoid comparing values that vanilla randomises itself, such as the exact spawn point. Take readings before something else changes them; for example, measure fall damage from the first health update, before natural regeneration heals it.
 
+### Step traces
+
+- A check built on `tools/parity/bots/steptrace.js` freezes the game (`/tick freeze`), builds a scene, then runs `/tick step 1` at a time and reads a fixed set of probes after each step. It prints `t<tick>.<probe>` results; `bot_parity.py` reports the first tick where the servers disagree. `--diffs-only` hides matching lines.
+- Probes are command replies (normalised so number formatting doesn't count), the bot's own view of a block (what a client was sent), or the server's block state through `execute if block` against a list of candidate states.
+- A step is done once `/time query gametime` has advanced and two probe passes agree. Pumpkin runs chat commands as async tasks next to the tick and advances game time first, so a single read can land mid-tick.
+- Randomness still differs, so traces only line up for deterministic mechanics until the RNG lockdown. Player movement isn't frozen (it's client authoritative).
+- Pumpkin's `/setblock` can't take block states yet (#7), so scenes use default states.
+- `trace-falling-sand` and `trace-piston` match on the server side; the piston's client view differs (#35, #36).
+
 ### Status values
 
 - `ok`: both servers pass.
@@ -86,12 +95,19 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 | 30 | A riding player's server-side position doesn't follow the vehicle. After a dismount, vanilla puts the player at the vehicle (x 1.5 in `dismount.js`) while Pumpkin still has the spot where they mounted (x 0.5). The check's last step ("server sees the bot walk") fails on vanilla too, so only the position is a real difference. | `dismount/dismount.js` | Open. Upstream draft #4378 adds `position_riders` but leaves players client authoritative |
 | 31 | A ridden minecart on a powered activator rail froze the server for good. The activator-rail branch in `minecart.rs` held the `passengers` lock and called `remove_passenger_sync` on the same minecart, which locks it again, so the tick thread deadlocked. Commands stopped running after that point. | Reading code, `activator/activator.js` | Fixed in `0bce7341c`: the minecart ejects its passengers last first through `remove_passenger`, like vanilla's `ejectPassengers` and `stopRiding`, so plugin dismount events fire and the passenger is moved off the cart. The check's pig and player cases match vanilla apart from where the player lands (#32) |
 | 32 | A player leaving a minecart lands on a different side than on vanilla (`activator.js`: vanilla north of the cart, Pumpkin west). Vanilla's `AbstractMinecart.getDismountLocationForPassenger` orders the candidate spots by the cart's motion direction (`getMotionDirection`); Pumpkin's `remove_passenger` uses the vehicle's yaw for every vehicle. Affects sneak dismounts too. | `activator/activator.js` | Open |
+| 33 | Falling blocks drifted from vanilla's trajectory by ~1e-7 per tick. Vanilla scales velocity by `getAirDrag()`, a float `0.98F` (`0.9800000190734863` as a double); Pumpkin used the double `0.98`. | `trace-falling-sand` | Fixed in `74f6936c4`; the 20-tick trace now matches vanilla bit for bit |
+| 34 | `/tick freeze` still ran block events, so a piston powered while frozen moved before any `/tick step`. Vanilla's `ServerLevel.tick` only calls `runBlockEvents` when the game runs normally. | `trace-piston` | Fixed in `bfed0d9d8`; the server-side piston trace matches vanilla. Upstream draft #3057 (piston rewrite, last updated 2026-08) also drops the call |
+| 35 | Pumpkin sends `moving_piston` block updates to clients while a piston moves. Vanilla places them with flags 68 (no client update) and lets the client animate from the block event, so clients only see the final blocks. | `trace-piston` (client view) | Open, low priority. Check whether it causes flicker on a real client |
+| 36 | `/data get block` on a moving piston returns no data on Pumpkin. Vanilla shows `blockState`, `facing`, `progress`, `extending` and `source`. | `trace-piston` | Open, unverified whether the block entity writes no NBT or the command drops it |
+| 37 | A falling block's name is "Falling Block" on Pumpkin; vanilla names it after the block ("Falling Sand"), which shows in command feedback. | `trace-falling-sand` | Open |
+| 38 | SNBT doubles print without a fraction on Pumpkin (`0d` against vanilla's `0.0d`), so `/data get` output differs. Step traces normalise numbers so this doesn't hide real differences. | `trace-falling-sand` | Open |
+| 39 | Item entities have the same drag issue as #33: vanilla's `ItemEntity.tick` multiplies `getAirDrag()` and the block friction as floats, while `item.rs` uses doubles. | Reading code after #33 | Open, unverified by a trace |
 
 ## Future work
 
 ### Harness
 
-- **RNG lockdown,** so that results depending on randomness are comparable:
+- **RNG lockdown (next),** so that results depending on randomness are comparable:
   - Post-hook every RNG call on both servers and return values from isolated Java-LCG streams, keyed per owner (entity index in the test, block position, level).
   - Vanilla side: a `-javaagent` using the JDK ClassFile API. Pumpkin side: a `pumpkin_util` wrapper in place of `rand::rng()`, with a thread-local current owner.
   - Log every draw on both sides and diff the logs to find the first divergent call.
@@ -102,6 +118,7 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 
 ### Fixes
 
+- Port #33's float drag to items (#39) and check it with a trace.
 - Investigate #9 (the creeper test), #18 (block entities in generated structures) and #20 (teleport chunk delay).
 - Coordinate with upstream #4010 before offering the scheduler fix (#15): both change `tick/scheduler.rs`.
 - Block states in `/setblock` and `/fill` (#7).
