@@ -106,6 +106,9 @@ impl ServerTickRateManager {
     }
 
     pub fn set_frozen(&self, server: &Server, frozen: bool) {
+        if frozen {
+            pumpkin_util::random::gameplay::reset();
+        }
         self.is_frozen.store(frozen, Ordering::Relaxed);
         self.update_state_to_clients(server);
     }

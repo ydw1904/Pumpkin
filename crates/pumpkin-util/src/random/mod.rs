@@ -7,6 +7,7 @@ use legacy_rand::{LegacyRand, LegacySplitter};
 use worldgen_random::WorldgenRandom;
 use xoroshiro128::{Xoroshiro, XoroshiroSplitter};
 
+pub mod gameplay;
 mod gaussian;
 pub mod legacy_rand;
 pub mod worldgen_random;

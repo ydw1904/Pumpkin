@@ -848,6 +848,20 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         None
     }
 
+    /// Owner key for the parity harness's RNG lockdown (`pumpkin_util::random::gameplay`),
+    /// before the `#<n>` suffix: `<type>@<block pos>` where the entity joins, or `player:<name>`.
+    fn rng_owner_base(&self) -> String {
+        if let Some(player) = self.get_player() {
+            return format!("player:{}", player.gameprofile.name);
+        }
+        let entity = self.get_entity();
+        let pos = entity.block_pos.load().0;
+        format!(
+            "{}@{},{},{}",
+            entity.entity_type.resource_name, pos.x, pos.y, pos.z
+        )
+    }
+
     /// Should return the name of the entity without click or hover events.
     fn get_name(&self) -> TextComponent {
         let entity = self.get_entity();

@@ -139,6 +139,7 @@ use pumpkin_protocol::{
         CBlockEvent, CParticle, CRemoveMobEffect, CSetEquipment, CUpdateMobEffect,
     },
 };
+use pumpkin_util::random::gameplay;
 use pumpkin_util::resource_location::ResourceLocation;
 use pumpkin_util::text::{TextComponent, color::NamedColor};
 use pumpkin_util::version::JavaMinecraftVersion;
@@ -1674,7 +1675,11 @@ impl World {
             order::set_entity_order(Some(first_order + index as u64 * order::ORDERS_PER_ENTITY));
 
             entity.get_entity().tick_count.fetch_add(1, Relaxed);
-            entity.tick(entity.as_ref(), server_ref);
+            gameplay::with_entity_owner(
+                entity.get_entity().entity_id,
+                || entity.rng_owner_base(),
+                || entity.tick(entity.as_ref(), server_ref),
+            );
 
             let entity_inner = entity.get_entity();
             let entity_pos = entity_inner.pos.load();
@@ -2090,11 +2095,16 @@ impl World {
                     let pos = scheduled_tick.position;
                     let block = world.get_block(&pos);
                     if let Some(pumpkin_block) = world.block_registry.get_pumpkin_block(block.id) {
-                        pumpkin_block.on_scheduled_tick(OnScheduledTickArgs {
-                            world: &world,
-                            block,
-                            position: &pos,
-                        });
+                        gameplay::with_owner(
+                            || format!("block@{},{},{}", pos.0.x, pos.0.y, pos.0.z),
+                            || {
+                                pumpkin_block.on_scheduled_tick(OnScheduledTickArgs {
+                                    world: &world,
+                                    block,
+                                    position: &pos,
+                                });
+                            },
+                        );
                     }
                 }
             });
@@ -2110,7 +2120,10 @@ impl World {
                     let pos = scheduled_tick.position;
                     let fluid = world.get_fluid(&pos);
                     if let Some(pumpkin_fluid) = world.block_registry.get_pumpkin_fluid(fluid.id) {
-                        pumpkin_fluid.on_scheduled_tick(&world, fluid, &pos);
+                        gameplay::with_owner(
+                            || format!("fluid@{},{},{}", pos.0.x, pos.0.y, pos.0.z),
+                            || pumpkin_fluid.on_scheduled_tick(&world, fluid, &pos),
+                        );
                     }
                 }
             });
@@ -2124,6 +2137,14 @@ impl World {
                 let world = world.clone();
                 for scheduled_tick in batch {
                     let pos = scheduled_tick.position;
+                    // Vanilla random-ticks inside `ServerLevel.tickChunk`.
+                    let _owner = gameplay::is_locked_down().then(|| {
+                        gameplay::OwnerScope::enter(format!(
+                            "chunk@{},{}",
+                            pos.0.x >> 4,
+                            pos.0.z >> 4
+                        ))
+                    });
                     let (block, fluid) =
                         match (scheduled_tick.tick_block, scheduled_tick.tick_fluid) {
                             (true, true) => {
@@ -2193,7 +2214,10 @@ impl World {
                 let s_list = spawn_list.clone();
                 let s_state = spawn_state.clone();
                 for (pos, chunk) in batch {
-                    world.tick_spawning_chunk(*pos, chunk, &s_list, &s_state);
+                    gameplay::with_owner(
+                        || format!("chunk@{},{}", pos.x, pos.y),
+                        || world.tick_spawning_chunk(*pos, chunk, &s_list, &s_state),
+                    );
                 }
             });
         }
@@ -4797,6 +4821,7 @@ impl World {
     ///
     /// * `player`: An `Arc<Player>` reference to the player object.
     pub fn add_player(&self, player: &Arc<Player>) -> Result<(), String> {
+        gameplay::register_entity(player.entity_id(), || player.rng_owner_base());
         self.players.rcu(|current_list| {
             let mut new_list = (**current_list).clone();
             new_list.push(player.clone());
@@ -4974,6 +4999,7 @@ impl World {
     #[expect(clippy::needless_pass_by_value)]
     pub fn spawn_entity_non_save(&self, entity: Arc<dyn EntityBase>) {
         let _base_entity = entity.get_entity();
+        gameplay::register_entity(entity.get_entity().entity_id, || entity.rng_owner_base());
         self.entity_tracker.add_entity(&entity, self);
         self.spawn_state.load().add_entity(self, entity.as_ref());
 
@@ -5104,6 +5130,7 @@ impl World {
         // The entity stays live-only: it is written to its chunk's saved data on
         // unload (see `save_entities_by_chunk`), never at spawn, so it can't be both live and
         // serialized at once (which would double it on the next reload).
+        gameplay::register_entity(base_entity.entity_id, || entity.rng_owner_base());
         self.spawn_state.load().add_entity(self, entity.as_ref());
         self.entity_tracker.add_entity(&entity, self);
 
