@@ -21,6 +21,7 @@ use pumpkin_protocol::java::client::play::{CSetEntityMetadata, Metadata};
 use pumpkin_util::math::atomic_f32::AtomicF32;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::Ordering::{AcqRel, Relaxed};
 
 use std::sync::{
@@ -99,13 +100,18 @@ const MERGE_DISTANCE: f64 = 0.5;
 impl ItemEntity {
     pub const DEFAULT_PICKUP_DELAY: u8 = 10;
 
+    // Vanilla rounds after the multiply and after the add, so no `mul_add` here.
+    #[allow(clippy::suboptimal_flops)]
     pub fn new(entity: Entity, item_stack: ItemStack) -> Self {
+        let rng = game_random();
+        Self::draw_bob_offset();
+        // Vanilla `ItemEntity(Level, x, y, z, ItemStack)`: the yaw is drawn before the motion.
+        entity.yaw.store(rng.next_f32() * 360.0);
         entity.velocity.store(Vector3::new(
-            rand::random::<f64>().mul_add(0.2, -0.1),
+            rng.next_f64() * 0.2 - 0.1,
             0.2,
-            rand::random::<f64>().mul_add(0.2, -0.1),
+            rng.next_f64() * 0.2 - 0.1,
         ));
-        entity.yaw.store(rand::random::<f32>() * 360.0);
         Self::update_fire_immune(&entity, &item_stack);
 
         Self {
@@ -128,7 +134,8 @@ impl ItemEntity {
         pickup_delay: u8,
     ) -> Self {
         entity.velocity.store(velocity);
-        entity.yaw.store(rand::random::<f32>() * 360.0);
+        Self::draw_bob_offset();
+        entity.yaw.store(game_random().next_f32() * 360.0);
         Self::update_fire_immune(&entity, &item_stack);
 
         Self {
@@ -142,6 +149,12 @@ impl ItemEntity {
             never_pickup: AtomicBool::new(false),
             merge_reserved: AtomicBool::new(false),
         }
+    }
+
+    /// Vanilla's `bobOffs` field initializer draws before the yaw. Only the client uses the
+    /// value, but the draw keeps the server's random sequence in step with vanilla.
+    fn draw_bob_offset() {
+        let _ = game_random().next_f32();
     }
 
     /// Creates an `ItemEntity` for restoring from NBT without random velocity.

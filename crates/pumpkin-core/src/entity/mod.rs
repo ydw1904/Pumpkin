@@ -55,6 +55,7 @@ use pumpkin_util::math::{
     vector3::Vector3,
     wrap_degrees,
 };
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_util::text::TextComponent;
 use pumpkin_util::text::hover::HoverEvent;
 use pumpkin_util::version::JavaMinecraftVersion;
@@ -66,7 +67,6 @@ use std::sync::{
         Ordering::{self, Relaxed},
     },
 };
-use uuid::Uuid;
 
 pub mod ageable;
 pub mod ai;
@@ -1176,7 +1176,12 @@ impl Entity {
         position: Vector3<f64>,
         entity_type: &'static EntityType,
     ) -> Self {
-        Self::from_uuid(Uuid::new_v4(), world, position, entity_type)
+        Self::from_uuid(
+            game_random().create_insecure_uuid(),
+            world,
+            position,
+            entity_type,
+        )
     }
 
     pub fn reserve_ids(count: i32) -> i32 {
