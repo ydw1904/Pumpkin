@@ -20,9 +20,6 @@ use std::{
     },
 };
 
-/// Vanilla `Entity.getAirDrag`, applied every tick.
-const AIR_DRAG: f32 = 0.98;
-
 // TODO: `owner` (igniter, projectile owner or explosion source): NBT, kill credit, damage source.
 // TODO: `block_state` NBT tag and `usedPortal` damage calculator.
 pub struct TNTEntity {
@@ -108,7 +105,7 @@ impl EntityBase for TNTEntity {
         // Read back what actually happened instead of reusing the pre-move value:
         // `move_entity` clamps on collision, and an explosion may have pushed us while we
         // were moving above. Air drag applies every tick, the ground factors on top of it.
-        let drag = f64::from(AIR_DRAG);
+        let drag = f64::from(super::AIR_DRAG);
         let velo = entity.velocity.load().multiply(drag, drag, drag);
         let velo = if entity.on_ground.load(Ordering::Relaxed) {
             velo.multiply(0.7, -0.5, 0.7)

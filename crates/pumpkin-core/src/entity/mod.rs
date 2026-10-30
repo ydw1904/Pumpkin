@@ -106,6 +106,9 @@ pub mod predicate;
 /// The maximum number of scoreboard tags an entity can carry, matching Vanilla.
 pub const MAX_SCOREBOARD_TAGS: usize = 1024;
 
+/// Vanilla `Entity.getAirDrag`: a float, even though velocity is a double.
+pub(crate) const AIR_DRAG: f32 = 0.98;
+
 /// Push strength per axis in `Entity.push`.
 pub(crate) const PUSH_STRENGTH: f64 = 0.05f32 as f64;
 

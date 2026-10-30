@@ -498,18 +498,22 @@ impl ItemEntity {
         entity.move_entity(caller, move_velo);
         entity.tick_block_collisions(caller);
 
-        // air drag
-        let air_drag = 0.98;
+        // Vanilla multiplies the drag and the block friction as floats.
+        let air_drag = super::AIR_DRAG;
         let mut friction = air_drag;
         let on_ground = entity.on_ground.load(Ordering::SeqCst);
 
         let mut velo = entity.velocity.load();
         if on_ground {
             let block_affecting_velo = entity.get_block_with_y_offset(0.999_999).1;
-            friction *= f64::from(block_affecting_velo.slipperiness);
+            friction *= block_affecting_velo.slipperiness;
         }
 
-        velo = velo.multiply(friction, air_drag, friction);
+        velo = velo.multiply(
+            f64::from(friction),
+            f64::from(air_drag),
+            f64::from(friction),
+        );
 
         // a landing item bounces back up with half its speed
         if on_ground && velo.y < 0.0 {
