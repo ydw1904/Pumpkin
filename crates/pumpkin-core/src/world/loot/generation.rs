@@ -1,11 +1,13 @@
 use std::collections::HashSet;
 
+use pumpkin_util::random::gameplay::game_random;
+
 use super::{
     DynamicLootCondition, DynamicLootEntry, DynamicLootEntryKind, DynamicLootFunction,
     DynamicLootPool, DynamicLootTable, Item, ItemStack, LootCondition, LootContextParameters,
     LootEntry, LootEntryKind, LootFunction, LootFunctionKind, LootNumberProvider, LootPool,
-    LootTable, LootTableHandle, RandomImpl, Taggable, Xoroshiro, apply_bonus_formula,
-    check_condition, check_dynamic_condition, get_loot_table, smelt,
+    LootTable, LootTableHandle, RandomGenerator, RandomImpl, Taggable, Xoroshiro,
+    apply_bonus_formula, check_condition, check_dynamic_condition, get_loot_table, smelt,
 };
 
 #[derive(Clone, Copy)]
@@ -220,9 +222,15 @@ pub(super) fn generate(
         .tool
         .as_ref()
         .is_some_and(|tool| tool.item == &Item::SHEARS);
+    // Vanilla `LootContext.Builder.withOptionalRandomSeed`: seed 0 rolls from the level's random.
+    let rng = if seed == 0 {
+        RandomGenerator::Gameplay(game_random())
+    } else {
+        RandomGenerator::Xoroshiro(Xoroshiro::from_seed(seed as u64))
+    };
     let mut generator = Generator {
         params,
-        rng: Xoroshiro::from_seed(seed as u64),
+        rng,
         visited: HashSet::new(),
         has_silk_touch,
         has_shears,
@@ -244,7 +252,7 @@ pub(super) fn generate(
 
 struct Generator<'a, 'b> {
     params: &'a LootContextParameters<'b>,
-    rng: Xoroshiro,
+    rng: RandomGenerator,
     visited: HashSet<*const ()>,
     has_silk_touch: bool,
     has_shears: bool,

@@ -229,7 +229,7 @@ impl SheepEntity {
                 ..Default::default()
             };
             let rng = self.get_random();
-            for stack in generate_loot_from_handle(&table, rng.random(), &params) {
+            for stack in generate_loot_from_handle(&table, 0, &params) {
                 for _ in 0..stack.item_count {
                     let item_entity = ItemEntity::new(
                         Entity::new(world.clone(), pos.add_raw(0.0, 1.0, 0.0), &EntityType::ITEM),

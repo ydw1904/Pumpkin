@@ -690,7 +690,7 @@ async fn double_plants_keep_their_adjacent_half_location_checks() {
 #[test]
 fn negative_uniform_bonus_multiplier_keeps_the_base_count() {
     for seed in 0..32 {
-        let mut rng = Xoroshiro::from_seed(seed);
+        let mut rng = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(seed));
         assert_eq!(
             apply_bonus_formula(2, LootBonusFormula::UniformBonusCount(-3), 3, &mut rng),
             2

@@ -2537,9 +2537,8 @@ impl LivingEntity {
         let key = format!("minecraft:entities/{resource_name}");
         let world = self.entity.world.load();
         if let Some(loot_table) = world.get_loot_table(&key) {
-            let seed: i64 = game_random().random();
             let pos = self.entity.block_pos.load();
-            for stack in crate::world::loot::generate_loot_from_handle(&loot_table, seed, params) {
+            for stack in crate::world::loot::generate_loot_from_handle(&loot_table, 0, params) {
                 world.drop_stack(&pos, stack);
             }
         }

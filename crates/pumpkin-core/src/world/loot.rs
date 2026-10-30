@@ -12,7 +12,7 @@ pub use pumpkin_util::loot_table::{
     LootEntry, LootEntryKind, LootFunction, LootFunctionKind, LootNumberProvider, LootPool,
     LootTable,
 };
-use pumpkin_util::random::{RandomImpl, xoroshiro128::Xoroshiro};
+use pumpkin_util::random::{RandomGenerator, RandomImpl, xoroshiro128::Xoroshiro};
 
 mod generation;
 mod predicates;
@@ -122,7 +122,7 @@ fn check_dynamic_condition(
     has_silk_touch: bool,
     has_shears: bool,
     params: &LootContextParameters,
-    rng: &mut Xoroshiro,
+    rng: &mut RandomGenerator,
 ) -> bool {
     match cond {
         DynamicLootCondition::None => true,
@@ -201,7 +201,7 @@ fn check_condition(
     has_silk_touch: bool,
     has_shears: bool,
     params: &LootContextParameters,
-    rng: &mut Xoroshiro,
+    rng: &mut RandomGenerator,
 ) -> bool {
     match cond {
         LootCondition::None => true,
@@ -279,7 +279,7 @@ fn apply_bonus_formula(
     base_count: i32,
     bonus: LootBonusFormula,
     fortune_level: i32,
-    rng: &mut Xoroshiro,
+    rng: &mut RandomGenerator,
 ) -> i32 {
     match bonus {
         LootBonusFormula::OreDrops => {

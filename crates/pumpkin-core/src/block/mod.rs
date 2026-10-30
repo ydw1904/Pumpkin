@@ -469,7 +469,6 @@ pub fn drop_loot(
     params: &LootContextParameters,
 ) {
     if let Some(loot_table) = block.loot_table.and_then(|key| world.get_loot_table(key)) {
-        let seed: i64 = game_random().random();
         let params = LootContextParameters {
             world: Some(world),
             tool: Some(
@@ -480,7 +479,7 @@ pub fn drop_loot(
             ),
             ..params.clone()
         };
-        let items = crate::world::loot::generate_loot_from_handle(&loot_table, seed, &params);
+        let items = crate::world::loot::generate_loot_from_handle(&loot_table, 0, &params);
         if !items.is_empty() {
             let mut event = crate::plugin::block::block_drop_item::BlockDropItemEvent {
                 block_pos: *pos,

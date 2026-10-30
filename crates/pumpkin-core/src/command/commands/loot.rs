@@ -9,7 +9,6 @@ use pumpkin_util::PermissionLvl;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
-use pumpkin_util::random::gameplay::game_random;
 use pumpkin_util::text::TextComponent;
 use pumpkin_util::text::hover::HoverEvent;
 
@@ -384,8 +383,7 @@ impl CommandExecutor for LootExecutor {
                     tool: Some(tool_stack.unwrap_or_else(|| ItemStack::EMPTY.clone())),
                     ..Default::default()
                 };
-                let seed: i64 = game_random().random();
-                drops = crate::world::loot::generate_loot_from_handle(&loot_table, seed, &params);
+                drops = crate::world::loot::generate_loot_from_handle(&loot_table, 0, &params);
             }
             Source::Loot => {
                 let loot_table_str = StringArgumentType::get(context, "loot_table")?;
@@ -409,8 +407,7 @@ impl CommandExecutor for LootExecutor {
                     position: context.source.as_player().map(|p| p.position()),
                     ..Default::default()
                 };
-                let seed: i64 = game_random().random();
-                drops = crate::world::loot::generate_loot_from_handle(&loot_table, seed, &params);
+                drops = crate::world::loot::generate_loot_from_handle(&loot_table, 0, &params);
             }
             Source::Kill => {
                 let target_entities = EntityArgumentType::get_entities(context, "target_entity")?;
@@ -451,10 +448,9 @@ impl CommandExecutor for LootExecutor {
                             ),
                             ..params.clone()
                         };
-                        let seed: i64 = game_random().random();
                         drops.extend(crate::world::loot::generate_loot_from_handle(
                             &loot_table,
-                            seed,
+                            0,
                             &params,
                         ));
                         last_key = Some(key);
@@ -507,8 +503,7 @@ impl CommandExecutor for LootExecutor {
                     )),
                     ..Default::default()
                 };
-                let seed: i64 = game_random().random();
-                drops = crate::world::loot::generate_loot_from_handle(&loot_table, seed, &params);
+                drops = crate::world::loot::generate_loot_from_handle(&loot_table, 0, &params);
                 table_id_for_callback = Some(key.to_string());
             }
         }
