@@ -45,6 +45,15 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 - Pumpkin's `/setblock` can't take block states yet (#7), so scenes use default states.
 - `trace-falling-sand` and `trace-piston` match on the server side; the piston's client view differs (#35, #36).
 
+### RNG lockdown
+
+- `--rng-seed <seed>` on `bot_parity.py` and `parity.py` makes both servers draw gameplay randomness from per-owner Java LCG streams and log every draw. `rng_diff.py` then compares the logs owner by owner and prints the first draw that differs.
+- Owners: an entity (`<type>@<block pos where it joined>#<n>`, players `player:<name>`), a scheduled tick (`block@x,y,z`, `fluid@x,y,z`), a chunk (`chunk@cx,cz`: lightning, spawning, random ticks), the chunk list (`chunks`), or `misc` (commands and everything else). Owner `K`'s stream is `LegacyRandomSource(seed ^ K.hashCode() ^ (epoch << 32))`.
+- `/tick freeze` restarts every stream and the entity numbering and bumps the epoch, so a scene built while frozen starts from the same state on both servers. Only draws after the last reset are compared. The epoch stops a restarted stream from repeating an existing entity's UUID, which vanilla refuses.
+- Vanilla: a `-javaagent` (`tools/parity/rngagent`, java.lang.classfile, built on demand) routes `Entity.random` and `Level.random` and wraps the owner methods in `ServerLevel` and `ServerChunkCache`. It runs on a flat classpath because the bundler's class loader hides Minecraft from the agent.
+- Pumpkin: `pumpkin_util::random::gameplay` (`PUMPKIN_RNG_SEED`, `PUMPKIN_RNG_LOG`). Outside the lockdown it is a per-thread `LegacyRand`. Only converted call sites use it; the rest still call `rand` and don't show up in the log.
+- Converted so far: entity UUIDs, block drops (`drop_stack`, `drop_stack_from_face`) and the item entity constructor. `trace-item-drop` matches vanilla draw for draw and tick for tick until the item rests on the ground (#43).
+
 ### Status values
 
 - `ok`: both servers pass.
@@ -74,7 +83,7 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 | 9 | `pumpkin:creeper_should_run_from_cat` fails on vanilla (5/5) and passes about 4/6 on Pumpkin. It only passes in `pumpkin-tester` because of a hand-built arena (`prepare_flat_test_surroundings`). | Parity harness | Open: either the test or Pumpkin's flee AI is wrong |
 | 10 | Pumpkin's GameTest runner stores a test's `environment` (game rules, weather, time, difficulty, functions) but doesn't apply it. | Reading code | Open |
 | 11 | The `max-chained-neighbor-updates` limit (vanilla's `CollectingNeighborUpdater`) isn't implemented. | Reading code | Open |
-| 12 | Gameplay RNG can't be seeded. There's no per-entity or per-world RNG; about 500 call sites use the thread-local `rand::rng()`, and random ticks run in parallel. | RNG survey | Open, see future work |
+| 12 | Gameplay RNG can't be seeded. There's no per-entity or per-world RNG; about 850 call sites use `rand` directly (`rand::rng()`, `rand::random`) or seed a throwaway generator, and random ticks run in parallel. | RNG survey | In progress: the RNG lockdown (`fb5ba55b3`, `2fff476ee`) makes converted sites comparable; see future work |
 | 13 | Pumpkin reads structure palettes with `Name`/`Properties` even at data version 5023, where vanilla places air. | Building the pack | Won't fix for now: more lenient than vanilla, nothing breaks |
 | 14 | `execute if block` doesn't reject unloaded positions (vanilla uses `getLoadedBlockPos`). | Reading code | Open, unverified. The terminal-condition part is fixed by #24 |
 | 15 | Every scheduled block and fluid tick ran one tick late. `ChunkTickScheduler::step_tick` advanced its offset after taking the current slot, so ticks scheduled during that tick landed at `delay + 1`. A delay-4 repeater took 9 game ticks instead of 8. This affected all redstone, fluid and falling-block timing. | Timing probes (`8k + 2` on vanilla, `9k + 2` on Pumpkin) | Fixed in `36222e976`, with unit tests that fail on the old code and two furnace race tests |
@@ -101,16 +110,22 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 | 36 | `/data get block` on a moving piston returns no data on Pumpkin. Vanilla shows `blockState`, `facing`, `progress`, `extending` and `source`. | `trace-piston` | Open, unverified whether the block entity writes no NBT or the command drops it |
 | 37 | A falling block's name is "Falling Block" on Pumpkin; vanilla names it after the block ("Falling Sand"), which shows in command feedback. | `trace-falling-sand` | Open |
 | 38 | SNBT doubles print without a fraction on Pumpkin (`0d` against vanilla's `0.0d`), so `/data get` output differs. Step traces normalise numbers so this doesn't hide real differences. | `trace-falling-sand` | Open |
-| 39 | Item entities have the same drag issue as #33: vanilla's `ItemEntity.tick` multiplies `getAirDrag()` and the block friction as floats, while `item.rs` uses doubles. | Reading code after #33 | Open, unverified by a trace |
+| 39 | Item entities have the same drag issue as #33: vanilla's `ItemEntity.tick` multiplies `getAirDrag()` and the block friction as floats, while `item.rs` uses doubles. | Reading code after #33, `trace-item-drop` | Fixed in `df893357b`; the item trace matches until #43 |
+| 40 | `/setblock ... destroy` and `/fill ... destroy` didn't drop the old block's items. Vanilla calls `level.destroyBlock(pos, true)`; Pumpkin passed `SKIP_DROPS`. | `trace-item-drop` | Fixed in `24c888d0a` |
+| 41 | Item drops drew their randomness differently from vanilla: no `bobOffs` draw (a client value vanilla's server still draws before the yaw), the motion drawn before the yaw, `mul_add` rounding once where Java rounds twice, and entity UUIDs from the `uuid` crate instead of two `nextLong`s (`Mth.createInsecureUUID`). | RNG lockdown | Fixed in `707eada38` |
+| 42 | Scheduled block and fluid ticks run in parallel batches of 32; vanilla runs them one at a time in scheduled order, and redstone can depend on that order. | Reading code (RNG owner wiring) | Open, unverified in-game |
+| 43 | An item resting on the ground only moves on ticks where `(tickCount + entityId) % 4 != 0`. Entity IDs differ between the servers, so item traces drift once the item lands. | `trace-item-drop` | Harness limitation; would need matching entity IDs |
+| 44 | Block loot rolls from a generator seeded per drop (`drop_loot`) instead of the level random, and block experience from a fresh Xoroshiro, so loot draws don't line up under the lockdown. | Reading code | Open, next to convert |
 
 ## Future work
 
 ### Harness
 
-- **RNG lockdown (next),** so that results depending on randomness are comparable:
-  - Post-hook every RNG call on both servers and return values from isolated Java-LCG streams, keyed per owner (entity index in the test, block position, level).
-  - Vanilla side: a `-javaagent` using the JDK ClassFile API. Pumpkin side: a `pumpkin_util` wrapper in place of `rand::rng()`, with a thread-local current owner.
-  - Log every draw on both sides and diff the logs to find the first divergent call.
+- **RNG lockdown, next steps** (see "RNG lockdown" above):
+  - Convert call sites to `game_random()` area by area, each checked with a trace: loot (#44), mob AI goals (random stroll, look around, ambient sounds), damage and knockback, random ticks.
+  - Players: vanilla splits a player's draws between `player:<name>` (`ServerPlayer.tick`) and `misc` (`doTick` from the connection); Pumpkin's player tick isn't wrapped yet, so its draws land in `misc`.
+  - Entities loaded from disk: vanilla's constructors draw (UUID, `bobOffs`, yaw); Pumpkin's `new_empty` paths don't.
+  - Chunk work: Pumpkin only shuffles the spawning chunks when spawning is on, with `rand`'s algorithm; random tick selection isn't routed on either side yet.
 - **More bot checks:** combat, inventories and containers, the "Loading Terrain" case (#4345), and chunk streaming while moving. Run the scaffolding checks against the branch of upstream #3810 to give its reviewers evidence.
 - **Update limits.** The 512-deep shape-update limit could be tested. The chained neighbour limit can't be set per test in 26.3, so it needs a different approach.
 - **More tests:** blast furnace and smoker speed (26.x `cooking_fuel` speed multiplier), comparators (compare and subtract modes), observers on piston movement, rails and minecarts, sticky piston pull timing, spitting, slime and honey block movement, redstone wire update order, crops and other random ticks (after the RNG lockdown), and entities.
@@ -118,7 +133,6 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 
 ### Fixes
 
-- Port #33's float drag to items (#39) and check it with a trace.
 - Investigate #9 (the creeper test), #18 (block entities in generated structures) and #20 (teleport chunk delay).
 - Coordinate with upstream #4010 before offering the scheduler fix (#15): both change `tick/scheduler.rs`.
 - Block states in `/setblock` and `/fill` (#7).
