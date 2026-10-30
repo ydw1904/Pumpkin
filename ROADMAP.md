@@ -12,7 +12,7 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 | Target version | Java 26.3 (protocol 777), vanilla server needs JDK 25 |
 | Parity harness | `python tools/parity/parity.py` runs the same datapack GameTests on vanilla and Pumpkin and diffs the results |
 | Parity pack | 29 generated tests in `tools/parity/tests.py`; all 29 pass on vanilla and Pumpkin |
-| Bot checks | `python tools/parity/bot_parity.py <check>` runs a headless 26.3 Mineflayer bot on vanilla and Pumpkin and diffs what it saw. `smoke`, `falling/landing-sand.js`, `scaffolding/landing-overhang.js`, `scaffolding/landing-pane-fence.js` and `beacon/stale-heightmap.js` match fully; the remaining differences are #25 to #30 |
+| Bot checks | `python tools/parity/bot_parity.py <check>` runs a headless 26.3 Mineflayer bot on vanilla and Pumpkin and diffs what it saw. `smoke`, `falling/landing-sand.js`, `scaffolding/landing-overhang.js`, `scaffolding/landing-pane-fence.js` and `beacon/stale-heightmap.js` match fully; `activator/activator.js` (#31) matches apart from #32; the remaining differences are #25 to #30 |
 | Pumpkin's own suite | `cargo run -p pumpkin-tester`: all bot tests and built-in GameTests pass |
 
 ### How the harness works
@@ -84,7 +84,8 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 | 28 | A wither killed with `mob_drops false` still drops its nether star. | `wither/wither-star.js` | Probably covered by ydw's upstream #3865 |
 | 29 | Scaffolding placement (stacking, extending, sneak placement, falling at distance 7, waterlogging, the top layer) is mostly missing. | `scaffolding/*` | Covered by upstream #3810 |
 | 30 | A riding player's server-side position doesn't follow the vehicle. After a dismount, vanilla puts the player at the vehicle (x 1.5 in `dismount.js`) while Pumpkin still has the spot where they mounted (x 0.5). The check's last step ("server sees the bot walk") fails on vanilla too, so only the position is a real difference. | `dismount/dismount.js` | Open. Upstream draft #4378 adds `position_riders` but leaves players client authoritative |
-| 31 | Suspected self-deadlock: in `minecart.rs` the activator-rail branch holds `passengers.try_lock()` and calls `remove_passenger_sync` on the same minecart, which locks `passengers` again. | Reading code | Unverified; the console-only repro didn't load the chunk. Needs a bot or player next to a ridden minecart on a powered activator rail |
+| 31 | A ridden minecart on a powered activator rail froze the server for good. The activator-rail branch in `minecart.rs` held the `passengers` lock and called `remove_passenger_sync` on the same minecart, which locks it again, so the tick thread deadlocked. Commands stopped running after that point. | Reading code, `activator/activator.js` | Fixed in `0bce7341c`: the minecart ejects its passengers last first through `remove_passenger`, like vanilla's `ejectPassengers` and `stopRiding`, so plugin dismount events fire and the passenger is moved off the cart. The check's pig and player cases match vanilla apart from where the player lands (#32) |
+| 32 | A player leaving a minecart lands on a different side than on vanilla (`activator.js`: vanilla north of the cart, Pumpkin west). Vanilla's `AbstractMinecart.getDismountLocationForPassenger` orders the candidate spots by the cart's motion direction (`getMotionDirection`); Pumpkin's `remove_passenger` uses the vehicle's yaw for every vehicle. Affects sneak dismounts too. | `activator/activator.js` | Open |
 
 ## Future work
 
@@ -101,7 +102,6 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 
 ### Fixes
 
-- Verify #31 (minecart activator rail lock) with a bot.
 - Investigate #9 (the creeper test), #18 (block entities in generated structures) and #20 (teleport chunk delay).
 - Coordinate with upstream #4010 before offering the scheduler fix (#15): both change `tick/scheduler.rs`.
 - Block states in `/setblock` and `/fill` (#7).
