@@ -19,6 +19,9 @@ use crate::{
     world::World,
 };
 
+/// Vanilla `Entity.getAirDrag`, a float even though velocity is a double.
+const AIR_DRAG: f32 = 0.98;
+
 pub struct FallingEntity {
     entity: Entity,
     block_state_id: BlockStateId,
@@ -111,7 +114,8 @@ impl EntityBase for FallingEntity {
             }
         }
 
-        entity.velocity.store(velo.multiply(0.98, 0.98, 0.98));
+        let drag = f64::from(AIR_DRAG);
+        entity.velocity.store(velo.multiply(drag, drag, drag));
     }
 
     fn init_data_tracker(&self) {
