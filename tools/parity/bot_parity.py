@@ -141,6 +141,8 @@ def run_check(server, check, port, mineflayer, out_path, timeout):
 
 CHECK_LINE = re.compile(r"^(PASS|FAIL) (.+?): got (.*?)(?: expected .*)?$")
 INFO_LINE = re.compile(r"^INFO (.+?): (.*)$")
+# Keys printed by steptrace.js checks: t<tick>.<probe>.
+TRACE_KEY = re.compile(r"^t(\d+)\.")
 
 
 def results(output):
@@ -174,6 +176,7 @@ def main():
     parser.add_argument("--timeout", type=int, default=300, help="seconds a check may run")
     parser.add_argument("--no-build", action="store_true", help="skip cargo build of pumpkin")
     parser.add_argument("--release", action="store_true", help="use a release build of pumpkin")
+    parser.add_argument("--diffs-only", action="store_true", help="only print the lines that differ")
     args = parser.parse_args()
 
     mineflayer = (args.mineflayer or args.cache / "mineflayer-26.3").resolve()
@@ -211,11 +214,17 @@ def main():
 
     vanilla, pumpkin = results(outputs["vanilla"]), results(outputs["pumpkin"])
     mismatches = 0
+    first_tick = None
     for key in list(vanilla) + [k for k in pumpkin if k not in vanilla]:
         v, p = vanilla.get(key, "<missing>"), pumpkin.get(key, "<missing>")
         same = v == p
         mismatches += not same
-        print(f"{'ok ' if same else 'DIFF'} {key}: vanilla={v}" + ("" if same else f"  pumpkin={p}"))
+        if not same and first_tick is None and (tick := TRACE_KEY.match(key)):
+            first_tick = int(tick.group(1))
+        if not (same and args.diffs_only):
+            print(f"{'ok ' if same else 'DIFF'} {key}: vanilla={v}" + ("" if same else f"  pumpkin={p}"))
+    if first_tick is not None:
+        print(f"\nTraces first differ at tick {first_tick}.")
     print(f"\n{mismatches} differences. Logs in {run_dir}")
     sys.exit(1 if mismatches else 0)
 
