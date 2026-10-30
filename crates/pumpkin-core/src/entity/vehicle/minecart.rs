@@ -231,20 +231,19 @@ impl EntityBase for MinecartEntity {
                             minecart.prime(&self.vehicle.entity, 80);
                         }
                         MinecartKind::Rideable(_) => {
-                            if let Ok(passengers) = self.vehicle.entity.passengers.try_lock() {
-                                let p_ids: Vec<i32> = passengers
-                                    .iter()
-                                    .map(|p| p.get_entity().entity_id)
-                                    .collect();
-                                if !p_ids.is_empty() {
-                                    let world = self.vehicle.entity.world.load();
-                                    let vid = self.vehicle.entity.entity_id;
-                                    if let Some(v) = world.get_entity_by_id(vid) {
-                                        for pid in p_ids {
-                                            v.get_entity().remove_passenger_sync(pid);
-                                        }
-                                    }
-                                }
+                            // Vanilla `Entity.ejectPassengers`: last passenger first. Copy the list
+                            // so the lock is released before dismounting takes it again.
+                            let passengers = self
+                                .vehicle
+                                .entity
+                                .passengers
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                .clone();
+                            for passenger in passengers.iter().rev() {
+                                self.vehicle
+                                    .entity
+                                    .remove_passenger(passenger.get_entity().entity_id);
                             }
                             if self.vehicle.get_hurt_time() == 0 {
                                 self.vehicle.set_hurt_dir(-self.vehicle.get_hurt_dir());
