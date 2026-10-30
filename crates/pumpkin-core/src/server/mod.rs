@@ -1240,8 +1240,9 @@ impl Server {
         let worlds = self.worlds.load();
 
         for world in worlds.iter() {
+            // Block events (piston moves, note blocks) wait for the next running tick, like
+            // vanilla's `runBlockEvents`.
             world.flush_block_updates();
-            world.flush_synced_block_events();
 
             let players = world.players.load();
             players.par_iter().for_each(|player| {
