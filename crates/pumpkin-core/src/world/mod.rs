@@ -2123,23 +2123,20 @@ impl World {
                 }
             });
 
-        // 3. Parallel Random Ticks via Rayon
+        // 3. Parallel Random Ticks via Rayon. Chunks tick in parallel, but each chunk's samples
+        // run in order on one thread, like vanilla's `ServerLevel.tickChunk`.
         let world = self.clone();
         tick_data
             .random_ticks
-            .par_chunks(BATCH_SIZE)
-            .for_each(|batch| {
+            .par_chunk_by(|a, b| a.position.chunk_position() == b.position.chunk_position())
+            .for_each(|samples| {
                 let world = world.clone();
-                for scheduled_tick in batch {
+                let _owner = gameplay::is_locked_down().then(|| {
+                    let chunk = samples[0].position.chunk_position();
+                    gameplay::OwnerScope::enter(format!("chunk@{},{}", chunk.x, chunk.y))
+                });
+                for scheduled_tick in samples {
                     let pos = scheduled_tick.position;
-                    // Vanilla random-ticks inside `ServerLevel.tickChunk`.
-                    let _owner = gameplay::is_locked_down().then(|| {
-                        gameplay::OwnerScope::enter(format!(
-                            "chunk@{},{}",
-                            pos.0.x >> 4,
-                            pos.0.z >> 4
-                        ))
-                    });
                     let (block, fluid) =
                         match (scheduled_tick.tick_block, scheduled_tick.tick_fluid) {
                             (true, true) => {
