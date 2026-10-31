@@ -469,6 +469,16 @@ impl ProtoChunk {
         });
     }
 
+    /// Stands in for vanilla's `markPosForPostProcessing` on an aquifer fluid: a tick makes the
+    /// water or lava flow once the chunk ticks, as post-processing does in vanilla.
+    pub fn schedule_fluid_update(&mut self, x: i32, y: i32, z: i32, state: &BlockState) {
+        if state.id == Block::WATER.default_state.id {
+            self.schedule_fluid_tick(x, y, z, &Fluid::WATER);
+        } else if state.id == Block::LAVA.default_state.id {
+            self.schedule_fluid_tick(x, y, z, &Fluid::LAVA);
+        }
+    }
+
     fn update_height_map_column(
         &mut self,
         hm_index: usize,
@@ -1064,16 +1074,19 @@ impl ProtoChunk {
                 for y in (0..volume.size_y).rev() {
                     let block_y = volume.block_y(y);
                     let index = volume.index_unchecked(x, y, z);
-                    let block_state = noise_sampler
+                    let (block_state, should_schedule_fluid_update) = noise_sampler
                         .sample_block_state(
                             ore_random_deriver,
                             &Vector3::new(block_x, block_y, block_z),
                             densities.density[index],
                             densities.vein_sample(index).as_ref(),
                             surface_height_estimate_sampler,
-                        )
-                        .unwrap_or(generator.default_block);
+                        );
+                    let block_state = block_state.unwrap_or(generator.default_block);
                     self.set_block_state(block_x, block_y, block_z, block_state);
+                    if should_schedule_fluid_update {
+                        self.schedule_fluid_update(block_x, block_y, block_z, block_state);
+                    }
                 }
             }
         }

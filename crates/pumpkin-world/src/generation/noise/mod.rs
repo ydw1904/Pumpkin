@@ -67,12 +67,13 @@ impl BlockStateSampler {
         density: f32,
         veins: Option<&VeinSample>,
         height_estimator: &mut SurfaceHeightEstimateSampler,
-    ) -> Option<&'static BlockState> {
+    ) -> (Option<&'static BlockState>, bool) {
         match self {
-            Self::Aquifer(aquifer) => aquifer.apply(router, pos, density, height_estimator).0,
-            Self::Ore(ore) => {
-                veins.and_then(|veins| ore.sample(router, ore_random_deriver, pos, veins))
-            }
+            Self::Aquifer(aquifer) => aquifer.apply(router, pos, density, height_estimator),
+            Self::Ore(ore) => (
+                veins.and_then(|veins| ore.sample(router, ore_random_deriver, pos, veins)),
+                false,
+            ),
         }
     }
 }
@@ -95,20 +96,23 @@ impl ChainedBlockStateSampler {
         density: f32,
         veins: Option<&VeinSample>,
         height_estimator: &mut SurfaceHeightEstimateSampler,
-    ) -> Option<&'static BlockState> {
+    ) -> (Option<&'static BlockState>, bool) {
+        let mut should_schedule_fluid_update = false;
         for sampler in &mut self.samplers {
-            if let Some(state) = sampler.sample(
+            let (state, schedule) = sampler.sample(
                 router,
                 ore_random_deriver,
                 pos,
                 density,
                 veins,
                 height_estimator,
-            ) {
-                return Some(state);
+            );
+            should_schedule_fluid_update |= schedule;
+            if state.is_some() {
+                return (state, should_schedule_fluid_update);
             }
         }
-        None
+        (None, should_schedule_fluid_update)
     }
 }
 
@@ -199,6 +203,8 @@ impl<'a> ChunkNoiseGenerator<'a> {
         ChunkDensities { density, veins }
     }
 
+    /// The block at `pos`, and whether the aquifer wants the fluid there to update (vanilla
+    /// `Aquifer.shouldScheduleFluidUpdate`).
     pub fn sample_block_state(
         &mut self,
         ore_random_deriver: &XoroshiroSplitter,
@@ -206,7 +212,7 @@ impl<'a> ChunkNoiseGenerator<'a> {
         density: f32,
         veins: Option<&VeinSample>,
         height_estimator: &mut SurfaceHeightEstimateSampler,
-    ) -> Option<&'static BlockState> {
+    ) -> (Option<&'static BlockState>, bool) {
         self.state_sampler.sample(
             &mut self.router,
             ore_random_deriver,
