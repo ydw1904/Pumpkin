@@ -1,9 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
+use pumpkin_data::block_properties::WaterLikeProperties;
+use pumpkin_data::fluid::Fluid;
+use pumpkin_data::tag::{RegistryKey, get_tag_ids};
 use pumpkin_data::{Block, BlockDirection, BlockId, BlockState, BlockStateId};
 use pumpkin_util::{
     math::{int_provider::IntProvider, position::BlockPos},
-    random::RandomGenerator,
+    random::{RandomGenerator, legacy_rand::LegacyRand},
 };
 
 use crate::generation::feature::features::spring_feature::BlockWrapper;
@@ -79,6 +82,23 @@ impl GeodeFeature {
         }
     }
 
+    /// Block ids in a holder set: a `#tag`, a block id, or a list of block ids.
+    fn block_ids(wrapper: &BlockWrapper) -> HashSet<u16> {
+        let names = match wrapper {
+            BlockWrapper::Single(s) => std::slice::from_ref(s),
+            BlockWrapper::Multi(v) => v.as_slice(),
+        };
+        let mut ids = HashSet::new();
+        for name in names {
+            if let Some(tag) = name.strip_prefix('#') {
+                ids.extend(get_tag_ids(RegistryKey::Block, tag).unwrap_or_default());
+            } else if let Some(block) = Block::from_name(name) {
+                ids.insert(block.id.as_u16());
+            }
+        }
+        ids
+    }
+
     fn has_property(codec: &BlockStateCodec, property: pumpkin_data::PropertyKey) -> bool {
         let state = codec.get_state();
         // Obtain the block corresponding to this state id
@@ -102,40 +122,15 @@ impl GeodeFeature {
     ) -> bool {
         let origin = pos;
         let num_points = self.distribution_points.get(random);
-        let noise = NormalNoise::create(random, -4, &[1.0]);
+        // Vanilla seeds the shell noise from the world seed, not the feature's random.
+        let noise = NormalNoise::create(
+            &mut RandomGenerator::Legacy(LegacyRand::from_seed(chunk.world_seed())),
+            -4,
+            &[1.0],
+        );
 
-        // Precompute sets of raw block ids for fast lookups
-        let mut invalid_raw_ids: HashSet<BlockId> = HashSet::new();
-        match &self.invalid_blocks {
-            BlockWrapper::Single(s) => {
-                if let Some(b) = Block::from_name(s.as_str()) {
-                    invalid_raw_ids.insert(b.id);
-                }
-            }
-            BlockWrapper::Multi(v) => {
-                for s in v {
-                    if let Some(b) = Block::from_name(s.as_str()) {
-                        invalid_raw_ids.insert(b.id);
-                    }
-                }
-            }
-        }
-
-        let mut cannot_replace_raw_ids: HashSet<BlockId> = HashSet::new();
-        match &self.cannot_replace {
-            BlockWrapper::Single(s) => {
-                if let Some(b) = Block::from_name(s.as_str()) {
-                    cannot_replace_raw_ids.insert(b.id);
-                }
-            }
-            BlockWrapper::Multi(v) => {
-                for s in v {
-                    if let Some(b) = Block::from_name(s.as_str()) {
-                        cannot_replace_raw_ids.insert(b.id);
-                    }
-                }
-            }
-        }
+        let invalid_raw_ids = Self::block_ids(&self.invalid_blocks);
+        let cannot_replace_raw_ids = Self::block_ids(&self.cannot_replace);
 
         let mut points: Vec<(BlockPos, i32)> = Vec::with_capacity(num_points as usize);
         let mut crack_points: Vec<BlockPos> = Vec::new();
@@ -153,7 +148,7 @@ impl GeodeFeature {
                     0.0
                 })
             .sqrt();
-        let should_generate_crack = random.next_f32() < self.generate_crack_chance as f32;
+        let should_generate_crack = f64::from(random.next_f32()) < self.generate_crack_chance;
         let mut num_invalid_points = 0;
 
         // Sample distribution points; bail out early if too many fall into invalid blocks
@@ -166,8 +161,7 @@ impl GeodeFeature {
             let state = raw.to_state();
 
             // Check against precomputed invalid raw ids
-            let raw_id = raw.to_block_id();
-            if state.is_air() || invalid_raw_ids.contains(&raw_id) {
+            if state.is_air() || invalid_raw_ids.contains(&raw.to_block_id().as_u16()) {
                 num_invalid_points += 1;
                 if num_invalid_points > self.invalid_blocks_threshold {
                     return false;
@@ -207,10 +201,8 @@ impl GeodeFeature {
         let mut potential_crystal_placements: Vec<BlockPos> = Vec::new();
 
         // Determine which blocks can be replaced
-        let can_replace_pred = |state: &BlockState| {
-            let block_id = state.id.to_block_id();
-            state.is_air() || !cannot_replace_raw_ids.contains(&block_id)
-        };
+        let can_replace_pred =
+            |state: &BlockState| !cannot_replace_raw_ids.contains(&state.id.to_block_id().as_u16());
 
         let min = origin.add(
             self.min_gen_offset,
@@ -261,13 +253,32 @@ impl GeodeFeature {
                         BlockStateId::AIR.to_state(),
                         &can_replace_pred,
                     );
+                    for dir in BlockDirection::all() {
+                        let offset = dir.to_offset();
+                        let adjacent = point_inside.add(offset.x, offset.y, offset.z);
+                        let adjacent_state = GenerationCache::get_block_state(chunk, &adjacent.0);
+                        let fluid = Fluid::from_state_id(adjacent_state)
+                            .or_else(|| adjacent_state.is_waterlogged().then_some(&Fluid::WATER));
+                        if let Some(fluid) = fluid
+                            && let Some(adjacent_chunk) =
+                                chunk.get_chunk_mut(adjacent.0.x >> 4, adjacent.0.z >> 4)
+                        {
+                            adjacent_chunk.schedule_fluid_tick(
+                                adjacent.0.x,
+                                adjacent.0.y,
+                                adjacent.0.z,
+                                fluid,
+                            );
+                        }
+                    }
                 } else if dist_sum_shell >= inner_air {
                     let state =
                         self.filling_provider
                             .get(random, point_inside, chunk, block_registry);
                     Self::safe_set_block(chunk, point_inside, state, &can_replace_pred);
                 } else if dist_sum_shell >= innermost_block_layer {
-                    let use_alternate = random.next_f32() < self.use_alternate_layer0_chance as f32;
+                    let use_alternate =
+                        f64::from(random.next_f32()) < self.use_alternate_layer0_chance;
                     if use_alternate {
                         let state = self.alternate_inner_layer_provider.get(
                             random,
@@ -286,7 +297,7 @@ impl GeodeFeature {
                         Self::safe_set_block(chunk, point_inside, state, &can_replace_pred);
                     }
                     if (!self.placements_require_layer0_alternate || use_alternate)
-                        && random.next_f32() < self.use_potential_placements_chance as f32
+                        && f64::from(random.next_f32()) < self.use_potential_placements_chance
                     {
                         potential_crystal_placements.push(point_inside);
                     }
@@ -317,11 +328,15 @@ impl GeodeFeature {
                     let place_raw = GenerationCache::get_block_state(chunk, &place_pos.0);
                     let place_state = place_raw.to_state();
 
-                    // Only place if the target block is replaceable (air/water)
-                    let is_air = place_state.is_air();
-                    let is_water = place_raw.to_block_id() == BlockId::WATER;
+                    // `BuddingAmethystBlock.canClusterGrowAtState`: air, or water with a full
+                    // fluid amount (a source or falling water).
+                    let water_level = (place_raw.to_block_id() == BlockId::WATER)
+                        .then(|| WaterLikeProperties::from_state_id(place_raw).level);
+                    let is_water = water_level == Some(0);
 
-                    if is_air || is_water {
+                    if place_state.is_air()
+                        || water_level.is_some_and(|level| level == 0 || level >= 8)
+                    {
                         let mut final_codec = base_codec.clone();
 
                         // Set facing based on direction
