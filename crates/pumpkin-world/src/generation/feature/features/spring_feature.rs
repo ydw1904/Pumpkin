@@ -1,3 +1,4 @@
+use pumpkin_data::fluid::Fluid;
 use pumpkin_data::{BlockDirection, BlockState};
 use pumpkin_util::{math::position::BlockPos, random::RandomGenerator};
 
@@ -63,75 +64,36 @@ impl SpringFeatureFeature {
             return false;
         }
 
-        let mut valid = 0;
-        if valid_blocks.contains(
-            GenerationCache::get_block_state(
-                chunk,
-                &pos.offset(BlockDirection::West.to_offset()).0,
-            )
-            .to_block()
-            .name,
-        ) {
-            valid += 1;
-        }
-        if valid_blocks.contains(
-            GenerationCache::get_block_state(
-                chunk,
-                &pos.offset(BlockDirection::East.to_offset()).0,
-            )
-            .to_block()
-            .name,
-        ) {
-            valid += 1;
-        }
-        if valid_blocks.contains(
-            GenerationCache::get_block_state(
-                chunk,
-                &pos.offset(BlockDirection::North.to_offset()).0,
-            )
-            .to_block()
-            .name,
-        ) {
-            valid += 1;
-        }
-        if valid_blocks.contains(
-            GenerationCache::get_block_state(
-                chunk,
-                &pos.offset(BlockDirection::South.to_offset()).0,
-            )
-            .to_block()
-            .name,
-        ) {
-            valid += 1;
-        }
-        if valid_blocks.contains(
-            GenerationCache::get_block_state(
-                chunk,
-                &pos.offset(BlockDirection::Down.to_offset()).0,
-            )
-            .to_block()
-            .name,
-        ) {
-            valid += 1;
-        }
-        let mut air = 0;
-        if chunk.is_air(&pos.offset(BlockDirection::West.to_offset()).0) {
-            air += 1;
-        }
-        if chunk.is_air(&pos.offset(BlockDirection::East.to_offset()).0) {
-            air += 1;
-        }
-        if chunk.is_air(&pos.offset(BlockDirection::North.to_offset()).0) {
-            air += 1;
-        }
-        if chunk.is_air(&pos.offset(BlockDirection::South.to_offset()).0) {
-            air += 1;
-        }
-        if chunk.is_air(&pos.offset(BlockDirection::Down.to_offset()).0) {
-            air += 1;
-        }
+        let sides = [
+            BlockDirection::West,
+            BlockDirection::East,
+            BlockDirection::North,
+            BlockDirection::South,
+            BlockDirection::Down,
+        ];
+        let valid = sides
+            .iter()
+            .filter(|dir| {
+                let neighbor = pos.offset(dir.to_offset());
+                valid_blocks.contains(
+                    GenerationCache::get_block_state(chunk, &neighbor.0)
+                        .to_block()
+                        .name,
+                )
+            })
+            .count() as i32;
+        let air = sides
+            .iter()
+            .filter(|dir| chunk.is_air(&pos.offset(dir.to_offset()).0))
+            .count() as i32;
         if valid == self.rock_count && air == self.hole_count {
             chunk.set_block_state(&pos.0, self.state);
+            // Vanilla schedules the spring's fluid so it starts flowing.
+            if let Some(fluid) = Fluid::from_state_id(self.state.id)
+                && let Some(spring_chunk) = chunk.get_chunk_mut(pos.0.x >> 4, pos.0.z >> 4)
+            {
+                spring_chunk.schedule_fluid_tick(pos.0.x, pos.0.y, pos.0.z, fluid);
+            }
             return true;
         }
         false
