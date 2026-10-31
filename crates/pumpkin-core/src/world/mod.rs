@@ -39,6 +39,7 @@ pub mod stopwatches;
 pub mod time;
 pub mod villager_poi;
 
+use crate::block::blocks::bubble_column;
 use crate::block::{HandlePrecipitationArgs, RandomTickArgs};
 use crate::world::chunker::is_within_chebyshev_distance;
 use crate::{block::BlockEvent, entity::item::ItemEntity};
@@ -159,7 +160,7 @@ use pumpkin_util::{
 use pumpkin_world::world::{GetBlockError, WorldPortalExt};
 use pumpkin_world::{
     CURRENT_BEDROCK_MC_VERSION, biome,
-    chunk::{io::Dirtiable, palette::bedrock_water_state},
+    chunk::{io::Dirtiable, palette::bedrock_water_state, unpack_offset_coordinates},
 };
 use pumpkin_world::{chunk::ChunkData, world::BlockAccessor};
 use pumpkin_world::{
@@ -435,7 +436,7 @@ impl World {
         }
     }
 
-    pub fn update_active_chunks(&self) {
+    pub fn update_active_chunks(self: &Arc<Self>) {
         let sim_dist = self.server.upgrade().map_or(10, |s| {
             s.advanced_config.networking.java.simulation_distance.get()
         }) as i32;
@@ -526,6 +527,7 @@ impl World {
         drop(active_chunks);
         drop(tracker);
         for pos in migrations {
+            self.post_process_generation(pos);
             self.migrate_pending_block_entities(pos);
         }
 
@@ -6724,6 +6726,61 @@ impl World {
             self.level.read_chunk_sync(&chunk_pos, |chunk| {
                 chunk.mark_dirty(true);
             });
+        }
+    }
+
+    /// The block half of vanilla `LevelChunk.postProcessGeneration`, which vanilla runs when a
+    /// chunk starts ticking. `migrate_pending_block_entities` is the block entity half.
+    fn post_process_generation(self: &Arc<Self>, chunk_pos: Vector2<i32>) {
+        let Some((sections, min_section_y)) = self.level.read_chunk_sync(&chunk_pos, |chunk| {
+            let sections = std::mem::take(
+                &mut *chunk
+                    .post_processing
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+            );
+            if !sections.is_empty() {
+                chunk.mark_dirty(true);
+            }
+            (sections, chunk.section.min_y >> 4)
+        }) else {
+            return;
+        };
+        for (index, offsets) in sections.into_iter().enumerate() {
+            for packed in offsets {
+                let pos = unpack_offset_coordinates(
+                    packed,
+                    min_section_y + index as i32,
+                    chunk_pos.x,
+                    chunk_pos.y,
+                );
+                let state_id = self.get_block_state_id(&pos);
+                let fluid = Self::get_fluid_from_state_id(state_id);
+                if let Some(pumpkin_fluid) = self.block_registry.get_pumpkin_fluid(fluid.id) {
+                    pumpkin_fluid.on_scheduled_tick(self, fluid, &pos);
+                }
+
+                if Fluid::from_state_id(state_id).is_some() {
+                    // `LiquidBlock.tick`
+                    if bubble_column::is_source_water_state(state_id) {
+                        let below_state = self.get_block_state_id(&pos.down());
+                        bubble_column::update_column(self, pos, below_state);
+                    }
+                } else {
+                    let new_state_id = self.update_from_neighbor_shapes(state_id, &pos);
+                    if new_state_id != state_id {
+                        // Vanilla doesn't tell clients (flags 276) because it only sends a chunk
+                        // once it ticks; Pumpkin may have sent it already.
+                        self.set_block_state(
+                            &pos,
+                            new_state_id,
+                            BlockFlags::NOTIFY_LISTENERS
+                                | BlockFlags::UPDATE_KNOWN_SHAPE
+                                | BlockFlags::SKIP_BLOCK_ENTITY_REPLACED_CALLBACK,
+                        );
+                    }
+                }
+            }
         }
     }
 

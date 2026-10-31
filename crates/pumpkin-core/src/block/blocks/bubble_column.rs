@@ -88,7 +88,9 @@ fn kind_from_below(block: &Block, state: BlockStateId) -> Option<BubbleColumnKin
     }
 }
 
-fn is_source_water_state(state: BlockStateId) -> bool {
+/// Vanilla `LiquidBlock.shouldBubbleColumnOccupy`.
+#[must_use]
+pub fn is_source_water_state(state: BlockStateId) -> bool {
     let Some(fluid) = Fluid::from_state_id(state) else {
         return false;
     };
@@ -102,6 +104,44 @@ fn is_source_water_state(state: BlockStateId) -> bool {
 
 fn is_source_water(world: &World, position: BlockPos) -> bool {
     is_source_water_state(world.get_block_state_id(&position))
+}
+
+/// Vanilla `BubbleColumnBlock.canOccupy`.
+fn can_occupy(state: BlockStateId) -> bool {
+    Block::from_state_id(state) == &Block::BUBBLE_COLUMN || is_source_water_state(state)
+}
+
+/// Vanilla `BubbleColumnBlock.getColumnState`.
+fn column_state(below_state: BlockStateId, occupy_state: BlockStateId) -> BlockStateId {
+    let below_block = Block::from_state_id(below_state);
+    if below_block == &Block::BUBBLE_COLUMN {
+        below_state
+    } else if let Some(kind) = kind_from_support(below_block) {
+        bubble_column_state(kind)
+    } else if Block::from_state_id(occupy_state) == &Block::BUBBLE_COLUMN {
+        Block::WATER.default_state.id
+    } else {
+        occupy_state
+    }
+}
+
+/// Vanilla `BubbleColumnBlock.updateColumn`: fills `occupy_at` and the source water above it
+/// with the column that `below_state` supports, all at once.
+pub fn update_column(world: &Arc<World>, occupy_at: BlockPos, below_state: BlockStateId) {
+    let occupy_state = world.get_block_state_id(&occupy_at);
+    if !can_occupy(occupy_state) {
+        return;
+    }
+    let column_state = column_state(below_state, occupy_state);
+    world.set_block_state(&occupy_at, column_state, BlockFlags::NOTIFY_LISTENERS);
+    let mut pos = occupy_at.up();
+    while can_occupy(world.get_block_state_id(&pos)) {
+        // Vanilla stops when `setBlock` changes nothing.
+        if world.set_block_state(&pos, column_state, BlockFlags::NOTIFY_LISTENERS) == column_state {
+            return;
+        }
+        pos = pos.up();
+    }
 }
 
 fn reconcile_action(

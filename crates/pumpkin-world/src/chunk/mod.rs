@@ -82,6 +82,31 @@ pub struct ChunkData {
     pub dirty: AtomicBool,
     pub inhabited_time: AtomicU64,
     pub custom_data: std::sync::Mutex<NbtCompound>,
+    /// Positions generation marked for `LevelChunk.postProcessGeneration`, one list per section
+    /// from the bottom, packed with [`pack_offset_coordinates`]. Emptied once the chunk ticks.
+    pub post_processing: std::sync::Mutex<Vec<Vec<u16>>>,
+}
+
+/// Vanilla `ProtoChunk.packOffsetCoordinates`: a block position within its section.
+#[must_use]
+pub const fn pack_offset_coordinates(x: i32, y: i32, z: i32) -> u16 {
+    ((x & 15) | (y & 15) << 4 | (z & 15) << 8) as u16
+}
+
+/// Vanilla `ProtoChunk.unpackOffsetCoordinates`.
+#[must_use]
+pub const fn unpack_offset_coordinates(
+    packed: u16,
+    section_y: i32,
+    chunk_x: i32,
+    chunk_z: i32,
+) -> BlockPos {
+    let packed = packed as i32;
+    BlockPos::new(
+        (chunk_x << 4) + (packed & 15),
+        (section_y << 4) + (packed >> 4 & 15),
+        (chunk_z << 4) + (packed >> 8 & 15),
+    )
 }
 
 pub struct ChunkEntityData {
@@ -645,6 +670,7 @@ impl ChunkData {
             dirty: std::sync::atomic::AtomicBool::new(false),
             inhabited_time: std::sync::atomic::AtomicU64::new(0),
             custom_data: std::sync::Mutex::new(NbtCompound::new()),
+            post_processing: std::sync::Mutex::default(),
         }
     }
 

@@ -406,7 +406,8 @@ fn carve_top_material(
     {
         run.chunk.set_block_state(x, below_y, z, top_material);
 
-        run.chunk.schedule_fluid_update(x, below_y, z, top_material);
+        run.chunk
+            .mark_fluid_for_post_processing(x, below_y, z, top_material);
     }
 }
 
@@ -439,7 +440,8 @@ fn place_carved_block(
     run.chunk.set_block_state(pos.x, pos.y, pos.z, state);
 
     if overworld && should_schedule_fluid_update && state.is_liquid() {
-        run.chunk.schedule_fluid_update(pos.x, pos.y, pos.z, state);
+        run.chunk
+            .mark_fluid_for_post_processing(pos.x, pos.y, pos.z, state);
     }
 
     carve_top_material(run, pos.x, pos.y, pos.z, state, has_grass, overworld);

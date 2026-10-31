@@ -37,7 +37,7 @@ use super::{
 use crate::biome::BiomeSupplier;
 use crate::chunk::format::LightContainer;
 use crate::chunk::palette::BlockPalette;
-use crate::chunk::{ChunkData, ChunkHeightmapType, ChunkLight};
+use crate::chunk::{ChunkData, ChunkHeightmapType, ChunkLight, pack_offset_coordinates};
 use crate::chunk_system::{StagedChunkEnum, generation_cache::SurfaceBiomeNeighborhood};
 use crate::generation::height_limit::HeightLimitView;
 use crate::generation::noise::aquifer_sampler::{FluidLevel, FluidLevelSamplerImpl};
@@ -167,6 +167,20 @@ pub struct ProtoChunk {
     pub pending_block_entities: Vec<NbtCompound>,
     pending_structure_entities: Vec<NbtCompound>,
     pub fluid_ticks: Vec<ScheduledTick<&'static Fluid>>,
+    /// See [`ChunkData::post_processing`].
+    pub post_processing: Vec<Vec<u16>>,
+}
+
+/// Vanilla `BlockState.getPostProcessPos`: the position to mark for post-processing when
+/// generation places `state` at `pos`. Vanilla sets this per block in `Blocks`
+/// (`postProcessSelf` and `postProcessAbove`).
+#[must_use]
+pub const fn post_process_pos(state: BlockStateId, pos: &Vector3<i32>) -> Option<Vector3<i32>> {
+    match state.to_block_id() {
+        BlockId::BROWN_MUSHROOM | BlockId::RED_MUSHROOM => Some(*pos),
+        BlockId::SOUL_SAND | BlockId::MAGMA_BLOCK => Some(Vector3::new(pos.x, pos.y + 1, pos.z)),
+        _ => None,
+    }
 }
 
 pub struct TerrainCache {
@@ -286,6 +300,7 @@ impl ProtoChunk {
             pending_block_entities: Vec::new(),
             pending_structure_entities: Vec::new(),
             fluid_ticks: Vec::new(),
+            post_processing: Vec::new(),
         }
     }
 
@@ -316,6 +331,12 @@ impl ProtoChunk {
             .values()
             .cloned()
             .collect();
+        proto_chunk.post_processing.clone_from(
+            &chunk_data
+                .post_processing
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
 
         let section_data = &chunk_data.section;
         let heightmap_data = chunk_data
@@ -469,13 +490,31 @@ impl ProtoChunk {
         });
     }
 
-    /// Stands in for vanilla's `markPosForPostProcessing` on an aquifer fluid: a tick makes the
-    /// water or lava flow once the chunk ticks, as post-processing does in vanilla.
-    pub fn schedule_fluid_update(&mut self, x: i32, y: i32, z: i32, state: &BlockState) {
-        if state.id == Block::WATER.default_state.id {
-            self.schedule_fluid_tick(x, y, z, &Fluid::WATER);
-        } else if state.id == Block::LAVA.default_state.id {
-            self.schedule_fluid_tick(x, y, z, &Fluid::LAVA);
+    /// Vanilla `ProtoChunk.markPosForPostProcessing`.
+    pub fn mark_pos_for_post_processing(&mut self, x: i32, y: i32, z: i32) {
+        if self.out_of_height(y as i16) {
+            return;
+        }
+        let section = self.section_index(y);
+        if self.post_processing.len() <= section {
+            self.post_processing.resize_with(section + 1, Vec::new);
+        }
+        self.post_processing[section].push(pack_offset_coordinates(x, y, z));
+    }
+
+    /// The noise fill and the carvers mark a fluid they place for post-processing, which
+    /// ticks it once the chunk ticks so it flows.
+    pub fn mark_fluid_for_post_processing(&mut self, x: i32, y: i32, z: i32, state: &BlockState) {
+        if state.is_liquid() {
+            self.mark_pos_for_post_processing(x, y, z);
+        }
+    }
+
+    /// Vanilla `WorldGenRegion.setBlock`, which features and structures place blocks with.
+    pub fn set_block_state_from_feature(&mut self, pos: &Vector3<i32>, state: &BlockState) {
+        self.set_block_state(pos.x, pos.y, pos.z, state);
+        if let Some(pos) = post_process_pos(state.id, pos) {
+            self.mark_pos_for_post_processing(pos.x, pos.y, pos.z);
         }
     }
 
@@ -1085,7 +1124,7 @@ impl ProtoChunk {
                     let block_state = block_state.unwrap_or(generator.default_block);
                     self.set_block_state(block_x, block_y, block_z, block_state);
                     if should_schedule_fluid_update {
-                        self.schedule_fluid_update(block_x, block_y, block_z, block_state);
+                        self.mark_fluid_for_post_processing(block_x, block_y, block_z, block_state);
                     }
                 }
             }
@@ -1928,7 +1967,7 @@ impl GenerationCache for ProtoChunk {
         (fluid.clone(), state)
     }
     fn set_block_state(&mut self, pos: &Vector3<i32>, block_state: &BlockState) {
-        Self::set_block_state(self, pos.x, pos.y, pos.z, block_state);
+        self.set_block_state_from_feature(pos, block_state);
     }
     fn add_block_entity(&mut self, _pos: &Vector3<i32>, nbt: NbtCompound) {
         self.add_block_entity(nbt);

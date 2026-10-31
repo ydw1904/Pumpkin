@@ -472,6 +472,22 @@ impl ChunkData {
             .cloned()
             .unwrap_or_default();
 
+        let post_processing = root_tag
+            .get_list("PostProcessing")
+            .unwrap_or_default()
+            .iter()
+            .map(|section| match section {
+                pumpkin_nbt::tag::NbtTag::List(offsets) => offsets
+                    .iter()
+                    .filter_map(|offset| match offset {
+                        pumpkin_nbt::tag::NbtTag::Short(offset) => Some(*offset as u16),
+                        _ => None,
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            })
+            .collect();
+
         Ok(Self {
             section,
             heightmap: std::sync::Mutex::new(heightmaps),
@@ -488,6 +504,7 @@ impl ChunkData {
             blending_data: None,
             inhabited_time: AtomicU64::new(root_tag.get_long("InhabitedTime").unwrap_or(0) as u64),
             custom_data: std::sync::Mutex::new(custom_data),
+            post_processing: std::sync::Mutex::new(post_processing),
         })
     }
 
@@ -692,6 +709,27 @@ impl ChunkData {
             root_compound.put_compound("PumpkinCustomData", custom_data.clone());
         }
 
+        let post_processing = self
+            .post_processing
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if post_processing.iter().any(|section| !section.is_empty()) {
+            root_compound.put_list(
+                "PostProcessing",
+                post_processing
+                    .iter()
+                    .map(|section| {
+                        pumpkin_nbt::tag::NbtTag::List(
+                            section
+                                .iter()
+                                .map(|&offset| pumpkin_nbt::tag::NbtTag::Short(offset as i16))
+                                .collect(),
+                        )
+                    })
+                    .collect(),
+            );
+        }
+
         let nbt = pumpkin_nbt::Nbt::from(root_compound);
         nbt.write()
     }
@@ -731,6 +769,10 @@ impl ChunkData {
             .custom_data
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let post_processing = self
+            .post_processing
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         let ws = heightmap_lock
             .world_surface
@@ -745,6 +787,7 @@ impl ChunkData {
             .as_deref()
             .filter(|a| a.len() == ChunkHeightmaps::LONGS);
         let has_custom = !custom_data.is_empty();
+        let has_post_processing = post_processing.iter().any(|section| !section.is_empty());
 
         let mut flags = u8::from(is_light_correct);
         if ws.is_some() {
@@ -758,6 +801,9 @@ impl ChunkData {
         }
         if has_custom {
             flags |= 1 << 4;
+        }
+        if has_post_processing {
+            flags |= 1 << 5;
         }
 
         let status_u8 = match self.status {
@@ -856,6 +902,16 @@ impl ChunkData {
             let bytes = pumpkin_nbt::Nbt::new(String::new(), custom_data.clone()).write_unnamed();
             out.put_u32(bytes.len() as u32);
             out.extend_from_slice(&bytes);
+        }
+
+        if has_post_processing {
+            out.put_u16(post_processing.len() as u16);
+            for section in post_processing.iter() {
+                out.put_u32(section.len() as u32);
+                for &offset in section {
+                    out.put_u16(offset);
+                }
+            }
         }
 
         out.into()
@@ -1130,6 +1186,35 @@ impl ChunkData {
             NbtCompound::default()
         };
 
+        let mut post_processing = Vec::new();
+        if (flags & (1 << 5)) != 0 {
+            if buf.remaining() < 2 {
+                return Err(ChunkParsingError::ErrorDeserializingChunk(
+                    "Unexpected EOF reading post-processing section count".into(),
+                ));
+            }
+            let section_count = buf.get_u16() as usize;
+            if section_count > MAX_SECTIONS {
+                return Err(ChunkParsingError::ErrorDeserializingChunk(
+                    "Invalid post-processing section count".into(),
+                ));
+            }
+            for _ in 0..section_count {
+                if buf.remaining() < 4 {
+                    return Err(ChunkParsingError::ErrorDeserializingChunk(
+                        "Unexpected EOF reading post-processing length".into(),
+                    ));
+                }
+                let len = buf.get_u32() as usize;
+                if len > MAX_TICKS || buf.remaining() < len * 2 {
+                    return Err(ChunkParsingError::ErrorDeserializingChunk(
+                        "Invalid post-processing length".into(),
+                    ));
+                }
+                post_processing.push((0..len).map(|_| buf.get_u16()).collect());
+            }
+        }
+
         Ok(Self {
             section,
             heightmap: std::sync::Mutex::new(heightmaps),
@@ -1145,6 +1230,7 @@ impl ChunkData {
             blending_data: None,
             inhabited_time: AtomicU64::new(inhabited_time),
             custom_data: std::sync::Mutex::new(custom_data),
+            post_processing: std::sync::Mutex::new(post_processing),
         })
     }
 
@@ -1517,6 +1603,35 @@ mod tests {
             chunk.section.get_block_absolute_y(0, -64, 0),
             Some(Block::STONE.default_state.id)
         );
+    }
+
+    #[test]
+    fn post_processing_survives_anvil_and_pump() {
+        use crate::chunk::ChunkData;
+        use pumpkin_util::math::vector2::Vector2;
+
+        // Vanilla writes one list of packed shorts per section, from the bottom section up.
+        let mut nbt = test_chunk(vec![test_section(-4, "minecraft:stone", true)]);
+        nbt.root_tag.put(
+            "PostProcessing",
+            NbtTag::List(vec![
+                NbtTag::List(vec![]),
+                NbtTag::List(vec![NbtTag::Short(0x0123), NbtTag::Short(-1)]),
+            ]),
+        );
+        let expected = vec![vec![], vec![0x0123, 0xffff]];
+
+        let chunk = ChunkData::from_bytes(&nbt.write(), Vector2::new(0, 0)).expect("chunk parses");
+        assert_eq!(*chunk.post_processing.lock().unwrap(), expected);
+        let anvil = ChunkData::from_bytes(&chunk.internal_to_bytes(), Vector2::new(0, 0))
+            .expect("Anvil chunk parses");
+        assert_eq!(*anvil.post_processing.lock().unwrap(), expected);
+        let pump = ChunkData::internal_from_pump_bytes(
+            &chunk.internal_to_pump_bytes(),
+            Vector2::new(0, 0),
+        )
+        .expect("pump chunk parses");
+        assert_eq!(*pump.post_processing.lock().unwrap(), expected);
     }
 
     #[test]
