@@ -2573,25 +2573,18 @@ impl World {
         let (is_raining, is_thundering) = (self.is_raining(), self.is_thundering());
 
         if is_raining && is_thundering && game_random().random_range(0..100_000) == 0 {
-            let rand_value = game_random().random::<i32>() >> 2;
-            let delta = Vector3::new(rand_value & 15, rand_value >> 16 & 15, rand_value >> 8 & 15);
-            let random_pos = Vector3::new(
-                chunk_pos.x << 4,
-                chunk
-                    .heightmap
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .get(
-                        MotionBlocking,
-                        chunk_pos.x << 4,
-                        chunk_pos.y << 4,
-                        self.min_y,
-                    ),
-                chunk_pos.y << 4,
-            )
-            .add(&delta);
+            let pos = self
+                .level
+                .get_block_random_pos(chunk_pos.x << 4, 0, chunk_pos.y << 4, 15);
+            // `findLightningTargetAround` starts from the top of that column.
+            let top = chunk
+                .heightmap
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .get(MotionBlocking, pos.0.x, pos.0.z, self.min_y)
+                + 1;
+            let random_pos = Vector3::new(pos.0.x, top, pos.0.z);
             // TODO this.getBrightness(LightLayer.SKY, blockPos) >= 15;
-            // TODO heightmap
 
             // TODO findLightningRod(blockPos)
             // TODO encapsulatingFullBlocks
