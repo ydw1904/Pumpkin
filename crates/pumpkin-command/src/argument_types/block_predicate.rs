@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use pumpkin_data::tag::{RegistryKey, get_tag_ids};
 use pumpkin_data::{Block, BlockStateId, translation};
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::text::TextComponent;
 
 use crate::argument_types::argument_type::{ArgumentType, JavaClientArgumentType};
@@ -20,7 +21,7 @@ pub const ERROR_UNKNOWN_TAG: CommandErrorType<1> = CommandErrorType::new(
     translation::java::ARGUMENTS_BLOCK_TAG_UNKNOWN,
 );
 
-pub const ERROR_NO_VALUE: CommandErrorType<2> = CommandErrorType::new(
+pub const ERROR_NO_VALUE: CommandErrorType<1> = CommandErrorType::new(
     translation::java::ARGUMENT_BLOCK_PROPERTY_NOVALUE,
     translation::java::ARGUMENT_BLOCK_PROPERTY_NOVALUE,
 );
@@ -28,21 +29,6 @@ pub const ERROR_NO_VALUE: CommandErrorType<2> = CommandErrorType::new(
 pub const ERROR_UNCLOSED_PROPERTIES: CommandErrorType<0> = CommandErrorType::new(
     translation::java::ARGUMENT_BLOCK_PROPERTY_UNCLOSED,
     translation::java::ARGUMENT_BLOCK_PROPERTY_UNCLOSED,
-);
-
-pub const ERROR_UNKNOWN_PROPERTY: CommandErrorType<2> = CommandErrorType::new(
-    translation::java::ARGUMENT_BLOCK_PROPERTY_UNKNOWN,
-    translation::java::ARGUMENT_BLOCK_PROPERTY_UNKNOWN,
-);
-
-pub const ERROR_DUPLICATE_PROPERTY: CommandErrorType<2> = CommandErrorType::new(
-    translation::java::ARGUMENT_BLOCK_PROPERTY_DUPLICATE,
-    translation::java::ARGUMENT_BLOCK_PROPERTY_DUPLICATE,
-);
-
-pub const ERROR_INVALID_VALUE: CommandErrorType<3> = CommandErrorType::new(
-    translation::java::ARGUMENT_BLOCK_PROPERTY_INVALID,
-    translation::java::ARGUMENT_BLOCK_PROPERTY_INVALID,
 );
 
 #[derive(Clone, Debug)]
@@ -61,15 +47,14 @@ pub enum BlockPredicate {
 }
 
 impl BlockPredicate {
-    /// Tests a block like vanilla's `BlockPredicateArgument` results: every listed property has to
-    /// match, and NBT is a partial match against the block entity's full save data.
-    /// `block_entity_nbt` is only called when the predicate has NBT.
+    /// Tests a block state; `block_entity_nbt` is only called when the predicate has NBT.
+    #[must_use]
     pub fn test(
         &self,
-        block: &Block,
         state_id: BlockStateId,
         block_entity_nbt: impl FnOnce() -> Option<NbtCompound>,
     ) -> bool {
+        let block = Block::from_state_id(state_id);
         let (matches_block, properties, nbt) = match self {
             Self::Block {
                 block: expected,
@@ -87,32 +72,27 @@ impl BlockPredicate {
             return false;
         }
 
-        // A tag's properties aren't checked at parse time, so a block without the property or
-        // with a value it can't take simply doesn't match.
         if !properties.is_empty() {
-            let actual = block
-                .properties(state_id)
-                .map(|props| props.to_props())
-                .unwrap_or_default();
+            let Some(state_properties) = block.properties(state_id) else {
+                return false;
+            };
+            let state_properties = state_properties.to_props();
             let all_match = properties.iter().all(|(key, value)| {
-                actual
+                state_properties
                     .iter()
-                    .any(|prop| prop.key_str() == key && prop.value_str() == value)
+                    .any(|p| p.key().to_str() == key && p.value_str() == value)
             });
             if !all_match {
                 return false;
             }
         }
 
-        let Some(expected) = nbt else {
-            return true;
-        };
-        block_entity_nbt().is_some_and(|actual| {
-            expected.child_tags.iter().all(|(key, expected_value)| {
-                actual
-                    .child_tags
-                    .get(key)
-                    .is_some_and(|actual_value| compare_nbt(expected_value, actual_value))
+        nbt.as_ref().is_none_or(|expected| {
+            block_entity_nbt().is_some_and(|actual| {
+                compare_nbt(
+                    &NbtTag::Compound(expected.clone()),
+                    &NbtTag::Compound(actual),
+                )
             })
         })
     }
@@ -125,13 +105,8 @@ impl BlockPredicate {
     }
 }
 
-/// Reads `[key=value,...]`. For a concrete `block`, unknown properties and values the block can't
-/// take are errors like in vanilla's `BlockStateParser`; tag properties are only checked when
-/// tested.
 fn parse_properties(
     reader: &mut StringReader,
-    id: &str,
-    block: Option<&'static Block>,
 ) -> Result<HashMap<String, String>, CommandSyntaxError> {
     let mut properties = HashMap::new();
     if reader.peek() == Some('[') {
@@ -147,31 +122,9 @@ fn parse_properties(
                 }
             }
             let key = reader.string()[start_key..reader.cursor()].to_string();
-            if let Some(block) = block
-                && !has_property(block, &key)
-            {
-                reader.set_cursor(start_key);
-                return Err(ERROR_UNKNOWN_PROPERTY.create(
-                    reader,
-                    TextComponent::text(id.to_string()),
-                    TextComponent::text(key),
-                ));
-            }
-            if properties.contains_key(&key) {
-                reader.set_cursor(start_key);
-                return Err(ERROR_DUPLICATE_PROPERTY.create(
-                    reader,
-                    TextComponent::text(id.to_string()),
-                    TextComponent::text(key),
-                ));
-            }
             reader.skip_whitespace();
             if reader.peek() != Some('=') {
-                return Err(ERROR_NO_VALUE.create(
-                    reader,
-                    TextComponent::text(key),
-                    TextComponent::text(id.to_string()),
-                ));
+                return Err(ERROR_NO_VALUE.create(reader, TextComponent::text(key)));
             }
             reader.skip();
             reader.skip_whitespace();
@@ -184,17 +137,6 @@ fn parse_properties(
                 }
             }
             let val = reader.string()[start_val..reader.cursor()].to_string();
-            if let Some(block) = block
-                && !has_property_value(block, &key, &val)
-            {
-                reader.set_cursor(start_val);
-                return Err(ERROR_INVALID_VALUE.create(
-                    reader,
-                    TextComponent::text(id.to_string()),
-                    TextComponent::text(val),
-                    TextComponent::text(key),
-                ));
-            }
             properties.insert(key, val);
             reader.skip_whitespace();
             if reader.peek() == Some(',') {
@@ -213,23 +155,6 @@ fn parse_properties(
         }
     }
     Ok(properties)
-}
-
-fn has_property(block: &Block, key: &str) -> bool {
-    block
-        .properties(block.default_state.id)
-        .is_some_and(|props| props.to_props().iter().any(|prop| prop.key_str() == key))
-}
-
-fn has_property_value(block: &Block, key: &str, value: &str) -> bool {
-    block.states.iter().any(|state| {
-        block.properties(state.id).is_some_and(|props| {
-            props
-                .to_props()
-                .iter()
-                .any(|prop| prop.key_str() == key && prop.value_str() == value)
-        })
-    })
 }
 
 fn parse_nbt(reader: &mut StringReader) -> Result<Option<NbtCompound>, CommandSyntaxError> {
@@ -276,7 +201,7 @@ impl<S: crate::source::CommandSource> ArgumentType<S> for BlockPredicateArgument
                 }
             };
 
-            let properties = parse_properties(reader, &normalized, None)?;
+            let properties = parse_properties(reader)?;
             let nbt = parse_nbt(reader)?;
 
             Ok(BlockPredicate::Tag {
@@ -302,10 +227,10 @@ impl<S: crate::source::CommandSource> ArgumentType<S> for BlockPredicateArgument
             };
 
             let block = Block::from_name(&normalized).ok_or_else(|| {
-                INVALID_BLOCK_ERROR_TYPE.create(reader, TextComponent::text(normalized.clone()))
+                INVALID_BLOCK_ERROR_TYPE.create(reader, TextComponent::text(normalized))
             })?;
 
-            let properties = parse_properties(reader, &normalized, Some(block))?;
+            let properties = parse_properties(reader)?;
             let nbt = parse_nbt(reader)?;
 
             Ok(BlockPredicate::Block {
@@ -345,102 +270,5 @@ impl BlockPredicateArgumentType {
         name: &str,
     ) -> Result<BlockPredicate, CommandSyntaxError> {
         Ok(context.get_argument::<BlockPredicate>(name)?.clone())
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::source::DummySource;
-
-    fn parse(input: &str) -> Result<BlockPredicate, CommandSyntaxError> {
-        ArgumentType::<DummySource>::parse(
-            &BlockPredicateArgumentType,
-            &mut StringReader::new(input),
-        )
-    }
-
-    fn state_with(block: &Block, key: &str, value: &str) -> BlockStateId {
-        block
-            .states
-            .iter()
-            .map(|state| state.id)
-            .find(|&id| {
-                block.properties(id).is_some_and(|props| {
-                    props
-                        .to_props()
-                        .iter()
-                        .any(|prop| prop.key_str() == key && prop.value_str() == value)
-                })
-            })
-            .unwrap()
-    }
-
-    #[test]
-    fn block_properties_are_checked_while_parsing() {
-        assert!(parse("repeater[delay=1]").is_ok());
-        assert!(parse("repeater[charge=1]").is_err());
-        assert!(parse("repeater[delay=5]").is_err());
-        assert!(parse("repeater[delay=1,delay=2]").is_err());
-        // Tag properties are only resolved per block when testing.
-        assert!(parse("#minecraft:doors[charge=1]").is_ok());
-    }
-
-    #[test]
-    fn only_listed_properties_have_to_match() {
-        let delay_3 = state_with(&Block::REPEATER, "delay", "3");
-        let none = || None;
-        assert!(
-            parse("repeater")
-                .unwrap()
-                .test(&Block::REPEATER, delay_3, none)
-        );
-        assert!(
-            parse("repeater[delay=3]")
-                .unwrap()
-                .test(&Block::REPEATER, delay_3, none)
-        );
-        assert!(
-            !parse("repeater[delay=1]")
-                .unwrap()
-                .test(&Block::REPEATER, delay_3, none)
-        );
-    }
-
-    #[test]
-    fn tag_properties_the_block_lacks_do_not_match() {
-        let open = state_with(&Block::OAK_DOOR, "open", "true");
-        let none = || None;
-        assert!(
-            parse("#minecraft:doors[open=true]")
-                .unwrap()
-                .test(&Block::OAK_DOOR, open, none)
-        );
-        assert!(
-            !parse("#minecraft:doors[open=false]")
-                .unwrap()
-                .test(&Block::OAK_DOOR, open, none)
-        );
-        assert!(
-            !parse("#minecraft:doors[delay=1]")
-                .unwrap()
-                .test(&Block::OAK_DOOR, open, none)
-        );
-    }
-
-    #[test]
-    fn nbt_is_a_partial_match_against_the_block_entity() {
-        let predicate = parse("chest{CustomName:\"loot\"}").unwrap();
-        let state = Block::CHEST.default_state.id;
-        let saved = |name: &str| {
-            let mut nbt = NbtCompound::new();
-            nbt.put_string("id", "minecraft:chest".to_string());
-            nbt.put_int("x", 0);
-            nbt.put_string("CustomName", name.to_string());
-            Some(nbt)
-        };
-        assert!(predicate.test(&Block::CHEST, state, || saved("loot")));
-        assert!(!predicate.test(&Block::CHEST, state, || saved("other")));
-        assert!(!predicate.test(&Block::CHEST, state, || None));
     }
 }

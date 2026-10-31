@@ -13,8 +13,12 @@
     clippy::struct_excessive_bools
 )]
 
-use crate::command::argument_builder::{ArgumentBuilder, argument, command, literal};
+use crate::command::argument_builder::{
+    ArgumentBuilder, RequiredArgumentBuilder, argument, command, literal,
+};
+use crate::command::argument_types::argument_type::JavaClientArgumentType;
 use crate::command::argument_types::block_predicate::BlockPredicateArgumentType;
+use crate::command::argument_types::client_parsed::ClientParsed;
 use crate::command::argument_types::coordinates::block_pos::BlockPosArgumentType;
 use crate::command::argument_types::coordinates::rotation::RotationArgumentType;
 use crate::command::argument_types::coordinates::swizzle::SwizzleArgumentType;
@@ -27,7 +31,9 @@ use crate::command::argument_types::nbt_path::{NbtPath, NbtPathArgumentType};
 use crate::command::argument_types::objective::ObjectiveArgumentType;
 use crate::command::argument_types::range::{FloatRangeArgumentType, IntRangeArgumentType};
 use crate::command::argument_types::resource::{ENTITY_TYPE_ARGUMENT, ResourceArgument};
-use crate::command::argument_types::resource_key::{BIOME_REGISTRY, ResourceKeyArgument};
+use crate::command::argument_types::resource_key::{
+    BIOME_REGISTRY, DIMENSION_REGISTRY, ResourceKeyArgument,
+};
 use crate::command::argument_types::resource_or_tag::{ResourceOrTag, ResourceOrTagArgument};
 use crate::command::argument_types::score_holder::ScoreHolderArgumentType;
 use crate::command::commands::data::{
@@ -46,10 +52,7 @@ use crate::entity::EntityBase;
 use crate::entity::r#type::from_type;
 use crate::world::scoreboard::Scoreboard;
 use crate::world::stopwatches::Stopwatches;
-use pumpkin_data::biome::Biome;
-use pumpkin_data::tag::{self, RegistryKey};
 use pumpkin_data::translation;
-use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::identifier::Identifier;
@@ -57,7 +60,6 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector2::Vector2;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
-use rustc_hash::FxHashSet;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -76,8 +78,6 @@ const ERROR_CONDITIONAL_FAILED_COUNT: CommandErrorType<1> = CommandErrorType::ne
     translation::java::COMMANDS_EXECUTE_CONDITIONAL_FAIL_COUNT,
     translation::java::COMMANDS_EXECUTE_CONDITIONAL_FAIL_COUNT,
 );
-
-static DIMENSION_REGISTRY: &Identifier = &Identifier::vanilla_static("dimension");
 
 fn execute_as_modifier(context: &CommandContext) -> crate::command::node::RedirectModifierResult {
     let targets = EntityArgumentType::get_optional_entities(context, "targets")?;
@@ -172,7 +172,7 @@ fn execute_positioned_over_modifier(
 fn execute_rotated_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    let rot_coords = RotationArgumentType::get(context, "rotation")?;
+    let rot_coords = RotationArgumentType::get(context, "rot")?;
     let rot = rot_coords.rotation(&context.source);
     let mut source = context.source.as_ref().clone();
     source.rotation = rot;
@@ -193,22 +193,26 @@ fn execute_rotated_as_modifier(
     Ok(sources)
 }
 
+/// The number of matched entities, `None` when there is none.
+fn count_entities(context: &CommandContext) -> Result<Option<i32>, CommandSyntaxError> {
+    let targets = EntityArgumentType::get_optional_entities(context, "entities")?;
+    Ok((!targets.is_empty()).then(|| i32::try_from(targets.len()).unwrap_or(i32::MAX)))
+}
+
 fn execute_if_entity_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    let targets = EntityArgumentType::get_optional_entities(context, "targets")?;
-    if targets.is_empty() {
-        Ok(vec![])
-    } else {
+    if count_entities(context)?.is_some() {
         Ok(vec![context.source.clone()])
+    } else {
+        Ok(vec![])
     }
 }
 
 fn execute_unless_entity_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    let targets = EntityArgumentType::get_optional_entities(context, "targets")?;
-    if targets.is_empty() {
+    if count_entities(context)?.is_none() {
         Ok(vec![context.source.clone()])
     } else {
         Ok(vec![])
@@ -281,8 +285,14 @@ fn execute_facing_entity_modifier(
 fn execute_if_block_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    if block_predicate_matches(context)? == Some(true) {
-        return Ok(vec![context.source.clone()]);
+    let pos = BlockPosArgumentType::get_block_pos(context, "pos")?;
+    let expected = BlockPredicateArgumentType::get(context, "block")?;
+
+    if let Some(ref world) = context.source.world {
+        let state_id = world.get_block_state_id(&pos);
+        if expected.test(state_id, || world.get_block_entity_nbt(&pos)) {
+            return Ok(vec![context.source.clone()]);
+        }
     }
     Ok(vec![])
 }
@@ -290,27 +300,18 @@ fn execute_if_block_modifier(
 fn execute_unless_block_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    if block_predicate_matches(context)? != Some(true) {
+    let pos = BlockPosArgumentType::get_block_pos(context, "pos")?;
+    let expected = BlockPredicateArgumentType::get(context, "block")?;
+
+    if let Some(ref world) = context.source.world {
+        let state_id = world.get_block_state_id(&pos);
+        if !expected.test(state_id, || world.get_block_entity_nbt(&pos)) {
+            return Ok(vec![context.source.clone()]);
+        }
+    } else {
         return Ok(vec![context.source.clone()]);
     }
     Ok(vec![])
-}
-
-/// Tests the `block` predicate at `pos`, or returns `None` without a world.
-fn block_predicate_matches(context: &CommandContext) -> Result<Option<bool>, CommandSyntaxError> {
-    let pos = BlockPosArgumentType::get_block_pos(context, "pos")?;
-    let predicate = BlockPredicateArgumentType::get(context, "block")?;
-    let Some(world) = &context.source.world else {
-        return Ok(None);
-    };
-    let (block, state_id) = world.get_block_and_state_id(&pos);
-    Ok(Some(predicate.test(block, state_id, || {
-        world.get_block_entity(&pos).map(|entity| {
-            let mut nbt = NbtCompound::new();
-            entity.write_internal(&mut nbt);
-            nbt
-        })
-    })))
 }
 
 fn execute_if_loaded_modifier(
@@ -389,20 +390,7 @@ fn execute_if_biome_modifier(
 
     if let Some(ref world) = context.source.world {
         let biome = world.get_biome(&pos);
-        let targets: FxHashSet<u8> = match &biome_arg {
-            ResourceOrTag::Resource(id) => Biome::from_name(id.path())
-                .map(|b| b.id)
-                .into_iter()
-                .collect(),
-            ResourceOrTag::Tag(id) => {
-                tag::get_tag_values(RegistryKey::WorldgenBiome, &id.to_string())
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|name| Biome::from_name(*name))
-                    .map(|b| b.id)
-                    .collect()
-            }
-        };
+        let targets = biome_arg.biome_ids();
 
         if targets.contains(&biome.id) {
             return Ok(vec![context.source.clone()]);
@@ -419,20 +407,7 @@ fn execute_unless_biome_modifier(
 
     if let Some(ref world) = context.source.world {
         let biome = world.get_biome(&pos);
-        let targets: FxHashSet<u8> = match &biome_arg {
-            ResourceOrTag::Resource(id) => Biome::from_name(id.path())
-                .map(|b| b.id)
-                .into_iter()
-                .collect(),
-            ResourceOrTag::Tag(id) => {
-                tag::get_tag_values(RegistryKey::WorldgenBiome, &id.to_string())
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|name| Biome::from_name(*name))
-                    .map(|b| b.id)
-                    .collect()
-            }
-        };
+        let targets = biome_arg.biome_ids();
 
         if !targets.contains(&biome.id) {
             return Ok(vec![context.source.clone()]);
@@ -476,15 +451,62 @@ impl CommandExecutor for ConditionalExecutor {
         if (self.0)(context)?.is_empty() {
             return Err(ERROR_CONDITIONAL_FAILED.create_without_context());
         }
-        send_pass(context);
+        context.source.send_feedback(
+            TextComponent::translate_cross(
+                translation::java::COMMANDS_EXECUTE_CONDITIONAL_PASS,
+                translation::java::COMMANDS_EXECUTE_CONDITIONAL_PASS,
+                [],
+            ),
+            false,
+        );
         Ok(1)
     }
 }
 
-fn add_conditional<B: ArgumentBuilder>(
-    builder: B,
+/// A terminal `if`/`unless` that reports how many things matched, like vanilla's numeric handler.
+/// The count is `None` when the test did not match.
+struct NumericConditionalExecutor {
+    expected: bool,
+    count: fn(&CommandContext) -> Result<Option<i32>, CommandSyntaxError>,
+}
+
+impl CommandExecutor for NumericConditionalExecutor {
+    fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
+        let count = (self.count)(context)?;
+        match (self.expected, count) {
+            (true, Some(count)) => {
+                context.source.send_feedback(
+                    TextComponent::translate_cross(
+                        translation::java::COMMANDS_EXECUTE_CONDITIONAL_PASS_COUNT,
+                        translation::java::COMMANDS_EXECUTE_CONDITIONAL_PASS_COUNT,
+                        [TextComponent::text(count.to_string())],
+                    ),
+                    false,
+                );
+                Ok(count)
+            }
+            (false, None) => {
+                context.source.send_feedback(
+                    TextComponent::translate_cross(
+                        translation::java::COMMANDS_EXECUTE_CONDITIONAL_PASS,
+                        translation::java::COMMANDS_EXECUTE_CONDITIONAL_PASS,
+                        [],
+                    ),
+                    false,
+                );
+                Ok(1)
+            }
+            (false, Some(count)) => Err(ERROR_CONDITIONAL_FAILED_COUNT
+                .create_without_context(TextComponent::text(count.to_string()))),
+            (true, None) => Err(ERROR_CONDITIONAL_FAILED.create_without_context()),
+        }
+    }
+}
+
+fn add_conditional(
+    builder: RequiredArgumentBuilder,
     modifier: fn(&CommandContext) -> RedirectModifierResult,
-) -> B {
+) -> RequiredArgumentBuilder {
     builder
         .fork(
             Redirection::Root,
@@ -493,101 +515,11 @@ fn add_conditional<B: ArgumentBuilder>(
         .executes(ConditionalExecutor(modifier))
 }
 
-fn send_pass_count(context: &CommandContext, count: i32) {
-    context.source.send_feedback(
-        TextComponent::translate_cross(
-            translation::java::COMMANDS_EXECUTE_CONDITIONAL_PASS_COUNT,
-            translation::java::COMMANDS_EXECUTE_CONDITIONAL_PASS_COUNT,
-            [TextComponent::text(count.to_string())],
-        ),
-        false,
-    );
-}
-
-fn send_pass(context: &CommandContext) {
-    context.source.send_feedback(
-        TextComponent::translate_cross(
-            translation::java::COMMANDS_EXECUTE_CONDITIONAL_PASS,
-            translation::java::COMMANDS_EXECUTE_CONDITIONAL_PASS,
-            [],
-        ),
-        false,
-    );
-}
-
-/// Vanilla's `createNumericConditionalHandler`: `if` passes with the match count, `unless` fails
-/// with it.
-struct NumericConditionalExecutor {
-    expected: bool,
-    count: fn(&CommandContext) -> Result<i32, CommandSyntaxError>,
-}
-
-impl CommandExecutor for NumericConditionalExecutor {
-    fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
-        let count = (self.count)(context)?;
-        if self.expected {
-            if count > 0 {
-                send_pass_count(context, count);
-                return Ok(count);
-            }
-            return Err(ERROR_CONDITIONAL_FAILED.create_without_context());
-        }
-        if count == 0 {
-            send_pass(context);
-            return Ok(1);
-        }
-        Err(ERROR_CONDITIONAL_FAILED_COUNT
-            .create_without_context(TextComponent::text(count.to_string())))
-    }
-}
-
-fn add_numeric_conditional<B: ArgumentBuilder>(
-    builder: B,
-    modifier: fn(&CommandContext) -> RedirectModifierResult,
-    expected: bool,
-    count: fn(&CommandContext) -> Result<i32, CommandSyntaxError>,
-) -> B {
-    builder
-        .fork(
-            Redirection::Root,
-            RedirectModifier::Custom(Arc::new(modifier)),
-        )
-        .executes(NumericConditionalExecutor { expected, count })
-}
-
-/// Vanilla's `checkIfRegions` / `checkUnlessRegions`, where a match can count zero blocks.
-struct BlocksConditionalExecutor {
-    expected: bool,
-    masked: bool,
-}
-
-impl CommandExecutor for BlocksConditionalExecutor {
-    fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
-        match (check_blocks_match(context, self.masked)?, self.expected) {
-            (Some(count), true) => {
-                send_pass_count(context, count);
-                Ok(count)
-            }
-            (Some(count), false) => Err(ERROR_CONDITIONAL_FAILED_COUNT
-                .create_without_context(TextComponent::text(count.to_string()))),
-            (None, true) => Err(ERROR_CONDITIONAL_FAILED.create_without_context()),
-            (None, false) => {
-                send_pass(context);
-                Ok(1)
-            }
-        }
-    }
-}
-
-fn count_entities(context: &CommandContext) -> Result<i32, CommandSyntaxError> {
-    Ok(EntityArgumentType::get_optional_entities(context, "targets")?.len() as i32)
-}
-
 fn execute_if_score_matches_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
     let target = ScoreHolderArgumentType::get_score_holder(context, "target")?.name;
-    let target_obj = ObjectiveArgumentType::get(context, "target_obj")?;
+    let target_obj = ObjectiveArgumentType::get(context, "targetObjective")?;
     let range = IntRangeArgumentType::get(context, "range")?;
 
     if let Some(score) = get_score(context, &target, target_obj)? {
@@ -602,7 +534,7 @@ fn execute_unless_score_matches_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
     let target = ScoreHolderArgumentType::get_score_holder(context, "target")?.name;
-    let target_obj = ObjectiveArgumentType::get(context, "target_obj")?;
+    let target_obj = ObjectiveArgumentType::get(context, "targetObjective")?;
     let range = IntRangeArgumentType::get(context, "range")?;
 
     if let Some(score) = get_score(context, &target, target_obj)? {
@@ -619,10 +551,10 @@ fn execute_if_score_eq_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
     let target = ScoreHolderArgumentType::get_score_holder(context, "target")?.name;
-    let target_obj = ObjectiveArgumentType::get(context, "target_obj")?;
+    let target_obj = ObjectiveArgumentType::get(context, "targetObjective")?;
     let target_score = get_score(context, &target, target_obj)?;
     let source = ScoreHolderArgumentType::get_score_holder(context, "source")?.name;
-    let source_obj = ObjectiveArgumentType::get(context, "source_obj")?;
+    let source_obj = ObjectiveArgumentType::get(context, "sourceObjective")?;
 
     if let (Some(a), Some(b)) = (target_score, get_score(context, &source, source_obj)?) {
         if a == b {
@@ -636,10 +568,10 @@ fn execute_if_score_lt_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
     let target = ScoreHolderArgumentType::get_score_holder(context, "target")?.name;
-    let target_obj = ObjectiveArgumentType::get(context, "target_obj")?;
+    let target_obj = ObjectiveArgumentType::get(context, "targetObjective")?;
     let target_score = get_score(context, &target, target_obj)?;
     let source = ScoreHolderArgumentType::get_score_holder(context, "source")?.name;
-    let source_obj = ObjectiveArgumentType::get(context, "source_obj")?;
+    let source_obj = ObjectiveArgumentType::get(context, "sourceObjective")?;
 
     if let (Some(a), Some(b)) = (target_score, get_score(context, &source, source_obj)?) {
         if a < b {
@@ -653,10 +585,10 @@ fn execute_if_score_le_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
     let target = ScoreHolderArgumentType::get_score_holder(context, "target")?.name;
-    let target_obj = ObjectiveArgumentType::get(context, "target_obj")?;
+    let target_obj = ObjectiveArgumentType::get(context, "targetObjective")?;
     let target_score = get_score(context, &target, target_obj)?;
     let source = ScoreHolderArgumentType::get_score_holder(context, "source")?.name;
-    let source_obj = ObjectiveArgumentType::get(context, "source_obj")?;
+    let source_obj = ObjectiveArgumentType::get(context, "sourceObjective")?;
 
     if let (Some(a), Some(b)) = (target_score, get_score(context, &source, source_obj)?) {
         if a <= b {
@@ -670,10 +602,10 @@ fn execute_if_score_gt_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
     let target = ScoreHolderArgumentType::get_score_holder(context, "target")?.name;
-    let target_obj = ObjectiveArgumentType::get(context, "target_obj")?;
+    let target_obj = ObjectiveArgumentType::get(context, "targetObjective")?;
     let target_score = get_score(context, &target, target_obj)?;
     let source = ScoreHolderArgumentType::get_score_holder(context, "source")?.name;
-    let source_obj = ObjectiveArgumentType::get(context, "source_obj")?;
+    let source_obj = ObjectiveArgumentType::get(context, "sourceObjective")?;
 
     if let (Some(a), Some(b)) = (target_score, get_score(context, &source, source_obj)?) {
         if a > b {
@@ -687,10 +619,10 @@ fn execute_if_score_ge_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
     let target = ScoreHolderArgumentType::get_score_holder(context, "target")?.name;
-    let target_obj = ObjectiveArgumentType::get(context, "target_obj")?;
+    let target_obj = ObjectiveArgumentType::get(context, "targetObjective")?;
     let target_score = get_score(context, &target, target_obj)?;
     let source = ScoreHolderArgumentType::get_score_holder(context, "source")?.name;
-    let source_obj = ObjectiveArgumentType::get(context, "source_obj")?;
+    let source_obj = ObjectiveArgumentType::get(context, "sourceObjective")?;
 
     if let (Some(a), Some(b)) = (target_score, get_score(context, &source, source_obj)?) {
         if a >= b {
@@ -704,10 +636,10 @@ fn execute_unless_score_eq_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
     let target = ScoreHolderArgumentType::get_score_holder(context, "target")?.name;
-    let target_obj = ObjectiveArgumentType::get(context, "target_obj")?;
+    let target_obj = ObjectiveArgumentType::get(context, "targetObjective")?;
     let target_score = get_score(context, &target, target_obj)?;
     let source = ScoreHolderArgumentType::get_score_holder(context, "source")?.name;
-    let source_obj = ObjectiveArgumentType::get(context, "source_obj")?;
+    let source_obj = ObjectiveArgumentType::get(context, "sourceObjective")?;
 
     if let (Some(a), Some(b)) = (target_score, get_score(context, &source, source_obj)?) {
         if a != b {
@@ -723,10 +655,10 @@ fn execute_unless_score_lt_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
     let target = ScoreHolderArgumentType::get_score_holder(context, "target")?.name;
-    let target_obj = ObjectiveArgumentType::get(context, "target_obj")?;
+    let target_obj = ObjectiveArgumentType::get(context, "targetObjective")?;
     let target_score = get_score(context, &target, target_obj)?;
     let source = ScoreHolderArgumentType::get_score_holder(context, "source")?.name;
-    let source_obj = ObjectiveArgumentType::get(context, "source_obj")?;
+    let source_obj = ObjectiveArgumentType::get(context, "sourceObjective")?;
 
     if let (Some(a), Some(b)) = (target_score, get_score(context, &source, source_obj)?) {
         if a >= b {
@@ -742,10 +674,10 @@ fn execute_unless_score_le_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
     let target = ScoreHolderArgumentType::get_score_holder(context, "target")?.name;
-    let target_obj = ObjectiveArgumentType::get(context, "target_obj")?;
+    let target_obj = ObjectiveArgumentType::get(context, "targetObjective")?;
     let target_score = get_score(context, &target, target_obj)?;
     let source = ScoreHolderArgumentType::get_score_holder(context, "source")?.name;
-    let source_obj = ObjectiveArgumentType::get(context, "source_obj")?;
+    let source_obj = ObjectiveArgumentType::get(context, "sourceObjective")?;
 
     if let (Some(a), Some(b)) = (target_score, get_score(context, &source, source_obj)?) {
         if a > b {
@@ -761,10 +693,10 @@ fn execute_unless_score_gt_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
     let target = ScoreHolderArgumentType::get_score_holder(context, "target")?.name;
-    let target_obj = ObjectiveArgumentType::get(context, "target_obj")?;
+    let target_obj = ObjectiveArgumentType::get(context, "targetObjective")?;
     let target_score = get_score(context, &target, target_obj)?;
     let source = ScoreHolderArgumentType::get_score_holder(context, "source")?.name;
-    let source_obj = ObjectiveArgumentType::get(context, "source_obj")?;
+    let source_obj = ObjectiveArgumentType::get(context, "sourceObjective")?;
 
     if let (Some(a), Some(b)) = (target_score, get_score(context, &source, source_obj)?) {
         if a <= b {
@@ -780,10 +712,10 @@ fn execute_unless_score_ge_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
     let target = ScoreHolderArgumentType::get_score_holder(context, "target")?.name;
-    let target_obj = ObjectiveArgumentType::get(context, "target_obj")?;
+    let target_obj = ObjectiveArgumentType::get(context, "targetObjective")?;
     let target_score = get_score(context, &target, target_obj)?;
     let source = ScoreHolderArgumentType::get_score_holder(context, "source")?.name;
-    let source_obj = ObjectiveArgumentType::get(context, "source_obj")?;
+    let source_obj = ObjectiveArgumentType::get(context, "sourceObjective")?;
 
     if let (Some(a), Some(b)) = (target_score, get_score(context, &source, source_obj)?) {
         if a < b {
@@ -795,8 +727,8 @@ fn execute_unless_score_ge_modifier(
     Ok(vec![])
 }
 
-/// Counts the compared blocks, or returns `None` when a pair differs.
-fn check_blocks_match(
+/// The number of compared blocks, `None` when the regions differ.
+fn count_blocks_match(
     context: &CommandContext,
     masked: bool,
 ) -> Result<Option<i32>, CommandSyntaxError> {
@@ -816,7 +748,7 @@ fn check_blocks_match(
         let dy = destination.0.y - min_y;
         let dz = destination.0.z - min_z;
 
-        let mut count = 0;
+        let mut count = 0i32;
         for y in min_y..=max_y {
             for z in min_z..=max_z {
                 for x in min_x..=max_x {
@@ -831,7 +763,7 @@ fn check_blocks_match(
                     if src_block != dst_block {
                         return Ok(None);
                     }
-                    count += 1;
+                    count = count.saturating_add(1);
                 }
             }
         }
@@ -843,7 +775,7 @@ fn check_blocks_match(
 fn execute_if_blocks_all_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    if check_blocks_match(context, false)?.is_some() {
+    if count_blocks_match(context, false)?.is_some() {
         Ok(vec![context.source.clone()])
     } else {
         Ok(vec![])
@@ -853,7 +785,7 @@ fn execute_if_blocks_all_modifier(
 fn execute_if_blocks_masked_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    if check_blocks_match(context, true)?.is_some() {
+    if count_blocks_match(context, true)?.is_some() {
         Ok(vec![context.source.clone()])
     } else {
         Ok(vec![])
@@ -863,7 +795,7 @@ fn execute_if_blocks_masked_modifier(
 fn execute_unless_blocks_all_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    if check_blocks_match(context, false)?.is_none() {
+    if count_blocks_match(context, false)?.is_none() {
         Ok(vec![context.source.clone()])
     } else {
         Ok(vec![])
@@ -873,44 +805,44 @@ fn execute_unless_blocks_all_modifier(
 fn execute_unless_blocks_masked_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    if check_blocks_match(context, true)?.is_none() {
+    if count_blocks_match(context, true)?.is_none() {
         Ok(vec![context.source.clone()])
     } else {
         Ok(vec![])
     }
 }
 
-fn count_data_matches(
+fn check_data_matches(
     context: &CommandContext,
     is_block: bool,
     is_entity: bool,
-) -> Result<i32, CommandSyntaxError> {
+) -> Result<bool, CommandSyntaxError> {
     let path = context.get_argument::<NbtPath>("path")?;
-    let count = if is_block {
+    let tags = if is_block {
         let pos = BlockPosArgumentType::get_block_pos(context, "pos")?;
         let world = context.source.world().clone();
         let accessor = BlockDataAccessor::new(pos, world)?;
         let data = accessor.get_data()?;
-        path.count_matching(&NbtTag::Compound(data))
+        path.get(&NbtTag::Compound(data))?
     } else if is_entity {
         let entity = EntityArgumentType::get_entity(context, "target")?;
         let accessor = EntityDataAccessor::new(entity);
         let data = accessor.get_data()?;
-        path.count_matching(&NbtTag::Compound(data))
+        path.get(&NbtTag::Compound(data))?
     } else {
         let id = context.get_argument::<Identifier>("id")?;
         let server = context.server().clone();
         let accessor = StorageDataAccessor::new(id.to_string(), server);
         let data = accessor.get_data()?;
-        path.count_matching(&NbtTag::Compound(data))
+        path.get(&NbtTag::Compound(data))?
     };
-    Ok(count as i32)
+    Ok(!tags.is_empty())
 }
 
 fn execute_if_data_block_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    if count_data_matches(context, true, false)? > 0 {
+    if check_data_matches(context, true, false)? {
         Ok(vec![context.source.clone()])
     } else {
         Ok(vec![])
@@ -920,7 +852,7 @@ fn execute_if_data_block_modifier(
 fn execute_if_data_entity_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    if count_data_matches(context, false, true)? > 0 {
+    if check_data_matches(context, false, true)? {
         Ok(vec![context.source.clone()])
     } else {
         Ok(vec![])
@@ -930,7 +862,7 @@ fn execute_if_data_entity_modifier(
 fn execute_if_data_storage_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    if count_data_matches(context, false, false)? > 0 {
+    if check_data_matches(context, false, false)? {
         Ok(vec![context.source.clone()])
     } else {
         Ok(vec![])
@@ -940,7 +872,7 @@ fn execute_if_data_storage_modifier(
 fn execute_unless_data_block_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    if count_data_matches(context, true, false)? == 0 {
+    if !check_data_matches(context, true, false)? {
         Ok(vec![context.source.clone()])
     } else {
         Ok(vec![])
@@ -950,7 +882,7 @@ fn execute_unless_data_block_modifier(
 fn execute_unless_data_entity_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    if count_data_matches(context, false, true)? == 0 {
+    if !check_data_matches(context, false, true)? {
         Ok(vec![context.source.clone()])
     } else {
         Ok(vec![])
@@ -960,7 +892,7 @@ fn execute_unless_data_entity_modifier(
 fn execute_unless_data_storage_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    if count_data_matches(context, false, false)? == 0 {
+    if !check_data_matches(context, false, false)? {
         Ok(vec![context.source.clone()])
     } else {
         Ok(vec![])
@@ -1008,7 +940,7 @@ fn execute_unless_stopwatch_modifier(
 fn execute_summon_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    let entity_type = ResourceArgument::get_summonable_entity_type(context, "entity_type")?;
+    let entity_type = ResourceArgument::get_summonable_entity_type(context, "entity")?;
     let entity = from_type(
         entity_type,
         context.source.position,
@@ -1224,12 +1156,21 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                         RedirectModifier::Custom(Arc::new(execute_positioned_as_modifier)),
                     )),
                 )
-                .then(literal("over").then(
-                    argument("heightmap", StringArgumentType::SingleWord).redirect_with_modifier(
-                        Redirection::Root,
-                        RedirectModifier::Custom(Arc::new(execute_positioned_over_modifier)),
+                .then(
+                    literal("over").then(
+                        argument(
+                            "heightmap",
+                            ClientParsed::new(
+                                StringArgumentType::SingleWord,
+                                JavaClientArgumentType::Heightmap,
+                            ),
+                        )
+                        .redirect_with_modifier(
+                            Redirection::Root,
+                            RedirectModifier::Custom(Arc::new(execute_positioned_over_modifier)),
+                        ),
                     ),
-                ))
+                )
                 .then(
                     argument("pos", Vec3ArgumentType::Default).redirect_with_modifier(
                         Redirection::Root,
@@ -1246,7 +1187,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                     )),
                 )
                 .then(
-                    argument("rotation", RotationArgumentType).redirect_with_modifier(
+                    argument("rot", RotationArgumentType).redirect_with_modifier(
                         Redirection::Root,
                         RedirectModifier::Custom(Arc::new(execute_rotated_modifier)),
                     ),
@@ -1282,7 +1223,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                 ),
         )
         .then(literal("summon").then(
-            argument("entity_type", ENTITY_TYPE_ARGUMENT.clone()).redirect_with_modifier(
+            argument("entity", ENTITY_TYPE_ARGUMENT.clone()).redirect_with_modifier(
                 Redirection::Root,
                 RedirectModifier::Custom(Arc::new(execute_summon_modifier)),
             ),
@@ -1324,35 +1265,62 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
         )
         .then(
             literal("if")
-                .then(literal("entity").then(add_numeric_conditional(
-                    argument("targets", EntityArgumentType::Entities),
-                    execute_if_entity_modifier,
-                    true,
-                    count_entities,
-                )))
                 .then(
-                    literal("block").then(argument("pos", BlockPosArgumentType).then(
-                        add_conditional(
-                            argument("block", BlockPredicateArgumentType),
-                            execute_if_block_modifier,
-                        ),
-                    )),
+                    literal("entity").then(
+                        argument("entities", EntityArgumentType::Entities)
+                            .fork(
+                                Redirection::Root,
+                                RedirectModifier::Custom(Arc::new(execute_if_entity_modifier)),
+                            )
+                            .executes(NumericConditionalExecutor {
+                                expected: true,
+                                count: count_entities,
+                            }),
+                    ),
                 )
-                .then(literal("loaded").then(add_conditional(
-                    argument("pos", BlockPosArgumentType),
-                    execute_if_loaded_modifier,
-                )))
-                .then(literal("dimension").then(add_conditional(
-                    argument("dimension", ResourceKeyArgument(DIMENSION_REGISTRY)),
-                    execute_if_dimension_modifier,
-                )))
                 .then(
-                    literal("biome").then(argument("pos", BlockPosArgumentType).then(
-                        add_conditional(
-                            argument("biome", ResourceOrTagArgument(BIOME_REGISTRY.clone())),
-                            execute_if_biome_modifier,
+                    literal("block").then(
+                        argument("pos", BlockPosArgumentType).then(
+                            argument("block", BlockPredicateArgumentType)
+                                .fork(
+                                    Redirection::Root,
+                                    RedirectModifier::Custom(Arc::new(execute_if_block_modifier)),
+                                )
+                                .executes(ConditionalExecutor(execute_if_block_modifier)),
                         ),
-                    )),
+                    ),
+                )
+                .then(
+                    literal("loaded").then(
+                        argument("pos", BlockPosArgumentType)
+                            .fork(
+                                Redirection::Root,
+                                RedirectModifier::Custom(Arc::new(execute_if_loaded_modifier)),
+                            )
+                            .executes(ConditionalExecutor(execute_if_loaded_modifier)),
+                    ),
+                )
+                .then(
+                    literal("dimension").then(
+                        argument("dimension", ResourceKeyArgument(DIMENSION_REGISTRY))
+                            .fork(
+                                Redirection::Root,
+                                RedirectModifier::Custom(Arc::new(execute_if_dimension_modifier)),
+                            )
+                            .executes(ConditionalExecutor(execute_if_dimension_modifier)),
+                    ),
+                )
+                .then(
+                    literal("biome").then(
+                        argument("pos", BlockPosArgumentType).then(
+                            argument("biome", ResourceOrTagArgument(BIOME_REGISTRY.clone()))
+                                .fork(
+                                    Redirection::Root,
+                                    RedirectModifier::Custom(Arc::new(execute_if_biome_modifier)),
+                                )
+                                .executes(ConditionalExecutor(execute_if_biome_modifier)),
+                        ),
+                    ),
                 )
                 .then(
                     literal("blocks").then(
@@ -1367,9 +1335,9 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                                                     execute_if_blocks_all_modifier,
                                                 )),
                                             )
-                                            .executes(BlocksConditionalExecutor {
+                                            .executes(NumericConditionalExecutor {
                                                 expected: true,
-                                                masked: false,
+                                                count: |context| count_blocks_match(context, false),
                                             }),
                                     )
                                     .then(
@@ -1380,9 +1348,9 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                                                     execute_if_blocks_masked_modifier,
                                                 )),
                                             )
-                                            .executes(BlocksConditionalExecutor {
+                                            .executes(NumericConditionalExecutor {
                                                 expected: true,
-                                                masked: true,
+                                                count: |context| count_blocks_match(context, true),
                                             }),
                                     ),
                             ),
@@ -1392,7 +1360,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                 .then(
                     literal("score").then(
                         argument("target", ScoreHolderArgumentType::Single).then(
-                            argument("target_obj", ObjectiveArgumentType)
+                            argument("targetObjective", ObjectiveArgumentType)
                                 .then(literal("matches").then(add_conditional(
                                     argument("range", IntRangeArgumentType),
                                     execute_if_score_matches_modifier,
@@ -1400,7 +1368,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                                 .then(literal("=").then(
                                     argument("source", ScoreHolderArgumentType::Single).then(
                                         add_conditional(
-                                            argument("source_obj", ObjectiveArgumentType),
+                                            argument("sourceObjective", ObjectiveArgumentType),
                                             execute_if_score_eq_modifier,
                                         ),
                                     ),
@@ -1408,7 +1376,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                                 .then(literal("<").then(
                                     argument("source", ScoreHolderArgumentType::Single).then(
                                         add_conditional(
-                                            argument("source_obj", ObjectiveArgumentType),
+                                            argument("sourceObjective", ObjectiveArgumentType),
                                             execute_if_score_lt_modifier,
                                         ),
                                     ),
@@ -1416,7 +1384,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                                 .then(literal("<=").then(
                                     argument("source", ScoreHolderArgumentType::Single).then(
                                         add_conditional(
-                                            argument("source_obj", ObjectiveArgumentType),
+                                            argument("sourceObjective", ObjectiveArgumentType),
                                             execute_if_score_le_modifier,
                                         ),
                                     ),
@@ -1424,7 +1392,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                                 .then(literal(">").then(
                                     argument("source", ScoreHolderArgumentType::Single).then(
                                         add_conditional(
-                                            argument("source_obj", ObjectiveArgumentType),
+                                            argument("sourceObjective", ObjectiveArgumentType),
                                             execute_if_score_gt_modifier,
                                         ),
                                     ),
@@ -1432,7 +1400,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                                 .then(literal(">=").then(
                                     argument("source", ScoreHolderArgumentType::Single).then(
                                         add_conditional(
-                                            argument("source_obj", ObjectiveArgumentType),
+                                            argument("sourceObjective", ObjectiveArgumentType),
                                             execute_if_score_ge_modifier,
                                         ),
                                     ),
@@ -1443,74 +1411,133 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                 .then(
                     literal("data")
                         .then(
-                            literal("block").then(argument("pos", BlockPosArgumentType).then(
-                                add_numeric_conditional(
-                                    argument("path", NbtPathArgumentType),
-                                    execute_if_data_block_modifier,
-                                    true,
-                                    |c| count_data_matches(c, true, false),
-                                ),
-                            )),
-                        )
-                        .then(literal("entity").then(
-                            argument("target", EntityArgumentType::Entity).then(
-                                add_numeric_conditional(
-                                    argument("path", NbtPathArgumentType),
-                                    execute_if_data_entity_modifier,
-                                    true,
-                                    |c| count_data_matches(c, false, true),
+                            literal("block").then(
+                                argument("pos", BlockPosArgumentType).then(
+                                    argument("path", NbtPathArgumentType)
+                                        .fork(
+                                            Redirection::Root,
+                                            RedirectModifier::Custom(Arc::new(
+                                                execute_if_data_block_modifier,
+                                            )),
+                                        )
+                                        .executes(ConditionalExecutor(
+                                            execute_if_data_block_modifier,
+                                        )),
                                 ),
                             ),
-                        ))
-                        .then(literal("storage").then(
-                            argument("id", IdentifierArgumentType).then(add_numeric_conditional(
-                                argument("path", NbtPathArgumentType),
-                                execute_if_data_storage_modifier,
-                                true,
-                                |c| count_data_matches(c, false, false),
-                            )),
-                        )),
+                        )
+                        .then(
+                            literal("entity").then(
+                                argument("target", EntityArgumentType::Entity).then(
+                                    argument("path", NbtPathArgumentType)
+                                        .fork(
+                                            Redirection::Root,
+                                            RedirectModifier::Custom(Arc::new(
+                                                execute_if_data_entity_modifier,
+                                            )),
+                                        )
+                                        .executes(ConditionalExecutor(
+                                            execute_if_data_entity_modifier,
+                                        )),
+                                ),
+                            ),
+                        )
+                        .then(
+                            literal("storage").then(
+                                argument("id", IdentifierArgumentType).then(
+                                    argument("path", NbtPathArgumentType)
+                                        .fork(
+                                            Redirection::Root,
+                                            RedirectModifier::Custom(Arc::new(
+                                                execute_if_data_storage_modifier,
+                                            )),
+                                        )
+                                        .executes(ConditionalExecutor(
+                                            execute_if_data_storage_modifier,
+                                        )),
+                                ),
+                            ),
+                        ),
                 )
                 .then(
-                    literal("stopwatch").then(argument("id", IdentifierArgumentType).then(
-                        add_conditional(
-                            argument("range", FloatRangeArgumentType),
-                            execute_if_stopwatch_modifier,
+                    literal("stopwatch").then(
+                        argument("id", IdentifierArgumentType).then(
+                            argument("range", FloatRangeArgumentType)
+                                .fork(
+                                    Redirection::Root,
+                                    RedirectModifier::Custom(Arc::new(
+                                        execute_if_stopwatch_modifier,
+                                    )),
+                                )
+                                .executes(ConditionalExecutor(execute_if_stopwatch_modifier)),
                         ),
-                    )),
+                    ),
                 ),
         )
         .then(
             literal("unless")
-                .then(literal("entity").then(add_numeric_conditional(
-                    argument("targets", EntityArgumentType::Entities),
-                    execute_unless_entity_modifier,
-                    false,
-                    count_entities,
-                )))
                 .then(
-                    literal("block").then(argument("pos", BlockPosArgumentType).then(
-                        add_conditional(
-                            argument("block", BlockPredicateArgumentType),
-                            execute_unless_block_modifier,
-                        ),
-                    )),
+                    literal("entity").then(
+                        argument("entities", EntityArgumentType::Entities)
+                            .fork(
+                                Redirection::Root,
+                                RedirectModifier::Custom(Arc::new(execute_unless_entity_modifier)),
+                            )
+                            .executes(NumericConditionalExecutor {
+                                expected: false,
+                                count: count_entities,
+                            }),
+                    ),
                 )
-                .then(literal("loaded").then(add_conditional(
-                    argument("pos", BlockPosArgumentType),
-                    execute_unless_loaded_modifier,
-                )))
-                .then(literal("dimension").then(add_conditional(
-                    argument("dimension", ResourceKeyArgument(DIMENSION_REGISTRY)),
-                    execute_unless_dimension_modifier,
-                )))
                 .then(
-                    literal("biome").then(argument("pos", BlockPosArgumentType).then(
-                        add_conditional(
-                            argument("biome", ResourceOrTagArgument(BIOME_REGISTRY.clone())),
-                            execute_unless_biome_modifier,
+                    literal("block").then(
+                        argument("pos", BlockPosArgumentType).then(
+                            argument("block", BlockPredicateArgumentType)
+                                .fork(
+                                    Redirection::Root,
+                                    RedirectModifier::Custom(Arc::new(
+                                        execute_unless_block_modifier,
+                                    )),
+                                )
+                                .executes(ConditionalExecutor(execute_unless_block_modifier)),
                         ),
-                    )),
+                    ),
+                )
+                .then(
+                    literal("loaded").then(
+                        argument("pos", BlockPosArgumentType)
+                            .fork(
+                                Redirection::Root,
+                                RedirectModifier::Custom(Arc::new(execute_unless_loaded_modifier)),
+                            )
+                            .executes(ConditionalExecutor(execute_unless_loaded_modifier)),
+                    ),
+                )
+                .then(
+                    literal("dimension").then(
+                        argument("dimension", ResourceKeyArgument(DIMENSION_REGISTRY))
+                            .fork(
+                                Redirection::Root,
+                                RedirectModifier::Custom(Arc::new(
+                                    execute_unless_dimension_modifier,
+                                )),
+                            )
+                            .executes(ConditionalExecutor(execute_unless_dimension_modifier)),
+                    ),
+                )
+                .then(
+                    literal("biome").then(
+                        argument("pos", BlockPosArgumentType).then(
+                            argument("biome", ResourceOrTagArgument(BIOME_REGISTRY.clone()))
+                                .fork(
+                                    Redirection::Root,
+                                    RedirectModifier::Custom(Arc::new(
+                                        execute_unless_biome_modifier,
+                                    )),
+                                )
+                                .executes(ConditionalExecutor(execute_unless_biome_modifier)),
+                        ),
+                    ),
                 )
                 .then(
                     literal("blocks").then(
@@ -1525,9 +1552,9 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                                                     execute_unless_blocks_all_modifier,
                                                 )),
                                             )
-                                            .executes(BlocksConditionalExecutor {
+                                            .executes(NumericConditionalExecutor {
                                                 expected: false,
-                                                masked: false,
+                                                count: |context| count_blocks_match(context, false),
                                             }),
                                     )
                                     .then(
@@ -1538,9 +1565,9 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                                                     execute_unless_blocks_masked_modifier,
                                                 )),
                                             )
-                                            .executes(BlocksConditionalExecutor {
+                                            .executes(NumericConditionalExecutor {
                                                 expected: false,
-                                                masked: true,
+                                                count: |context| count_blocks_match(context, true),
                                             }),
                                     ),
                             ),
@@ -1550,7 +1577,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                 .then(
                     literal("score").then(
                         argument("target", ScoreHolderArgumentType::Single).then(
-                            argument("target_obj", ObjectiveArgumentType)
+                            argument("targetObjective", ObjectiveArgumentType)
                                 .then(literal("matches").then(add_conditional(
                                     argument("range", IntRangeArgumentType),
                                     execute_unless_score_matches_modifier,
@@ -1558,7 +1585,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                                 .then(literal("=").then(
                                     argument("source", ScoreHolderArgumentType::Single).then(
                                         add_conditional(
-                                            argument("source_obj", ObjectiveArgumentType),
+                                            argument("sourceObjective", ObjectiveArgumentType),
                                             execute_unless_score_eq_modifier,
                                         ),
                                     ),
@@ -1566,7 +1593,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                                 .then(literal("<").then(
                                     argument("source", ScoreHolderArgumentType::Single).then(
                                         add_conditional(
-                                            argument("source_obj", ObjectiveArgumentType),
+                                            argument("sourceObjective", ObjectiveArgumentType),
                                             execute_unless_score_lt_modifier,
                                         ),
                                     ),
@@ -1574,7 +1601,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                                 .then(literal("<=").then(
                                     argument("source", ScoreHolderArgumentType::Single).then(
                                         add_conditional(
-                                            argument("source_obj", ObjectiveArgumentType),
+                                            argument("sourceObjective", ObjectiveArgumentType),
                                             execute_unless_score_le_modifier,
                                         ),
                                     ),
@@ -1582,7 +1609,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                                 .then(literal(">").then(
                                     argument("source", ScoreHolderArgumentType::Single).then(
                                         add_conditional(
-                                            argument("source_obj", ObjectiveArgumentType),
+                                            argument("sourceObjective", ObjectiveArgumentType),
                                             execute_unless_score_gt_modifier,
                                         ),
                                     ),
@@ -1590,7 +1617,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                                 .then(literal(">=").then(
                                     argument("source", ScoreHolderArgumentType::Single).then(
                                         add_conditional(
-                                            argument("source_obj", ObjectiveArgumentType),
+                                            argument("sourceObjective", ObjectiveArgumentType),
                                             execute_unless_score_ge_modifier,
                                         ),
                                     ),
@@ -1601,41 +1628,67 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                 .then(
                     literal("data")
                         .then(
-                            literal("block").then(argument("pos", BlockPosArgumentType).then(
-                                add_numeric_conditional(
-                                    argument("path", NbtPathArgumentType),
-                                    execute_unless_data_block_modifier,
-                                    false,
-                                    |c| count_data_matches(c, true, false),
-                                ),
-                            )),
-                        )
-                        .then(literal("entity").then(
-                            argument("target", EntityArgumentType::Entity).then(
-                                add_numeric_conditional(
-                                    argument("path", NbtPathArgumentType),
-                                    execute_unless_data_entity_modifier,
-                                    false,
-                                    |c| count_data_matches(c, false, true),
+                            literal("block").then(
+                                argument("pos", BlockPosArgumentType).then(
+                                    argument("path", NbtPathArgumentType)
+                                        .fork(
+                                            Redirection::Root,
+                                            RedirectModifier::Custom(Arc::new(
+                                                execute_unless_data_block_modifier,
+                                            )),
+                                        )
+                                        .executes(ConditionalExecutor(
+                                            execute_unless_data_block_modifier,
+                                        )),
                                 ),
                             ),
-                        ))
-                        .then(literal("storage").then(
-                            argument("id", IdentifierArgumentType).then(add_numeric_conditional(
-                                argument("path", NbtPathArgumentType),
-                                execute_unless_data_storage_modifier,
-                                false,
-                                |c| count_data_matches(c, false, false),
-                            )),
-                        )),
+                        )
+                        .then(
+                            literal("entity").then(
+                                argument("target", EntityArgumentType::Entity).then(
+                                    argument("path", NbtPathArgumentType)
+                                        .fork(
+                                            Redirection::Root,
+                                            RedirectModifier::Custom(Arc::new(
+                                                execute_unless_data_entity_modifier,
+                                            )),
+                                        )
+                                        .executes(ConditionalExecutor(
+                                            execute_unless_data_entity_modifier,
+                                        )),
+                                ),
+                            ),
+                        )
+                        .then(
+                            literal("storage").then(
+                                argument("id", IdentifierArgumentType).then(
+                                    argument("path", NbtPathArgumentType)
+                                        .fork(
+                                            Redirection::Root,
+                                            RedirectModifier::Custom(Arc::new(
+                                                execute_unless_data_storage_modifier,
+                                            )),
+                                        )
+                                        .executes(ConditionalExecutor(
+                                            execute_unless_data_storage_modifier,
+                                        )),
+                                ),
+                            ),
+                        ),
                 )
                 .then(
-                    literal("stopwatch").then(argument("id", IdentifierArgumentType).then(
-                        add_conditional(
-                            argument("range", FloatRangeArgumentType),
-                            execute_unless_stopwatch_modifier,
+                    literal("stopwatch").then(
+                        argument("id", IdentifierArgumentType).then(
+                            argument("range", FloatRangeArgumentType)
+                                .fork(
+                                    Redirection::Root,
+                                    RedirectModifier::Custom(Arc::new(
+                                        execute_unless_stopwatch_modifier,
+                                    )),
+                                )
+                                .executes(ConditionalExecutor(execute_unless_stopwatch_modifier)),
                         ),
-                    )),
+                    ),
                 ),
         );
 
@@ -1725,34 +1778,6 @@ mod tests {
                     assert_eq!(result.reader.remaining_length(), 0, "{input}");
                     assert!(result.context.build(&input).command.is_some(), "{input}");
                 }
-            }
-        }
-    }
-
-    #[test]
-    fn conditions_run_without_a_run_clause() {
-        let mut dispatcher = CommandDispatcher::new();
-        register(&mut dispatcher, &PermissionRegistry::default());
-        let source = Arc::new(CommandSource::dummy());
-        for condition in ["if", "unless"] {
-            for arguments in [
-                "entity @e[tag=t]",
-                "block 0 0 0 minecraft:stone",
-                "blocks 0 0 0 1 1 1 5 5 5 all",
-                "blocks 0 0 0 1 1 1 5 5 5 masked",
-                "loaded 0 0 0",
-                "dimension minecraft:overworld",
-                "biome 0 0 0 minecraft:plains",
-                "data block 0 0 0 Items",
-                "data entity @s Tags",
-                "data storage minecraft:s path",
-                "stopwatch minecraft:w 1..",
-            ] {
-                let input = format!("execute {condition} {arguments}");
-                let result = dispatcher.parse_input(&input, &source);
-                assert!(result.errors.is_empty(), "{input}: {:?}", result.errors);
-                assert_eq!(result.reader.remaining_length(), 0, "{input}");
-                assert!(result.context.build(&input).command.is_some(), "{input}");
             }
         }
     }

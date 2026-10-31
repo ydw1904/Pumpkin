@@ -398,6 +398,8 @@ impl ScreenHandler for EnchantingTableScreenHandler {
             1,
         );
 
+        player.on_enchanted_item(level_req);
+
         true
     }
 

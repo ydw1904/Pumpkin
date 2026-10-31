@@ -2,6 +2,7 @@ use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::Ordering::Relaxed;
 
 use pumpkin_data::item_stack::DamageResult;
+use pumpkin_protocol::bedrock::server::ActorEventID;
 
 use crate::entity::mob::Mob;
 use crate::entity::{Entity, EntityBase, equipment_break_status};
@@ -83,10 +84,11 @@ fn burn(mob: &dyn Mob) {
         }
         DamageResult::Broken => {
             mob_entity.set_item_slot(&slot, stack);
-            entity
-                .world
-                .load()
-                .send_entity_status(entity, equipment_break_status(&slot), None);
+            entity.world.load().send_entity_status(
+                entity,
+                equipment_break_status(&slot),
+                ActorEventID::None,
+            );
         }
     }
 }

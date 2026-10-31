@@ -1,3 +1,4 @@
+use crate::entity::projectile::owner::ProjectileOwner;
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
@@ -15,6 +16,7 @@ use crate::entity::decoration::{
     display::{BlockDisplayEntity, ItemDisplayEntity, TextDisplayEntity},
     end_crystal::EndCrystalEntity,
     item_frame::ItemFrameEntity,
+    leash_knot::LeashKnotEntity,
     painting::PaintingEntity,
 };
 use crate::entity::experience_orb::ExperienceOrbEntity;
@@ -129,7 +131,9 @@ use crate::entity::vehicle::minecart::MinecartEntity;
 use crate::entity::{Entity, EntityBase, mob};
 use crate::world::World;
 use pumpkin_data::Block;
+use pumpkin_nbt::compound::NbtCompound;
 use std::sync::atomic::AtomicBool;
+use tracing::{debug, warn};
 
 #[expect(clippy::too_many_lines)]
 pub fn from_type(
@@ -243,6 +247,7 @@ pub fn from_type(
         id if id == EntityType::ITEM_DISPLAY.id => ItemDisplayEntity::new(entity),
         id if id == EntityType::TEXT_DISPLAY.id => TextDisplayEntity::new(entity),
         id if id == EntityType::PAINTING.id => Arc::new(PaintingEntity::new(entity)),
+        id if id == EntityType::LEASH_KNOT.id => Arc::new(LeashKnotEntity::new(entity)),
         id if id == EntityType::ITEM_FRAME.id || id == EntityType::GLOW_ITEM_FRAME.id => {
             Arc::new(ItemFrameEntity::new(entity))
         }
@@ -253,9 +258,6 @@ pub fn from_type(
         id if id == EntityType::ENDER_PEARL.id => Arc::new(EnderPearlEntity::new(entity)),
         id if id == EntityType::SNOWBALL.id => Arc::new(SnowballEntity::new(entity)),
         id if id == EntityType::EGG.id => Arc::new(EggEntity::new(entity)),
-        id if id == EntityType::EXPERIENCE_BOTTLE.id => {
-            Arc::new(ExperienceBottleEntity::new(entity))
-        }
         id if id == EntityType::SILVERFISH.id => SilverfishEntity::new(entity),
         id if id == EntityType::SLIME.id => SlimeEntity::new(entity),
         id if id == EntityType::SHULKER.id => ShulkerEntity::new(entity),
@@ -293,7 +295,7 @@ pub fn from_type(
         id if id == EntityType::WIND_CHARGE.id => {
             let thrown = ThrownItemEntity {
                 entity,
-                owner_id: None,
+                owner: ProjectileOwner::none(),
                 collides_with_projectiles: false,
                 has_hit: AtomicBool::new(false),
                 gravity: WIND_CHARGE_GRAVITY,
@@ -303,7 +305,7 @@ pub fn from_type(
         id if id == EntityType::BREEZE_WIND_CHARGE.id => {
             let thrown = ThrownItemEntity {
                 entity,
-                owner_id: None,
+                owner: ProjectileOwner::none(),
                 collides_with_projectiles: false,
                 has_hit: AtomicBool::new(false),
                 gravity: WIND_CHARGE_GRAVITY,
@@ -315,6 +317,9 @@ pub fn from_type(
         id if id == EntityType::INTERACTION.id => InteractionEntity::new(entity),
         id if id == EntityType::FIREWORK_ROCKET.id => Arc::new(FireworkRocketEntity::new(entity)),
         id if id == EntityType::SPLASH_POTION.id => Arc::new(SplashPotionEntity::new(entity)),
+        id if id == EntityType::EXPERIENCE_BOTTLE.id => {
+            Arc::new(ExperienceBottleEntity::new(entity))
+        }
         id if id == EntityType::LINGERING_POTION.id => Arc::new(LingeringPotionEntity::new(entity)),
         id if id == EntityType::LLAMA_SPIT.id => Arc::new(LlamaSpitEntity::new(entity)),
         id if id == EntityType::EYE_OF_ENDER.id => Arc::new(EyeOfEnder::new(entity)),
@@ -354,6 +359,90 @@ pub fn from_type(
     };
 
     mob
+}
+
+fn create_entity(
+    entity_type: &'static EntityType,
+    position: Vector3<f64>,
+    nbt: &NbtCompound,
+    world: &Arc<World>,
+) -> Arc<dyn EntityBase> {
+    let uuid = nbt.get_uuid("UUID").unwrap_or_else(Uuid::new_v4);
+    let entity = from_type(entity_type, position, world, uuid);
+    entity.read_nbt_non_mut(nbt);
+    entity
+}
+
+fn entity_type_from_nbt(nbt: &NbtCompound) -> Option<&'static EntityType> {
+    let Some(id) = nbt.get_string("id") else {
+        debug!("Entity has no ID");
+        return None;
+    };
+    let entity_type = EntityType::from_name(id.strip_prefix("minecraft:").unwrap_or(id));
+    if entity_type.is_none() {
+        warn!("Entity has no valid Entity Type {id}");
+    }
+    entity_type
+}
+
+pub fn load_entity(
+    entity_type: &'static EntityType,
+    position: Vector3<f64>,
+    nbt: &NbtCompound,
+    world: &Arc<World>,
+) -> Arc<dyn EntityBase> {
+    let entity = create_entity(entity_type, position, nbt, world);
+    for passenger in nbt.get_list("Passengers").unwrap_or_default() {
+        if let Some(passenger) = passenger.extract_compound().and_then(|passenger| {
+            load_entity_from_nbt(passenger, entity.get_entity().pos.load(), world)
+        }) {
+            entity
+                .get_entity()
+                .add_passenger_silently(entity.clone(), passenger);
+        }
+    }
+    entity
+}
+
+pub fn load_entity_from_nbt(
+    nbt: &NbtCompound,
+    position: Vector3<f64>,
+    world: &Arc<World>,
+) -> Option<Arc<dyn EntityBase>> {
+    Some(load_entity(
+        entity_type_from_nbt(nbt)?,
+        position,
+        nbt,
+        world,
+    ))
+}
+
+pub fn load_static_entity_from_nbt(
+    nbt: &NbtCompound,
+    position: Vector3<f64>,
+    world: &Arc<World>,
+) -> Option<Arc<dyn EntityBase>> {
+    Some(create_entity(
+        entity_type_from_nbt(nbt)?,
+        position,
+        nbt,
+        world,
+    ))
+}
+
+#[must_use]
+pub fn self_and_passengers(entity: &Arc<dyn EntityBase>) -> Vec<Arc<dyn EntityBase>> {
+    let mut stack = vec![entity.clone()];
+    let passengers = entity
+        .get_entity()
+        .passengers
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    for passenger in &passengers {
+        stack.extend(self_and_passengers(passenger));
+    }
+    stack
 }
 
 #[expect(clippy::too_many_lines)]

@@ -2,6 +2,7 @@ use std::ops::BitOr;
 
 use pumpkin_data::entity::EntityStatus;
 use pumpkin_data::tag::{self, Taggable};
+use pumpkin_protocol::bedrock::server::actor_event::ActorEventID;
 
 use super::{Controls, Goal};
 use crate::entity::mob::Mob;
@@ -102,7 +103,11 @@ impl Goal for OfferFlowerGoal {
         } else {
             let entity = mob.get_entity();
             let world = entity.world.load();
-            world.send_entity_status(entity, EntityStatus::OfferFlower, None);
+            world.send_entity_status(
+                entity,
+                EntityStatus::OfferFlower,
+                ActorEventID::StartOfferFlower,
+            );
         }
     }
 
@@ -112,7 +117,11 @@ impl Goal for OfferFlowerGoal {
         } else {
             let entity = mob.get_entity();
             let world = entity.world.load();
-            world.send_entity_status(entity, EntityStatus::StopOfferFlower, None);
+            world.send_entity_status(
+                entity,
+                EntityStatus::StopOfferFlower,
+                ActorEventID::StopOfferFlower,
+            );
         }
 
         if self.tick == 0
