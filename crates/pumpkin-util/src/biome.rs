@@ -64,6 +64,14 @@ impl TemperatureModifier {
     }
 }
 
+/// Vanilla `Biome.Precipitation`: what falls at a position while it rains.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Precipitation {
+    None,
+    Rain,
+    Snow,
+}
+
 /// Represents weather information for a biome, including temperature and precipitation.
 #[derive(Clone, Debug)]
 pub struct Weather {
@@ -144,6 +152,18 @@ impl Weather {
     #[must_use]
     pub fn warm_enough_to_rain(&self, x: i32, y: i32, z: i32, sea_level: i32) -> bool {
         self.compute_temperature(f64::from(x), y, f64::from(z), sea_level) >= 0.15
+    }
+
+    /// Vanilla `Biome.getPrecipitationAt`.
+    #[must_use]
+    pub fn precipitation_at(&self, x: i32, y: i32, z: i32, sea_level: i32) -> Precipitation {
+        if !self.has_precipitation {
+            Precipitation::None
+        } else if self.warm_enough_to_rain(x, y, z, sea_level) {
+            Precipitation::Rain
+        } else {
+            Precipitation::Snow
+        }
     }
 
     #[must_use]

@@ -124,6 +124,8 @@ pub struct TickData {
     pub block_ticks: Vec<OrderedTick<&'static Block>>,
     pub fluid_ticks: Vec<OrderedTick<&'static Fluid>>,
     pub random_ticks: Vec<RandomTickSample>,
+    /// Positions picked for vanilla's `ServerLevel.tickPrecipitation`, in chunk order.
+    pub precipitation: Vec<BlockPos>,
 }
 
 #[derive(Clone, Copy)]
@@ -564,6 +566,7 @@ impl Level {
             block_ticks: Vec::new(),
             fluid_ticks: Vec::new(),
             random_ticks: Vec::with_capacity(active_chunks.len() * 3),
+            precipitation: Vec::new(),
         };
 
         // 1. Process active chunks (random ticks, block entities)
@@ -576,6 +579,17 @@ impl Level {
                 let chunk_x_base = chunk.x * 16;
                 let chunk_z_base = chunk.z * 16;
                 let section_count = chunk.section.count;
+
+                for _ in 0..samples_per_section {
+                    if gameplay::game_random().next_bounded_i32(48) == 0 {
+                        ticks.precipitation.push(self.get_block_random_pos(
+                            chunk_x_base,
+                            0,
+                            chunk_z_base,
+                            15,
+                        ));
+                    }
+                }
 
                 // Use the bitmask to skip sections
                 let mask = chunk.section.randomly_ticking_mask.load(Ordering::Relaxed);

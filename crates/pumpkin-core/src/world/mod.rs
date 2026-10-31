@@ -69,7 +69,9 @@ pub use explosion::{
     ExplosionInteraction, SimpleExplosionDamageCalculator,
 };
 use pumpkin_config::BasicConfiguration;
-use pumpkin_data::block_properties::{blocks_movement, is_air};
+use pumpkin_data::block_properties::{
+    SnowLikeProperties, WaterLikeProperties, blocks_movement, is_air,
+};
 use pumpkin_data::block_rotation::{Mirror, Rotation};
 use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::dimension::Dimension;
@@ -77,6 +79,7 @@ use pumpkin_data::entity::MobCategory;
 use pumpkin_data::fluid::FluidState;
 use pumpkin_data::game_rules::{GameRule, GameRuleValue};
 use pumpkin_data::noise_settings::NoiseSettings;
+use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::{
     Block, BlockStateId,
     entity::{EntityStatus, EntityType},
@@ -139,6 +142,7 @@ use pumpkin_protocol::{
         CBlockEvent, CParticle, CRemoveMobEffect, CSetEquipment, CUpdateMobEffect,
     },
 };
+use pumpkin_util::biome::{Precipitation, Weather as BiomeWeather};
 use pumpkin_util::math::{get_section_cord, position::chunk_section_from_pos, vector2::Vector2};
 use pumpkin_util::random::gameplay::{self, game_random};
 use pumpkin_util::resource_location::ResourceLocation;
@@ -2123,6 +2127,16 @@ impl World {
                 }
             });
 
+        for pos in tick_data.precipitation {
+            gameplay::with_owner(
+                || {
+                    let chunk = pos.chunk_position();
+                    format!("chunk@{},{}", chunk.x, chunk.y)
+                },
+                || self.tick_precipitation(pos),
+            );
+        }
+
         // 3. Parallel Random Ticks via Rayon. Chunks tick in parallel, but each chunk's samples
         // run in order on one thread, like vanilla's `ServerLevel.tickChunk`.
         let world = self.clone();
@@ -2682,6 +2696,84 @@ impl World {
                 .get_biome(pos)
                 .weather
                 .is_rain_at(pos.0.x, pos.0.y, pos.0.z, self.sea_level)
+    }
+
+    /// Vanilla `ServerLevel.tickPrecipitation`: freezes water and piles up snow at the top of the
+    /// column at `pos`.
+    pub fn tick_precipitation(self: &Arc<Self>, pos: BlockPos) {
+        let top = BlockPos::new(
+            pos.0.x,
+            self.get_heightmap_height(MotionBlocking, pos.0.x, pos.0.z) + 1,
+            pos.0.z,
+        );
+        let below = top.down();
+        let weather = &self.get_biome(&top).weather;
+        if self.should_freeze(weather, &below) {
+            self.set_block_state(&below, Block::ICE.default_state.id, BlockFlags::NOTIFY_ALL);
+        }
+
+        if self.is_raining() {
+            let max_height = self
+                .level_info
+                .load()
+                .game_rules
+                .max_snow_accumulation_height;
+            if max_height > 0 && self.should_snow(weather, &top) {
+                let (block, state_id) = self.get_block_and_state_id(&top);
+                if block == &Block::SNOW {
+                    let mut props = SnowLikeProperties::from_state_id(state_id);
+                    if i64::from(props.layers) < max_height.min(8) {
+                        props.layers += 1;
+                        // TODO: vanilla pushes entities up out of the new layer (`Block.pushEntitiesUp`).
+                        self.set_block_state(
+                            &top,
+                            props.to_state_id(&Block::SNOW),
+                            BlockFlags::NOTIFY_ALL,
+                        );
+                    }
+                } else {
+                    self.set_block_state(
+                        &top,
+                        Block::SNOW.default_state.id,
+                        BlockFlags::NOTIFY_ALL,
+                    );
+                }
+            }
+        }
+    }
+
+    /// Vanilla `Biome.shouldFreeze` with the neighbour check: a still water source in the cold
+    /// with at least one side not water.
+    fn should_freeze(&self, weather: &BiomeWeather, pos: &BlockPos) -> bool {
+        if weather.warm_enough_to_rain(pos.0.x, pos.0.y, pos.0.z, self.sea_level)
+            || !self.is_within_build_height(pos)
+            || self.get_block_light_level(pos).unwrap_or(0) >= 10
+        {
+            return false;
+        }
+        let (block, state_id) = self.get_block_and_state_id(pos);
+        if block != &Block::WATER || WaterLikeProperties::from_state_id(state_id).level != 0 {
+            return false;
+        }
+        let is_water = |pos: BlockPos| self.get_fluid(&pos).has_tag(&tag::Fluid::MINECRAFT_WATER);
+        !(is_water(pos.west())
+            && is_water(pos.east())
+            && is_water(pos.north())
+            && is_water(pos.south()))
+    }
+
+    /// Vanilla `Biome.shouldSnow`: snow falls here and a snow layer could sit on what's below.
+    fn should_snow(&self, weather: &BiomeWeather, pos: &BlockPos) -> bool {
+        if weather.precipitation_at(pos.0.x, pos.0.y, pos.0.z, self.sea_level)
+            != Precipitation::Snow
+            || !self.is_within_build_height(pos)
+            || self.get_block_light_level(pos).unwrap_or(0) >= 10
+        {
+            return false;
+        }
+        let state = self.get_block_state(pos);
+        (state.is_air() || state.id.to_block() == &Block::SNOW)
+            && crate::block::blocks::snow::can_place_at(self, pos)
     }
 
     pub fn set_raining(&self, raining: bool) {
