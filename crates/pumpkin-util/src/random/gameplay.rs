@@ -23,7 +23,7 @@ use std::{
 use uuid::Uuid;
 
 use super::{RandomImpl, get_seed, legacy_rand::LegacyRand};
-use crate::math::java_string_hash;
+use crate::math::{java_string_hash, position::BlockPos};
 
 /// Owner of draws made outside any owner scope.
 const MISC_OWNER: &str = "misc";
@@ -43,6 +43,8 @@ struct Lockdown {
     /// before the reset, such as an existing entity's UUID.
     epoch: AtomicI32,
     streams: Mutex<HashMap<Arc<str>, LegacyRand>>,
+    /// Per-owner stand-ins for vanilla's level-wide `randValue`; see [`block_random_pos`].
+    rand_values: Mutex<HashMap<Arc<str>, i32>>,
     entity_keys: Mutex<HashMap<i32, Arc<str>>>,
     key_counts: Mutex<HashMap<String, u32>>,
     log: Option<Mutex<BufWriter<File>>>,
@@ -64,6 +66,7 @@ fn lockdown() -> Option<&'static Lockdown> {
                 seed,
                 epoch: AtomicI32::new(0),
                 streams: Mutex::default(),
+                rand_values: Mutex::default(),
                 entity_keys: Mutex::default(),
                 key_counts: Mutex::default(),
                 log,
@@ -79,6 +82,18 @@ pub fn is_locked_down() -> bool {
 }
 
 impl Lockdown {
+    fn owner() -> Arc<str> {
+        OWNERS
+            .with_borrow(|owners| owners.last().cloned())
+            .unwrap_or_else(|| Arc::from(MISC_OWNER))
+    }
+
+    /// Java: `new LegacyRandomSource(seed ^ (long) key.hashCode() ^ ((long) epoch << 32))`.
+    fn stream_for(&self, key: &str) -> LegacyRand {
+        let epoch = i64::from(self.epoch.load(Ordering::Relaxed)) << 32;
+        LegacyRand::from_seed((self.seed ^ i64::from(java_string_hash(key)) ^ epoch) as u64)
+    }
+
     fn draw<T>(
         &self,
         method: &str,
@@ -86,28 +101,28 @@ impl Lockdown {
         draw: impl FnOnce(&mut LegacyRand) -> T,
         format: impl FnOnce(&T) -> String,
     ) -> T {
-        let owner = OWNERS
-            .with_borrow(|owners| owners.last().cloned())
-            .unwrap_or_else(|| Arc::from(MISC_OWNER));
+        let owner = Self::owner();
         let value = {
             let mut streams = self.streams.lock().unwrap_or_else(PoisonError::into_inner);
-            let stream = streams.entry(owner.clone()).or_insert_with(|| {
-                // Java: `new LegacyRandomSource(seed ^ (long) key.hashCode() ^ ((long) epoch << 32))`.
-                let epoch = i64::from(self.epoch.load(Ordering::Relaxed)) << 32;
-                LegacyRand::from_seed(
-                    (self.seed ^ i64::from(java_string_hash(&owner)) ^ epoch) as u64,
-                )
-            });
+            let stream = streams
+                .entry(owner.clone())
+                .or_insert_with(|| self.stream_for(&owner));
             draw(stream)
         };
-        if let Some(log) = &self.log {
+        if self.log.is_some() {
             let arg = arg.map_or_else(|| "-".to_string(), |arg| arg.to_string());
-            let mut log = log.lock().unwrap_or_else(PoisonError::into_inner);
-            // Flushed per line: the server is usually stopped without running destructors.
-            let _ = writeln!(log, "{owner}\t{method}\t{arg}\t{}", format(&value));
-            let _ = log.flush();
+            self.write(&owner, method, &arg, &format(&value));
         }
         value
+    }
+
+    fn write(&self, owner: &str, method: &str, arg: &str, result: &str) {
+        if let Some(log) = &self.log {
+            let mut log = log.lock().unwrap_or_else(PoisonError::into_inner);
+            // Flushed per line: the server is usually stopped without running destructors.
+            let _ = writeln!(log, "{owner}	{method}	{arg}	{result}");
+            let _ = log.flush();
+        }
     }
 
     fn entity_key(&self, entity_id: i32, base: impl FnOnce() -> String) -> Arc<str> {
@@ -147,6 +162,11 @@ pub fn reset() {
         .unwrap_or_else(PoisonError::into_inner);
     lockdown.epoch.fetch_add(1, Ordering::Relaxed);
     streams.clear();
+    lockdown
+        .rand_values
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clear();
     drop(streams);
     lockdown
         .key_counts
@@ -190,6 +210,52 @@ pub fn register_entity(entity_id: i32, base: impl FnOnce() -> String) {
     if let Some(lockdown) = lockdown() {
         lockdown.entity_key(entity_id, base);
     }
+}
+
+/// Vanilla `Level.getBlockRandomPos`: steps `rand_value`, the level's cheap LCG (not its random
+/// source), and picks a position in the 16 by 16 column at `x`, `y`, `z`, with `y_mask` bounding
+/// the height.
+///
+/// Under the lockdown each owner keeps its own `randValue`, starting at
+/// `new LegacyRandomSource(seed ^ ("randValue:" + owner).hashCode() ^ (epoch << 32)).nextInt()`,
+/// so positions don't depend on the order chunks tick in. Each position is logged under
+/// `<owner>/pos`, apart from the owner's draws, because Pumpkin picks positions before ticking.
+pub fn block_random_pos(rand_value: &AtomicI32, x: i32, y: i32, z: i32, y_mask: i32) -> BlockPos {
+    const fn step(value: i32) -> i32 {
+        value.wrapping_mul(3).wrapping_add(1_013_904_223)
+    }
+    let value = lockdown().map_or_else(
+        || step(rand_value.update(Ordering::Relaxed, Ordering::Relaxed, step)),
+        |lockdown| {
+            let mut values = lockdown
+                .rand_values
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            let value = values.entry(Lockdown::owner()).or_insert_with_key(|owner| {
+                lockdown
+                    .stream_for(&format!("randValue:{owner}"))
+                    .next_i32()
+            });
+            *value = step(*value);
+            *value
+        },
+    ) >> 2;
+    let pos = BlockPos::new(
+        x + (value & 15),
+        y + (value >> 16 & y_mask),
+        z + (value >> 8 & 15),
+    );
+    if let Some(lockdown) = lockdown()
+        && lockdown.log.is_some()
+    {
+        lockdown.write(
+            &format!("{}/pos", Lockdown::owner()),
+            "getBlockRandomPos",
+            &format!("{x},{y},{z},{y_mask}"),
+            &format!("{},{},{}", pos.0.x, pos.0.y, pos.0.z),
+        );
+    }
+    pos
 }
 
 /// Makes draws belong to `owner` until dropped. Prefer [`with_owner`]; this is for loops where

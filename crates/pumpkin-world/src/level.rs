@@ -22,13 +22,14 @@ use pumpkin_data::biome::Biome;
 use pumpkin_data::dimension::Dimension;
 use pumpkin_data::{Block, BlockStateId, block_properties::has_random_ticks, fluid::Fluid};
 use pumpkin_util::math::{position::BlockPos, vector2::Vector2};
+use pumpkin_util::random::gameplay;
 use pumpkin_util::world_seed::Seed;
 use rustc_hash::FxHashSet;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::Duration;
 use std::{
     path::PathBuf,
-    sync::atomic::{AtomicBool, AtomicU64, Ordering},
+    sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering},
     thread,
 };
 use tokio::time::timeout;
@@ -75,6 +76,8 @@ pub struct Level {
 
     /// Counts the number of ticks that have been scheduled for this world
     schedule_tick_counts: AtomicU64,
+    /// Vanilla `Level.randValue`, the state behind [`Self::get_block_random_pos`].
+    rand_value: AtomicI32,
 
     // Chunks that are paired with chunk watchers. When a chunk is no longer watched, it is removed
     // from the loaded chunks map and sent to the underlying ChunkIO
@@ -294,6 +297,8 @@ impl Level {
 
         let level_ref = Arc::new(Self {
             seed,
+            // Vanilla seeds it from a thread-local random, not the level's.
+            rand_value: AtomicI32::new(rand::random()),
             world_portal: ArcSwap::new(Arc::new(None)),
             world_gen: ArcSwap::new(world_gen),
             level_folder,
@@ -542,6 +547,12 @@ impl Level {
         });
     }
 
+    /// Vanilla `Level.getBlockRandomPos`: a position in the 16 by 16 column at `x`, `y`, `z`,
+    /// with `y_mask` bounding the height.
+    pub fn get_block_random_pos(&self, x: i32, y: i32, z: i32, y_mask: i32) -> BlockPos {
+        gameplay::block_random_pos(&self.rand_value, x, y, z, y_mask)
+    }
+
     pub fn get_tick_data(
         &self,
         active_chunks: &FxHashSet<Vector2<i32>>,
@@ -559,6 +570,9 @@ impl Level {
         for pos in active_chunks {
             if let Some(chunk) = self.loaded_chunks.get(pos) {
                 let chunk = chunk.value();
+                // Vanilla `ServerLevel.tickChunk`, which the RNG lockdown keys by chunk.
+                let _owner = gameplay::is_locked_down()
+                    .then(|| gameplay::OwnerScope::enter(format!("chunk@{},{}", chunk.x, chunk.z)));
                 let chunk_x_base = chunk.x * 16;
                 let chunk_z_base = chunk.z * 16;
                 let section_count = chunk.section.count;
@@ -579,21 +593,18 @@ impl Level {
                         }
                         let y_base = min_y + (i as i32 * 16);
                         for _ in 0..samples_per_section {
-                            let r = rand::random::<u32>();
-                            let x_offset = (r & 0xF) as usize;
-                            let z_offset = (r >> 8 & 0xF) as usize;
-                            let y_in_section = ((r >> 4) & 0xF) as usize;
-
-                            let block_state_id = sections[i].get(x_offset, y_in_section, z_offset);
+                            let position =
+                                self.get_block_random_pos(chunk_x_base, y_base, chunk_z_base, 15);
+                            let block_state_id = sections[i].get(
+                                (position.0.x - chunk_x_base) as usize,
+                                (position.0.y - y_base) as usize,
+                                (position.0.z - chunk_z_base) as usize,
+                            );
                             let tick_block = has_random_ticks(block_state_id);
                             let tick_fluid = has_random_ticking_fluid(block_state_id);
                             if tick_block || tick_fluid {
                                 ticks.random_ticks.push(RandomTickSample {
-                                    position: BlockPos::new(
-                                        chunk_x_base + x_offset as i32,
-                                        y_base + y_in_section as i32,
-                                        chunk_z_base + z_offset as i32,
-                                    ),
+                                    position,
                                     tick_block,
                                     tick_fluid,
                                 });
