@@ -22,10 +22,12 @@ import java.security.ProtectionDomain;
  * Rewrites five Minecraft classes:
  * <ul>
  *   <li>{@code Entity} and {@code Level}: {@code RandomSource.create()} in the constructors (the
- *       {@code random} field) becomes {@link Router#routedRandom()}.</li>
+ *       {@code random} field) becomes {@link Router#routedRandom()}. {@code Level.getBlockRandomPos}
+ *       becomes {@link Router#blockRandomPos}.</li>
  *   <li>{@code ServerLevel}: entity, passenger, block, fluid and chunk ticks push their owner on
  *       entry and pop it before every return; {@code addEntity} and {@code addPlayer} register the
- *       entity's owner key first.</li>
+ *       entity's owner key first. In {@code tickChunk}, block and fluid random ticks go through
+ *       {@link Router#randomTick}, which logs them.</li>
  *   <li>{@code ServerChunkCache}: {@code tickChunks} runs as {@code chunks} and each
  *       {@code tickSpawningChunk} as that chunk.</li>
  *   <li>{@code ServerTickRateManager.setFrozen}: calls {@link Router#setFrozen} first.</li>
@@ -43,8 +45,8 @@ final class Transformer implements ClassFileTransformer {
     public byte[] transform(ClassLoader loader, String name, Class<?> redefined, ProtectionDomain domain, byte[] bytes) {
         try {
             return switch (name) {
-                case "net/minecraft/world/entity/Entity", "net/minecraft/world/level/Level" ->
-                    rewrite(loader, bytes, Transformer::routeRandomField);
+                case "net/minecraft/world/entity/Entity" -> rewrite(loader, bytes, Transformer::routeRandomField);
+                case "net/minecraft/world/level/Level" -> rewrite(loader, bytes, Transformer::level);
                 case "net/minecraft/server/level/ServerLevel" -> rewrite(loader, bytes, Transformer::serverLevel);
                 case "net/minecraft/server/ServerTickRateManager" -> rewrite(loader, bytes, Transformer::tickRateManager);
                 case "net/minecraft/server/level/ServerChunkCache" -> rewrite(loader, bytes, Transformer::chunkCache);
@@ -96,6 +98,43 @@ final class Transformer implements ClassFileTransformer {
         };
     }
 
+    private static CodeTransform level(MethodModel method) {
+        if (method.methodName().equalsString("getBlockRandomPos")
+            && method.methodType().equalsString("(IIII)Lnet/minecraft/core/BlockPos;")) {
+            // Replaces the body: the per-owner randValue lives in the Router.
+            return new CodeTransform() {
+                @Override
+                public void atStart(CodeBuilder builder) {
+                    builder.iload(1).iload(2).iload(3).iload(4);
+                    builder.invokestatic(ROUTER, "blockRandomPos", MethodTypeDesc.of(
+                        BLOCK_POS, ConstantDescs.CD_int, ConstantDescs.CD_int, ConstantDescs.CD_int, ConstantDescs.CD_int));
+                    builder.areturn();
+                }
+
+                @Override
+                public void accept(CodeBuilder builder, CodeElement element) {
+                }
+            };
+        }
+        return routeRandomField(method);
+    }
+
+    /** Turns {@code state.randomTick(level, pos, random)} into {@code Router.randomTick(state, level, pos, random)}. */
+    private static CodeTransform loggedRandomTicks() {
+        return (builder, element) -> {
+            if (element instanceof InvokeInstruction call
+                && call.opcode() == Opcode.INVOKEVIRTUAL
+                && call.name().equalsString("randomTick")
+                && (call.owner().asInternalName().equals("net/minecraft/world/level/block/state/BlockState")
+                    || call.owner().asInternalName().equals("net/minecraft/world/level/material/FluidState"))) {
+                MethodTypeDesc type = call.typeSymbol().insertParameterTypes(0, call.owner().asSymbol());
+                builder.invokestatic(ROUTER, "randomTick", type);
+            } else {
+                builder.with(element);
+            }
+        };
+    }
+
     private static CodeTransform serverLevel(MethodModel method) {
         String key = method.methodName().stringValue() + method.methodType().stringValue();
         return switch (key) {
@@ -107,7 +146,8 @@ final class Transformer implements ClassFileTransformer {
                 scoped(1, "enterBlock", BLOCK_POS);
             case "tickFluid(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/material/Fluid;)V" ->
                 scoped(1, "enterFluid", BLOCK_POS);
-            case "tickChunk(Lnet/minecraft/world/level/chunk/LevelChunk;I)V" -> scoped(1, "enterChunk", LEVEL_CHUNK);
+            case "tickChunk(Lnet/minecraft/world/level/chunk/LevelChunk;I)V" ->
+                scoped(1, "enterChunk", LEVEL_CHUNK).andThen(loggedRandomTicks());
             case "addEntity(Lnet/minecraft/world/entity/Entity;)Z",
                  "addPlayer(Lnet/minecraft/server/level/ServerPlayer;)V" -> registering();
             default -> null;

@@ -212,6 +212,16 @@ pub fn register_entity(entity_id: i32, base: impl FnOnce() -> String) {
     }
 }
 
+/// Logs something that isn't a draw under the current owner, such as the block a random tick
+/// hit, so the harness compares it like one. Does nothing unless the lockdown log is on.
+pub fn log_event(method: &str, arg: impl FnOnce() -> String, result: impl FnOnce() -> String) {
+    if let Some(lockdown) = lockdown()
+        && lockdown.log.is_some()
+    {
+        lockdown.write(&Lockdown::owner(), method, &arg(), &result());
+    }
+}
+
 /// Vanilla `Level.getBlockRandomPos`: steps `rand_value`, the level's cheap LCG (not its random
 /// source), and picks a position in the 16 by 16 column at `x`, `y`, `z`, with `y_mask` bounding
 /// the height.

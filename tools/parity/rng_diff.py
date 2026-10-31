@@ -38,7 +38,11 @@ def read_log(path):
 
 
 def compare(vanilla, pumpkin):
-    """Per owner: (matching draws, first divergent index or None, vanilla draw, pumpkin draw)."""
+    """Per owner: (matching draws, first divergent index or None, vanilla draw, pumpkin draw).
+
+    The index is None when the draws match, and also when one log only goes on longer: the servers
+    keep ticking for a moment after a trace ends, so one of them often gets a few more ticks in.
+    """
     results = {}
     for owner in sorted(set(vanilla) & set(pumpkin)):
         v, p = vanilla[owner], pumpkin[owner]
@@ -47,7 +51,7 @@ def compare(vanilla, pumpkin):
             if a[1:] != b[1:]:
                 break
             matching += 1
-        if matching == len(v) == len(p):
+        if matching == min(len(v), len(p)):
             results[owner] = (matching, None, None, None)
         else:
             results[owner] = (matching, matching,
@@ -71,11 +75,12 @@ def report(vanilla_path, pumpkin_path):
         print(f"RNG: no draw log at {', '.join(missing)}")
         return 1
     results = compare(vanilla, pumpkin)
-    same = [o for o, r in results.items() if r[1] is None]
+    same = [o for o, r in results.items() if r[1] is None and len(vanilla[o]) == len(pumpkin[o])]
+    longer = [o for o, r in results.items() if r[1] is None and len(vanilla[o]) != len(pumpkin[o])]
     differ = [o for o, r in results.items() if r[1] is not None]
     only_vanilla = sorted(set(vanilla) - set(pumpkin))
     only_pumpkin = sorted(set(pumpkin) - set(vanilla))
-    print(f"RNG: {len(same)} owners match, {len(differ)} differ, "
+    print(f"RNG: {len(same)} owners match, {len(longer)} match until one log ends, {len(differ)} differ, "
           f"{len(only_vanilla)} only on vanilla, {len(only_pumpkin)} only on Pumpkin")
     for owner in differ:
         matching, index, v, p = results[owner]

@@ -2162,22 +2162,29 @@ impl World {
                             (false, false) => (None, None),
                         };
 
-                    if let Some(block) = block
-                        && let Some(pumpkin_block) =
+                    let pos_key = || format!("{},{},{}", pos.0.x, pos.0.y, pos.0.z);
+                    if let Some(block) = block {
+                        gameplay::log_event("randomTick", pos_key, || block.name.to_owned());
+                        if let Some(pumpkin_block) =
                             world.block_registry.get_pumpkin_block(block.id)
-                    {
-                        pumpkin_block.random_tick(RandomTickArgs {
-                            world: &world,
-                            block,
-                            position: &pos,
-                        });
+                        {
+                            pumpkin_block.random_tick(RandomTickArgs {
+                                world: &world,
+                                block,
+                                position: &pos,
+                            });
+                        }
                     }
 
-                    if let Some(fluid) = fluid
-                        && let Some(pumpkin_fluid) =
+                    if let Some(fluid) = fluid {
+                        gameplay::log_event("fluidRandomTick", pos_key, || {
+                            fluid.name.trim_start_matches("flowing_").to_owned()
+                        });
+                        if let Some(pumpkin_fluid) =
                             world.block_registry.get_pumpkin_fluid(fluid.id)
-                    {
-                        pumpkin_fluid.random_tick(fluid, &world, &pos);
+                        {
+                            pumpkin_fluid.random_tick(fluid, &world, &pos);
+                        }
                     }
                 }
             });

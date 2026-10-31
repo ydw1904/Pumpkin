@@ -6,12 +6,16 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.levelgen.LegacyRandomSource;
+import net.minecraft.world.level.material.FluidState;
 
 /**
  * Keeps the current owner of gameplay randomness and one Java-LCG stream per owner.
@@ -28,12 +32,16 @@ import net.minecraft.world.level.levelgen.LegacyRandomSource;
  * </ul>
  * Stream for key K: {@code new LegacyRandomSource(seed ^ (long) K.hashCode() ^ ((long) epoch << 32))},
  * where epoch counts {@code /tick freeze} resets (see {@link #setFrozen}).
+ *
+ * <p>{@code Level.getBlockRandomPos} steps a per-owner {@code randValue} instead of the level's
+ * (see {@link #blockRandomPos}), so random tick positions don't depend on chunk order.
  */
 public final class Router {
     static final long SEED = Long.parseLong(System.getProperty("parity.rng.seed"));
     private static final String MISC = "misc";
     private static final ThreadLocal<ArrayDeque<String>> OWNERS = ThreadLocal.withInitial(ArrayDeque::new);
     private static final Map<String, LegacyRandomSource> STREAMS = new ConcurrentHashMap<>();
+    private static final Map<String, int[]> RAND_VALUES = new ConcurrentHashMap<>();
     private static final Map<Entity, String> KEYS = new WeakHashMap<>();
     private static final Map<String, Integer> REGISTRATIONS = new HashMap<>();
     // Resets so far. Mixed into stream seeds so a restarted stream doesn't replay values drawn
@@ -79,9 +87,46 @@ public final class Router {
         synchronized (Router.class) {
             epoch++;
             STREAMS.clear();
+            RAND_VALUES.clear();
             REGISTRATIONS.clear();
         }
         DrawLog.reset();
+    }
+
+    /**
+     * Replaces {@code Level.getBlockRandomPos}. The owner's randValue starts at
+     * {@code new LegacyRandomSource(seed ^ ("randValue:" + owner).hashCode() ^ (epoch << 32)).nextInt()}.
+     * Positions are logged under {@code <owner>/pos}, apart from the owner's draws, because
+     * Pumpkin picks a tick's positions before running it.
+     */
+    public static BlockPos blockRandomPos(int xo, int yo, int zo, int yMask) {
+        String owner = owner();
+        int[] state = RAND_VALUES.computeIfAbsent(owner, key -> new int[] {
+            new LegacyRandomSource(SEED ^ (long) ("randValue:" + key).hashCode() ^ ((long) epoch << 32)).nextInt()
+        });
+        int value;
+        synchronized (state) {
+            state[0] = state[0] * 3 + 1013904223;
+            value = state[0] >> 2;
+        }
+        BlockPos pos = new BlockPos(xo + (value & 15), yo + (value >> 16 & yMask), zo + (value >> 8 & 15));
+        DrawLog.write(owner + "/pos", "getBlockRandomPos", xo + "," + yo + "," + zo + "," + yMask,
+            pos.getX() + "," + pos.getY() + "," + pos.getZ());
+        return pos;
+    }
+
+    /** Logs which block a random tick hit, then runs it. */
+    public static void randomTick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
+        DrawLog.write(owner(), "randomTick", pos.getX() + "," + pos.getY() + "," + pos.getZ(),
+            BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath());
+        state.randomTick(level, pos, random);
+    }
+
+    /** Logs a fluid random tick by its fluid, source and flowing alike, then runs it. */
+    public static void randomTick(FluidState state, ServerLevel level, BlockPos pos, RandomSource random) {
+        DrawLog.write(owner(), "fluidRandomTick", pos.getX() + "," + pos.getY() + "," + pos.getZ(),
+            BuiltInRegistries.FLUID.getKey(state.getType()).getPath().replaceFirst("^flowing_", ""));
+        state.randomTick(level, pos, random);
     }
 
     public static void enterChunks() {
