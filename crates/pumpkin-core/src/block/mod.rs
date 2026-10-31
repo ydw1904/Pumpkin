@@ -3,6 +3,7 @@ use pumpkin_data::{Block, BlockId, BlockState};
 use pumpkin_util::random::gameplay::game_random;
 
 use pumpkin_data::BlockStateId;
+use pumpkin_util::biome::Precipitation;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::random::RandomGenerator;
 
@@ -123,6 +124,10 @@ pub trait BlockBehaviour: Send + Sync {
     }
 
     fn random_tick(&self, _args: RandomTickArgs<'_>) {}
+
+    /// Vanilla `Block.handlePrecipitation`: rain or snow fell on this block during a chunk's
+    /// precipitation tick.
+    fn handle_precipitation(&self, _args: HandlePrecipitationArgs<'_>) {}
 
     fn can_place_at(&self, _args: CanPlaceAtArgs<'_>) -> bool {
         true
@@ -315,6 +320,14 @@ pub struct RandomTickArgs<'a> {
     pub world: &'a Arc<World>,
     pub block: &'a Block,
     pub position: &'a BlockPos,
+}
+
+pub struct HandlePrecipitationArgs<'a> {
+    pub world: &'a Arc<World>,
+    pub block: &'a Block,
+    pub state_id: BlockStateId,
+    pub position: &'a BlockPos,
+    pub precipitation: Precipitation,
 }
 
 pub struct CanPlaceAtArgs<'a> {

@@ -39,7 +39,7 @@ pub mod stopwatches;
 pub mod time;
 pub mod villager_poi;
 
-use crate::block::RandomTickArgs;
+use crate::block::{HandlePrecipitationArgs, RandomTickArgs};
 use crate::world::chunker::is_within_chebyshev_distance;
 use crate::{block::BlockEvent, entity::item::ItemEntity};
 use crate::{
@@ -2737,6 +2737,21 @@ impl World {
                         Block::SNOW.default_state.id,
                         BlockFlags::NOTIFY_ALL,
                     );
+                }
+            }
+
+            let precipitation =
+                weather.precipitation_at(below.0.x, below.0.y, below.0.z, self.sea_level);
+            if precipitation != Precipitation::None {
+                let (block, state_id) = self.get_block_and_state_id(&below);
+                if let Some(pumpkin_block) = self.block_registry.get_pumpkin_block(block.id) {
+                    pumpkin_block.handle_precipitation(HandlePrecipitationArgs {
+                        world: self,
+                        block,
+                        state_id,
+                        position: &below,
+                        precipitation,
+                    });
                 }
             }
         }

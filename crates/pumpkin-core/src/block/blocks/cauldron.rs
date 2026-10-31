@@ -2,15 +2,22 @@ use std::sync::Arc;
 
 use crate::block::registry::BlockActionResult;
 use crate::block::{
-    BlockBehaviour, BlockMetadata, GetComparatorOutputArgs, PathComputationType, UseWithItemArgs,
+    BlockBehaviour, BlockMetadata, GetComparatorOutputArgs, HandlePrecipitationArgs,
+    PathComputationType, UseWithItemArgs,
 };
 use pumpkin_data::block_properties::WaterCauldronLikeProperties;
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tag::Taggable;
 use pumpkin_data::{Block, BlockId, BlockState};
+use pumpkin_util::biome::Precipitation;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::world::BlockFlags;
+
+const RAIN_FILL_CHANCE: f32 = 0.05;
+const POWDER_SNOW_FILL_CHANCE: f32 = 0.1;
 
 pub struct CauldronBlock;
 
@@ -373,6 +380,58 @@ impl BlockBehaviour for CauldronBlock {
         }
 
         BlockActionResult::PassToDefaultBlockAction
+    }
+
+    /// Vanilla `CauldronBlock` and `LayeredCauldronBlock.handlePrecipitation`. Lava cauldrons
+    /// don't take part, so they don't draw.
+    fn handle_precipitation(&self, args: HandlePrecipitationArgs<'_>) {
+        if args.block.id == BlockId::LAVA_CAULDRON {
+            return;
+        }
+        // `CauldronBlock.shouldHandlePrecipitation` draws before anything else is checked.
+        let chance = match args.precipitation {
+            Precipitation::Rain => RAIN_FILL_CHANCE,
+            Precipitation::Snow => POWDER_SNOW_FILL_CHANCE,
+            Precipitation::None => return,
+        };
+        if game_random().next_f32() >= chance {
+            return;
+        }
+        let (new_state_id, old_level, new_level) = match (args.block.id, args.precipitation) {
+            (BlockId::CAULDRON, Precipitation::Rain) => {
+                (Block::WATER_CAULDRON.default_state.id, 0, 1)
+            }
+            (BlockId::CAULDRON, Precipitation::Snow) => {
+                (Block::POWDER_SNOW_CAULDRON.default_state.id, 0, 1)
+            }
+            (BlockId::WATER_CAULDRON, Precipitation::Rain)
+            | (BlockId::POWDER_SNOW_CAULDRON, Precipitation::Snow) => {
+                let mut props = WaterCauldronLikeProperties::from_state_id(args.state_id);
+                if props.level == 3 {
+                    return;
+                }
+                let old_level = props.level;
+                props.level += 1;
+                (props.to_state_id(args.block), old_level, props.level)
+            }
+            _ => return,
+        };
+        if !fire_cauldron_change(
+            args.world,
+            *args.position,
+            i32::from(old_level),
+            i32::from(new_level),
+            crate::plugin::block::cauldron_level_change::CauldronChangeReason::NaturalFill,
+            None,
+        ) {
+            return;
+        }
+        args.world
+            .set_block_state(args.position, new_state_id, BlockFlags::NOTIFY_ALL);
+        args.world.emit_game_event(
+            GameEvent::BlockChange.name(),
+            args.position.to_centered_f64(),
+        );
     }
 
     fn get_comparator_output(&self, args: GetComparatorOutputArgs<'_>) -> Option<u8> {
