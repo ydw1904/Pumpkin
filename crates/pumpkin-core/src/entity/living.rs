@@ -1874,12 +1874,17 @@ impl LivingEntity {
     }
 
     pub(crate) fn travel_flying(&self, caller: &dyn EntityBase) {
+        self.travel_flying_at(caller, f64::from(self.get_speed()));
+    }
+
+    /// Vanilla `travelFlying(input, speed)`: `air_speed` in the air, 0.02 in fluids.
+    pub(crate) fn travel_flying_at(&self, caller: &dyn EntityBase, air_speed: f64) {
         let (speed, drag) = if self.entity.is_in_water() {
             (f64::from(0.02f32), f64::from(0.8f32))
         } else if self.entity.touching_lava.load(Relaxed) {
             (f64::from(0.02f32), 0.5)
         } else {
-            (f64::from(self.get_speed()), f64::from(0.91f32))
+            (air_speed, f64::from(0.91f32))
         };
         self.entity
             .update_velocity_from_input(self.movement_input.load(), speed);
