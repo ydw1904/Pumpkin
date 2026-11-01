@@ -21,7 +21,7 @@ use crate::{
     },
     generation::section_coords,
     level::LevelFolder,
-    tick::{ScheduledTick, TickPriority, scheduler::ChunkTickScheduler},
+    tick::{ScheduledTick, TickPriority, saved_tick_delay, scheduler::ChunkTickScheduler},
 };
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector2::Vector2;
@@ -37,6 +37,9 @@ pub mod pump;
 /// Root tags `internal_from_bytes` consumes or `internal_to_bytes` regenerates.
 /// Everything else a chunk carries is data this server does not model, and it
 /// rides through a load/save cycle untouched rather than being dropped.
+/// Pump chunk flag: scheduled tick delays are u32 rather than one byte.
+const LONG_TICK_DELAYS: u8 = 1 << 6;
+
 const MODELLED_ROOT_TAGS: &[&str] = &[
     "DataVersion",
     "xPos",
@@ -230,7 +233,7 @@ where
     let x = nbt.get_int("x")?;
     let y = nbt.get_int("y")?;
     let z = nbt.get_int("z")?;
-    let delay = nbt.get_int("t")? as u8;
+    let delay = saved_tick_delay(nbt.get_int("t")?);
     let priority = TickPriority::try_from(nbt.get_int("p")?).ok()?;
     let res_loc_str = nbt.get_string("i")?;
     let res_loc = ResourceLocation::from_str(res_loc_str).ok()?;
@@ -852,6 +855,8 @@ impl ChunkData {
         if has_post_processing {
             flags |= 1 << 5;
         }
+        // Scheduled tick delays are written as u32; older files wrote one byte.
+        flags |= LONG_TICK_DELAYS;
 
         let status_u8 = match self.status {
             ChunkStatus::Empty => 0,
@@ -922,7 +927,7 @@ impl ChunkData {
             out.put_i32(tick.position.0.x);
             out.put_i32(tick.position.0.y);
             out.put_i32(tick.position.0.z);
-            out.put_u8(tick.delay);
+            out.put_u32(tick.delay);
             out.put_i8(tick.priority as i32 as i8);
             out.put_u16(tick.value.id.as_u16());
         }
@@ -933,7 +938,7 @@ impl ChunkData {
             out.put_i32(tick.position.0.x);
             out.put_i32(tick.position.0.y);
             out.put_i32(tick.position.0.z);
-            out.put_u8(tick.delay);
+            out.put_u32(tick.delay);
             out.put_i8(tick.priority as i32 as i8);
             out.put_u16(tick.value.id);
         }
@@ -1115,8 +1120,17 @@ impl ChunkData {
                 "Unexpected EOF reading block tick count".into(),
             ));
         }
+        let long_tick_delays = (flags & LONG_TICK_DELAYS) != 0;
+        let tick_size = if long_tick_delays { 19 } else { 16 };
+        let read_delay = |buf: &mut &[u8]| {
+            if long_tick_delays {
+                buf.get_u32()
+            } else {
+                u32::from(buf.get_u8())
+            }
+        };
         let block_tick_count = buf.get_u32() as usize;
-        if block_tick_count > MAX_TICKS || buf.remaining() < block_tick_count * 16 {
+        if block_tick_count > MAX_TICKS || buf.remaining() < block_tick_count * tick_size {
             return Err(ChunkParsingError::ErrorDeserializingChunk(
                 "Invalid block tick count".into(),
             ));
@@ -1126,7 +1140,7 @@ impl ChunkData {
             let x = buf.get_i32();
             let y = buf.get_i32();
             let z = buf.get_i32();
-            let delay = buf.get_u8();
+            let delay = read_delay(&mut buf);
             let priority = i32::from(buf.get_i8());
             let raw_id = buf.get_u16();
             if let Ok(priority) = TickPriority::try_from(priority)
@@ -1147,7 +1161,7 @@ impl ChunkData {
             ));
         }
         let fluid_tick_count = buf.get_u32() as usize;
-        if fluid_tick_count > MAX_TICKS || buf.remaining() < fluid_tick_count * 16 {
+        if fluid_tick_count > MAX_TICKS || buf.remaining() < fluid_tick_count * tick_size {
             return Err(ChunkParsingError::ErrorDeserializingChunk(
                 "Invalid fluid tick count".into(),
             ));
@@ -1157,7 +1171,7 @@ impl ChunkData {
             let x = buf.get_i32();
             let y = buf.get_i32();
             let z = buf.get_i32();
-            let delay = buf.get_u8();
+            let delay = read_delay(&mut buf);
             let priority = i32::from(buf.get_i8());
             let raw_id = buf.get_u16();
             if let Ok(priority) = TickPriority::try_from(priority)
@@ -1680,6 +1694,42 @@ mod tests {
         )
         .expect("pump chunk parses");
         assert_eq!(*pump.post_processing.lock().unwrap(), expected);
+    }
+
+    #[test]
+    fn long_tick_delays_survive_anvil_and_pump() {
+        use crate::chunk::ChunkData;
+        use pumpkin_util::math::vector2::Vector2;
+
+        // Frogspawn hatches up to 12000 ticks after it is placed.
+        let mut nbt = test_chunk(vec![test_section(-4, "minecraft:stone", true)]);
+        let mut tick = NbtCompound::new();
+        for (key, value) in [("x", 1), ("y", -64), ("z", 2), ("t", 12000), ("p", 0)] {
+            tick.put_int(key, value);
+        }
+        tick.put_string("i", "minecraft:frogspawn".to_string());
+        nbt.root_tag
+            .put("block_ticks", NbtTag::List(vec![NbtTag::Compound(tick)]));
+
+        let delays = |chunk: &ChunkData| {
+            chunk
+                .block_ticks
+                .to_vec()
+                .iter()
+                .map(|tick| tick.delay)
+                .collect::<Vec<_>>()
+        };
+        let chunk = ChunkData::from_bytes(&nbt.write(), Vector2::new(0, 0)).expect("chunk parses");
+        assert_eq!(delays(&chunk), vec![12000]);
+        let anvil = ChunkData::from_bytes(&chunk.internal_to_bytes(), Vector2::new(0, 0))
+            .expect("Anvil chunk parses");
+        assert_eq!(delays(&anvil), vec![12000]);
+        let pump = ChunkData::internal_from_pump_bytes(
+            &chunk.internal_to_pump_bytes(),
+            Vector2::new(0, 0),
+        )
+        .expect("pump chunk parses");
+        assert_eq!(delays(&pump), vec![12000]);
     }
 
     #[test]

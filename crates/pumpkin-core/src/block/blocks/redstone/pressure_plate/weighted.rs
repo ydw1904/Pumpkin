@@ -132,7 +132,7 @@ impl PressurePlate for WeightedPressurePlateBlock {
         )
     }
 
-    fn tick_rate(&self) -> u8 {
+    fn tick_rate(&self) -> u32 {
         10
     }
 }

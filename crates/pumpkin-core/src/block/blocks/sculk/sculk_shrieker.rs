@@ -32,7 +32,7 @@ const WARDEN_SPAWN_ATTEMPTS: i32 = 20;
 const WARDEN_SPAWN_RANGE_XZ: i32 = 5;
 const WARDEN_SPAWN_RANGE_Y: i32 = 6;
 const DARKNESS_RADIUS: f64 = 40.0;
-const SHRIEKING_TICKS: u8 = 90;
+const SHRIEKING_TICKS: u32 = 90;
 
 pub struct SculkShriekerBlock;
 
@@ -217,7 +217,7 @@ impl BlockBehaviour for SculkShriekerBlock {
             args.world.schedule_fluid_tick(
                 &Fluid::WATER,
                 *args.position,
-                Fluid::WATER.flow_speed as u8,
+                Fluid::WATER.flow_speed,
                 TickPriority::Normal,
             );
         }

@@ -483,7 +483,7 @@ impl ProtoChunk {
         std::mem::take(&mut self.pending_structure_entities)
     }
 
-    pub fn schedule_block_tick(&mut self, pos: BlockPos, block: &'static Block, delay: u8) {
+    pub fn schedule_block_tick(&mut self, pos: BlockPos, block: &'static Block, delay: u32) {
         self.block_ticks.push(ScheduledTick {
             delay,
             priority: TickPriority::Normal,

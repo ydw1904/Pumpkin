@@ -47,7 +47,7 @@ pub fn try_schedule_die_tick(block: &Block, world: &World, pos: &BlockPos) {
     world.schedule_block_tick(
         block,
         *pos,
-        tick_delay as u8,
+        tick_delay as u32,
         pumpkin_world::tick::TickPriority::Normal,
     );
 }

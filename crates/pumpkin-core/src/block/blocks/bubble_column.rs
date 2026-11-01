@@ -16,9 +16,9 @@ use crate::block::{
 use crate::world::World;
 
 /// Vanilla `BubbleColumnBlock.CHECK_PERIOD`.
-const CHECK_PERIOD: u8 = 5;
+const CHECK_PERIOD: u32 = 5;
 /// Vanilla `LiquidBlock.BUBBLE_COLUMN_CHECK_DELAY`.
-const BUBBLE_COLUMN_CHECK_DELAY: u8 = 20;
+const BUBBLE_COLUMN_CHECK_DELAY: u32 = 20;
 
 const UPWARD_ACCELERATION: f64 = 0.06;
 const UPWARD_MAX_SPEED: f64 = 0.7;

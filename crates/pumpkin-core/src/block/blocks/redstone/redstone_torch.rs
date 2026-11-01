@@ -28,8 +28,8 @@ use pumpkin_world::world::BlockFlags;
 
 pub const RECENT_TOGGLE_TIMER: u64 = 60;
 pub const MAX_RECENT_TOGGLES: usize = 8;
-pub const RESTART_DELAY: u8 = 160;
-pub const TOGGLE_DELAY: u8 = 2;
+pub const RESTART_DELAY: u32 = 160;
+pub const TOGGLE_DELAY: u32 = 2;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 struct TorchKey {

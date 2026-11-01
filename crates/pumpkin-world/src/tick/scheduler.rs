@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::sync::{
     Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -6,26 +7,38 @@ use std::sync::{
 use pumpkin_util::math::position::BlockPos;
 use rustc_hash::FxHashSet;
 
-use crate::tick::{MAX_TICK_DELAY, OrderedTick, ScheduledTick};
+use crate::tick::{OrderedTick, ScheduledTick, TICK_QUEUE_SIZE};
 
 pub struct ChunkTickScheduler<T> {
     inner: Mutex<Option<Box<ChunkTickSchedulerInner<T>>>>,
-    /// The slot taken by the latest `step_tick`. A tick scheduled with delay `d` goes into slot
+    /// The number of the latest `step_tick`. A tick scheduled with delay `d` is due on step
     /// `offset + d` and runs on the `d`th step from now, like vanilla's `gameTime + delay`.
     offset: AtomicUsize,
 }
 
 struct ChunkTickSchedulerInner<T> {
-    tick_queue: [Vec<OrderedTick<T>>; MAX_TICK_DELAY],
+    tick_queue: [Vec<OrderedTick<T>>; TICK_QUEUE_SIZE],
+    /// Ticks too far ahead for `tick_queue`, keyed by the step they are due on.
+    far_ticks: BTreeMap<usize, Vec<OrderedTick<T>>>,
     queued_ticks: FxHashSet<(BlockPos, T)>,
+}
+
+impl<T> ChunkTickSchedulerInner<T> {
+    fn new() -> Self {
+        Self {
+            tick_queue: std::array::from_fn(|_| Vec::new()),
+            far_ticks: BTreeMap::new(),
+            queued_ticks: FxHashSet::default(),
+        }
+    }
 }
 
 impl<'a, T: std::hash::Hash + Eq> ChunkTickScheduler<&'a T> {
     pub fn step_tick(&self) -> Vec<OrderedTick<&'a T>> {
         // Advance before taking the slot, so ticks scheduled while these run count from this
         // step rather than the next one.
-        let current_offset = (self.offset.load(Ordering::SeqCst) + 1) % MAX_TICK_DELAY;
-        self.offset.store(current_offset, Ordering::SeqCst);
+        let current_step = self.offset.load(Ordering::SeqCst) + 1;
+        self.offset.store(current_step, Ordering::SeqCst);
 
         let mut inner_guard = self
             .inner
@@ -35,7 +48,14 @@ impl<'a, T: std::hash::Hash + Eq> ChunkTickScheduler<&'a T> {
             return Vec::new();
         };
 
-        let res = std::mem::take(&mut inner.tick_queue[current_offset]);
+        while let Some(entry) = inner.far_ticks.first_entry()
+            && *entry.key() < current_step + TICK_QUEUE_SIZE
+        {
+            let due_step = *entry.key();
+            inner.tick_queue[due_step % TICK_QUEUE_SIZE].append(&mut entry.remove());
+        }
+
+        let res = std::mem::take(&mut inner.tick_queue[current_step % TICK_QUEUE_SIZE]);
 
         if !res.is_empty() {
             for next_tick in &res {
@@ -56,24 +76,28 @@ impl<'a, T: std::hash::Hash + Eq> ChunkTickScheduler<&'a T> {
             .inner
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let inner = inner_guard.get_or_insert_with(|| {
-            Box::new(ChunkTickSchedulerInner {
-                tick_queue: std::array::from_fn(|_| Vec::new()),
-                queued_ticks: FxHashSet::default(),
-            })
-        });
+        let inner = inner_guard.get_or_insert_with(|| Box::new(ChunkTickSchedulerInner::new()));
 
         if inner.queued_ticks.insert((tick.position, tick.value)) {
             // Vanilla runs a zero-delay tick on the next tick, since the current one has
             // already collected its ticks.
-            let index = (offset + usize::from(tick.delay.max(1))) % MAX_TICK_DELAY;
-
-            inner.tick_queue[index].push(OrderedTick {
+            let delay = tick.delay.max(1) as usize;
+            let due_step = offset + delay;
+            let ordered_tick = OrderedTick {
                 priority: tick.priority,
                 sub_tick_order,
                 position: tick.position,
                 value: tick.value,
-            });
+            };
+            if delay < TICK_QUEUE_SIZE {
+                inner.tick_queue[due_step % TICK_QUEUE_SIZE].push(ordered_tick);
+            } else {
+                inner
+                    .far_ticks
+                    .entry(due_step)
+                    .or_default()
+                    .push(ordered_tick);
+            }
         }
     }
 
@@ -106,6 +130,10 @@ impl<'a, T: std::hash::Hash + Eq> ChunkTickScheduler<&'a T> {
         for queue in &mut inner.tick_queue {
             queue.retain(|tick| !contains(&tick.position));
         }
+        inner.far_ticks.retain(|_, queue| {
+            queue.retain(|tick| !contains(&tick.position));
+            !queue.is_empty()
+        });
         inner
             .queued_ticks
             .retain(|(position, _)| !contains(position));
@@ -137,10 +165,18 @@ impl<'a, T: std::hash::Hash + Eq> ChunkTickScheduler<&'a T> {
 
         let mut res = Vec::new();
 
-        for i in 0..MAX_TICK_DELAY {
-            let index = (offset + i) % MAX_TICK_DELAY;
+        for i in 0..TICK_QUEUE_SIZE {
+            let index = (offset + i) % TICK_QUEUE_SIZE;
             res.extend(inner.tick_queue[index].iter().map(|x| ScheduledTick {
-                delay: i as u8,
+                delay: i as u32,
+                priority: x.priority,
+                position: x.position,
+                value: x.value,
+            }));
+        }
+        for (due_step, queue) in &inner.far_ticks {
+            res.extend(queue.iter().map(|x| ScheduledTick {
+                delay: (due_step - offset) as u32,
                 priority: x.priority,
                 position: x.position,
                 value: x.value,
@@ -163,12 +199,7 @@ impl<'a, T: std::hash::Hash + Eq + 'static> FromIterator<ScheduledTick<&'a T>>
                 .inner
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let inner = inner_guard.get_or_insert_with(|| {
-                Box::new(ChunkTickSchedulerInner {
-                    tick_queue: std::array::from_fn(|_| Vec::new()),
-                    queued_ticks: FxHashSet::default(),
-                })
-            });
+            let inner = inner_guard.get_or_insert_with(|| Box::new(ChunkTickSchedulerInner::new()));
             inner.queued_ticks.reserve(lower);
         }
 
@@ -195,7 +226,7 @@ mod test {
 
     static VALUE: u8 = 0;
 
-    fn tick(delay: u8) -> ScheduledTick<&'static u8> {
+    fn tick(delay: u32) -> ScheduledTick<&'static u8> {
         ScheduledTick {
             delay,
             priority: TickPriority::Normal,
@@ -206,7 +237,7 @@ mod test {
 
     /// Steps until the scheduled tick comes out and returns how many steps that took.
     fn steps_until_run(scheduler: &ChunkTickScheduler<&'static u8>) -> usize {
-        (1..=MAX_TICK_DELAY)
+        (1..=20_000)
             .find(|_| !scheduler.step_tick().is_empty())
             .unwrap()
     }
@@ -239,5 +270,26 @@ mod test {
         assert_eq!(saved[0].delay, 4);
         let loaded: ChunkTickScheduler<&'static u8> = saved.into_iter().collect();
         assert_eq!(steps_until_run(&loaded), 4);
+    }
+
+    #[test]
+    fn delays_past_the_ring_run_on_time_and_survive_a_reload() {
+        for delay in [255, 256, 3600] {
+            let scheduler = ChunkTickScheduler::default();
+            scheduler.step_tick();
+            scheduler.schedule_tick(&tick(delay), 0);
+            assert_eq!(steps_until_run(&scheduler), delay as usize);
+        }
+
+        let scheduler = ChunkTickScheduler::default();
+        scheduler.step_tick();
+        scheduler.schedule_tick(&tick(3600), 0);
+        for _ in 0..100 {
+            scheduler.step_tick();
+        }
+        let saved = scheduler.to_vec();
+        assert_eq!(saved[0].delay, 3500);
+        let loaded: ChunkTickScheduler<&'static u8> = saved.into_iter().collect();
+        assert_eq!(steps_until_run(&loaded), 3500);
     }
 }

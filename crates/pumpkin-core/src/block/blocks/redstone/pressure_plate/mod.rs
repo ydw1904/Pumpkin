@@ -109,7 +109,7 @@ pub(crate) trait PressurePlate {
 
     fn click_sounds(&self, block: &Block) -> (Sound, Sound);
 
-    fn tick_rate(&self) -> u8 {
+    fn tick_rate(&self) -> u32 {
         20
     }
 }

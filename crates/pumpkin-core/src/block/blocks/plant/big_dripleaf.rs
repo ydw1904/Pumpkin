@@ -183,7 +183,7 @@ impl BlockBehaviour for BigDripleafBlock {
             args.world.schedule_fluid_tick(
                 &Fluid::WATER,
                 *args.position,
-                Fluid::WATER.flow_speed as u8,
+                Fluid::WATER.flow_speed,
                 TickPriority::Normal,
             );
         }
@@ -252,7 +252,7 @@ fn set_tilt_and_schedule_tick(
         world.schedule_block_tick(
             &Block::BIG_DRIPLEAF,
             *pos,
-            tick_delay as u8,
+            tick_delay as u32,
             pumpkin_world::tick::TickPriority::Normal,
         );
     }

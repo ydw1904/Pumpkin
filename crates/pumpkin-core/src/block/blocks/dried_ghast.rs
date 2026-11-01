@@ -19,8 +19,7 @@ use crate::{
 };
 
 const MAX_HYDRATION_LEVEL: u8 = 3;
-/// Clamped to `u8::MAX` due to Pumpkin's block tick delay representation.
-const HYDRATION_TICK_DELAY: u8 = u8::MAX;
+const HYDRATION_TICK_DELAY: u32 = 5000;
 
 #[pumpkin_block("minecraft:dried_ghast")]
 pub struct DriedGhastBlock;
@@ -62,7 +61,7 @@ impl BlockBehaviour for DriedGhastBlock {
             args.world.schedule_fluid_tick(
                 &Fluid::WATER,
                 *args.position,
-                Fluid::WATER.flow_speed as u8,
+                Fluid::WATER.flow_speed,
                 TickPriority::Normal,
             );
         }

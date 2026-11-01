@@ -4,6 +4,7 @@ use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::{BlockState, BlockStateId};
 use pumpkin_macros::pumpkin_block;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::tick::TickPriority;
 use pumpkin_world::world::BlockFlags;
 use uuid::Uuid;
@@ -12,6 +13,10 @@ use crate::block::{
     BlockBehaviour, OnPlaceArgs, OnScheduledTickArgs, PathComputationType, PlacedArgs,
 };
 use crate::entity::r#type::from_type;
+
+const REGULAR_HATCH_TIME_TICKS: u32 = 24000;
+const BOOSTED_HATCH_TIME_TICKS: u32 = 12000;
+const RANDOM_HATCH_OFFSET_TICKS: u32 = 300;
 
 #[pumpkin_block("minecraft:sniffer_egg")]
 pub struct SnifferEggBlock;
@@ -26,8 +31,14 @@ impl SnifferEggBlock {
             .has_tag(&tag::Block::MINECRAFT_SNIFFER_EGG_HATCH_BOOST)
     }
 
-    const fn get_hatch_delay(boosted: bool) -> u8 {
-        if boosted { 100 } else { 200 }
+    /// The delay vanilla `SnifferEggBlock.onPlace` schedules for each hatch stage.
+    fn get_hatch_delay(boosted: bool) -> u32 {
+        let hatch_time = if boosted {
+            BOOSTED_HATCH_TIME_TICKS
+        } else {
+            REGULAR_HATCH_TIME_TICKS
+        };
+        hatch_time / 3 + game_random().random_range(0..RANDOM_HATCH_OFFSET_TICKS)
     }
 }
 
