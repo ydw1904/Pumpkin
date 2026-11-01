@@ -15,6 +15,7 @@ use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::var_int::VarInt;
 
 use crate::entity::ai::behavior::hunting::{self, Hunt};
+use crate::entity::area_effect_cloud::AreaEffectCloudEntity;
 use crate::entity::{
     Entity, EntityBase,
     ai::behavior::fleeing::{self, Flee},
@@ -27,6 +28,7 @@ use crate::entity::{
     mob::{Mob, MobEntity},
     player::Player,
 };
+use crate::world::World;
 use crate::world::game_event::GameEventContext;
 
 const DEFAULT_FUSE_TIME: i32 = 30;
@@ -48,6 +50,56 @@ pub struct CreeperEntity {
     pub explosion_radius: AtomicI32,
     pub ignited: AtomicBool,
     pub charged: AtomicBool,
+}
+
+impl CreeperEntity {
+    /// Vanilla `Creeper.spawnLingeringCloud`: a cloud carrying the creeper's effects.
+    fn spawn_lingering_cloud(&self, world: &Arc<World>) {
+        let effects: Vec<_> = self
+            .mob_entity
+            .living_entity
+            .active_effects
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .values()
+            .map(|effect| {
+                // `setPotionDurationScale(0.25F)`.
+                let duration = if effect.duration < 0 {
+                    effect.duration
+                } else {
+                    (effect.duration as f32 * 0.25) as i32
+                };
+                (
+                    effect.effect_type,
+                    duration,
+                    effect.amplifier,
+                    effect.ambient,
+                    effect.show_particles,
+                    effect.show_icon,
+                )
+            })
+            .collect();
+        if effects.is_empty() {
+            return;
+        }
+        let entity = &self.mob_entity.living_entity.entity;
+        let cloud = AreaEffectCloudEntity::create(
+            Entity::new(
+                world.clone(),
+                entity.pos.load(),
+                &EntityType::AREA_EFFECT_CLOUD,
+            ),
+            ItemStack::new(0, &Item::GLASS_BOTTLE),
+            effects,
+            300,
+            2.5,
+            20,
+            10,
+            -0.5,
+            0,
+        );
+        world.spawn_entity(cloud);
+    }
 }
 
 impl CreeperEntity {
@@ -119,7 +171,7 @@ impl CreeperEntity {
             radius * multiplier,
             crate::world::ExplosionInteraction::Mob,
         );
-        // TODO: spawn area effect cloud with potion effects
+        self.spawn_lingering_cloud(&world);
         entity.remove();
     }
 }
