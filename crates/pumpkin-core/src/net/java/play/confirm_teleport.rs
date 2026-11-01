@@ -5,7 +5,7 @@ impl JavaClient {
     pub fn handle_confirm_teleport(&self, player: &Player, confirm_teleport: &SConfirmTeleport) {
         enum TeleportResult {
             Success,
-            WrongId,
+            Ignored,
             NotTeleporting,
         }
 
@@ -22,21 +22,25 @@ impl JavaClient {
                     *awaiting_teleport = None;
                     TeleportResult::Success
                 } else {
-                    TeleportResult::WrongId
+                    // A newer teleport replaced this one, vanilla ignores the stale id
+                    TeleportResult::Ignored
                 }
-            } else {
+            } else if confirm_teleport.teleport_id.0
+                == player.teleport_id_count.load(Ordering::Relaxed)
+            {
                 TeleportResult::NotTeleporting
+            } else {
+                TeleportResult::Ignored
             }
         };
 
         match result {
-            TeleportResult::Success => {}
-            TeleportResult::WrongId => {
-                self.try_kick(&TextComponent::text("Wrong teleport id"));
-            }
+            TeleportResult::Success | TeleportResult::Ignored => {}
+            // Vanilla `handleAcceptTeleportPacket`: the current id confirmed a second time
             TeleportResult::NotTeleporting => {
-                self.try_kick(&TextComponent::text(
-                    "Send Teleport confirm, but we did not teleport",
+                self.try_kick(&TextComponent::translate(
+                    translation::java::MULTIPLAYER_DISCONNECT_INVALID_PLAYER_MOVEMENT,
+                    [],
                 ));
             }
         }
