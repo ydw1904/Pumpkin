@@ -327,6 +327,9 @@ fn explorer_map_target(
 }
 
 /// Vanilla `VillagerHostilesSensor` distances; panic runs at 0.5 * 1.5.
+/// Vanilla `VillagerData.NEXT_LEVEL_XP_THRESHOLDS`.
+const NEXT_LEVEL_XP_THRESHOLDS: [i32; 5] = [0, 10, 70, 150, 250];
+
 const VILLAGER_FLEES: &[Flee] = &[Flee::nearest_of(
     1,
     &[
@@ -361,7 +364,6 @@ pub struct VillagerEntity {
     pub inventory: std::sync::Mutex<Vec<ItemStack>>,
     pub merchant_inventory: Arc<SimpleInventory>,
     pub offers: std::sync::Mutex<Vec<pumpkin_protocol::java::client::play::MerchantOffer>>,
-    pub merchant_update_timer: AtomicI32,
     pub unhappy_counter: AtomicI32,
     pub trade_sound_cooldown: AtomicI32,
     pub increase_profession_level_on_update: AtomicBool,
@@ -430,7 +432,6 @@ impl VillagerEntity {
             inventory,
             merchant_inventory: Arc::new(SimpleInventory::new(3)),
             offers: std::sync::Mutex::new(Vec::new()),
-            merchant_update_timer: AtomicI32::new(0),
             unhappy_counter: AtomicI32::new(0),
             trade_sound_cooldown: AtomicI32::new(0),
             increase_profession_level_on_update: AtomicBool::new(false),
@@ -834,6 +835,8 @@ impl VillagerEntity {
             (offer.xp, offer.reward_exp)
         };
 
+        // Vanilla `Villager.rewardTradeXp`.
+        let mut pop_xp = 3 + game_random().next_bounded_i32(4);
         let current_xp = self.xp.fetch_add(xp_gain, Ordering::Relaxed) + xp_gain;
         let villager_data = *self
             .villager_data
@@ -843,53 +846,30 @@ impl VillagerEntity {
         self.get_entity()
             .set_synced_data(tracked_data::villager::VILLAGER_DATA, villager_data);
         self.get_entity().send_bedrock_actor_data(&bedrock_metadata);
+        // The trading player's open menu is locked while this runs, so the level up, the gossip
+        // and the offers resent to the player happen in the villager's own tick.
+        *self
+            .last_traded_player
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(player_uuid);
+        let level = villager_data.level.0;
+        if (1..5).contains(&level) && current_xp >= NEXT_LEVEL_XP_THRESHOLDS[level as usize] {
+            self.increase_profession_level_on_update
+                .store(true, Ordering::Relaxed);
+            pop_xp += 5;
+        }
 
         if reward_exp {
-            ExperienceOrbEntity::spawn(world, self.get_entity().pos.load(), xp_gain as u32);
+            ExperienceOrbEntity::spawn(
+                world,
+                self.get_entity().pos.load().add_raw(0.0, 0.5, 0.0),
+                pop_xp as u32,
+            );
         }
 
         if let Some(player) = world.get_player_by_uuid(player_uuid) {
-            {
-                let mut gossips = self
-                    .gossips
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                let value = gossips
-                    .entry(player_uuid)
-                    .or_default()
-                    .entry(GossipType::Trading)
-                    .or_default();
-                *value = (*value + 2).min(GossipType::Trading.max_value());
-            };
-            self.send_updated_trade_offers(&player);
+            trigger_trade_advancement(&player);
         }
-    }
-
-    fn send_updated_trade_offers(&self, player: &Arc<Player>) {
-        let trading_player = *self
-            .trading_player
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let Some((player_uuid, sync_id)) = trading_player else {
-            return;
-        };
-        if player.get_entity().entity_uuid != player_uuid {
-            return;
-        }
-        let offers = self
-            .offers
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
-        let villager_data = *self
-            .villager_data
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        // The trade callback runs with the screen handler locked. The handler
-        // already increments its offer's uses and refreshes the result slot after
-        // the callback, so only send the updated offers to the client here.
-        self.send_trade_offers(player, sync_id, &offers, villager_data);
     }
 
     fn resend_offers_to_trading_player(&self) {
@@ -1380,7 +1360,7 @@ impl VillagerEntity {
         data.put_list("Recipes", recipes);
         data.put_list(
             "TierExpRequirements",
-            [0, 10, 70, 150, 250]
+            NEXT_LEVEL_XP_THRESHOLDS
                 .into_iter()
                 .enumerate()
                 .map(|(tier, xp)| {
@@ -1542,6 +1522,34 @@ impl VillagerEntity {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
+        // Vanilla `Villager.increaseMerchantCareer`, which `rewardTradeXp` calls during the trade.
+        if self
+            .increase_profession_level_on_update
+            .swap(false, Ordering::Relaxed)
+        {
+            let mut data = *self
+                .villager_data
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            data.level.0 += 1;
+            self.set_villager_data(data);
+            self.add_trades(data.profession_enum(), data.level.0);
+            self.mob_entity.living_entity.add_effect(Effect {
+                effect_type: &StatusEffect::REGENERATION,
+                duration: 200,
+                amplifier: 0,
+                ambient: false,
+                show_particles: true,
+                show_icon: true,
+                blend: false,
+            });
+            if let Some(player) = self.get_trading_player() {
+                self.update_special_prices(&player);
+                self.resend_offers_to_trading_player();
+            }
+        }
+
+        // Vanilla `customServerAiStep`: the trade reputation event.
         if let Some(player_uuid) = last_traded_player {
             let mut gossips = self
                 .gossips
@@ -1559,33 +1567,13 @@ impl VillagerEntity {
                 pumpkin_data::entity::EntityStatus::VillagerHappy,
                 ActorEventID::VillagerHappy,
             );
-        }
-
-        if !self.is_trading.load(Ordering::Relaxed)
-            && self.merchant_update_timer.load(Ordering::Relaxed) > 0
-            && self.merchant_update_timer.fetch_sub(1, Ordering::Relaxed) == 1
-        {
-            if self
-                .increase_profession_level_on_update
-                .swap(false, Ordering::Relaxed)
+            if let Some(player) = self
+                .get_trading_player()
+                .filter(|player| player.get_entity().entity_uuid == player_uuid)
             {
-                let mut data = *self
-                    .villager_data
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                data.level.0 += 1;
-                self.set_villager_data(data);
-                self.add_trades(data.profession_enum(), data.level.0);
+                self.update_special_prices(&player);
+                self.resend_offers_to_trading_player();
             }
-            self.mob_entity.living_entity.add_effect(Effect {
-                effect_type: &StatusEffect::REGENERATION,
-                duration: 200,
-                amplifier: 0,
-                ambient: false,
-                show_particles: true,
-                show_icon: true,
-                blend: false,
-            });
         }
 
         let (game_time, day_time, day) = {
