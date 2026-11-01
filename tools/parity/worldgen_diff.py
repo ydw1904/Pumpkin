@@ -7,6 +7,7 @@ generated, along with their 8 neighbours, are compared. Differences are grouped 
 and by chunk.
 
     python tools/parity/worldgen_diff.py --seed 1792386707805314503 --center -2,0 --radius 4
+    python tools/parity/worldgen_diff.py --dimension the_nether --center=0,0 --radius 4
 """
 
 import argparse
@@ -178,9 +179,11 @@ def section_blocks(section):
     return blocks
 
 
-def load_world(world):
-    """Fully generated chunks of the overworld, as {(cx, cz): {section y: blocks}}."""
-    region_dirs = [world / "region", world / "dimensions" / "minecraft" / "overworld" / "region"]
+def load_world(world, dimension="overworld"):
+    """Fully generated chunks of a dimension, as {(cx, cz): {section y: blocks}}."""
+    region_dirs = [world / "dimensions" / "minecraft" / dimension / "region"]
+    if dimension == "overworld":
+        region_dirs.insert(0, world / "region")
     chunks = {}
     for region_dir in region_dirs:
         for path in sorted(region_dir.glob("r.*.mca")) if region_dir.exists() else []:
@@ -191,13 +194,14 @@ def load_world(world):
     return chunks
 
 
-def generate(name, start, run_dir, area, wait):
-    """Starts a server, force-loads `area` (x1, z1, x2, z2 in blocks), waits, saves and stops."""
+def generate(name, start, run_dir, area, wait, dimension):
+    """Starts a server, force-loads `area` (x1, z1, x2, z2 in blocks) in `dimension`, waits, saves
+    and stops."""
     server = start(run_dir)
     if not server.ready.wait(600):
         server.stop()
         sys.exit(f"{name} didn't start; see {run_dir / 'server.log'}")
-    server.send("forceload add {} {} {} {}".format(*area))
+    server.send("execute in minecraft:{} run forceload add {} {} {} {}".format(dimension, *area))
     print(f"  {name}: waiting {wait}s for generation...")
     time.sleep(wait)
     server.send("save-all flush")
@@ -224,6 +228,7 @@ def main():
     parser.add_argument("--java", help="java executable to run vanilla with")
     parser.add_argument("--no-build", action="store_true", help="skip cargo build of pumpkin")
     parser.add_argument("--worlds", type=Path, help="compare an earlier run's folder instead of generating")
+    parser.add_argument("--dimension", default="overworld", choices=["overworld", "the_nether", "the_end"])
     args = parser.parse_args()
 
     cx, cz = (int(v) for v in args.center.split(","))
@@ -241,11 +246,14 @@ def main():
         if not args.no_build:
             subprocess.run(["cargo", "build", "-p", "pumpkin"], cwd=parity.REPO, check=True)
         binary = parity.REPO / "target" / "debug" / ("pumpkin.exe" if os.name == "nt" else "pumpkin")
-        run_dir = args.cache / "worldgen-runs" / f"{time.strftime('%Y%m%d-%H%M%S')}-{args.seed}"
+        run_dir = args.cache / "worldgen-runs" / (
+            f"{time.strftime('%Y%m%d-%H%M%S')}-{args.seed}"
+            + ("" if args.dimension == "overworld" else f"-{args.dimension}")
+        )
 
         print("Generating on vanilla...")
         generate("vanilla", lambda d: bot_parity.start_vanilla(java, jar, d, 25566, args.seed, args.cache),
-                 run_dir / "vanilla", area, args.wait)
+                 run_dir / "vanilla", area, args.wait, args.dimension)
 
         def start_pumpkin(d):
             # The first call writes the config; switch it to Anvil before the real start.
@@ -255,10 +263,10 @@ def main():
             return bot_parity.start_pumpkin(binary, d, 25565, args.seed)
 
         print("Generating on Pumpkin...")
-        generate("pumpkin", start_pumpkin, run_dir / "pumpkin", area, args.wait)
+        generate("pumpkin", start_pumpkin, run_dir / "pumpkin", area, args.wait, args.dimension)
 
-    vanilla = load_world(run_dir / "vanilla" / "world")
-    pumpkin = load_world(run_dir / "pumpkin" / "world")
+    vanilla = load_world(run_dir / "vanilla" / "world", args.dimension)
+    pumpkin = load_world(run_dir / "pumpkin" / "world", args.dimension)
     # Features write into the 8 neighbouring chunks, and vanilla doesn't decorate the chunks just
     # outside the forced square, so only compare chunks whose neighbours are full on both servers.
     full = set(vanilla) & set(pumpkin)
