@@ -66,12 +66,13 @@ impl Mob for ZombieEntity {
         self.entity.mob_read_nbt(nbt);
     }
 
+    fn killed_entity(&self, victim: &dyn EntityBase) -> bool {
+        self.entity.killed_entity(victim)
+    }
+
     fn post_tick(&self) {
-        self.entity.tick_under_water_conversion(
-            self,
-            &EntityType::DROWNED,
-            WorldEvent::SoundZombieToDrowned,
-        );
+        self.entity
+            .tick_under_water_conversion(&EntityType::DROWNED, WorldEvent::SoundZombieToDrowned);
     }
 }
 

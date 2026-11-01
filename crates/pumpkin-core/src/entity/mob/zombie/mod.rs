@@ -6,9 +6,10 @@ use crate::entity::ai::goal::revenge::RevengeGoal;
 use crate::entity::ai::goal::wander_around::WanderAroundGoal;
 use crate::entity::ai::goal::zombie_attack::ZombieAttackGoal;
 use crate::entity::mob::equipment::RegionalDifficulty;
-use crate::entity::r#type::from_type;
+use crate::entity::mob::spawn::finalize_spawn;
+use crate::entity::passive::villager::VillagerEntity;
 use crate::entity::{
-    Entity,
+    Entity, EntityBase,
     ai::behavior::hunting::{self, Hunt},
     ai::goal::look_at_entity::LookAtEntityGoal,
     ai::target_match::TargetMatch,
@@ -25,7 +26,6 @@ use pumpkin_util::Difficulty;
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::{Arc, Weak};
-use uuid::Uuid;
 
 pub mod drowned;
 pub mod husk;
@@ -182,12 +182,7 @@ impl ZombieEntityBase {
 
     /// Vanilla `ConversionTracker.tick`, run after the rest of `Zombie.tick` by the zombie
     /// types that convert in water: zombies turn into drowned and husks into zombies.
-    pub fn tick_under_water_conversion(
-        &self,
-        mob: &dyn Mob,
-        converts_to: &'static EntityType,
-        sound: WorldEvent,
-    ) {
+    pub fn tick_under_water_conversion(&self, converts_to: &'static EntityType, sound: WorldEvent) {
         let living = &self.mob_entity.living_entity;
         if !living.is_alive() || self.mob_entity.is_no_ai() {
             return;
@@ -195,7 +190,7 @@ impl ZombieEntityBase {
         if living.entity.is_submerged_in_water() {
             if self.is_under_water_converting() {
                 if self.drowned_conversion_time.fetch_sub(1, Ordering::Relaxed) - 1 < 0 {
-                    self.convert_to(mob, converts_to, sound);
+                    self.convert_to(converts_to, sound);
                 }
             } else if self.in_water_time.fetch_add(1, Ordering::Relaxed) + 1
                 >= IN_WATER_TIME_TO_CONVERT
@@ -208,104 +203,67 @@ impl ZombieEntityBase {
         }
     }
 
-    /// Vanilla `Mob.convertTo` with `ConversionParams.single(mob, true, true)`.
-    fn convert_to(&self, mob: &dyn Mob, converts_to: &'static EntityType, sound: WorldEvent) {
-        let from = &self.mob_entity;
-        let from_entity = &from.living_entity.entity;
-        if from_entity.is_removed() {
-            return;
-        }
-        let world = from_entity.world.load_full();
-        let converted = from_type(converts_to, from_entity.pos.load(), &world, Uuid::new_v4());
-        let Some(converted_mob) = converted.get_mob() else {
-            return;
-        };
-        let to = converted_mob.get_mob_entity();
-        let to_entity = &to.living_entity.entity;
-
-        // ConversionType.SINGLE
-        to_entity.set_rotation(from_entity.yaw.load(), from_entity.pitch.load());
-        to_entity.head_yaw.store(from_entity.head_yaw.load());
-        to_entity.body_yaw.store(from_entity.body_yaw.load());
-        to_entity.velocity.store(from_entity.velocity.load());
-        to_entity.on_ground.store(
-            from_entity.on_ground.load(Ordering::Relaxed),
-            Ordering::Relaxed,
-        );
-        to.living_entity
-            .fall_distance
-            .store(from.living_entity.fall_distance.load());
-        {
-            let mut from_equipment = from
-                .living_entity
-                .entity_equipment
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let mut to_equipment = to
-                .living_entity
-                .entity_equipment
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            for (slot, stack) in from_equipment.equipment.drain() {
-                if !stack.is_empty() {
-                    to_equipment.put(&slot, stack);
-                }
+    fn convert_to(&self, converts_to: &'static EntityType, sound: WorldEvent) {
+        let _ = self.mob_entity.convert_to(converts_to, |converted| {
+            // The baby state and door breaking carry over between zombie types.
+            let mut zombie_nbt = NbtCompound::new();
+            zombie_nbt.put_bool("IsBaby", self.is_baby());
+            zombie_nbt.put_bool("CanBreakDoors", self.can_break_doors());
+            if let Some(converted) = converted.get_mob() {
+                converted.mob_read_nbt(&zombie_nbt);
             }
-        }
-        to.living_entity
-            .equipment_drop_chances
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone_from(
-                &from
-                    .living_entity
-                    .equipment_drop_chances
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner),
-            );
 
-        // ConversionType.convertCommon
-        to.living_entity
-            .set_absorption(from.living_entity.get_absorption());
-        let effects: Vec<_> = from
-            .living_entity
-            .active_effects
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .values()
-            .cloned()
-            .collect();
-        for effect in effects {
-            to.living_entity.add_effect(effect);
-        }
-        // The baby state and door breaking carry over between zombie types.
-        let mut zombie_nbt = NbtCompound::new();
-        zombie_nbt.put_bool("IsBaby", self.is_baby());
-        zombie_nbt.put_bool("CanBreakDoors", self.can_break_doors());
-        converted_mob.mob_read_nbt(&zombie_nbt);
-        to.set_can_pick_up_loot(from.can_pick_up_loot());
-        to.set_left_handed(from.is_left_handed());
-        to.set_no_ai(from.is_no_ai());
-        if from.persistence_required.load(Ordering::Relaxed) {
-            to.persistence_required.store(true, Ordering::Relaxed);
-        }
-        if let Some(custom_name) = &**from_entity.custom_name.load() {
-            to_entity.set_custom_name(custom_name.clone());
-        }
-        to_entity.set_custom_name_visible(from_entity.custom_name_visible.load(Ordering::Relaxed));
-        to_entity.fire_ticks.store(
-            from_entity.fire_ticks.load(Ordering::Relaxed),
-            Ordering::Relaxed,
-        );
-        to_entity.set_invulnerable(from_entity.invulnerable.load(Ordering::Relaxed));
-        to_entity.set_has_no_gravity(from_entity.has_no_gravity());
-        to_entity.set_silent(from_entity.is_silent());
+            let converted_entity = converted.get_entity();
+            if !converted_entity.is_silent() {
+                converted_entity.world.load().sync_world_event(
+                    sound,
+                    converted_entity.block_pos.load(),
+                    0,
+                );
+            }
+        });
+    }
 
-        if !to_entity.is_silent() {
-            world.sync_world_event(sound, to_entity.block_pos.load(), 0);
+    /// Vanilla `Zombie.killedEntity`: on hard difficulty, and half the time on normal, a killed
+    /// villager comes back as a zombie villager instead of dying. Returns whether the victim
+    /// perished, i.e. should still drop its loot.
+    pub fn killed_entity(&self, victim: &dyn EntityBase) -> bool {
+        let Some(villager) = victim.cast_any().downcast_ref::<VillagerEntity>() else {
+            return true;
+        };
+        let entity = &self.mob_entity.living_entity.entity;
+        let difficulty = entity.world.load().level_info.load().difficulty;
+        if !matches!(difficulty, Difficulty::Normal | Difficulty::Hard)
+            || (difficulty != Difficulty::Hard && game_random().random::<bool>())
+        {
+            return true;
         }
-        world.spawn_entity(converted.clone());
-        mob.get_entity().remove();
+        !self.convert_villager_to_zombie_villager(villager)
+    }
+
+    /// Vanilla `Zombie.convertVillagerToZombieVillager`.
+    fn convert_villager_to_zombie_villager(&self, villager: &VillagerEntity) -> bool {
+        let zombie_entity = &self.mob_entity.living_entity.entity;
+        villager
+            .mob_entity
+            .convert_to(&EntityType::ZOMBIE_VILLAGER, |zombie_villager| {
+                let world = zombie_entity.world.load_full();
+                // The villager's data, trades, gossips and trading xp, and its baby state.
+                let mut villager_nbt = NbtCompound::new();
+                villager.mob_write_nbt(&mut villager_nbt);
+                villager_nbt.put_bool("IsBaby", villager.mob_entity.living_entity.is_baby());
+                if let Some(mob) = zombie_villager.get_mob() {
+                    mob.mob_read_nbt(&villager_nbt);
+                }
+                finalize_spawn(zombie_villager, &world, None);
+                if !zombie_entity.is_silent() {
+                    world.sync_world_event(
+                        WorldEvent::SoundZombieInfected,
+                        zombie_entity.block_pos.load(),
+                        0,
+                    );
+                }
+            })
     }
 }
 

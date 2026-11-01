@@ -270,6 +270,10 @@ impl Mob for ZombieVillagerEntity {
         &self.mob_entity.mob_entity
     }
 
+    fn killed_entity(&self, victim: &dyn EntityBase) -> bool {
+        self.mob_entity.killed_entity(victim)
+    }
+
     fn spawn_as_baby(&self) -> bool {
         self.mob_entity.spawn_as_baby()
     }

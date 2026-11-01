@@ -71,4 +71,8 @@ impl Mob for DrownedEntity {
     fn mob_read_nbt(&self, nbt: &NbtCompound) {
         self.entity.mob_read_nbt(nbt);
     }
+
+    fn killed_entity(&self, victim: &dyn EntityBase) -> bool {
+        self.entity.killed_entity(victim)
+    }
 }

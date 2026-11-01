@@ -56,6 +56,10 @@ impl Mob for HuskEntity {
         self.entity.mob_read_nbt(nbt);
     }
 
+    fn killed_entity(&self, victim: &dyn EntityBase) -> bool {
+        self.entity.killed_entity(victim)
+    }
+
     // Vanilla `Husk.doHurtTarget`: an empty-handed hit makes the target hungry.
     fn on_attack(&self, target: &dyn EntityBase) {
         let living = &self.entity.mob_entity.living_entity;
@@ -85,10 +89,7 @@ impl Mob for HuskEntity {
     }
 
     fn post_tick(&self) {
-        self.entity.tick_under_water_conversion(
-            self,
-            &EntityType::ZOMBIE,
-            WorldEvent::SoundHuskToZombie,
-        );
+        self.entity
+            .tick_under_water_conversion(&EntityType::ZOMBIE, WorldEvent::SoundHuskToZombie);
     }
 }

@@ -495,6 +495,111 @@ impl MobEntity {
         previous
     }
 
+    /// Vanilla `Mob.convertTo` with `ConversionParams.single(mob, true, true)`: replaces this mob
+    /// with a new one of `converts_to` that keeps its position, equipment and most state.
+    /// `after_conversion` runs before the new mob is added to the world.
+    pub fn convert_to(
+        &self,
+        converts_to: &'static EntityType,
+        after_conversion: impl FnOnce(&Arc<dyn EntityBase>),
+    ) -> bool {
+        let from = self;
+        let from_entity = &from.living_entity.entity;
+        if from_entity.is_removed() {
+            return false;
+        }
+        let world = from_entity.world.load_full();
+        let converted = crate::entity::r#type::from_type(
+            converts_to,
+            from_entity.pos.load(),
+            &world,
+            Uuid::new_v4(),
+        );
+        let Some(converted_mob) = converted.get_mob() else {
+            return false;
+        };
+        let to = converted_mob.get_mob_entity();
+        let to_entity = &to.living_entity.entity;
+
+        // ConversionType.SINGLE
+        to_entity.set_rotation(from_entity.yaw.load(), from_entity.pitch.load());
+        to_entity.head_yaw.store(from_entity.head_yaw.load());
+        to_entity.body_yaw.store(from_entity.body_yaw.load());
+        to_entity.velocity.store(from_entity.velocity.load());
+        to_entity.on_ground.store(
+            from_entity.on_ground.load(Ordering::Relaxed),
+            Ordering::Relaxed,
+        );
+        to.living_entity
+            .fall_distance
+            .store(from.living_entity.fall_distance.load());
+        {
+            let mut from_equipment = from
+                .living_entity
+                .entity_equipment
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut to_equipment = to
+                .living_entity
+                .entity_equipment
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            for (slot, stack) in from_equipment.equipment.drain() {
+                if !stack.is_empty() {
+                    to_equipment.put(&slot, stack);
+                }
+            }
+        }
+        to.living_entity
+            .equipment_drop_chances
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone_from(
+                &from
+                    .living_entity
+                    .equipment_drop_chances
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+            );
+
+        // ConversionType.convertCommon
+        to.living_entity
+            .set_absorption(from.living_entity.get_absorption());
+        let effects: Vec<_> = from
+            .living_entity
+            .active_effects
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .values()
+            .cloned()
+            .collect();
+        for effect in effects {
+            to.living_entity.add_effect(effect);
+        }
+        to.set_can_pick_up_loot(from.can_pick_up_loot());
+        to.set_left_handed(from.is_left_handed());
+        to.set_no_ai(from.is_no_ai());
+        if from.persistence_required.load(Ordering::Relaxed) {
+            to.persistence_required.store(true, Ordering::Relaxed);
+        }
+        if let Some(custom_name) = &**from_entity.custom_name.load() {
+            to_entity.set_custom_name(custom_name.clone());
+        }
+        to_entity.set_custom_name_visible(from_entity.custom_name_visible.load(Ordering::Relaxed));
+        to_entity.fire_ticks.store(
+            from_entity.fire_ticks.load(Ordering::Relaxed),
+            Ordering::Relaxed,
+        );
+        to_entity.set_invulnerable(from_entity.invulnerable.load(Ordering::Relaxed));
+        to_entity.set_has_no_gravity(from_entity.has_no_gravity());
+        to_entity.set_silent(from_entity.is_silent());
+
+        after_conversion(&converted);
+        world.spawn_entity(converted.clone());
+        from_entity.remove();
+        true
+    }
+
     pub fn set_item_slot_and_drop_when_killed(&self, slot: &EquipmentSlot, stack: ItemStack) {
         self.set_item_slot(slot, stack);
         self.set_guaranteed_drop(slot);
@@ -1527,7 +1632,13 @@ pub trait Mob: EntityBase + Send + Sync {
         amount
     }
 
-    /// Mirrors vanilla `LivingEntity#isSensitiveToWater`.
+    /// Vanilla `Entity.killedEntity`: this mob dealt the killing blow to `victim`. Returns whether
+    /// the victim perished and should still drop its loot and experience.
+    fn killed_entity(&self, _victim: &dyn EntityBase) -> bool {
+        true
+    }
+
+    /// Vanilla `LivingEntity.isSensitiveToWater`.
     fn is_sensitive_to_water(&self) -> bool {
         false
     }
