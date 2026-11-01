@@ -1,5 +1,6 @@
 mod goals;
 
+use crate::entity::ai::goal::climb_on_top_of_powder_snow::ClimbOnTopOfPowderSnowGoal;
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Weak,
@@ -168,13 +169,13 @@ impl FoxEntity {
             let goal_selector = &mob_arc.mob_entity.goals_selector;
             let not_defending: fn(&Self) -> bool = |fox| !fox.is_defending();
 
-            // TODO: ClimbOnTopOfPowderSnowGoal(0), SeekShelterGoal(6), SleepGoal(7),
-            // StrollThroughVillageGoal(9), EatBerriesGoal(10), SearchForItemsGoal(11),
-            // PerchAndSearchGoal(13).
+            // TODO: SeekShelterGoal(6), SleepGoal(7), StrollThroughVillageGoal(9),
+            // EatBerriesGoal(10), SearchForItemsGoal(11), PerchAndSearchGoal(13).
             goal_selector.add_goal(
                 0,
                 Box::new(FoxGoal::new(SwimGoal::default()).on_start(Self::clear_states)),
             );
+            goal_selector.add_goal(0, Box::new(ClimbOnTopOfPowderSnowGoal));
             goal_selector.add_goal(1, Box::new(FaceplantGoal::default()));
             goal_selector.add_goal(
                 2,

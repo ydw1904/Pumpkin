@@ -46,8 +46,9 @@ fn is_entity_above_block(entity: &crate::entity::Entity, position: &BlockPos) ->
     bb.min.y >= block_top - WALK_ON_EPSILON
 }
 
+// Vanilla `Entity.isDescending` is `isShiftKeyDown`.
 fn is_entity_descending(entity: &crate::entity::Entity) -> bool {
-    entity.velocity.load().y < 0.0
+    entity.is_sneaking()
 }
 
 pub(crate) fn collision_shape_for_entity(
