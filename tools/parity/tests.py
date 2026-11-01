@@ -55,6 +55,19 @@ def update_order_race(name, source, first, first_facing, second, second_facing):
     )
 
 
+# One-block shafts at x=3 and x=5, three blocks deep, filled with `fill`.
+BUBBLE_SHAFTS = (3, 5)
+
+
+def bubble_shafts(test, fill):
+    for x in BUBBLE_SHAFTS:
+        for y in range(1, 4):
+            for wall in ((x - 1, y, 2), (x + 1, y, 2), (x, y, 1), (x, y, 3)):
+                test.set(wall, "minecraft:glass")
+            test.set((x, y, 2), fill)
+    return test
+
+
 # Quasi-connectivity: pistons and dispensers also count power reaching the block above them,
 # but only re-check it on a neighbour update, so power arriving two blocks up leaves them budded.
 QC_POS = (4, 1, 3)
@@ -289,4 +302,24 @@ TESTS = [
 
     smelting_furnace(Test("furnace_beats_the_repeaters"))
     .check_after(27, (FURNACE_POS, 'minecraft:furnace{Items:[{Slot:2b,id:"minecraft:iron_ingot"}]}', "ingot smelted after 27 repeaters")),
+
+    # 26.3 builds and removes a whole bubble column in one tick: 20 ticks after its support
+    # appears under source water (LiquidBlock), 5 ticks after the support goes (BubbleColumnBlock).
+    bubble_shafts(Test("bubble_column_fills_at_once"), "minecraft:water[level=0]")
+    .setup(((3, 0, 2), "minecraft:soul_sand"), ((5, 0, 2), "minecraft:magma_block"))
+    .check_after(
+        3,
+        ((3, 3, 2), "minecraft:bubble_column[drag=false]", "top of the soul sand column after 24 ticks"),
+        ((5, 3, 2), "minecraft:bubble_column[drag=true]", "top of the magma column after 24 ticks"),
+    ),
+
+    bubble_shafts(Test("bubble_column_clears_at_once"), "minecraft:bubble_column[drag=true]")
+    .set((3, 0, 2), "minecraft:magma_block")
+    .set((5, 0, 2), "minecraft:magma_block")
+    .setup(((5, 0, 2), "minecraft:stone"))
+    .check_after(
+        1,
+        ((5, 3, 2), "minecraft:water[level=0]", "top of the column without support is water after 8 ticks"),
+        ((3, 3, 2), "minecraft:bubble_column[drag=true]", "column that kept its magma stays"),
+    ),
 ]
