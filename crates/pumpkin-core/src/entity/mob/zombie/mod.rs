@@ -6,6 +6,7 @@ use crate::entity::ai::goal::revenge::RevengeGoal;
 use crate::entity::ai::goal::wander_around::WanderAroundGoal;
 use crate::entity::ai::goal::zombie_attack::ZombieAttackGoal;
 use crate::entity::attributes::{Modifier, ModifierOperation};
+use crate::entity::mob::conversion_tracker::ConversionTracker;
 use crate::entity::mob::equipment::RegionalDifficulty;
 use crate::entity::mob::spawn::finalize_spawn;
 use crate::entity::passive::villager::VillagerEntity;
@@ -26,7 +27,7 @@ use pumpkin_data::world::WorldEvent;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::Difficulty;
 use pumpkin_util::random::gameplay::game_random;
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 
 pub mod drowned;
@@ -42,20 +43,14 @@ const ZOMBIE_HUNTS: &[Hunt] = &[
     hunting::baby_turtles(5, true),
 ];
 
-/// Vanilla `Zombie.drowningTracker`: ticks with the eyes under water before the
-/// conversion starts, then ticks until the mob converts.
-const IN_WATER_TIME_TO_CONVERT: i32 = 600;
-const DROWNED_CONVERSION_TIME: i32 = 300;
-const NOT_CONVERTING: i32 = -1;
 const SPEED_MODIFIER_BABY_ID: &str = "minecraft:baby";
 
 pub struct ZombieEntityBase {
     pub mob_entity: MobEntity,
     pub can_break_doors: AtomicBool,
     pub is_baby: AtomicBool,
-    in_water_time: AtomicI32,
-    drowned_conversion_time: AtomicI32,
-    is_under_water_converting: AtomicBool,
+    /// Vanilla `Zombie.drowningTracker`.
+    drowning_tracker: ConversionTracker,
 }
 
 impl ZombieEntityBase {
@@ -86,9 +81,13 @@ impl ZombieEntityBase {
             mob_entity,
             can_break_doors: AtomicBool::new(can_break_doors),
             is_baby: AtomicBool::new(false),
-            in_water_time: AtomicI32::new(0),
-            drowned_conversion_time: AtomicI32::new(NOT_CONVERTING),
-            is_under_water_converting: AtomicBool::new(false),
+            drowning_tracker: ConversionTracker::new(
+                tracked_data::zombie::DATA_DROWNED_CONVERSION_ID,
+                "InWaterTime",
+                600,
+                "DrownedConversionTime",
+                300,
+            ),
         };
         let mob_arc = Arc::new(zombie);
         let mob_weak: Weak<dyn Mob> = {
@@ -194,50 +193,13 @@ impl ZombieEntityBase {
         self.is_baby.load(Ordering::Relaxed)
     }
 
-    #[must_use]
-    pub fn is_under_water_converting(&self) -> bool {
-        self.is_under_water_converting.load(Ordering::Relaxed)
-    }
-
-    fn set_under_water_converting(&self, converting: bool) {
-        if self
-            .is_under_water_converting
-            .swap(converting, Ordering::Relaxed)
-            != converting
-        {
-            self.mob_entity
-                .living_entity
-                .entity
-                .set_synced_data(tracked_data::zombie::DATA_DROWNED_CONVERSION_ID, converting);
-        }
-    }
-
-    fn start_under_water_conversion(&self, time: i32) {
-        self.drowned_conversion_time.store(time, Ordering::Relaxed);
-        self.set_under_water_converting(true);
-    }
-
-    /// Vanilla `ConversionTracker.tick`, run after the rest of `Zombie.tick` by the zombie
+    /// Vanilla `Zombie.tick` runs the drowning tracker after the rest of the tick for the zombie
     /// types that convert in water: zombies turn into drowned and husks into zombies.
     pub fn tick_under_water_conversion(&self, converts_to: &'static EntityType, sound: WorldEvent) {
-        let living = &self.mob_entity.living_entity;
-        if !living.is_alive() || self.mob_entity.is_no_ai() {
-            return;
-        }
-        if living.entity.is_submerged_in_water() {
-            if self.is_under_water_converting() {
-                if self.drowned_conversion_time.fetch_sub(1, Ordering::Relaxed) - 1 < 0 {
-                    self.convert_to(converts_to, sound);
-                }
-            } else if self.in_water_time.fetch_add(1, Ordering::Relaxed) + 1
-                >= IN_WATER_TIME_TO_CONVERT
-            {
-                self.start_under_water_conversion(DROWNED_CONVERSION_TIME);
-            }
-        } else {
-            self.in_water_time.store(-1, Ordering::Relaxed);
-            self.set_under_water_converting(false);
-        }
+        let afflicted = self.mob_entity.living_entity.entity.is_submerged_in_water();
+        self.drowning_tracker.tick(&self.mob_entity, afflicted, || {
+            self.convert_to(converts_to, sound);
+        });
     }
 
     fn convert_to(&self, converts_to: &'static EntityType, sound: WorldEvent) {
@@ -393,21 +355,9 @@ impl Mob for ZombieEntityBase {
         if self.can_break_doors() {
             nbt.put_bool("CanBreakDoors", true);
         }
-        nbt.put_int(
-            "DrownedConversionTime",
-            if self.is_under_water_converting() {
-                self.drowned_conversion_time.load(Ordering::Relaxed)
-            } else {
-                NOT_CONVERTING
-            },
-        );
-        nbt.put_int(
-            "InWaterTime",
-            if self.mob_entity.living_entity.entity.is_submerged_in_water() {
-                self.in_water_time.load(Ordering::Relaxed)
-            } else {
-                -1
-            },
+        self.drowning_tracker.write_nbt(
+            nbt,
+            self.mob_entity.living_entity.entity.is_submerged_in_water(),
         );
     }
 
@@ -416,11 +366,6 @@ impl Mob for ZombieEntityBase {
         if let Some(can_break_doors) = nbt.get_bool("CanBreakDoors") {
             self.set_can_break_doors(can_break_doors, self);
         }
-        self.in_water_time
-            .store(nbt.get_int("InWaterTime").unwrap_or(0), Ordering::Relaxed);
-        match nbt.get_int("DrownedConversionTime") {
-            Some(time) if time != NOT_CONVERTING => self.start_under_water_conversion(time),
-            _ => self.set_under_water_converting(false),
-        }
+        self.drowning_tracker.read_nbt(&self.mob_entity, nbt);
     }
 }
