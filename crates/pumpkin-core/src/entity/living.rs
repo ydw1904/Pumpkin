@@ -3496,9 +3496,25 @@ impl LivingEntity {
             amount *= 0.75;
         }
 
-        // Vanilla parity: 1. Armor absorb
+        let bypasses_cooldown_protection =
+            damage_type.has_tag(&tag::DamageType::MINECRAFT_BYPASSES_COOLDOWN);
+
+        // Vanilla `hurtServer` compares the pre-armor damage with `lastHurt`, and `actuallyHurt`
+        // applies armor and magic only to the part that gets through the cooldown.
+        let last_damage = self.last_damage_taken.load();
+        let full_hit = self.hurt_cooldown.load(Relaxed) <= 10 || bypasses_cooldown_protection;
+        let armor_damage = if full_hit {
+            self.hurt_cooldown.store(20, Relaxed);
+            amount
+        } else {
+            if amount <= last_damage {
+                return false;
+            }
+            amount - last_damage
+        };
+
         let damage_after_armor =
-            self.get_damage_after_armor_absorb(amount, &damage_type, cause.or(source));
+            self.get_damage_after_armor_absorb(armor_damage, &damage_type, cause.or(source));
 
         let effective_amount = self.get_damage_after_magic_absorb(
             damage_after_armor,
@@ -3506,26 +3522,7 @@ impl LivingEntity {
             caller,
             cause.or(source),
         );
-
-        let bypasses_cooldown_protection =
-            damage_type.has_tag(&tag::DamageType::MINECRAFT_BYPASSES_COOLDOWN);
-
-        // Apply hurt cooldown logic
-        let last_damage = self.last_damage_taken.load();
-        let (damage_amount, play_sound, armor_damage) =
-            if self.hurt_cooldown.load(Relaxed) > 10 && !bypasses_cooldown_protection {
-                if effective_amount <= last_damage {
-                    return false;
-                }
-                (effective_amount - last_damage, false, amount - last_damage)
-            } else {
-                self.hurt_cooldown.store(20, Relaxed);
-                (
-                    effective_amount,
-                    self.health.load() > effective_amount,
-                    amount,
-                )
-            };
+        let play_sound = full_hit && self.health.load() > effective_amount;
 
         // Vanilla wears armor in getDamageAfterArmorAbsorb, which only runs for hits that get past
         // the cooldown, with the pre-armor amount that reaches actuallyHurt.
@@ -3535,7 +3532,7 @@ impl LivingEntity {
 
         // Finalize state
         self.last_damage_taken.store(amount);
-        let damage_amount = damage_amount.max(0.0);
+        let damage_amount = effective_amount.max(0.0);
 
         // Record the source once the hit is confirmed.
         *self
