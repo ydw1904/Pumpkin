@@ -406,7 +406,7 @@ pub fn ensure_builtin_game_tests_registered() {
         register_function_test(
             "pumpkin:bubble_column_upward_and_downward",
             "pumpkin:empty_5x4x5",
-            40,
+            80,
             0,
             bubble_columns::test_bubble_column_upward_and_downward,
         );
