@@ -105,7 +105,14 @@ impl ZombieEntityBase {
             }
             goal_selector.add_goal(2, ZombieAttackGoal::new(1.0, false));
             goal_selector.add_goal(4, DestroyEggGoal::new(1.0, 3));
-            goal_selector.add_goal(7, Box::new(WanderAroundGoal::new(1.0)));
+            // Vanilla zombies stroll avoiding water; the drowned's own goals use a plain stroll.
+            let stroll =
+                if mob_arc.mob_entity.living_entity.entity.entity_type == &EntityType::DROWNED {
+                    WanderAroundGoal::new(1.0)
+                } else {
+                    WanderAroundGoal::water_avoiding(1.0)
+                };
+            goal_selector.add_goal(7, Box::new(stroll));
             goal_selector.add_goal(
                 8,
                 LookAtEntityGoal::with_default(mob_weak, &EntityType::PLAYER, 8.0),
