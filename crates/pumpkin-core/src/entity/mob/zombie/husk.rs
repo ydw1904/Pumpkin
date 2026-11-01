@@ -1,10 +1,14 @@
 use pumpkin_data::BlockState;
+use pumpkin_data::data_component_impl::EquipmentSlot;
+use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::potion::Effect;
 use pumpkin_data::sound::Sound;
 use pumpkin_data::world::WorldEvent;
 use pumpkin_util::math::position::BlockPos;
 use std::sync::Arc;
 
+use crate::entity::mob::equipment::RegionalDifficulty;
 use crate::entity::mob::zombie::ZombieEntityBase;
 use crate::entity::{
     Entity, EntityBase,
@@ -50,6 +54,34 @@ impl Mob for HuskEntity {
 
     fn mob_read_nbt(&self, nbt: &NbtCompound) {
         self.entity.mob_read_nbt(nbt);
+    }
+
+    // Vanilla `Husk.doHurtTarget`: an empty-handed hit makes the target hungry.
+    fn on_attack(&self, target: &dyn EntityBase) {
+        let living = &self.entity.mob_entity.living_entity;
+        let Some(target) = target.get_living_entity() else {
+            return;
+        };
+        if !living
+            .entity_equipment
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&EquipmentSlot::MAIN_HAND)
+            .is_empty()
+        {
+            return;
+        }
+        let world = living.entity.world.load_full();
+        let difficulty = RegionalDifficulty::at(&world, living.entity.pos.load());
+        target.add_effect(Effect {
+            effect_type: &StatusEffect::HUNGER,
+            duration: 140 * difficulty.effective_difficulty as i32,
+            amplifier: 0,
+            ambient: false,
+            show_particles: true,
+            show_icon: true,
+            blend: false,
+        });
     }
 
     fn post_tick(&self) {
