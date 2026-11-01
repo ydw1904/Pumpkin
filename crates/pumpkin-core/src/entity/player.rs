@@ -1893,13 +1893,19 @@ impl Player {
             return;
         }
 
-        if state.hardness <= 0.0 {
+        let held = self.inventory().held_item();
+        // Vanilla `ShearsItem.mineBlock` wears shears on everything but fire, while
+        // `Item.mineBlock` skips blocks that break instantly.
+        let wears = if held.item == &pumpkin_data::item::Item::SHEARS {
+            !Block::from_state_id(state.id).has_tag(&tag::Block::MINECRAFT_FIRE)
+        } else {
+            state.hardness != 0.0
+        };
+        if !wears {
             return;
         }
 
-        let damage = self
-            .inventory()
-            .held_item()
+        let damage = held
             .get_data_component::<ToolImpl>()
             .map_or(0, |tool| tool.damage_per_block as i32);
 
