@@ -2,8 +2,8 @@
 """Generate the same seed on vanilla and Pumpkin and diff the worlds block by block.
 
 Both servers force-load a square of chunks, save, and stop. Pumpkin saves in Anvil (zlib) for
-this run so one reader handles both worlds. Only chunks both servers saved as fully generated
-are compared. Differences are grouped by (vanilla block, Pumpkin block) with sample positions,
+this run so one reader handles both worlds. Only chunks that both servers saved as fully
+generated, along with their 8 neighbours, are compared. Differences are grouped by (vanilla block, Pumpkin block) with sample positions,
 and by chunk.
 
     python tools/parity/worldgen_diff.py --seed 1792386707805314503 --center -2,0 --radius 4
@@ -259,9 +259,14 @@ def main():
 
     vanilla = load_world(run_dir / "vanilla" / "world")
     pumpkin = load_world(run_dir / "pumpkin" / "world")
-    common = sorted(wanted & set(vanilla) & set(pumpkin))
+    # Features write into the 8 neighbouring chunks, and vanilla doesn't decorate the chunks just
+    # outside the forced square, so only compare chunks whose neighbours are full on both servers.
+    full = set(vanilla) & set(pumpkin)
+    common = sorted(c for c in wanted & full
+                    if all((c[0] + dx, c[1] + dz) in full for dx in (-1, 0, 1) for dz in (-1, 0, 1)))
     print(f"\nChunks: {len(wanted)} wanted, vanilla saved {len(wanted & set(vanilla))}, "
-          f"Pumpkin saved {len(wanted & set(pumpkin))}, comparing {len(common)}")
+          f"Pumpkin saved {len(wanted & set(pumpkin))}, comparing {len(common)} "
+          "with all neighbours full on both")
 
     kinds = collections.Counter()
     samples = collections.defaultdict(list)
