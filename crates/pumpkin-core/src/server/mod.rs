@@ -1317,6 +1317,14 @@ impl Server {
                     let world = world.clone();
                     self.spawn_task(async move { world.autosave_entities().await });
                 }
+                // Vanilla's autosave also writes level.dat, so a crash keeps the spawn point,
+                // clocks, weather and game rules.
+                let server = self.clone();
+                self.spawn_task(async move {
+                    if let Err(err) = server.save_world_info() {
+                        error!("Failed to save world info: {err}");
+                    }
+                });
             }
         }
     }
