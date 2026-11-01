@@ -182,6 +182,7 @@ pub mod end_podium;
 pub mod entity_tracker;
 pub mod environment;
 pub mod natural_spawner;
+pub mod phantom_spawner;
 pub mod scoreboard;
 pub mod wandering_trader_spawner;
 pub mod weather;
@@ -299,6 +300,8 @@ pub struct World {
     pub villager_poi: std::sync::Mutex<villager_poi::VillagerPoiStorage>,
     /// Active raids in this world.
     pub raids: std::sync::Mutex<raid::Raids>,
+    /// Vanilla `PhantomSpawner`; only ticked in the overworld.
+    pub phantom_spawner: std::sync::Mutex<phantom_spawner::PhantomSpawner>,
     /// Vanilla `WanderingTraderSpawner`; only ticked in the overworld.
     pub wandering_trader_spawner:
         std::sync::Mutex<wandering_trader_spawner::WanderingTraderSpawner>,
@@ -472,6 +475,7 @@ impl World {
             portal_poi: std::sync::Mutex::new(portal_poi),
             villager_poi: std::sync::Mutex::new(villager_poi::VillagerPoiStorage::default()),
             raids: std::sync::Mutex::new(raid::Raids::default()),
+            phantom_spawner: std::sync::Mutex::default(),
             wandering_trader_spawner,
             dragon_fight,
             spawn_state: ArcSwap::new(Arc::new(SpawnState::empty())),
@@ -2327,6 +2331,10 @@ impl World {
 
         // Vanilla `ServerChunkCache.tickChunks` ticks custom spawners after the chunks.
         if spawn_mobs && self.dimension == Dimension::OVERWORLD {
+            self.phantom_spawner
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .tick(self, !peaceful && spawn_monsters);
             self.wandering_trader_spawner
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
