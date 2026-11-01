@@ -4779,6 +4779,13 @@ impl Player {
         self.damage_with_context(caller, amount, damage_type, None, None, None)
     }
 
+    /// Vanilla `ServerPlayer.canHarmPlayer`: the `pvp` game rule, then team friendly fire.
+    #[must_use]
+    pub fn can_harm_player(&self, target: &Self) -> bool {
+        self.world().level_info.load().game_rules.pvp
+            && (self as &dyn EntityBase).do_teams_allow_damage(target)
+    }
+
     pub fn damage_with_context(
         &self,
         caller: &dyn crate::entity::EntityBase,
@@ -4795,6 +4802,14 @@ impl Player {
             .invulnerable
             && damage_type != pumpkin_data::damage::DamageType::GENERIC_KILL
             && damage_type != pumpkin_data::damage::DamageType::OUT_OF_WORLD
+        {
+            return false;
+        }
+        // Vanilla `ServerPlayer.hurtServer`: a player can't hurt another one it may not harm.
+        if cause
+            .or(source)
+            .and_then(|attacker| attacker.get_player())
+            .is_some_and(|attacker| !attacker.can_harm_player(self))
         {
             return false;
         }
