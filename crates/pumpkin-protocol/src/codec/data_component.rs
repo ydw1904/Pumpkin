@@ -1715,7 +1715,40 @@ fn serialize_adventure_predicate(
     Ok(())
 }
 
+/// Block predicates can nest through their exact components, and a few bytes buy another
+/// level of recursion; the depth is tracked here since `deserialize` can't pass it.
+const MAX_PREDICATE_DEPTH: usize = 16;
+
+thread_local! {
+    static PREDICATE_DEPTH: Cell<usize> = const { Cell::new(0) };
+}
+
+/// One level of block predicate nesting, released when dropped.
+struct PredicateDepth;
+
+impl PredicateDepth {
+    fn enter() -> Result<Self, ReadingError> {
+        PREDICATE_DEPTH.with(|depth| {
+            if depth.get() >= MAX_PREDICATE_DEPTH {
+                return Err(ReadingError::TooLarge(
+                    "Block predicate nesting depth exceeded".into(),
+                ));
+            }
+            depth.set(depth.get() + 1);
+            Ok(Self)
+        })
+    }
+}
+
+impl Drop for PredicateDepth {
+    fn drop(&mut self) {
+        PREDICATE_DEPTH.with(|depth| depth.set(depth.get().saturating_sub(1)));
+    }
+}
+
 fn deserialize_adventure_predicate(seq: &mut impl NetworkReadExt) -> Result<NbtTag, ReadingError> {
+    let _depth = PredicateDepth::enter()?;
+
     let count = seq.get_var_int()?.0.max(0) as usize;
     let mut preds = Vec::with_capacity(count.min(64));
     for _ in 0..count {
@@ -3702,5 +3735,36 @@ mod tests {
         ] {
             assert!(ToolImpl::deserialize(&mut count.as_slice()).is_err());
         }
+    }
+
+    /// A predicate list nesting one exact component of the same kind `levels` deep.
+    fn nested_predicates(component: DataComponent, levels: usize) -> Vec<u8> {
+        let mut encoded = Vec::new();
+        for _ in 0..levels {
+            encoded.extend_from_slice(&[
+                1, // one predicate
+                0,
+                0,
+                0, // no blocks, properties or nbt
+                1, // one exact component
+                component.to_id(),
+            ]);
+        }
+        encoded
+    }
+
+    #[test]
+    fn deeply_nested_exact_components_are_rejected() {
+        let encoded = nested_predicates(DataComponent::CanPlaceOn, 100_000);
+        assert!(matches!(
+            CanPlaceOnImpl::deserialize(&mut encoded.as_slice()),
+            Err(ReadingError::TooLarge(_))
+        ));
+
+        let encoded = nested_predicates(DataComponent::CanBreak, 100_000);
+        assert!(matches!(
+            CanBreakImpl::deserialize(&mut encoded.as_slice()),
+            Err(ReadingError::TooLarge(_))
+        ));
     }
 }
