@@ -1799,6 +1799,18 @@ impl World {
             order::set_entity_order(None);
         }
         self.order_tick_spawns();
+        // Vanilla `rideTick`: the vehicle's `positionRider` moves a riding player after the
+        // vehicle ticked. Pumpkin has no passenger attachment points, so the player sits at
+        // the vehicle's position like `handle_move_vehicle` puts it.
+        for player in self.players.load().iter() {
+            if let Some(vehicle) = player.get_entity().get_vehicle() {
+                let vehicle_pos = vehicle.get_entity().pos.load();
+                if player.get_entity().pos.load() != vehicle_pos {
+                    player.get_entity().set_pos(vehicle_pos);
+                    chunker::update_position(player);
+                }
+            }
+        }
         let entity_elapsed = t_entities.elapsed();
 
         self.entity_tracker.update_all(self);
