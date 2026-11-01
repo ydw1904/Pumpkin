@@ -70,11 +70,12 @@ impl Goal for PlaceBlockGoal {
             return;
         }
 
-        // Never place into an occupied block.
+        // Never place into a block another entity occupies.
         let world_clone = entity.world.load_full();
-        if !world_clone
-            .get_entities_at_box(&BoundingBox::from_block(&target_pos))
-            .is_empty()
+        if world_clone
+            .get_all_at_box(&BoundingBox::from_block(&target_pos))
+            .iter()
+            .any(|other| other.get_entity().entity_id != entity.entity_id)
         {
             return;
         }
