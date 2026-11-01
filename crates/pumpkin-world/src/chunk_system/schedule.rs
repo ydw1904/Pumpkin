@@ -23,12 +23,14 @@ use std::thread;
 use std::time::Duration;
 use tracing::{debug, error, info, trace, warn};
 
+/// Ordered by `eff_level` first, so the chunks closest to a player finish before far ones
+/// start their later stages, as vanilla's ticket levels do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct TaskPriority {
+    eff_level: i8,
     stage: u8,
     x: i32,
     z: i32,
-    eff_level: i8,
 }
 
 pub(crate) struct TaskHeapNode(TaskPriority, NodeKey);
