@@ -28,6 +28,25 @@ impl BedrockClient {
         player.send_health();
     }
 
+    /// Stores the main hand stack after a block interaction, like the Java `write_back_used_item`.
+    fn write_back_held_item(player: &Player, before: &ItemStack, after: ItemStack) {
+        if !before.is_empty() && before.is_damageable() && after.is_empty() {
+            player.increment_stat(
+                pumpkin_data::statistic::StatisticCategory::Broken,
+                before.item.id as i32,
+                1,
+            );
+            player.world().send_entity_status(
+                player.get_entity(),
+                crate::entity::equipment_break_status(&EquipmentSlot::MAIN_HAND),
+                ActorEventID::None,
+            );
+        }
+        if !after.are_equal(before) {
+            player.inventory().set_held_item(after);
+        }
+    }
+
     #[allow(clippy::too_many_lines, clippy::collapsible_if, clippy::unreachable)]
     pub fn handle_inventory_action(&self, player: &Arc<Player>, packet: SInventoryTransaction) {
         tracing::debug!("handle_inventory_action: packet={:?}", packet);
@@ -208,6 +227,7 @@ impl BedrockClient {
                         held_item = client_stack;
                     }
 
+                    let before_use = held_item.clone();
                     let result = server.block_registry.use_with_item(
                         block,
                         player,
@@ -223,6 +243,7 @@ impl BedrockClient {
                     );
 
                     if result.consumes_action() {
+                        Self::write_back_held_item(player, &before_use, held_item);
                         return;
                     }
 
@@ -289,19 +310,7 @@ impl BedrockClient {
                                 }
                             }
                         }
-                        if before.is_damageable() && stack.is_empty() {
-                            player.increment_stat(
-                                pumpkin_data::statistic::StatisticCategory::Broken,
-                                item_id as i32,
-                                1,
-                            );
-                            player.world().send_entity_status(
-                                player.get_entity(),
-                                crate::entity::equipment_break_status(&EquipmentSlot::MAIN_HAND),
-                                ActorEventID::None,
-                            );
-                        }
-                        player.inventory().set_held_item(stack);
+                        Self::write_back_held_item(player, &before, stack);
                     }
                 } else if data.action_type.0 == 1 {
                     // Click air / Use item
