@@ -243,7 +243,6 @@ impl EntityBase for FireballEntity {
         let world = self.get_entity().world.load();
 
         if let ProjectileHit::Entity { ref entity, .. } = hit {
-            entity.get_entity().set_on_fire_for(5.0);
             let _ = entity.damage(
                 entity.as_ref(),
                 6.0,
