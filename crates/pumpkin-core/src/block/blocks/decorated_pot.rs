@@ -10,8 +10,8 @@ use pumpkin_world::tick::TickPriority;
 use crate::block::entities::decorated_pot::DecoratedPotBlockEntity;
 use crate::block::registry::BlockActionResult;
 use crate::block::{
-    BlockBehaviour, BrokenArgs, GetComparatorOutputArgs, GetStateForNeighborUpdateArgs,
-    NormalUseArgs, OnPlaceArgs, PathComputationType, PlacedArgs, UseWithItemArgs,
+    BlockBehaviour, GetComparatorOutputArgs, GetStateForNeighborUpdateArgs, NormalUseArgs,
+    OnPlaceArgs, PathComputationType, PlacedArgs, UseWithItemArgs,
 };
 
 #[pumpkin_block("minecraft:decorated_pot")]
@@ -92,17 +92,6 @@ impl BlockBehaviour for DecoratedPotBlock {
             &args.position.to_f64(),
         );
         BlockActionResult::Success
-    }
-
-    fn broken(&self, args: BrokenArgs<'_>) {
-        if let Some(block_entity) = args.world.get_block_entity(args.position)
-            && let Some(pot_entity) = block_entity
-                .as_any()
-                .downcast_ref::<DecoratedPotBlockEntity>()
-            && let Some(contained) = pot_entity.take_item()
-        {
-            args.world.drop_stack(args.position, contained);
-        }
     }
 
     fn get_comparator_output(&self, args: GetComparatorOutputArgs<'_>) -> Option<u8> {
