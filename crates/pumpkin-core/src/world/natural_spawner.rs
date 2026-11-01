@@ -10,6 +10,7 @@ use pumpkin_data::biome::Spawner;
 use pumpkin_data::chunk::Biome;
 use pumpkin_data::dimension::Dimension;
 use pumpkin_data::entity::{EntityType, MobCategory, SpawnLocation};
+use pumpkin_data::structures::{BoundingBoxType, Structure, StructureKeys};
 use pumpkin_data::tag::Block::MINECRAFT_PREVENT_MOB_SPAWNING_INSIDE;
 use pumpkin_data::tag::Fluid::{MINECRAFT_LAVA, MINECRAFT_WATER};
 use pumpkin_data::tag::Taggable;
@@ -810,7 +811,7 @@ pub fn spawn_category_for_position(
                     &check_pos,
                     category,
                     entity_type,
-                    spawner.r#type,
+                    spawner,
                     player_distance_sq,
                     is_thundering,
                 ) && spawn_state.can_spawn(entity_type, &check_pos, world)
@@ -903,33 +904,53 @@ pub fn is_right_distance_to_player_and_spawn_point(
                 .contains_block(pos.0.x, pos.0.z))
 }
 
+/// Vanilla `NetherFortressStructure.FORTRESS_ENEMIES`.
+const FORTRESS_ENEMIES: &[Spawner] = &[
+    Spawner {
+        r#type: "minecraft:blaze",
+        min_count: 2,
+        max_count: 3,
+        weight: 10,
+    },
+    Spawner {
+        r#type: "minecraft:zombified_piglin",
+        min_count: 4,
+        max_count: 4,
+        weight: 5,
+    },
+    Spawner {
+        r#type: "minecraft:wither_skeleton",
+        min_count: 5,
+        max_count: 5,
+        weight: 8,
+    },
+    Spawner {
+        r#type: "minecraft:skeleton",
+        min_count: 5,
+        max_count: 5,
+        weight: 2,
+    },
+    Spawner {
+        r#type: "minecraft:magma_cube",
+        min_count: 4,
+        max_count: 4,
+        weight: 3,
+    },
+];
+
+/// Vanilla `NaturalSpawner.canSpawnMobAt`: whether `spawner` is still on the spawn list at `pos`.
 #[must_use]
 pub fn can_spawn_mob_at(
     world: &World,
     category: &'static MobCategory,
-    spawner_type: &'static str,
+    spawner: &Spawner,
     pos: &BlockPos,
 ) -> bool {
-    let biome = world.level.get_rough_biome(pos);
-    let spawners = match category.id {
-        id if id == MobCategory::MONSTER.id => biome.spawners.monster,
-        id if id == MobCategory::CREATURE.id => biome.spawners.creature,
-        id if id == MobCategory::AMBIENT.id => biome.spawners.ambient,
-        id if id == MobCategory::AXOLOTLS.id => biome.spawners.axolotls,
-        id if id == MobCategory::UNDERGROUND_WATER_CREATURE.id => {
-            biome.spawners.underground_water_creature
-        }
-        id if id == MobCategory::WATER_CREATURE.id => biome.spawners.water_creature,
-        id if id == MobCategory::WATER_AMBIENT.id => biome.spawners.water_ambient,
-        id if id == MobCategory::MISC.id => biome.spawners.misc,
-        _ => biome.spawners.misc,
-    };
-    let target = spawner_type
-        .strip_prefix("minecraft:")
-        .unwrap_or(spawner_type);
-    spawners.iter().any(|s| {
-        let name = s.r#type.strip_prefix("minecraft:").unwrap_or(s.r#type);
-        name == target
+    // Vanilla compares `SpawnerData` records: the entity type and the count provider.
+    mobs_at(world, category, pos).iter().any(|other| {
+        other.r#type == spawner.r#type
+            && other.min_count == spawner.min_count
+            && other.max_count == spawner.max_count
     })
 }
 
@@ -946,21 +967,60 @@ pub fn get_random_spawn_mob_at(
     {
         None
     } else {
-        let spawners = match category.id {
-            id if id == MobCategory::MONSTER.id => biome.spawners.monster,
-            id if id == MobCategory::CREATURE.id => biome.spawners.creature,
-            id if id == MobCategory::AMBIENT.id => biome.spawners.ambient,
-            id if id == MobCategory::AXOLOTLS.id => biome.spawners.axolotls,
-            id if id == MobCategory::UNDERGROUND_WATER_CREATURE.id => {
-                biome.spawners.underground_water_creature
-            }
-            id if id == MobCategory::WATER_CREATURE.id => biome.spawners.water_creature,
-            id if id == MobCategory::WATER_AMBIENT.id => biome.spawners.water_ambient,
-            id if id == MobCategory::MISC.id => biome.spawners.misc,
-            _ => biome.spawners.misc,
-        };
-        choose_spawner(spawners)
+        choose_spawner(mobs_at(world, category, block_pos))
     }
+}
+
+/// Vanilla `NaturalSpawner.mobsAt`.
+fn mobs_at(world: &World, category: &'static MobCategory, pos: &BlockPos) -> &'static [Spawner] {
+    if is_in_nether_fortress_bounds(pos, world, category) {
+        return FORTRESS_ENEMIES;
+    }
+    // Vanilla `ChunkGenerator.getMobsAt`: the first structure whose spawn override for this
+    // category covers `pos` replaces the biome's list.
+    let structure_spawns = world.level.read_structures_at(pos, |structures| {
+        structures.iter().find_map(|start| {
+            let spawn_override = Structure::get(&start.structure)
+                .spawn_overrides
+                .iter()
+                .find(|spawn_override| spawn_override.category == category.name)?;
+            let in_override_box = match spawn_override.bounding_box {
+                BoundingBoxType::Piece => start.has_piece_at(pos),
+                BoundingBoxType::Full => start.is_inside(pos),
+            };
+            in_override_box.then_some(spawn_override.spawns)
+        })
+    });
+    if let Some(spawns) = structure_spawns.flatten() {
+        return spawns;
+    }
+    let spawners = &world.level.get_rough_biome(pos).spawners;
+    match category.id {
+        id if id == MobCategory::MONSTER.id => spawners.monster,
+        id if id == MobCategory::CREATURE.id => spawners.creature,
+        id if id == MobCategory::AMBIENT.id => spawners.ambient,
+        id if id == MobCategory::AXOLOTLS.id => spawners.axolotls,
+        id if id == MobCategory::UNDERGROUND_WATER_CREATURE.id => {
+            spawners.underground_water_creature
+        }
+        id if id == MobCategory::WATER_CREATURE.id => spawners.water_creature,
+        id if id == MobCategory::WATER_AMBIENT.id => spawners.water_ambient,
+        _ => spawners.misc,
+    }
+}
+
+/// Vanilla `NaturalSpawner.isInNetherFortressBounds`.
+#[must_use]
+pub fn is_in_nether_fortress_bounds(
+    pos: &BlockPos,
+    world: &World,
+    category: &'static MobCategory,
+) -> bool {
+    category == &MobCategory::MONSTER
+        && world.get_block(&pos.down()) == &Block::NETHER_BRICKS
+        && world
+            .level
+            .is_inside_structure(pos, |structure| structure == StructureKeys::Fortress)
 }
 
 /// Vanilla `WeightedList.getRandom`: one draw over the total weight, none when it is zero.
@@ -982,7 +1042,7 @@ pub fn is_valid_spawn_position_for_type(
     block_pos: &BlockPos,
     category: &'static MobCategory,
     entity_type: &'static EntityType,
-    spawner_type: &'static str,
+    spawner: &Spawner,
     distance: f64,
     is_thundering: bool,
 ) -> bool {
@@ -996,7 +1056,7 @@ pub fn is_valid_spawn_position_for_type(
     {
         return false;
     }
-    if !entity_type.summonable || !can_spawn_mob_at(world, category, spawner_type, block_pos) {
+    if !entity_type.summonable || !can_spawn_mob_at(world, category, spawner, block_pos) {
         return false;
     }
     if !is_spawn_position_ok(world, block_pos, entity_type) {
