@@ -517,47 +517,15 @@ impl GenerationSchedule {
         newly_created
     }
 
-    pub(crate) fn is_features_order_ready(
-        chunk_map: &HashMap<ChunkPos, ChunkHolder>,
-        pos: ChunkPos,
-    ) -> bool {
-        for dx in -2..=2 {
-            for dz in -2..=2 {
-                if dx > 0 || (dx == 0 && dz >= 0) {
-                    continue;
-                }
-                let neighbor_pos = pos.add_raw(dx, dz);
-                if let Some(holder) = chunk_map.get(&neighbor_pos) {
-                    let effective_target = holder.target_stage.max(holder.dependency_stage);
-                    if effective_target >= StagedChunkEnum::Features
-                        && holder.current_stage < StagedChunkEnum::Features
-                    {
-                        return false;
-                    }
-                }
-            }
-        }
-        true
-    }
-
     fn is_task_ready(&self, pos: ChunkPos, stage: StagedChunkEnum) -> bool {
         let read_radius = stage.get_read_radius();
-        let chunks_present = (-read_radius..=read_radius).all(|dx| {
+        (-read_radius..=read_radius).all(|dx| {
             (-read_radius..=read_radius).all(|dy| {
                 self.chunk_map
                     .get(&pos.add_raw(dx, dy))
                     .is_some_and(|h| h.chunk.is_some())
             })
-        });
-        if !chunks_present {
-            return false;
-        }
-        if stage == StagedChunkEnum::Features
-            && !Self::is_features_order_ready(&self.chunk_map, pos)
-        {
-            return false;
-        }
-        true
+        })
     }
 
     /// Check if any tasks parked in `waiting_for_chunks` now have all their neighbor
@@ -1512,7 +1480,6 @@ impl GenerationSchedule {
                         let write_radius = node.stage.get_write_radius();
 
                         // Pre-validate that every chunk in the read area has its data present
-                        // (and higher-priority overlapping Features tasks have finished)
                         // before we snapshot neighbors or swap the write area out.
                         if !self.is_task_ready(node.pos, node.stage) {
                             if let Some(n) = self.graph.nodes.get_mut(task.1) {
