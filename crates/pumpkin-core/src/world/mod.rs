@@ -4181,7 +4181,12 @@ impl World {
         }
     }
 
-    fn run_explosion(self: &Arc<Self>, explosion: &Explosion, position: Vector3<f64>, power: f32) {
+    pub(crate) fn run_explosion(
+        self: &Arc<Self>,
+        explosion: &Explosion,
+        position: Vector3<f64>,
+        power: f32,
+    ) {
         let mut event = crate::plugin::api::events::entity::entity_explode::EntityExplodeEvent::new(
             0, position, power,
         );
@@ -4192,22 +4197,22 @@ impl World {
             return;
         }
 
-        let block_count = explosion.explode(self);
-        let particle = if power < 2.0 {
-            Particle::Explosion
+        let (block_count, hit_players) = explosion.explode(self);
+        let particle = if explosion.is_small() {
+            explosion.small_particle
         } else {
-            Particle::ExplosionEmitter
+            explosion.large_particle
         };
-        let sound = IdOr::<SoundEvent>::Id(Sound::EntityGenericExplode as u16);
+        let sound = IdOr::<SoundEvent>::Id(explosion.sound as u16);
         for player in self.players.load().iter() {
-            if player.position().squared_distance_to_vec(&position) > 4096.0 {
+            if player.position().squared_distance_to_vec(&position) >= 4096.0 {
                 continue;
             }
             player.try_send_client_packet(&CExplosion::new(
                 position,
                 power,
                 block_count as i32,
-                None,
+                hit_players.get(&player.entity_id()).copied(),
                 VarInt(particle as i32),
                 sound.clone(),
             ));

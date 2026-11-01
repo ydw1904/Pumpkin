@@ -7,6 +7,8 @@ use pumpkin_data::{
     damage::DamageType,
     entity::EntityType,
     fluid::Fluid,
+    particle::Particle,
+    sound::Sound,
     tag::{Tag, Taggable},
 };
 use pumpkin_util::math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3};
@@ -20,6 +22,7 @@ use crate::{
         drop_loot,
     },
     entity::{Entity, EntityBase, combat::knockback_after_resistance},
+    net::ClientPlatform,
     world::loot::LootContextParameters,
 };
 
@@ -198,6 +201,9 @@ pub struct Explosion {
     preserve_rails: bool,
     /// Vanilla `ServerExplosion.fire`: sets fire to some of the blown positions.
     create_fire: bool,
+    pub(super) small_particle: Particle,
+    pub(super) large_particle: Particle,
+    pub(super) sound: Sound,
 }
 
 impl Explosion {
@@ -210,7 +216,29 @@ impl Explosion {
             damage_calculator: None,
             preserve_rails: false,
             create_fire: false,
+            small_particle: Particle::Explosion,
+            large_particle: Particle::ExplosionEmitter,
+            sound: Sound::EntityGenericExplode,
         }
+    }
+
+    /// The particles and sound vanilla's `ServerLevel.explode` sends with the explosion.
+    #[must_use]
+    pub const fn with_particles_and_sound(
+        mut self,
+        small_particle: Particle,
+        large_particle: Particle,
+        sound: Sound,
+    ) -> Self {
+        self.small_particle = small_particle;
+        self.large_particle = large_particle;
+        self.sound = sound;
+        self
+    }
+
+    /// Vanilla `ServerExplosion.isSmall`.
+    pub(super) fn is_small(&self) -> bool {
+        self.power < 2.0 || self.block_interaction == BlockInteraction::Keep
     }
 
     #[must_use]
@@ -399,10 +427,13 @@ impl Explosion {
         }
     }
 
-    fn damage_entities(&self, world: &Arc<World>) {
+    /// Returns the knockback for each hit Java player, which vanilla sends in the explosion
+    /// packet for the client to add to its own motion.
+    fn damage_entities(&self, world: &Arc<World>) -> FxHashMap<i32, Vector3<f64>> {
+        let mut hit_players = FxHashMap::default();
         // Explosion is too small
         if self.power < 1.0e-5 {
-            return;
+            return hit_players;
         }
 
         let radius = self.power as f64 * 2.0;
@@ -485,8 +516,17 @@ impl Explosion {
             {
                 continue;
             }
-            entity.add_velocity(knockback);
+            if entity_base
+                .get_player()
+                .is_some_and(|player| matches!(player.client.as_ref(), ClientPlatform::Java(_)))
+            {
+                entity.velocity.store(entity.velocity.load() + knockback);
+                hit_players.insert(entity.entity_id, knockback);
+            } else {
+                entity.add_velocity(knockback);
+            }
         }
+        hit_players
     }
 
     fn calculate_exposure(
@@ -550,9 +590,13 @@ impl Explosion {
     }
 
     /// Returns the removed block count
-    pub fn explode(&self, world: &Arc<World>) -> u32 {
-        self.damage_entities(world);
+    /// Returns the removed block count and the knockback of each hit Java player.
+    pub fn explode(&self, world: &Arc<World>) -> (u32, FxHashMap<i32, Vector3<f64>>) {
+        let hit_players = self.damage_entities(world);
+        (self.interact_with_blocks(world), hit_players)
+    }
 
+    fn interact_with_blocks(&self, world: &Arc<World>) -> u32 {
         match self.block_interaction {
             BlockInteraction::Keep => {
                 if self.create_fire {
