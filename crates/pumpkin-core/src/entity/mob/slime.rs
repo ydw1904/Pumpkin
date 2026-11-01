@@ -6,6 +6,7 @@ use crossbeam::atomic::AtomicCell;
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::sound::{Sound, SoundCategory};
+use pumpkin_data::tag::Taggable;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::Difficulty;
 use pumpkin_util::math::boundingbox::EntityDimensions;
@@ -162,23 +163,17 @@ impl SlimeEntity {
         // TODO: check spawn reason. if it's spawner, we should return true if block below is valid
         // For now, we assume natural spawning as that's what we are implementing.
 
-        // Swamp/Surface Spawning
-        // TODO: fix
-        // let biome = world.get_biome(pos);
-        // if biome.has_tag(&pumpkin_data::tag::WorldgenBiome::MINECRAFT_ALLOWS_SURFACE_SLIME_SPAWNS)
-        //     && pos.0.y > 50
-        //     && pos.0.y < 70
-        // {
-        //     let time = world.level_time.lock().await.time_of_day;
-        //     let moon_phase = (time / 24000) % 8;
-        //     let surface_slime_spawn_chance = Self::get_spawn_chance(moon_phase);
-        //     let mut rng = game_random();
-        //     if rng.random::<f32>() < surface_slime_spawn_chance
-        //         && world.get_max_local_raw_brightness(pos) <= rng.random_range(0..8)
-        //     {
-        //         return true;
-        //     }
-        // }
+        let rng = game_random();
+        if world
+            .get_biome(pos)
+            .has_tag(&pumpkin_data::tag::WorldgenBiome::MINECRAFT_ALLOWS_SURFACE_SLIME_SPAWNS)
+            && pos.0.y > 50
+            && pos.0.y < 70
+            && rng.random::<f32>() < world.surface_slime_spawn_chance(pos)
+            && i32::from(world.get_max_local_raw_brightness(pos)) <= rng.random_range(0..8)
+        {
+            return MobEntity::check_mob_spawn_rules(world, pos);
+        }
 
         // Slime Chunk Spawning
         let chunk_pos = pos.chunk_position();
@@ -191,23 +186,12 @@ impl SlimeEntity {
         );
         let mut slime_rand = pumpkin_util::random::legacy_rand::LegacyRand::from_seed(slime_seed);
 
-        let rng = game_random();
         if rng.random_range(0..10) == 0 && slime_rand.next_bounded_i32(10) == 0 && pos.0.y < 40 {
-            return true;
+            return MobEntity::check_mob_spawn_rules(world, pos);
         }
 
         false
     }
-
-    // const fn get_spawn_chance(moon_phase: i64) -> f32 {
-    //     match moon_phase {
-    //         0 => 1.0,
-    //         1 | 7 => 0.75,
-    //         2 | 6 => 0.5,
-    //         3 | 5 => 0.25,
-    //         _ => 0.0,
-    //     }
-    // }
 
     fn get_jump_delay() -> i32 {
         game_random().random_range(10..30)
