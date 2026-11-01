@@ -29,6 +29,7 @@ use pumpkin_util::math::vector2::Vector2;
 use super::{
     ChunkData, ChunkHeightmaps, ChunkLight, ChunkParsingError, ChunkSections,
     palette::{BiomePalette, BlockPalette},
+    structure::{MAX_STRUCTURE_REFERENCES, StructureReference},
 };
 pub mod anvil;
 pub mod linear;
@@ -39,6 +40,11 @@ pub mod pump;
 /// rides through a load/save cycle untouched rather than being dropped.
 /// Pump chunk flag: scheduled tick delays are u32 rather than one byte.
 const LONG_TICK_DELAYS: u8 = 1 << 6;
+/// Pump chunk flag: the chunk carries structure references.
+const HAS_STRUCTURES: u8 = 1 << 7;
+/// Root tag for the chunk's structure references. Vanilla's own `structures` tag holds full
+/// starts with every piece's own data, which this server does not model.
+const STRUCTURES_TAG: &str = "PumpkinStructures";
 
 const MODELLED_ROOT_TAGS: &[&str] = &[
     "DataVersion",
@@ -56,6 +62,7 @@ const MODELLED_ROOT_TAGS: &[&str] = &[
     "PumpkinCustomData",
     "BukkitValues",
     "PostProcessing",
+    STRUCTURES_TAG,
 ];
 
 fn preserved_root_tags(root_tag: &NbtCompound) -> NbtCompound {
@@ -522,6 +529,19 @@ impl ChunkData {
             })
             .collect();
 
+        let structures = root_tag
+            .get_list(STRUCTURES_TAG)
+            .unwrap_or_default()
+            .iter()
+            .take(MAX_STRUCTURE_REFERENCES)
+            .filter_map(|tag| match tag {
+                pumpkin_nbt::tag::NbtTag::Compound(compound) => {
+                    StructureReference::read_nbt(compound)
+                }
+                _ => None,
+            })
+            .collect();
+
         Ok(Self {
             section,
             heightmap: std::sync::Mutex::new(heightmaps),
@@ -539,7 +559,7 @@ impl ChunkData {
             inhabited_time: AtomicU64::new(root_tag.get_long("InhabitedTime").unwrap_or(0) as u64),
             custom_data: std::sync::Mutex::new(custom_data),
             post_processing: std::sync::Mutex::new(post_processing),
-            structures: Box::default(),
+            structures,
             preserved_tags: std::sync::Mutex::new(preserved_root_tags(&root_tag)),
         })
     }
@@ -781,6 +801,17 @@ impl ChunkData {
             );
         }
 
+        if !self.structures.is_empty() {
+            root_compound.put_list(
+                STRUCTURES_TAG,
+                self.structures
+                    .iter()
+                    .take(MAX_STRUCTURE_REFERENCES)
+                    .map(|reference| pumpkin_nbt::tag::NbtTag::Compound(reference.write_nbt()))
+                    .collect(),
+            );
+        }
+
         let nbt = pumpkin_nbt::Nbt::from(root_compound);
         nbt.write()
     }
@@ -858,6 +889,9 @@ impl ChunkData {
         }
         // Scheduled tick delays are written as u32; older files wrote one byte.
         flags |= LONG_TICK_DELAYS;
+        if !self.structures.is_empty() {
+            flags |= HAS_STRUCTURES;
+        }
 
         let status_u8 = match self.status {
             ChunkStatus::Empty => 0,
@@ -964,6 +998,15 @@ impl ChunkData {
                 for &offset in section {
                     out.put_u16(offset);
                 }
+            }
+        }
+
+        if !self.structures.is_empty() {
+            let structures =
+                &self.structures[..self.structures.len().min(MAX_STRUCTURE_REFERENCES)];
+            out.put_u16(structures.len() as u16);
+            for reference in structures {
+                reference.write_pump(&mut out);
             }
         }
 
@@ -1277,6 +1320,26 @@ impl ChunkData {
             }
         }
 
+        let mut structures = Vec::new();
+        if (flags & HAS_STRUCTURES) != 0 {
+            if buf.remaining() < 2 {
+                return Err(ChunkParsingError::ErrorDeserializingChunk(
+                    "Unexpected EOF reading structure reference count".into(),
+                ));
+            }
+            let count = buf.get_u16() as usize;
+            if count > MAX_STRUCTURE_REFERENCES {
+                return Err(ChunkParsingError::ErrorDeserializingChunk(
+                    "Invalid structure reference count".into(),
+                ));
+            }
+            for _ in 0..count {
+                if let Some(reference) = StructureReference::read_pump(&mut buf)? {
+                    structures.push(reference);
+                }
+            }
+        }
+
         Ok(Self {
             section,
             heightmap: std::sync::Mutex::new(heightmaps),
@@ -1293,7 +1356,7 @@ impl ChunkData {
             inhabited_time: AtomicU64::new(inhabited_time),
             custom_data: std::sync::Mutex::new(custom_data),
             post_processing: std::sync::Mutex::new(post_processing),
-            structures: Box::default(),
+            structures: structures.into_boxed_slice(),
             preserved_tags: std::sync::Mutex::default(),
         })
     }
@@ -1696,6 +1759,46 @@ mod tests {
         )
         .expect("pump chunk parses");
         assert_eq!(*pump.post_processing.lock().unwrap(), expected);
+    }
+
+    #[test]
+    fn structure_references_survive_anvil_and_pump() {
+        use crate::chunk::ChunkData;
+        use crate::chunk::structure::StructureReference;
+        use pumpkin_data::structures::StructureKeys;
+        use pumpkin_util::math::block_box::BlockBox;
+        use pumpkin_util::math::vector2::Vector2;
+
+        let nbt = test_chunk(vec![test_section(-4, "minecraft:stone", true)]);
+        let mut chunk =
+            ChunkData::from_bytes(&nbt.write(), Vector2::new(0, 0)).expect("chunk parses");
+        assert!(chunk.structures.is_empty());
+        let expected: Box<[StructureReference]> = Box::new([
+            StructureReference {
+                structure: StructureKeys::Fortress,
+                bounding_box: BlockBox::new(-40, 48, -12, 60, 90, 77),
+                pieces: Box::new([
+                    BlockBox::new(-3, 64, 0, 9, 72, 18),
+                    BlockBox::new(10, 48, -12, 20, 55, 2),
+                ]),
+            },
+            StructureReference {
+                structure: StructureKeys::SwampHut,
+                bounding_box: BlockBox::new(0, 60, 0, 6, 66, 8),
+                pieces: Box::new([]),
+            },
+        ]);
+        chunk.structures = expected.clone();
+
+        let anvil = ChunkData::from_bytes(&chunk.internal_to_bytes(), Vector2::new(0, 0))
+            .expect("Anvil chunk parses");
+        assert_eq!(anvil.structures, expected);
+        let pump = ChunkData::internal_from_pump_bytes(
+            &chunk.internal_to_pump_bytes(),
+            Vector2::new(0, 0),
+        )
+        .expect("pump chunk parses");
+        assert_eq!(pump.structures, expected);
     }
 
     #[test]
