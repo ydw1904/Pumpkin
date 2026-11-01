@@ -10,7 +10,9 @@ use pumpkin_data::{
     tag::{self, Taggable},
 };
 use pumpkin_protocol::bedrock::server::ActorEventID;
-use pumpkin_util::math::{boundingbox::EntityDimensions, cos, sin, vector3::Vector3};
+use pumpkin_util::math::{
+    boundingbox::EntityDimensions, cos, position::BlockPos, sin, vector3::Vector3,
+};
 
 use super::ageable_water_creature::AgeableWaterCreature;
 use crate::entity::{
@@ -292,7 +294,7 @@ impl Goal for SquidFleeGoal {
         };
         let entity = mob.get_entity();
         let mut flee_to = entity.pos.load() - attacker.get_entity().pos.load();
-        let pos = (entity.pos.load() + flee_to).to_block_pos();
+        let pos = BlockPos::containing_vec(entity.pos.load() + flee_to);
         let world = entity.world.load();
         let block = world.get_block(&pos);
         if world.get_fluid(&pos).has_tag(&tag::Fluid::MINECRAFT_WATER) || block.is_air() {

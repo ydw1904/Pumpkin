@@ -1,4 +1,4 @@
-use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
 
 use super::{Controls, Goal, to_goal_ticks};
 use crate::entity::{
@@ -35,7 +35,7 @@ impl RandomSwimmingGoal {
         let mut target = default_random_pos::get_pos(mob, HORIZONTAL_RANGE, VERTICAL_RANGE);
         let mut count = 0;
         while let Some(pos) = target {
-            let pos = pos.to_block_pos();
+            let pos = BlockPos::containing_vec(pos);
             let (block, state) = world.get_block_and_state(&pos);
             if world
                 .block_registry

@@ -897,7 +897,7 @@ impl MobEntity {
         entity
             .world
             .load()
-            .get_light_level_dependent_magic_value(&entity.get_eye_pos().to_block_pos())
+            .get_light_level_dependent_magic_value(&BlockPos::containing_vec(entity.get_eye_pos()))
             >= DAYLIGHT_BRIGHTNESS
     }
 

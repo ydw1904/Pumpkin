@@ -46,7 +46,7 @@ impl GoToWantedItemGoal {
         self.piglin.nearest_wanted_item().filter(|item| {
             let item_pos = item.get_entity().pos.load();
             let max = PiglinAi::MAX_DISTANCE_TO_WALK_TO_ITEM;
-            let block = item_pos.to_block_pos();
+            let block = BlockPos::containing_vec(item_pos);
             item_pos.squared_distance_to_vec(&pos) < max * max
                 && world
                     .worldborder
