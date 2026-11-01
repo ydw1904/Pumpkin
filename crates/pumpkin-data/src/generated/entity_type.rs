@@ -102,6 +102,7 @@ pub enum SpawnLocation {
 #[derive(Debug)]
 pub struct MobCategory {
     pub id: usize,
+    pub name: &'static str,
     pub max: i32,
     pub is_friendly: bool,
     pub is_persistent: bool,
@@ -116,6 +117,7 @@ impl MobCategory {
     pub const NO_DESPAWN_DISTANCE: i32 = 32;
     pub const MONSTER: MobCategory = MobCategory {
         id: 0,
+        name: "monster",
         max: 70,
         is_friendly: false,
         is_persistent: false,
@@ -123,6 +125,7 @@ impl MobCategory {
     };
     pub const CREATURE: MobCategory = MobCategory {
         id: 1,
+        name: "creature",
         max: 10,
         is_friendly: true,
         is_persistent: true,
@@ -130,6 +133,7 @@ impl MobCategory {
     };
     pub const AMBIENT: MobCategory = MobCategory {
         id: 2,
+        name: "ambient",
         max: 15,
         is_friendly: true,
         is_persistent: false,
@@ -137,6 +141,7 @@ impl MobCategory {
     };
     pub const AXOLOTLS: MobCategory = MobCategory {
         id: 3,
+        name: "axolotls",
         max: 5,
         is_friendly: true,
         is_persistent: false,
@@ -144,6 +149,7 @@ impl MobCategory {
     };
     pub const UNDERGROUND_WATER_CREATURE: MobCategory = MobCategory {
         id: 4,
+        name: "underground_water_creature",
         max: 5,
         is_friendly: true,
         is_persistent: false,
@@ -151,6 +157,7 @@ impl MobCategory {
     };
     pub const WATER_CREATURE: MobCategory = MobCategory {
         id: 5,
+        name: "water_creature",
         max: 5,
         is_friendly: true,
         is_persistent: true,
@@ -158,6 +165,7 @@ impl MobCategory {
     };
     pub const WATER_AMBIENT: MobCategory = MobCategory {
         id: 6,
+        name: "water_ambient",
         max: 20,
         is_friendly: true,
         is_persistent: false,
@@ -165,6 +173,7 @@ impl MobCategory {
     };
     pub const MISC: MobCategory = MobCategory {
         id: 7,
+        name: "misc",
         max: -1,
         is_friendly: true,
         is_persistent: true,
