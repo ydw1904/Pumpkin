@@ -26,7 +26,7 @@ impl HugeFungusFeature {
         chunk: &mut T,
         block_registry: &dyn WorldPortalExt,
         _min_y: i8,
-        _height: u16,
+        height: u16,
         _feature: pumpkin_data::placed_feature::PlacedFeature,
         random: &mut RandomGenerator,
         pos: BlockPos,
@@ -43,7 +43,8 @@ impl HugeFungusFeature {
             total_height *= 2;
         }
 
-        if !self.planted && pos.0.y + total_height + 1 >= chunk.top_y() as i32 {
+        // Vanilla compares the absolute y with `ChunkGenerator.getGenDepth`.
+        if !self.planted && pos.0.y + total_height + 1 >= i32::from(height) {
             return false;
         }
 
@@ -61,10 +62,9 @@ impl HugeFungusFeature {
         pos: BlockPos,
         check_non_replaceable_plants: bool,
     ) -> bool {
-        if chunk.is_air(&pos.0)
-            || GenerationCache::get_block_state(chunk, &pos.0)
-                .to_state()
-                .is_air()
+        if GenerationCache::get_block_state(chunk, &pos.0)
+            .to_state()
+            .replaceable()
         {
             true
         } else if check_non_replaceable_plants {
