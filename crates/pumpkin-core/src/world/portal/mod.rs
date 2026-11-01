@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use pumpkin_data::Block;
 use pumpkin_data::block_properties::HorizontalAxis;
@@ -129,29 +130,39 @@ impl PortalType {
                             pitch: None,
                         })
                     } else {
-                        // Leaving the End through the exit portal: return to overworld spawn
+                        // Leaving the End through the exit portal. Vanilla `EndPortalBlock`
+                        // shows the credits instead the first time (`showEndCredits`); a Java
+                        // player then stays put until the client asks to respawn. Bedrock has
+                        // no respawn request after the credits, so it travels straight away.
                         if let Some(player) =
                             current_level.get_player_by_id(caller.get_entity().entity_id)
                         {
-                            match player.client.as_ref() {
-                                crate::net::ClientPlatform::Java(client) => {
-                                    if let Ok(data) = client.serialize_packet(&pumpkin_protocol::java::client::play::CGameEvent::new(
-                                        pumpkin_protocol::java::client::play::GameEvent::WinGame,
-                                        1.0,
-                                    )) {
-                                        client.try_enqueue_packet(data);
+                            if player.won_game.load(Ordering::Relaxed) {
+                                return None;
+                            }
+                            if !player.seen_credits.swap(true, Ordering::Relaxed) {
+                                match player.client.as_ref() {
+                                    crate::net::ClientPlatform::Java(client) => {
+                                        if let Ok(data) = client.serialize_packet(&pumpkin_protocol::java::client::play::CGameEvent::new(
+                                            pumpkin_protocol::java::client::play::GameEvent::WinGame,
+                                            0.0,
+                                        )) {
+                                            client.try_enqueue_packet(data);
+                                        }
+                                        player.won_game.store(true, Ordering::Relaxed);
+                                        return None;
                                     }
-                                }
-                                crate::net::ClientPlatform::Bedrock(client) => {
-                                    if let Ok(data) = client.serialize_packet(
-                                        &pumpkin_protocol::bedrock::client::CShowCredits {
-                                            player_runtime_id: (caller.get_entity().entity_id
-                                                as u64)
-                                                .into(),
-                                            credits_state: 0.into(),
-                                        },
-                                    ) {
-                                        client.try_enqueue_packet(data);
+                                    crate::net::ClientPlatform::Bedrock(client) => {
+                                        if let Ok(data) = client.serialize_packet(
+                                            &pumpkin_protocol::bedrock::client::CShowCredits {
+                                                player_runtime_id: (caller.get_entity().entity_id
+                                                    as u64)
+                                                    .into(),
+                                                credits_state: 0.into(),
+                                            },
+                                        ) {
+                                            client.try_enqueue_packet(data);
+                                        }
                                     }
                                 }
                             }

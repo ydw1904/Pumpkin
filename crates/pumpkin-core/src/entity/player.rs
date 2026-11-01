@@ -582,6 +582,8 @@ pub struct Player {
     fall_fly_ticks: AtomicI32,
     pub bedrock_skin: arc_swap::ArcSwap<pumpkin_protocol::bedrock::client::Skin>,
     pub seen_credits: AtomicBool,
+    /// Vanilla `wonGame`: watching the credits after leaving the End, waiting to respawn.
+    pub won_game: AtomicBool,
     pub warden_spawn_tracker: std::sync::Mutex<WardenSpawnTracker>,
     pub score: AtomicI32,
     pub spawn_extra_particles_on_fall: AtomicBool,
@@ -878,6 +880,7 @@ impl Player {
             fall_fly_ticks: AtomicI32::new(0),
             bedrock_skin: ArcSwap::new(Arc::new(bedrock_skin)),
             seen_credits: AtomicBool::new(false),
+            won_game: AtomicBool::new(false),
             warden_spawn_tracker: std::sync::Mutex::new(WardenSpawnTracker::default()),
             score: AtomicI32::new(0),
             spawn_extra_particles_on_fall: AtomicBool::new(false),

@@ -8,8 +8,11 @@ impl JavaClient {
         player.update_last_action_time();
         match client_status.action_id.0 {
             SClientCommand::PERFORM_RESPAWN => {
-                // Perform respawn
-                if player.living_entity.health.load() > 0.0 {
+                // Vanilla: back from the credits, the player keeps everything.
+                let won_game = player
+                    .won_game
+                    .swap(false, std::sync::atomic::Ordering::Relaxed);
+                if !won_game && player.living_entity.health.load() > 0.0 {
                     return;
                 }
                 let player_c = player.clone();
@@ -21,9 +24,9 @@ impl JavaClient {
                     player_c
                         .world()
                         .clone()
-                        .respawn_player(&player_c, false)
+                        .respawn_player(&player_c, won_game)
                         .await;
-                    if hardcore {
+                    if hardcore && !won_game {
                         player_c.set_gamemode(GameMode::Spectator);
                     }
 

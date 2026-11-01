@@ -4526,15 +4526,31 @@ impl World {
             )
             .await;
 
-        player.living_entity.reset_state();
-
         player.send_permission_lvl_update();
 
-        player.hunger_manager.restart();
-
-        if !keep_inventory {
-            player.set_experience(0, 0.0, 0);
-            player.inventory.clear();
+        // Vanilla `restoreFrom`: a player back from the credits keeps health, food, effects,
+        // inventory and experience; the new client player needs all of them sent again.
+        if alive {
+            player.last_sent_health.store(-1, Ordering::Relaxed);
+            player.last_sent_xp.store(-1, Ordering::Relaxed);
+            let effects: Vec<_> = player
+                .living_entity
+                .active_effects
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .values()
+                .cloned()
+                .collect();
+            for effect in &effects {
+                target_world.send_add_mob_effect(player.get_entity(), effect);
+            }
+        } else {
+            player.living_entity.reset_state();
+            player.hunger_manager.restart();
+            if !keep_inventory {
+                player.set_experience(0, 0.0, 0);
+                player.inventory.clear();
+            }
         }
 
         // Set entity position BEFORE loading chunks, so chunks load at the right location
