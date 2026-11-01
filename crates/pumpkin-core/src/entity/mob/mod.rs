@@ -1224,6 +1224,10 @@ pub trait Mob: EntityBase + Send + Sync {
         self.as_animal().is_none()
     }
 
+    fn get_owned_entities(&self) -> Vec<Arc<dyn EntityBase>> {
+        Vec::new()
+    }
+
     fn get_max_look_yaw_change(&self) -> f32 {
         10.0
     }
@@ -2097,6 +2101,10 @@ impl<T: Mob + Send + 'static> EntityBase for T {
         component: pumpkin_data::data_component::DataComponent,
     ) -> Option<Box<dyn pumpkin_data::data_component_impl::DataComponentImpl>> {
         self.mob_get_component(component)
+    }
+
+    fn get_owned_entities(&self) -> Vec<Arc<dyn EntityBase>> {
+        Mob::get_owned_entities(self)
     }
 
     fn init_data_tracker(&self) {

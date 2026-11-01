@@ -391,6 +391,11 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         None
     }
 
+    /// Extra entities (e.g. multipart-mob hitboxes) removed together with this one.
+    fn get_owned_entities(&self) -> Vec<Arc<dyn EntityBase>> {
+        Vec::new()
+    }
+
     /// Bedrock network Y above the feet. Endstone `getBaseOffset`.
     fn bedrock_y_offset(&self) -> f64 {
         0.0
