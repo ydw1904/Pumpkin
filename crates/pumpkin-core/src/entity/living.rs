@@ -1203,6 +1203,29 @@ impl LivingEntity {
             return;
         }
 
+        // Vanilla `LivingEntity.addEffect`: an effect already active is only updated, so a
+        // weaker one never replaces a stronger one.
+        let existing = self
+            .active_effects
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(effect.effect_type)
+            .cloned();
+        let effect = match existing {
+            Some(existing) => {
+                let (updated, changed) = update_effect(existing, &effect);
+                if !changed {
+                    // `onEffectStarted` still runs for an unchanged effect.
+                    if effect.effect_type == &StatusEffect::ABSORPTION {
+                        self.start_absorption(effect.amplifier);
+                    }
+                    return;
+                }
+                updated
+            }
+            None => effect,
+        };
+
         // Apply non-instant effects
 
         // Effects that modify attributes (ex. speed) should also update the
@@ -1241,12 +1264,8 @@ impl LivingEntity {
             }
         }
 
-        // Apply absorption effect (+4 absorption per level)
         if effect.effect_type == &StatusEffect::ABSORPTION {
-            let added = 4.0 * (effect.amplifier as f32 + 1.0);
-            let max_abs = self.get_attribute_value(&Attributes::MAX_ABSORPTION) as f32;
-            let new_abs = (self.absorption.load() + added).min(max_abs);
-            self.set_absorption(new_abs);
+            self.start_absorption(effect.amplifier);
         }
 
         // Apply invisible effect
@@ -1307,6 +1326,13 @@ impl LivingEntity {
                 .insert(effect.effect_type, effect);
         }
         self.sync_effect_particles();
+    }
+
+    /// Vanilla `AbsorptionMobEffect.onEffectStarted`: tops absorption up to the effect's
+    /// amount instead of adding to it.
+    fn start_absorption(&self, amplifier: u8) {
+        let amount = 4.0 * (f32::from(amplifier) + 1.0);
+        self.set_absorption(self.absorption.load().max(amount));
     }
 
     fn sync_effect_particles(&self) {
@@ -4351,6 +4377,35 @@ pub(crate) const fn attribute_modifier_slot_matches(
 }
 
 /// Mirrors vanilla's strict `random < probability` consume-effect gate.
+/// Vanilla `MobEffectInstance.update`, without the hidden effect a weaker, longer effect
+/// would leave behind. Returns the updated effect and whether it changed.
+fn update_effect(mut current: Effect, take_over: &Effect) -> (Effect, bool) {
+    let is_shorter =
+        |a: &Effect, b: &Effect| a.duration != -1 && (b.duration == -1 || a.duration < b.duration);
+    let mut changed = false;
+    if take_over.amplifier > current.amplifier {
+        current.amplifier = take_over.amplifier;
+        current.duration = take_over.duration;
+        changed = true;
+    } else if is_shorter(&current, take_over) && take_over.amplifier == current.amplifier {
+        current.duration = take_over.duration;
+        changed = true;
+    }
+    if (!take_over.ambient && current.ambient) || changed {
+        current.ambient = take_over.ambient;
+        changed = true;
+    }
+    if take_over.show_particles != current.show_particles {
+        current.show_particles = take_over.show_particles;
+        changed = true;
+    }
+    if take_over.show_icon != current.show_icon {
+        current.show_icon = take_over.show_icon;
+        changed = true;
+    }
+    (current, changed)
+}
+
 const fn consume_effect_probability_applies(probability: f32, random: f32) -> bool {
     random < probability
 }
