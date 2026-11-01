@@ -37,7 +37,6 @@ impl TargetCondition {
     /// Checked once per search attempt.
     fn allows_search(self, mob: &dyn Mob) -> bool {
         match self {
-            Self::NoDaylight => !mob.get_mob_entity().is_in_daylight(),
             // A calm mob matches nobody: skip the search. Grudge check first, it is lock-free.
             Self::AngryAt => mob.as_neutral().is_some_and(|neutral| {
                 neutral.get_persistent_anger_target().is_some() || neutral.is_angry()
@@ -45,7 +44,7 @@ impl TargetCondition {
             // TODO: `Mob::is_baby()` once baby state is unified.
             Self::Adult => !mob.as_ageable().is_some_and(AgeableMob::is_baby),
             Self::Untamed => !mob.is_tamed(),
-            Self::Always => true,
+            Self::Always | Self::NoDaylight => true,
         }
     }
 
@@ -251,6 +250,10 @@ impl ActiveTargetGoal {
 impl Goal for ActiveTargetGoal {
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         if self.gate.is_some_and(|gate| !gate(mob)) {
+            return false;
+        }
+        // Vanilla `SpiderTargetGoal.canUse` checks the light before the search roll.
+        if self.condition == TargetCondition::NoDaylight && mob.get_mob_entity().is_in_daylight() {
             return false;
         }
         if self.reciprocal_chance > 0

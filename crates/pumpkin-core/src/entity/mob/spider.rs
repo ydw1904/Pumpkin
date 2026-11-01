@@ -1,6 +1,6 @@
 use pumpkin_util::random::gameplay::game_random;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Weak};
+use std::sync::atomic::Ordering;
+use std::sync::{Arc, PoisonError, Weak};
 
 use pumpkin_data::BlockState;
 use pumpkin_data::effect::StatusEffect;
@@ -17,12 +17,13 @@ use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::{
     Entity, EntityBase,
     ai::goal::{
-        active_target::TargetCondition, look_around::RandomLookAroundGoal,
-        look_at_entity::LookAtEntityGoal, revenge::RevengeGoal, spider_attack::SpiderAttackGoal,
-        swim::SwimGoal, wander_around::WanderAroundGoal,
+        active_target::TargetCondition, leap_at_target::LeapAtTargetGoal,
+        look_around::RandomLookAroundGoal, look_at_entity::LookAtEntityGoal, revenge::RevengeGoal,
+        spider_attack::SpiderAttackGoal, swim::SwimGoal, wander_around::WanderAroundGoal,
     },
+    ai::pathfinder::Navigator,
     mob::{
-        Mob, MobEntity,
+        Mob, MobEntity, MobMetadata,
         equipment::RegionalDifficulty,
         spawn::{SpawnGroupData, finalize_spawn},
     },
@@ -53,56 +54,70 @@ pub const SPIDER_HUNTS: &[Hunt] = &[
 
 pub struct SpiderEntity {
     pub mob_entity: MobEntity,
-    pub is_climbing: AtomicBool,
 }
 
 impl SpiderEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
-        let mob_entity = MobEntity::new(entity);
-        let spider = Self {
-            mob_entity,
-            is_climbing: AtomicBool::new(false),
-        };
-        let mob_arc = Arc::new(spider);
+        let mut mob_entity = MobEntity::new(entity);
+        initialize_spider_navigation(&mut mob_entity);
+        let mob_arc = Arc::new(Self { mob_entity });
         let mob_weak: Weak<dyn Mob> = {
             let mob_arc: Arc<dyn Mob> = mob_arc.clone();
             Arc::downgrade(&mob_arc)
         };
-
-        {
-            let goal_selector = &mob_arc.mob_entity.goals_selector;
-            let target_selector = &mob_arc.mob_entity.target_selector;
-
-            goal_selector.add_goal(1, Box::new(SwimGoal::default()));
-            fleeing::apply(goal_selector, SPIDER_FLEES);
-            goal_selector.add_goal(3, SpiderAttackGoal::new(1.0, false));
-            goal_selector.add_goal(5, Box::new(WanderAroundGoal::new(0.8)));
-            goal_selector.add_goal(
-                6,
-                LookAtEntityGoal::with_default(mob_weak, &EntityType::PLAYER, 8.0),
-            );
-            goal_selector.add_goal(6, Box::new(RandomLookAroundGoal::default()));
-
-            target_selector.add_goal(1, Box::new(RevengeGoal::new(true)));
-            hunting::apply(target_selector, &mob_arc.mob_entity, SPIDER_HUNTS);
-        };
-
+        register_spider_goals(&mob_arc.mob_entity, mob_weak);
         mob_arc
     }
+}
 
-    pub fn is_climbing(&self) -> bool {
-        self.is_climbing.load(Ordering::Relaxed)
+/// Vanilla `Spider.createNavigation` (also used by the cave spider).
+pub fn initialize_spider_navigation(mob: &mut MobEntity) {
+    *mob.navigator
+        .get_mut()
+        .unwrap_or_else(PoisonError::into_inner) = Navigator::wall_climber();
+}
+
+/// Vanilla `Spider.registerGoals` (also used by the cave spider).
+pub fn register_spider_goals(mob_entity: &MobEntity, mob_weak: Weak<dyn Mob>) {
+    let goal_selector = &mob_entity.goals_selector;
+    let target_selector = &mob_entity.target_selector;
+
+    goal_selector.add_goal(1, Box::new(SwimGoal::default()));
+    fleeing::apply(goal_selector, SPIDER_FLEES);
+    goal_selector.add_goal(3, Box::new(LeapAtTargetGoal::new(0.4)));
+    goal_selector.add_goal(4, SpiderAttackGoal::new(1.0, true));
+    goal_selector.add_goal(5, Box::new(WanderAroundGoal::water_avoiding(0.8)));
+    goal_selector.add_goal(
+        6,
+        LookAtEntityGoal::with_default(mob_weak, &EntityType::PLAYER, 8.0),
+    );
+    goal_selector.add_goal(6, Box::new(RandomLookAroundGoal::default()));
+
+    target_selector.add_goal(1, Box::new(RevengeGoal::new(true)));
+    hunting::apply(target_selector, mob_entity, SPIDER_HUNTS);
+}
+
+/// Vanilla `Spider.onClimbable` reads the climbing flag, which `Spider.tick` sets from
+/// `horizontalCollision`.
+pub fn update_spider_climbing(mob: &MobEntity) {
+    let living = &mob.living_entity;
+    let entity = &living.entity;
+    let climbing = entity.horizontal_collision.load(Ordering::SeqCst);
+    if living.climbing.swap(climbing, Ordering::Relaxed) != climbing {
+        entity.set_synced_data(
+            pumpkin_data::tracked_data::spider::DATA_FLAGS_ID,
+            i8::from(climbing),
+        );
+        entity.send_bedrock_actor_data(&spider_metadata(mob).to_bedrock_actor_data());
     }
+}
 
-    pub fn set_climbing(&self, climbing: bool) {
-        if self.is_climbing.swap(climbing, Ordering::Relaxed) != climbing {
-            let flags = i8::from(climbing);
-            let entity = &self.mob_entity.living_entity.entity;
-            entity.set_synced_data(pumpkin_data::tracked_data::spider::DATA_FLAGS_ID, flags);
-            if let Some(meta) = self.mob_metadata() {
-                entity.send_bedrock_actor_data(&meta.to_bedrock_actor_data());
-            }
-        }
+pub fn spider_metadata(mob: &MobEntity) -> MobMetadata {
+    let meta = MobMetadata::new();
+    if mob.living_entity.climbing.load(Ordering::Relaxed) {
+        meta.spider_climbing(true)
+    } else {
+        meta
     }
 }
 
@@ -169,22 +184,11 @@ impl Mob for SpiderEntity {
         &self.mob_entity
     }
 
-    fn mob_metadata(&self) -> Option<crate::entity::mob::MobMetadata> {
-        let mut meta = crate::entity::mob::MobMetadata::new();
-        if self.is_climbing() {
-            meta = meta.spider_climbing(true);
-        }
-        Some(meta)
+    fn mob_metadata(&self) -> Option<MobMetadata> {
+        Some(spider_metadata(&self.mob_entity))
     }
 
-    fn mob_tick(&self, _caller: &dyn EntityBase) {
-        let entity = &self.mob_entity.living_entity.entity;
-        if !entity.is_alive() {
-            return;
-        }
-
-        let vel = entity.velocity.load();
-        let is_colliding_horizontally = vel.x.abs() < 1e-4 && vel.z.abs() < 1e-4;
-        self.set_climbing(is_colliding_horizontally);
+    fn post_tick(&self) {
+        update_spider_climbing(&self.mob_entity);
     }
 }
