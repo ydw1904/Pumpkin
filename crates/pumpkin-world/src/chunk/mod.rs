@@ -18,6 +18,7 @@ use thiserror::Error;
 pub mod format;
 pub mod io;
 pub mod palette;
+pub mod structure;
 
 // TODO
 pub const CHUNK_WIDTH: usize = BlockPalette::SIZE;
@@ -85,6 +86,9 @@ pub struct ChunkData {
     /// Positions generation marked for `LevelChunk.postProcessGeneration`, one list per section
     /// from the bottom, packed with [`pack_offset_coordinates`]. Emptied once the chunk ticks.
     pub post_processing: std::sync::Mutex<Vec<Vec<u16>>>,
+    /// Vanilla `ChunkAccess.getAllReferences`: the structure starts whose bounding box
+    /// overlaps this chunk, fixed once the chunk is generated.
+    pub structures: Box<[structure::StructureReference]>,
     /// Root tags this server does not model, kept verbatim so a save does not
     /// strip them. A vanilla chunk carries `structures`, `carving_mask` and
     /// others; writing the chunk back without them loses map data that nothing
@@ -676,6 +680,7 @@ impl ChunkData {
             inhabited_time: std::sync::atomic::AtomicU64::new(0),
             custom_data: std::sync::Mutex::new(NbtCompound::new()),
             post_processing: std::sync::Mutex::default(),
+            structures: Box::default(),
             preserved_tags: std::sync::Mutex::new(NbtCompound::new()),
         }
     }

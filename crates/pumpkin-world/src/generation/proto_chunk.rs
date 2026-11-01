@@ -37,6 +37,7 @@ use super::{
 use crate::biome::BiomeSupplier;
 use crate::chunk::format::LightContainer;
 use crate::chunk::palette::BlockPalette;
+use crate::chunk::structure::StructureReference;
 use crate::chunk::{ChunkData, ChunkHeightmapType, ChunkLight, pack_offset_coordinates};
 use crate::chunk_system::{StagedChunkEnum, generation_cache::SurfaceBiomeNeighborhood};
 use crate::generation::height_limit::HeightLimitView;
@@ -233,6 +234,42 @@ impl ProtoChunk {
     pub(crate) fn has_structure(&self, key: StructureKeys) -> bool {
         self.structure_starts.contains_key(&key)
             || self.structure_references.iter().any(|(k, _)| *k == key)
+    }
+
+    /// The structure references the finished chunk keeps for vanilla's `StructureManager`
+    /// queries, skipping starts without pieces like vanilla `fillStartsForStructure`.
+    #[must_use]
+    pub fn structure_references_in_chunk(&self) -> Box<[StructureReference]> {
+        let start_x = self.start_block_x();
+        let start_z = self.start_block_z();
+        let mut seen: Vec<&Arc<Mutex<StructurePiecesCollector>>> = Vec::new();
+        let mut references = Vec::new();
+        for (key, collector_arc) in &self.structure_references {
+            if seen.iter().any(|other| Arc::ptr_eq(other, collector_arc)) {
+                continue;
+            }
+            seen.push(collector_arc);
+            let mut collector = collector_arc
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if collector.is_empty() {
+                continue;
+            }
+            let pieces = collector
+                .pieces
+                .iter()
+                .map(|piece| piece.bounding_box())
+                .filter(|bounding_box| {
+                    bounding_box.intersects_raw_xz(start_x, start_z, start_x + 15, start_z + 15)
+                })
+                .collect();
+            references.push(StructureReference {
+                structure: *key,
+                bounding_box: collector.get_adjusted_bounding_box(key),
+                pieces,
+            });
+        }
+        references.into_boxed_slice()
     }
 
     #[must_use]

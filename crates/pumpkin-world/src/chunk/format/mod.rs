@@ -539,6 +539,7 @@ impl ChunkData {
             inhabited_time: AtomicU64::new(root_tag.get_long("InhabitedTime").unwrap_or(0) as u64),
             custom_data: std::sync::Mutex::new(custom_data),
             post_processing: std::sync::Mutex::new(post_processing),
+            structures: Box::default(),
             preserved_tags: std::sync::Mutex::new(preserved_root_tags(&root_tag)),
         })
     }
@@ -1292,6 +1293,7 @@ impl ChunkData {
             inhabited_time: AtomicU64::new(inhabited_time),
             custom_data: std::sync::Mutex::new(custom_data),
             post_processing: std::sync::Mutex::new(post_processing),
+            structures: Box::default(),
             preserved_tags: std::sync::Mutex::default(),
         })
     }

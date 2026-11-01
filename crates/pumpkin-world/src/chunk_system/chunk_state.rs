@@ -290,6 +290,7 @@ impl Chunk {
                 inhabited_time: AtomicU64::new(0),
                 custom_data: Mutex::new(NbtCompound::new()),
                 post_processing: Mutex::default(),
+                structures: Box::default(),
                 preserved_tags: Mutex::new(NbtCompound::new()),
             })),
         ) {
@@ -301,6 +302,7 @@ impl Chunk {
 
         let sections = Self::build_level_sections(&proto_chunk, dimension);
         let heightmaps = Self::build_level_heightmaps(&proto_chunk, dimension.min_y);
+        let structures = proto_chunk.structure_references_in_chunk();
 
         // Move the light data instead of cloning it
         // By taking ownership of proto_chunk, we can move the light data directly
@@ -339,6 +341,7 @@ impl Chunk {
             inhabited_time: AtomicU64::new(0),
             custom_data: Mutex::new(NbtCompound::new()),
             post_processing: Mutex::new(proto_chunk.post_processing),
+            structures,
             preserved_tags: Mutex::new(NbtCompound::new()),
         };
 
