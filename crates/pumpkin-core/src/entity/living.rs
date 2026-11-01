@@ -3349,7 +3349,9 @@ impl LivingEntity {
         // Check for shield blocking before armor/magic/cooldown
         if self.is_blocking()
             && !damage_type.has_tag(&tag::DamageType::MINECRAFT_BYPASSES_SHIELD)
-            && let Some(pos) = position
+            // Vanilla `DamageSource.getSourcePosition` falls back to the direct entity, so melee
+            // hits without an explicit position are still blocked.
+            && let Some(pos) = position.or_else(|| source.map(|s| s.get_entity().pos.load()))
         {
             let player_pos = self.entity.pos.load();
             let look_vec = Vector3::rotation_vector(0.0, self.entity.yaw.load() as f64);
