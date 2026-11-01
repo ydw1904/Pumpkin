@@ -5915,6 +5915,14 @@ impl World {
     }
 
     #[must_use]
+    pub fn snow_golem_melts(&self, pos: &BlockPos) -> bool {
+        self.environment_attributes().get_value_bool(
+            pumpkin_data::environment_attribute::EnvironmentAttribute::GameplaySnowGolemMelts,
+            pos,
+        )
+    }
+
+    #[must_use]
     pub fn surface_slime_spawn_chance(&self, pos: &BlockPos) -> f32 {
         self.environment_attributes().get_value_f32(
             pumpkin_data::environment_attribute::EnvironmentAttribute::GameplaySurfaceSlimeSpawnChance,

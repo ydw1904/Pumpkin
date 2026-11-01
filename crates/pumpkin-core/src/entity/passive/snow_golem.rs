@@ -1,11 +1,16 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 
+use pumpkin_data::Block;
+use pumpkin_data::damage::DamageType;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_util::math::position::BlockPos;
+use pumpkin_world::world::BlockFlags;
 
 use crate::entity::ai::behavior::hunting::{self, Hunt};
 use crate::entity::ai::target_match::TargetMatch;
@@ -20,6 +25,7 @@ use crate::entity::{
     player::Player,
     projectile::snowball::SnowballEntity,
 };
+use crate::world::game_event::GameEventContext;
 
 const SNOW_GOLEM_HUNTS: &[Hunt] = &[Hunt::new(1, TargetMatch::Enemy, true)];
 
@@ -127,6 +133,41 @@ impl Mob for SnowGolemEntity {
 
     fn is_sensitive_to_water(&self) -> bool {
         true
+    }
+
+    // Vanilla `SnowGolem.aiStep`: melt where it is too hot, then leave a trail of snow.
+    fn post_tick(&self) {
+        let entity = &self.mob_entity.living_entity.entity;
+        if entity.is_removed() {
+            return;
+        }
+        let world = entity.world.load_full();
+        let pos = entity.pos.load();
+        if world.snow_golem_melts(&BlockPos::containing_vec(pos)) {
+            self.damage(self, 1.0, DamageType::ON_FIRE);
+        }
+        if !world.level_info.load().game_rules.mob_griefing {
+            return;
+        }
+
+        let snow = Block::SNOW.default_state.id;
+        for i in 0..4 {
+            let x_offset = f64::from((i % 2 * 2 - 1) as f32 * 0.25);
+            let z_offset = f64::from((i / 2 % 2 * 2 - 1) as f32 * 0.25);
+            let snow_pos = BlockPos::containing(pos.x + x_offset, pos.y, pos.z + z_offset);
+            if world.get_block_state(&snow_pos).is_air()
+                && crate::block::blocks::snow::can_place_at(world.as_ref(), &snow_pos)
+            {
+                world.set_block_state(&snow_pos, snow, BlockFlags::NOTIFY_ALL);
+                world.emit_game_event_with_context(
+                    GameEvent::BlockPlace.name(),
+                    snow_pos.to_centered_f64(),
+                    &GameEventContext {
+                        source_entity: Some(self),
+                    },
+                );
+            }
+        }
     }
 
     fn mob_init_data_tracker(&self) {
