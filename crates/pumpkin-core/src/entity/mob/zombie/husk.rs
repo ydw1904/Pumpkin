@@ -1,5 +1,7 @@
 use pumpkin_data::BlockState;
+use pumpkin_data::entity::EntityType;
 use pumpkin_data::sound::Sound;
+use pumpkin_data::world::WorldEvent;
 use pumpkin_util::math::position::BlockPos;
 use std::sync::Arc;
 
@@ -48,5 +50,13 @@ impl Mob for HuskEntity {
 
     fn mob_read_nbt(&self, nbt: &NbtCompound) {
         self.entity.mob_read_nbt(nbt);
+    }
+
+    fn post_tick(&self) {
+        self.entity.tick_under_water_conversion(
+            self,
+            &EntityType::ZOMBIE,
+            WorldEvent::SoundHuskToZombie,
+        );
     }
 }
