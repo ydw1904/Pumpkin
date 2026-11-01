@@ -103,7 +103,10 @@ impl BedrockClient {
             drop(player_screen_handler);
         }
 
-        for action in &packet.actions {
+        // These actions carry the stacks the client says it moved, and are applied as sent. Only
+        // creative players may set slots that way; otherwise they would create items at will.
+        let trusts_client_stacks = player.gamemode.load() == GameMode::Creative;
+        for action in packet.actions.iter().filter(|_| trusts_client_stacks) {
             use pumpkin_protocol::bedrock::server::inventory_transaction::InventoryActionSource;
             let source_type = InventoryActionSource::from(action.source_type);
             if source_type == InventoryActionSource::World {
@@ -218,14 +221,9 @@ impl BedrockClient {
 
                 if data.action_type.0 == 0 {
                     // Click block
-                    let client_stack = descriptor_to_stack(&data.item_in_hand);
-
+                    // The server's inventory is authoritative; the stack the client claims to
+                    // hold is never trusted.
                     let mut held_item = player.inventory().held_item();
-                    if !client_stack.is_empty()
-                        && (held_item.is_empty() || held_item.item.id != client_stack.item.id)
-                    {
-                        held_item = client_stack;
-                    }
 
                     let before_use = held_item.clone();
                     let result = server.block_registry.use_with_item(
@@ -314,19 +312,11 @@ impl BedrockClient {
                     }
                 } else if data.action_type.0 == 1 {
                     // Click air / Use item
-                    let client_stack = descriptor_to_stack(&data.item_in_hand);
-
                     let hand = match data.hand {
                         HandSlot::Mainhand => Hand::Right,
                         HandSlot::Offhand => Hand::Left,
                     };
                     let mut held = player.inventory().get_stack_in_hand(hand);
-                    if !client_stack.is_empty()
-                        && (held.is_empty() || held.item.id != client_stack.item.id)
-                    {
-                        held = client_stack;
-                        player.inventory().set_stack_in_hand(hand, held.clone());
-                    }
                     if !held.is_empty() {
                         player.increment_stat(
                             pumpkin_data::statistic::StatisticCategory::Used,
