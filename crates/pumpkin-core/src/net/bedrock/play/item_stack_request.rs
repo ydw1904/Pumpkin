@@ -1,11 +1,12 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
-use crate::block::entities::beacon::BeaconBlockEntity;
 use pumpkin_data::screen::WindowType;
 use pumpkin_inventory::{
-    anvil::anvil_screen_handler::AnvilScreenHandler, beacon_screen_handler::BeaconScreenHandler,
+    anvil::anvil_screen_handler::AnvilScreenHandler,
+    beacon_screen_handler::{BeaconScreenHandler, decode_effect},
     cartography_table_screen_handler::CartographyTableScreenHandler,
-    grindstone_screen_handler::GrindstoneScreenHandler, loom_screen_handler::LoomScreenHandler,
+    grindstone_screen_handler::GrindstoneScreenHandler,
+    loom_screen_handler::LoomScreenHandler,
     smithing_table_screen_handler::SmithingTableScreenHandler,
     stonecutter_screen_handler::StonecutterScreenHandler,
 };
@@ -650,55 +651,25 @@ impl BedrockClient {
                                 result = 1;
                                 break;
                             };
-                            let Some(beacon_entity) = beacon_handler
-                                .inventory
-                                .as_any()
-                                .downcast_ref::<BeaconBlockEntity>()
-                            else {
-                                result = 1;
-                                break;
-                            };
-                            if beacon_entity
-                                .payment
-                                .lock()
-                                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                                .is_empty()
-                            {
+                            // Bedrock numbers these effects like Java's legacy ids, which is the
+                            // registry id + 1 that the beacon menu data already uses.
+                            let primary = decode_effect(primary_effect_id.0);
+                            let secondary = decode_effect(secondary_effect_id.0);
+                            if !beacon_handler.update_effects(primary, secondary) {
                                 result = 1;
                                 break;
                             }
-                            let levels = beacon_entity.levels.load(Ordering::Relaxed);
-                            let primary_id =
-                                (primary_effect_id.0 > 0).then_some(primary_effect_id.0);
-                            let secondary_id =
-                                (secondary_effect_id.0 > 0).then_some(secondary_effect_id.0);
-
-                            if BeaconBlockEntity::validate_effects(primary_id, secondary_id, levels)
-                            {
-                                beacon_entity
-                                    .primary_effect
-                                    .store(primary_id.unwrap_or(-1), Ordering::Relaxed);
-                                beacon_entity
-                                    .secondary_effect
-                                    .store(secondary_id.unwrap_or(-1), Ordering::Relaxed);
-
-                                beacon_entity.remove_stack_specific(0, 1);
-                                beacon_entity.mark_dirty();
-                                let payment_stack = beacon_entity.get_stack(0);
-                                beacon_handler.sync_state();
-                                record_update(
-                                    &mut updates,
-                                    FullContainerName {
-                                        container_name: ContainerName::BeaconPayment,
-                                        dynamic_id: None,
-                                    },
-                                    0,
-                                    &payment_stack,
-                                );
-                            } else {
-                                result = 1;
-                                break;
-                            }
+                            let payment_stack =
+                                beacon_handler.get_behaviour().slots[0].get_cloned_stack();
+                            record_update(
+                                &mut updates,
+                                FullContainerName {
+                                    container_name: ContainerName::BeaconPayment,
+                                    dynamic_id: None,
+                                },
+                                0,
+                                &payment_stack,
+                            );
                         }
                         ItemStackRequestAction::MineBlock {
                             hotbar_slot,
