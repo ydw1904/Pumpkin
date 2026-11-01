@@ -1,5 +1,6 @@
 use pumpkin_data::item::Item;
 pub use pumpkin_data::villager::{VillagerProfession, VillagerType};
+use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::var_int::VarInt;
 use serde::Serialize;
 
@@ -98,7 +99,24 @@ impl GossipType {
 
 #[cfg(test)]
 mod tests {
-    use super::GossipType;
+    use super::{GossipType, NbtCompound, VillagerData, VillagerProfession, VillagerType};
+
+    #[test]
+    fn villager_data_reads_vanilla_and_legacy_nbt() {
+        let expected = VillagerData::new(VillagerType::Taiga, VillagerProfession::Librarian, 3);
+
+        let mut vanilla = NbtCompound::new();
+        vanilla.put_string("type", "minecraft:taiga".to_string());
+        vanilla.put_string("profession", "minecraft:librarian".to_string());
+        vanilla.put_int("level", 3);
+        assert_eq!(VillagerData::from_nbt(&vanilla), expected);
+
+        let mut legacy = NbtCompound::new();
+        legacy.put_int("Type", VillagerType::Taiga as i32);
+        legacy.put_int("Profession", VillagerProfession::Librarian as i32);
+        legacy.put_int("Level", 3);
+        assert_eq!(VillagerData::from_nbt(&legacy), expected);
+    }
 
     #[test]
     fn gossip_types_use_vanilla_names_and_values() {
@@ -159,5 +177,42 @@ impl VillagerData {
     #[must_use]
     pub fn profession_enum(&self) -> VillagerProfession {
         VillagerProfession::from_i32(self.profession.0).unwrap_or(VillagerProfession::None)
+    }
+
+    /// Vanilla `VillagerData.CODEC`: `type` and `profession` as ids, and `level`.
+    #[must_use]
+    pub fn to_nbt(&self) -> NbtCompound {
+        let mut nbt = NbtCompound::new();
+        nbt.put_string("type", format!("minecraft:{}", self.type_enum().to_name()));
+        nbt.put_string(
+            "profession",
+            format!("minecraft:{}", self.profession_enum().to_name()),
+        );
+        nbt.put_int("level", self.level.0);
+        nbt
+    }
+
+    /// Reads vanilla's format; worlds saved by older Pumpkin versions used `Type`, `Profession`
+    /// and `Level` with numeric ids.
+    #[must_use]
+    pub fn from_nbt(nbt: &NbtCompound) -> Self {
+        let r#type = nbt
+            .get_string("type")
+            .and_then(VillagerType::from_name)
+            .or_else(|| nbt.get_int("Type").and_then(VillagerType::from_i32))
+            .unwrap_or(VillagerType::Plains);
+        let profession = nbt
+            .get_string("profession")
+            .and_then(VillagerProfession::from_name)
+            .or_else(|| {
+                nbt.get_int("Profession")
+                    .and_then(VillagerProfession::from_i32)
+            })
+            .unwrap_or(VillagerProfession::None);
+        let level = nbt
+            .get_int("level")
+            .or_else(|| nbt.get_int("Level"))
+            .unwrap_or(1);
+        Self::new(r#type, profession, level)
     }
 }

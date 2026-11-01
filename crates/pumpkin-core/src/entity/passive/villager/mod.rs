@@ -1815,11 +1815,7 @@ impl Mob for VillagerEntity {
                 .villager_data
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let mut villager_data_nbt = NbtCompound::new();
-            villager_data_nbt.put_int("Type", data.r#type.0);
-            villager_data_nbt.put_int("Profession", data.profession.0);
-            villager_data_nbt.put_int("Level", data.level.0);
-            nbt.put_compound("VillagerData", villager_data_nbt);
+            nbt.put_compound("VillagerData", data.to_nbt());
         };
 
         nbt.put_int("FoodLevel", self.food_level.load(Ordering::Relaxed));
@@ -1940,19 +1936,11 @@ impl Mob for VillagerEntity {
     #[allow(clippy::too_many_lines)]
     fn mob_read_nbt(&self, nbt: &NbtCompound) {
         if let Some(villager_data_nbt) = nbt.get_compound("VillagerData") {
-            let mut data = self
+            *self
                 .villager_data
                 .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if let Some(t) = villager_data_nbt.get_int("Type") {
-                data.r#type = VarInt(t);
-            }
-            if let Some(p) = villager_data_nbt.get_int("Profession") {
-                data.profession = VarInt(p);
-            }
-            if let Some(l) = villager_data_nbt.get_int("Level") {
-                data.level = VarInt(l);
-            }
+                .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                VillagerData::from_nbt(villager_data_nbt);
         }
 
         if let Some(food) = nbt.get_int("FoodLevel") {
