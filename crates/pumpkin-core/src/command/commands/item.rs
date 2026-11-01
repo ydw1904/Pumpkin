@@ -1,9 +1,6 @@
 use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::translation;
 use pumpkin_inventory::Inventory;
-use pumpkin_inventory::screen_handler::InventoryPlayer;
-use pumpkin_protocol::codec::item_stack_seralizer::ItemStackSerializer;
-use pumpkin_protocol::java::client::play::CSetContainerSlot;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
@@ -161,11 +158,6 @@ impl CommandExecutor for EntityReplaceExecutor {
                             && slot < inventory.size()
                         {
                             player_arc.inventory().set_stack(slot, item_stack.clone());
-
-                            let stack_serializer = ItemStackSerializer::from(item_stack.clone());
-                            let packet =
-                                CSetContainerSlot::new(0, 0, slot as i16, &stack_serializer);
-                            player_arc.enqueue_slot_packet(&packet, None, 0);
 
                             let eq_slot = if slot == 36 {
                                 Some(EquipmentSlot::FEET)
