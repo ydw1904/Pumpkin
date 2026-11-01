@@ -381,7 +381,7 @@ pub struct PlayerPlacedArgs<'a> {
 
 pub struct OnLandedUponArgs<'a> {
     pub world: &'a Arc<World>,
-    pub fall_distance: f32,
+    pub fall_distance: f64,
     pub entity: &'a dyn EntityBase,
 }
 

@@ -328,7 +328,7 @@ impl HostEntity for PluginHostState {
         let entity = self.get(&entity)?;
         Ok(entity
             .get_living_entity()
-            .map_or(0.0, |living| living.fall_distance.load()))
+            .map_or(0.0, |living| living.fall_distance.load() as f32))
     }
 
     fn set_fall_distance(
@@ -338,7 +338,7 @@ impl HostEntity for PluginHostState {
     ) -> wasmtime::Result<()> {
         let entity = self.get(&entity)?;
         if let Some(living) = entity.get_living_entity() {
-            living.fall_distance.store(distance);
+            living.fall_distance.store(f64::from(distance));
         }
         Ok(())
     }

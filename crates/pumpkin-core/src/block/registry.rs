@@ -1306,7 +1306,7 @@ impl BlockRegistry {
         &self,
         block: &Block,
         world: &Arc<World>,
-        fall_distance: f32,
+        fall_distance: f64,
         entity: &dyn EntityBase,
     ) {
         let pumpkin_block = self.get_pumpkin_block(block.id);

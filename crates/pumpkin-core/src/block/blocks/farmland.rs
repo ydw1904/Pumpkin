@@ -68,7 +68,7 @@ impl BlockBehaviour for FarmlandBlock {
                 ))
             });
             if args.world.get_block(&pos) == &Block::FARMLAND
-                && game_random().random::<f32>() < args.fall_distance - 0.5
+                && f64::from(game_random().random::<f32>()) < args.fall_distance - 0.5
             {
                 let can_trample = args.entity.get_player().map_or_else(
                     || args.world.level_info.load().game_rules.mob_griefing,

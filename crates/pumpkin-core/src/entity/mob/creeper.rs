@@ -324,12 +324,11 @@ impl Mob for CreeperEntity {
         true
     }
 
-    fn mob_cause_fall_damage(&self, fall_distance: f32) {
+    fn mob_cause_fall_damage(&self, fall_distance: f64) {
         // Creeper.causeFallDamage: a fall brings it closer to exploding, but never
         // within 5 ticks of it.
         let max_swell = self.fuse_time.load(Ordering::Relaxed);
-        let swell = self.current_fuse_time.load(Ordering::Relaxed)
-            + (f64::from(fall_distance) * 1.5) as i32;
+        let swell = self.current_fuse_time.load(Ordering::Relaxed) + (fall_distance * 1.5) as i32;
         self.current_fuse_time
             .store(swell.min(max_swell - 5), Ordering::Relaxed);
     }

@@ -1611,7 +1611,7 @@ pub trait Mob: EntityBase + Send + Sync {
     fn on_attack(&self, _target: &dyn EntityBase) {}
 
     /// Runs after the living entity's `causeFallDamage`, like a vanilla override calling super first.
-    fn mob_cause_fall_damage(&self, _fall_distance: f32) {}
+    fn mob_cause_fall_damage(&self, _fall_distance: f64) {}
 
     /// Vanilla `Mob.doHurtTarget`: a melee hit on `target`, `true` when it landed.
     fn do_hurt_target(&self, target: &dyn EntityBase) -> bool {

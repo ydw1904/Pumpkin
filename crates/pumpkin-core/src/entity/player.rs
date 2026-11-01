@@ -1475,7 +1475,7 @@ impl Player {
             && can_smash_attack(&self.living_entity);
         // Vanilla adds the weapon's damage bonus before the critical hit multiplier.
         if is_mace_smash {
-            let fall_distance = f64::from(self.living_entity.fall_distance.load());
+            let fall_distance = self.living_entity.fall_distance.load();
             let mut smash_bonus_per_block = 0.0f64;
             if let Some(enchantments) = item_stack.get_data_component::<EnchantmentsImpl>() {
                 for (enchantment, level) in enchantments.enchantment.iter() {

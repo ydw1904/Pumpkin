@@ -5050,7 +5050,7 @@ impl Entity {
             _ => {}
         }
         if let Some(living) = self.get_living_entity() {
-            living.fall_distance.store(0f32);
+            living.fall_distance.store(0.0);
         }
         self.movement_multiplier.store(multiplier);
     }

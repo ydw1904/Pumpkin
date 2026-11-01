@@ -59,7 +59,7 @@ pub(crate) fn collision_shape_for_entity(
         .get_living_entity()
         .map_or(0.0, |living| living.fall_distance.load());
 
-    if fall_distance > 2.5f32 {
+    if fall_distance > 2.5 {
         return Some(FALLING_COLLISION_SHAPE);
     }
 
