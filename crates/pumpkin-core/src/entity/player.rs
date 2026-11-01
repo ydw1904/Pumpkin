@@ -4554,6 +4554,45 @@ impl Player {
         }
     }
 
+    /// Vanilla `ServerPlayer.teleportRelative`: moves the player by `delta` with a fully
+    /// relative position packet, so the client applies it to wherever it has moved itself.
+    pub fn teleport_relative(&self, delta: Vector3<f64>) {
+        let entity = &self.living_entity.entity;
+        let position = entity.pos.load().add(&delta);
+        match self.client.as_ref() {
+            ClientPlatform::Java(_) => {
+                let teleport_id = self.teleport_id_count.fetch_add(1, Ordering::Relaxed) + 1;
+                entity.set_pos(position);
+                *self
+                    .awaiting_teleport
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                    Some((teleport_id.into(), position));
+                self.try_send_client_packet(&CPlayerPosition::new(
+                    teleport_id.into(),
+                    delta,
+                    Vector3::new(0.0, 0.0, 0.0),
+                    0.0,
+                    0.0,
+                    vec![
+                        pumpkin_protocol::PositionFlag::X,
+                        pumpkin_protocol::PositionFlag::Y,
+                        pumpkin_protocol::PositionFlag::Z,
+                        pumpkin_protocol::PositionFlag::YRot,
+                        pumpkin_protocol::PositionFlag::XRot,
+                        pumpkin_protocol::PositionFlag::DeltaX,
+                        pumpkin_protocol::PositionFlag::DeltaY,
+                        pumpkin_protocol::PositionFlag::DeltaZ,
+                        pumpkin_protocol::PositionFlag::RotateDelta,
+                    ],
+                ));
+            }
+            ClientPlatform::Bedrock(_) => {
+                self.request_teleport(position, entity.yaw.load(), entity.pitch.load());
+            }
+        }
+    }
+
     pub fn block_interaction_range(&self) -> f64 {
         let is_bedrock = matches!(self.client.as_ref(), ClientPlatform::Bedrock(_));
         if self.gamemode.load() == GameMode::Creative {

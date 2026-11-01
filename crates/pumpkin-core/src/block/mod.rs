@@ -48,6 +48,73 @@ pub trait FluidMetadata {
     fn ids() -> Box<[u16]>;
 }
 
+/// Vanilla `Block.pushEntitiesUp`: lifts entities out of the collision `new_state` adds over
+/// `state` before the block at `pos` changes, and returns `new_state`.
+pub fn push_entities_up(
+    world: &World,
+    state: &BlockState,
+    new_state: BlockStateId,
+    pos: &BlockPos,
+) -> BlockStateId {
+    // `Shapes.joinUnoptimized(old, new, BooleanOp.ONLY_SECOND).move(pos)`
+    let mut added: Vec<BoundingBox> = BlockState::from_id(new_state)
+        .get_block_collision_shapes_at(pos)
+        .map(|shape| shape.at_pos(*pos))
+        .collect();
+    for old in state.get_block_collision_shapes_at(pos) {
+        let old = old.at_pos(*pos);
+        added = added
+            .iter()
+            .flat_map(|shape| shape.subtract(&old))
+            .collect();
+    }
+    let Some(bounds) = added.iter().copied().reduce(|a, b| {
+        BoundingBox::new(
+            Vector3::new(
+                a.min.x.min(b.min.x),
+                a.min.y.min(b.min.y),
+                a.min.z.min(b.min.z),
+            ),
+            Vector3::new(
+                a.max.x.max(b.max.x),
+                a.max.y.max(b.max.y),
+                a.max.z.max(b.max.z),
+            ),
+        )
+    }) else {
+        return new_state;
+    };
+
+    for entity in world.get_all_at_box(&bounds) {
+        // `Shapes.collide(Axis.Y, box.move(0, 1, 0), shape, -1.0)`
+        let lifted = entity
+            .get_entity()
+            .bounding_box
+            .load()
+            .shift(Vector3::new(0.0, 1.0, 0.0));
+        let offset = added
+            .iter()
+            .filter(|shape| {
+                shape.min.x < lifted.max.x
+                    && shape.max.x > lifted.min.x
+                    && shape.min.z < lifted.max.z
+                    && shape.max.z > lifted.min.z
+                    && shape.max.y <= lifted.min.y
+            })
+            .fold(-1.0f64, |offset, shape| {
+                offset.max(shape.max.y - lifted.min.y)
+            });
+        let delta = Vector3::new(0.0, 1.0 + offset, 0.0);
+        if let Some(player) = entity.get_player() {
+            player.teleport_relative(delta);
+        } else {
+            let entity = entity.get_entity();
+            entity.teleport(entity.pos.load().add(&delta), None, None, world);
+        }
+    }
+    new_state
+}
+
 pub(crate) fn stop_vertical_movement_after_fall(entity: &dyn EntityBase) {
     let entity = entity.get_entity();
     let mut velocity = entity.velocity.load();

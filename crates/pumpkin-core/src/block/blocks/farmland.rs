@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::block::{
     BlockBehaviour, CanPlaceAtArgs, GetStateForNeighborUpdateArgs, OnLandedUponArgs, OnPlaceArgs,
-    OnScheduledTickArgs, PathComputationType, RandomTickArgs,
+    OnScheduledTickArgs, PathComputationType, RandomTickArgs, push_entities_up,
 };
 use crate::world::World;
 use pumpkin_data::block_properties::FarmlandLikeProperties;
@@ -19,18 +19,20 @@ use pumpkin_world::world::BlockFlags;
 
 type FarmlandProperties = FarmlandLikeProperties;
 
+/// Vanilla `FarmlandBlock.turnToBaseBlock`.
+fn turn_to_base_block(world: &Arc<World>, pos: &BlockPos) {
+    let state = world.get_block_state(pos);
+    let new_state = push_entities_up(world, state, Block::DIRT.default_state.id, pos);
+    world.set_block_state(pos, new_state, BlockFlags::NOTIFY_ALL);
+}
+
 #[pumpkin_block("minecraft:farmland")]
 pub struct FarmlandBlock;
 
 impl BlockBehaviour for FarmlandBlock {
     fn on_scheduled_tick(&self, args: OnScheduledTickArgs<'_>) {
-        // TODO: push up entities
         if !can_place_at(args.world.as_ref(), args.position) {
-            args.world.set_block_state(
-                args.position,
-                Block::DIRT.default_state.id,
-                BlockFlags::NOTIFY_ALL,
-            );
+            turn_to_base_block(args.world, args.position);
         }
     }
 
@@ -76,11 +78,7 @@ impl BlockBehaviour for FarmlandBlock {
                 );
                 let dim = entity.entity_dimension.load();
                 if can_trample && dim.width * dim.width * dim.height > 0.512 {
-                    args.world.set_block_state(
-                        &pos,
-                        Block::DIRT.default_state.id,
-                        BlockFlags::NOTIFY_ALL,
-                    );
+                    turn_to_base_block(args.world, &pos);
                 }
             }
             living.handle_fall_damage(args.entity, args.fall_distance, 1.0);
@@ -121,12 +119,7 @@ impl BlockBehaviour for FarmlandBlock {
                 .get_block(&args.position.up())
                 .has_tag(&tag::Block::MINECRAFT_MAINTAINS_FARMLAND)
             {
-                //TODO push entities up
-                args.world.set_block_state(
-                    args.position,
-                    Block::DIRT.default_state.id,
-                    BlockFlags::NOTIFY_ALL,
-                );
+                turn_to_base_block(args.world, args.position);
             }
         } else {
             let mut new_moisture = (props.moisture as i32 - 1).clamp(0, 7);
