@@ -223,7 +223,7 @@ impl ConfiguredFeature {
                 random,
                 pos,
             ),
-            Self::PointedDripstone(feature) => feature.generate(chunk, random, pos),
+            Self::PointedDripstone(feature) => feature.generate(chunk, block_registry, random, pos),
             Self::CoralMushroom(_feature) => CoralMushroomFeature::generate(
                 chunk,
                 block_registry,

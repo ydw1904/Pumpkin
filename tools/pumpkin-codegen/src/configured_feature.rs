@@ -533,8 +533,13 @@ pub fn value_to_configured_feature(v: &Value) -> TokenStream {
             let tree = value_to_tree_feature(config);
             quote! { ConfiguredFeature::Tree(Box::new(#tree)) }
         }
-        "minecraft:pointed_dripstone" | "minecraft:speleothem" => {
-            let taller = config["chance_of_taller_dripstone"].as_f64().unwrap_or(0.2) as f32;
+        "minecraft:speleothem" => {
+            let base_block = value_to_block_state(&config["base_block"]);
+            let pointed_block = value_to_block_state(&config["pointed_block"]);
+            let replaceable_blocks = value_to_block_predicate(&config["replaceable_blocks"]);
+            let taller = config["chance_of_taller_generation"]
+                .as_f64()
+                .unwrap_or(0.2) as f32;
             let dir_spread = config["chance_of_directional_spread"]
                 .as_f64()
                 .unwrap_or(0.7) as f32;
@@ -542,6 +547,9 @@ pub fn value_to_configured_feature(v: &Value) -> TokenStream {
             let r3 = config["chance_of_spread_radius3"].as_f64().unwrap_or(0.5) as f32;
             quote! {
                 ConfiguredFeature::PointedDripstone(SmallDripstoneFeature {
+                    base_block: #base_block,
+                    pointed_block: #pointed_block,
+                    replaceable_blocks: #replaceable_blocks,
                     taller_dripstone: #taller,
                     directional_spread: #dir_spread,
                     spread_radius2: #r2,
