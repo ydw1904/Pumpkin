@@ -4082,6 +4082,18 @@ impl World {
         self.explode_with_calculator(position, power, interaction, None);
     }
 
+    /// An explosion that also sets fire, like vanilla's `level.explode(..., fire = true, ...)`.
+    pub fn explode_with_fire(
+        self: &Arc<Self>,
+        position: Vector3<f64>,
+        power: f32,
+        interaction: ExplosionInteraction,
+    ) {
+        let block_interaction = self.get_block_interaction(interaction);
+        let explosion = Explosion::new(power, position, block_interaction).with_fire();
+        self.run_explosion(&explosion, position, power);
+    }
+
     pub fn explode_with_calculator(
         self: &Arc<Self>,
         position: Vector3<f64>,

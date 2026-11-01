@@ -11,10 +11,14 @@ use pumpkin_data::{
 };
 use pumpkin_util::math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3};
 use pumpkin_world::chunk::ChunkData;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    block::{ExplodeArgs, drop_loot},
+    block::{
+        ExplodeArgs,
+        blocks::fire::{FireBlockBase, fire::FireBlock},
+        drop_loot,
+    },
     entity::{Entity, EntityBase, combat::knockback_after_resistance},
     world::loot::LootContextParameters,
 };
@@ -192,6 +196,8 @@ pub struct Explosion {
     block_interaction: BlockInteraction,
     damage_calculator: Option<Arc<dyn ExplosionDamageCalculator>>,
     preserve_rails: bool,
+    /// Vanilla `ServerExplosion.fire`: sets fire to some of the blown positions.
+    create_fire: bool,
 }
 
 impl Explosion {
@@ -203,6 +209,7 @@ impl Explosion {
             block_interaction,
             damage_calculator: None,
             preserve_rails: false,
+            create_fire: false,
         }
     }
 
@@ -221,6 +228,12 @@ impl Explosion {
         self
     }
 
+    #[must_use]
+    pub const fn with_fire(mut self) -> Self {
+        self.create_fire = true;
+        self
+    }
+
     fn protects_rail(&self, world: &World, pos: &BlockPos, block: &Block) -> bool {
         self.preserve_rails && (Self::is_rail(block) || Self::is_rail(world.get_block(&pos.up())))
     }
@@ -233,11 +246,17 @@ impl Explosion {
     }
 
     #[allow(clippy::too_many_lines)]
+    /// Also returns every position the rays blew through, air included, which vanilla's
+    /// `createFire` picks from; only collected for explosions that make fire.
     fn get_blocks_to_destroy(
         &self,
         world: &World,
-    ) -> FxHashMap<BlockPos, (&'static Block, &'static BlockState)> {
+    ) -> (
+        FxHashMap<BlockPos, (&'static Block, &'static BlockState)>,
+        FxHashSet<BlockPos>,
+    ) {
         let mut map = FxHashMap::default();
+        let mut blown = FxHashSet::default();
 
         let mut chunk_cache: FxHashMap<
             pumpkin_util::math::vector2::Vector2<i32>,
@@ -340,7 +359,15 @@ impl Explosion {
                                 && calc.should_block_explode(self, world, &block_pos, block, h)
                             {
                                 map.insert(block_pos, (block, state));
+                                if self.create_fire {
+                                    blown.insert(block_pos);
+                                }
                             }
+                        } else if self.create_fire
+                            && h > 0.0
+                            && calc.should_block_explode(self, world, &block_pos, block, h)
+                        {
+                            blown.insert(block_pos);
                         }
 
                         pos_x += dir_x * 0.3;
@@ -351,7 +378,25 @@ impl Explosion {
                 }
             }
         }
-        map
+        (map, blown)
+    }
+
+    /// Vanilla `ServerExplosion.createFire`.
+    fn create_fire(world: &Arc<World>, blown: &FxHashSet<BlockPos>) {
+        for pos in blown {
+            if game_random().random_range(0..3) == 0
+                && world.get_block_state(pos).is_air()
+                && world.get_block_state(&pos.down()).is_solid_render()
+            {
+                let fire_block = FireBlockBase::get_fire_type(world, pos);
+                let state_id = if fire_block == Block::FIRE {
+                    FireBlock.get_state_for_position(world, &fire_block, pos)
+                } else {
+                    fire_block.default_state.id
+                };
+                world.set_block_state(pos, state_id, BlockFlags::NOTIFY_ALL);
+            }
+        }
     }
 
     fn damage_entities(&self, world: &Arc<World>) {
@@ -509,9 +554,15 @@ impl Explosion {
         self.damage_entities(world);
 
         match self.block_interaction {
-            BlockInteraction::Keep => 0,
+            BlockInteraction::Keep => {
+                if self.create_fire {
+                    let (_, blown) = self.get_blocks_to_destroy(world);
+                    Self::create_fire(world, &blown);
+                }
+                0
+            }
             BlockInteraction::TriggerBlock => {
-                let blocks = self.get_blocks_to_destroy(world);
+                let (blocks, blown) = self.get_blocks_to_destroy(world);
                 for (pos, (block, _state)) in &blocks {
                     let pumpkin_block = world.block_registry.get_pumpkin_block(block.id);
                     if let Some(pumpkin_block) = pumpkin_block {
@@ -522,6 +573,7 @@ impl Explosion {
                         });
                     }
                 }
+                Self::create_fire(world, &blown);
                 0
             }
             BlockInteraction::Destroy | BlockInteraction::DestroyWithDecay => {
@@ -542,7 +594,7 @@ impl Explosion {
                     return 0;
                 }
 
-                let blocks = self.get_blocks_to_destroy(world);
+                let (blocks, blown) = self.get_blocks_to_destroy(world);
                 let decay_drops = self.block_interaction == BlockInteraction::DestroyWithDecay;
                 let explosion_radius = decay_drops.then_some(self.power);
 
@@ -579,7 +631,7 @@ impl Explosion {
                         });
                     }
                 }
-                // TODO: fire
+                Self::create_fire(world, &blown);
                 blocks.len() as u32
             }
         }

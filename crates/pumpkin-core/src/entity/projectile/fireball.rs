@@ -253,6 +253,11 @@ impl EntityBase for FireballEntity {
 
         let hit_pos = hit.hit_pos();
         let power = self.get_explosion_power();
-        world.explode(hit_pos, power, crate::world::ExplosionInteraction::Mob);
+        // Vanilla `LargeFireball.onHit` sets fire when `mob_griefing` is on.
+        if world.level_info.load().game_rules.mob_griefing {
+            world.explode_with_fire(hit_pos, power, crate::world::ExplosionInteraction::Mob);
+        } else {
+            world.explode(hit_pos, power, crate::world::ExplosionInteraction::Mob);
+        }
     }
 }
