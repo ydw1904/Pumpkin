@@ -184,6 +184,7 @@ pub mod environment;
 pub mod natural_spawner;
 pub mod phantom_spawner;
 pub mod scoreboard;
+pub mod sleep_status;
 pub mod wandering_trader_spawner;
 pub mod weather;
 
@@ -288,6 +289,7 @@ pub struct World {
     pub min_y: i32,
     /// The world's weather, including rain and thunder levels.
     pub weather: std::sync::Mutex<Weather>,
+    pub sleep_status: std::sync::Mutex<sleep_status::SleepStatus>,
     /// Block Behaviour
     pub block_registry: Arc<BlockRegistry>,
     pub server: Weak<Server>,
@@ -467,6 +469,7 @@ impl World {
             level_time: std::sync::Mutex::new(level_time),
             dimension,
             weather: std::sync::Mutex::new(Weather::new()),
+            sleep_status: std::sync::Mutex::default(),
             block_registry,
             sea_level: generation_settings.sea_level,
             min_y: i32::from(generation_settings.shape.min_y),
@@ -2156,8 +2159,15 @@ impl World {
             };
             level_time.send_time(self);
 
+            // Vanilla `wakeUpAllPlayers`.
+            self.sleep_status
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .remove_all_sleepers();
             for player in self.players.load().iter() {
-                player.wake_up();
+                if player.sleeping_since.load().is_some() {
+                    player.wake_up();
+                }
             }
 
             if weather_cycle_enabled && should_reset_weather {
@@ -4422,6 +4432,7 @@ impl World {
                             new_list.push(player.clone());
                             new_list
                         });
+                        destination.update_sleeping_player_list();
                     }
 
                     (Some(destination), position, yaw, pitch)
@@ -4559,43 +4570,74 @@ impl World {
 
     /// Returns true if enough players are sleeping and we should skip the night.
     pub fn should_skip_night(&self) -> bool {
-        let players = self.players.load();
-
-        let eligible_players: Vec<_> = players
-            .iter()
-            .filter(|player| {
-                !player
-                    .sleeping_ignored
-                    .load(std::sync::atomic::Ordering::Relaxed)
-            })
-            .collect();
-        let player_count = eligible_players.len();
-        let sleeping_player_count = eligible_players
-            .iter()
-            .filter(|player| {
-                player
-                    .sleeping_since
-                    .load()
-                    .is_some_and(|since| since >= 100)
-            })
-            .count();
-        drop(players);
-
-        if player_count == 0 {
-            return false;
-        }
-
-        let sleep_percentage = self
+        let percentage = self
             .level_info
             .load()
             .game_rules
-            .players_sleeping_percentage
-            .clamp(0, 100);
-        let required_sleeping =
-            ((player_count as f64 * sleep_percentage as f64) / 100.0).ceil() as usize;
-        let required_sleeping = required_sleeping.max(1);
+            .players_sleeping_percentage;
+        let status = self
+            .sleep_status
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        status.are_enough_sleeping(percentage)
+            && status.are_enough_deep_sleeping(percentage, &self.players.load())
+    }
 
-        sleeping_player_count >= required_sleeping
+    /// Vanilla `ServerLevel.canSleepThroughNights`.
+    pub fn can_sleep_through_nights(&self) -> bool {
+        self.level_info
+            .load()
+            .game_rules
+            .players_sleeping_percentage
+            <= 100
+    }
+
+    /// Vanilla `ServerLevel.updateSleepingPlayerList`.
+    pub fn update_sleeping_player_list(&self) {
+        let players = self.players.load();
+        if players.is_empty() {
+            return;
+        }
+        let changed = self
+            .sleep_status
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .update(&players);
+        if changed {
+            self.announce_sleep_status(&players);
+        }
+    }
+
+    /// Vanilla `ServerLevel.announceSleepStatus`: how many players sleep, on the action bar.
+    fn announce_sleep_status(&self, players: &[Arc<Player>]) {
+        if !self.can_sleep_through_nights() {
+            return;
+        }
+        let percentage = self
+            .level_info
+            .load()
+            .game_rules
+            .players_sleeping_percentage;
+        let message = {
+            let status = self
+                .sleep_status
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if status.are_enough_sleeping(percentage) {
+                TextComponent::translate(translation::java::SLEEP_SKIPPING_NIGHT, [])
+            } else {
+                TextComponent::translate(
+                    translation::java::SLEEP_PLAYERS_SLEEPING,
+                    [
+                        TextComponent::text(status.amount_sleeping().to_string()),
+                        TextComponent::text(status.sleepers_needed(percentage).to_string()),
+                    ],
+                )
+            }
+        };
+        for player in players {
+            player.send_system_message_raw(&message, true);
+        }
     }
 
     // NOTE: This function doesn't actually await on anything, it just spawns two tokio tasks
@@ -5052,6 +5094,7 @@ impl World {
             new_list.push(player.clone());
             new_list
         });
+        self.update_sleeping_player_list();
         self.entity_tracker
             .add_entity(&(player.clone() as Arc<dyn EntityBase>), self);
         Ok(())
@@ -5168,6 +5211,7 @@ impl World {
             new_list
         });
         if let Some(ref player) = removed_player {
+            self.update_sleeping_player_list();
             self.entity_tracker
                 .remove_entity(player.as_ref() as &dyn EntityBase, self);
             let uuid = player.gameprofile.id;

@@ -2340,6 +2340,22 @@ impl Player {
             statistics::CustomStatistic::TimeSinceRest as i32,
             0,
         );
+
+        // Vanilla `ServerPlayer.startSleepInBed`.
+        let world = self.world();
+        if !world.can_sleep_through_nights() {
+            self.send_system_message_raw(
+                &TextComponent::translate(translation::java::SLEEP_NOT_POSSIBLE, []),
+                true,
+            );
+        }
+        world.update_sleeping_player_list();
+    }
+
+    /// Vanilla `Player.isSleepingLongEnough`.
+    #[must_use]
+    pub fn is_sleeping_long_enough(&self) -> bool {
+        self.sleeping_since.load().is_some_and(|since| since >= 100)
     }
 
     pub fn get_off_ground_speed(&self) -> f64 {
@@ -2559,6 +2575,7 @@ impl Player {
         let Some(bed_pos) = self.sleeping_bed_pos.load() else {
             self.living_entity.entity.set_pose(EntityPose::Standing);
             self.sleeping_since.store(None);
+            world.update_sleeping_player_list();
             return;
         };
 
@@ -2602,6 +2619,7 @@ impl Player {
 
         self.sleeping_since.store(None);
         self.sleeping_bed_pos.store(None);
+        world.update_sleeping_player_list();
     }
 
     pub fn show_title(&self, text: &TextComponent, mode: &TitleMode) {
@@ -4392,6 +4410,7 @@ impl Player {
                     new_list.push(player.clone());
                     new_list
                 });
+                new_world.update_sleeping_player_list();
                 self.unload_watched_chunks(&current_world).await;
 
                 self.change_world_chunks(&current_world.level, &new_world);
@@ -5444,6 +5463,7 @@ impl Player {
                 player_game_type: gamemode.into(),
             },
         );
+        self.world().update_sleeping_player_list();
 
         true
     }
