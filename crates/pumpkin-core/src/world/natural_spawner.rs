@@ -571,7 +571,7 @@ pub fn spawn_mobs_for_chunk_generation(
     let zo = chunk_z << 4;
 
     while game_random().random::<f32>() < biome.creature_spawn_probability {
-        let Some(spawner_data) = game_random().choose(creatures) else {
+        let Some(spawner_data) = choose_spawner(creatures) else {
             continue;
         };
 
@@ -959,8 +959,21 @@ pub fn get_random_spawn_mob_at(
             id if id == MobCategory::MISC.id => biome.spawners.misc,
             _ => biome.spawners.misc,
         };
-        game_random().choose(spawners)
+        choose_spawner(spawners)
     }
+}
+
+/// Vanilla `WeightedList.getRandom`: one draw over the total weight, none when it is zero.
+fn choose_spawner(spawners: &[Spawner]) -> Option<&Spawner> {
+    let total_weight: i32 = spawners.iter().map(|spawner| spawner.weight).sum();
+    if total_weight == 0 {
+        return None;
+    }
+    let mut selection = game_random().next_bounded_i32(total_weight);
+    spawners.iter().find(|spawner| {
+        selection -= spawner.weight;
+        selection < 0
+    })
 }
 
 #[must_use]
