@@ -1,8 +1,14 @@
+use std::sync::Arc;
+
 use pumpkin_data::block_properties::RespawnAnchorLikeProperties;
+use pumpkin_data::fluid::FluidState;
 use pumpkin_data::item::Item;
 use pumpkin_data::sound::{Sound, SoundCategory};
+use pumpkin_data::tag::Taggable;
+use pumpkin_data::{Block, BlockDirection, tag};
 use pumpkin_data::{BlockState, translation};
 use pumpkin_macros::pumpkin_block;
+use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::world::BlockFlags;
 
 use crate::block::registry::BlockActionResult;
@@ -10,12 +16,76 @@ use crate::block::{
     BlockBehaviour, GetComparatorOutputArgs, NormalUseArgs, PathComputationType, UseWithItemArgs,
 };
 use crate::entity::EntityBase;
+use crate::world::World;
+use crate::world::explosion::{Explosion, ExplosionDamageCalculator};
 
 /// Vanilla `RespawnAnchorBlock.MAX_CHARGES`.
 const MAX_CHARGES: u8 = 4;
 
 #[pumpkin_block("minecraft:respawn_anchor")]
 pub struct RespawnAnchorBlock;
+
+impl RespawnAnchorBlock {
+    /// Vanilla `RespawnAnchorBlock.explode`.
+    fn explode(world: &Arc<World>, pos: BlockPos) {
+        world.break_block(&pos, None, BlockFlags::SKIP_DROPS);
+        let any_water_neighbors = BlockDirection::horizontal()
+            .iter()
+            .any(|dir| is_water_that_would_flow(world, &pos.offset(dir.to_offset())));
+        let in_water = any_water_neighbors
+            || world
+                .get_fluid(&pos.up())
+                .has_tag(&tag::Fluid::MINECRAFT_WATER);
+        world.explode_with_fire(
+            pos.to_centered_f64(),
+            5.0,
+            crate::world::ExplosionInteraction::Block,
+            Some(Arc::new(RespawnAnchorDamageCalculator { pos, in_water })),
+        );
+    }
+}
+
+/// Vanilla `RespawnAnchorBlock.isWaterThatWouldFlow`.
+fn is_water_that_would_flow(world: &World, pos: &BlockPos) -> bool {
+    let (fluid, state) = world.get_fluid_and_fluid_state(pos);
+    if !fluid.has_tag(&tag::Fluid::MINECRAFT_WATER) {
+        false
+    } else if state.is_source {
+        true
+    } else if state.level < 2 {
+        false
+    } else {
+        !world
+            .get_fluid(&pos.down())
+            .has_tag(&tag::Fluid::MINECRAFT_WATER)
+    }
+}
+
+/// The anchor's own position resists like water when water would flow into it, so the
+/// blast spares the surroundings like vanilla.
+struct RespawnAnchorDamageCalculator {
+    pos: BlockPos,
+    in_water: bool,
+}
+
+impl ExplosionDamageCalculator for RespawnAnchorDamageCalculator {
+    fn get_block_explosion_resistance(
+        &self,
+        _explosion: &Explosion,
+        _world: &World,
+        pos: &BlockPos,
+        block: &Block,
+        fluid: &FluidState,
+    ) -> Option<f32> {
+        if *pos == self.pos && self.in_water {
+            Some(Block::WATER.blast_resistance)
+        } else if block.default_state.is_air() && fluid.is_empty {
+            None
+        } else {
+            Some(fluid.blast_resistance.max(block.blast_resistance))
+        }
+    }
+}
 
 impl BlockBehaviour for RespawnAnchorBlock {
     fn use_with_item(&self, args: UseWithItemArgs<'_>) -> BlockActionResult {
@@ -62,14 +132,7 @@ impl BlockBehaviour for RespawnAnchorBlock {
         }
 
         if !args.world.dimension.respawn_anchor_works {
-            args.world
-                .break_block(args.position, None, BlockFlags::SKIP_DROPS);
-            let center_pos = args.position.to_centered_f64();
-            args.world.explode_with_fire(
-                center_pos,
-                5.0,
-                crate::world::ExplosionInteraction::Block,
-            );
+            Self::explode(args.world, *args.position);
             return BlockActionResult::SuccessServer;
         }
 

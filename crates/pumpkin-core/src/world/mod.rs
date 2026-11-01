@@ -4119,9 +4119,13 @@ impl World {
         position: Vector3<f64>,
         power: f32,
         interaction: ExplosionInteraction,
+        damage_calculator: Option<Arc<dyn ExplosionDamageCalculator>>,
     ) {
         let block_interaction = self.get_block_interaction(interaction);
-        let explosion = Explosion::new(power, position, block_interaction).with_fire();
+        let mut explosion = Explosion::new(power, position, block_interaction).with_fire();
+        if let Some(calc) = damage_calculator {
+            explosion = explosion.with_damage_calculator(calc);
+        }
         self.run_explosion(&explosion, position, power);
     }
 

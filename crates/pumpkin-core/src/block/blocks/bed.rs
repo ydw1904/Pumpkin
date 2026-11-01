@@ -236,6 +236,7 @@ impl BedBlock {
                 bed_head_pos.to_centered_f64(),
                 5.0,
                 crate::world::ExplosionInteraction::Block,
+                None,
             );
 
             return BlockActionResult::SuccessServer;
