@@ -58,7 +58,7 @@ fn override_stacked_on_other(
     let Some(mut contents) = carried.get_data_component::<BundleContentsImpl>().cloned() else {
         return false;
     };
-    let pitch: f32 = 0.8 + rand::random_range(0.0..1.0) * 0.4;
+    let pitch: f32 = 0.8 + pumpkin_util::random::gameplay::game_random().random::<f32>() * 0.4;
 
     if *click_type == MouseClick::Left && !other.is_empty() {
         if try_transfer(&mut contents, slot, player) > 0 {
@@ -103,7 +103,7 @@ fn override_other_stacked_on_me(
     else {
         return false;
     };
-    let pitch: f32 = 0.8 + rand::random_range(0.0..1.0) * 0.4;
+    let pitch: f32 = 0.8 + pumpkin_util::random::gameplay::game_random().random::<f32>() * 0.4;
 
     if *click_type == MouseClick::Left && !other.is_empty() {
         if slot.allow_modification(player) && contents.try_insert(other) > 0 {

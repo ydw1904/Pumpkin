@@ -26,6 +26,11 @@ impl ItemMetadata for BundleItem {
 }
 
 impl ItemBehaviour for BundleItem {
+    fn normal_use(&self, item: &Item, player: &Player) {
+        let (yaw, pitch) = player.rotation();
+        self.normal_use_with_hand(item, player, yaw, pitch, Hand::Right);
+    }
+
     // Vanilla `BundleItem.use`, which only starts the use: the contents come out while the button
     // is held, in [`Self::on_use_tick`].
     fn normal_use_with_hand(
@@ -100,6 +105,10 @@ impl BundleItem {
 
     // Vanilla `BundleItem.playRemoveOneSound` and the sounds around it.
     fn play_sound(player: &Player, sound: Sound) {
-        player.play_item_sound(sound, 0.8, 0.8 + rand::random_range(0.0..1.0) * 0.4);
+        player.play_item_sound(
+            sound,
+            0.8,
+            0.8 + pumpkin_util::random::gameplay::game_random().random::<f32>() * 0.4,
+        );
     }
 }
