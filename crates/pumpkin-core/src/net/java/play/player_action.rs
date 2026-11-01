@@ -222,20 +222,21 @@ impl JavaClient {
                     // `handleBlockBreakAction` the server decides if the block breaks.
                     let can_break = match player.gamemode.load() {
                         GameMode::Creative => true,
-                        GameMode::Spectator | GameMode::Adventure => false,
-                        GameMode::Survival => {
-                            let speed = block::calc_block_breaking(player, state, block);
+                        GameMode::Spectator => false,
+                        // Only the block mining started on can break (vanilla's `destroyPos`).
+                        // Instant breaks happen on start, and adventure mode only starts
+                        // mining blocks its tool may break.
+                        GameMode::Survival | GameMode::Adventure => {
                             let mining_this = player.mining.load(Ordering::Relaxed)
                                 && *player
                                     .mining_pos
                                     .lock()
                                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                                     == location;
-                            if state.is_air() || state.hardness < 0.0 {
+                            if !mining_this || state.is_air() {
                                 false
-                            } else if speed >= 1.0 {
-                                true
-                            } else if mining_this {
+                            } else {
+                                let speed = block::calc_block_breaking(player, state, block);
                                 let elapsed = player.tick_counter.load(Ordering::Relaxed)
                                     - player.start_mining_time.load(Ordering::Relaxed);
                                 if speed * ((elapsed + 1) as f32) < 0.7 {
@@ -246,8 +247,6 @@ impl JavaClient {
                                     return;
                                 }
                                 true
-                            } else {
-                                false
                             }
                         }
                     };
