@@ -5914,12 +5914,15 @@ impl World {
         )
     }
 
+    /// The `gameplay/snow_golem_melts` attribute: only hot biomes and dimensions set it, and
+    /// none of them back to false, so either layer turning it on is enough.
     #[must_use]
     pub fn snow_golem_melts(&self, pos: &BlockPos) -> bool {
-        self.environment_attributes().get_value_bool(
-            pumpkin_data::environment_attribute::EnvironmentAttribute::GameplaySnowGolemMelts,
-            pos,
-        )
+        self.get_biome(pos).snow_golem_melts
+            || self.environment_attributes().get_value_bool(
+                pumpkin_data::environment_attribute::EnvironmentAttribute::GameplaySnowGolemMelts,
+                pos,
+            )
     }
 
     #[must_use]

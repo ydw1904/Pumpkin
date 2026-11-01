@@ -467,6 +467,11 @@ pub fn build() -> TokenStream {
             TemperatureModifier::None => quote! { TemperatureModifier::None },
         };
         let index = LitInt::new(&biome.id.to_string(), Span::call_site());
+        let snow_golem_melts = biome
+            .attributes
+            .get("minecraft:gameplay/snow_golem_melts")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
 
         variants.extend([quote! {
             pub const #format_name: Biome = Biome {
@@ -482,6 +487,7 @@ pub fn build() -> TokenStream {
                 features: &[#(#features),*],
                 carvers: &[#(#carvers),*],
                 creature_spawn_probability: #creature_spawn_probability,
+                snow_golem_melts: #snow_golem_melts,
                 spawners: #spawners,
                 spawn_costs: phf::phf_map! {
                     #(#spawn_costs),*
@@ -514,6 +520,8 @@ pub fn build() -> TokenStream {
             pub carvers: &'static [&'static crate::carver::CarverConfig],
             pub features: &'static [&'static [crate::placed_feature::PlacedFeature]],
             pub creature_spawn_probability: f32,
+            /// The biome's `gameplay/snow_golem_melts` environment attribute.
+            pub snow_golem_melts: bool,
             pub spawners: SpawnGroups,
             pub spawn_costs: phf::Map<&'static str, SpawnCosts>,
         }
