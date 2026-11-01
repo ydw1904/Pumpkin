@@ -85,7 +85,7 @@ def set_toml(text, key, value):
     return re.sub(rf"(?m)^{key} = .*$", f"{key} = {value}", text)
 
 
-def start_pumpkin(binary, run_dir, port, seed, rng_seed=None):
+def start_pumpkin(binary, run_dir, port, seed, rng_seed=None, settings=None):
     run_dir.mkdir(parents=True, exist_ok=True)
     config = run_dir / "pumpkin.toml"
     if not config.exists():
@@ -96,7 +96,7 @@ def start_pumpkin(binary, run_dir, port, seed, rng_seed=None):
         first.stop()
         shutil.rmtree(run_dir / "world", ignore_errors=True)
     text = config.read_text()
-    for key, value in {**PUMPKIN_SETTINGS, "seed": f'"{seed}"'}.items():
+    for key, value in {**PUMPKIN_SETTINGS, **(settings or {}), "seed": f'"{seed}"'}.items():
         text = set_toml(text, key, value)
     text = re.sub(r'(?m)^address = "0\.0\.0\.0:25565"$', f'address = "0.0.0.0:{port}"', text)
     text = re.sub(r"(?ms)(\[telemetry\]\s*enabled = )true", r"\1false", text)

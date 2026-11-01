@@ -255,12 +255,15 @@ def main():
         generate("vanilla", lambda d: bot_parity.start_vanilla(java, jar, d, 25566, args.seed, args.cache),
                  run_dir / "vanilla", area, args.wait, args.dimension)
 
+        # The parity settings turn the Nether and End off.
+        settings = {} if args.dimension == "overworld" else {"allow_nether": "true", "allow_end": "true"}
+
         def start_pumpkin(d):
             # The first call writes the config; switch it to Anvil before the real start.
-            bot_parity.start_pumpkin(binary, d, 25565, args.seed).stop()
+            bot_parity.start_pumpkin(binary, d, 25565, args.seed, settings=settings).stop()
             pumpkin_anvil_config(d)
             shutil.rmtree(d / "world", ignore_errors=True)
-            return bot_parity.start_pumpkin(binary, d, 25565, args.seed)
+            return bot_parity.start_pumpkin(binary, d, 25565, args.seed, settings=settings)
 
         print("Generating on Pumpkin...")
         generate("pumpkin", start_pumpkin, run_dir / "pumpkin", area, args.wait, args.dimension)
