@@ -851,7 +851,7 @@ impl GameTestWorld for ServerGameTestWorld {
                 tick: 0,
             });
         }
-        crate::block::blocks::redstone::buttons::ButtonBlock::press(&self.world, position);
+        crate::block::blocks::redstone::buttons::ButtonBlock::press(&self.world, position, None);
         Ok(())
     }
 
