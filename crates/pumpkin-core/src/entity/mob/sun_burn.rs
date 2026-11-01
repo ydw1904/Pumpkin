@@ -3,6 +3,7 @@ use std::sync::atomic::Ordering::Relaxed;
 
 use pumpkin_data::item_stack::DamageResult;
 use pumpkin_protocol::bedrock::server::ActorEventID;
+use pumpkin_util::math::position::BlockPos;
 
 use crate::entity::mob::Mob;
 use crate::entity::{Entity, EntityBase, equipment_break_status};
@@ -20,7 +21,7 @@ pub fn passes_burn_roll(sunlight: f32, roll: f32) -> bool {
 /// Sun reaches the mob this tick and the dice agree.
 fn is_sun_burn_tick(entity: &Entity) -> bool {
     let world = entity.world.load();
-    let eye = entity.get_eye_pos().to_block_pos();
+    let eye = BlockPos::containing_vec(entity.get_eye_pos());
 
     if !world.monsters_burn(&eye) {
         return false;
