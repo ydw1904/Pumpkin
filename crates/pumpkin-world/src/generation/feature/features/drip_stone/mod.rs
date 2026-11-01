@@ -72,6 +72,18 @@ impl Column {
     /// Vanilla `Column.scan` with `isEmptyOrWater` inside the column and
     /// `isNeitherEmptyNorWater` at its edges.
     pub fn scan<T: GenerationCache>(chunk: &T, pos: BlockPos, search_range: i32) -> Option<Self> {
+        Self::scan_with_edge(chunk, pos, search_range, |chunk, edge| {
+            !is_empty_or_water(chunk, edge)
+        })
+    }
+
+    /// Vanilla `Column.scan` with `isEmptyOrWater` inside the column.
+    pub fn scan_with_edge<T: GenerationCache>(
+        chunk: &T,
+        pos: BlockPos,
+        search_range: i32,
+        valid_edge: impl Fn(&T, BlockPos) -> bool,
+    ) -> Option<Self> {
         if !is_empty_or_water(chunk, pos) {
             return None;
         }
@@ -82,7 +94,7 @@ impl Column {
                 edge = edge.add(0, step, 0);
                 i += 1;
             }
-            (!is_empty_or_water(chunk, edge)).then_some(edge.0.y)
+            valid_edge(chunk, edge).then_some(edge.0.y)
         };
         let ceiling = scan_direction(1);
         let floor = scan_direction(-1);

@@ -456,7 +456,7 @@ impl ConfiguredFeature {
                 pos,
             ),
             Self::DripstoneCluster(feature) => feature.generate(chunk, block_registry, random, pos),
-            Self::LargeDripstone(feature) => feature.generate(chunk, random, pos),
+            Self::LargeDripstone(feature) => feature.generate(chunk, block_registry, random, pos),
             Self::EndGateway(feature) => feature.generate(chunk, pos),
             Self::FillLayer(feature) => {
                 feature.generate(chunk, min_y, height, feature_name, random, pos)

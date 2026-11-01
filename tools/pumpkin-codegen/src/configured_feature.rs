@@ -1088,7 +1088,35 @@ pub fn value_to_configured_feature(v: &Value) -> TokenStream {
             }
         }
         "minecraft:large_dripstone" => {
-            quote! { ConfiguredFeature::LargeDripstone(crate::generation::feature::features::drip_stone::large::LargeDripstoneFeature {}) }
+            let replaceable_blocks = value_to_block_predicate(&config["replaceable_blocks"]);
+            // Vanilla's codec default.
+            let search_range = config["floor_to_ceiling_search_range"]
+                .as_i64()
+                .unwrap_or(30) as i32;
+            let column_radius = value_to_int_provider(&config["column_radius"]);
+            let height_scale = value_to_float_provider(&config["height_scale"]);
+            let ratio = config["max_column_radius_to_cave_height_ratio"]
+                .as_f64()
+                .unwrap() as f32;
+            let stalactite_bluntness = value_to_float_provider(&config["stalactite_bluntness"]);
+            let stalagmite_bluntness = value_to_float_provider(&config["stalagmite_bluntness"]);
+            let wind_speed = value_to_float_provider(&config["wind_speed"]);
+            let min_radius_for_wind = config["min_radius_for_wind"].as_i64().unwrap() as i32;
+            let min_bluntness_for_wind = config["min_bluntness_for_wind"].as_f64().unwrap() as f32;
+            quote! {
+                ConfiguredFeature::LargeDripstone(crate::generation::feature::features::drip_stone::large::LargeDripstoneFeature {
+                    replaceable_blocks: #replaceable_blocks,
+                    floor_to_ceiling_search_range: #search_range,
+                    column_radius: #column_radius,
+                    height_scale: #height_scale,
+                    max_column_radius_to_cave_height_ratio: #ratio,
+                    stalactite_bluntness: #stalactite_bluntness,
+                    stalagmite_bluntness: #stalagmite_bluntness,
+                    wind_speed: #wind_speed,
+                    min_radius_for_wind: #min_radius_for_wind,
+                    min_bluntness_for_wind: #min_bluntness_for_wind,
+                })
+            }
         }
         "minecraft:sculk_patch" => {
             let charge_count = config["charge_count"].as_u64().unwrap() as i32;
