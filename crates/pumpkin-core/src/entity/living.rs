@@ -101,6 +101,9 @@ pub struct LivingEntity {
     /// The distance the entity has been falling.
     pub fall_distance: AtomicCell<f64>,
     pub active_effects: std::sync::Mutex<FxHashMap<&'static StatusEffect, Effect>>,
+    /// Vanilla `MobEffectInstance.hiddenEffect` chains of the active effects, nearest first:
+    /// weaker but longer effects that resume once the one above them runs out.
+    hidden_effects: std::sync::Mutex<FxHashMap<&'static StatusEffect, Vec<Effect>>>,
     pub entity_equipment: Arc<std::sync::Mutex<EntityEquipment>>,
     pub equipment_drop_chances: Arc<std::sync::Mutex<FxHashMap<EquipmentSlot, f32>>>,
     pub movement_input: AtomicCell<Vector3<f64>>,
@@ -346,6 +349,7 @@ impl LivingEntity {
             recent_kinetic_enemies: std::sync::Mutex::new(FxHashMap::default()),
             livings_flags: AtomicU8::new(0),
             active_effects: std::sync::Mutex::new(FxHashMap::default()),
+            hidden_effects: std::sync::Mutex::new(FxHashMap::default()),
             entity_equipment: Arc::new(std::sync::Mutex::new(EntityEquipment::new())),
             equipment_drop_chances: Arc::new(std::sync::Mutex::new(FxHashMap::default())),
             equipment_slots: Arc::new(build_equipment_slots()),
@@ -1181,7 +1185,6 @@ impl LivingEntity {
         }
     }
 
-    #[expect(clippy::too_many_lines)]
     pub fn add_effect(&self, effect: Effect) {
         if !self.can_be_affected(&effect) {
             return;
@@ -1218,7 +1221,22 @@ impl LivingEntity {
             .cloned();
         let effect = match existing {
             Some(existing) => {
-                let (updated, changed) = update_effect(existing, &effect);
+                let mut hidden_effects = self
+                    .hidden_effects
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let mut chain = vec![existing];
+                chain.extend(
+                    hidden_effects
+                        .remove(effect.effect_type)
+                        .unwrap_or_default(),
+                );
+                let changed = update_effect(&mut chain, 0, &effect);
+                let updated = chain.remove(0);
+                if !chain.is_empty() {
+                    hidden_effects.insert(effect.effect_type, chain);
+                }
+                drop(hidden_effects);
                 if !changed {
                     // `onEffectStarted` still runs for an unchanged effect.
                     if effect.effect_type == &StatusEffect::ABSORPTION {
@@ -1231,8 +1249,36 @@ impl LivingEntity {
             None => effect,
         };
 
-        // Apply non-instant effects
+        self.apply_effect_attribute_modifiers(&effect);
 
+        if effect.effect_type == &StatusEffect::ABSORPTION {
+            self.start_absorption(effect.amplifier);
+        }
+
+        // Apply invisible effect
+        if effect.effect_type == &StatusEffect::INVISIBILITY {
+            self.entity.set_invisible(true);
+        }
+
+        // Apply glowing effect
+        if effect.effect_type == &StatusEffect::GLOWING {
+            self.entity.set_glowing_from_effect(true);
+        }
+
+        self.broadcast_effect(&effect);
+        if effect.effect_type != &StatusEffect::INSTANT_HEALTH
+            && effect.effect_type != &StatusEffect::INSTANT_DAMAGE
+        {
+            self.active_effects
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .insert(effect.effect_type, effect);
+        }
+        self.sync_effect_particles();
+    }
+
+    /// Applies the effect's attribute modifiers at its amplifier and syncs them to clients.
+    fn apply_effect_attribute_modifiers(&self, effect: &Effect) {
         // Effects that modify attributes (ex. speed) should also update the
         // entity's attribute instances (server-side) and then notify clients.
         if !effect.effect_type.attribute_modifiers.is_empty() {
@@ -1268,21 +1314,9 @@ impl LivingEntity {
                 crate::entity::attributes::send_attribute_updates_for_living(self, touched_attrs);
             }
         }
+    }
 
-        if effect.effect_type == &StatusEffect::ABSORPTION {
-            self.start_absorption(effect.amplifier);
-        }
-
-        // Apply invisible effect
-        if effect.effect_type == &StatusEffect::INVISIBILITY {
-            self.entity.set_invisible(true);
-        }
-
-        // Apply glowing effect
-        if effect.effect_type == &StatusEffect::GLOWING {
-            self.entity.set_glowing_from_effect(true);
-        }
-
+    fn broadcast_effect(&self, effect: &Effect) {
         // Broadcast effect to nearby players
         let mut flag: i8 = 0;
         if effect.ambient {
@@ -1322,15 +1356,6 @@ impl LivingEntity {
             .world
             .load()
             .broadcast_to_chunk_editioned(chunk_pos, &je_packet, &be_packet);
-        if effect.effect_type != &StatusEffect::INSTANT_HEALTH
-            && effect.effect_type != &StatusEffect::INSTANT_DAMAGE
-        {
-            self.active_effects
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .insert(effect.effect_type, effect);
-        }
-        self.sync_effect_particles();
     }
 
     /// Vanilla `AbsorptionMobEffect.onEffectStarted`: tops absorption up to the effect's
@@ -1375,6 +1400,10 @@ impl LivingEntity {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(&effect_type)
             .is_some();
+        self.hidden_effects
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&effect_type);
 
         // Broadcast effect removal
         self.entity
@@ -2746,14 +2775,21 @@ impl LivingEntity {
     fn tick_effects(&self) {
         let mut effects_to_remove = Vec::new();
         let mut effects_to_apply = Vec::new();
+        let mut downgraded = Vec::new();
 
         {
             let Ok(mut effects) = self.active_effects.try_lock() else {
                 return;
             };
+            let mut hidden_effects = self
+                .hidden_effects
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            hidden_effects.retain(|_, hidden| !hidden.is_empty());
             let entity_age = self.entity.tick_count.load(Relaxed);
+            // Vanilla `MobEffectInstance.tickServer`
             for effect in effects.values_mut() {
-                if effect.duration == 0 {
+                if !has_remaining_duration(effect) {
                     effects_to_remove.push(effect.effect_type);
                     continue;
                 }
@@ -2770,10 +2806,25 @@ impl LivingEntity {
                     effects_to_apply.push((mob_effect, effect.amplifier));
                 }
 
-                if effect.duration != -1 {
-                    effect.duration -= 1;
+                let hidden = hidden_effects.get_mut(effect.effect_type);
+                tick_down_duration(effect);
+                if let Some(hidden) = hidden {
+                    hidden.iter_mut().for_each(tick_down_duration);
+                    // `downgradeToHiddenEffect`
+                    if effect.duration == 0 && !hidden.is_empty() {
+                        set_effect_details_from(effect, &hidden.remove(0));
+                        downgraded.push(effect.clone());
+                    }
+                }
+
+                if !has_remaining_duration(effect) {
+                    effects_to_remove.push(effect.effect_type);
                 }
             }
+        }
+
+        for (mob_effect, amplifier) in effects_to_apply {
+            mob_effect.apply_effect_tick(self, amplifier);
         }
 
         // Call the central removal function for each expired effect
@@ -2781,9 +2832,21 @@ impl LivingEntity {
             self.remove_effect(effect_type);
         }
 
-        for (mob_effect, amplifier) in effects_to_apply {
-            mob_effect.apply_effect_tick(self, amplifier);
+        if downgraded.is_empty() {
+            return;
         }
+        // Vanilla `onEffectUpdated`: refresh the attribute modifiers for the resumed effect.
+        for effect in downgraded {
+            for m in effect.effect_type.attribute_modifiers {
+                let id = m.id.to_string();
+                self.update_attribute(m.attribute, |inst| {
+                    inst.remove_modifier(&id);
+                });
+            }
+            self.apply_effect_attribute_modifiers(&effect);
+            self.broadcast_effect(&effect);
+        }
+        self.sync_effect_particles();
     }
 
     /// Vanilla: `LivingEntity.checkTotemDeathProtection`.
@@ -3028,19 +3091,46 @@ impl LivingEntity {
         nbt.put("AbsorptionAmount", NbtTag::Float(self.absorption.load()));
         nbt.put_list("attributes", pack_attributes(self));
         {
-            let effects_vec: Vec<pumpkin_data::potion::Effect> = {
+            let effects_vec: Vec<(Effect, Vec<Effect>)> = {
                 let effects = self
                     .active_effects
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                effects.values().cloned().collect()
+                let hidden_effects = self
+                    .hidden_effects
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                effects
+                    .values()
+                    .map(|effect| {
+                        let hidden = hidden_effects
+                            .get(effect.effect_type)
+                            .cloned()
+                            .unwrap_or_default();
+                        (effect.clone(), hidden)
+                    })
+                    .collect()
             };
             if !effects_vec.is_empty() {
                 // Iterate effects and create Box<[NbtTag]>
                 let mut effects_list = Vec::with_capacity(effects_vec.len());
-                for effect in effects_vec {
+                for (effect, hidden) in effects_vec {
                     let mut effect_nbt = pumpkin_nbt::compound::NbtCompound::new();
                     effect.write_nbt(&mut effect_nbt);
+                    // Like vanilla's `MobEffectInstance.Details`, each hidden effect nests in
+                    // the one above it, without an id of its own.
+                    let hidden_nbt = hidden.iter().rev().fold(None, |inner, hidden| {
+                        let mut nbt = pumpkin_nbt::compound::NbtCompound::new();
+                        hidden.write_nbt(&mut nbt);
+                        nbt.child_tags.remove("id");
+                        if let Some(inner) = inner {
+                            nbt.put("hidden_effect", NbtTag::Compound(inner));
+                        }
+                        Some(nbt)
+                    });
+                    if let Some(hidden_nbt) = hidden_nbt {
+                        effect_nbt.put("hidden_effect", NbtTag::Compound(hidden_nbt));
+                    }
                     effects_list.push(NbtTag::Compound(effect_nbt));
                 }
                 nbt.put("active_effects", NbtTag::List(effects_list));
@@ -3109,20 +3199,30 @@ impl LivingEntity {
             if let NbtTag::Compound(effect_nbt) = effect {
                 if let Some(mut effect) = Effect::create_from_nbt(&mut effect_nbt.clone()) {
                     effect.blend = true; // TODO: change, is taken from effect give command
-                    read_effects.push(effect);
+                    let hidden = read_hidden_effects(&effect, effect_nbt);
+                    read_effects.push((effect, hidden));
                 } else {
                     warn!("Unable to read effect from nbt");
                 }
             }
         }
+        let mut hidden_effects = self
+            .hidden_effects
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut active_effects = self
             .active_effects
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         active_effects.clear();
-        for effect in read_effects {
+        hidden_effects.clear();
+        for (effect, hidden) in read_effects {
+            if !hidden.is_empty() {
+                hidden_effects.insert(effect.effect_type, hidden);
+            }
             active_effects.insert(effect.effect_type, effect);
         }
+        drop(hidden_effects);
         self.entity
             .set_glowing_from_effect(active_effects.contains_key(&StatusEffect::GLOWING));
 
@@ -4421,21 +4521,75 @@ pub(crate) const fn attribute_modifier_slot_matches(
     }
 }
 
-/// Mirrors vanilla's strict `random < probability` consume-effect gate.
-/// Vanilla `MobEffectInstance.update`, without the hidden effect a weaker, longer effect
-/// would leave behind. Returns the updated effect and whether it changed.
-fn update_effect(mut current: Effect, take_over: &Effect) -> (Effect, bool) {
-    let is_shorter =
-        |a: &Effect, b: &Effect| a.duration != -1 && (b.duration == -1 || a.duration < b.duration);
+/// Reads the `hidden_effect` chain nested in a saved effect, nearest first.
+fn read_hidden_effects(effect: &Effect, effect_nbt: &NbtCompound) -> Vec<Effect> {
+    let mut hidden = Vec::new();
+    let mut next = effect_nbt.get_compound("hidden_effect");
+    while let Some(hidden_nbt) = next {
+        let mut hidden_nbt_with_id = hidden_nbt.clone();
+        hidden_nbt_with_id.put("id", effect.effect_type.minecraft_name);
+        let Some(mut hidden_effect) = Effect::create_from_nbt(&mut hidden_nbt_with_id) else {
+            break;
+        };
+        hidden_effect.blend = effect.blend;
+        hidden.push(hidden_effect);
+        next = hidden_nbt.get_compound("hidden_effect");
+    }
+    hidden
+}
+
+/// Vanilla `MobEffectInstance.isShorterDurationThan`.
+const fn is_shorter_duration_than(effect: &Effect, other: &Effect) -> bool {
+    effect.duration != -1 && (effect.duration < other.duration || other.duration == -1)
+}
+
+/// Vanilla `MobEffectInstance.hasRemainingDuration`.
+const fn has_remaining_duration(effect: &Effect) -> bool {
+    effect.duration == -1 || effect.duration > 0
+}
+
+/// Vanilla `MobEffectInstance.tickDownDuration` for one effect of the chain.
+const fn tick_down_duration(effect: &mut Effect) {
+    if effect.duration != -1 && effect.duration != 0 {
+        effect.duration -= 1;
+    }
+}
+
+/// Vanilla `MobEffectInstance.setDetailsFrom`.
+const fn set_effect_details_from(effect: &mut Effect, copy: &Effect) {
+    effect.duration = copy.duration;
+    effect.amplifier = copy.amplifier;
+    effect.ambient = copy.ambient;
+    effect.show_particles = copy.show_particles;
+    effect.show_icon = copy.show_icon;
+}
+
+/// Vanilla `MobEffectInstance.update` on `chain[index]`, whose hidden effects follow it in
+/// `chain`. Returns whether that effect changed.
+fn update_effect(chain: &mut Vec<Effect>, index: usize, take_over: &Effect) -> bool {
+    let current = &chain[index];
     let mut changed = false;
     if take_over.amplifier > current.amplifier {
+        if is_shorter_duration_than(take_over, current) {
+            chain.insert(index + 1, current.clone());
+        }
+        let current = &mut chain[index];
         current.amplifier = take_over.amplifier;
         current.duration = take_over.duration;
         changed = true;
-    } else if is_shorter(&current, take_over) && take_over.amplifier == current.amplifier {
-        current.duration = take_over.duration;
-        changed = true;
+    } else if is_shorter_duration_than(current, take_over) {
+        if take_over.amplifier == current.amplifier {
+            chain[index].duration = take_over.duration;
+            changed = true;
+        } else if index + 1 == chain.len() {
+            let mut hidden = take_over.clone();
+            hidden.blend = chain[index].blend;
+            chain.push(hidden);
+        } else {
+            update_effect(chain, index + 1, take_over);
+        }
     }
+    let current = &mut chain[index];
     if (!take_over.ambient && current.ambient) || changed {
         current.ambient = take_over.ambient;
         changed = true;
@@ -4448,9 +4602,10 @@ fn update_effect(mut current: Effect, take_over: &Effect) -> (Effect, bool) {
         current.show_icon = take_over.show_icon;
         changed = true;
     }
-    (current, changed)
+    changed
 }
 
+/// Mirrors vanilla's strict `random < probability` consume-effect gate.
 const fn consume_effect_probability_applies(probability: f32, random: f32) -> bool {
     random < probability
 }
@@ -4538,6 +4693,48 @@ pub(crate) fn prevents_equipment_drop(stack: &ItemStack) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn speed(amplifier: u8, duration: i32) -> Effect {
+        Effect {
+            effect_type: &StatusEffect::SPEED,
+            duration,
+            amplifier,
+            ambient: false,
+            show_particles: true,
+            show_icon: true,
+            blend: false,
+        }
+    }
+
+    fn amplifiers_and_durations(chain: &[Effect]) -> Vec<(u8, i32)> {
+        chain.iter().map(|e| (e.amplifier, e.duration)).collect()
+    }
+
+    #[test]
+    fn stronger_shorter_effect_hides_the_weaker_longer_one() {
+        let mut chain = vec![speed(0, 600)];
+        assert!(update_effect(&mut chain, 0, &speed(2, 100)));
+        assert_eq!(amplifiers_and_durations(&chain), [(2, 100), (0, 600)]);
+
+        // A middle effect goes between them, a weaker one that ends sooner is dropped.
+        assert!(!update_effect(&mut chain, 0, &speed(1, 300)));
+        assert!(!update_effect(&mut chain, 0, &speed(0, 50)));
+        assert_eq!(
+            amplifiers_and_durations(&chain),
+            [(2, 100), (1, 300), (0, 600)]
+        );
+
+        // Running out resumes the next hidden effect with the time it has left.
+        let mut top = chain.remove(0);
+        for _ in 0..100 {
+            tick_down_duration(&mut top);
+            chain.iter_mut().for_each(tick_down_duration);
+        }
+        assert_eq!(top.duration, 0);
+        set_effect_details_from(&mut top, &chain.remove(0));
+        assert_eq!((top.amplifier, top.duration), (1, 200));
+        assert_eq!(amplifiers_and_durations(&chain), [(0, 500)]);
+    }
 
     // ── bypasses_armor_durability ─────────────────────────────────────
 
