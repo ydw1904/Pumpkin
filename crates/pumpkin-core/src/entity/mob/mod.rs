@@ -2174,6 +2174,11 @@ impl<T: Mob + Send + 'static> EntityBase for T {
         }
 
         mob_entity.living_entity.tick(caller, server);
+        // Vanilla `LivingEntity.aiStep` ends by hurting water-sensitive mobs in water or rain.
+        let entity = &mob_entity.living_entity.entity;
+        if self.is_sensitive_to_water() && !entity.is_removed() && entity.is_in_water_or_rain() {
+            caller.damage(caller, 1.0, DamageType::DROWN);
+        }
         self.post_tick();
         if mob_entity.living_entity.entity.tick_count.load(Relaxed)
             % MobEntity::CONTROL_FLAGS_UPDATE_INTERVAL
