@@ -9,6 +9,7 @@ use crate::{
             file_manager::{ChunkFileManager, LevelFileIO},
         },
         palette::has_random_ticking_fluid,
+        structure::StructureReference,
     },
     generation::get_world_gen_with_all_settings,
     tick::{OrderedTick, ScheduledTick, TickPriority, order},
@@ -20,6 +21,7 @@ use dashmap::{DashMap, Entry};
 use pumpkin_config::{chunk::ChunkConfig, lighting::LightingEngineConfig, world::LevelConfig};
 use pumpkin_data::biome::Biome;
 use pumpkin_data::dimension::Dimension;
+use pumpkin_data::structures::StructureKeys;
 use pumpkin_data::{Block, BlockStateId, block_properties::has_random_ticks, fluid::Fluid};
 use pumpkin_util::math::{position::BlockPos, vector2::Vector2};
 use pumpkin_util::random::gameplay;
@@ -979,6 +981,45 @@ impl Level {
             )
         });
         Biome::from_id(id.flatten().unwrap_or(0)).unwrap_or(&Biome::THE_VOID)
+    }
+
+    /// Vanilla `StructureManager.getAllStructuresAt`: runs `f` over the structure references
+    /// of the chunk containing `position`, or returns `None` if that chunk is not loaded.
+    pub fn read_structures_at<R>(
+        &self,
+        position: &BlockPos,
+        f: impl Fn(&[StructureReference]) -> R,
+    ) -> Option<R> {
+        let (chunk_coordinate, _) = position.chunk_and_chunk_relative_position();
+        self.read_chunk_sync(&chunk_coordinate, |chunk| f(&chunk.structures))
+    }
+
+    /// Vanilla `StructureManager.getStructureAt(pos, structures).isValid()`.
+    pub fn is_inside_structure(
+        &self,
+        position: &BlockPos,
+        matches: impl Fn(StructureKeys) -> bool,
+    ) -> bool {
+        self.read_structures_at(position, |structures| {
+            structures
+                .iter()
+                .any(|start| matches(start.structure) && start.is_inside(position))
+        })
+        .unwrap_or(false)
+    }
+
+    /// Vanilla `StructureManager.getStructureWithPieceAt(pos, structures).isValid()`.
+    pub fn is_inside_structure_piece(
+        &self,
+        position: &BlockPos,
+        matches: impl Fn(StructureKeys) -> bool,
+    ) -> bool {
+        self.read_structures_at(position, |structures| {
+            structures
+                .iter()
+                .any(|start| matches(start.structure) && start.has_piece_at(position))
+        })
+        .unwrap_or(false)
     }
 
     pub fn get_entity_chunk_sync(&self, pos: &Vector2<i32>) -> Option<SyncEntityChunk> {
