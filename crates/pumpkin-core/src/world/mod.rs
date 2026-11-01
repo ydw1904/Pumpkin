@@ -2081,7 +2081,6 @@ impl World {
 
     #[expect(clippy::too_many_lines)]
     pub fn tick_chunks(self: &Arc<Self>) {
-        const BATCH_SIZE: usize = 32;
         const INHABITED_TIME_BATCH_SIZE: usize = 1024;
         let random_tick_speed = self.level_info.load().game_rules.random_tick_speed;
 
@@ -2092,49 +2091,43 @@ impl World {
             .clone();
         let tick_data = self.level.get_tick_data(&active_chunks, random_tick_speed);
 
-        // 1. Parallel Block Ticks via Rayon
-        let world = self.clone();
-        tick_data
-            .block_ticks
-            .par_chunks(BATCH_SIZE)
-            .for_each(|batch| {
-                let world = world.clone();
-                for scheduled_tick in batch {
-                    let pos = scheduled_tick.position;
-                    let block = world.get_block(&pos);
-                    if let Some(pumpkin_block) = world.block_registry.get_pumpkin_block(block.id) {
-                        gameplay::with_owner(
-                            || format!("block@{},{},{}", pos.0.x, pos.0.y, pos.0.z),
-                            || {
-                                pumpkin_block.on_scheduled_tick(OnScheduledTickArgs {
-                                    world: &world,
-                                    block,
-                                    position: &pos,
-                                });
-                            },
-                        );
-                    }
-                }
-            });
+        // Vanilla `LevelTicks.runCollectedTicks`: scheduled ticks run one at a time in their sorted
+        // order, block ticks before fluid ticks, and only if the block or fluid is still the one
+        // the tick was scheduled for. Redstone timing depends on that order.
+        for scheduled_tick in &tick_data.block_ticks {
+            let pos = scheduled_tick.position;
+            let block = self.get_block(&pos);
+            if block.id != scheduled_tick.value.id {
+                continue;
+            }
+            if let Some(pumpkin_block) = self.block_registry.get_pumpkin_block(block.id) {
+                gameplay::with_owner(
+                    || format!("block@{},{},{}", pos.0.x, pos.0.y, pos.0.z),
+                    || {
+                        pumpkin_block.on_scheduled_tick(OnScheduledTickArgs {
+                            world: self,
+                            block,
+                            position: &pos,
+                        });
+                    },
+                );
+            }
+        }
 
-        // 2. Parallel Fluid Ticks via Rayon
-        let world = self.clone();
-        tick_data
-            .fluid_ticks
-            .par_chunks(BATCH_SIZE)
-            .for_each(|batch| {
-                let world = world.clone();
-                for scheduled_tick in batch {
-                    let pos = scheduled_tick.position;
-                    let fluid = world.get_fluid(&pos);
-                    if let Some(pumpkin_fluid) = world.block_registry.get_pumpkin_fluid(fluid.id) {
-                        gameplay::with_owner(
-                            || format!("fluid@{},{},{}", pos.0.x, pos.0.y, pos.0.z),
-                            || pumpkin_fluid.on_scheduled_tick(&world, fluid, &pos),
-                        );
-                    }
-                }
-            });
+        for scheduled_tick in &tick_data.fluid_ticks {
+            let pos = scheduled_tick.position;
+            let fluid = self.get_fluid(&pos);
+            // Pumpkin keys fluid behaviour by the flowing variant, so compare the fluid kind.
+            if !fluid.matches_type(scheduled_tick.value) {
+                continue;
+            }
+            if let Some(pumpkin_fluid) = self.block_registry.get_pumpkin_fluid(fluid.id) {
+                gameplay::with_owner(
+                    || format!("fluid@{},{},{}", pos.0.x, pos.0.y, pos.0.z),
+                    || pumpkin_fluid.on_scheduled_tick(self, fluid, &pos),
+                );
+            }
+        }
 
         for pos in tick_data.precipitation {
             gameplay::with_owner(
