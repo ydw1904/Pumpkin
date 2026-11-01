@@ -114,8 +114,8 @@ struct SpawnGroups {
 }
 
 /// A single entity spawner entry within a spawn group, as defined in `biome.json`.
-#[derive(Hash, PartialEq, Eq)]
-struct Spawner {
+#[derive(Hash, PartialEq, Eq, Clone)]
+pub struct Spawner {
     /// Namespaced entity type ID (e.g. `"minecraft:zombie"`).
     r#type: String,
     /// Minimum number of entities in a spawn group.

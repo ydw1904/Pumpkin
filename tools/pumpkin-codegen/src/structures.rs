@@ -103,22 +103,7 @@ pub struct WeightedGroupStruct {
 #[derive(Deserialize, Clone)]
 pub struct SpawnOverrideStruct {
     pub bounding_box: String,
-    pub spawns: Vec<SpawnEntryStruct>,
-}
-
-#[derive(Deserialize, Clone)]
-pub struct SpawnEntryStruct {
-    #[serde(rename = "type")]
-    pub entity_type: String,
-    #[serde(default = "default_spawn_count", rename = "minCount")]
-    pub min_count: u32,
-    #[serde(default = "default_spawn_count", rename = "maxCount")]
-    pub max_count: u32,
-    pub weight: u32,
-}
-
-fn default_spawn_count() -> u32 {
-    1
+    pub spawns: Vec<crate::biome::Spawner>,
 }
 
 /// Deserialized structure entry specifying its valid biomes and generation step.
@@ -409,18 +394,7 @@ impl ToTokens for StructureStruct {
                 let spawns: Vec<TokenStream> = so
                     .spawns
                     .iter()
-                    .map(|entry| {
-                        let et = &entry.entity_type;
-                        let min = entry.min_count;
-                        let max = entry.max_count;
-                        let weight = entry.weight;
-                        quote!(SpawnEntry {
-                            entity_type: #et,
-                            min_count: #min,
-                            max_count: #max,
-                            weight: #weight,
-                        })
-                    })
+                    .map(crate::biome::Spawner::to_tokens)
                     .collect();
                 quote!(SpawnOverride {
                     category: #category,
@@ -805,6 +779,7 @@ pub fn build() -> TokenStream {
         .collect();
 
     quote!(
+        use crate::biome::Spawner;
         use pumpkin_util::math::floor_div;
         use pumpkin_util::random::{
             RandomGenerator, RandomImpl, get_carver_seed, get_region_seed,
@@ -994,19 +969,11 @@ pub fn build() -> TokenStream {
             Full,
         }
 
-        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-        pub struct SpawnEntry {
-            pub entity_type: &'static str,
-            pub min_count: u32,
-            pub max_count: u32,
-            pub weight: u32,
-        }
-
-        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        #[derive(Clone, Copy, Debug)]
         pub struct SpawnOverride {
             pub category: &'static str,
             pub bounding_box: BoundingBoxType,
-            pub spawns: &'static [SpawnEntry],
+            pub spawns: &'static [Spawner],
         }
 
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
