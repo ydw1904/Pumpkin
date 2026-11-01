@@ -202,6 +202,7 @@ pub enum MaterialConditionStruct {
         noise: String,
         min_threshold: f64,
         max_threshold: f64,
+        is_3d: bool,
     },
     #[serde(rename = "minecraft:vertical_gradient")]
     VerticalGradient {
@@ -264,6 +265,7 @@ impl ToTokens for MaterialConditionStruct {
                 noise,
                 min_threshold,
                 max_threshold,
+                is_3d,
             } => {
                 let noise_id = quote::format_ident!(
                     "{}",
@@ -278,6 +280,7 @@ impl ToTokens for MaterialConditionStruct {
                         noise: DoublePerlinNoiseParameters::#noise_id,
                         min_threshold: #min_threshold,
                         max_threshold: #max_threshold,
+                        is_3d: #is_3d,
                     })
                 ));
             }
@@ -476,11 +479,12 @@ pub fn resolve_condition(
                 noise,
                 min_threshold,
                 max_threshold,
-                is_3d: _,
+                is_3d,
             } => MaterialConditionStruct::NoiseThreshold {
                 noise: noise.clone(),
                 min_threshold: *min_threshold,
                 max_threshold: *max_threshold,
+                is_3d: *is_3d,
             },
             DirectMaterialCondition::VerticalGradient {
                 random_name,
@@ -701,6 +705,7 @@ pub fn build() -> TokenStream {
             pub noise: DoublePerlinNoiseParameters,
             pub min_threshold: f64,
             pub max_threshold: f64,
+            pub is_3d: bool,
         }
 
         pub struct VerticalGradientMaterialCondition {
