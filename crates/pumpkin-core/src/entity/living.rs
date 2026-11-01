@@ -4023,6 +4023,15 @@ impl EntityBase for LivingEntity {
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .clone();
             if let Some(item) = item_in_use.as_ref() {
+                // Vanilla `ServerPlayer.completeUsingItem` tells the user's client first.
+                if let Some(player) = caller.get_player() {
+                    player.try_send_client_packet(
+                        &pumpkin_protocol::java::client::play::CEntityStatus::new(
+                            self.entity.entity_id,
+                            EntityStatus::UseItemComplete as i8,
+                        ),
+                    );
+                }
                 // Consume item
                 if let Some(food) = item.get_data_component::<FoodImpl>()
                     && let Some(player) = caller.get_player()
