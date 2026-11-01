@@ -330,10 +330,13 @@ impl ClampedNormalFloatProvider {
     ///
     /// # Returns
     /// A random float from a normal distribution, clamped to [min, max].
+    #[expect(
+        clippy::suboptimal_flops,
+        reason = "vanilla `Mth.normal` rounds the product before adding"
+    )]
     pub fn get(&self, random: &mut impl RandomImpl) -> f32 {
-        // NOTE: Generate normal distribution value
         let gaussian = random.next_gaussian() as f32;
-        let value = gaussian.mul_add(self.deviation, self.mean);
+        let value = self.mean + gaussian * self.deviation;
 
         // NOTE: Clamp to min/max range
         value.clamp(self.min, self.max)
