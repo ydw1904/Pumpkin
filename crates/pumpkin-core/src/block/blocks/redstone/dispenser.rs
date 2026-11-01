@@ -35,7 +35,7 @@ use crate::entity::{Entity, EntityBase};
 use crate::item::ItemMetadata;
 use crate::item::items::boat::BoatItem;
 use crate::item::items::bucket::{
-    FilledBucketItem, play_bucket_evaporation, should_evaporate_in_nether, try_pickup_fluid_at,
+    FilledBucketItem, play_empty_effects, spawn_bucket_mob, try_pickup_fluid_at,
     try_place_filled_bucket,
 };
 use crate::item::items::honeycomb::try_wax_block;
@@ -819,27 +819,22 @@ impl DispenserBlock {
     }
 
     fn dispense_filled_bucket(ctx: &DispenseContext<'_>, item: &mut ItemStack) {
-        let front = Self::target_position(ctx);
-
-        // TODO: Spawn the stored entity for axolotl/fish/tadpole buckets, like the player path.
-        let emptied = if should_evaporate_in_nether(item.item, ctx.world) {
-            play_bucket_evaporation(ctx.world, &front.to_f64());
-            true
-        } else {
-            try_place_filled_bucket(
-                ctx.world,
-                item.item,
-                *ctx.position,
-                ctx.facing.to_block_direction(),
-            )
-        };
-
-        if emptied {
-            *item = ItemStack::new(1, &Item::BUCKET);
-            Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserDispense);
-        } else {
+        // Vanilla `DispenseItemBehavior` for `DispensibleContainerItem`s: `emptyContents`, then
+        // `checkExtraContent` for the mob a bucket carries. Nether evaporation happens inside the
+        // placement, so a bucket facing a block it can't empty into is dropped instead.
+        let Some(place_pos) = try_place_filled_bucket(
+            ctx.world,
+            item.item,
+            *ctx.position,
+            ctx.facing.to_block_direction(),
+        ) else {
             Self::drop_item(ctx, item);
-        }
+            return;
+        };
+        play_empty_effects(ctx.world, item.item, place_pos);
+        spawn_bucket_mob(ctx.world, item, place_pos, None);
+        *item = ItemStack::new(1, &Item::BUCKET);
+        Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserDispense);
     }
 
     fn dispense_flint_and_steel(ctx: &DispenseContext<'_>, item: &mut ItemStack) {

@@ -193,8 +193,12 @@ fn fill_mob_bucket_stack(
     give_filled_bucket_stack(stack, player, bucket_stack, true);
 }
 
-fn apply_mob_bucket_components(bucket_stack: &ItemStack, mob: &dyn EntityBase, player: &Player) {
-    crate::item::items::spawn_egg::apply_entity_variant(bucket_stack, mob, Some(player));
+fn apply_mob_bucket_components(
+    bucket_stack: &ItemStack,
+    mob: &dyn EntityBase,
+    player: Option<&Player>,
+) {
+    crate::item::items::spawn_egg::apply_entity_variant(bucket_stack, mob, player);
     if let Some(bucketable) = mob.get_mob().and_then(|mob| mob.as_bucketable()) {
         if let Some(data) = bucket_stack.get_data_component::<BucketEntityDataImpl>()
             && let Some(nbt) = &data.nbt
@@ -407,13 +411,64 @@ fn try_place_liquid(
     Some(place_pos)
 }
 
+/// Vanilla `BucketItem.playEmptySound` and the place game event, for a bucket emptied at `pos`.
+pub(crate) fn play_empty_effects(world: &Arc<World>, item: &Item, pos: BlockPos) {
+    let evaporates = should_evaporate_in_nether(item, world);
+    if item.id != Item::POWDER_SNOW_BUCKET.id && !evaporates {
+        let sound_category = if get_mob_for_bucket(item).is_some() {
+            SoundCategory::Neutral
+        } else {
+            SoundCategory::Blocks
+        };
+        world.play_sound(get_empty_sound(item), sound_category, &pos.to_f64());
+        world.emit_game_event(GameEvent::FluidPlace.name(), pos.to_f64());
+    } else if get_mob_for_bucket(item).is_some() && evaporates {
+        world.play_sound(get_empty_sound(item), SoundCategory::Neutral, &pos.to_f64());
+        world.emit_game_event(GameEvent::EntityPlace.name(), pos.to_f64());
+    }
+}
+
+/// Vanilla `MobBucketItem.checkExtraContent`: spawns the mob a bucket carries at `pos`.
+pub(crate) fn spawn_bucket_mob(
+    world: &Arc<World>,
+    bucket_stack: &ItemStack,
+    pos: BlockPos,
+    player: Option<&Player>,
+) {
+    let Some((entity_type, _)) = get_mob_for_bucket(bucket_stack.item) else {
+        return;
+    };
+    let spawn_coord = Vector3::new(
+        f64::from(pos.0.x) + 0.5,
+        f64::from(pos.0.y),
+        f64::from(pos.0.z) + 0.5,
+    );
+    let mob = from_type(entity_type, spawn_coord, world, Uuid::new_v4());
+    if mob.get_mob().and_then(|mob| mob.as_bucketable()).is_some() {
+        crate::entity::mob::spawn::finalize_spawn(&mob, world, None);
+        apply_mob_bucket_components(bucket_stack, mob.as_ref(), player);
+        if world.spawn_creature(
+            mob.clone(),
+            crate::plugin::api::events::entity::creature_spawn::CreatureSpawnReason::Bucket,
+            player.and_then(|player| world.get_player_by_uuid(player.gameprofile.id)),
+        ) && let Some(fish) = mob.get_mob().and_then(|mob| mob.as_fish())
+        {
+            fish.play_ambient_sound();
+        }
+    } else {
+        apply_mob_bucket_components(bucket_stack, mob.as_ref(), player);
+        world.spawn_entity(mob);
+    }
+}
+
+/// Empties a filled bucket from a dispenser at `pos` facing `direction`, returning where.
 pub(crate) fn try_place_filled_bucket(
     world: &Arc<World>,
     item: &Item,
     pos: BlockPos,
     direction: BlockDirection,
-) -> bool {
-    try_place_liquid(world, item, pos, direction, false).is_some()
+) -> Option<BlockPos> {
+    try_place_liquid(world, item, pos, direction, false)
 }
 
 impl ItemBehaviour for EmptyBucketItem {
@@ -554,48 +609,10 @@ impl ItemBehaviour for FilledBucketItem {
             server.plugin_manager.fire_blocking(&server, &mut event);
         }
 
-        if item.id != Item::POWDER_SNOW_BUCKET.id && !should_evaporate_in_nether(item, &world) {
-            let sound_category = if get_mob_for_bucket(item).is_some() {
-                SoundCategory::Neutral
-            } else {
-                SoundCategory::Blocks
-            };
-
-            world.play_sound(get_empty_sound(item), sound_category, &place_pos.to_f64());
-            world.emit_game_event(GameEvent::FluidPlace.name(), place_pos.to_f64());
-        } else if get_mob_for_bucket(item).is_some() && should_evaporate_in_nether(item, &world) {
-            world.play_sound(
-                get_empty_sound(item),
-                SoundCategory::Neutral,
-                &place_pos.to_f64(),
-            );
-            world.emit_game_event(GameEvent::EntityPlace.name(), place_pos.to_f64());
-        }
+        play_empty_effects(&world, item, place_pos);
 
         let bucket_stack = player.inventory.get_stack_in_hand(hand);
-        if let Some((entity_type, _)) = get_mob_for_bucket(item) {
-            let spawn_coord = Vector3::new(
-                f64::from(place_pos.0.x) + 0.5,
-                f64::from(place_pos.0.y),
-                f64::from(place_pos.0.z) + 0.5,
-            );
-            let mob = from_type(entity_type, spawn_coord, &world, Uuid::new_v4());
-            if mob.get_mob().and_then(|mob| mob.as_bucketable()).is_some() {
-                crate::entity::mob::spawn::finalize_spawn(&mob, &world, None);
-                apply_mob_bucket_components(&bucket_stack, mob.as_ref(), player);
-                if world.spawn_creature(
-                    mob.clone(),
-                    crate::plugin::api::events::entity::creature_spawn::CreatureSpawnReason::Bucket,
-                    world.get_player_by_uuid(player.gameprofile.id),
-                ) && let Some(fish) = mob.get_mob().and_then(|mob| mob.as_fish())
-                {
-                    fish.play_ambient_sound();
-                }
-            } else {
-                apply_mob_bucket_components(&bucket_stack, mob.as_ref(), player);
-                world.spawn_entity(mob);
-            }
-        }
+        spawn_bucket_mob(&world, &bucket_stack, place_pos, Some(player));
 
         player.increment_stat(StatisticCategory::Used, i32::from(item.id), 1);
 
