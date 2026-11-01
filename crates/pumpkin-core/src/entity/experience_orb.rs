@@ -1,12 +1,13 @@
 use core::f32;
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
-    Arc,
-    atomic::{AtomicI32, AtomicU32, Ordering},
+    Arc, Mutex, Weak,
+    atomic::{AtomicI32, Ordering},
 };
 
 use pumpkin_data::{damage::DamageType, entity::EntityType};
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_util::math::{
     boundingbox::BoundingBox,
     vector3::{Axis, Vector3},
@@ -25,23 +26,41 @@ use super::{Entity, EntityBase, living::LivingEntity, player::Player};
 
 pub struct ExperienceOrbEntity {
     entity: Entity,
-    amount: u32,
+    value: AtomicI32,
     health: AtomicI32,
-    orb_age: AtomicU32,
+    age: AtomicI32,
+    /// How many orbs of this value merged into this one; each touch takes one.
+    count: AtomicI32,
+    following_player: Mutex<Weak<Player>>,
 }
 
 impl ExperienceOrbEntity {
     const AIR_DRAG: f32 = 0.98;
     const DEFAULT_HEALTH: i32 = 5;
+    const LIFETIME: i32 = 6000;
+    const ENTITY_SCAN_PERIOD: i32 = 20;
+    const MAX_FOLLOW_DIST: f64 = 8.0;
+    const ORB_GROUPS_PER_AREA: i32 = 40;
+    const ORB_MERGE_DISTANCE: f64 = 0.5;
+    /// Largest speed `followNearbyPlayer` adds in a tick.
+    const MAX_FOLLOW_ACCELERATION: f64 = 0.1;
+    /// Largest speed per axis of the bounce out of lava.
+    const LAVA_BOUNCE_SPEED: f64 = 0.2;
 
-    pub fn new(entity: Entity, amount: u32) -> Self {
+    pub fn new(entity: Entity, value: u32) -> Self {
         entity.yaw.store(game_random().random::<f32>() * 360.0);
         Self {
             entity,
-            amount,
+            value: AtomicI32::new(value as i32),
             health: AtomicI32::new(Self::DEFAULT_HEALTH),
-            orb_age: AtomicU32::new(0),
+            age: AtomicI32::new(0),
+            count: AtomicI32::new(1),
+            following_player: Mutex::new(Weak::new()),
         }
+    }
+
+    fn value(&self) -> i32 {
+        self.value.load(Ordering::Relaxed)
     }
 
     pub fn spawn(world: &Arc<World>, position: Vector3<f64>, amount: u32) {
@@ -119,8 +138,101 @@ impl ExperienceOrbEntity {
         while amount > 0 {
             let i = Self::round_to_orb_size(amount);
             amount -= i;
-            let orb = Arc::new(Self::new_with_direction(world, position, direction, i));
-            world.spawn_entity(orb);
+            if !Self::try_merge_to_existing(world, position, i as i32) {
+                let orb = Arc::new(Self::new_with_direction(world, position, direction, i));
+                world.spawn_entity(orb);
+            }
+        }
+    }
+
+    /// Vanilla `ExperienceOrb.tryMergeToExisting`: adds to an orb of the same value and group
+    /// within half a block instead of spawning another one.
+    fn try_merge_to_existing(world: &Arc<World>, position: Vector3<f64>, value: i32) -> bool {
+        let half = Vector3::new(0.5, 0.5, 0.5);
+        let area = BoundingBox::new(position - half, position + half);
+        let group = game_random().next_bounded_i32(Self::ORB_GROUPS_PER_AREA);
+        let found = world.get_entities_at_box(&area).into_iter().find(|other| {
+            other
+                .cast_any()
+                .downcast_ref::<Self>()
+                .is_some_and(|orb| orb.can_merge(group, value))
+        });
+        let Some(found) = found else {
+            return false;
+        };
+        if let Some(orb) = found.cast_any().downcast_ref::<Self>() {
+            orb.count.fetch_add(1, Ordering::Relaxed);
+            orb.age.store(0, Ordering::Relaxed);
+        }
+        true
+    }
+
+    fn can_merge(&self, group: i32, value: i32) -> bool {
+        !self.entity.removed.load(Ordering::Relaxed)
+            && (self.entity.entity_id - group) % Self::ORB_GROUPS_PER_AREA == 0
+            && self.value() == value
+    }
+
+    /// Vanilla `ExperienceOrb.scanForMerges`.
+    fn scan_for_merges(&self) {
+        let area = self.entity.bounding_box.load().expand(
+            Self::ORB_MERGE_DISTANCE,
+            Self::ORB_MERGE_DISTANCE,
+            Self::ORB_MERGE_DISTANCE,
+        );
+        let world = self.entity.world.load();
+        for other in world.get_entities_at_box(&area) {
+            let Some(orb) = other.cast_any().downcast_ref::<Self>() else {
+                continue;
+            };
+            if orb.entity.entity_id != self.entity.entity_id
+                && orb.can_merge(self.entity.entity_id, self.value())
+            {
+                self.count
+                    .fetch_add(orb.count.load(Ordering::Relaxed), Ordering::Relaxed);
+                self.age
+                    .fetch_min(orb.age.load(Ordering::Relaxed), Ordering::Relaxed);
+                orb.entity.remove();
+            }
+        }
+    }
+
+    /// Vanilla `ExperienceOrb.followNearbyPlayer`.
+    fn follow_nearby_player(&self) {
+        let entity = &self.entity;
+        let pos = entity.pos.load();
+        let world = entity.world.load_full();
+        let mut following = self
+            .following_player
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let keep = following.upgrade().filter(|player| {
+            !player.is_spectator()
+                && Arc::ptr_eq(&player.world(), &world)
+                && player.get_entity().pos.load().squared_distance_to_vec(&pos)
+                    <= Self::MAX_FOLLOW_DIST * Self::MAX_FOLLOW_DIST
+        });
+        let player = keep.or_else(|| {
+            world
+                .get_nearest_player(pos, Self::MAX_FOLLOW_DIST, |player| !player.is_spectator())
+                .filter(|player| player.living_entity.health.load() > 0.0)
+        });
+        *following = player.as_ref().map_or_else(Weak::new, Arc::downgrade);
+        drop(following);
+
+        if let Some(player) = player {
+            let player_entity = player.get_entity();
+            let player_pos = player_entity.pos.load();
+            let delta = Vector3::new(
+                player_pos.x - pos.x,
+                player_pos.y + player_entity.get_eye_height() / 2.0 - pos.y,
+                player_pos.z - pos.z,
+            );
+            let power = 1.0 - delta.length_squared().sqrt() / Self::MAX_FOLLOW_DIST;
+            entity.velocity.store(
+                entity.velocity.load()
+                    + delta.normalize() * (power * power * Self::MAX_FOLLOW_ACCELERATION),
+            );
         }
     }
 
@@ -206,19 +318,36 @@ impl EntityBase for ExperienceOrbEntity {
         let world = entity.world.load();
         let fluid_push = super::max_fluid_push_speed(world.dimension.fast_lava);
         let velocity = entity.velocity.load();
+        // Following a player, the lava bounce or a push out of blocks can each change the motion.
+        let steer = Self::MAX_FOLLOW_ACCELERATION
+            .max(Self::LAVA_BOUNCE_SPEED * std::f64::consts::SQRT_2)
+            .max(super::MAX_PUSH_OUT_SPEED);
+        let mut links = entity_islands::links_of(self);
+        if let Some(player) = self
+            .following_player
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .upgrade()
+        {
+            links.push(player.entity_id());
+        }
         let mut reach = AuditedReach {
             bounding_box: entity.bounding_box.load(),
             motion: (
-                velocity.x.hypot(velocity.z) + fluid_push,
-                velocity.y.abs() + self.get_gravity() + SURFACE_UPWARD_ACCELERATION + fluid_push,
+                velocity.x.hypot(velocity.z) + fluid_push + steer,
+                velocity.y.abs()
+                    + self.get_gravity()
+                    + SURFACE_UPWARD_ACCELERATION
+                    + fluid_push
+                    + steer,
             ),
-            entities: 0.0,
-            players: 0.0,
+            entities: Self::ORB_MERGE_DISTANCE,
+            players: Self::MAX_FOLLOW_DIST,
             block_reads: 1.0,
             route: None,
             changes_blocks: false,
             global: false,
-            links: entity_islands::links_of(self),
+            links,
         };
         reach.scan_contact_blocks(&world);
         Some(reach)
@@ -226,13 +355,35 @@ impl EntityBase for ExperienceOrbEntity {
 
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
         nbt.put_short("Health", self.health.load(Ordering::Relaxed) as i16);
+        nbt.put_short("Age", self.age.load(Ordering::Relaxed) as i16);
+        nbt.put_short("Value", self.value() as i16);
+        nbt.put_int("Count", self.count.load(Ordering::Relaxed));
     }
 
     fn read_custom_nbt(&self, nbt: &NbtCompound) {
         self.health.store(
-            nbt.get_short("Health")
+            nbt.get_numeric_short("Health")
                 .map_or(Self::DEFAULT_HEALTH, i32::from),
             Ordering::Relaxed,
+        );
+        self.age.store(
+            nbt.get_numeric_short("Age").map_or(0, i32::from),
+            Ordering::Relaxed,
+        );
+        self.value.store(
+            nbt.get_numeric_short("Value").map_or(0, i32::from),
+            Ordering::Relaxed,
+        );
+        self.count.store(
+            nbt.get_int("Count").filter(|count| *count > 0).unwrap_or(1),
+            Ordering::Relaxed,
+        );
+    }
+
+    fn init_data_tracker(&self) {
+        self.entity.set_synced_data(
+            pumpkin_data::tracked_data::experience_orb::DATA_VALUE,
+            VarInt(self.value()),
         );
     }
 
@@ -241,23 +392,54 @@ impl EntityBase for ExperienceOrbEntity {
         entity.tick(caller, server);
         let bounding_box = entity.bounding_box.load();
 
-        let original_velo = entity.velocity.load();
-
-        let mut velo = original_velo;
-
-        let no_physics = !self
-            .entity
-            .world
-            .load()
-            .is_space_empty(bounding_box.expand(-1.0e-7, -1.0e-7, -1.0e-7));
-        self.entity.no_physics.store(no_physics, Ordering::Relaxed);
-        // TODO: isSubmergedIn
-        if !no_physics {
+        let world = entity.world.load_full();
+        let colliding = !world.is_space_empty(bounding_box.expand(-1.0e-7, -1.0e-7, -1.0e-7));
+        let mut velo = entity.velocity.load();
+        if entity.is_submerged_in_water() {
+            velo = Vector3::new(
+                velo.x * f64::from(0.99f32),
+                (velo.y + f64::from(5.0e-4f32)).min(f64::from(0.06f32)),
+                velo.z * f64::from(0.99f32),
+            );
+        } else if !colliding {
             velo.y -= self.get_gravity();
         }
-
+        if world
+            .get_fluid(&entity.block_pos.load())
+            .matches_type(&pumpkin_data::fluid::Fluid::LAVA)
+        {
+            let rng = game_random();
+            let x = (rng.next_f32() - rng.next_f32()) * 0.2;
+            let z = (rng.next_f32() - rng.next_f32()) * 0.2;
+            velo = Vector3::new(f64::from(x), f64::from(0.2f32), f64::from(z));
+        }
         entity.velocity.store(velo);
 
+        if entity.tick_count.load(Ordering::Relaxed) % Self::ENTITY_SCAN_PERIOD == 1 {
+            self.scan_for_merges();
+        }
+
+        self.follow_nearby_player();
+        let following = self
+            .following_player
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .upgrade()
+            .is_some();
+        if !following && colliding {
+            let next = bounding_box.shift(entity.velocity.load());
+            if !world.is_space_empty(next.expand(-1.0e-7, -1.0e-7, -1.0e-7)) {
+                let pos = entity.pos.load();
+                entity.push_out_of_blocks(Vector3::new(
+                    pos.x,
+                    f64::midpoint(bounding_box.min.y, bounding_box.max.y),
+                    pos.z,
+                ));
+                entity.velocity_dirty.store(true, Ordering::Relaxed);
+            }
+        }
+
+        let velo = entity.velocity.load();
         entity.move_entity(caller, velo);
 
         entity.tick_block_collisions(caller);
@@ -275,8 +457,7 @@ impl EntityBase for ExperienceOrbEntity {
         }
         entity.velocity.store(velocity);
 
-        let age = self.orb_age.fetch_add(1, Ordering::Relaxed);
-        if age >= 6000 {
+        if self.age.fetch_add(1, Ordering::Relaxed) + 1 >= Self::LIFETIME {
             entity.remove();
         }
     }
@@ -346,11 +527,12 @@ impl EntityBase for ExperienceOrbEntity {
             };
             if can_pickup {
                 player.living_entity.pickup(&self.entity, 1);
-                self.entity.remove();
-                let amount = self.amount as i32;
-                let remaining = player.apply_mending_from_xp(amount);
+                let remaining = player.apply_mending_from_xp(self.value());
                 if remaining > 0 {
                     player.add_experience_points(remaining);
+                }
+                if self.count.fetch_sub(1, Ordering::Relaxed) <= 1 {
+                    self.entity.remove();
                 }
             }
         }
