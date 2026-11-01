@@ -361,6 +361,22 @@ pub fn block_entity_name(block: &Block) -> Option<&'static str> {
         .copied()
 }
 
+/// Vanilla `BlockEntityTypes.OP_ONLY_CUSTOM_DATA`.
+const OP_ONLY_CUSTOM_DATA: [&str; 6] = [
+    "command_block",
+    "lectern",
+    "sign",
+    "hanging_sign",
+    "mob_spawner",
+    "trial_spawner",
+];
+
+/// Vanilla `BlockEntityType.onlyOpCanSetNbt`: only operators may load item data into these.
+#[must_use]
+pub fn only_op_can_set_nbt(id: &str) -> bool {
+    OP_ONLY_CUSTOM_DATA.contains(&id.strip_prefix("minecraft:").unwrap_or(id))
+}
+
 /// Whether `block` owns a block entity with `id`, which may omit the `minecraft:` namespace.
 #[must_use]
 pub fn block_owns_block_entity(block: &Block, id: &str) -> bool {

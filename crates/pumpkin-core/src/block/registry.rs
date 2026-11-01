@@ -886,9 +886,14 @@ impl BlockRegistry {
         if let Some(ref stack) = held_stack
             && placed_block.default_state.block_entity_type != u16::MAX
         {
+            // Vanilla `BlockItem.updateCustomBlockEntityTag`
             if let Some(block_entity_data) =
                 stack.get_data_component::<pumpkin_data::data_component_impl::BlockEntityDataImpl>()
                 && let Some(existing_be) = world.get_block_entity(&final_block_pos)
+                && let Some(data_type) = block_entity_data.nbt.get_string("id")
+                && crate::block::entities::block_owns_block_entity(placed_block, data_type)
+                && (!crate::block::entities::only_op_can_set_nbt(data_type)
+                    || player.can_use_game_master_blocks())
             {
                 let mut nbt = pumpkin_nbt::compound::NbtCompound::new();
                 existing_be.write_internal(&mut nbt);
