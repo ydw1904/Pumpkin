@@ -60,6 +60,10 @@ impl Mob for HuskEntity {
         self.entity.killed_entity(victim)
     }
 
+    fn get_base_experience_reward(&self) -> u32 {
+        self.entity.base_experience_reward()
+    }
+
     // Vanilla `Husk.doHurtTarget`: an empty-handed hit makes the target hungry.
     fn on_attack(&self, target: &dyn EntityBase) {
         let living = &self.entity.mob_entity.living_entity;

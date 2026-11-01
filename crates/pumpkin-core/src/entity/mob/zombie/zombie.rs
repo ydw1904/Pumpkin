@@ -70,6 +70,10 @@ impl Mob for ZombieEntity {
         self.entity.killed_entity(victim)
     }
 
+    fn get_base_experience_reward(&self) -> u32 {
+        self.entity.base_experience_reward()
+    }
+
     fn post_tick(&self) {
         self.entity
             .tick_under_water_conversion(&EntityType::DROWNED, WorldEvent::SoundZombieToDrowned);

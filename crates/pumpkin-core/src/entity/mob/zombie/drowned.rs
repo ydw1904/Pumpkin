@@ -75,4 +75,8 @@ impl Mob for DrownedEntity {
     fn killed_entity(&self, victim: &dyn EntityBase) -> bool {
         self.entity.killed_entity(victim)
     }
+
+    fn get_base_experience_reward(&self) -> u32 {
+        self.entity.base_experience_reward()
+    }
 }

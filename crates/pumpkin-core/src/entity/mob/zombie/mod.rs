@@ -5,6 +5,7 @@ use crate::entity::ai::goal::look_around::RandomLookAroundGoal;
 use crate::entity::ai::goal::revenge::RevengeGoal;
 use crate::entity::ai::goal::wander_around::WanderAroundGoal;
 use crate::entity::ai::goal::zombie_attack::ZombieAttackGoal;
+use crate::entity::attributes::{Modifier, ModifierOperation};
 use crate::entity::mob::equipment::RegionalDifficulty;
 use crate::entity::mob::spawn::finalize_spawn;
 use crate::entity::passive::villager::VillagerEntity;
@@ -15,6 +16,7 @@ use crate::entity::{
     ai::target_match::TargetMatch,
 };
 use crate::world::World;
+use pumpkin_data::attributes::Attributes;
 use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
@@ -45,6 +47,7 @@ const ZOMBIE_HUNTS: &[Hunt] = &[
 const IN_WATER_TIME_TO_CONVERT: i32 = 600;
 const DROWNED_CONVERSION_TIME: i32 = 300;
 const NOT_CONVERTING: i32 = -1;
+const SPEED_MODIFIER_BABY_ID: &str = "minecraft:baby";
 
 pub struct ZombieEntityBase {
     pub mob_entity: MobEntity,
@@ -141,15 +144,42 @@ impl ZombieEntityBase {
 }
 
 impl ZombieEntityBase {
-    /// Vanilla `Zombie.setBaby`: the baby state is only the synced flag, it never ages up.
-    // TODO: vanilla baby zombies get the +50% SPEED_MODIFIER_BABY and 2.5x XP
-    // (`Zombie.getBaseExperienceReward`), unlike passive babies which drop none.
+    /// Vanilla `Zombie.setBaby`: the synced flag (a baby zombie never ages up) and the baby's
+    /// 50% speed bonus.
     pub fn set_baby(&self, baby: bool) {
         self.mob_entity.set_baby_flag(
             &self.is_baby,
             pumpkin_data::tracked_data::zombie::BABY,
             baby,
         );
+        self.mob_entity
+            .living_entity
+            .update_attribute(&Attributes::MOVEMENT_SPEED, |speed| {
+                speed.remove_modifier(SPEED_MODIFIER_BABY_ID);
+                if baby {
+                    speed.add_or_replace_modifier(Modifier {
+                        id: SPEED_MODIFIER_BABY_ID.to_string(),
+                        amount: 0.5,
+                        operation: ModifierOperation::MultiplyBase,
+                    });
+                }
+            });
+    }
+
+    /// Vanilla `Zombie.getBaseExperienceReward`: babies give two and a half times as much.
+    #[must_use]
+    pub fn base_experience_reward(&self) -> u32 {
+        let reward = self
+            .mob_entity
+            .living_entity
+            .entity
+            .entity_type
+            .experience_reward;
+        if self.is_baby() {
+            (f64::from(reward) * 2.5) as u32
+        } else {
+            reward
+        }
     }
 
     #[must_use]
@@ -279,6 +309,10 @@ impl Mob for ZombieEntityBase {
     fn spawn_as_baby(&self) -> bool {
         self.set_baby(true);
         true
+    }
+
+    fn get_base_experience_reward(&self) -> u32 {
+        self.base_experience_reward()
     }
 
     fn populate_default_equipment_slots(
