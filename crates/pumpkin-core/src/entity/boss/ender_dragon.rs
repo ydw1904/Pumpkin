@@ -856,6 +856,11 @@ impl Mob for EnderDragonEntity {
         self.ai_step();
     }
 
+    /// Vanilla `EnderDragon.tickDeath`: the dying phase runs the 200 tick death.
+    fn ticks_own_death(&self) -> bool {
+        true
+    }
+
     /// Vanilla `EnderDragon.kill`: gone at once, without the death animation or experience.
     fn mob_kill(&self, caller: &dyn EntityBase) -> bool {
         let entity = self.get_entity();

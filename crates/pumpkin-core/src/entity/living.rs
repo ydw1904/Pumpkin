@@ -4187,7 +4187,11 @@ impl EntityBase for LivingEntity {
 
         self.refresh_dirty_attributes(caller);
 
-        if self.health.load() <= 0.0 {
+        if self.health.load() <= 0.0
+            && !caller
+                .get_mob()
+                .is_some_and(super::mob::Mob::ticks_own_death)
+        {
             let time = self
                 .death_time
                 .fetch_update(Relaxed, Relaxed, |time| Some(time.saturating_add(1)))

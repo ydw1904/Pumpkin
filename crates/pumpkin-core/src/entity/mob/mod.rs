@@ -1468,6 +1468,11 @@ pub trait Mob: EntityBase + Send + Sync {
     /// Per-mob tick hook called each tick before AI runs. Override for mob-specific logic.
     fn mob_tick(&self, _caller: &dyn EntityBase) {}
 
+    /// Vanilla `tickDeath` overrides: the species removes itself when its death ends.
+    fn ticks_own_death(&self) -> bool {
+        false
+    }
+
     /// A species' own `kill` (`/kill`); returns false to take the usual lethal damage.
     fn mob_kill(&self, _caller: &dyn EntityBase) -> bool {
         false
