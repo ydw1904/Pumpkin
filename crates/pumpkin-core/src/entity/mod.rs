@@ -4379,7 +4379,9 @@ impl Entity {
         }
     }
 
-    pub fn tick_leash(&self) {
+    /// Vanilla `Leashable.tickLeash`; `can_interact` is the leashed entity's own
+    /// `canInteractWithLevel` (alive and not dying).
+    pub fn tick_leash(&self, can_interact: bool) {
         let delayed = *self
             .delayed_leash
             .lock()
@@ -4398,9 +4400,16 @@ impl Entity {
         if let Some(holder) = holder {
             let holder_entity = holder.get_entity();
 
-            // Drop leash if entity or holder is removed or dead
-            if !self.is_alive() || !holder_entity.is_alive() {
-                self.unleash();
+            let holder_can_interact = holder_entity.is_alive()
+                && holder
+                    .get_living_entity()
+                    .is_none_or(|living| living.health.load() > 0.0);
+            if !can_interact || !self.is_alive() || !holder_can_interact {
+                if self.world.load().level_info.load().game_rules.entity_drops {
+                    self.drop_leash();
+                } else {
+                    self.unleash();
+                }
                 return;
             }
 
@@ -4410,13 +4419,12 @@ impl Entity {
             let distance = diff.length();
 
             if distance > Self::LEASH_SNAP_DISTANCE {
-                // Too far: snap/break leash and drop lead item
-                self.unleash();
-                let lead_item =
-                    pumpkin_data::item_stack::ItemStack::new(1, &pumpkin_data::item::Item::LEAD);
-                self.world
-                    .load()
-                    .drop_stack(&self.block_pos.load(), lead_item);
+                self.world.load().play_sound(
+                    Sound::ItemLeadBreak,
+                    SoundCategory::Neutral,
+                    &holder_pos,
+                );
+                self.drop_leash();
             } else if distance > Self::LEASH_ELASTIC_DISTANCE {
                 // Elastic pull force towards leash holder
                 let dir = (holder_pos - self_pos).normalize();
@@ -4425,6 +4433,20 @@ impl Entity {
                 self.velocity.store(current_vel + dir * pull_strength);
                 self.velocity_dirty.store(true, Relaxed);
             }
+        }
+    }
+
+    /// Vanilla `Leashable.dropLeash`: releases the leash and drops a lead, unless a plugin
+    /// kept the leash attached.
+    pub fn drop_leash(&self) {
+        self.unleash();
+        let still_leashed = self
+            .leashed_to
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_some();
+        if !still_leashed {
+            self.spawn_at_location(ItemStack::new(1, &pumpkin_data::item::Item::LEAD));
         }
     }
 

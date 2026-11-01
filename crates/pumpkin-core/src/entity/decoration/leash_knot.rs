@@ -1,6 +1,7 @@
 use crate::entity::player::Player;
 use crate::entity::{Entity, EntityBase, living::LivingEntity};
 use crate::world::World;
+use pumpkin_data::damage::DamageType;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
@@ -84,43 +85,48 @@ impl EntityBase for LeashKnotEntity {
     fn tick(&self, _caller: &dyn EntityBase, _server: &Server) {
         let world = self.entity.world.load();
         let block = world.get_block(&self.entity.block_pos.load());
+        // Vanilla `BlockAttachedEntity.tick`: the knot goes when its fence does, and the
+        // leashed mobs drop their leads on their own leash tick.
         if !block.has_tag(&pumpkin_data::tag::Block::MINECRAFT_FENCES) {
-            let knot_id = self.entity.entity_id;
-            let search_dim = EntityDimensions {
-                width: 32.0,
-                height: 32.0,
-                eye_height: 16.0,
-            };
             let pos = self.entity.pos.load();
-            let search_box = BoundingBox::new_from_pos(pos.x, pos.y, pos.z, &search_dim);
-            let entities = world.get_entities_at_box(&search_box);
-
-            for entity_base in entities {
-                let ent = entity_base.get_entity();
-                let is_attached_to_knot = ent
-                    .leashed_to
-                    .try_lock()
-                    .ok()
-                    .and_then(|guard| {
-                        guard
-                            .as_ref()
-                            .map(|holder| holder.get_entity().entity_id == knot_id)
-                    })
-                    .unwrap_or(false);
-
-                if is_attached_to_knot {
-                    ent.unleash();
-                    let lead_item = pumpkin_data::item_stack::ItemStack::new(
-                        1,
-                        &pumpkin_data::item::Item::LEAD,
-                    );
-                    world.drop_stack(&ent.block_pos.load(), lead_item);
-                }
-            }
-
             world.play_sound(Sound::ItemLeadUntied, SoundCategory::Neutral, &pos);
             self.entity.remove();
         }
+    }
+
+    // Vanilla `BlockAttachedEntity.hurtServer`; the leashed mobs drop their leads on their next
+    // leash tick once the knot is gone.
+    fn damage_with_context(
+        &self,
+        _caller: &dyn EntityBase,
+        _amount: f32,
+        damage_type: DamageType,
+        _position: Option<Vector3<f64>>,
+        _source: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
+    ) -> bool {
+        if self.entity.is_invulnerable_to(&damage_type, cause) {
+            return false;
+        }
+        let world = self.entity.world.load();
+        if !world.level_info.load().game_rules.mob_griefing
+            && cause.is_some_and(|cause| cause.get_mob().is_some())
+        {
+            return false;
+        }
+        if !self.entity.is_removed() {
+            self.entity.remove();
+            world.play_sound(
+                Sound::ItemLeadUntied,
+                SoundCategory::Neutral,
+                &self.entity.pos.load(),
+            );
+        }
+        true
+    }
+
+    fn can_hit(&self) -> bool {
+        self.entity.is_alive()
     }
 
     fn interact(&self, player: &Arc<Player>, _item_stack: &mut ItemStack) -> bool {
