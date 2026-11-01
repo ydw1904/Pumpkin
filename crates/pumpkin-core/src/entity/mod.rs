@@ -1147,6 +1147,12 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         0
     }
 
+    /// Vanilla `LivingEntity.isAlwaysExperienceDropper`: drops experience on death even when no
+    /// player hurt it and `mobDrops` is off.
+    fn is_always_experience_dropper(&self) -> bool {
+        false
+    }
+
     fn should_drop_loot(&self) -> bool {
         self.get_living_entity()
             .is_none_or(LivingEntity::should_drop_loot)

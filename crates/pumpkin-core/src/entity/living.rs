@@ -2523,9 +2523,10 @@ impl LivingEntity {
 
             // Award experience
             if perished
-                && params.killed_by_player.unwrap_or(false)
-                && world.level_info.load().game_rules.mob_drops
-                && dyn_self.should_drop_experience()
+                && (dyn_self.is_always_experience_dropper()
+                    || (params.killed_by_player.unwrap_or(false)
+                        && world.level_info.load().game_rules.mob_drops
+                        && dyn_self.should_drop_experience()))
             {
                 let amount = dyn_self.get_experience_reward(killer);
                 if amount > 0 {
@@ -2534,7 +2535,8 @@ impl LivingEntity {
             }
             self.entity.pose.store(EntityPose::Dying);
 
-            if should_drop_loot {
+            // Players drop their whole inventory instead (`Player::handle_killed`).
+            if should_drop_loot && dyn_self.get_player().is_none() {
                 self.drop_equipment(looting_level);
             }
             if perished && let Some(mob) = dyn_self.get_mob() {

@@ -5292,7 +5292,6 @@ impl Player {
             crate::entity::player::advancement::trigger::AdvancementTrigger::PlayerKilled,
         );
         crate::entity::mob::neutral::tell_neutral_mobs_player_died(self, &self.world());
-        let block_pos = self.position().to_block_pos();
         // Vanilla `ServerPlayer` records the containing (floored) block
         // position on death for the recovery compass.
         *self
@@ -5305,25 +5304,41 @@ impl Player {
 
         let keep_inventory = { self.world().level_info.load().game_rules.keep_inventory };
 
+        // Vanilla `Player.dropEquipment`: vanishing items are destroyed, then `Inventory.dropAll`
+        // throws the main inventory and the equipment (offhand, armor, body, saddle).
         if !keep_inventory {
-            let mut main_inv = self
-                .inventory()
-                .main_inventory
-                .write()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            for item in main_inv.iter_mut() {
-                if !item.is_empty() {
-                    let stack = std::mem::replace(item, ItemStack::EMPTY.clone());
-                    self.increment_stat(
-                        statistics::StatisticCategory::Dropped,
-                        stack.item.id as i32,
-                        stack.item_count as i32,
-                    );
-                    self.increment_custom_stat(
-                        statistics::CustomStatistic::Drop,
-                        stack.item_count as i32,
-                    );
-                    self.world().drop_stack(&block_pos, stack);
+            let mut stacks = Vec::new();
+            {
+                let mut main_inv = self
+                    .inventory()
+                    .main_inventory
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                stacks.extend(
+                    main_inv
+                        .iter_mut()
+                        .map(|item| std::mem::replace(item, ItemStack::EMPTY.clone())),
+                );
+                let mut equipment = self
+                    .inventory()
+                    .entity_equipment
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                for slot in [
+                    EquipmentSlot::OFF_HAND,
+                    EquipmentSlot::FEET,
+                    EquipmentSlot::LEGS,
+                    EquipmentSlot::CHEST,
+                    EquipmentSlot::HEAD,
+                    EquipmentSlot::BODY,
+                    EquipmentSlot::SADDLE,
+                ] {
+                    stacks.push(equipment.put(&slot, ItemStack::EMPTY.clone()));
+                }
+            }
+            for stack in stacks {
+                if !stack.is_empty() && !crate::entity::living::prevents_equipment_drop(&stack) {
+                    self.drop_randomly(stack);
                 }
             }
         }
@@ -5587,6 +5602,25 @@ impl Player {
             entity, item_stack, velocity, 40,
         ));
         self.world().spawn_entity(item_entity);
+    }
+
+    /// Vanilla `LivingEntity.createItemStackToDrop` with `randomly` set: thrown from the hand in a
+    /// random direction, as death drops are.
+    fn drop_randomly(&self, stack: ItemStack) {
+        let entity = &self.living_entity.entity;
+        let pos =
+            entity.pos.load() + Vector3::new(0.0, entity.get_eye_height() - f64::from(0.3f32), 0.0);
+        let item = ItemEntity::new(Entity::new(self.world(), pos, &EntityType::ITEM), stack);
+        item.set_pickup_delay(40);
+        let rng = game_random();
+        let pow = rng.next_f32() * 0.5;
+        let dir = rng.next_f32() * f32::consts::TAU;
+        item.get_entity().velocity.store(Vector3::new(
+            f64::from(-pumpkin_util::math::sin(dir) * pow),
+            f64::from(0.2f32),
+            f64::from(pumpkin_util::math::cos(dir) * pow),
+        ));
+        self.world().spawn_entity(Arc::new(item));
     }
 
     pub fn drop_held_item(&self, drop_stack: bool) {
@@ -7825,9 +7859,17 @@ impl EntityBase for Player {
     }
 
     fn get_experience_reward(&self, _killer: Option<&dyn EntityBase>) -> u32 {
-        // vanilla: min(level * 7, 100)
+        if self.world().level_info.load().game_rules.keep_inventory
+            || self.gamemode.load() == GameMode::Spectator
+        {
+            return 0;
+        }
         let level = self.experience_level.load(Ordering::Relaxed);
         (level * 7).min(100) as u32
+    }
+
+    fn is_always_experience_dropper(&self) -> bool {
+        true
     }
 
     fn tick_in_void(&self, dyn_self: &dyn EntityBase) {
