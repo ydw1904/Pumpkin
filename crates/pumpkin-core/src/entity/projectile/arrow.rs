@@ -15,7 +15,6 @@ use pumpkin_data::data_component_impl::PotionDurationScaleImpl;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
-use pumpkin_data::particle::Particle;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_protocol::IdOr;
 use pumpkin_protocol::java::client::play::{CEntityVelocity, CSoundEffect, Metadata};
@@ -656,34 +655,6 @@ impl EntityBase for ArrowEntity {
         // Move arrow
         let new_pos = start_pos.add(&velocity);
         entity.set_pos(new_pos);
-
-        // Spawn particles while arrow is flying
-        if in_water {
-            for i in 0..4 {
-                let factor = 0.25 * f64::from(i);
-                world.spawn_particle(
-                    Vector3::new(
-                        new_pos.x - velocity.x * factor,
-                        new_pos.y - velocity.y * factor,
-                        new_pos.z - velocity.z * factor,
-                    ),
-                    Vector3::new(velocity.x as f32, velocity.y as f32, velocity.z as f32),
-                    0.0,
-                    1,
-                    Particle::Bubble,
-                );
-            }
-        }
-
-        if is_on_fire {
-            world.spawn_particle(
-                entity.pos.load(),
-                Vector3::new(0.0f32, 0.0f32, 0.0f32),
-                0.0,
-                1,
-                Particle::Flame,
-            );
-        }
 
         // Broadcast velocity update
         let packet = CEntityVelocity::new(entity.entity_id.into(), velocity);
