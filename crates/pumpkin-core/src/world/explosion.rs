@@ -5,11 +5,13 @@ use pumpkin_data::{
     Block, BlockState, BlockStateId,
     attributes::Attributes,
     damage::DamageType,
+    enchantment::EnchantmentEntityEffect,
     entity::EntityType,
     fluid::Fluid,
+    packet::CURRENT_MC_VERSION,
     particle::Particle,
     sound::Sound,
-    tag::{Tag, Taggable},
+    tag::{RegistryKey, Tag, Taggable, get_registry_key_tags},
 };
 use pumpkin_util::math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3};
 use pumpkin_world::chunk::ChunkData;
@@ -680,6 +682,66 @@ impl Explosion {
             }
         }
     }
+}
+
+/// Vanilla `ExplodeEffect.apply` for an enchantment's `minecraft:explode` effect.
+pub fn apply_explode_effect(
+    world: &Arc<World>,
+    effect: &EnchantmentEntityEffect,
+    level: i32,
+    position: Vector3<f64>,
+) {
+    let EnchantmentEntityEffect::Explode {
+        damage_type,
+        knockback_multiplier,
+        immune_blocks,
+        offset_x,
+        offset_y,
+        offset_z,
+        radius,
+        create_fire,
+        block_interaction,
+        small_particle,
+        large_particle,
+        sound,
+        ..
+    } = effect
+    else {
+        return;
+    };
+    let interaction = match *block_interaction {
+        "block" => ExplosionInteraction::Block,
+        "mob" => ExplosionInteraction::Mob,
+        "tnt" => ExplosionInteraction::Tnt,
+        "trigger" => ExplosionInteraction::Trigger,
+        _ => ExplosionInteraction::None,
+    };
+    let immune_blocks = immune_blocks.and_then(|tag| {
+        get_registry_key_tags(CURRENT_MC_VERSION, RegistryKey::Block)?
+            .get(tag.strip_prefix('#').unwrap_or(tag))
+            .copied()
+    });
+    let calculator = SimpleExplosionDamageCalculator::new(
+        damage_type.is_some(),
+        interaction != ExplosionInteraction::None,
+        knockback_multiplier
+            .as_ref()
+            .map(|value| value.calculate(level)),
+        immune_blocks,
+    );
+    let pos = position + Vector3::new(*offset_x, *offset_y, *offset_z);
+    let radius = radius.calculate(level).max(0.0);
+    let mut explosion = Explosion::new(radius, pos, world.get_block_interaction(interaction))
+        .with_damage_calculator(Arc::new(calculator))
+        .with_particles_and_sound(
+            small_particle.unwrap_or(Particle::Explosion),
+            large_particle.unwrap_or(Particle::ExplosionEmitter),
+            sound.unwrap_or(Sound::EntityGenericExplode),
+        );
+    if *create_fire {
+        explosion = explosion.with_fire();
+    }
+    world.run_explosion(&explosion, pos, radius);
 }
 
 #[cfg(test)]

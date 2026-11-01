@@ -1516,23 +1516,9 @@ impl Player {
             self.trigger_advancement(crate::entity::player::advancement::trigger::AdvancementTrigger::DealtOverkillDamage);
         }
 
-        if let Some(enchantments) = item_stack.get_data_component::<EnchantmentsImpl>() {
-            for (enchantment, level) in enchantments.enchantment.iter() {
-                for post_effect in enchantment.get_post_attack_effects() {
-                    if post_effect.affected
-                        == Some(pumpkin_data::enchantment::EnchantmentTarget::Victim)
-                        && let pumpkin_data::enchantment::EnchantmentEntityEffect::Ignite {
-                            duration,
-                        } = &post_effect.effect
-                    {
-                        let duration_seconds = duration.calculate(*level);
-                        victim_entity.set_on_fire_for_ticks((duration_seconds * 20.0) as u32);
-                    }
-                }
-            }
-        }
-
-        if is_mace_smash && victim.get_living_entity().is_some() {
+        let smashed_living = is_mace_smash && victim.get_living_entity().is_some();
+        // Vanilla `MaceItem.hurtEnemy`
+        if smashed_living {
             let attacker = &self.living_entity.entity;
             let velocity = attacker.velocity.load();
             self.set_velocity(Vector3::new(velocity.x, f64::from(0.01f32), velocity.z));
@@ -1547,20 +1533,45 @@ impl Player {
             };
             world.play_sound(sound, SoundCategory::Players, &attacker.pos.load());
             mace_smash_knockback(&world, self, victim.as_ref());
+        }
 
-            self.living_entity.fall_distance.store(0.0);
-            if let Some(enchantments) = item_stack.get_data_component::<EnchantmentsImpl>() {
-                for (enchantment, level) in enchantments.enchantment.iter() {
-                    if **enchantment == Enchantment::WIND_BURST {
-                        let boost_y = 0.5 + 0.25 * (*level as f64);
-                        let vel = self.living_entity.entity.velocity.load();
-                        self.living_entity
-                            .entity
-                            .velocity
-                            .store(Vector3::new(vel.x, boost_y, vel.z));
+        // Vanilla `EnchantmentHelper.doPostAttackEffectsWithItemSource`
+        if let Some(enchantments) = item_stack.get_data_component::<EnchantmentsImpl>() {
+            for (enchantment, level) in enchantments.enchantment.iter() {
+                for post_effect in enchantment.get_post_attack_effects() {
+                    match &post_effect.effect {
+                        pumpkin_data::enchantment::EnchantmentEntityEffect::Ignite { duration }
+                            if post_effect.affected
+                                == Some(pumpkin_data::enchantment::EnchantmentTarget::Victim) =>
+                        {
+                            let duration_seconds = duration.calculate(*level);
+                            victim_entity.set_on_fire_for_ticks((duration_seconds * 20.0) as u32);
+                        }
+                        // Wind Burst's requirement isn't generated: the attacker fell at least
+                        // 1.5 blocks and isn't flying.
+                        effect @ pumpkin_data::enchantment::EnchantmentEntityEffect::Explode {
+                            ..
+                        } if post_effect.affected
+                            == Some(pumpkin_data::enchantment::EnchantmentTarget::Attacker)
+                            && self.living_entity.fall_distance.load() >= 1.5
+                            && !self.is_flying() =>
+                        {
+                            crate::world::explosion::apply_explode_effect(
+                                &world,
+                                effect,
+                                *level,
+                                self.living_entity.entity.pos.load(),
+                            );
+                        }
+                        _ => {}
                     }
                 }
             }
+        }
+
+        // Vanilla `MaceItem.postHurtEnemy`
+        if smashed_living {
+            self.living_entity.fall_distance.store(0.0);
         }
 
         player_attack_sound(&pos, &world, attack_type);
