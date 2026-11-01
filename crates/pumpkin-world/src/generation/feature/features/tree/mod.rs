@@ -1,9 +1,10 @@
 use decorator::TreeDecorator;
 use foliage::FoliagePlacer;
-use pumpkin_data::BlockState;
 use pumpkin_data::block_properties::{BlockProperties, OakLeavesLikeProperties};
+use pumpkin_data::fluid::Fluid;
 use pumpkin_data::tag::Taggable;
 use pumpkin_data::{BlockId, tag};
+use pumpkin_data::{BlockState, BlockStateId};
 use pumpkin_util::{math::position::BlockPos, random::RandomGenerator};
 use root::RootPlacer;
 
@@ -35,6 +36,21 @@ pub struct TreeNode {
     center: BlockPos,
     foliage_radius: i32,
     giant_trunk: bool,
+}
+
+/// Vanilla `LeavesBlock.DECAY_DISTANCE`.
+const DECAY_DISTANCE: u8 = 7;
+
+/// Vanilla `LeavesBlock.getOptionalDistanceAt`.
+fn optional_distance_at(state: BlockStateId) -> Option<u8> {
+    let block = state.to_block();
+    if block.has_tag(&tag::Block::MINECRAFT_PREVENTS_NEARBY_LEAF_DECAY) {
+        Some(0)
+    } else if OakLeavesLikeProperties::handles_block_id(block.id) {
+        Some(OakLeavesLikeProperties::from_state_id(state).distance)
+    } else {
+        None
+    }
 }
 
 impl TreeFeature {
@@ -188,22 +204,9 @@ impl TreeFeature {
                             get_index(neighbor_pos.0.x, neighbor_pos.0.y, neighbor_pos.0.z)
                             && !shape[n_idx]
                         {
-                            let (n_block, n_state) = chunk.get_block_and_state(&neighbor_pos);
-                            let distance = if n_block
-                                .has_tag(&tag::Block::MINECRAFT_PREVENTS_NEARBY_LEAF_DECAY)
-                            {
-                                Some(0)
-                            } else if OakLeavesLikeProperties::handles_block_id(n_block.id) {
-                                Some(
-                                    OakLeavesLikeProperties::from_state_id(n_state.id).distance
-                                        as usize,
-                                )
-                            } else {
-                                None
-                            };
-
-                            if let Some(dist) = distance {
-                                let new_distance = dist.min(smallest_distance + 1);
+                            let n_state = GenerationCache::get_block_state(chunk, &neighbor_pos.0);
+                            if let Some(dist) = optional_distance_at(n_state) {
+                                let new_distance = (dist as usize).min(smallest_distance + 1);
                                 if new_distance < 7 {
                                     to_check[new_distance].insert(neighbor_pos);
                                     smallest_distance = smallest_distance.min(new_distance);
@@ -307,13 +310,42 @@ impl TreeFeature {
         direction: pumpkin_data::BlockDirection,
         neighbor_pos: BlockPos,
     ) {
+        let neighbor_state = GenerationCache::get_block_state(chunk, &neighbor_pos.0);
+        Self::schedule_leaf_update(chunk, pos, neighbor_state);
         if let Some(new_state) = Self::get_updated_edge_state(chunk, pos, direction) {
             chunk.set_block_state(&pos.0, new_state);
         }
+        let new_state = GenerationCache::get_block_state(chunk, &pos.0);
+        Self::schedule_leaf_update(chunk, neighbor_pos, new_state);
         if let Some(new_neighbor_state) =
             Self::get_updated_edge_state(chunk, neighbor_pos, direction.opposite())
         {
             chunk.set_block_state(&neighbor_pos.0, new_neighbor_state);
+        }
+    }
+
+    /// The ticks vanilla `LeavesBlock.updateShape` schedules. They run once the chunk is
+    /// loaded and let the leaves recount their distance with every log around them.
+    fn schedule_leaf_update<T: GenerationCache>(
+        chunk: &mut T,
+        pos: BlockPos,
+        neighbor_state: BlockStateId,
+    ) {
+        let (block, state) = chunk.get_block_and_state(&pos);
+        if !block.has_tag(&tag::Block::MINECRAFT_LEAVES) {
+            return;
+        }
+        let props = OakLeavesLikeProperties::from_state_id(state.id);
+        let distance_from_neighbor =
+            optional_distance_at(neighbor_state).unwrap_or(DECAY_DISTANCE) + 1;
+        let Some(pos_chunk) = chunk.get_chunk_mut(pos.0.x >> 4, pos.0.z >> 4) else {
+            return;
+        };
+        if props.waterlogged {
+            pos_chunk.schedule_fluid_tick(pos.0.x, pos.0.y, pos.0.z, &Fluid::WATER);
+        }
+        if distance_from_neighbor != 1 || props.distance != distance_from_neighbor {
+            pos_chunk.schedule_block_tick(pos, block, 1);
         }
     }
 

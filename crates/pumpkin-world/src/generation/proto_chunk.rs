@@ -166,6 +166,7 @@ pub struct ProtoChunk {
     pub blending_data: Option<crate::generation::blender::blending_data::BlendingData>,
     pub pending_block_entities: Vec<NbtCompound>,
     pending_structure_entities: Vec<NbtCompound>,
+    pub block_ticks: Vec<ScheduledTick<&'static Block>>,
     pub fluid_ticks: Vec<ScheduledTick<&'static Fluid>>,
     /// See [`ChunkData::post_processing`].
     pub post_processing: Vec<Vec<u16>>,
@@ -299,6 +300,7 @@ impl ProtoChunk {
             blending_data: None,
             pending_block_entities: Vec::new(),
             pending_structure_entities: Vec::new(),
+            block_ticks: Vec::new(),
             fluid_ticks: Vec::new(),
             post_processing: Vec::new(),
         }
@@ -479,6 +481,15 @@ impl ProtoChunk {
 
     pub fn take_pending_structure_entities(&mut self) -> Vec<NbtCompound> {
         std::mem::take(&mut self.pending_structure_entities)
+    }
+
+    pub fn schedule_block_tick(&mut self, pos: BlockPos, block: &'static Block, delay: u8) {
+        self.block_ticks.push(ScheduledTick {
+            delay,
+            priority: TickPriority::Normal,
+            position: pos,
+            value: block,
+        });
     }
 
     pub fn schedule_fluid_tick(&mut self, x: i32, y: i32, z: i32, fluid: &'static Fluid) {
