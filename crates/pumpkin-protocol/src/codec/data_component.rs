@@ -2654,20 +2654,35 @@ impl DataComponentCodec<Self> for BucketEntityDataImpl {
     }
 }
 
+// Vanilla `TypedEntityData.streamCodec` sends the type as a registry id next to the tag;
+// Pumpkin keeps it in the tag's `id` field like the disk codec does.
 impl DataComponentCodec<Self> for BlockEntityDataImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
-        seq.write_var_int(&VarInt(0))?;
-        seq.write_nbt(NbtTag::Compound(self.nbt.clone()))
+        let id = self.nbt.get_string("id").unwrap_or_default();
+        let id = id.strip_prefix("minecraft:").unwrap_or(id);
+        let type_id = pumpkin_data::block_properties::BLOCK_ENTITY_TYPES
+            .iter()
+            .position(|name| *name == id)
+            .ok_or_else(|| WritingError::Message(format!("Unknown block entity type {id}")))?;
+        let mut nbt = self.nbt.clone();
+        nbt.child_tags.remove("id");
+        seq.write_var_int(&VarInt(type_id as i32))?;
+        seq.write_nbt(NbtTag::Compound(nbt))
     }
 
     fn deserialize(seq: &mut impl NetworkReadExt) -> Result<Self, ReadingError> {
-        let _type_id = seq.get_var_int()?;
+        let type_id = seq.get_var_int()?.0;
+        let name = usize::try_from(type_id)
+            .ok()
+            .and_then(|idx| pumpkin_data::block_properties::BLOCK_ENTITY_TYPES.get(idx))
+            .ok_or_else(|| ReadingError::Message(format!("Unknown block entity type {type_id}")))?;
         let tag = seq.get_nbt_with_version(&JavaMinecraftVersion::V_26_2)?;
-        let nbt = if let Some(NbtTag::Compound(c)) = tag {
+        let mut nbt = if let Some(NbtTag::Compound(c)) = tag {
             c
         } else {
             pumpkin_nbt::compound::NbtCompound::new()
         };
+        nbt.put_string("id", format!("minecraft:{name}"));
         Ok(Self { nbt })
     }
 }
@@ -3705,6 +3720,18 @@ mod tests {
 
         let min_holder = [0x80, 0x80, 0x80, 0x80, 0x08];
         assert!(PaintingVariantImpl::deserialize(&mut min_holder.as_slice()).is_err());
+    }
+
+    #[test]
+    fn block_entity_data_sends_the_type_as_a_registry_id() {
+        // Vanilla sends the type id (mob_spawner is 9) and an empty network compound.
+        let bytes = [9, 0x0A, 0x00];
+        let decoded = BlockEntityDataImpl::deserialize(&mut bytes.as_slice()).unwrap();
+        assert_eq!(decoded.nbt.get_string("id"), Some("minecraft:mob_spawner"));
+
+        let mut encoded = Vec::new();
+        decoded.serialize(&mut encoded).unwrap();
+        assert_eq!(encoded, bytes);
     }
 
     #[test]

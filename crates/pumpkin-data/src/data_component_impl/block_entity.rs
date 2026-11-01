@@ -8,9 +8,14 @@ pub struct BlockEntityDataImpl {
     pub nbt: NbtCompound,
 }
 impl BlockEntityDataImpl {
+    /// Like vanilla's `TypedEntityData` codec, the tag needs an `id` naming a block entity type.
     pub fn read_data(tag: &NbtTag) -> Option<Self> {
         if let NbtTag::Compound(c) = tag {
-            Some(Self { nbt: c.clone() })
+            let id = c.get_string("id")?;
+            let id = id.strip_prefix("minecraft:").unwrap_or(id);
+            crate::block_properties::BLOCK_ENTITY_TYPES
+                .contains(&id)
+                .then(|| Self { nbt: c.clone() })
         } else {
             None
         }
