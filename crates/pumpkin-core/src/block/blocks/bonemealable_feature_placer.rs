@@ -1,7 +1,8 @@
 use pumpkin_data::configured_feature::ConfiguredFeature as FeatureKey;
 use pumpkin_data::placed_feature::PlacedFeature;
 use pumpkin_data::{Block, BlockId};
-use pumpkin_util::random::{RandomGenerator, xoroshiro128::Xoroshiro};
+use pumpkin_util::random::RandomGenerator;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::generation::feature::configured_features::CONFIGURED_FEATURES;
 use pumpkin_world::generation::height_limit::HeightLimitView;
 
@@ -45,7 +46,7 @@ impl BlockBehaviour for BonemealableFeaturePlacerBlock {
         };
         let origin = args.position.up();
         let mut cache = WorldGenerationCache::new(args.world.clone(), &origin);
-        let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(rand::random()));
+        let mut random = RandomGenerator::Gameplay(game_random());
         let (min_y, height) = (cache.bottom_y(), cache.height());
         feature.generate(
             &mut cache,
