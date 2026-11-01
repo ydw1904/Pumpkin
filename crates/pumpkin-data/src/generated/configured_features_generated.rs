@@ -99,6 +99,10 @@ fn build_configured_features()
     use pumpkin_data::{Block, BlockDirection};
     use pumpkin_util::DoublePerlinNoiseParametersCodec;
     use pumpkin_util::HeightMap;
+    use pumpkin_util::math::float_provider::{
+        ClampedNormalFloatProvider, FloatProvider, NormalFloatProvider, TrapezoidFloatProvider,
+        UniformFloatProvider,
+    };
     use pumpkin_util::math::int_provider::{
         BiasedToBottomIntProvider, ClampedIntProvider, ClampedNormalIntProvider,
         ConstantIntProvider, IntProvider, NormalIntProvider, TrapezoidIntProvider,
@@ -1587,7 +1591,40 @@ fn build_configured_features()
     map.insert(
         pumpkin_data::configured_feature::ConfiguredFeature::DripstoneCluster,
         ConfiguredFeature::DripstoneCluster(
-            crate::generation::feature::features::drip_stone::cluster::DripstoneClusterFeature {},
+            crate::generation::feature::features::drip_stone::cluster::DripstoneClusterFeature {
+                base_block: pumpkin_data::Block::DRIPSTONE_BLOCK.default_state,
+                pointed_block: pumpkin_data::Block::POINTED_DRIPSTONE.default_state,
+                replaceable_blocks: BlockPredicate::MatchingBlockTag(MatchingBlockTagPredicate {
+                    offset: OffsetBlocksBlockPredicate { offset: None },
+                    tag: pumpkin_data::tag::Block::MINECRAFT_DRIPSTONE_REPLACEABLE_BLOCKS,
+                }),
+                floor_to_ceiling_search_range: 12i32,
+                height: IntProvider::Object(NormalIntProvider::Uniform(UniformIntProvider {
+                    min_inclusive: 3i32,
+                    max_inclusive: 6i32,
+                })),
+                radius: IntProvider::Object(NormalIntProvider::Uniform(UniformIntProvider {
+                    min_inclusive: 2i32,
+                    max_inclusive: 8i32,
+                })),
+                max_stalagmite_stalactite_height_diff: 1i32,
+                height_deviation: 3i32,
+                speleothem_block_layer_thickness: IntProvider::Object(NormalIntProvider::Uniform(
+                    UniformIntProvider {
+                        min_inclusive: 2i32,
+                        max_inclusive: 4i32,
+                    },
+                )),
+                density: FloatProvider::Object(NormalFloatProvider::Uniform(
+                    UniformFloatProvider::new(0.3f32, 0.7f32),
+                )),
+                wetness: FloatProvider::Object(NormalFloatProvider::ClampedNormal(
+                    ClampedNormalFloatProvider::new(0.1f32, 0.3f32, 0.1f32, 0.9f32),
+                )),
+                chance_of_speleothem_at_max_distance_from_center: 0.1f32,
+                max_distance_from_edge_affecting_chance_of_speleothem: 3i32,
+                max_distance_from_center_affecting_height_bias: 8i32,
+            },
         ),
     );
     map.insert(
@@ -4342,7 +4379,38 @@ fn build_configured_features()
     map.insert(
         pumpkin_data::configured_feature::ConfiguredFeature::SulfurSpikeCluster,
         ConfiguredFeature::DripstoneCluster(
-            crate::generation::feature::features::drip_stone::cluster::DripstoneClusterFeature {},
+            crate::generation::feature::features::drip_stone::cluster::DripstoneClusterFeature {
+                base_block: pumpkin_data::Block::SULFUR.default_state,
+                pointed_block: pumpkin_data::Block::SULFUR_SPIKE.default_state,
+                replaceable_blocks: BlockPredicate::MatchingBlockTag(MatchingBlockTagPredicate {
+                    offset: OffsetBlocksBlockPredicate { offset: None },
+                    tag: pumpkin_data::tag::Block::MINECRAFT_SULFUR_SPIKE_REPLACEABLE_BLOCKS,
+                }),
+                floor_to_ceiling_search_range: 12i32,
+                height: IntProvider::Object(NormalIntProvider::Uniform(UniformIntProvider {
+                    min_inclusive: 1i32,
+                    max_inclusive: 4i32,
+                })),
+                radius: IntProvider::Object(NormalIntProvider::Uniform(UniformIntProvider {
+                    min_inclusive: 2i32,
+                    max_inclusive: 8i32,
+                })),
+                max_stalagmite_stalactite_height_diff: 1i32,
+                height_deviation: 3i32,
+                speleothem_block_layer_thickness: IntProvider::Object(NormalIntProvider::Uniform(
+                    UniformIntProvider {
+                        min_inclusive: 2i32,
+                        max_inclusive: 4i32,
+                    },
+                )),
+                density: FloatProvider::Object(NormalFloatProvider::Uniform(
+                    UniformFloatProvider::new(0.3f32, 0.7f32),
+                )),
+                wetness: FloatProvider::Constant(0f32),
+                chance_of_speleothem_at_max_distance_from_center: 0.1f32,
+                max_distance_from_edge_affecting_chance_of_speleothem: 3i32,
+                max_distance_from_center_affecting_height_bias: 8i32,
+            },
         ),
     );
     map.insert(

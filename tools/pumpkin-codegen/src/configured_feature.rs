@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
+use crate::carver::value_to_float_provider;
 use crate::placed_feature::{
     value_to_block_direction, value_to_block_predicate, value_to_block_state,
     value_to_block_state_codec, value_to_height_provider, value_to_int_provider,
@@ -230,6 +231,7 @@ pub fn build() -> TokenStream {
             use pumpkin_util::math::vector3::Vector3;
             use pumpkin_util::HeightMap;
             use crate::generation::feature::features::drip_stone::small::SmallDripstoneFeature;
+            use pumpkin_util::math::float_provider::{ClampedNormalFloatProvider, FloatProvider, NormalFloatProvider, TrapezoidFloatProvider, UniformFloatProvider};
             let mut map = std::collections::HashMap::new();
             #(#entries)*
             map
@@ -1008,8 +1010,48 @@ pub fn value_to_configured_feature(v: &Value) -> TokenStream {
         "minecraft:bonus_chest" => {
             quote! { ConfiguredFeature::BonusChest(crate::generation::feature::features::bonus_chest::BonusChestFeature {}) }
         }
-        "minecraft:dripstone_cluster" | "minecraft:speleothem_cluster" => {
-            quote! { ConfiguredFeature::DripstoneCluster(crate::generation::feature::features::drip_stone::cluster::DripstoneClusterFeature {}) }
+        "minecraft:speleothem_cluster" => {
+            let base_block = value_to_block_state(&config["base_block"]);
+            let pointed_block = value_to_block_state(&config["pointed_block"]);
+            let replaceable_blocks = value_to_block_predicate(&config["replaceable_blocks"]);
+            let search_range = config["floor_to_ceiling_search_range"].as_i64().unwrap() as i32;
+            let height = value_to_int_provider(&config["height"]);
+            let radius = value_to_int_provider(&config["radius"]);
+            let height_diff = config["max_stalagmite_stalactite_height_diff"]
+                .as_i64()
+                .unwrap() as i32;
+            let height_deviation = config["height_deviation"].as_i64().unwrap() as i32;
+            let layer_thickness =
+                value_to_int_provider(&config["speleothem_block_layer_thickness"]);
+            let density = value_to_float_provider(&config["density"]);
+            let wetness = value_to_float_provider(&config["wetness"]);
+            let chance_at_max_distance = config["chance_of_speleothem_at_max_distance_from_center"]
+                .as_f64()
+                .unwrap() as f32;
+            let max_edge_distance = config["max_distance_from_edge_affecting_chance_of_speleothem"]
+                .as_i64()
+                .unwrap() as i32;
+            let max_center_distance = config["max_distance_from_center_affecting_height_bias"]
+                .as_i64()
+                .unwrap() as i32;
+            quote! {
+                ConfiguredFeature::DripstoneCluster(crate::generation::feature::features::drip_stone::cluster::DripstoneClusterFeature {
+                    base_block: #base_block,
+                    pointed_block: #pointed_block,
+                    replaceable_blocks: #replaceable_blocks,
+                    floor_to_ceiling_search_range: #search_range,
+                    height: #height,
+                    radius: #radius,
+                    max_stalagmite_stalactite_height_diff: #height_diff,
+                    height_deviation: #height_deviation,
+                    speleothem_block_layer_thickness: #layer_thickness,
+                    density: #density,
+                    wetness: #wetness,
+                    chance_of_speleothem_at_max_distance_from_center: #chance_at_max_distance,
+                    max_distance_from_edge_affecting_chance_of_speleothem: #max_edge_distance,
+                    max_distance_from_center_affecting_height_bias: #max_center_distance,
+                })
+            }
         }
         "minecraft:sequence" => {
             quote! { ConfiguredFeature::NoOp }
