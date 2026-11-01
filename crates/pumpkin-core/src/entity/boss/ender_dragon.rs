@@ -1,5 +1,6 @@
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::{Block, BlockStateId};
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
@@ -853,6 +854,24 @@ impl Mob for EnderDragonEntity {
 
     fn mob_tick(&self, _caller: &dyn EntityBase) {
         self.ai_step();
+    }
+
+    /// Vanilla `EnderDragon.kill`: gone at once, without the death animation or experience.
+    fn mob_kill(&self, caller: &dyn EntityBase) -> bool {
+        let entity = self.get_entity();
+        for part in &self.parts {
+            part.entity.remove();
+        }
+        entity.remove();
+        entity.emit_own_game_event(caller, GameEvent::EntityDie);
+        let world = entity.world.load_full();
+        if let Some(fight) = &world.dragon_fight {
+            fight
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .set_dragon_killed(&world, entity.entity_uuid);
+        }
+        true
     }
 
     fn on_damage(&self, _damage_type: DamageType, _source: Option<&dyn EntityBase>) {

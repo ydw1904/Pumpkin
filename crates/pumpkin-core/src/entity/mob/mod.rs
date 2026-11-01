@@ -1468,6 +1468,11 @@ pub trait Mob: EntityBase + Send + Sync {
     /// Per-mob tick hook called each tick before AI runs. Override for mob-specific logic.
     fn mob_tick(&self, _caller: &dyn EntityBase) {}
 
+    /// A species' own `kill` (`/kill`); returns false to take the usual lethal damage.
+    fn mob_kill(&self, _caller: &dyn EntityBase) -> bool {
+        false
+    }
+
     fn mob_is_pushed_by_fluids(&self) -> bool {
         true
     }
@@ -2177,6 +2182,12 @@ pub trait Mob: EntityBase + Send + Sync {
     }
 }
 impl<T: Mob + Send + 'static> EntityBase for T {
+    fn kill(&self, caller: &dyn EntityBase) {
+        if !self.mob_kill(caller) {
+            caller.damage(caller, f32::MAX, DamageType::GENERIC_KILL);
+        }
+    }
+
     fn is_pushed_by_fluids(&self) -> bool {
         self.mob_is_pushed_by_fluids()
     }
