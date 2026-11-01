@@ -547,6 +547,8 @@ pub struct Player {
     pub advancements: Arc<Mutex<PlayerAdvancement>>,
     pub enchantment_seed: AtomicI32,
     pub fishing_bobber: AtomicI32,
+    /// Vanilla `LivingEntity.fallFlyTicks`.
+    fall_fly_ticks: AtomicI32,
     pub bedrock_skin: arc_swap::ArcSwap<pumpkin_protocol::bedrock::client::Skin>,
     pub seen_credits: AtomicBool,
     pub warden_spawn_tracker: std::sync::Mutex<WardenSpawnTracker>,
@@ -841,6 +843,7 @@ impl Player {
             respawn_location: AtomicCell::new(None),
             hidden_players: Mutex::new(std::collections::HashSet::new()),
             fishing_bobber: AtomicI32::new(-1),
+            fall_fly_ticks: AtomicI32::new(0),
             bedrock_skin: ArcSwap::new(Arc::new(bedrock_skin)),
             seen_credits: AtomicBool::new(false),
             warden_spawn_tracker: std::sync::Mutex::new(WardenSpawnTracker::default()),
@@ -2315,20 +2318,72 @@ impl Player {
         self.living_entity.set_sprinting(is_sprinting);
     }
 
-    pub fn try_start_fall_flying(&self, server: &Arc<Server>) {
-        let entity = self.get_entity();
-        let has_glider = self
-            .living_entity
+    /// Vanilla `LivingEntity.canGlideUsing` over the equipment slots: the slots whose glider
+    /// can be used right now.
+    fn glider_slots(&self) -> Vec<EquipmentSlot> {
+        self.living_entity
             .entity_equipment
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .equipment
-            .values()
-            .any(|stack| {
+            .iter()
+            .filter(|(slot, stack)| {
                 stack.get_data_component::<GliderImpl>().is_some()
+                    && stack
+                        .get_data_component::<EquippableImpl>()
+                        .is_some_and(|equippable| *equippable.slot == **slot)
                     && !stack.next_damage_will_break()
-            });
-        let fall_flying = entity.check_fall_flying() && has_glider;
+            })
+            .map(|(slot, _)| slot.clone())
+            .collect()
+    }
+
+    /// Vanilla `Player.canGlide`.
+    fn can_glide(&self) -> bool {
+        let entity = self.get_entity();
+        !self.is_flying()
+            && entity.check_fall_flying()
+            && !entity.has_vehicle()
+            && !self
+                .living_entity
+                .has_effect(&pumpkin_data::effect::StatusEffect::LEVITATION)
+            && !self.glider_slots().is_empty()
+    }
+
+    /// Vanilla `LivingEntity.updateFallFlying` and the `fallFlyTicks` counter in
+    /// `LivingEntity.tick`.
+    fn update_fall_flying(&self) {
+        let entity = self.get_entity();
+        if !entity.is_fall_flying() {
+            self.fall_fly_ticks.store(0, Ordering::Relaxed);
+            return;
+        }
+        let check_fall_fly_ticks = self.fall_fly_ticks.fetch_add(1, Ordering::Relaxed) + 1;
+        if !self.can_glide() {
+            if let Some(server) = self.world().server.upgrade() {
+                self.stop_fall_flying(&server);
+            }
+            return;
+        }
+        if check_fall_fly_ticks % 10 == 0 {
+            if (check_fall_fly_ticks / 10) % 2 == 0 {
+                let slots = self.glider_slots();
+                if !slots.is_empty() {
+                    let slot = &slots[game_random().random_range(0..slots.len())];
+                    self.damage_item_in_slot(slot, 1);
+                }
+            }
+            self.world().emit_game_event(
+                pumpkin_data::game_event::GameEvent::ElytraGlide.name(),
+                entity.pos.load(),
+            );
+        }
+    }
+
+    pub fn try_start_fall_flying(&self, server: &Arc<Server>) {
+        let entity = self.get_entity();
+        // Vanilla `Player.tryToStartFallFlying`.
+        let fall_flying = self.can_glide() && !entity.is_in_water();
         if fall_flying && !entity.is_fall_flying() {
             let mut event = EntityToggleGlideEvent::new(entity.entity_id, true);
             server.plugin_manager.fire_blocking(server, &mut event);
@@ -2952,6 +3007,7 @@ impl Player {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .tick();
+        self.update_fall_flying();
         if let Ok(listener) = self.chunk_listener.try_lock()
             && let Ok(mut sender) = self.chunk_sender.try_lock()
         {
