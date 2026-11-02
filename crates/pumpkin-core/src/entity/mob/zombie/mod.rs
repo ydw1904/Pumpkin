@@ -112,6 +112,12 @@ impl ZombieEntityBase {
 
         let goal_selector = &mob_arc.mob_entity.goals_selector;
         if can_break_doors {
+            mob_arc
+                .mob_entity
+                .navigator
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .set_can_open_doors(true);
             goal_selector.add_goal(1, Box::new(BreakDoorGoal::default()));
         }
         goal_selector.add_goal(4, DestroyEggGoal::new(1.0, 3));
@@ -135,6 +141,11 @@ impl ZombieEntityBase {
             .swap(can_break_doors, Ordering::Relaxed)
             != can_break_doors
         {
+            self.mob_entity
+                .navigator
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .set_can_open_doors(can_break_doors);
             if can_break_doors {
                 self.mob_entity
                     .goals_selector
@@ -455,9 +466,7 @@ impl Mob for ZombieEntityBase {
     fn mob_write_nbt(&self, nbt: &mut NbtCompound) {
         // Vanilla Zombie.addAdditionalSaveData; shared by every zombie-family mob.
         nbt.put_bool("IsBaby", self.is_baby());
-        if self.can_break_doors() {
-            nbt.put_bool("CanBreakDoors", true);
-        }
+        nbt.put_bool("CanBreakDoors", self.can_break_doors());
         self.drowning_tracker.write_nbt(
             nbt,
             self.mob_entity.living_entity.entity.is_submerged_in_water(),
@@ -466,9 +475,7 @@ impl Mob for ZombieEntityBase {
 
     fn mob_read_nbt(&self, nbt: &NbtCompound) {
         self.set_baby(nbt.get_bool("IsBaby").unwrap_or(false));
-        if let Some(can_break_doors) = nbt.get_bool("CanBreakDoors") {
-            self.set_can_break_doors(can_break_doors, self);
-        }
+        self.set_can_break_doors(nbt.get_bool("CanBreakDoors").unwrap_or(false), self);
         self.drowning_tracker.read_nbt(&self.mob_entity, nbt);
     }
 }
