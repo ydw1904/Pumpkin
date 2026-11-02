@@ -320,7 +320,7 @@ impl Server {
             recipe_manager: Arc::new(recipe::RecipeManager::new()),
             datapack_manager: Arc::new(crate::data::datapack::DatapackManager::new()),
             enchantment_manager: Arc::new(enchantment::EnchantmentManager::new()),
-            map_id: level_info.load().map_id.into(),
+            map_id: next_map_id(&world_path, level_info.load().map_id).into(),
             worlds: ArcSwap::from_pointee(vec![]),
             dimensions,
             command_dispatcher,
@@ -646,6 +646,16 @@ impl Server {
             data_version,
         ) {
             error!("Failed to save custom_boss_events.dat: {err}");
+        }
+        let next_map_id = self.map_id.load(Ordering::SeqCst);
+        if next_map_id > 0 {
+            let mut data = NbtCompound::new();
+            data.put_int("map", next_map_id - 1);
+            if let Err(err) =
+                write_saved_data(&world_path, "minecraft", MAP_INDEX, data, data_version)
+            {
+                error!("Failed to save maps/last_id.dat: {err}");
+            }
         }
         // Vanilla `CommandStorage`: one `command_storage.dat` per namespace.
         let mut storage_by_namespace: FxHashMap<&str, NbtCompound> = FxHashMap::default();
@@ -1621,4 +1631,15 @@ fn load_command_storage(world_path: &std::path::Path) -> HashMap<String, NbtComp
         }
     }
     storage
+}
+
+/// Vanilla `MapIndex`, which holds the last map id handed out.
+const MAP_INDEX: &str = "maps/last_id";
+
+/// The next map id, after the last one in vanilla's `MapIndex` or older Pumpkin's `map_id`.
+fn next_map_id(world_path: &std::path::Path, level_dat_next: i32) -> i32 {
+    let after_last = read_saved_data(world_path, "minecraft", MAP_INDEX)
+        .and_then(|data| data.get_int("map"))
+        .map_or(0, |last| last.saturating_add(1));
+    after_last.max(level_dat_next)
 }
