@@ -29,6 +29,8 @@ use crate::entity::{
     },
     player::Player,
 };
+use crate::world::World;
+use crate::world::natural_spawner::is_valid_empty_spawn_block;
 
 /// Represents an Iron Golem, a powerful neutral mob that protects villagers and players.
 ///
@@ -142,6 +144,30 @@ impl NeutralMob for IronGolemEntity {
 }
 
 impl Mob for IronGolemEntity {
+    /// Vanilla `IronGolem.checkSpawnObstruction`: solid footing and room for its height.
+    fn check_spawn_obstruction(&self, world: &World) -> bool {
+        let entity = self.get_entity();
+        let pos = entity.block_pos.load();
+        if !crate::entity::spawn_util::is_face_full_up(world.get_block_state(&pos.down())) {
+            return false;
+        }
+        if !(1..3).all(|height| {
+            is_valid_empty_spawn_block(
+                world.get_block_state(&pos.up_height(height)),
+                entity.entity_type,
+            )
+        }) {
+            return false;
+        }
+        // Vanilla checks its own block with an empty fluid, so a golem can stand in water.
+        let state = world.get_block_state(&pos);
+        (state.is_liquid() || is_valid_empty_spawn_block(state, entity.entity_type))
+            && world
+                .get_entities_at_box(&entity.bounding_box.load())
+                .iter()
+                .all(|other| other.get_living_entity().is_none() || other.get_entity().is_removed())
+    }
+
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
         self.play_entity_sound(Sound::EntityIronGolemStep, 1.0, 1.0);
     }

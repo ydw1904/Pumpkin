@@ -54,6 +54,7 @@ use pumpkin_data::environment_attribute::Activity;
 
 mod acquire_poi;
 pub mod data;
+mod golem;
 mod meet;
 mod walk_to_poi;
 
@@ -378,24 +379,22 @@ fn explorer_map_target(
 /// Vanilla `VillagerData.NEXT_LEVEL_XP_THRESHOLDS`.
 const NEXT_LEVEL_XP_THRESHOLDS: [i32; 5] = [0, 10, 70, 150, 250];
 
-const VILLAGER_FLEES: &[Flee] = &[Flee::nearest_of(
-    1,
-    &[
-        (&EntityType::DROWNED, 8.0),
-        (&EntityType::EVOKER, 12.0),
-        (&EntityType::HUSK, 8.0),
-        (&EntityType::ILLUSIONER, 12.0),
-        (&EntityType::PILLAGER, 15.0),
-        (&EntityType::RAVAGER, 12.0),
-        (&EntityType::VEX, 8.0),
-        (&EntityType::VINDICATOR, 10.0),
-        (&EntityType::ZOGLIN, 10.0),
-        (&EntityType::ZOMBIE, 8.0),
-        (&EntityType::ZOMBIE_VILLAGER, 8.0),
-    ],
-    0.75,
-    0.75,
-)];
+/// Vanilla `VillagerHostilesSensor.ACCEPTABLE_DISTANCE_FROM_HOSTILES`.
+const VILLAGER_HOSTILES: &[(&EntityType, f64)] = &[
+    (&EntityType::DROWNED, 8.0),
+    (&EntityType::EVOKER, 12.0),
+    (&EntityType::HUSK, 8.0),
+    (&EntityType::ILLUSIONER, 12.0),
+    (&EntityType::PILLAGER, 15.0),
+    (&EntityType::RAVAGER, 12.0),
+    (&EntityType::VEX, 8.0),
+    (&EntityType::VINDICATOR, 10.0),
+    (&EntityType::ZOGLIN, 10.0),
+    (&EntityType::ZOMBIE, 8.0),
+    (&EntityType::ZOMBIE_VILLAGER, 8.0),
+];
+
+const VILLAGER_FLEES: &[Flee] = &[Flee::nearest_of(1, VILLAGER_HOSTILES, 0.75, 0.75)];
 
 pub struct VillagerEntity {
     pub mob_entity: MobEntity,
@@ -440,6 +439,12 @@ pub struct VillagerEntity {
     stroll_next_ok_start: AtomicI64,
     /// Vanilla `MemoryModuleType.LAST_WOKEN`.
     last_woken: std::sync::Mutex<Option<i64>>,
+    /// Vanilla `MemoryModuleType.LAST_SLEPT`.
+    last_slept: std::sync::Mutex<Option<i64>>,
+    /// The game time vanilla's `GOLEM_DETECTED_RECENTLY` memory expires at.
+    golem_detected_until: AtomicI64,
+    /// Ticks until vanilla's `GolemSensor` scans again.
+    golem_sensor_countdown: AtomicI32,
     /// Vanilla `SleepInBed.nextOkStartTime`.
     sleep_next_ok_start: AtomicI64,
     /// Vanilla `LivingEntity.getSleepingPos`.
@@ -528,6 +533,12 @@ impl VillagerEntity {
             interaction_target: std::sync::Mutex::new(None),
             stroll_next_ok_start: AtomicI64::new(0),
             last_woken: std::sync::Mutex::new(None),
+            last_slept: std::sync::Mutex::new(None),
+            golem_detected_until: AtomicI64::new(0),
+            // Vanilla sensors start at a random point of their scan period.
+            golem_sensor_countdown: AtomicI32::new(
+                game_random().random_range(0..golem::GOLEM_SENSOR_SCAN_RATE),
+            ),
             sleep_next_ok_start: AtomicI64::new(0),
             sleeping_pos: std::sync::Mutex::new(None),
             self_weak: std::sync::Mutex::new(None),
@@ -1595,7 +1606,12 @@ impl VillagerEntity {
             return;
         }
         if game_time > self.sleep_next_ok_start.load(Ordering::Relaxed) {
-            self.start_sleeping(world, bed);
+            if self.start_sleeping(world, bed) {
+                *self
+                    .last_slept
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(game_time);
+            }
             self.mob_entity.steered().navigator().stop();
         }
     }
@@ -2053,6 +2069,19 @@ impl VillagerEntity {
         {
             put(memory_types::LAST_WOKEN.id(), NbtTag::Long(last_woken));
         }
+        if let Some(last_slept) = *self
+            .last_slept
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        {
+            put(memory_types::LAST_SLEPT.id(), NbtTag::Long(last_slept));
+        }
+        if let Some(ttl) = self.golem_detected_ttl(world.get_world_age()) {
+            let mut entry = NbtCompound::new();
+            entry.put("value", NbtTag::Byte(1));
+            entry.put_long("ttl", ttl);
+            memories.put_compound(memory_types::GOLEM_DETECTED_RECENTLY.id().name(), entry);
+        }
         brain.put_compound("memories", memories);
         nbt.put_compound("Brain", brain);
     }
@@ -2124,9 +2153,24 @@ impl VillagerEntity {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) =
             long_memory(memory_types::LAST_WOKEN.id());
+        *self
+            .last_slept
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            long_memory(memory_types::LAST_SLEPT.id());
+        let golem_detected = memories
+            .and_then(|memories| {
+                memories.get_compound(memory_types::GOLEM_DETECTED_RECENTLY.id().name())
+            })
+            .filter(|entry| entry.get_bool("value").unwrap_or(false));
+        self.golem_detected_until.store(
+            golem_detected.map_or(0, |entry| {
+                world.get_world_age() + entry.get_long("ttl").unwrap_or(i64::MAX / 2)
+            }),
+            Ordering::Relaxed,
+        );
     }
 
-    #[expect(clippy::too_many_lines)]
     pub fn villager_mob_tick(&self) {
         let world = self.get_entity().world.load();
 
@@ -2221,73 +2265,7 @@ impl VillagerEntity {
         self.assign_profession_from_job_site(&world);
         self.tick_meet(&world, game_time);
         self.reset_profession();
-
-        if age % 20 != 0 {
-            return;
-        }
-
-        // 2. Iron Golem spawning logic (only for adults)
-        let profession = self
-            .villager_data
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .profession_enum();
-        if profession != VillagerProfession::Nitwit && age >= 0 {
-            // Checked every 20 ticks, golem spawn check every ~100 ticks
-            if age % 100 == 0 && self.get_home().is_some() {
-                // Check if panicked or talked recently to spawn an Iron Golem
-                let has_bed = self.get_home().is_some();
-                let has_worked =
-                    game_time - self.last_worked_at_poi.load(Ordering::Relaxed) < 24000;
-                if has_bed && has_worked {
-                    // Check nearby villagers
-                    let my_pos = self.get_entity().pos.load();
-                    let bb = BoundingBox::new(
-                        my_pos.sub_raw(16.0, 8.0, 16.0),
-                        my_pos.add_raw(16.0, 8.0, 16.0),
-                    );
-                    let nearby_villagers = world
-                        .get_entities_at_box(&bb)
-                        .iter()
-                        .filter(|e| {
-                            e.get_entity().entity_type
-                                == &pumpkin_data::entity::EntityType::VILLAGER
-                        })
-                        .count();
-
-                    if nearby_villagers >= 3 {
-                        // Check if an iron golem is already nearby
-                        let nearby_golems = world
-                            .get_entities_at_box(&bb)
-                            .iter()
-                            .filter(|e| {
-                                e.get_entity().entity_type
-                                    == &pumpkin_data::entity::EntityType::IRON_GOLEM
-                            })
-                            .count();
-
-                        if nearby_golems == 0 {
-                            // Attempt to spawn an Iron Golem
-                            let spawn_pos = my_pos.add_raw(0.0, 0.5, 0.0);
-                            let golem_entity = Entity::new(
-                                world.clone(),
-                                spawn_pos,
-                                &pumpkin_data::entity::EntityType::IRON_GOLEM,
-                            );
-                            let golem = crate::entity::passive::iron_golem::IronGolemEntity::new(
-                                golem_entity,
-                            );
-                            world.spawn_entity_non_save(golem as Arc<dyn EntityBase>);
-                            world.send_entity_status(
-                                self.get_entity(),
-                                pumpkin_data::entity::EntityStatus::VillagerHappy,
-                                ActorEventID::VillagerHappy,
-                            );
-                        }
-                    }
-                }
-            }
-        }
+        self.tick_golem_spawning(&world, game_time);
     }
 }
 
