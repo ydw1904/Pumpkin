@@ -625,8 +625,13 @@ impl PotionContentsImpl {
 impl DataComponentImpl for PotionContentsImpl {
     fn write_data(&self) -> NbtTag {
         let mut compound = NbtCompound::new();
-        if let Some(potion_id) = self.potion_id {
-            compound.put_int("potion", potion_id);
+        // Vanilla saves the potion by its registry name.
+        if let Some(potion) = self
+            .potion_id
+            .and_then(|id| u8::try_from(id).ok())
+            .and_then(crate::potion::Potion::from_id)
+        {
+            compound.put_string("potion", format!("minecraft:{}", potion.name));
         }
         if let Some(color) = self.custom_color {
             compound.put_int("custom_color", color);
