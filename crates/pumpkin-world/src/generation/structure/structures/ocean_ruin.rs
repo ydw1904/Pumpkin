@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use pumpkin_data::fluid::Fluid;
+use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::{
     Block, BlockState, Mirror, Rotation,
     block_properties::{ChestLikeProperties, HorizontalFacing},
@@ -25,7 +27,7 @@ use crate::{
             get_template,
         },
     },
-    generation::update_shape::GenerationRegion,
+    generation::update_shape::{GenerationRegion, fluid_state},
 };
 
 const WARM_RUINS: &[&str] = &[
@@ -430,6 +432,7 @@ impl OceanRuinPiece {
         }
     }
 
+    /// Vanilla `OceanRuinPiece.getHeight`.
     fn calculate_height(
         pos: Vector3<i32>,
         corner: Vector3<i32>,
@@ -446,7 +449,21 @@ impl OceanRuinPiece {
 
         for x in min_x..=max_x {
             for z in min_z..=max_z {
-                let floor_y = chunk.get_top_y(&HeightMap::OceanFloorWg, x, z) - 1;
+                // Walk down from below the template through air, water and ice.
+                let mut floor_y = pos.y - 1;
+                loop {
+                    let state =
+                        GenerationCache::get_block_state(chunk, &Vector3::new(x, floor_y, z));
+                    let (fluid, _) = fluid_state(state);
+                    let sinks = state.to_state().is_air()
+                        || fluid.id == Fluid::WATER.id
+                        || fluid.id == Fluid::FLOWING_WATER.id
+                        || state.to_block().has_tag(&tag::Block::MINECRAFT_ICE);
+                    if !sinks || floor_y <= chunk.bottom_y() as i32 + 1 {
+                        break;
+                    }
+                    floor_y -= 1;
+                }
                 min_y = min_y.min(floor_y);
                 if floor_y < top_y - 2 {
                     area += 1;
