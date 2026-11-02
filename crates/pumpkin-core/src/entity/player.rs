@@ -2030,6 +2030,7 @@ impl Player {
             dimension,
             position: final_block_pos,
             yaw,
+            pitch,
             force: forced,
         });
         true
@@ -7659,7 +7660,8 @@ impl EntityBase for Player {
                     respawn.position.0.z,
                 ]),
             );
-            respawn_compound.put_float("angle", respawn.yaw);
+            respawn_compound.put_float("yaw", respawn.yaw);
+            respawn_compound.put_float("pitch", respawn.pitch);
             respawn_compound.put_bool("forced", respawn.force);
             nbt.put_compound("respawn", respawn_compound);
         }
@@ -7829,7 +7831,12 @@ impl EntityBase for Player {
             } else {
                 BlockPos(Vector3::new(0, 0, 0))
             };
-            let yaw = respawn_compound.get_float("angle").unwrap_or(0.0);
+            // Older Pumpkin saves called the yaw `angle`.
+            let yaw = respawn_compound
+                .get_float("yaw")
+                .or_else(|| respawn_compound.get_float("angle"))
+                .unwrap_or(0.0);
+            let pitch = respawn_compound.get_float("pitch").unwrap_or(0.0);
             let force = respawn_compound.get_bool("forced").unwrap_or(false);
             *self
                 .respawn_point
@@ -7838,6 +7845,7 @@ impl EntityBase for Player {
                 dimension: dim,
                 position: pos,
                 yaw,
+                pitch,
                 force,
             });
         } else if let (Some(x), Some(y), Some(z)) = (
@@ -7857,6 +7865,7 @@ impl EntityBase for Player {
                 dimension: dim,
                 position: BlockPos(Vector3::new(x, y, z)),
                 yaw: 0.0,
+                pitch: 0.0,
                 force,
             });
         }
@@ -8006,6 +8015,7 @@ pub struct RespawnPoint {
     pub dimension: Dimension,
     pub position: BlockPos,
     pub yaw: f32,
+    pub pitch: f32,
     pub force: bool,
 }
 
