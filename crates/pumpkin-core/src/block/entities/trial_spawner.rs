@@ -15,6 +15,7 @@ use pumpkin_data::world::WorldEvent;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::Difficulty;
+use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use uuid::Uuid;
@@ -55,13 +56,24 @@ pub enum PlayerDetector {
 }
 
 impl PlayerDetector {
+    /// Vanilla `PlayerDetector.detect`.
     #[must_use]
-    pub fn detect(&self, world: &World, spawner_pos: BlockPos, range: i32) -> Vec<Uuid> {
+    pub fn detect(
+        &self,
+        world: &World,
+        spawner_pos: BlockPos,
+        range: i32,
+        require_line_of_sight: bool,
+    ) -> Vec<Uuid> {
         let center = spawner_pos.to_centered_f64();
-        let max_dist_sq = f64::from(range * range);
+        let in_sight = |eye: Vector3<f64>| {
+            !require_line_of_sight || TrialSpawner::in_line_of_sight(world, center, eye)
+        };
 
         match self {
             Self::NoCreativePlayers => {
+                // `p.blockPosition().closerThan(pos, range)`
+                let max_dist_sq = f64::from(range).powi(2);
                 let players = world.players.load();
                 players
                     .iter()
@@ -72,26 +84,24 @@ impl PlayerDetector {
                         {
                             return None;
                         }
-                        let ent = player.get_entity();
-                        if !ent.is_alive() {
-                            return None;
-                        }
-                        let pos = ent.pos.load();
-                        (pos.squared_distance_to_vec(&center) <= max_dist_sq)
-                            .then_some(player.gameprofile.id)
+                        let block_pos = player.get_entity().block_pos.load();
+                        (f64::from(block_pos.squared_distance(&spawner_pos)) < max_dist_sq
+                            && in_sight(player.eye_position()))
+                        .then_some(player.gameprofile.id)
                     })
                     .collect()
             }
             Self::Sheep => {
-                let entities = world.entities.load();
-                entities
-                    .iter()
+                let area = BoundingBox::from_block(&spawner_pos).expand_all(f64::from(range));
+                world
+                    .get_entities_at_box(&area)
+                    .into_iter()
                     .filter_map(|e| {
                         let ent = e.get_entity();
                         (ent.entity_type.id == EntityType::SHEEP.id
                             && ent.is_alive()
-                            && ent.pos.load().squared_distance_to_vec(&center) <= max_dist_sq)
-                            .then_some(ent.entity_uuid)
+                            && in_sight(ent.get_eye_pos()))
+                        .then_some(ent.entity_uuid)
                     })
                     .collect()
             }
@@ -634,23 +644,6 @@ impl TrialSpawnerStateData {
         self.next_spawn_data.as_ref()
     }
 
-    pub fn try_detect_players(
-        &mut self,
-        world: &World,
-        spawner_pos: BlockPos,
-        range: i32,
-        detector: &PlayerDetector,
-    ) -> bool {
-        let detected = detector.detect(world, spawner_pos, range);
-        let mut newly_detected = false;
-        for uuid in detected {
-            if self.registered_players.insert(uuid) {
-                newly_detected = true;
-            }
-        }
-        newly_detected
-    }
-
     #[must_use]
     pub fn from_nbt(nbt: &NbtCompound) -> Self {
         let mut data = Self::default();
@@ -845,14 +838,24 @@ impl TrialSpawner {
             game_time + i64::from(self.active_config().ticks_between_spawn);
     }
 
-    pub fn try_detect_players(&mut self, world: &Arc<World>, spawner_pos: BlockPos) -> bool {
-        let detected =
-            self.player_detector
-                .detect(world, spawner_pos, self.config.required_player_range);
+    /// Vanilla `TrialSpawnerStateData.tryDetectPlayers`. Returns whether a player was added.
+    pub fn try_detect_players(
+        &mut self,
+        world: &Arc<World>,
+        spawner_pos: BlockPos,
+        game_time: i64,
+        in_cooldown: bool,
+    ) -> bool {
+        if (spawner_pos.as_long() + game_time) % 20 != 0 || (in_cooldown && self.is_ominous) {
+            return false;
+        }
+        let range = self.config.required_player_range;
+        let in_line_of_sight_players = self.player_detector.detect(world, spawner_pos, range, true);
 
-        if !self.is_ominous {
+        let mut became_ominous = false;
+        if !self.is_ominous && !in_line_of_sight_players.is_empty() {
             let mut ominous_player = None;
-            for &uuid in &detected {
+            for &uuid in &in_line_of_sight_players {
                 if let Some(player) = world.get_player_by_uuid(uuid) {
                     if player.has_effect(&StatusEffect::TRIAL_OMEN) {
                         ominous_player = Some((player, false));
@@ -887,13 +890,42 @@ impl TrialSpawner {
                     0,
                 );
                 self.apply_ominous(world, spawner_pos);
+                became_ominous = true;
             }
         }
 
+        if in_cooldown && !became_ominous {
+            return false;
+        }
+        // Only the first player needs line of sight; later ones join from anywhere in range.
+        let found_players = if self.data.registered_players.is_empty() {
+            in_line_of_sight_players
+        } else {
+            self.player_detector
+                .detect(world, spawner_pos, range, false)
+        };
         let mut newly_detected = false;
-        for uuid in detected {
+        for uuid in found_players {
             if self.data.registered_players.insert(uuid) {
                 newly_detected = true;
+            }
+        }
+        if newly_detected {
+            self.data.next_mob_spawns_at = self
+                .data
+                .next_mob_spawns_at
+                .max(game_time + Self::DETECT_PLAYER_SPAWN_BUFFER);
+            if !became_ominous {
+                let event = if self.is_ominous {
+                    WorldEvent::ParticlesTrialSpawnerDetectPlayerOminous
+                } else {
+                    WorldEvent::ParticlesTrialSpawnerDetectPlayer
+                };
+                world.sync_world_event(
+                    event,
+                    spawner_pos,
+                    self.data.registered_players.len() as i32,
+                );
             }
         }
         newly_detected
@@ -1118,7 +1150,7 @@ impl TrialSpawner {
         Some(entity_uuid)
     }
 
-    fn in_line_of_sight(world: &Arc<World>, origin: Vector3<f64>, dest: Vector3<f64>) -> bool {
+    fn in_line_of_sight(world: &World, origin: Vector3<f64>, dest: Vector3<f64>) -> bool {
         let hit = world.clip(&pumpkin_world::clip::ClipContext::new(
             dest,
             origin,
@@ -1228,19 +1260,12 @@ impl TrialSpawner {
                     return TrialSpawnerState::Inactive;
                 }
 
-                let newly_detected = self.try_detect_players(world, spawner_pos);
+                let newly_detected = self.try_detect_players(world, spawner_pos, game_time, false);
 
                 if self.data.registered_players.is_empty() {
                     TrialSpawnerState::WaitingForPlayers
                 } else {
                     if newly_detected {
-                        let player_count = self.data.registered_players.len() as i32;
-                        let event = if self.is_ominous {
-                            WorldEvent::ParticlesTrialSpawnerDetectPlayerOminous
-                        } else {
-                            WorldEvent::ParticlesTrialSpawnerDetectPlayer
-                        };
-                        world.sync_world_event(event, spawner_pos, player_count);
                         world.play_sound(
                             Sound::BlockTrialSpawnerDetectPlayer,
                             SoundCategory::Blocks,
@@ -1251,7 +1276,6 @@ impl TrialSpawner {
                             SoundCategory::Blocks,
                             &spawner_pos.to_f64(),
                         );
-                        self.data.next_mob_spawns_at = game_time + Self::DETECT_PLAYER_SPAWN_BUFFER;
                     }
                     TrialSpawnerState::Active
                 }
@@ -1261,7 +1285,7 @@ impl TrialSpawner {
                     return TrialSpawnerState::Inactive;
                 }
 
-                self.try_detect_players(world, spawner_pos);
+                self.try_detect_players(world, spawner_pos, game_time, false);
 
                 let (total_mobs_needed, max_simultaneous, ticks_between_spawn) = {
                     let active_config = self.active_config();
@@ -1336,7 +1360,7 @@ impl TrialSpawner {
             }
             TrialSpawnerState::Cooldown => {
                 if !self.is_ominous {
-                    self.try_detect_players(world, spawner_pos);
+                    self.try_detect_players(world, spawner_pos, game_time, true);
                     if self.is_ominous {
                         self.data.total_mobs_spawned = 0;
                         self.data.next_mob_spawns_at = 0;
