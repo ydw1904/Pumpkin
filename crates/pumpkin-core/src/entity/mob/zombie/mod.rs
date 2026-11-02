@@ -244,6 +244,7 @@ impl ZombieEntityBase {
                 mob,
             );
         }
+        self.mob_entity.wear_halloween_head();
         self.handle_attributes(mob, difficulty_modifier, conversion);
         group_data
     }

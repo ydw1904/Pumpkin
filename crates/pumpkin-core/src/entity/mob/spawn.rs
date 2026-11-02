@@ -4,7 +4,11 @@ use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
 use pumpkin_data::attributes::Attributes;
+use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::effect::StatusEffect;
+use pumpkin_data::item::Item;
+use pumpkin_data::item_stack::ItemStack;
+use time::{Month, OffsetDateTime};
 
 use crate::entity::EntityBase;
 use crate::entity::attributes::{Modifier, ModifierOperation};
@@ -85,6 +89,32 @@ impl MobEntity {
         self.set_left_handed(rng.random::<f32>() < 0.05);
     }
 
+    /// The Halloween part of vanilla `Zombie.finalizeSpawn` and `AbstractSkeleton.finalizeSpawn`:
+    /// a bare head sometimes gets a carved pumpkin or jack o'lantern that never drops.
+    pub fn wear_halloween_head(&self) {
+        let head_empty = self
+            .living_entity
+            .entity_equipment
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&EquipmentSlot::HEAD)
+            .is_empty();
+        if !head_empty || !is_halloween() || game_random().random::<f32>() >= 0.25 {
+            return;
+        }
+        let head = if game_random().random::<f32>() < 0.1 {
+            &Item::JACK_O_LANTERN
+        } else {
+            &Item::CARVED_PUMPKIN
+        };
+        self.set_item_slot(&EquipmentSlot::HEAD, ItemStack::new(1, head));
+        self.living_entity
+            .equipment_drop_chances
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(EquipmentSlot::HEAD, 0.0);
+    }
+
     /// Loot pickup and spawn equipment of the mobs in `EQUIPMENT_REGISTRY`, rolled once in
     /// `finalizeSpawn` like vanilla (`setCanPickUpLoot`, `populateDefaultEquipmentSlots`), never
     /// when a saved mob is loaded.
@@ -134,6 +164,12 @@ impl MobEntity {
                 .unwrap_or_else(std::sync::PoisonError::into_inner),
         )
     }
+}
+
+/// Vanilla `SpecialDates.isHalloween`: October 31st in the server's local time.
+fn is_halloween() -> bool {
+    let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
+    now.month() == Month::October && now.day() == 31
 }
 
 /// Finalizes `entity` if it is a mob, and returns the group data for the next mob of the group.
