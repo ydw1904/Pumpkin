@@ -990,6 +990,18 @@ impl ChunkData {
             }
         }
 
+        // Tags this server does not model, such as vanilla's `structures`, trail the chunk.
+        // Files written before this have nothing after the structure references.
+        let preserved = self
+            .preserved_tags
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !preserved.is_empty() {
+            let bytes = pumpkin_nbt::Nbt::new(String::new(), preserved.clone()).write_unnamed();
+            out.put_u32(bytes.len() as u32);
+            out.extend_from_slice(&bytes);
+        }
+
         out.into()
     }
 
@@ -1320,6 +1332,22 @@ impl ChunkData {
             }
         }
 
+        let preserved_tags = if buf.remaining() >= 4 {
+            let len = buf.get_u32() as usize;
+            if buf.remaining() < len {
+                return Err(ChunkParsingError::ErrorDeserializingChunk(
+                    "Unexpected EOF reading preserved tags".into(),
+                ));
+            }
+            let mut cursor = std::io::Cursor::new(&buf[..len]);
+            let mut reader = pumpkin_nbt::deserializer::NbtReadHelperJava::new(&mut cursor);
+            pumpkin_nbt::Nbt::read_unnamed(&mut reader)
+                .map_err(|e| ChunkParsingError::ErrorDeserializingChunk(e.to_string()))?
+                .root_tag
+        } else {
+            NbtCompound::new()
+        };
+
         Ok(Self {
             section,
             heightmap: std::sync::Mutex::new(heightmaps),
@@ -1337,7 +1365,7 @@ impl ChunkData {
             custom_data: std::sync::Mutex::new(custom_data),
             post_processing: std::sync::Mutex::new(post_processing),
             structures: structures.into_boxed_slice(),
-            preserved_tags: std::sync::Mutex::default(),
+            preserved_tags: std::sync::Mutex::new(preserved_tags),
         })
     }
 
@@ -2009,18 +2037,27 @@ mod tests {
 
         let written = nbt.root_tag.clone();
         let chunk = ChunkData::from_bytes(&nbt.write(), Vector2::new(0, 0)).expect("chunk parses");
-        let saved = chunk.to_bytes().expect("chunk serializes");
+        // The default pump format has to carry them too: worlds converted from vanilla go
+        // through it and back to Anvil.
+        let pump = ChunkData::internal_from_pump_bytes(
+            &chunk.to_pump_bytes().expect("pump serializes"),
+            Vector2::new(0, 0),
+        )
+        .expect("pump parses");
 
-        let mut cursor = std::io::Cursor::new(saved.as_ref());
-        let mut reader = pumpkin_nbt::deserializer::NbtReadHelperJava::new(&mut cursor);
-        let reloaded = pumpkin_nbt::Nbt::read(&mut reader).expect("saved chunk parses");
+        for chunk in [chunk, pump] {
+            let saved = chunk.to_bytes().expect("chunk serializes");
+            let mut cursor = std::io::Cursor::new(saved.as_ref());
+            let mut reader = pumpkin_nbt::deserializer::NbtReadHelperJava::new(&mut cursor);
+            let reloaded = pumpkin_nbt::Nbt::read(&mut reader).expect("saved chunk parses");
 
-        for key in ["structures", "carving_mask", "LastUpdate"] {
-            assert_eq!(
-                reloaded.root_tag.get(key),
-                written.get(key),
-                "{key} did not survive the save"
-            );
+            for key in ["structures", "carving_mask", "LastUpdate"] {
+                assert_eq!(
+                    reloaded.root_tag.get(key),
+                    written.get(key),
+                    "{key} did not survive the save"
+                );
+            }
         }
     }
 
