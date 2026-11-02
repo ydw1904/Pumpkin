@@ -8,7 +8,7 @@ use pumpkin_util::math::position::BlockPos;
 
 use super::BlockEntity;
 
-// todo: CustomName, LastExecution, UpdateLastExecution
+// todo: CustomName, LastExecution
 pub struct CommandBlockEntity {
     pub position: BlockPos,
     pub powered: AtomicBool,
@@ -19,6 +19,8 @@ pub struct CommandBlockEntity {
     pub last_output: StdMutex<String>,
     pub track_output: AtomicBool,
     pub success_count: AtomicU32,
+    /// Vanilla `BaseCommandBlock.updateLastExecution`: run at most once per tick.
+    pub update_last_execution: AtomicBool,
 }
 
 impl CommandBlockEntity {
@@ -35,6 +37,7 @@ impl CommandBlockEntity {
             last_output: StdMutex::new(String::new()),
             track_output: AtomicBool::new(track_output),
             success_count: AtomicU32::new(0),
+            update_last_execution: AtomicBool::new(true),
         }
     }
 
@@ -57,7 +60,10 @@ impl CommandBlockEntity {
         );
         nbt.put_bool("powered", self.powered.load(Ordering::SeqCst));
         nbt.put_bool("TrackOutput", self.track_output.load(Ordering::SeqCst));
-        nbt.put_bool("UpdateLastExecution", false);
+        nbt.put_bool(
+            "UpdateLastExecution",
+            self.update_last_execution.load(Ordering::SeqCst),
+        );
         nbt.put_int(
             "SuccessCount",
             self.success_count.load(Ordering::SeqCst).cast_signed(),
@@ -85,6 +91,8 @@ impl BlockEntity for CommandBlockEntity {
         let track_output = AtomicBool::new(nbt.get_bool("TrackOutput").unwrap_or(false));
         let success_count =
             AtomicU32::new(nbt.get_int("SuccessCount").unwrap_or(0).cast_unsigned());
+        let update_last_execution =
+            AtomicBool::new(nbt.get_bool("UpdateLastExecution").unwrap_or(true));
 
         Self {
             position,
@@ -95,6 +103,7 @@ impl BlockEntity for CommandBlockEntity {
             last_output,
             track_output,
             success_count,
+            update_last_execution,
             dirty: AtomicBool::new(false),
         }
     }

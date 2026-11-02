@@ -71,6 +71,10 @@ impl JavaClient {
                 ),
                 track_output: command.track_output().into(),
                 success_count: AtomicU32::new(0),
+                update_last_execution: old_command_block
+                    .update_last_execution
+                    .load(Ordering::SeqCst)
+                    .into(),
             };
             player.world().add_block_entity(Arc::new(command_block));
 
