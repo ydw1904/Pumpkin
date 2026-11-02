@@ -24,8 +24,16 @@ use std::fs::read;
 use std::path::PathBuf;
 use std::sync::{Arc, Weak};
 use std::time::{SystemTime, UNIX_EPOCH};
+use time::format_description::BorrowedFormatItem;
+use time::macros::format_description;
+use time::{OffsetDateTime, UtcOffset};
 use tracing::{error, warn};
 use uuid::Uuid;
+
+/// Vanilla's `AdvancementProgress.OBTAINED_TIME_FORMAT` (`yyyy-MM-dd HH:mm:ss Z`).
+const OBTAINED_TIME_FORMAT: &[BorrowedFormatItem<'static>] = format_description!(
+    "[year]-[month]-[day] [hour]:[minute]:[second] [offset_hour sign:mandatory][offset_minute]"
+);
 
 #[derive(Clone, Serialize, Deserialize, Debug, Default)]
 pub struct CriterionProgress(pub Option<SystemTime>);
@@ -42,6 +50,21 @@ impl CriterionProgress {
     #[must_use]
     pub const fn is_done(&self) -> bool {
         self.0.is_some()
+    }
+
+    /// The obtained time in vanilla's format, in the system time zone like vanilla.
+    fn obtained_string(&self) -> Option<String> {
+        let offset = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
+        OffsetDateTime::from(self.0?)
+            .to_offset(offset)
+            .format(OBTAINED_TIME_FORMAT)
+            .ok()
+    }
+
+    fn from_obtained_string(obtained: &str) -> Option<Self> {
+        OffsetDateTime::parse(obtained, OBTAINED_TIME_FORMAT)
+            .ok()
+            .map(|time| Self(Some(time.into())))
     }
 }
 
@@ -130,17 +153,23 @@ impl AdvancementProgress {
     }
 }
 
+/// Mirrors vanilla's `AdvancementProgress.CODEC`: `{criteria: {name: obtained time}, done}`.
 impl Serialize for AdvancementProgress {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        let map: HashMap<&Arc<str>, &CriterionProgress> = self
+        let criteria: HashMap<&Arc<str>, String> = self
             .criteria
             .iter()
-            .filter(|(_key, criteria)| criteria.is_done())
+            .filter_map(|(name, criterion)| Some((name, criterion.obtained_string()?)))
             .collect();
-        map.serialize(serializer)
+        let mut map = serializer.serialize_map(Some(2))?;
+        if !criteria.is_empty() {
+            map.serialize_entry("criteria", &criteria)?;
+        }
+        map.serialize_entry("done", &self.is_done())?;
+        map.end()
     }
 }
 
@@ -149,7 +178,25 @@ impl<'de> Deserialize<'de> for AdvancementProgress {
     where
         D: Deserializer<'de>,
     {
-        let criteria = HashMap::<Arc<str>, CriterionProgress>::deserialize(deserializer)?;
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let mut criteria = HashMap::new();
+        if let Some(saved) = value.get("criteria").and_then(serde_json::Value::as_object) {
+            for (name, obtained) in saved {
+                if let Some(progress) = obtained
+                    .as_str()
+                    .and_then(CriterionProgress::from_obtained_string)
+                {
+                    criteria.insert(Arc::from(name.as_str()), progress);
+                }
+            }
+        } else if let Some(saved) = value.as_object() {
+            // Older Pumpkin saves mapped criteria straight to serialized `SystemTime`s.
+            for (name, obtained) in saved {
+                if let Ok(progress) = CriterionProgress::deserialize(obtained) {
+                    criteria.insert(Arc::from(name.as_str()), progress);
+                }
+            }
+        }
         Ok(Self {
             criteria,
             requirements: AdvancementRequirement::default(),
@@ -444,11 +491,16 @@ impl PlayerAdvancement {
 
         let json = read(&self.path).map_err(AdvancementDataError::Io)?;
 
-        let loaded_data: HashMap<String, AdvancementProgress> =
+        let loaded_data: serde_json::Map<String, serde_json::Value> =
             serde_json::from_slice(&json).map_err(AdvancementDataError::Json)?;
 
         self.progress.clear();
-        for (advancement_id, mut progress) in loaded_data {
+        for (advancement_id, progress) in loaded_data {
+            if advancement_id == "DataVersion" {
+                continue;
+            }
+            let mut progress =
+                AdvancementProgress::deserialize(progress).map_err(AdvancementDataError::Json)?;
             if let Some(advancement_ref) = Advancement::from_minecraft_name(&advancement_id) {
                 progress.update(AdvancementRequirement::from_const(
                     advancement_ref.requirements,
@@ -693,11 +745,13 @@ impl Serialize for PlayerAdvancement {
             .filter(|(_key, value)| value.has_progress())
             .map(|(&key, val)| (key, val))
             .collect();
-        let mut map = serializer.serialize_map(Some(filtered_map.len()))?;
+        let mut map = serializer.serialize_map(Some(filtered_map.len() + 1))?;
 
         for (advancement, progress) in &filtered_map {
-            map.serialize_entry(&advancement.id, &progress.criteria)?;
+            map.serialize_entry(&advancement.id, progress)?;
         }
+        // Vanilla wraps the file with `DataFixTypes.ADVANCEMENTS`, which stamps the data version.
+        map.serialize_entry("DataVersion", &crate::entity::player::DATA_VERSION)?;
         map.end()
     }
 }
@@ -869,6 +923,42 @@ mod tests {
         );
     }
 
+    #[test]
+    fn load_vanilla_advancement_file() {
+        let temp_dir = tempdir().unwrap();
+        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true));
+        let mut pa = PlayerAdvancement::new(manager, Uuid::new_v4());
+        // Written by a 26.3 server.
+        let vanilla = r#"{
+  "minecraft:adventure/adventuring_time": {
+    "criteria": {
+      "minecraft:plains": "2026-11-02 13:12:49 +0100"
+    },
+    "done": false
+  },
+  "minecraft:story/root": {
+    "criteria": {
+      "crafting_table": "2026-11-02 13:12:55 +0100"
+    },
+    "done": true
+  },
+  "DataVersion": 5023
+}"#;
+        std::fs::write(&pa.path, vanilla).unwrap();
+        pa.load().expect("vanilla file loads");
+
+        assert!(
+            pa.progress
+                .get_mut_or_start_progress(Advancement::STORY_ROOT)
+                .is_done()
+        );
+        let adventuring = pa
+            .progress
+            .get_mut_or_start_progress(Advancement::ADVENTURE_ADVENTURING_TIME);
+        assert!(!adventuring.is_done());
+        assert!(adventuring.is_criterion_done("minecraft:plains"));
+    }
+
     #[tokio::test]
     async fn save_load_roundtrip() {
         let temp_dir = tempdir().unwrap();
@@ -961,9 +1051,13 @@ mod tests {
 
         // Verify both were saved
         let content = std::fs::read_to_string(&pa.path).unwrap();
-        let saved_data: HashMap<String, AdvancementProgress> =
+        let saved_data: serde_json::Map<String, serde_json::Value> =
             serde_json::from_str(&content).unwrap();
-        assert_eq!(saved_data.len(), 2, "Should have saved both advancements");
+        assert_eq!(
+            saved_data.len(),
+            3,
+            "Should have saved both advancements and the data version"
+        );
     }
 
     #[tokio::test]
