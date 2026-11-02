@@ -44,7 +44,7 @@ use crate::entity::{
         pathfinder::Navigator,
     },
     experience_orb::ExperienceOrbEntity,
-    mob::{Mob, MobEntity},
+    mob::{Mob, MobEntity, spawn::SpawnGroupData},
 };
 use crate::world::World;
 use crate::world::villager_poi::profession_for_block;
@@ -52,7 +52,7 @@ use crate::world::villager_poi::profession_for_block;
 pub mod data;
 pub use data::{
     BREEDING_FOOD_THRESHOLD, GossipType, VillagerData, VillagerProfession, VillagerType,
-    get_food_points,
+    get_food_points, villager_type_by_biome,
 };
 
 pub(crate) fn trigger_trade_advancement(player: &Player) {
@@ -352,6 +352,8 @@ const VILLAGER_FLEES: &[Flee] = &[Flee::nearest_of(
 pub struct VillagerEntity {
     pub mob_entity: MobEntity,
     pub villager_data: std::sync::Mutex<VillagerData>,
+    /// Vanilla `VillagerDataFinalized`: once set, spawning no longer picks the type from the biome.
+    pub villager_data_finalized: AtomicBool,
     pub food_level: AtomicI32,
     pub xp: AtomicI32,
     pub last_restock_time: AtomicI64,
@@ -411,15 +413,22 @@ impl VillagerEntity {
         metadata
     }
 
+    /// Vanilla `createDefaultVillagerData`.
+    #[must_use]
+    pub const fn default_villager_data() -> VillagerData {
+        VillagerData::new(VillagerType::Plains, VillagerProfession::None, 1)
+    }
+
     #[allow(clippy::too_many_lines)]
     pub fn new(entity: Entity) -> Arc<Self> {
         let mob_entity = MobEntity::new(entity);
-        let villager_data = VillagerData::new(VillagerType::Plains, VillagerProfession::None, 1);
+        let villager_data = Self::default_villager_data();
         let inventory = std::sync::Mutex::new((0..8).map(|_| ItemStack::EMPTY.clone()).collect());
 
         let villager = Self {
             mob_entity,
             villager_data: std::sync::Mutex::new(villager_data),
+            villager_data_finalized: AtomicBool::new(false),
             food_level: AtomicI32::new(0),
             xp: AtomicI32::new(0),
             last_restock_time: AtomicI64::new(0),
@@ -546,6 +555,18 @@ impl VillagerEntity {
                     }
                 }
             }
+        }
+    }
+
+    /// Vanilla `VillagerDataHolder.finalizeVillagerType`.
+    pub fn finalize_villager_type(&self, world: &World, pos: &BlockPos) {
+        if !self.villager_data_finalized.load(Ordering::Relaxed) {
+            let data = *self
+                .villager_data
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            self.set_villager_data(data.with_type(villager_type_by_biome(world.get_biome(pos))));
+            self.villager_data_finalized.store(true, Ordering::Relaxed);
         }
     }
 
@@ -1808,6 +1829,27 @@ impl VillagerEntity {
 }
 
 impl Mob for VillagerEntity {
+    fn finalize_spawn(
+        &self,
+        world: &Arc<World>,
+        group_data: Option<SpawnGroupData>,
+    ) -> Option<SpawnGroupData> {
+        self.finalize_villager_type(world, &self.get_entity().block_pos.load());
+        self.finalize_spawn_super(group_data)
+    }
+
+    /// Vanilla `applyImplicitComponent` for `villager/variant`.
+    fn mob_set_variant_name(&self, name: &str) {
+        if let Some(r#type) = VillagerType::from_name(name) {
+            let data = *self
+                .villager_data
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            self.set_villager_data(data.with_type(r#type));
+            self.villager_data_finalized.store(true, Ordering::Relaxed);
+        }
+    }
+
     #[expect(clippy::too_many_lines)]
     fn mob_write_nbt(&self, nbt: &mut NbtCompound) {
         {
@@ -1817,6 +1859,10 @@ impl Mob for VillagerEntity {
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             nbt.put_compound("VillagerData", data.to_nbt());
         };
+        nbt.put_bool(
+            "VillagerDataFinalized",
+            self.villager_data_finalized.load(Ordering::Relaxed),
+        );
 
         nbt.put_int("FoodLevel", self.food_level.load(Ordering::Relaxed));
         nbt.put_int("Xp", self.xp.load(Ordering::Relaxed));
@@ -1935,12 +1981,14 @@ impl Mob for VillagerEntity {
 
     #[allow(clippy::too_many_lines)]
     fn mob_read_nbt(&self, nbt: &NbtCompound) {
-        if let Some(villager_data_nbt) = nbt.get_compound("VillagerData") {
+        let villager_data_nbt = nbt.get_compound("VillagerData");
+        if nbt.get_bool("VillagerDataFinalized").unwrap_or(false) || villager_data_nbt.is_some() {
+            self.villager_data_finalized.store(true, Ordering::Relaxed);
             *self
                 .villager_data
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) =
-                VillagerData::from_nbt(villager_data_nbt);
+                villager_data_nbt.map_or_else(Self::default_villager_data, VillagerData::from_nbt);
         }
 
         if let Some(food) = nbt.get_int("FoodLevel") {

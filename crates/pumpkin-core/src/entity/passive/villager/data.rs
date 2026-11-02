@@ -1,3 +1,4 @@
+use pumpkin_data::biome::Biome;
 use pumpkin_data::item::Item;
 pub use pumpkin_data::villager::{VillagerProfession, VillagerType};
 use pumpkin_nbt::compound::NbtCompound;
@@ -214,5 +215,32 @@ impl VillagerData {
             .or_else(|| nbt.get_int("Level"))
             .unwrap_or(1);
         Self::new(r#type, profession, level)
+    }
+
+    #[must_use]
+    pub const fn with_type(mut self, r#type: VillagerType) -> Self {
+        self.r#type = VarInt(r#type as i32);
+        self
+    }
+}
+
+/// Vanilla `VillagerType.byBiome`: biomes missing from its map give plains villagers.
+#[must_use]
+pub fn villager_type_by_biome(biome: &Biome) -> VillagerType {
+    match biome.registry_id {
+        "badlands" | "desert" | "eroded_badlands" | "wooded_badlands" => VillagerType::Desert,
+        "bamboo_jungle" | "jungle" | "sparse_jungle" => VillagerType::Jungle,
+        "savanna_plateau" | "savanna" | "windswept_savanna" => VillagerType::Savanna,
+        "deep_frozen_ocean" | "frozen_ocean" | "frozen_river" | "ice_spikes" | "snowy_beach"
+        | "snowy_taiga" | "snowy_plains" | "grove" | "snowy_slopes" | "frozen_peaks"
+        | "jagged_peaks" => VillagerType::Snow,
+        "swamp" | "mangrove_swamp" => VillagerType::Swamp,
+        "old_growth_spruce_taiga"
+        | "old_growth_pine_taiga"
+        | "windswept_gravelly_hills"
+        | "windswept_hills"
+        | "taiga"
+        | "windswept_forest" => VillagerType::Taiga,
+        _ => VillagerType::Plains,
     }
 }
