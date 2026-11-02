@@ -857,7 +857,7 @@ impl StructurePieceBase for PoolElementStructurePiece {
         region: &mut dyn crate::generation::proto_chunk::GenerationCache,
         block_registry: &dyn crate::world::WorldPortalExt,
         random: &mut pumpkin_util::random::RandomGenerator,
-        _seed: i64,
+        seed: i64,
         chunk_box: &pumpkin_util::math::block_box::BlockBox,
         reference_pos: Vector3<i32>,
     ) {
@@ -888,6 +888,7 @@ impl StructurePieceBase for PoolElementStructurePiece {
                     Some(chunk_box),
                     false,
                     reference_pos,
+                    seed,
                 );
                 crate::generation::structure::template::place_template_entities(
                     region.get_center_chunk_mut(),
@@ -925,6 +926,7 @@ pub fn place_pool_element_templates(
     chunk_box: Option<&BlockBox>,
     keep_jigsaws: bool,
     reference_pos: Vector3<i32>,
+    world_seed: i64,
 ) {
     let origin = Vector3::new(piece.pos.0.x, piece.pos.0.y, piece.pos.0.z);
 
@@ -953,6 +955,7 @@ pub fn place_pool_element_templates(
                 chunk_box,
                 keep_jigsaws,
                 reference_pos,
+                world_seed,
             );
         });
 }

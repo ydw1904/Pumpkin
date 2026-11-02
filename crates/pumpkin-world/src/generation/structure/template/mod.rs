@@ -38,7 +38,9 @@ use pumpkin_data::fluid::Fluid;
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_util::HeightMap;
 use pumpkin_util::math::vector3::Vector3;
-use pumpkin_util::random::{RandomImpl, hash_block_pos, legacy_rand::LegacyRand};
+use pumpkin_util::random::{
+    RandomDeriverImpl, RandomImpl, hash_block_pos, legacy_rand::LegacyRand,
+};
 
 use crate::ProtoChunk;
 
@@ -97,6 +99,7 @@ pub fn place_template(
     apply_waterlogging: bool,
     processors: &[StructureProcessor],
     chunk_box: Option<&pumpkin_util::math::block_box::BlockBox>,
+    world_seed: i64,
 ) {
     place_template_with_options(
         placer,
@@ -110,6 +113,7 @@ pub fn place_template(
         chunk_box,
         false,
         origin,
+        world_seed,
     );
 }
 
@@ -126,13 +130,18 @@ pub fn place_template_with_options(
     chunk_box: Option<&pumpkin_util::math::block_box::BlockBox>,
     keep_jigsaws: bool,
     reference_pos: Vector3<i32>,
+    world_seed: i64,
 ) {
     let (rotated_ox, rotated_oz) = rotation.rotate_offset(offset.0, offset.1);
     let world_x = origin.x + rotated_ox;
     let world_z = origin.z + rotated_oz;
 
-    let mut context_rng = LegacyRand::from_seed(hash_block_pos(world_x, origin.y, world_z) as u64);
-    let mut context = processor::ProcessorContext::new(reference_pos, processors, &mut context_rng);
+    let mut context = processor::ProcessorContext::new(reference_pos);
+    // Vanilla `processBlockInfos` only skips blocks outside the chunk when no processor needs
+    // the whole piece.
+    let process_only_in_chunk = !processors
+        .iter()
+        .any(StructureProcessor::evaluates_entire_piece_state);
     let mut processed = Vec::with_capacity(template.blocks.len());
     for block in &template.blocks {
         let palette_entry = &template.palette[block.state as usize];
@@ -174,7 +183,8 @@ pub fn place_template_with_options(
         let wy = origin.y + local_pos.y;
         let wz = world_z + local_pos.z;
 
-        if let Some(bbox) = chunk_box
+        if process_only_in_chunk
+            && let Some(bbox) = chunk_box
             && (wx < bbox.min.x
                 || wx > bbox.max.x
                 || wy < bbox.min.y
@@ -202,15 +212,42 @@ pub fn place_template_with_options(
         if skip_air && state.id.to_block_id() == pumpkin_data::Block::AIR.id {
             continue;
         }
-        processed.push((world_pos, state.rotate(rotation), block_entity_nbt));
+        processed.push(ProcessedBlock {
+            pos: world_pos,
+            state,
+            nbt: block_entity_nbt,
+        });
     }
+
+    // Vanilla's template position: transformed template positions are offsets from it, while
+    // `transform_pos` keeps them inside the rotated size.
+    let corner = rotation.rotate_offset(template.size.x - 1, template.size.z - 1);
+    let position = Vector3::new(
+        world_x - corner.0.min(0),
+        origin.y,
+        world_z - corner.1.min(0),
+    );
+    finalize_processing(
+        placer,
+        processors,
+        &mut context,
+        world_seed,
+        position,
+        &mut processed,
+    );
 
     // Vanilla processes the whole template before placing anything, so rule processors read
     // the world as it was before this template. Jigsaw pieces place with a known shape
     // (`SinglePoolElement.getSettings`). The live commands leave other shape updates to the
     // world's own block updates.
     let mut placement = TemplateBlockPlacement::new(apply_waterlogging, true);
-    for (world_pos, state, block_entity_nbt) in processed {
+    for ProcessedBlock {
+        pos: world_pos,
+        state,
+        nbt: block_entity_nbt,
+    } in processed
+    {
+        let state = state.rotate(rotation);
         if chunk_box.is_some_and(|bbox| !bbox.contains_pos(&world_pos)) {
             continue;
         }
@@ -263,7 +300,6 @@ pub(crate) fn process_block(
     mut state: &'static BlockState,
     nbt: &mut Option<NbtCompound>,
 ) -> Option<&'static BlockState> {
-    let mut capped_idx = 0;
     for processor in processors {
         if let StructureProcessor::Gravity { heightmap, offset } = processor {
             // `GravityProcessor` keeps the block's height within the template.
@@ -274,17 +310,74 @@ pub(crate) fn process_block(
         }
         let mut rng =
             LegacyRand::from_seed(hash_block_pos(world_pos.x, world_pos.y, world_pos.z) as u64);
-        state = processor.process_with_context(
-            placer,
-            *world_pos,
-            state,
-            nbt,
-            context,
-            &mut capped_idx,
-            &mut rng,
-        )?;
+        state =
+            processor.process_with_context(placer, *world_pos, state, nbt, context, &mut rng)?;
     }
     Some(state)
+}
+
+/// A template block after the processors, like vanilla `StructureTemplate.StructureBlockInfo`.
+pub(crate) struct ProcessedBlock {
+    pub pos: Vector3<i32>,
+    pub state: &'static BlockState,
+    pub nbt: Option<NbtCompound>,
+}
+
+/// Vanilla `StructureProcessor.finalizeProcessing` for every processor, run once all blocks of
+/// the piece went through [`process_block`]. `position` is the template's position.
+pub(crate) fn finalize_processing(
+    placer: &impl BlockPlacer,
+    processors: &[StructureProcessor],
+    context: &mut processor::ProcessorContext,
+    world_seed: i64,
+    position: Vector3<i32>,
+    processed: &mut [ProcessedBlock],
+) {
+    for processor in processors {
+        let StructureProcessor::Capped { limit, delegate } = processor else {
+            continue;
+        };
+        // `CappedProcessor.finalizeProcessing`: replace up to `limit` randomly picked blocks.
+        if limit.get_max() == 0 || processed.is_empty() {
+            continue;
+        }
+        let mut random = LegacyRand::from_seed(world_seed as u64)
+            .next_splitter()
+            .split_pos(position.x, position.y, position.z);
+        let max_to_replace = limit.get(&mut random).min(processed.len() as i32);
+        if max_to_replace < 1 {
+            continue;
+        }
+        // `Util.toShuffledList`
+        let mut indices: Vec<usize> = (0..processed.len()).collect();
+        for i in (2..=indices.len()).rev() {
+            let swap_to = random.next_bounded_i32(i as i32) as usize;
+            indices.swap(i - 1, swap_to);
+        }
+        let mut replaced = 0;
+        for index in indices {
+            if replaced >= max_to_replace {
+                break;
+            }
+            let block = &mut processed[index];
+            let mut nbt = block.nbt.clone();
+            let mut rng =
+                LegacyRand::from_seed(hash_block_pos(block.pos.x, block.pos.y, block.pos.z) as u64);
+            if let Some(state) = delegate.process_with_context(
+                placer,
+                block.pos,
+                block.state,
+                &mut nbt,
+                context,
+                &mut rng,
+            ) && (state.id != block.state.id || nbt != block.nbt)
+            {
+                replaced += 1;
+                block.state = state;
+                block.nbt = nbt;
+            }
+        }
+    }
 }
 
 pub(crate) fn place_template_entities(
@@ -467,6 +560,7 @@ mod tests {
                 false,
                 &[],
                 None,
+                0,
             );
 
             for state_id in &placer.0 {

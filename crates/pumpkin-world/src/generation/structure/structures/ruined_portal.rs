@@ -447,16 +447,7 @@ impl RuinedPortalPiece {
         let mirror = self.place_settings.get_mirror();
         let pivot = self.place_settings.get_rotation_pivot();
 
-        let mut context_rng = LegacyRand::from_seed(hash_block_pos(
-            self.template_position.x,
-            self.template_position.y,
-            self.template_position.z,
-        ) as u64);
-        let mut context = ProcessorContext::new(
-            self.template_position,
-            self.place_settings.get_processors(),
-            &mut context_rng,
-        );
+        let mut context = ProcessorContext::new(self.template_position);
         let mut placement = TemplateBlockPlacement::new(
             self.place_settings.should_apply_waterlogging(),
             self.place_settings.get_known_shape(),

@@ -166,6 +166,7 @@ impl CommandExecutor for PlaceTemplateExecutor {
             false,
             &[],
             None,
+            context.world().level.seed.0 as i64,
         );
 
         placer.finalize();
@@ -258,6 +259,7 @@ impl CommandExecutor for PlaceJigsawExecutor {
                         None,
                         false,
                         block_pos.0,
+                        context.world().level.seed.0 as i64,
                     );
                 }
             }
@@ -376,6 +378,7 @@ impl CommandExecutor for PlaceStructureExecutor {
                             None,
                             false,
                             reference_pos,
+                            context.world().level.seed.0 as i64,
                         );
                     }
                 }
@@ -429,6 +432,7 @@ impl CommandExecutor for PlaceStructureExecutor {
                             None,
                             false,
                             reference_pos,
+                            context.world().level.seed.0 as i64,
                         );
                     }
                 }
