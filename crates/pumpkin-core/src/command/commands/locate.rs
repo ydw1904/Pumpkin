@@ -12,7 +12,7 @@ use pumpkin_util::text::hover::HoverEvent;
 use pumpkin_util::text::{TextComponent, color::NamedColor};
 use pumpkin_world::generation::generator::biome_finder::find_closest_biome_3d;
 use pumpkin_world::generation::generator::structure_finder::{
-    StructureSearch, find_nearest_structure, find_nearest_structure_start,
+    StructureSearch, find_nearest_structure, find_structure_start_in_ring,
 };
 use rustc_hash::FxHashSet;
 
@@ -232,9 +232,17 @@ impl CommandExecutor for LocateStructureExecutor {
         let world_gen = world.level.world_gen.load_full();
 
         let mut found: Option<(BlockPos, StructureKeys)> = None;
+        let mut keep_nearest = |pos: BlockPos, key: StructureKeys| {
+            if found.as_ref().is_none_or(|(best, _)| {
+                horizontal_distance_exact(&origin, &pos) < horizontal_distance_exact(&origin, best)
+            }) {
+                found = Some((pos, key));
+            }
+        };
+        let mut random_spread_scans = Vec::new();
         for (set_index, keys) in scans {
             let set = &StructureSet::ALL[set_index];
-            let nearest = match &set.placement.placement_type {
+            match &set.placement.placement_type {
                 // Strongholds come out of the pre-computed ring cache, which
                 // already holds positions they really occupy. A concentric-ring
                 // set holds exactly one structure, so the hit is unambiguous.
@@ -249,33 +257,32 @@ impl CommandExecutor for LocateStructureExecutor {
                         )
                     });
                     match search {
-                        Some(StructureSearch::Found(pos)) => Some((pos, keys[0])),
+                        Some(StructureSearch::Found(pos)) => keep_nearest(pos, keys[0]),
                         Some(StructureSearch::Pending) => {
                             return Err(STRUCTURE_PENDING_ERROR_TYPE.create_without_context());
                         }
-                        Some(StructureSearch::NotFound) | None => None,
+                        Some(StructureSearch::NotFound) | None => {}
                     }
                 }
-                // Everything else is spread over a grid whose candidate chunks
-                // are only *possible* sites: the biome at a candidate can still
-                // reject every structure in the set. Resolving the start makes
-                // sure the reported position actually holds one, and says which.
-                StructurePlacementType::RandomSpread(_) => find_nearest_structure_start(
-                    origin,
-                    set,
-                    &keys,
-                    STRUCTURE_SEARCH_RADIUS,
-                    &world_gen,
-                ),
-            };
+                StructurePlacementType::RandomSpread(_) => random_spread_scans.push((set, keys)),
+            }
+        }
 
-            if let Some((pos, key)) = nearest
-                && found.as_ref().is_none_or(|(best, _)| {
-                    horizontal_distance_exact(&origin, &pos)
-                        < horizontal_distance_exact(&origin, best)
-                })
-            {
-                found = Some((pos, key));
+        // Everything else is spread over a grid whose candidate chunks are only
+        // *possible* sites, so each candidate's start is resolved. Like vanilla,
+        // the search stops at the first ring where any of the sets has a hit.
+        for radius in 0..=STRUCTURE_SEARCH_RADIUS {
+            let mut found_something = false;
+            for (set, keys) in &random_spread_scans {
+                if let Some((pos, key)) =
+                    find_structure_start_in_ring(origin, set, keys, radius, &world_gen)
+                {
+                    found_something = true;
+                    keep_nearest(pos, key);
+                }
+            }
+            if found_something {
+                break;
             }
         }
 
