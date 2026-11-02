@@ -92,6 +92,10 @@ bot.once('spawn', async () => {
   result('walk_corrections', forcedMoves - movesBefore)
   result('walked_onto', blockName(Math.floor(bot.entity.position.x), PLATFORM_Y, Math.floor(bot.entity.position.z)))
 
+  // The bot may have fallen off the platform before the fill arrived and been hurt landing back on
+  // it, so let natural regeneration finish first: healing during the fall would hide damage.
+  await waitFor(() => bot.health >= 20, 30000)
+
   // A 10 block fall onto stone deals 10 - 3 = 7 damage, worked out by the server. Read the first
   // health update after landing, before natural regeneration heals part of it.
   const healthBefore = bot.health
