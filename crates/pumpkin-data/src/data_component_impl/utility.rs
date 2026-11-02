@@ -675,14 +675,14 @@ impl FireworkExplosionImpl {
     pub fn read_data(tag: &NbtTag) -> Option<Self> {
         let compound = tag.extract_compound()?;
         let shape = FireworkExplosionShape::from_name(compound.get_string("shape")?)?;
-        let colors = compound
-            .get_int_array("colors")
-            .map(|v| v.to_vec())
-            .unwrap_or_default();
-        let fade_colors = compound
-            .get_int_array("fade_colors")
-            .map(|v| v.to_vec())
-            .unwrap_or_default();
+        // Vanilla's `COLOR_LIST_CODEC` writes a list of ints and also reads int arrays.
+        let read_colors = |name: &str| match compound.get(name) {
+            Some(NbtTag::IntArray(colors)) => colors.clone(),
+            Some(NbtTag::List(colors)) => colors.iter().filter_map(NbtTag::extract_int).collect(),
+            _ => Vec::new(),
+        };
+        let colors = read_colors("colors");
+        let fade_colors = read_colors("fade_colors");
         let has_trail = compound.get_bool("has_trail").unwrap_or(false);
         let has_twinkle = compound.get_bool("has_twinkle").unwrap_or(false);
         Some(Self {
@@ -698,8 +698,10 @@ impl DataComponentImpl for FireworkExplosionImpl {
     fn write_data(&self) -> NbtTag {
         let mut compound = NbtCompound::new();
         compound.put_string("shape", self.shape.to_name().to_string());
-        compound.put("colors", NbtTag::IntArray(self.colors.clone()));
-        compound.put("fade_colors", NbtTag::IntArray(self.fade_colors.clone()));
+        let color_list =
+            |colors: &[i32]| NbtTag::List(colors.iter().map(|&c| NbtTag::Int(c)).collect());
+        compound.put("colors", color_list(&self.colors));
+        compound.put("fade_colors", color_list(&self.fade_colors));
         compound.put_bool("has_trail", self.has_trail);
         compound.put_bool("has_twinkle", self.has_twinkle);
         NbtTag::Compound(compound)
@@ -759,7 +761,8 @@ impl FireworksImpl {
 impl DataComponentImpl for FireworksImpl {
     fn write_data(&self) -> NbtTag {
         let mut compound = NbtCompound::new();
-        compound.put_int("flight_duration", self.flight_duration);
+        // Vanilla's `UNSIGNED_BYTE` codec.
+        compound.put_byte("flight_duration", self.flight_duration as i8);
         let explosions_list: Vec<NbtTag> = self.explosions.iter().map(|e| e.write_data()).collect();
         compound.put_list("explosions", explosions_list);
         NbtTag::Compound(compound)
