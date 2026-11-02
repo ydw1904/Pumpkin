@@ -1,12 +1,18 @@
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
+use pumpkin_data::data_component_impl::VillagerFoodImpl;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::environment_attribute::Activity;
+use pumpkin_data::item::Item;
+use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::villager::VillagerProfession;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 
 use super::VillagerEntity;
 use crate::entity::EntityBase;
+use crate::entity::ai::brain::behavior::utils::throw_item;
 use crate::entity::ai::goal::{Controls, Goal};
 use crate::entity::ai::util::land_random_pos;
 use crate::entity::mob::Mob;
@@ -29,6 +35,19 @@ const INTERACT_DIST_SQR: f64 = 5.0;
 const INTERACT_WALKUP_DIST: i32 = 2;
 /// Vanilla `VillagerGoalPackages.INTERACT_SPEED_MODIFIER`.
 const INTERACT_SPEED: f64 = 0.5;
+/// Vanilla `Villager.hasExcessFood` and `wantsMoreFood` thresholds, in food points.
+const EXCESS_FOOD_POINTS: i32 = 24;
+const WANTS_MORE_FOOD_POINTS: i32 = 12;
+/// Vanilla `Villager.gossip`: ticks between two gossips of the same villager.
+const GOSSIP_INTERVAL: i64 = 1200;
+/// Vanilla `Villager.gossip`'s `transferFrom(..., 10)`.
+const GOSSIP_TRANSFER_COUNT: usize = 10;
+/// Vanilla `GossipContainer.transferFrom` drops gossips weaker than this.
+const MIN_TRANSFERRED_GOSSIP: i32 = 2;
+/// Vanilla `Villager.gossip`'s `spawnGolemIfNeeded(level, timestamp, 5)`.
+const GOSSIP_VILLAGERS_TO_AGREE: usize = 5;
+/// Vanilla `TradeWithVillager.throwHalfStack` keeps this many of a small stack.
+const THROW_KEEP_COUNT: u8 = 24;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum WalkDestination {
@@ -92,7 +111,7 @@ impl VillagerEntity {
     /// The `MEET` activity of vanilla `VillagerGoalPackages.getMeetPackage` besides walking to
     /// the bell: `TriggerGate.triggerOneShuffled` of `StrollAroundPoi` and `SocializeAtBell`,
     /// then the `TradeWithVillager` gate on the interaction target.
-    pub(super) fn tick_meet(&self, world: &World, game_time: i64) {
+    pub(super) fn tick_meet(&self, world: &Arc<World>, game_time: i64) {
         let entity = self.get_entity();
         let is_baby = entity.age.load(Ordering::Relaxed) < 0;
         if world.villager_activity(&entity.block_pos.load(), is_baby) != Activity::Meet {
@@ -113,7 +132,7 @@ impl VillagerEntity {
         } else if !self.stroll_around_poi(meeting_point, game_time) {
             self.socialize_at_bell(world, meeting_point);
         }
-        self.trade_with_villager(world);
+        self.trade_with_villager(world, game_time);
     }
 
     /// Vanilla `StrollAroundPoi`.
@@ -175,9 +194,9 @@ impl VillagerEntity {
         true
     }
 
-    /// The movement part of vanilla `TradeWithVillager`: while the interaction target is a
-    /// living villager, both walk up to and look at each other.
-    fn trade_with_villager(&self, world: &World) {
+    /// Vanilla `TradeWithVillager`: while the interaction target is a living villager, both
+    /// walk up to and look at each other, gossip, and share food and wanted items.
+    fn trade_with_villager(&self, world: &Arc<World>, game_time: i64) {
         let Some(target) = self.interaction_target(world) else {
             self.set_interaction_target(None);
             return;
@@ -207,6 +226,155 @@ impl VillagerEntity {
                 speed: INTERACT_SPEED,
                 close_enough_dist: INTERACT_WALKUP_DIST,
             }));
+        }
+
+        self.gossip(world, villager, game_time);
+        let profession = self.profession();
+        let is_farmer = profession == VillagerProfession::Farmer;
+        let target_pos = target.get_entity().pos.load();
+        if self.count_food_points_in_inventory() >= EXCESS_FOOD_POINTS
+            && (is_farmer || villager.count_food_points_in_inventory() < WANTS_MORE_FOOD_POINTS)
+        {
+            self.throw_half_stack(
+                |stack| stack.get_data_component::<VillagerFoodImpl>().is_some(),
+                target_pos,
+            );
+        }
+        if is_farmer
+            && self.count_item(&Item::WHEAT)
+                > i32::from(ItemStack::new(1, &Item::WHEAT).get_max_stack_size()) / 2
+        {
+            self.throw_half_stack(|stack| stack.item == &Item::WHEAT, target_pos);
+        }
+        // Vanilla `figureOutWhatIAmWillingToTrade`: what the target asks for and this one doesn't.
+        let own_requests = profession.requested_items();
+        let trades = villager
+            .profession()
+            .requested_items()
+            .iter()
+            .filter(|item| !own_requests.contains(item))
+            .collect::<Vec<_>>();
+        if !trades.is_empty() {
+            self.throw_half_stack(|stack| trades.contains(&&stack.item), target_pos);
+        }
+    }
+
+    /// Vanilla `Villager.gossip`: at most once a minute for both, this villager hears up to ten
+    /// of the target's gossips, weakened on the way.
+    fn gossip(&self, world: &Arc<World>, target: &Self, game_time: i64) {
+        let can_gossip = |villager: &Self| {
+            let last = villager.last_gossip_share_time.load(Ordering::Relaxed);
+            game_time < last || game_time >= last + GOSSIP_INTERVAL
+        };
+        if !can_gossip(self) || !can_gossip(target) {
+            return;
+        }
+        let new_gossip = self.transfer_gossips_from(target);
+        self.last_gossip_share_time
+            .store(game_time, Ordering::Relaxed);
+        target
+            .last_gossip_share_time
+            .store(game_time, Ordering::Relaxed);
+        self.spawn_golem_if_needed(world, game_time, GOSSIP_VILLAGERS_TO_AGREE);
+        if new_gossip > 0
+            && let Some(player) = self.get_trading_player()
+        {
+            self.update_special_prices(&player);
+        }
+    }
+
+    /// Vanilla `GossipContainer.transferFrom`: draws up to ten of the source's gossips,
+    /// weighted by their weighted value, and keeps the stronger of each after it decays.
+    fn transfer_gossips_from(&self, source: &Self) -> usize {
+        let entries = source
+            .gossips
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .flat_map(|(target, values)| {
+                values
+                    .iter()
+                    .map(move |(gossip_type, value)| (*target, *gossip_type, *value))
+            })
+            .collect::<Vec<_>>();
+        if entries.is_empty() {
+            return 0;
+        }
+        let ranges = entries
+            .iter()
+            .scan(0, |end, (_, gossip_type, value)| {
+                *end += (value * gossip_type.weight()).abs();
+                Some(*end - 1)
+            })
+            .collect::<Vec<_>>();
+        let ranges_end = ranges.last().map_or(0, |last| last + 1);
+        if ranges_end <= 0 {
+            return 0;
+        }
+        let random = self.get_random();
+        let mut selected = (0..GOSSIP_TRANSFER_COUNT)
+            .map(|_| {
+                let choice = random.random_range(0..ranges_end);
+                ranges.partition_point(|&end| end < choice)
+            })
+            .collect::<Vec<_>>();
+        selected.sort_unstable();
+        selected.dedup();
+
+        let mut gossips = self
+            .gossips
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for &index in &selected {
+            let (target, gossip_type, value) = entries[index];
+            let decayed = value - gossip_type.decay_per_transfer();
+            if decayed >= MIN_TRANSFERRED_GOSSIP {
+                let entry = gossips
+                    .entry(target)
+                    .or_default()
+                    .entry(gossip_type)
+                    .or_default();
+                // Vanilla `mergeValuesForTransfer`.
+                *entry = (*entry).max(decayed);
+            }
+        }
+        selected.len()
+    }
+
+    fn count_item(&self, item: &Item) -> i32 {
+        self.inventory
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .filter(|stack| stack.item == item)
+            .map(|stack| i32::from(stack.item_count))
+            .sum()
+    }
+
+    /// Vanilla `TradeWithVillager.throwHalfStack`: throws half of the first matching stack
+    /// over half full, or what's above 24 of a smaller one.
+    fn throw_half_stack(&self, matches: impl Fn(&ItemStack) -> bool, target_pos: Vector3<f64>) {
+        let to_throw = {
+            let mut inventory = self
+                .inventory
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            inventory
+                .iter_mut()
+                .filter(|stack| !stack.is_empty() && matches(stack))
+                .find_map(|stack| {
+                    let count = if stack.item_count > stack.get_max_stack_size() / 2 {
+                        stack.item_count / 2
+                    } else if stack.item_count > THROW_KEEP_COUNT {
+                        stack.item_count - THROW_KEEP_COUNT
+                    } else {
+                        return None;
+                    };
+                    Some(stack.split(count))
+                })
+        };
+        if let Some(stack) = to_throw.filter(|stack| !stack.is_empty()) {
+            throw_item(self.get_entity(), stack, target_pos);
         }
     }
 }

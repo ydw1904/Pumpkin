@@ -2,7 +2,12 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
-use crate::entity::EntityBase;
+use pumpkin_data::entity::EntityType;
+use pumpkin_data::item_stack::ItemStack;
+use pumpkin_util::math::vector3::Vector3;
+
+use crate::entity::item::ItemEntity;
+use crate::entity::{Entity, EntityBase};
 use crate::world::World;
 
 use super::super::memory::position_tracker::{BlockPosTracker, EntityTracker, PositionTracker};
@@ -141,4 +146,29 @@ pub fn is_other_target_much_further_away_than_current_attack_target(
 #[must_use]
 pub fn is_breeding(brain: &BrainState) -> bool {
     brain.has_memory_value(types::BREED_TARGET.id())
+}
+
+/// Vanilla `BehaviorUtils.throwItem`'s default speed on each axis and hand height below the eyes.
+const THROW_SPEED: f64 = 0.3f32 as f64;
+const THROW_HAND_Y_DISTANCE_FROM_EYE: f64 = 0.3f32 as f64;
+
+/// Vanilla `BehaviorUtils.throwItem` with its default velocity: drops `item` from the
+/// thrower's hand towards `target_pos`.
+pub fn throw_item(thrower: &Entity, item: ItemStack, target_pos: Vector3<f64>) {
+    let pos = thrower.pos.load();
+    let world = thrower.world.load_full();
+    let hand_pos = Vector3::new(
+        pos.x,
+        thrower.get_eye_y() - THROW_HAND_Y_DISTANCE_FROM_EYE,
+        pos.z,
+    );
+    let direction = (target_pos - pos).normalize();
+    let item_entity = ItemEntity::new_with_velocity(
+        Entity::new(world.clone(), hand_pos, &EntityType::ITEM),
+        item,
+        direction * THROW_SPEED,
+        ItemEntity::DEFAULT_PICKUP_DELAY,
+    );
+    item_entity.set_thrower(thrower.entity_uuid);
+    world.spawn_entity(Arc::new(item_entity));
 }

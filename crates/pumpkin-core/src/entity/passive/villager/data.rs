@@ -86,6 +86,16 @@ impl GossipType {
         }
     }
 
+    /// Vanilla `GossipType.decayPerTransfer`: how much a gossip weakens when passed on.
+    #[must_use]
+    pub const fn decay_per_transfer(self) -> i32 {
+        match self {
+            Self::MajorNegative => 10,
+            Self::MinorNegative | Self::MajorPositive | Self::Trading => 20,
+            Self::MinorPositive => 5,
+        }
+    }
+
     #[must_use]
     pub const fn daily_decay(self) -> i32 {
         match self {
