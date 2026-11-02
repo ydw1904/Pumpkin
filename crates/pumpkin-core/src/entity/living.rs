@@ -1466,7 +1466,7 @@ impl LivingEntity {
                 ambient: false,
             };
             let (owner, passengers) = self.effect_packet_recipients();
-            for player in owner.iter().map(|owner| owner.as_ref()).chain(
+            for player in owner.as_deref().into_iter().chain(
                 passengers
                     .iter()
                     .filter_map(|passenger| passenger.get_player()),
