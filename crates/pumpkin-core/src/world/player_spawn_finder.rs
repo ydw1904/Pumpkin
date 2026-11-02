@@ -20,6 +20,8 @@ use crate::entity::{
 
 const ABSOLUTE_MAX_ATTEMPTS: u64 = 1024;
 const DEFAULT_SPAWN_HEIGHT: i32 = 64;
+/// Radius, in chunks, of the square `MinecraftServer.setInitialSpawn` searches.
+const INITIAL_SPAWN_SEARCH_RADIUS: i32 = 5;
 const COLLISION_EPSILON: f64 = 1.0e-7;
 
 fn spawn_search_radius(respawn_radius: i64, border_distance: f64) -> i32 {
@@ -202,22 +204,88 @@ impl World {
         self.no_collision_no_liquid_at(&feet).then_some(feet)
     }
 
+    /// Mirrors `ChunkGenerator.getSpawnHeight`.
+    fn generator_spawn_height(&self) -> i32 {
+        match self.level.world_gen.load().as_ref() {
+            WorldGenerator::Flat(generator) => {
+                self.get_bottom_y()
+                    + generator
+                        .layers
+                        .iter()
+                        .map(|layer| i64::from(layer.height))
+                        .sum::<i64>()
+                        .min(i64::from(self.dimension.height)) as i32
+            }
+            // NoiseBasedChunkGenerator inherits ChunkGenerator.getSpawnHeight.
+            WorldGenerator::Noise(_) | WorldGenerator::Custom(_) => DEFAULT_SPAWN_HEIGHT,
+        }
+    }
+
+    /// Picks the world spawn of a freshly created world, like
+    /// `MinecraftServer.setInitialSpawn`.
+    pub async fn set_initial_spawn(&self) {
+        let origin = self.level.world_gen.load().find_spawn_position();
+        let spawn_chunk = Vector2::new(origin.0.x >> 4, origin.0.z >> 4);
+        let (chunk_x, chunk_z) = (spawn_chunk.x << 4, spawn_chunk.y << 4);
+        let mut height = self.generator_spawn_height();
+        if height < self.get_bottom_y() {
+            self.level.get_or_fetch_chunk(spawn_chunk, |_| ()).await;
+            height = self.get_heightmap_height(
+                ChunkHeightmapType::WorldSurface,
+                chunk_x + 8,
+                chunk_z + 8,
+            );
+        }
+        let mut spawn = BlockPos::new(chunk_x + 8, height, chunk_z + 8);
+
+        // Spiral outwards over the 11x11 chunks around the origin chunk.
+        let (mut x_offset, mut z_offset) = (0i32, 0i32);
+        let (mut dx, mut dz) = (0i32, -1i32);
+        let search = -INITIAL_SPAWN_SEARCH_RADIUS..=INITIAL_SPAWN_SEARCH_RADIUS;
+        for _ in 0..(INITIAL_SPAWN_SEARCH_RADIUS * 2 + 1).pow(2) {
+            if search.contains(&x_offset) && search.contains(&z_offset) {
+                let chunk = Vector2::new(spawn_chunk.x + x_offset, spawn_chunk.y + z_offset);
+                if let Some(pos) = self.get_spawn_pos_in_chunk(chunk).await {
+                    spawn = pos;
+                    break;
+                }
+            }
+            if x_offset == z_offset
+                || (x_offset < 0 && x_offset == -z_offset)
+                || (x_offset > 0 && x_offset == 1 - z_offset)
+            {
+                (dx, dz) = (-dz, dx);
+            }
+            x_offset += dx;
+            z_offset += dz;
+        }
+
+        let mut info = (**self.level_info.load()).clone();
+        info.spawn_x = spawn.0.x;
+        info.spawn_y = spawn.0.y;
+        info.spawn_z = spawn.0.z;
+        info.spawn_yaw = 0.0;
+        info.spawn_pitch = 0.0;
+        self.level_info.store(std::sync::Arc::new(info));
+    }
+
+    /// Mirrors `PlayerSpawnFinder.getSpawnPosInChunk`.
+    async fn get_spawn_pos_in_chunk(&self, chunk: Vector2<i32>) -> Option<BlockPos> {
+        self.level.get_or_fetch_chunk(chunk, |_| ()).await;
+        for x in chunk.x << 4..=(chunk.x << 4) + 15 {
+            for z in chunk.y << 4..=(chunk.y << 4) + 15 {
+                if let Some(pos) = self.get_level_respawn_pos(x, z) {
+                    return Some(pos);
+                }
+            }
+        }
+        None
+    }
+
     fn get_level_respawn_pos(&self, x: i32, z: i32) -> Option<BlockPos> {
         let surface = self.get_heightmap_height(ChunkHeightmapType::WorldSurface, x, z);
         let top = if self.dimension.has_ceiling {
-            match self.level.world_gen.load().as_ref() {
-                WorldGenerator::Flat(generator) => {
-                    self.get_bottom_y()
-                        + generator
-                            .layers
-                            .iter()
-                            .map(|layer| i64::from(layer.height))
-                            .sum::<i64>()
-                            .min(i64::from(self.dimension.height)) as i32
-                }
-                // NoiseBasedChunkGenerator inherits ChunkGenerator.getSpawnHeight.
-                WorldGenerator::Noise(_) | WorldGenerator::Custom(_) => DEFAULT_SPAWN_HEIGHT,
-            }
+            self.generator_spawn_height()
         } else {
             // Cached MOTION_BLOCKING still uses the legacy solid predicate;
             // 26.3 uses a tag and includes every non-empty fluid state.

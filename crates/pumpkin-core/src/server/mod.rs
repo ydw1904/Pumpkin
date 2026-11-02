@@ -27,7 +27,6 @@ use pumpkin_util::permission::PermissionManager;
 use pumpkin_util::random::gameplay::game_random;
 use pumpkin_util::text::color::NamedColor;
 use pumpkin_world::dimension::into_level;
-use pumpkin_world::generation::generator::GeneratorInit;
 use pumpkin_world::world::WorldPortalExt;
 use tracing::{debug, error, info, warn};
 
@@ -193,6 +192,7 @@ impl Server {
 
         let block_registry = super::block::registry::default_registry();
 
+        let mut fresh_world = false;
         let level_info = match AnvilLevelInfo.read_world_info(&world_path) {
             Ok(level_info) => {
                 let dat_path = world_path.join(LEVEL_DAT_FILE_NAME);
@@ -210,14 +210,8 @@ impl Server {
                     world_path.display(),
                     basic_config.seed.0 as i64
                 );
-                let overworld_gen = pumpkin_world::generation::generator::VanillaGenerator::new(
-                    basic_config.seed,
-                    Dimension::OVERWORLD,
-                );
-                let default_data =
-                    LevelData::from_world_generator(basic_config.seed, &overworld_gen);
-                AnvilLevelInfo.write_world_info(&default_data, &world_path)?;
-                default_data
+                fresh_world = true;
+                LevelData::default(basic_config.seed)
             }
             Err(
                 error @ (WorldInfoError::UnsupportedDataVersion(_)
@@ -441,6 +435,11 @@ impl Server {
             let portal: Arc<dyn WorldPortalExt> = Arc::new(WorldPortal(world.clone()));
             level.world_portal.store(Arc::new(Some(portal)));
             worlds_vec.push(world);
+        }
+
+        if fresh_world && let Some(overworld) = worlds_vec.first() {
+            overworld.set_initial_spawn().await;
+            AnvilLevelInfo.write_world_info(&server.level_info.load(), &world_path)?;
         }
 
         for world in &worlds_vec {

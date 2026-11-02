@@ -141,15 +141,16 @@ impl SpawnFinder {
         let search_origin = self.result.location;
 
         while radius <= max_radius {
-            let x = search_origin.0.x + (angle.sin() * radius) as i32;
-            let z = search_origin.0.z + (angle.cos() * radius) as i32;
+            // Java widens the float angle and radius to double here.
+            let x = search_origin.0.x + (f64::from(angle).sin() * f64::from(radius)) as i32;
+            let z = search_origin.0.z + (f64::from(angle).cos() * f64::from(radius)) as i32;
             let candidate = Self::get_spawn_position_and_fitness(target_climates, sampler, x, z);
             if candidate.fitness < self.result.fitness {
                 self.result = candidate;
             }
 
             angle += radius_increment / radius;
-            if angle > std::f32::consts::PI * 2.0 {
+            if f64::from(angle) > std::f64::consts::PI * 2.0 {
                 angle = 0.0;
                 radius += radius_increment;
             }
