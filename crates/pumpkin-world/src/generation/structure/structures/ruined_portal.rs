@@ -467,7 +467,7 @@ impl RuinedPortalPiece {
 
             let mut block_entity_nbt = block.nbt.clone();
 
-            let Some(state) = BlockStateResolver::resolve(palette_entry, rotation, mirror) else {
+            let Some(state) = BlockStateResolver::resolve_simple(palette_entry) else {
                 continue;
             };
 
@@ -499,6 +499,8 @@ impl RuinedPortalPiece {
             let Some(state) = processed_state else {
                 continue;
             };
+            // Vanilla `placeInWorld` mirrors and rotates the processed state.
+            let state = state.mirror(mirror).rotate(rotation);
 
             placement.set_block(&mut level, world_pos, state);
 

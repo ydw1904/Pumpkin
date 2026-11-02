@@ -185,7 +185,7 @@ impl NetherFossilPiece {
             let mut block_entity_nbt = block.nbt.clone();
             let placed_entry = palette_entry.clone();
 
-            let Some(state) = BlockStateResolver::resolve(&placed_entry, rotation, mirror) else {
+            let Some(state) = BlockStateResolver::resolve_simple(&placed_entry) else {
                 continue;
             };
 
@@ -217,6 +217,8 @@ impl NetherFossilPiece {
             let Some(final_state) = processed_state else {
                 continue;
             };
+            // Vanilla `placeInWorld` mirrors and rotates the processed state.
+            let final_state = final_state.mirror(mirror).rotate(rotation);
 
             placement.set_block(&mut level, world_pos, final_state);
         }

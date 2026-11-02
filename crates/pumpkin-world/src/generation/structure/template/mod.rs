@@ -8,7 +8,7 @@
 //!
 //! - [`StructureTemplate`]: Represents a loaded NBT template with size, palette, and blocks
 //! - [`TemplatePiece`]: A structure piece that places blocks from a template
-//! - [`Rotation`] and [`Mirror`]: Transform positions and block properties
+//! - [`Rotation`] and [`Mirror`](pumpkin_data::Mirror): Transform positions and block properties
 //! - [`TemplateCache`]: Lazy-loading cache for embedded template files
 //!
 //! # Example Usage
@@ -33,7 +33,6 @@ mod template_piece;
 
 use pumpkin_data::Block;
 use pumpkin_data::BlockStateId;
-use pumpkin_data::Mirror;
 use pumpkin_data::Rotation;
 use pumpkin_data::fluid::Fluid;
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
@@ -161,10 +160,8 @@ pub fn place_template_with_options(
             continue;
         }
 
-        // Resolve block state with rotation applied to directional properties
-        let Some(mut state) =
-            BlockStateResolver::resolve(&placed_entry, rotation, Mirror::default())
-        else {
+        // Processors see the template's own states; vanilla rotates the result in `placeInWorld`.
+        let Some(mut state) = BlockStateResolver::resolve_simple(&placed_entry) else {
             continue;
         };
 
@@ -223,7 +220,7 @@ pub fn place_template_with_options(
         if skip_air && state.id.to_block_id() == pumpkin_data::Block::AIR.id {
             continue;
         }
-        processed.push((world_pos, state, block_entity_nbt));
+        processed.push((world_pos, state.rotate(rotation), block_entity_nbt));
     }
 
     // Vanilla processes the whole template before placing anything, so rule processors read
