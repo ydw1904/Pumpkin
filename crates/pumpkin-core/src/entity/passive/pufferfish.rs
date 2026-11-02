@@ -129,7 +129,7 @@ impl PufferfishEntity {
             Some(self),
         ) {
             if let Some(living) = mob.get_living_entity() {
-                living.add_effect(Self::poison(state));
+                living.add_effect_with_source(Self::poison(state), Some(self));
             }
             self.play_entity_sound(Sound::EntityPufferFishSting, 1.0, 1.0);
         }
@@ -210,8 +210,9 @@ impl Mob for PufferfishEntity {
                     0.0,
                 ));
             }
-            // Through the player, so `effects_changed` advancements trigger like vanilla.
-            player.add_effect(Self::poison(state));
+            player
+                .living_entity
+                .add_effect_with_source(Self::poison(state), Some(self));
         }
     }
 

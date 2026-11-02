@@ -3,6 +3,14 @@ use crate::entity::player::advancement::PlayerAdvancement;
 use crate::entity::player::advancement::predicate::{self, CriterionConditions};
 use pumpkin_util::math::position::BlockPos;
 
+/// The entity an effect came from, as the `effects_changed` source predicate sees it.
+#[derive(Debug, Clone)]
+pub struct EffectSourceEntity {
+    pub entity_type: String,
+    /// Distance from the affected player.
+    pub distance: f64,
+}
+
 #[derive(Debug, Clone)]
 pub enum AdvancementTrigger {
     InventoryChanged,
@@ -153,6 +161,7 @@ pub enum AdvancementTrigger {
     },
     EffectsChanged {
         effects: Vec<predicate::ActiveEffect>,
+        source: Option<EffectSourceEntity>,
     },
     SpearMobs {
         count: i32,
@@ -971,14 +980,21 @@ impl Player {
                 );
             }
 
-            AdvancementTrigger::EffectsChanged { effects } => {
+            AdvancementTrigger::EffectsChanged { effects, source } => {
                 self.trigger_criterion_event("minecraft:effects_changed", |cond| match cond {
-                    // Pumpkin doesn't pass the effect's source entity, which vanilla's
-                    // `EffectsChangedTrigger` treats like a missing source: no match.
+                    // Vanilla `EffectsChangedTrigger`: a source predicate never matches an
+                    // effect without a source entity.
                     CriterionConditions::EffectsChanged {
                         effects: pred,
-                        source,
-                    } => source.is_none() && pred.as_ref().is_none_or(|p| p.matches(&effects)),
+                        source: source_pred,
+                    } => {
+                        pred.as_ref().is_none_or(|p| p.matches(&effects))
+                            && source_pred.as_ref().is_none_or(|p| {
+                                source.as_ref().is_some_and(|s| {
+                                    p.matches(&s.entity_type, Some(s.distance), None)
+                                })
+                            })
+                    }
                     CriterionConditions::Custom { .. } => true,
                     _ => false,
                 });

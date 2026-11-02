@@ -1226,6 +1226,12 @@ impl LivingEntity {
     }
 
     pub fn add_effect(&self, effect: Effect) {
+        self.add_effect_with_source(effect, None);
+    }
+
+    /// Vanilla `LivingEntity.addEffect(effect, source)`: the entity that caused the effect
+    /// reaches the `effects_changed` trigger.
+    pub fn add_effect_with_source(&self, effect: Effect, source: Option<&dyn EntityBase>) {
         if !self.can_be_affected(&effect) {
             return;
         }
@@ -1317,7 +1323,7 @@ impl LivingEntity {
                 .insert(effect.effect_type, effect);
         }
         self.sync_effect_particles();
-        self.trigger_effects_changed();
+        self.trigger_effects_changed(source);
     }
 
     /// Vanilla `LivingEntity.baseTick`: how much a player outside the world border's safe zone
@@ -1340,13 +1346,24 @@ impl LivingEntity {
 
     /// Vanilla `ServerPlayer.onEffectAdded`, `onEffectUpdated` and `onEffectsRemoved` fire the
     /// `effects_changed` trigger once the effects are in their new state.
-    fn trigger_effects_changed(&self) {
+    fn trigger_effects_changed(&self, source: Option<&dyn EntityBase>) {
         if let Some(player) = self
             .entity
             .world
             .load()
             .get_player_by_id(self.entity.entity_id)
         {
+            let source = source.map(|source| {
+                let source = source.get_entity();
+                crate::entity::player::advancement::trigger::EffectSourceEntity {
+                    entity_type: format!("minecraft:{}", source.entity_type.resource_name),
+                    distance: source
+                        .pos
+                        .load()
+                        .squared_distance_to_vec(&self.entity.pos.load())
+                        .sqrt(),
+                }
+            });
             let effects = self
                 .active_effects
                 .lock()
@@ -1365,6 +1382,7 @@ impl LivingEntity {
             player.trigger_advancement(
                 crate::entity::player::advancement::trigger::AdvancementTrigger::EffectsChanged {
                     effects,
+                    source,
                 },
             );
         }
@@ -1618,7 +1636,7 @@ impl LivingEntity {
 
         if succeeded {
             self.sync_effect_particles();
-            self.trigger_effects_changed();
+            self.trigger_effects_changed(None);
         }
 
         succeeded
@@ -3056,7 +3074,7 @@ impl LivingEntity {
             self.broadcast_effect(&effect, false);
         }
         self.sync_effect_particles();
-        self.trigger_effects_changed();
+        self.trigger_effects_changed(None);
     }
 
     /// Vanilla: `LivingEntity.checkTotemDeathProtection`.

@@ -83,15 +83,18 @@ impl CommandExecutor for GiveExecutor {
                 .is_some_and(|existing| existing.amplifier >= amplifier);
 
             if !should_skip {
-                target.add_effect(Effect {
-                    effect_type: effect,
-                    duration: duration_ticks,
-                    amplifier,
-                    ambient: false,
-                    show_particles: !hide_particles,
-                    show_icon: true,
-                    blend: false,
-                });
+                target.living_entity.add_effect_with_source(
+                    Effect {
+                        effect_type: effect,
+                        duration: duration_ticks,
+                        amplifier,
+                        ambient: false,
+                        show_particles: !hide_particles,
+                        show_icon: true,
+                        blend: false,
+                    },
+                    context.source.entity.as_deref(),
+                );
                 successes += 1;
             }
         }

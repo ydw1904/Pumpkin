@@ -481,15 +481,18 @@ impl EntityBase for ShulkerBulletEntity {
 
             if damaged && let Some(living) = hit_entity.get_living_entity() {
                 // Apply levitation for 200 ticks
-                living.add_effect(Effect {
-                    effect_type: &StatusEffect::LEVITATION,
-                    duration: 200,
-                    amplifier: 0,
-                    ambient: false,
-                    show_particles: true,
-                    show_icon: true,
-                    blend: false,
-                });
+                living.add_effect_with_source(
+                    Effect {
+                        effect_type: &StatusEffect::LEVITATION,
+                        duration: 200,
+                        amplifier: 0,
+                        ambient: false,
+                        show_particles: true,
+                        show_icon: true,
+                        blend: false,
+                    },
+                    Some(owner.as_deref().unwrap_or(self)),
+                );
             }
 
             let pos = entity.pos.load();

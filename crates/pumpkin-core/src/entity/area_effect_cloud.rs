@@ -341,10 +341,7 @@ impl AreaEffectCloudEntity {
                         owner: owner.as_deref(),
                     }),
                 ) {
-                    match candidate.get_player() {
-                        Some(player) => player.add_effect(effect.clone()),
-                        None => living.add_effect(effect.clone()),
-                    }
+                    living.add_effect_with_source(effect.clone(), Some(self));
                 }
             }
 

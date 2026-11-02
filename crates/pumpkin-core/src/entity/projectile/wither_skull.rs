@@ -139,11 +139,9 @@ impl EntityBase for WitherSkullEntity {
                         show_icon: true,
                         blend: true,
                     };
-                    if let Some(player) = entity.get_player() {
-                        player.add_effect(effect);
-                    } else {
-                        living.add_effect(effect);
-                    }
+                    // Vanilla `Projectile.getEffectSource`: the owner, or the skull itself.
+                    let owner = self.thrown.owner.get(&world);
+                    living.add_effect_with_source(effect, Some(owner.as_deref().unwrap_or(self)));
                 }
             }
         }

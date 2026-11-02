@@ -97,15 +97,18 @@ impl Mob for HuskEntity {
         }
         let world = living.entity.world.load_full();
         let difficulty = RegionalDifficulty::at(&world, living.entity.pos.load());
-        target.add_effect(Effect {
-            effect_type: &StatusEffect::HUNGER,
-            duration: 140 * difficulty.effective_difficulty as i32,
-            amplifier: 0,
-            ambient: false,
-            show_particles: true,
-            show_icon: true,
-            blend: false,
-        });
+        target.add_effect_with_source(
+            Effect {
+                effect_type: &StatusEffect::HUNGER,
+                duration: 140 * difficulty.effective_difficulty as i32,
+                amplifier: 0,
+                ambient: false,
+                show_particles: true,
+                show_icon: true,
+                blend: false,
+            },
+            Some(self),
+        );
     }
 
     fn post_tick(&self) {

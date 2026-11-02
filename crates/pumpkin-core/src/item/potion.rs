@@ -145,7 +145,11 @@ impl PotionContents {
                     show_icon,
                     blend: false,
                 };
-                target.add_effect(eff);
+                // Vanilla passes `Projectile.getEffectSource`: the owner, or the projectile.
+                target.add_effect_with_source(
+                    eff,
+                    effect_source.map(|source| source.owner.unwrap_or(source.direct)),
+                );
             }
         }
     }
