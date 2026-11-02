@@ -72565,7 +72565,9 @@ impl Advancement {
         criteria_definitions: &[AdvancementCriterion {
             name: "kill_axolotl_target",
             trigger: "minecraft:effects_changed",
-            conditions: AdvancementCondition::EffectsChanged,
+            conditions: AdvancementCondition::EffectsChanged(
+                "{\"source\":{\"type\":\"minecraft:entity_properties\",\"entity\":\"this\",\"predicate\":{\"minecraft:entity_type\":\"minecraft:axolotl\"}}}",
+            ),
         }],
     };
     pub const HUSBANDRY_OBTAIN_NETHERITE_HOE: &Self = &Self {
@@ -73063,7 +73065,9 @@ impl Advancement {
         criteria_definitions: &[AdvancementCriterion {
             name: "all_effects",
             trigger: "minecraft:effects_changed",
-            conditions: AdvancementCondition::EffectsChanged,
+            conditions: AdvancementCondition::EffectsChanged(
+                "{\"effects\":{\"minecraft:fire_resistance\":{},\"minecraft:infested\":{},\"minecraft:invisibility\":{},\"minecraft:jump_boost\":{},\"minecraft:night_vision\":{},\"minecraft:oozing\":{},\"minecraft:poison\":{},\"minecraft:regeneration\":{},\"minecraft:resistance\":{},\"minecraft:slow_falling\":{},\"minecraft:slowness\":{},\"minecraft:speed\":{},\"minecraft:strength\":{},\"minecraft:water_breathing\":{},\"minecraft:weakness\":{},\"minecraft:weaving\":{},\"minecraft:wind_charged\":{}}}",
+            ),
         }],
     };
     pub const STORY_IRON_TOOLS: &Self = &Self {
@@ -73406,7 +73410,9 @@ impl Advancement {
         criteria_definitions: &[AdvancementCriterion {
             name: "all_effects",
             trigger: "minecraft:effects_changed",
-            conditions: AdvancementCondition::EffectsChanged,
+            conditions: AdvancementCondition::EffectsChanged(
+                "{\"effects\":{\"minecraft:absorption\":{},\"minecraft:bad_omen\":{},\"minecraft:blindness\":{},\"minecraft:breath_of_the_nautilus\":{},\"minecraft:conduit_power\":{},\"minecraft:darkness\":{},\"minecraft:dolphins_grace\":{},\"minecraft:fire_resistance\":{},\"minecraft:glowing\":{},\"minecraft:haste\":{},\"minecraft:hero_of_the_village\":{},\"minecraft:hunger\":{},\"minecraft:infested\":{},\"minecraft:invisibility\":{},\"minecraft:jump_boost\":{},\"minecraft:levitation\":{},\"minecraft:mining_fatigue\":{},\"minecraft:nausea\":{},\"minecraft:night_vision\":{},\"minecraft:oozing\":{},\"minecraft:poison\":{},\"minecraft:raid_omen\":{},\"minecraft:regeneration\":{},\"minecraft:resistance\":{},\"minecraft:slow_falling\":{},\"minecraft:slowness\":{},\"minecraft:speed\":{},\"minecraft:strength\":{},\"minecraft:trial_omen\":{},\"minecraft:water_breathing\":{},\"minecraft:weakness\":{},\"minecraft:weaving\":{},\"minecraft:wind_charged\":{},\"minecraft:wither\":{}}}",
+            ),
         }],
     };
     pub const STORY_DEFLECT_ARROW: &Self = &Self {

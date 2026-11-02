@@ -151,7 +151,9 @@ pub enum AdvancementTrigger {
     CrafterRecipeCrafted {
         recipe_id: String,
     },
-    EffectsChanged,
+    EffectsChanged {
+        effects: Vec<predicate::ActiveEffect>,
+    },
     SpearMobs {
         count: i32,
     },
@@ -969,8 +971,17 @@ impl Player {
                 );
             }
 
-            AdvancementTrigger::EffectsChanged => {
-                self.trigger_criterion_event("minecraft:effects_changed", |_cond| true);
+            AdvancementTrigger::EffectsChanged { effects } => {
+                self.trigger_criterion_event("minecraft:effects_changed", |cond| match cond {
+                    // Pumpkin doesn't pass the effect's source entity, which vanilla's
+                    // `EffectsChangedTrigger` treats like a missing source: no match.
+                    CriterionConditions::EffectsChanged {
+                        effects: pred,
+                        source,
+                    } => source.is_none() && pred.as_ref().is_none_or(|p| p.matches(&effects)),
+                    CriterionConditions::Custom { .. } => true,
+                    _ => false,
+                });
             }
 
             AdvancementTrigger::SpearMobs { count } => {

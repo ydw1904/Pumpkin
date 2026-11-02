@@ -1326,8 +1326,25 @@ impl LivingEntity {
             .load()
             .get_player_by_id(self.entity.entity_id)
         {
+            let effects = self
+                .active_effects
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .values()
+                .map(
+                    |effect| crate::entity::player::advancement::predicate::ActiveEffect {
+                        effect: effect.effect_type.minecraft_name,
+                        amplifier: i32::from(effect.amplifier),
+                        duration: effect.duration,
+                        ambient: effect.ambient,
+                        visible: effect.show_particles,
+                    },
+                )
+                .collect();
             player.trigger_advancement(
-                crate::entity::player::advancement::trigger::AdvancementTrigger::EffectsChanged,
+                crate::entity::player::advancement::trigger::AdvancementTrigger::EffectsChanged {
+                    effects,
+                },
             );
         }
     }

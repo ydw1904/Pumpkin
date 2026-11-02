@@ -796,6 +796,88 @@ impl EntityPredicate {
     }
 }
 
+/// An active effect, as `MobEffectsPredicate` sees it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ActiveEffect {
+    pub effect: &'static str,
+    pub amplifier: i32,
+    pub duration: i32,
+    pub ambient: bool,
+    pub visible: bool,
+}
+
+/// Vanilla `MobEffectsPredicate.MobEffectInstancePredicate`.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct MobEffectInstancePredicate {
+    pub amplifier: Option<IntBounds>,
+    pub duration: Option<IntBounds>,
+    pub ambient: Option<bool>,
+    pub visible: Option<bool>,
+}
+
+impl MobEffectInstancePredicate {
+    #[must_use]
+    pub fn from_value(val: &Value) -> Self {
+        Self {
+            amplifier: val.get("amplifier").and_then(IntBounds::from_value),
+            duration: val.get("duration").and_then(IntBounds::from_value),
+            ambient: val.get("ambient").and_then(Value::as_bool),
+            visible: val.get("visible").and_then(Value::as_bool),
+        }
+    }
+
+    #[must_use]
+    pub fn matches(&self, effect: &ActiveEffect) -> bool {
+        self.amplifier
+            .as_ref()
+            .is_none_or(|b| b.matches(i64::from(effect.amplifier)))
+            && self
+                .duration
+                .as_ref()
+                .is_none_or(|b| b.matches(i64::from(effect.duration)))
+            && self.ambient.is_none_or(|a| a == effect.ambient)
+            && self.visible.is_none_or(|v| v == effect.visible)
+    }
+}
+
+/// Vanilla `MobEffectsPredicate`: every listed effect has to be active and match.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct MobEffectsPredicate {
+    pub effects: Vec<(String, MobEffectInstancePredicate)>,
+}
+
+impl MobEffectsPredicate {
+    #[must_use]
+    pub fn from_value(val: &Value) -> Self {
+        let effects = val
+            .as_object()
+            .map(|map| {
+                map.iter()
+                    .map(|(id, pred)| {
+                        let id = if id.contains(':') {
+                            id.clone()
+                        } else {
+                            format!("minecraft:{id}")
+                        };
+                        (id, MobEffectInstancePredicate::from_value(pred))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Self { effects }
+    }
+
+    #[must_use]
+    pub fn matches(&self, active: &[ActiveEffect]) -> bool {
+        self.effects.iter().all(|(id, pred)| {
+            active
+                .iter()
+                .find(|effect| effect.effect == id)
+                .is_some_and(|effect| pred.matches(effect))
+        })
+    }
+}
+
 /// Strongly-typed damage condition.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct DamagePredicate {
@@ -1214,7 +1296,10 @@ pub enum CriterionConditions {
     StartedRiding(Option<EntityPredicate>),
     SummonedEntity(EntityPredicate),
     CrafterRecipeCrafted(String),
-    EffectsChanged,
+    EffectsChanged {
+        effects: Option<MobEffectsPredicate>,
+        source: Option<EntityPredicate>,
+    },
     SpearMobs {
         count: Option<i32>,
     },
@@ -1582,7 +1667,7 @@ impl From<pumpkin_data::advancement_data::AdvancementCondition> for CriterionCon
             AC::StartedRiding(p) => Self::StartedRiding(p.as_ref().map(from_entity_condition)),
             AC::SummonedEntity(e) => Self::SummonedEntity(from_entity_condition(&e)),
             AC::CrafterRecipeCrafted(r) => Self::CrafterRecipeCrafted(r.to_string()),
-            AC::EffectsChanged => Self::EffectsChanged,
+            AC::EffectsChanged(raw) => Self::parse("minecraft:effects_changed", raw),
             AC::SpearMobs { count } => Self::SpearMobs { count },
             AC::Impossible => Self::Impossible,
             AC::Empty | AC::Tick => Self::Tick,
@@ -2008,7 +2093,10 @@ impl CriterionConditions {
                     .unwrap_or("")
                     .to_string(),
             ),
-            "minecraft:effects_changed" => Self::EffectsChanged,
+            "minecraft:effects_changed" => Self::EffectsChanged {
+                effects: val.get("effects").map(MobEffectsPredicate::from_value),
+                source: val.get("source").map(EntityPredicate::from_value),
+            },
             "minecraft:spear_mobs" => Self::SpearMobs {
                 count: val.get("count").and_then(Value::as_i64).map(|v| v as i32),
             },
@@ -2159,6 +2247,44 @@ pub fn matches_enter_block_condition(cond: &Value, block_id: &str) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// `effects_changed` needs every listed effect active, so `nether/all_potions` stays
+    /// locked with only some of them, and a `source` condition never matches without a source.
+    #[test]
+    fn effects_changed_needs_all_listed_effects() {
+        let active = |ids: &[&'static str]| -> Vec<ActiveEffect> {
+            ids.iter()
+                .map(|id| ActiveEffect {
+                    effect: id,
+                    amplifier: 0,
+                    duration: 200,
+                    ambient: false,
+                    visible: true,
+                })
+                .collect()
+        };
+        let CriterionConditions::EffectsChanged { effects, source } = CriterionConditions::parse(
+            "minecraft:effects_changed",
+            r#"{"effects":{"minecraft:speed":{},"minecraft:strength":{"amplifier":{"min":1}}}}"#,
+        ) else {
+            panic!("not parsed as effects_changed");
+        };
+        let effects = effects.unwrap();
+        assert!(source.is_none());
+        assert!(!effects.matches(&active(&["minecraft:speed"])));
+        assert!(!effects.matches(&active(&["minecraft:speed", "minecraft:strength"])));
+        let mut strong = active(&["minecraft:speed", "minecraft:strength"]);
+        strong[1].amplifier = 1;
+        assert!(effects.matches(&strong));
+
+        let CriterionConditions::EffectsChanged { source, .. } = CriterionConditions::parse(
+            "minecraft:effects_changed",
+            r#"{"source":{"type":"minecraft:entity_properties","entity":"this","predicate":{"minecraft:entity_type":"minecraft:axolotl"}}}"#,
+        ) else {
+            panic!("not parsed as effects_changed");
+        };
+        assert!(source.is_some());
+    }
 
     #[test]
     fn matches_id_works() {

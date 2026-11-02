@@ -1295,7 +1295,7 @@ fn generate_condition_tokens(trigger: &str, val: &serde_json::Value) -> TokenStr
             }
             "minecraft:hero_of_the_village" => quote! { AdvancementCondition::HeroOfTheVillage },
             "minecraft:started_riding" => quote! { AdvancementCondition::StartedRiding },
-            "minecraft:effects_changed" => quote! { AdvancementCondition::EffectsChanged },
+            "minecraft:effects_changed" => quote! { AdvancementCondition::EffectsChanged("{}") },
             "minecraft:impossible" => quote! { AdvancementCondition::Impossible },
             _ => quote! { AdvancementCondition::Empty },
         };
@@ -1792,7 +1792,10 @@ fn generate_condition_tokens(trigger: &str, val: &serde_json::Value) -> TokenStr
                 .unwrap_or("");
             quote! { AdvancementCondition::CrafterRecipeCrafted(#r) }
         }
-        "minecraft:effects_changed" => quote! { AdvancementCondition::EffectsChanged },
+        "minecraft:effects_changed" => {
+            let raw = serde_json::to_string(val).unwrap_or_default();
+            quote! { AdvancementCondition::EffectsChanged(#raw) }
+        }
         "minecraft:spear_mobs" => {
             let cnt = val.get("count").and_then(|v| v.as_i64()).map(|v| v as i32);
             let c_tok = opt_i32_tokens(cnt);
