@@ -89,7 +89,8 @@ impl ZombieEntityBase {
         let mob_arc = Self::without_behaviour_goals(entity, can_break_doors);
         let goal_selector = &mob_arc.mob_entity.goals_selector;
         let target_selector = &mob_arc.mob_entity.target_selector;
-        goal_selector.add_goal(2, ZombieAttackGoal::new(1.0, false));
+        // Vanilla puts `SpearUseGoal` at 2, which is not ported yet.
+        goal_selector.add_goal(3, ZombieAttackGoal::new(1.0, false));
         let zombie = Arc::downgrade(&mob_arc);
         goal_selector.add_goal(
             6,
