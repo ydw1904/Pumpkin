@@ -16,6 +16,7 @@ struct VillagerDataJson {
 struct ProfessionJson {
     name: NameJson,
     requested_items: Vec<String>,
+    secondary_poi: Vec<String>,
     work_sound: Option<String>,
     #[serde(default)]
     trade_sets: IndexMap<String, String>,
@@ -176,6 +177,7 @@ pub fn build() -> TokenStream {
 
     let mut work_sounds = Vec::new();
     let mut requested_items = Vec::new();
+    let mut secondary_pois = Vec::new();
     let mut profession_names = Vec::new();
 
     let mut profession_from_i32 = Vec::new();
@@ -370,6 +372,21 @@ pub fn build() -> TokenStream {
             .collect();
         requested_items.push(quote! { Self::#ident => &[#(#items),*] });
 
+        let blocks: Vec<_> = prof_data
+            .secondary_poi
+            .iter()
+            .map(|b| {
+                let block_ident = format_ident!(
+                    "{}",
+                    b.strip_prefix("minecraft:")
+                        .unwrap_or(b)
+                        .to_shouty_snake_case()
+                );
+                quote! { &crate::Block::#block_ident }
+            })
+            .collect();
+        secondary_pois.push(quote! { Self::#ident => &[#(#blocks),*] });
+
         let translate = &prof_data.name.translate;
         profession_names.push(quote! { Self::#ident => #translate });
 
@@ -483,6 +500,16 @@ pub fn build() -> TokenStream {
             pub const fn requested_items(&self) -> &'static [&'static crate::item::Item] {
                 match self {
                     #(#requested_items),*
+                }
+            }
+
+            /// Vanilla `VillagerProfession.secondaryPoi`: blocks the profession works at besides
+            /// its job site.
+            #[must_use]
+            #[allow(clippy::match_same_arms)]
+            pub const fn secondary_poi(&self) -> &'static [&'static crate::Block] {
+                match self {
+                    #(#secondary_pois),*
                 }
             }
 
