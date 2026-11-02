@@ -329,30 +329,6 @@ impl VillagerPoiStorage {
         found
     }
 
-    #[must_use]
-    pub fn available_job_sites(
-        &self,
-        origin: BlockPos,
-        radius: i32,
-        expected_profession: Option<VillagerProfession>,
-    ) -> Vec<BlockPos> {
-        self.find_all_closest_first(
-            |poi_type| match poi_type {
-                VillagePoiType::JobSite(profession) => {
-                    expected_profession.is_none_or(|expected| expected == profession)
-                }
-                VillagePoiType::Home | VillagePoiType::Meeting => false,
-            },
-            |_| true,
-            origin,
-            radius,
-            Occupancy::HasSpace,
-        )
-        .into_iter()
-        .map(|(_, position)| position)
-        .collect()
-    }
-
     /// Vanilla `PoiManager.sectionsToVillage`: the chebyshev distance in sections to the nearest
     /// section with an occupied village POI, capped at 7.
     #[must_use]
@@ -764,27 +740,5 @@ mod tests {
         check(&storage, &bells[2..]);
         storage.update_block(bells[2], Block::AIR.default_state.id);
         check(&storage, &bells[3..]);
-    }
-
-    #[test]
-    fn available_job_sites_respect_profession_and_vanilla_search_radius() {
-        let origin = BlockPos::new(0, 64, 0);
-        let lectern = BlockPos::new(48, 64, 0);
-        let too_far = BlockPos::new(49, 64, 0);
-        let composter = BlockPos::new(1, 64, 0);
-        let mut storage = VillagerPoiStorage::default();
-
-        storage.update_block(lectern, Block::LECTERN.default_state.id);
-        storage.update_block(too_far, Block::LECTERN.default_state.id);
-        storage.update_block(composter, Block::COMPOSTER.default_state.id);
-
-        assert_eq!(
-            storage.available_job_sites(origin, 48, Some(VillagerProfession::Librarian)),
-            vec![lectern]
-        );
-        assert_eq!(
-            storage.available_job_sites(origin, 48, Some(VillagerProfession::Farmer)),
-            vec![composter]
-        );
     }
 }

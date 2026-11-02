@@ -1478,11 +1478,10 @@ pub trait Mob: EntityBase + Send + Sync {
         None
     }
 
-    fn is_job_site_pending(&self) -> bool {
-        false
+    /// The potential job site a running vanilla `GoToPotentialJobSite` walks to.
+    fn get_potential_job_site_walk_target(&self) -> Option<BlockPos> {
+        None
     }
-
-    fn release_pending_job_site(&self, _position: BlockPos) {}
 
     fn get_trading_player(&self) -> Option<Arc<Player>> {
         None

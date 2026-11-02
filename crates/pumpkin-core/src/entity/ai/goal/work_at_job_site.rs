@@ -17,9 +17,11 @@ impl WorkAtJobSiteGoal {
         }
     }
 
-    fn should_move_to_job_site(mob: &dyn Mob) -> bool {
-        if mob.is_job_site_pending() {
-            return true;
+    /// The potential job site `GoToPotentialJobSite` walks to, or the job site during work
+    /// hours.
+    fn walk_target(mob: &dyn Mob) -> Option<BlockPos> {
+        if let Some(potential) = mob.get_potential_job_site_walk_target() {
+            return Some(potential);
         }
         let world = mob.get_mob_entity().living_entity.entity.world.load();
         let daytime = world
@@ -27,18 +29,16 @@ impl WorkAtJobSiteGoal {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .query_daytime();
-        (2_000..9_000).contains(&daytime)
+        mob.get_job_site()
+            .filter(|_| (2_000..9_000).contains(&daytime))
     }
 }
 
 impl Goal for WorkAtJobSiteGoal {
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
-        let Some(target) = mob.get_job_site() else {
+        let Some(target) = Self::walk_target(mob) else {
             return false;
         };
-        if !Self::should_move_to_job_site(mob) {
-            return false;
-        }
         let position = mob.get_mob_entity().living_entity.entity.pos.load();
         if target.to_centered_f64().squared_distance_to_vec(&position) < 1.73f64.powi(2) {
             return false;
@@ -51,7 +51,7 @@ impl Goal for WorkAtJobSiteGoal {
         let Some(target) = self.target else {
             return false;
         };
-        if mob.get_job_site() != Some(target) || !Self::should_move_to_job_site(mob) {
+        if Self::walk_target(mob) != Some(target) {
             return false;
         }
         let entity = &mob.get_mob_entity().living_entity.entity;
@@ -77,15 +77,6 @@ impl Goal for WorkAtJobSiteGoal {
     }
 
     fn stop(&mut self, mob: &dyn Mob) {
-        if let Some(target) = self.target
-            && target
-                .to_centered_f64()
-                .squared_distance_to_vec(&mob.get_mob_entity().living_entity.entity.pos.load())
-                >= 2.0f64.powi(2)
-            && mob.is_job_site_pending()
-        {
-            mob.release_pending_job_site(target);
-        }
         self.target = None;
         mob.get_mob_entity().steered().navigator().stop();
     }

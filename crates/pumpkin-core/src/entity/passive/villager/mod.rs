@@ -32,22 +32,20 @@ use pumpkin_util::math::{boundingbox::BoundingBox, position::BlockPos, vector3::
 use pumpkin_util::text::TextComponent;
 
 use crate::entity::ai::behavior::fleeing::{self, Flee};
+use crate::entity::living::LivingEntity;
 use crate::entity::player::Player;
 use crate::entity::{
     Entity, EntityBase,
-    ai::{
-        goal::{
-            look_around::RandomLookAroundGoal, look_at_entity::LookAtEntityGoal,
-            open_door::OpenDoorGoal, swim::SwimGoal, trade_with_player::TradeWithPlayerGoal,
-            wander_around::WanderAroundGoal, work_at_job_site::WorkAtJobSiteGoal,
-        },
-        pathfinder::Navigator,
+    ai::goal::{
+        look_around::RandomLookAroundGoal, look_at_entity::LookAtEntityGoal,
+        open_door::OpenDoorGoal, swim::SwimGoal, trade_with_player::TradeWithPlayerGoal,
+        wander_around::WanderAroundGoal, work_at_job_site::WorkAtJobSiteGoal,
     },
     experience_orb::ExperienceOrbEntity,
     mob::{Mob, MobEntity, spawn::SpawnGroupData},
 };
 use crate::world::World;
-use crate::world::villager_poi::{VillagePoiType, profession_for_block};
+use crate::world::villager_poi::VillagePoiType;
 use acquire_poi::AcquirePoi;
 use pumpkin_data::environment_attribute::Activity;
 
@@ -64,12 +62,22 @@ const SLEEP_RESTART_DELAY: i64 = 40;
 /// The box radius of vanilla's `NearestLivingEntitySensor`.
 const NEAREST_LIVING_ENTITY_RANGE: f64 = 16.0;
 
-fn job_site_accepts(
-    expected: Option<VillagerProfession>,
-) -> impl Fn(VillagePoiType) -> bool + Copy {
-    move |poi_type| {
-        matches!(poi_type, VillagePoiType::JobSite(profession)
-            if expected.is_none_or(|expected| expected == profession))
+/// Vanilla `GoToPotentialJobSite.TICKS_UNTIL_TIMEOUT`.
+const GO_TO_POTENTIAL_JOB_SITE_DURATION: i64 = 1200;
+
+/// Vanilla `VillagerProfession.heldJobSite`.
+fn held_job_site(profession: VillagerProfession) -> impl Fn(VillagePoiType) -> bool + Copy {
+    move |poi_type| match profession {
+        VillagerProfession::None | VillagerProfession::Nitwit => false,
+        profession => poi_type == VillagePoiType::JobSite(profession),
+    }
+}
+
+/// Vanilla `VillagerProfession.acquirableJobSite`: the unemployed take any job site.
+fn acquirable_job_site(profession: VillagerProfession) -> impl Fn(VillagePoiType) -> bool + Copy {
+    move |poi_type| match profession {
+        VillagerProfession::None => matches!(poi_type, VillagePoiType::JobSite(_)),
+        profession => held_job_site(profession)(poi_type),
     }
 }
 
@@ -408,8 +416,13 @@ pub struct VillagerEntity {
     pub last_traded_player: std::sync::Mutex<Option<Uuid>>,
     pub trading_player: std::sync::Mutex<Option<(Uuid, u8)>>,
     pub is_trading: AtomicBool,
+    /// Vanilla `MemoryModuleType.JOB_SITE`.
     pub job_site: std::sync::Mutex<Option<BlockPos>>,
-    pub job_site_pending: AtomicBool,
+    /// Vanilla `MemoryModuleType.POTENTIAL_JOB_SITE`.
+    pub potential_job_site: std::sync::Mutex<Option<BlockPos>>,
+    /// When the running `GoToPotentialJobSite` times out.
+    go_to_potential_job_site_end: std::sync::Mutex<Option<i64>>,
+    acquire_job_site: std::sync::Mutex<AcquirePoi>,
     pub home_pos: std::sync::Mutex<Option<BlockPos>>,
     /// Vanilla `MemoryModuleType.MEETING_POINT`.
     pub meeting_point: std::sync::Mutex<Option<BlockPos>>,
@@ -494,7 +507,9 @@ impl VillagerEntity {
             trading_player: std::sync::Mutex::new(None),
             is_trading: AtomicBool::new(false),
             job_site: std::sync::Mutex::new(None),
-            job_site_pending: AtomicBool::new(false),
+            potential_job_site: std::sync::Mutex::new(None),
+            go_to_potential_job_site_end: std::sync::Mutex::new(None),
+            acquire_job_site: std::sync::Mutex::default(),
             home_pos: std::sync::Mutex::new(None),
             meeting_point: std::sync::Mutex::new(None),
             acquire_home: std::sync::Mutex::default(),
@@ -1122,192 +1137,163 @@ impl VillagerEntity {
         self.notify_trading_player_offers_updated();
     }
 
-    #[expect(clippy::too_many_lines)]
-    fn update_job_site(&self, world: &crate::world::World) {
-        let data = *self
-            .villager_data
+    fn get_potential_job_site(&self) -> Option<BlockPos> {
+        *self
+            .potential_job_site
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn profession(&self) -> VillagerProfession {
+        self.villager_data
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .profession_enum()
+    }
+
+    /// Vanilla's `NEAREST_LIVING_ENTITIES` sensor: living entities in its box, closest first.
+    fn nearest_living_entities(&self, world: &World) -> Vec<Arc<dyn EntityBase>> {
+        let entity = self.get_entity();
+        let my_pos = entity.pos.load();
+        let bb = entity.bounding_box.load().expand(
+            NEAREST_LIVING_ENTITY_RANGE,
+            NEAREST_LIVING_ENTITY_RANGE,
+            NEAREST_LIVING_ENTITY_RANGE,
+        );
+        let mut nearby = world.get_entities_at_box(&bb);
+        nearby.retain(|other| {
+            other.get_entity().entity_id != entity.entity_id
+                && other
+                    .get_living_entity()
+                    .is_some_and(LivingEntity::is_alive)
+        });
+        nearby.sort_by(|a, b| {
+            a.get_entity()
+                .pos
+                .load()
+                .squared_distance_to_vec(&my_pos)
+                .total_cmp(&b.get_entity().pos.load().squared_distance_to_vec(&my_pos))
+        });
+        nearby
+    }
+
+    /// The job site parts of vanilla's villager core package, in brain priority order:
+    /// `ValidateNearbyPoi` for `JOB_SITE` and `POTENTIAL_JOB_SITE`, `PoiCompetitorScan`,
+    /// `AcquirePoi` for `POTENTIAL_JOB_SITE`, `GoToPotentialJobSite` and `YieldJobSite`.
+    /// `sensed` marks the ticks on which vanilla's nearest entity sensor refreshes.
+    fn tick_job_site_memories(&self, world: &World, game_time: i64, sensed: bool) {
+        let profession = self.profession();
+        self.validate_nearby_poi(world, &self.job_site, held_job_site(profession));
+        self.validate_nearby_poi(
+            world,
+            &self.potential_job_site,
+            acquirable_job_site(profession),
+        );
+        if sensed {
+            self.poi_competitor_scan(world);
+        }
+
+        let is_baby = self.get_entity().age.load(Ordering::Relaxed) < 0;
+        if !is_baby
+            && self.get_job_site().is_none()
+            && self.get_potential_job_site().is_none()
+            && let Some(site) = self
+                .acquire_job_site
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .tick(
+                    world,
+                    &self.mob_entity,
+                    acquirable_job_site(profession),
+                    |_, _| true,
+                    self.get_random(),
+                )
+        {
+            *self
+                .potential_job_site
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(site);
+        }
+
+        self.go_to_potential_job_site(world, game_time);
+        if sensed {
+            self.yield_job_site(world);
+        }
+    }
+
+    /// Vanilla `PoiCompetitorScan`: of the nearby villagers remembering the same job site, the
+    /// one with the most experience keeps it and the others forget it.
+    fn poi_competitor_scan(&self, world: &World) {
+        let Some(job_site) = self.get_job_site() else {
+            return;
+        };
+        let Some(poi_type) = world
+            .villager_poi
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_type(job_site)
+        else {
+            return;
+        };
+        let nearby = self.nearest_living_entities(world);
+        let mut winner = self;
+        for other in &nearby {
+            let Some(villager) = other.cast_any().downcast_ref::<Self>() else {
+                continue;
+            };
+            if villager.get_job_site() != Some(job_site)
+                || !held_job_site(villager.profession())(poi_type)
+            {
+                continue;
+            }
+            // Vanilla `selectWinner`: a tie goes to the later villager.
+            let loser = if winner.xp.load(Ordering::Relaxed) > villager.xp.load(Ordering::Relaxed) {
+                villager
+            } else {
+                std::mem::replace(&mut winner, villager)
+            };
+            *loser
+                .job_site
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        }
+    }
+
+    /// Vanilla `GoToPotentialJobSite`: walks to the potential job site for up to 1200 ticks,
+    /// then gives its ticket back.
+    fn go_to_potential_job_site(&self, world: &World, game_time: i64) {
+        let mut end = self
+            .go_to_potential_job_site_end
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let profession = data.profession_enum();
-        let is_adult = self.get_entity().age.load(Ordering::Relaxed) >= 0;
-
-        if profession == VillagerProfession::Nitwit || !is_adult {
-            if let Some(site) = self.get_job_site() {
-                world
-                    .villager_poi
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .release(site);
-                *self
-                    .job_site
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
-                self.job_site_pending.store(false, Ordering::Relaxed);
+        let Some(end_time) = *end else {
+            let entity = self.get_entity();
+            let is_baby = entity.age.load(Ordering::Relaxed) < 0;
+            if self.get_potential_job_site().is_some()
+                && matches!(
+                    world.villager_activity(&entity.block_pos.load(), is_baby),
+                    Activity::Idle | Activity::Work | Activity::Play
+                )
+            {
+                *end = Some(game_time + GO_TO_POTENTIAL_JOB_SITE_DURATION);
             }
             return;
+        };
+        if self.get_potential_job_site().is_some() && game_time <= end_time {
+            return;
         }
-
-        if let Some(current_site) = self.get_job_site()
-            && current_site
-                .to_centered_f64()
-                .squared_distance_to_vec(&self.get_entity().pos.load())
-                < 16.0f64.powi(2)
-        {
-            let expected = (profession != VillagerProfession::None).then_some(profession);
-            // Vanilla `ValidateNearbyPoi`: only a POI that is gone invalidates the memory.
-            let valid = world
+        *end = None;
+        let potential = self
+            .potential_job_site
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(pos) = potential {
+            world
                 .villager_poi
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .get_type(current_site)
-                .is_some_and(job_site_accepts(expected));
-
-            if !valid {
-                *self
-                    .job_site
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
-                self.job_site_pending.store(false, Ordering::Relaxed);
-                if self.xp.load(Ordering::Relaxed) == 0
-                    && data.level.0 <= 1
-                    && profession != VillagerProfession::None
-                {
-                    let r#type = self
-                        .villager_data
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .type_enum();
-                    self.set_villager_data(VillagerData::new(r#type, VillagerProfession::None, 1));
-                }
-            }
-        }
-
-        if self.get_job_site().is_none() {
-            let profession = self
-                .villager_data
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .profession_enum();
-            let expected = (profession != VillagerProfession::None).then_some(profession);
-            let pos = self.get_entity().block_pos.load();
-            let start = BlockPos::new(pos.0.x - 10, pos.0.y - 4, pos.0.z - 10);
-            let end = BlockPos::new(pos.0.x + 10, pos.0.y + 4, pos.0.z + 10);
-            let mut candidates = Vec::new();
-
-            let indexed_sites = world
-                .villager_poi
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .available_job_sites(pos, 48, expected);
-            let saved_sites = world
-                .portal_poi
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .get_in_square(pos, 48, None);
-            for position in indexed_sites.into_iter().chain(saved_sites) {
-                let delta = position.0 - pos.0;
-                if i64::from(delta.x).pow(2) + i64::from(delta.y).pow(2) + i64::from(delta.z).pow(2)
-                    > 48i64.pow(2)
-                    || candidates
-                        .iter()
-                        .any(|(_, candidate, _, _)| *candidate == position)
-                {
-                    continue;
-                }
-                let (block, _state) = world.get_block_and_state(&position);
-                if let Some(site_profession) = profession_for_block(block)
-                    && expected.is_none_or(|profession| profession == site_profession)
-                {
-                    let distance = position
-                        .to_centered_f64()
-                        .squared_distance_to_vec(&self.get_entity().pos.load());
-                    candidates.push((distance, position, block, site_profession));
-                }
-            }
-
-            for position in BlockPos::iterate(start, end) {
-                let (block, _state) = world.get_block_and_state(&position);
-                let Some(site_profession) = profession_for_block(block) else {
-                    continue;
-                };
-                if expected.is_some_and(|profession| profession != site_profession)
-                    || candidates
-                        .iter()
-                        .any(|(_, candidate, _, _)| *candidate == position)
-                {
-                    continue;
-                }
-                let distance = position
-                    .to_centered_f64()
-                    .squared_distance_to_vec(&self.get_entity().pos.load());
-                candidates.push((distance, position, block, site_profession));
-            }
-            candidates.sort_by(|left, right| left.0.total_cmp(&right.0));
-
-            let mut navigator = Navigator::default();
-            let mut claimed = None;
-            for (_, position, _, _) in candidates.into_iter().take(5) {
-                if !navigator.can_reach_within(
-                    &self.mob_entity.living_entity,
-                    position.to_centered_f64(),
-                    1.73,
-                ) {
-                    continue;
-                }
-                if world
-                    .villager_poi
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .take(position, job_site_accepts(expected))
-                    .is_some()
-                {
-                    claimed = Some(position);
-                    break;
-                }
-            }
-
-            if let Some(site) = claimed {
-                *self
-                    .job_site
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(site);
-                self.job_site_pending.store(true, Ordering::Relaxed);
-            }
-        }
-        self.yield_job_site(world);
-
-        if self.job_site_pending.load(Ordering::Relaxed)
-            && let Some(site) = self.get_job_site()
-            && site
-                .to_centered_f64()
-                .squared_distance_to_vec(&self.get_entity().pos.load())
-                < 2.0f64.powi(2)
-        {
-            let (block, _state) = world.get_block_and_state(&site);
-            if let Some(claimed_profession) = profession_for_block(block) {
-                let profession = self
-                    .villager_data
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .profession_enum();
-                if profession != VillagerProfession::None && profession != claimed_profession {
-                    return;
-                }
-                world.send_entity_status(
-                    self.get_entity(),
-                    pumpkin_data::entity::EntityStatus::VillagerHappy,
-                    ActorEventID::VillagerHappy,
-                );
-                self.job_site_pending.store(false, Ordering::Relaxed);
-                if profession == VillagerProfession::None {
-                    let r#type = self
-                        .villager_data
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .type_enum();
-                    self.set_villager_data(VillagerData::new(r#type, claimed_profession, 1));
-                }
-            }
+                .release(pos);
         }
     }
 
@@ -1315,21 +1301,16 @@ impl VillagerEntity {
     /// a nearby villager who already has the matching profession.
     fn yield_job_site(&self, world: &World) {
         let entity = self.get_entity();
-        if !self.job_site_pending.load(Ordering::Relaxed)
+        if self.get_job_site().is_some()
             || entity.age.load(Ordering::Relaxed) < 0
-            || self
-                .villager_data
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .profession_enum()
-                != VillagerProfession::None
+            || self.profession() != VillagerProfession::None
         {
             return;
         }
-        let Some(poi_pos) = self.get_job_site() else {
+        let Some(poi_pos) = self.get_potential_job_site() else {
             return;
         };
-        let Some(VillagePoiType::JobSite(site_profession)) = world
+        let Some(poi_type) = world
             .villager_poi
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -1338,55 +1319,33 @@ impl VillagerEntity {
             return;
         };
 
-        // Vanilla's `NEAREST_LIVING_ENTITIES` sensor box, closest first.
-        let my_pos = entity.pos.load();
-        let bb = entity.bounding_box.load().expand(
-            NEAREST_LIVING_ENTITY_RANGE,
-            NEAREST_LIVING_ENTITY_RANGE,
-            NEAREST_LIVING_ENTITY_RANGE,
-        );
-        let mut nearby = world.get_entities_at_box(&bb);
-        nearby.sort_by(|a, b| {
-            a.get_entity()
-                .pos
-                .load()
-                .squared_distance_to_vec(&my_pos)
-                .total_cmp(&b.get_entity().pos.load().squared_distance_to_vec(&my_pos))
-        });
+        let nearby = self.nearest_living_entities(world);
         let Some(new_owner) = nearby.iter().find_map(|other| {
             let villager = other.cast_any().downcast_ref::<Self>()?;
-            (villager.get_entity().entity_id != entity.entity_id
-                && villager.mob_entity.living_entity.is_alive()
-                && villager.wants_job_site(site_profession, poi_pos))
-            .then_some(villager)
+            villager
+                .wants_job_site(poi_type, poi_pos)
+                .then_some(villager)
         }) else {
             return;
         };
 
+        // The ticket stays taken: the new owner inherits it with the memory.
         *self
-            .job_site
+            .potential_job_site
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
-        self.job_site_pending.store(false, Ordering::Relaxed);
+        self.mob_entity.steered().navigator().stop();
         if new_owner.get_job_site().is_none() {
             *new_owner
-                .job_site
+                .potential_job_site
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(poi_pos);
-            new_owner.job_site_pending.store(true, Ordering::Relaxed);
         }
     }
 
     /// Vanilla `YieldJobSite.nearbyWantsJobsite`.
-    fn wants_job_site(&self, site_profession: VillagerProfession, poi_pos: BlockPos) -> bool {
-        if self.job_site_pending.load(Ordering::Relaxed)
-            || self
-                .villager_data
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .profession_enum()
-                != site_profession
-        {
+    fn wants_job_site(&self, poi_type: VillagePoiType, poi_pos: BlockPos) -> bool {
+        if self.get_potential_job_site().is_some() || !held_job_site(self.profession())(poi_type) {
             return false;
         }
         self.get_job_site().map_or_else(
@@ -1398,12 +1357,82 @@ impl VillagerEntity {
                     .create_path(
                         &self.mob_entity.living_entity,
                         poi_pos.to_f64(),
-                        VillagePoiType::JobSite(site_profession).valid_range(),
+                        poi_type.valid_range(),
                     )
                     .is_some_and(|path| path.can_reach())
             },
             |job_site| job_site == poi_pos,
         )
+    }
+
+    /// Vanilla `AssignProfessionFromJobSite`: a villager next to its potential job site takes
+    /// it, and the profession that goes with it if it has none.
+    fn assign_profession_from_job_site(&self, world: &World) {
+        let Some(pos) = self.get_potential_job_site() else {
+            return;
+        };
+        if pos
+            .to_centered_f64()
+            .squared_distance_to_vec(&self.get_entity().pos.load())
+            >= 2.0f64.powi(2)
+        {
+            return;
+        }
+        *self
+            .potential_job_site
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        *self
+            .job_site
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(pos);
+        world.send_entity_status(
+            self.get_entity(),
+            pumpkin_data::entity::EntityStatus::VillagerHappy,
+            ActorEventID::VillagerHappy,
+        );
+        let data = *self
+            .villager_data
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if data.profession_enum() != VillagerProfession::None {
+            return;
+        }
+        let poi_type = world
+            .villager_poi
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_type(pos);
+        if let Some(VillagePoiType::JobSite(profession)) = poi_type {
+            self.set_villager_data(VillagerData::new(
+                data.type_enum(),
+                profession,
+                data.level.0,
+            ));
+        }
+    }
+
+    /// Vanilla `ResetProfession`: a villager without a job site who never traded loses its
+    /// profession.
+    fn reset_profession(&self) {
+        if self.get_job_site().is_some() {
+            return;
+        }
+        let data = *self
+            .villager_data
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let can_be_fired = !matches!(
+            data.profession_enum(),
+            VillagerProfession::None | VillagerProfession::Nitwit
+        );
+        if can_be_fired && self.xp.load(Ordering::Relaxed) == 0 && data.level.0 <= 1 {
+            self.set_villager_data(VillagerData::new(
+                data.type_enum(),
+                VillagerProfession::None,
+                data.level.0,
+            ));
+        }
     }
 
     fn is_sleeping(&self) -> bool {
@@ -1468,7 +1497,7 @@ impl VillagerEntity {
         &self,
         world: &World,
         memory: &std::sync::Mutex<Option<BlockPos>>,
-        poi_type: VillagePoiType,
+        poi_type: impl Fn(VillagePoiType) -> bool,
     ) {
         let Some(pos) = *memory
             .lock()
@@ -1488,7 +1517,7 @@ impl VillagerEntity {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .get_type(pos)
-            == Some(poi_type);
+            .is_some_and(poi_type);
         if !exists {
             *memory
                 .lock()
@@ -1603,9 +1632,12 @@ impl VillagerEntity {
             Self::release_poi(&world, home, |found| found == VillagePoiType::Home);
         }
         if let Some(site) = self.get_job_site() {
-            // A pending job site is vanilla's `POTENTIAL_JOB_SITE`, which takes any job site.
-            let expected = (!self.job_site_pending.load(Ordering::Relaxed)).then_some(profession);
-            Self::release_poi(&world, site, job_site_accepts(expected));
+            Self::release_poi(&world, site, held_job_site(profession));
+        }
+        if let Some(site) = self.get_potential_job_site() {
+            Self::release_poi(&world, site, |poi_type| {
+                matches!(poi_type, VillagePoiType::JobSite(_))
+            });
         }
         if let Some(meeting_point) = self.get_meeting_point() {
             Self::release_poi(&world, meeting_point, |found| {
@@ -1649,11 +1681,15 @@ impl VillagerEntity {
             self.stop_sleeping(world, game_time);
         }
         if resting {
-            self.validate_nearby_poi(world, &self.home_pos, VillagePoiType::Home);
+            self.validate_nearby_poi(world, &self.home_pos, |poi_type| {
+                poi_type == VillagePoiType::Home
+            });
         }
         self.sleep_in_bed(world, game_time, resting);
         if activity == Activity::Meet {
-            self.validate_nearby_poi(world, &self.meeting_point, VillagePoiType::Meeting);
+            self.validate_nearby_poi(world, &self.meeting_point, |poi_type| {
+                poi_type == VillagePoiType::Meeting
+            });
         }
 
         let random = self.get_random();
@@ -2052,13 +2088,16 @@ impl VillagerEntity {
         };
         self.decay_gossips(game_time);
         self.work_at_job_site(game_time, day_time, day);
-        self.tick_poi_memories(&world, game_time);
-
         let age = self.get_entity().tick_count.load(Ordering::Relaxed);
+        // Vanilla's nearest entity sensor refreshes every 20 ticks.
+        self.tick_job_site_memories(&world, game_time, age % 20 == 0);
+        self.tick_poi_memories(&world, game_time);
+        self.assign_profession_from_job_site(&world);
+        self.reset_profession();
+
         if age % 20 != 0 {
             return;
         }
-        self.update_job_site(&world);
 
         // 2. Iron Golem spawning logic (only for adults)
         let profession = self
@@ -2187,10 +2226,11 @@ impl Mob for VillagerEntity {
             nbt.put_int("JobSiteX", pos.0.x);
             nbt.put_int("JobSiteY", pos.0.y);
             nbt.put_int("JobSiteZ", pos.0.z);
-            nbt.put_bool(
-                "JobSitePending",
-                self.job_site_pending.load(Ordering::Relaxed),
-            );
+        }
+        if let Some(pos) = self.get_potential_job_site() {
+            nbt.put_int("PotentialJobSiteX", pos.0.x);
+            nbt.put_int("PotentialJobSiteY", pos.0.y);
+            nbt.put_int("PotentialJobSiteZ", pos.0.z);
         }
 
         if let Some(pos) = self.get_home() {
@@ -2323,26 +2363,29 @@ impl Mob for VillagerEntity {
                 .store(last_decay, Ordering::Relaxed);
         }
 
-        if let (Some(x), Some(y), Some(z)) = (
-            nbt.get_int("JobSiteX"),
-            nbt.get_int("JobSiteY"),
-            nbt.get_int("JobSiteZ"),
+        let read_pos = |prefix: &str| match (
+            nbt.get_int(&format!("{prefix}X")),
+            nbt.get_int(&format!("{prefix}Y")),
+            nbt.get_int(&format!("{prefix}Z")),
         ) {
-            *self
-                .job_site
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(BlockPos::new(x, y, z));
-            self.job_site_pending.store(
-                nbt.get_bool("JobSitePending").unwrap_or(false),
-                Ordering::Relaxed,
-            );
+            (Some(x), Some(y), Some(z)) => Some(BlockPos::new(x, y, z)),
+            _ => None,
+        };
+        let mut job_site = read_pos("JobSite");
+        // Older saves marked the potential job site as a pending job site.
+        let potential_job_site = if nbt.get_bool("JobSitePending").unwrap_or(false) {
+            job_site.take()
         } else {
-            *self
-                .job_site
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
-            self.job_site_pending.store(false, Ordering::Relaxed);
-        }
+            read_pos("PotentialJobSite")
+        };
+        *self
+            .job_site
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = job_site;
+        *self
+            .potential_job_site
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = potential_job_site;
 
         if let (Some(x), Some(y), Some(z)) = (
             nbt.get_int("HomeX").or_else(|| nbt.get_int("BedX")),
@@ -2521,28 +2564,11 @@ impl Mob for VillagerEntity {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    fn is_job_site_pending(&self) -> bool {
-        self.job_site_pending.load(Ordering::Relaxed)
-    }
-
-    fn release_pending_job_site(&self, position: BlockPos) {
-        if self.get_job_site() != Some(position) || !self.job_site_pending.load(Ordering::Relaxed) {
-            return;
-        }
-        self.get_entity()
-            .world
-            .load()
-            .villager_poi
+    fn get_potential_job_site_walk_target(&self) -> Option<BlockPos> {
+        self.go_to_potential_job_site_end
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .release(position);
-        if self.get_job_site() == Some(position) {
-            *self
-                .job_site
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
-            self.job_site_pending.store(false, Ordering::Relaxed);
-        }
+            .and_then(|_| self.get_potential_job_site())
     }
 
     fn clear_trading_player(&self) {
