@@ -1,6 +1,6 @@
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicI32, Ordering},
 };
 
@@ -24,6 +24,9 @@ pub struct MobSpawnerBlockEntity {
     pub max_nearby_entities: i32,
     pub required_player_range: i32,
     pub entity_type: AtomicCell<Option<&'static EntityType>>,
+    /// The `SpawnData` the spawner was loaded with. It is saved again while it still names
+    /// `entity_type`, so the spawned entity's other tags, like its name, are kept.
+    spawn_data: Mutex<Option<NbtCompound>>,
 }
 
 impl MobSpawnerBlockEntity {
@@ -48,7 +51,31 @@ impl MobSpawnerBlockEntity {
             max_nearby_entities: Self::DEFAULT_MAX_NEARBY_ENTITIES,
             required_player_range: Self::DEFAULT_REQUIRED_PLAYER_RANGE,
             entity_type: AtomicCell::new(entity_type),
+            spawn_data: Mutex::new(None),
         }
+    }
+
+    /// The `SpawnData` to save: the loaded one while it still names `entity_type`.
+    fn spawn_data_nbt(&self) -> Option<NbtCompound> {
+        let entity_type = self.entity_type.load()?;
+        let id = format!("minecraft:{}", entity_type.resource_name);
+        let saved = self
+            .spawn_data
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(saved) = saved.as_ref()
+            && saved
+                .get_compound("entity")
+                .and_then(|entity| entity.get_string("id"))
+                .is_some_and(|saved_id| saved_id == id)
+        {
+            return Some(saved.clone());
+        }
+        let mut entity_nbt = NbtCompound::new();
+        entity_nbt.put_string("id", id);
+        let mut spawn_entry = NbtCompound::new();
+        spawn_entry.put_compound("entity", entity_nbt);
+        Some(spawn_entry)
     }
 
     pub fn write_spawner_nbt(&self, nbt: &mut NbtCompound) {
@@ -60,15 +87,8 @@ impl MobSpawnerBlockEntity {
         nbt.put_short("MaxNearbyEntities", self.max_nearby_entities as i16);
         nbt.put_short("RequiredPlayerRange", self.required_player_range as i16);
 
-        if let Some(entity_type) = self.entity_type.load() {
-            let mut spawn_entry = NbtCompound::new();
-
-            let mut entity_nbt = NbtCompound::new();
-            entity_nbt.put_string("id", format!("minecraft:{}", entity_type.resource_name));
-
-            spawn_entry.put_compound("entity", entity_nbt);
-
-            nbt.put_compound("SpawnData", spawn_entry);
+        if let Some(spawn_data) = self.spawn_data_nbt() {
+            nbt.put_compound("SpawnData", spawn_data);
         }
     }
 }
@@ -268,6 +288,7 @@ impl BlockEntity for MobSpawnerBlockEntity {
             max_nearby_entities,
             required_player_range,
             entity_type: AtomicCell::new(entity_type),
+            spawn_data: Mutex::new(nbt.get_compound("SpawnData").cloned()),
         }
     }
 

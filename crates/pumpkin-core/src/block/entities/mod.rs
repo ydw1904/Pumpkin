@@ -514,6 +514,29 @@ mod test {
     use pumpkin_util::math::position::BlockPos;
     use std::sync::Arc;
 
+    /// A spawner keeps the full entity it spawns, not only its type.
+    #[test]
+    fn spawner_keeps_its_spawn_data() {
+        let mut entity = NbtCompound::new();
+        entity.put_string("id", "minecraft:zombie".to_string());
+        entity.put_string("CustomName", "Spawned".to_string());
+        let mut spawn_data = NbtCompound::new();
+        spawn_data.put_compound("entity", entity);
+        let mut nbt = NbtCompound::new();
+        nbt.put_string("id", "minecraft:mob_spawner".to_string());
+        for axis in ["x", "y", "z"] {
+            nbt.put_int(axis, 0);
+        }
+        nbt.put_compound("SpawnData", spawn_data);
+
+        let mut saved = NbtCompound::new();
+        block_entity_from_nbt(&nbt)
+            .expect("spawner loads")
+            .write_internal(&mut saved);
+
+        assert_eq!(saved.get("SpawnData"), nbt.get("SpawnData"));
+    }
+
     /// 26.3 saves furnace progress as ints; reading them as shorts reset every furnace.
     #[test]
     fn furnace_progress_saved_by_vanilla_is_kept() {
