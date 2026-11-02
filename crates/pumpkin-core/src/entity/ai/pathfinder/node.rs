@@ -13,7 +13,7 @@ pub trait Coordinate {
     fn as_vector3(&self) -> Vector3<i32>;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct Node {
     pub pos: BlockPos,
     pub hash: i32,
@@ -26,6 +26,14 @@ pub struct Node {
     pub walked_dist: f32,
     pub cost_malus: f32,
     pub path_type: PathType,
+}
+
+/// Vanilla `Node.equals`: nodes are equal when they are at the same position, whatever their
+/// costs, which is what `Path.sameAs` compares.
+impl PartialEq for Node {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash == other.hash && self.pos == other.pos
+    }
 }
 
 impl Default for Node {

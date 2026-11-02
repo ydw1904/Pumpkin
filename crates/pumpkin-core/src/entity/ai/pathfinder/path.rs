@@ -285,4 +285,22 @@ mod tests {
         assert_eq!(truncated.get_node_count(), 1);
         assert_eq!(truncated.get_next_node_index(), 1);
     }
+
+    #[test]
+    fn same_as_compares_node_positions_only() {
+        let end = BlockPos::new(1, 64, 0);
+        let route = |cost: f32| {
+            let nodes = [BlockPos::new(0, 64, 0), end].map(|pos| {
+                let mut node = Node::new(pos);
+                node.g = cost;
+                node.walked_dist = cost;
+                node.closed = true;
+                node
+            });
+            Path::new(nodes.to_vec(), end, true)
+        };
+
+        assert!(route(1.0).same_as(Some(&route(2.0))));
+        assert!(!route(1.0).same_as(Some(&Path::new(vec![Node::new(end)], end, true))));
+    }
 }
