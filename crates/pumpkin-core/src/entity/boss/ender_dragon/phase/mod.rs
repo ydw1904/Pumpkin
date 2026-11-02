@@ -1,40 +1,41 @@
 use crate::entity::EntityBase;
-use crate::entity::boss::ender_dragon::EnderDragonEntity;
+use crate::entity::boss::ender_dragon::{DragonNode, DragonPath, EnderDragonEntity};
+use crate::entity::player::Player;
 use pumpkin_data::entity::EntityType;
 use pumpkin_util::math::vector3::Vector3;
 use std::sync::Arc;
 
-mod charging;
-mod circling;
+mod charge_player;
 mod dying;
-mod fly_to_portal;
-mod hovering;
+mod holding_pattern;
+mod hover;
 mod landing;
 mod landing_approach;
-mod sit_attacking;
-mod sit_breathing;
-mod strafing;
-mod taking_off;
+mod sitting_attacking;
+mod sitting_flaming;
+mod sitting_scanning;
+mod strafe_player;
+mod takeoff;
 
-pub use charging::ChargingPhase;
-pub use circling::CirclingPhase;
+pub use charge_player::ChargePlayerPhase;
 pub use dying::DyingPhase;
-pub use fly_to_portal::FlyToPortalPhase;
-pub use hovering::HoveringPhase;
+pub use holding_pattern::HoldingPatternPhase;
+pub use hover::HoverPhase;
 pub use landing::LandingPhase;
 pub use landing_approach::LandingApproachPhase;
-pub use sit_attacking::SitAttackingPhase;
-pub use sit_breathing::SitBreathingPhase;
-pub use strafing::StrafingPhase;
-pub use taking_off::TakingOffPhase;
+pub use sitting_attacking::SittingAttackingPhase;
+pub use sitting_flaming::SittingFlamingPhase;
+pub use sitting_scanning::SittingScanningPhase;
+pub use strafe_player::StrafePlayerPhase;
+pub use takeoff::TakeoffPhase;
 
+/// Vanilla `DragonPhaseInstance`. Each dragon owns one instance of every phase, which keeps its
+/// own state between activations like vanilla's lazily created instances.
 pub trait Phase: Send + Sync {
     fn get_type(&self) -> EnderDragonPhase;
-    fn tick(&self, dragon: &EnderDragonEntity);
+    fn do_server_tick(&self, _dragon: &EnderDragonEntity) {}
     fn begin(&self, _dragon: &EnderDragonEntity) {}
     fn end(&self, _dragon: &EnderDragonEntity) {}
-    /// Vanilla `DragonPhaseInstance.isSitting`, which decides whether hits count towards taking
-    /// off again.
     fn is_sitting(&self) -> bool {
         false
     }
@@ -50,79 +51,85 @@ pub trait Phase: Send + Sync {
     fn on_hurt(&self, _source: Option<&dyn EntityBase>, damage: f32) -> f32 {
         damage
     }
+    fn on_crystal_destroyed(&self, _dragon: &EnderDragonEntity, _player: Option<&Arc<Player>>) {}
     fn get_fly_target_location(&self) -> Option<Vector3<f64>> {
         None
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+/// Vanilla `EnderDragonPhase`, in registration order: the discriminant is the network and NBT id.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EnderDragonPhase {
-    #[default]
-    Circling = 0,
-    Strafing = 1,
-    Charging = 2,
-    FlyToPortal = 3,
-    LandingApproach = 4,
-    Landing = 5,
-    SitAttacking = 6,
-    SitBreathing = 7,
-    TakingOff = 8,
-    Hovering = 9,
-    Dying = 10,
+    HoldingPattern = 0,
+    StrafePlayer = 1,
+    LandingApproach = 2,
+    Landing = 3,
+    Takeoff = 4,
+    SittingFlaming = 5,
+    SittingScanning = 6,
+    SittingAttacking = 7,
+    ChargingPlayer = 8,
+    Dying = 9,
+    Hovering = 10,
 }
 
 impl EnderDragonPhase {
     #[must_use]
-    pub const fn is_sitting(self) -> bool {
-        matches!(
-            self,
-            Self::LandingApproach
-                | Self::Landing
-                | Self::SitAttacking
-                | Self::SitBreathing
-                | Self::TakingOff
-        )
-    }
-
-    #[must_use]
-    pub const fn network_id(self) -> i32 {
+    pub const fn id(self) -> i32 {
         self as i32
     }
-}
 
-pub struct PhaseManager {
-    phases: [Arc<dyn Phase>; 11],
-}
-
-impl Default for PhaseManager {
-    fn default() -> Self {
-        Self::new()
+    /// Vanilla `EnderDragonPhase.getById`: unknown ids fall back to the holding pattern.
+    #[must_use]
+    pub const fn from_id(id: i32) -> Self {
+        match id {
+            1 => Self::StrafePlayer,
+            2 => Self::LandingApproach,
+            3 => Self::Landing,
+            4 => Self::Takeoff,
+            5 => Self::SittingFlaming,
+            6 => Self::SittingScanning,
+            7 => Self::SittingAttacking,
+            8 => Self::ChargingPlayer,
+            9 => Self::Dying,
+            10 => Self::Hovering,
+            _ => Self::HoldingPattern,
+        }
     }
+}
+
+/// Vanilla `EnderDragonPhaseManager`, minus the current phase, which the dragon keeps.
+#[derive(Default)]
+pub struct PhaseManager {
+    pub holding_pattern: HoldingPatternPhase,
+    pub strafe_player: StrafePlayerPhase,
+    pub landing_approach: LandingApproachPhase,
+    pub landing: LandingPhase,
+    pub takeoff: TakeoffPhase,
+    pub sitting_flaming: SittingFlamingPhase,
+    pub sitting_scanning: SittingScanningPhase,
+    pub sitting_attacking: SittingAttackingPhase,
+    pub charging_player: ChargePlayerPhase,
+    pub dying: DyingPhase,
+    pub hovering: HoverPhase,
 }
 
 impl PhaseManager {
     #[must_use]
-    pub fn new() -> Self {
-        Self {
-            phases: [
-                Arc::new(CirclingPhase),
-                Arc::new(StrafingPhase),
-                Arc::new(ChargingPhase),
-                Arc::new(FlyToPortalPhase),
-                Arc::new(LandingApproachPhase),
-                Arc::new(LandingPhase),
-                Arc::new(SitAttackingPhase),
-                Arc::new(SitBreathingPhase),
-                Arc::new(TakingOffPhase),
-                Arc::new(HoveringPhase),
-                Arc::new(DyingPhase),
-            ],
+    pub fn get_phase(&self, phase_type: EnderDragonPhase) -> &dyn Phase {
+        match phase_type {
+            EnderDragonPhase::HoldingPattern => &self.holding_pattern,
+            EnderDragonPhase::StrafePlayer => &self.strafe_player,
+            EnderDragonPhase::LandingApproach => &self.landing_approach,
+            EnderDragonPhase::Landing => &self.landing,
+            EnderDragonPhase::Takeoff => &self.takeoff,
+            EnderDragonPhase::SittingFlaming => &self.sitting_flaming,
+            EnderDragonPhase::SittingScanning => &self.sitting_scanning,
+            EnderDragonPhase::SittingAttacking => &self.sitting_attacking,
+            EnderDragonPhase::ChargingPlayer => &self.charging_player,
+            EnderDragonPhase::Dying => &self.dying,
+            EnderDragonPhase::Hovering => &self.hovering,
         }
-    }
-
-    #[must_use]
-    pub fn get_phase(&self, phase_type: EnderDragonPhase) -> Arc<dyn Phase> {
-        self.phases[phase_type as usize].clone()
     }
 }
 
@@ -145,4 +152,47 @@ fn sitting_on_hurt(source: Option<&dyn EntityBase>, damage: f32) -> f32 {
         }
         _ => damage,
     }
+}
+
+/// Vanilla `navigateToNextPathNode` of the holding pattern, strafe and landing approach phases:
+/// fly to the next path node, somewhere up to 20 blocks above it.
+fn navigate_to_next_path_node(
+    path: &mut Option<DragonPath>,
+    target_location: &mut Option<Vector3<f64>>,
+) {
+    if let Some(path) = path
+        && !path.is_done()
+    {
+        let current = path.next_node_pos();
+        path.advance();
+        *target_location = Some(random_point_above(current));
+    }
+}
+
+/// The `do { y = node.y + random * 20 } while (y < node.y)` loop vanilla repeats in every path
+/// following phase.
+fn random_point_above(node: DragonNode) -> Vector3<f64> {
+    let y = loop {
+        let y = f64::from(node.y)
+            + f64::from(pumpkin_util::random::gameplay::game_random().random::<f32>() * 20.0);
+        if y >= f64::from(node.y) {
+            break y;
+        }
+    };
+    Vector3::new(f64::from(node.x), y, f64::from(node.z))
+}
+
+/// Vanilla's ring choice when picking a holding pattern node: the outer ring while crystals are
+/// standing, the middle ring once they're gone.
+const fn wrap_node_index(index: i32, outer_ring: bool) -> usize {
+    if outer_ring {
+        index.rem_euclid(12) as usize
+    } else {
+        (((index - 12) & 7) + 12) as usize
+    }
+}
+
+/// Vanilla's `distToTarget < 100.0 || distToTarget > 22500.0` check for picking a new target.
+fn needs_new_target(dist_sq: f64) -> bool {
+    !(100.0..=22500.0).contains(&dist_sq)
 }

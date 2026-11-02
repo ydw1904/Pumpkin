@@ -1,28 +1,47 @@
-use super::EnderDragonPhase;
-use crate::entity::boss::ender_dragon::{DEATH_TIMER_MAX, EnderDragonEntity, Vector3Ext};
-use crate::entity::experience_orb::ExperienceOrbEntity;
-use pumpkin_data::particle::Particle;
-use pumpkin_data::sound::{Sound, SoundCategory};
-use pumpkin_util::math::{vector2::Vector2, vector3::Vector3};
-use pumpkin_util::random::gameplay::game_random;
-use std::sync::atomic::Ordering;
+use super::{EnderDragonPhase, Phase, needs_new_target};
+use crate::entity::boss::ender_dragon::EnderDragonEntity;
+use pumpkin_util::math::vector3::Vector3;
+use pumpkin_world::chunk::ChunkHeightmapType;
+use std::sync::Mutex;
 
-pub struct DyingPhase;
+/// Vanilla `DragonDeathPhase`: fly back over the exit portal, then drop to 0 health so
+/// `tickDeath` runs there. The explosion particles are spawned by the client.
+#[derive(Default)]
+pub struct DyingPhase {
+    target_location: Mutex<Option<Vector3<f64>>>,
+}
 
-impl super::Phase for DyingPhase {
+impl DyingPhase {
+    fn target_location(&self) -> std::sync::MutexGuard<'_, Option<Vector3<f64>>> {
+        self.target_location
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+impl Phase for DyingPhase {
     fn get_type(&self) -> EnderDragonPhase {
         EnderDragonPhase::Dying
     }
 
-    fn begin(&self, dragon: &EnderDragonEntity) {
-        *dragon
-            .target_location
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
-        *dragon
-            .dragon_death_time
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = 0;
+    fn do_server_tick(&self, dragon: &EnderDragonEntity) {
+        let target = *self.target_location().get_or_insert_with(|| {
+            dragon
+                .podium_pos(ChunkHeightmapType::MotionBlocking)
+                .to_f64()
+        });
+
+        let dist_sq = target.squared_distance_to_vec(&dragon.get_pos());
+        let health = if needs_new_target(dist_sq) || dragon.collided() {
+            0.0
+        } else {
+            1.0
+        };
+        dragon.mob_entity.living_entity.set_health(health);
+    }
+
+    fn begin(&self, _dragon: &EnderDragonEntity) {
+        *self.target_location() = None;
     }
 
     fn get_fly_speed(&self) -> f32 {
@@ -30,126 +49,6 @@ impl super::Phase for DyingPhase {
     }
 
     fn get_fly_target_location(&self) -> Option<Vector3<f64>> {
-        None
-    }
-
-    fn tick(&self, dragon: &EnderDragonEntity) {
-        let entity = &dragon.mob_entity.living_entity.entity;
-        let world = entity.world.load();
-        let pos = entity.pos.load();
-
-        // 1. Resolve target location (center of the exit podium). Vanilla's death phase keeps
-        // its own target; the shared field can be overwritten by the phase that was running
-        // when the lethal hit landed, so it is recomputed every tick.
-        let target = {
-            let fight_origin = *dragon
-                .fight_origin
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let top_y = world.get_top_block(Vector2::new(fight_origin.0.x, fight_origin.0.z));
-            let egg_y = if top_y > world.min_y {
-                top_y as f64
-            } else {
-                65.0
-            };
-            let target = Vector3::new(
-                fight_origin.0.x as f64 + 0.5,
-                egg_y,
-                fight_origin.0.z as f64 + 0.5,
-            );
-            *dragon
-                .target_location
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(target);
-            Some(target)
-        };
-
-        // 2. Steer towards target podium and update health matching vanilla doServerTick
-        if let Some(target_pos) = target {
-            let dist_sq = pos.distance_squared(target_pos);
-            let collided = entity.horizontal_collision.load(Ordering::Relaxed)
-                || entity.vertical_collision.load(Ordering::Relaxed);
-            if (100.0..=22500.0).contains(&dist_sq) && !collided {
-                dragon.steer_toward(
-                    pos,
-                    target_pos,
-                    self.get_fly_speed(),
-                    self.get_turn_speed(dragon),
-                );
-                // The lethal hit marked the dragon dead, which skips the usual travel. Vanilla's
-                // dragon has `noPhysics`, so it flies straight through the podium's pillar.
-                entity.set_pos(pos + entity.velocity.load());
-                dragon.mob_entity.living_entity.health.store(1.0);
-                // Vanilla `tickDeath` only runs at 0 health, so the dragon dies over the podium.
-                return;
-            }
-            dragon.mob_entity.living_entity.health.store(0.0);
-        }
-
-        let death_time = {
-            let mut t = dragon
-                .dragon_death_time
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            *t += 1;
-            *t
-        };
-
-        // 3. Play death sound at tick 1
-        if death_time == 1 {
-            world.play_sound(Sound::EntityEnderDragonDeath, SoundCategory::Hostile, &pos);
-        }
-
-        // 4. Explosion particles matching doClientTick (every 10 ticks and during final ticks)
-        if death_time % 10 == 0 || (180..=200).contains(&death_time) {
-            let xo = (game_random().random::<f32>() - 0.5) * 8.0;
-            let yo = (game_random().random::<f32>() - 0.5) * 4.0;
-            let zo = (game_random().random::<f32>() - 0.5) * 8.0;
-            world.spawn_particle(
-                Vector3::new(
-                    pos.x + xo as f64,
-                    pos.y + 2.0 + yo as f64,
-                    pos.z + zo as f64,
-                ),
-                Vector3::new(0.0, 0.0, 0.0),
-                0.0,
-                1,
-                Particle::ExplosionEmitter,
-            );
-        }
-
-        // 5. Spawn experience orbs
-        let xp_count = if let Some(ref fight_mutex) = world.dragon_fight
-            && !fight_mutex
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .has_previously_killed_dragon()
-        {
-            12000
-        } else {
-            500
-        };
-
-        let mob_drops = world.level_info.load().game_rules.mob_drops;
-        if death_time > 150 && death_time % 5 == 0 && mob_drops {
-            ExperienceOrbEntity::spawn(&world, pos, (xp_count as f32 * 0.08) as u32);
-        }
-
-        entity.velocity.store(Vector3::new(0.0, 0.1, 0.0));
-
-        // 6. Complete death sequence at DEATH_TIMER_MAX
-        if death_time >= DEATH_TIMER_MAX {
-            if mob_drops {
-                ExperienceOrbEntity::spawn(&world, pos, (xp_count as f32 * 0.2) as u32);
-            }
-
-            if let Some(ref fight_mutex) = world.dragon_fight {
-                fight_mutex
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .set_dragon_killed(&world, entity.entity_uuid);
-            }
-            entity.remove();
-        }
+        *self.target_location()
     }
 }

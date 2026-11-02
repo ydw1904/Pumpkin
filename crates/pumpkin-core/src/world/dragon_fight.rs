@@ -20,6 +20,7 @@ use super::{
     World,
     bossbar::{Bossbar, BossbarColor, BossbarDivisions, BossbarFlags},
 };
+use crate::entity::boss::ender_dragon::phase::EnderDragonPhase;
 use crate::entity::{Entity, EntityBase, decoration::end_crystal::EndCrystalEntity};
 
 // ── Constants (match vanilla exactly) ────────────────────────────────────────
@@ -429,22 +430,27 @@ impl DragonFight {
         let uuid = Uuid::new_v4();
         let spawn_y = self.origin.0.y + DRAGON_SPAWN_Y;
         let position = Vector3::new(
-            self.origin.0.x as f64 + 0.5,
-            spawn_y as f64,
-            self.origin.0.z as f64 + 0.5,
+            f64::from(self.origin.0.x),
+            f64::from(spawn_y),
+            f64::from(self.origin.0.z),
         );
         let dragon =
             crate::entity::r#type::from_type(&EntityType::ENDER_DRAGON, position, world, uuid);
+        dragon
+            .get_entity()
+            .set_rotation(game_random().random::<f32>() * 360.0, 0.0);
+        // The dragon's phase code asks the fight for its crystals, so it must know its dragon.
+        self.dragon_uuid = Some(uuid);
 
         if let Some(dragon_entity) = dragon
             .cast_any()
             .downcast_ref::<crate::entity::boss::ender_dragon::EnderDragonEntity>(
         ) {
-            dragon_entity.set_fight_origin(self.exit_portal_location.unwrap_or(self.origin));
+            dragon_entity.set_fight_origin(self.origin);
+            dragon_entity.set_phase(EnderDragonPhase::HoldingPattern);
         }
 
         world.spawn_entity_non_save(dragon);
-        self.dragon_uuid = Some(uuid);
         self.dragon_killed = false;
         info!("Spawned ender dragon {:?}.", uuid);
         Some(uuid)
@@ -472,20 +478,6 @@ impl DragonFight {
 
         if let Some(name) = custom_name {
             self.update_bossbar_title(world, name);
-        }
-
-        if let Some(loc) = self.exit_portal_location
-            && let Some(dragon_uuid) = self.dragon_uuid
-            && let Some(e) = world
-                .entities
-                .load()
-                .iter()
-                .find(|e| e.get_entity().entity_uuid == dragon_uuid)
-            && let Some(dragon) = e
-                .cast_any()
-                .downcast_ref::<crate::entity::boss::ender_dragon::EnderDragonEntity>()
-        {
-            dragon.set_fight_origin(loc);
         }
     }
 
