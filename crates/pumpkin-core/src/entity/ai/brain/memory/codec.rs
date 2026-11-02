@@ -55,14 +55,16 @@ fn uuid_from_tag(tag: &NbtTag) -> Option<Uuid> {
     ))
 }
 
-fn global_pos_to_tag(pos: &GlobalPos) -> NbtTag {
+#[must_use]
+pub fn global_pos_to_tag(pos: &GlobalPos) -> NbtTag {
     let mut compound = NbtCompound::new();
     compound.put_string("dimension", pos.dimension.minecraft_name.to_owned());
     compound.put("pos", block_pos_to_tag(pos.pos));
     NbtTag::Compound(compound)
 }
 
-fn global_pos_from_tag(tag: &NbtTag) -> Option<GlobalPos> {
+#[must_use]
+pub fn global_pos_from_tag(tag: &NbtTag) -> Option<GlobalPos> {
     let NbtTag::Compound(compound) = tag else {
         return None;
     };

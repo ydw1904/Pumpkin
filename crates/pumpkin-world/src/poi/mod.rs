@@ -6,9 +6,11 @@ use tracing::{info, warn};
 use flate2::Compression;
 use flate2::read::ZlibDecoder;
 use flate2::write::ZlibEncoder;
+use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::math::position::BlockPos;
-use pumpkin_util::math::vector3::Vector3;
-use serde::{Deserialize, Serialize};
+
+use crate::chunk::format::anvil::WORLD_DATA_VERSION;
 
 /// POI type identifier for nether portals
 pub const POI_TYPE_NETHER_PORTAL: &str = "minecraft:nether_portal";
@@ -22,16 +24,10 @@ const HEADER_SIZE: usize = SECTOR_SIZE * 2; // Location table + timestamp table
 /// Compression type for MCA format
 const COMPRESSION_ZLIB: u8 = 2;
 
-// Data version for 1.21
-const DATA_VERSION: i32 = 3955;
-
-/// A single Point of Interest entry (serializable)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A single Point of Interest entry, vanilla `PoiRecord.Packed`.
+#[derive(Debug, Clone)]
 pub struct PoiEntry {
-    pub x: i32,
-    pub y: i32,
-    pub z: i32,
-    #[serde(rename = "type")]
+    pub pos: BlockPos,
     pub poi_type: String,
     pub free_tickets: i32,
 }
@@ -40,9 +36,7 @@ impl PoiEntry {
     #[must_use]
     pub fn new_portal(pos: BlockPos) -> Self {
         Self {
-            x: pos.0.x,
-            y: pos.0.y,
-            z: pos.0.z,
+            pos,
             poi_type: POI_TYPE_NETHER_PORTAL.to_string(),
             free_tickets: 0,
         }
@@ -50,23 +44,64 @@ impl PoiEntry {
 
     #[must_use]
     pub const fn pos(&self) -> BlockPos {
-        BlockPos(Vector3::new(self.x, self.y, self.z))
+        self.pos
+    }
+
+    /// Vanilla `PoiRecord.Packed.CODEC`: `pos` is `BlockPos.CODEC`, an int array.
+    fn to_nbt(&self) -> NbtCompound {
+        let mut record = NbtCompound::new();
+        record.put(
+            "pos",
+            NbtTag::IntArray(vec![self.pos.0.x, self.pos.0.y, self.pos.0.z]),
+        );
+        record.put_string("type", self.poi_type.clone());
+        record.put_int("free_tickets", self.free_tickets);
+        record
+    }
+
+    /// Reads vanilla records and the `x`/`y`/`z` ints older Pumpkin versions wrote.
+    fn from_nbt(record: &NbtCompound) -> Option<Self> {
+        let pos = match record.get("pos") {
+            Some(tag) => read_block_pos(tag)?,
+            None => BlockPos::new(
+                record.get_int("x")?,
+                record.get_int("y")?,
+                record.get_int("z")?,
+            ),
+        };
+        Some(Self {
+            pos,
+            poi_type: record.get_string("type")?.to_string(),
+            free_tickets: record.get_int("free_tickets").unwrap_or(0),
+        })
     }
 }
 
-/// POI section data (serializable) - vanilla format
-#[derive(Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
+/// Vanilla `BlockPos.CODEC` decoding: an int stream, which NBT holds as an int array or a
+/// list of ints.
+const fn read_block_pos(tag: &NbtTag) -> Option<BlockPos> {
+    match tag {
+        NbtTag::IntArray(values) => match values.as_slice() {
+            &[x, y, z] => Some(BlockPos::new(x, y, z)),
+            _ => None,
+        },
+        NbtTag::List(values) => match values.as_slice() {
+            [NbtTag::Int(x), NbtTag::Int(y), NbtTag::Int(z)] => Some(BlockPos::new(*x, *y, *z)),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// POI section data, vanilla `PoiSection.Packed`.
+#[derive(Debug, Default)]
 pub struct PoiSectionData {
-    #[serde(default)]
-    pub valid: i8,
-    #[serde(default)]
+    pub valid: bool,
     pub records: Vec<PoiEntry>,
 }
 
-/// POI chunk data (serializable) - vanilla format
-#[derive(Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
+/// POI chunk data, the root tag vanilla `SectionStorage` writes.
+#[derive(Debug, Default)]
 pub struct PoiChunkData {
     pub data_version: i32,
     /// Sections keyed by Y section coordinate (e.g., "-1", "0", "1", "4")
@@ -107,10 +142,10 @@ impl PoiRegion {
     }
 
     pub fn add(&mut self, entry: PoiEntry) {
-        let chunk_x = entry.x >> 4;
-        let chunk_z = entry.z >> 4;
+        let chunk_x = entry.pos.0.x >> 4;
+        let chunk_z = entry.pos.0.z >> 4;
         self.dirty_chunks.insert((chunk_x, chunk_z));
-        let key = (entry.x, entry.y, entry.z);
+        let key = Self::pos_key(&entry.pos);
         self.entries.insert(key, entry);
         self.dirty = true;
     }
@@ -147,8 +182,8 @@ impl PoiRegion {
         let mut sections: FxHashMap<String, PoiSectionData> = FxHashMap::default();
 
         for entry in self.entries.values() {
-            let entry_chunk_x = entry.x >> 4;
-            let entry_chunk_z = entry.z >> 4;
+            let entry_chunk_x = entry.pos.0.x >> 4;
+            let entry_chunk_z = entry.pos.0.z >> 4;
 
             if entry_chunk_x != chunk_x || entry_chunk_z != chunk_z {
                 continue;
@@ -158,7 +193,10 @@ impl PoiRegion {
             let section = sections
                 .entry(section_key)
                 .or_insert_with(|| PoiSectionData {
-                    valid: 1,
+                    // Pumpkin only tracks portal and village POIs, so vanilla has to rescan the
+                    // section for the others (bee nests, lodestones, lightning rods). Its
+                    // `PoiSection.refresh` keeps the records saved here and their tickets.
+                    valid: false,
                     records: Vec::new(),
                 });
             section.records.push(entry.clone());
@@ -168,7 +206,7 @@ impl PoiRegion {
             None
         } else {
             Some(PoiChunkData {
-                data_version: DATA_VERSION,
+                data_version: WORLD_DATA_VERSION,
                 sections,
             })
         }
@@ -176,23 +214,18 @@ impl PoiRegion {
 
     /// Compress chunk data to bytes
     fn compress_chunk_data(chunk_data: &PoiChunkData) -> std::io::Result<Vec<u8>> {
-        let mut root = pumpkin_nbt::compound::NbtCompound::new();
+        let mut root = NbtCompound::new();
         root.put_int("DataVersion", chunk_data.data_version);
 
-        let mut sections_comp = pumpkin_nbt::compound::NbtCompound::new();
+        let mut sections_comp = NbtCompound::new();
         for (sec_key, sec_data) in &chunk_data.sections {
-            let mut sec_comp = pumpkin_nbt::compound::NbtCompound::new();
-            sec_comp.put_byte("Valid", sec_data.valid);
-            let mut rec_list = Vec::new();
-            for rec in &sec_data.records {
-                let mut rec_comp = pumpkin_nbt::compound::NbtCompound::new();
-                rec_comp.put_int("x", rec.x);
-                rec_comp.put_int("y", rec.y);
-                rec_comp.put_int("z", rec.z);
-                rec_comp.put_string("type", rec.poi_type.clone());
-                rec_comp.put_int("free_tickets", rec.free_tickets);
-                rec_list.push(pumpkin_nbt::tag::NbtTag::Compound(rec_comp));
-            }
+            let mut sec_comp = NbtCompound::new();
+            sec_comp.put_bool("Valid", sec_data.valid);
+            let rec_list = sec_data
+                .records
+                .iter()
+                .map(|rec| NbtTag::Compound(rec.to_nbt()))
+                .collect();
             sec_comp.put_list("Records", rec_list);
             sections_comp.put_compound(sec_key, sec_comp);
         }
@@ -217,28 +250,20 @@ impl PoiRegion {
         let nbt = pumpkin_nbt::Nbt::read(&mut reader)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
 
-        let data_version = nbt.get_int("DataVersion").unwrap_or(DATA_VERSION);
+        let data_version = nbt.get_int("DataVersion").unwrap_or(WORLD_DATA_VERSION);
         let mut sections = FxHashMap::default();
 
         if let Some(sec_tag) = nbt.get_compound("Sections") {
             for (sec_key, tag) in &sec_tag.child_tags {
-                if let pumpkin_nbt::tag::NbtTag::Compound(sec_comp) = tag {
-                    let valid = sec_comp.get_byte("Valid").unwrap_or(1);
+                if let NbtTag::Compound(sec_comp) = tag {
+                    let valid = sec_comp.get_bool("Valid").unwrap_or(false);
                     let mut records = Vec::new();
-                    if let Some(pumpkin_nbt::tag::NbtTag::List(rec_list)) = sec_comp.get("Records")
-                    {
-                        for rec_t in rec_list {
-                            if let pumpkin_nbt::tag::NbtTag::Compound(rc) = rec_t {
-                                records.push(PoiEntry {
-                                    x: rc.get_int("x").unwrap_or(0),
-                                    y: rc.get_int("y").unwrap_or(0),
-                                    z: rc.get_int("z").unwrap_or(0),
-                                    poi_type: rc
-                                        .get_string("type")
-                                        .unwrap_or(POI_TYPE_NETHER_PORTAL)
-                                        .to_string(),
-                                    free_tickets: rc.get_int("free_tickets").unwrap_or(0),
-                                });
+                    for rec_t in sec_comp.get_list("Records").unwrap_or_default() {
+                        if let NbtTag::Compound(rc) = rec_t {
+                            if let Some(entry) = PoiEntry::from_nbt(rc) {
+                                records.push(entry);
+                            } else {
+                                warn!("Skipping malformed POI record {rc:?}");
                             }
                         }
                     }
@@ -275,7 +300,7 @@ impl PoiRegion {
         let mut chunks_with_data: rustc_hash::FxHashSet<(i32, i32)> =
             rustc_hash::FxHashSet::default();
         for entry in self.entries.values() {
-            chunks_with_data.insert((entry.x >> 4, entry.z >> 4));
+            chunks_with_data.insert((entry.pos.0.x >> 4, entry.pos.0.z >> 4));
         }
 
         for (chunk_x, chunk_z) in &chunks_with_data {
@@ -408,8 +433,7 @@ impl PoiRegion {
                 Ok(chunk_data) => {
                     for (_section_key, section) in chunk_data.sections {
                         for entry in section.records {
-                            let key = (entry.x, entry.y, entry.z);
-                            region.entries.insert(key, entry);
+                            region.entries.insert(Self::pos_key(&entry.pos), entry);
                         }
                     }
                 }
@@ -471,9 +495,7 @@ impl PoiStorage {
         let (rx, rz) = Self::region_coords(&pos);
         let region = self.get_or_load_region(rx, rz);
         region.add(PoiEntry {
-            x: pos.0.x,
-            y: pos.0.y,
-            z: pos.0.z,
+            pos,
             poi_type: poi_type.to_string(),
             free_tickets,
         });
@@ -530,8 +552,8 @@ impl PoiStorage {
                         continue;
                     }
 
-                    let dx = (entry.x - center.0.x).abs();
-                    let dz = (entry.z - center.0.z).abs();
+                    let dx = (entry.pos.0.x - center.0.x).abs();
+                    let dz = (entry.pos.0.z - center.0.z).abs();
                     if dx <= radius && dz <= radius {
                         results.push(entry.pos());
                     }
@@ -565,16 +587,16 @@ impl PoiStorage {
             for rz in min_rz..=max_rz {
                 let region = self.get_or_load_region(rx, rz);
                 for entry in region.get_all() {
-                    if (entry.x - center.0.x).abs() > radius
-                        || (entry.z - center.0.z).abs() > radius
+                    if (entry.pos.0.x - center.0.x).abs() > radius
+                        || (entry.pos.0.z - center.0.z).abs() > radius
                         || !matches(&entry.poi_type)
                     {
                         continue;
                     }
 
-                    let dx = i64::from(entry.x - center.0.x);
-                    let dy = i64::from(entry.y - center.0.y);
-                    let dz = i64::from(entry.z - center.0.z);
+                    let dx = i64::from(entry.pos.0.x - center.0.x);
+                    let dy = i64::from(entry.pos.0.y - center.0.y);
+                    let dz = i64::from(entry.pos.0.z - center.0.z);
                     let distance_sq = dx * dx + dy * dy + dz * dz;
 
                     if best.as_ref().is_none_or(|(_, _, d)| distance_sq < *d) {
@@ -621,13 +643,61 @@ impl PoiStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pumpkin_util::math::vector3::Vector3;
+
+    #[test]
+    fn reads_and_writes_vanilla_poi_records() {
+        let mut vanilla = NbtCompound::new();
+        vanilla.put("pos", NbtTag::IntArray(vec![-5, 70, 12]));
+        vanilla.put_string("type", "minecraft:home".to_string());
+        vanilla.put_int("free_tickets", 0);
+        let mut legacy = NbtCompound::new();
+        legacy.put_int("x", 3);
+        legacy.put_int("y", 64);
+        legacy.put_int("z", 1);
+        legacy.put_string("type", "minecraft:meeting".to_string());
+        legacy.put_int("free_tickets", 31);
+        let mut section = NbtCompound::new();
+        section.put_bool("Valid", true);
+        section.put_list(
+            "Records",
+            vec![NbtTag::Compound(vanilla), NbtTag::Compound(legacy)],
+        );
+        let mut sections = NbtCompound::new();
+        sections.put_compound("4", section);
+        let mut root = NbtCompound::new();
+        root.put_int("DataVersion", WORLD_DATA_VERSION);
+        root.put_compound("Sections", sections);
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        encoder
+            .write_all(&pumpkin_nbt::Nbt::from(root).write())
+            .unwrap();
+
+        let chunk = PoiRegion::decompress_chunk_data(&encoder.finish().unwrap()).unwrap();
+        let section = &chunk.sections["4"];
+        assert!(section.valid);
+        let positions = section
+            .records
+            .iter()
+            .map(|record| (record.pos, record.poi_type.as_str(), record.free_tickets))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            positions,
+            [
+                (BlockPos::new(-5, 70, 12), "minecraft:home", 0),
+                (BlockPos::new(3, 64, 1), "minecraft:meeting", 31),
+            ]
+        );
+
+        let written = section.records[1].to_nbt();
+        assert_eq!(written.get_int_array("pos"), Some(&[3, 64, 1][..]));
+        assert!(written.get("x").is_none());
+    }
 
     #[test]
     fn poi_entry() {
         let entry = PoiEntry::new_portal(BlockPos(Vector3::new(100, 64, 200)));
-        assert_eq!(entry.x, 100);
-        assert_eq!(entry.y, 64);
-        assert_eq!(entry.z, 200);
+        assert_eq!(entry.pos, BlockPos::new(100, 64, 200));
         assert_eq!(entry.poi_type, POI_TYPE_NETHER_PORTAL);
     }
 

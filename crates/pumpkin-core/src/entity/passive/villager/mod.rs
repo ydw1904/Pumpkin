@@ -32,6 +32,8 @@ use pumpkin_util::math::{boundingbox::BoundingBox, position::BlockPos, vector3::
 use pumpkin_util::text::TextComponent;
 
 use crate::entity::ai::behavior::fleeing::{self, Flee};
+use crate::entity::ai::brain::memory::codec::{global_pos_from_tag, global_pos_to_tag};
+use crate::entity::ai::brain::memory::{GlobalPos, MemoryModuleId, types as memory_types};
 use crate::entity::living::LivingEntity;
 use crate::entity::player::Player;
 use crate::entity::{
@@ -47,6 +49,7 @@ use crate::entity::{
 use crate::world::World;
 use crate::world::villager_poi::VillagePoiType;
 use acquire_poi::AcquirePoi;
+use pumpkin_data::dimension::Dimension;
 use pumpkin_data::environment_attribute::Activity;
 
 mod acquire_poi;
@@ -2011,6 +2014,117 @@ impl ScreenHandlerFactory for VillagerEntity {
 }
 
 impl VillagerEntity {
+    /// The villager memories vanilla keeps as `GlobalPos` values in `Brain.memories`.
+    fn global_pos_memories(&self) -> [(MemoryModuleId, &std::sync::Mutex<Option<BlockPos>>); 4] {
+        [
+            (memory_types::HOME.id(), &self.home_pos),
+            (memory_types::JOB_SITE.id(), &self.job_site),
+            (
+                memory_types::POTENTIAL_JOB_SITE.id(),
+                &self.potential_job_site,
+            ),
+            (memory_types::MEETING_POINT.id(), &self.meeting_point),
+        ]
+    }
+
+    /// Adds the villager memories to the `Brain` tag in vanilla's `Brain.Packed` layout.
+    fn write_brain_memories(&self, nbt: &mut NbtCompound) {
+        let world = self.get_entity().world.load();
+        let mut brain = nbt.get_compound("Brain").cloned().unwrap_or_default();
+        let mut memories = brain.get_compound("memories").cloned().unwrap_or_default();
+        let mut put = |id: MemoryModuleId, value: NbtTag| {
+            let mut entry = NbtCompound::new();
+            entry.put("value", value);
+            memories.put_compound(id.name(), entry);
+        };
+        if let Some(dimension) = Dimension::from_name(world.dimension.minecraft_name) {
+            for (id, memory) in self.global_pos_memories() {
+                if let Some(pos) = *memory
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                {
+                    put(id, global_pos_to_tag(&GlobalPos::new(dimension, pos)));
+                }
+            }
+        }
+        let last_worked = self.last_worked_at_poi.load(Ordering::Relaxed);
+        if last_worked > 0 {
+            put(
+                memory_types::LAST_WORKED_AT_POI.id(),
+                NbtTag::Long(last_worked),
+            );
+        }
+        if let Some(last_woken) = *self
+            .last_woken
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        {
+            put(memory_types::LAST_WOKEN.id(), NbtTag::Long(last_woken));
+        }
+        brain.put_compound("memories", memories);
+        nbt.put_compound("Brain", brain);
+    }
+
+    /// Reads the memories `write_brain_memories` writes, or the `HomeX`-style ints of older
+    /// Pumpkin saves. Positions remembered in another dimension are dropped, since the
+    /// villager keeps no dimension and must not validate or release them in this one.
+    fn read_brain_memories(&self, nbt: &NbtCompound) {
+        let world = self.get_entity().world.load();
+        let memories = nbt
+            .get_compound("Brain")
+            .and_then(|brain| brain.get_compound("memories"));
+        let memory_value = |id: MemoryModuleId| memories?.get_compound(id.name())?.get("value");
+        let legacy_pos = |prefix: &str| {
+            Some(BlockPos::new(
+                nbt.get_int(&format!("{prefix}X"))?,
+                nbt.get_int(&format!("{prefix}Y"))?,
+                nbt.get_int(&format!("{prefix}Z"))?,
+            ))
+        };
+        let legacy = [
+            legacy_pos("Home").or_else(|| legacy_pos("Bed")),
+            legacy_pos("JobSite"),
+            legacy_pos("PotentialJobSite"),
+            legacy_pos("MeetingPoint"),
+        ];
+        for ((id, memory), legacy) in self.global_pos_memories().into_iter().zip(legacy) {
+            let pos = match memory_value(id) {
+                Some(tag) => global_pos_from_tag(tag)
+                    .filter(|pos| pos.dimension.minecraft_name == world.dimension.minecraft_name)
+                    .map(|pos| pos.pos),
+                None => legacy,
+            };
+            *memory
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = pos;
+        }
+        // Older saves marked the potential job site as a pending job site.
+        if nbt.get_bool("JobSitePending").unwrap_or(false) {
+            let pending = self
+                .job_site
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take();
+            *self
+                .potential_job_site
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = pending;
+        }
+        let long_memory = |id: MemoryModuleId| match memory_value(id) {
+            Some(NbtTag::Long(value)) => Some(*value),
+            _ => None,
+        };
+        if let Some(last_worked) = long_memory(memory_types::LAST_WORKED_AT_POI.id()) {
+            self.last_worked_at_poi
+                .store(last_worked, Ordering::Relaxed);
+        }
+        *self
+            .last_woken
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            long_memory(memory_types::LAST_WOKEN.id());
+    }
+
     #[expect(clippy::too_many_lines)]
     pub fn villager_mob_tick(&self) {
         let world = self.get_entity().world.load();
@@ -2229,33 +2343,7 @@ impl Mob for VillagerEntity {
             nbt.put_long("LastGossipShare", last_gossip_share);
         }
 
-        let last_worked = self.last_worked_at_poi.load(Ordering::Relaxed);
-        if last_worked > 0 {
-            nbt.put_long("LastWorkedAtPoi", last_worked);
-        }
-
-        if let Some(pos) = self.get_job_site() {
-            nbt.put_int("JobSiteX", pos.0.x);
-            nbt.put_int("JobSiteY", pos.0.y);
-            nbt.put_int("JobSiteZ", pos.0.z);
-        }
-        if let Some(pos) = self.get_potential_job_site() {
-            nbt.put_int("PotentialJobSiteX", pos.0.x);
-            nbt.put_int("PotentialJobSiteY", pos.0.y);
-            nbt.put_int("PotentialJobSiteZ", pos.0.z);
-        }
-
-        if let Some(pos) = self.get_home() {
-            nbt.put_int("HomeX", pos.0.x);
-            nbt.put_int("HomeY", pos.0.y);
-            nbt.put_int("HomeZ", pos.0.z);
-        }
-
-        if let Some(pos) = self.get_meeting_point() {
-            nbt.put_int("MeetingPointX", pos.0.x);
-            nbt.put_int("MeetingPointY", pos.0.y);
-            nbt.put_int("MeetingPointZ", pos.0.z);
-        }
+        self.write_brain_memories(nbt);
 
         // Vanilla `LivingEntity.addAdditionalSaveData`.
         if let Some(pos) = *self
@@ -2375,57 +2463,7 @@ impl Mob for VillagerEntity {
                 .store(last_decay, Ordering::Relaxed);
         }
 
-        let read_pos = |prefix: &str| match (
-            nbt.get_int(&format!("{prefix}X")),
-            nbt.get_int(&format!("{prefix}Y")),
-            nbt.get_int(&format!("{prefix}Z")),
-        ) {
-            (Some(x), Some(y), Some(z)) => Some(BlockPos::new(x, y, z)),
-            _ => None,
-        };
-        let mut job_site = read_pos("JobSite");
-        // Older saves marked the potential job site as a pending job site.
-        let potential_job_site = if nbt.get_bool("JobSitePending").unwrap_or(false) {
-            job_site.take()
-        } else {
-            read_pos("PotentialJobSite")
-        };
-        *self
-            .job_site
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = job_site;
-        *self
-            .potential_job_site
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = potential_job_site;
-
-        if let (Some(x), Some(y), Some(z)) = (
-            nbt.get_int("HomeX").or_else(|| nbt.get_int("BedX")),
-            nbt.get_int("HomeY").or_else(|| nbt.get_int("BedY")),
-            nbt.get_int("HomeZ").or_else(|| nbt.get_int("BedZ")),
-        ) {
-            *self
-                .home_pos
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(BlockPos::new(x, y, z));
-        } else {
-            *self
-                .home_pos
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
-        }
-
-        *self
-            .meeting_point
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = match (
-            nbt.get_int("MeetingPointX"),
-            nbt.get_int("MeetingPointY"),
-            nbt.get_int("MeetingPointZ"),
-        ) {
-            (Some(x), Some(y), Some(z)) => Some(BlockPos::new(x, y, z)),
-            _ => None,
-        };
+        self.read_brain_memories(nbt);
 
         // Vanilla `LivingEntity.readAdditionalSaveData`: a saved sleeper stays in its bed.
         let sleeping_pos = match nbt.get("sleeping_pos") {
