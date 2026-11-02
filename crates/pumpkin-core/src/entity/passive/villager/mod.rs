@@ -51,6 +51,7 @@ use pumpkin_data::environment_attribute::Activity;
 
 mod acquire_poi;
 pub mod data;
+mod meet;
 mod walk_to_poi;
 
 /// Vanilla `ValidateNearbyPoi.MAX_DISTANCE`.
@@ -428,6 +429,12 @@ pub struct VillagerEntity {
     pub meeting_point: std::sync::Mutex<Option<BlockPos>>,
     acquire_home: std::sync::Mutex<AcquirePoi>,
     acquire_meeting_point: std::sync::Mutex<AcquirePoi>,
+    /// Vanilla `MemoryModuleType.WALK_TARGET` as the meet behaviors set it.
+    walk_target: std::sync::Mutex<Option<meet::WalkTarget>>,
+    /// Vanilla `MemoryModuleType.INTERACTION_TARGET`, by entity id.
+    interaction_target: std::sync::Mutex<Option<i32>>,
+    /// Vanilla `StrollAroundPoi.nextOkStartTime` of the meet package.
+    stroll_next_ok_start: AtomicI64,
     /// Vanilla `MemoryModuleType.LAST_WOKEN`.
     last_woken: std::sync::Mutex<Option<i64>>,
     /// Vanilla `SleepInBed.nextOkStartTime`.
@@ -514,6 +521,9 @@ impl VillagerEntity {
             meeting_point: std::sync::Mutex::new(None),
             acquire_home: std::sync::Mutex::default(),
             acquire_meeting_point: std::sync::Mutex::default(),
+            walk_target: std::sync::Mutex::new(None),
+            interaction_target: std::sync::Mutex::new(None),
+            stroll_next_ok_start: AtomicI64::new(0),
             last_woken: std::sync::Mutex::new(None),
             sleep_next_ok_start: AtomicI64::new(0),
             sleeping_pos: std::sync::Mutex::new(None),
@@ -552,6 +562,7 @@ impl VillagerEntity {
                 3,
                 Box::new(walk_to_poi::WalkToRememberedPoiGoal::meeting_point(0.5)),
             );
+            goal_selector.add_goal(3, Box::new(meet::MoveToWalkTargetGoal::default()));
             goal_selector.add_goal(4, Box::new(WanderAroundGoal::new(0.5)));
             goal_selector.add_goal(
                 5,
@@ -2093,6 +2104,7 @@ impl VillagerEntity {
         self.tick_job_site_memories(&world, game_time, age % 20 == 0);
         self.tick_poi_memories(&world, game_time);
         self.assign_profession_from_job_site(&world);
+        self.tick_meet(&world, game_time);
         self.reset_profession();
 
         if age % 20 != 0 {
