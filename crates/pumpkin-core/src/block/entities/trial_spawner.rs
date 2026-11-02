@@ -123,10 +123,11 @@ pub struct SpawnData {
     pub raw_entity_nbt: Option<NbtCompound>,
 }
 
+/// Vanilla `new SpawnData()`, which names no entity.
 impl Default for SpawnData {
     fn default() -> Self {
         Self {
-            entity_type: Some(&EntityType::ZOMBIE),
+            entity_type: None,
             custom_spawn_rules: None,
             equipment: None,
             raw_entity_nbt: None,
@@ -203,6 +204,15 @@ pub struct TrialSpawnerConfig {
     pub items_to_drop_when_ominous: Option<String>,
 }
 
+/// Vanilla `BuiltInLootTables.SPAWNER_TRIAL_CHAMBER_CONSUMABLES`.
+const SPAWNER_TRIAL_CHAMBER_CONSUMABLES: &str = "minecraft:spawners/trial_chamber/consumables";
+/// Vanilla `BuiltInLootTables.SPAWNER_TRIAL_CHAMBER_KEY`.
+const SPAWNER_TRIAL_CHAMBER_KEY: &str = "minecraft:spawners/trial_chamber/key";
+/// Vanilla `BuiltInLootTables.SPAWNER_TRIAL_ITEMS_TO_DROP_WHEN_OMINOUS`.
+const SPAWNER_TRIAL_ITEMS_TO_DROP_WHEN_OMINOUS: &str =
+    "minecraft:spawners/trial_chamber/items_to_drop_when_ominous";
+
+/// Vanilla `TrialSpawnerConfig.DEFAULT`.
 impl Default for TrialSpawnerConfig {
     fn default() -> Self {
         Self {
@@ -212,12 +222,15 @@ impl Default for TrialSpawnerConfig {
             total_mobs_added_per_player: 2.0,
             simultaneous_mobs_added_per_player: 1.0,
             ticks_between_spawn: 40,
-            spawn_potentials: vec![WeightedSpawnData {
-                data: SpawnData::default(),
-                weight: 1,
-            }],
-            loot_tables_to_eject: Vec::new(),
-            items_to_drop_when_ominous: None,
+            spawn_potentials: Vec::new(),
+            loot_tables_to_eject: [SPAWNER_TRIAL_CHAMBER_CONSUMABLES, SPAWNER_TRIAL_CHAMBER_KEY]
+                .into_iter()
+                .map(|data| WeightedLootTable {
+                    data: data.to_string(),
+                    weight: 1,
+                })
+                .collect(),
+            items_to_drop_when_ominous: Some(SPAWNER_TRIAL_ITEMS_TO_DROP_WHEN_OMINOUS.to_string()),
         }
     }
 }
@@ -458,7 +471,20 @@ impl TrialSpawnerConfig {
         cfg
     }
 
+    /// Like vanilla's `optionalFieldOf` codec, leaves out the fields at their default.
     pub fn write_nbt(&self, nbt: &mut NbtCompound) {
+        let mut all = NbtCompound::new();
+        self.write_all_nbt(&mut all);
+        let mut default = NbtCompound::new();
+        Self::default().write_all_nbt(&mut default);
+        for (key, tag) in all.child_tags {
+            if default.get(&key) != Some(&tag) {
+                nbt.put(&key, tag);
+            }
+        }
+    }
+
+    fn write_all_nbt(&self, nbt: &mut NbtCompound) {
         nbt.put_int("spawn_range", self.spawn_range);
         nbt.put_float("total_mobs", self.total_mobs);
         nbt.put_float("simultaneous_mobs", self.simultaneous_mobs);
@@ -483,16 +509,14 @@ impl TrialSpawnerConfig {
         }
         nbt.put("spawn_potentials", NbtTag::List(potentials_list));
 
-        if !self.loot_tables_to_eject.is_empty() {
-            let mut loot_list = Vec::new();
-            for loot in &self.loot_tables_to_eject {
-                let mut loot_cmp = NbtCompound::new();
-                loot_cmp.put_string("data", loot.data.clone());
-                loot_cmp.put_int("weight", loot.weight);
-                loot_list.push(NbtTag::Compound(loot_cmp));
-            }
-            nbt.put("loot_tables_to_eject", NbtTag::List(loot_list));
+        let mut loot_list = Vec::new();
+        for loot in &self.loot_tables_to_eject {
+            let mut loot_cmp = NbtCompound::new();
+            loot_cmp.put_string("data", loot.data.clone());
+            loot_cmp.put_int("weight", loot.weight);
+            loot_list.push(NbtTag::Compound(loot_cmp));
         }
+        nbt.put("loot_tables_to_eject", NbtTag::List(loot_list));
 
         if let Some(drop) = &self.items_to_drop_when_ominous {
             nbt.put_string("items_to_drop_when_ominous", drop.clone());
@@ -514,8 +538,8 @@ impl Default for TrialSpawnerFullConfig {
         Self {
             normal: TrialSpawnerConfig::default(),
             ominous: TrialSpawnerConfig::default(),
-            target_cooldown_length: 36000,
-            required_player_range: 14,
+            target_cooldown_length: TrialSpawner::DEFAULT_TARGET_COOLDOWN_LENGTH,
+            required_player_range: TrialSpawner::DEFAULT_PLAYER_SCAN_RANGE,
         }
     }
 }
@@ -526,8 +550,8 @@ impl TrialSpawnerFullConfig {
         Self {
             normal: TrialSpawnerConfig::from(key.normal_config()),
             ominous: TrialSpawnerConfig::from(key.ominous_config()),
-            target_cooldown_length: 36000,
-            required_player_range: 14,
+            target_cooldown_length: TrialSpawner::DEFAULT_TARGET_COOLDOWN_LENGTH,
+            required_player_range: TrialSpawner::DEFAULT_PLAYER_SCAN_RANGE,
         }
     }
 
@@ -569,9 +593,11 @@ impl TrialSpawnerFullConfig {
         let target_cooldown_length = nbt
             .get_long("target_cooldown_length")
             .or_else(|| nbt.get_int("target_cooldown_length").map(i64::from))
-            .unwrap_or(36000);
+            .unwrap_or(TrialSpawner::DEFAULT_TARGET_COOLDOWN_LENGTH);
 
-        let required_player_range = nbt.get_int("required_player_range").unwrap_or(14);
+        let required_player_range = nbt
+            .get_int("required_player_range")
+            .unwrap_or(TrialSpawner::DEFAULT_PLAYER_SCAN_RANGE);
 
         Self {
             normal,
@@ -581,17 +607,27 @@ impl TrialSpawnerFullConfig {
         }
     }
 
+    /// Vanilla `TrialSpawner.FullConfig.MAP_CODEC`, which leaves out fields at their default.
     pub fn write_nbt(&self, nbt: &mut NbtCompound) {
-        let mut normal_cmp = NbtCompound::new();
-        self.normal.write_nbt(&mut normal_cmp);
-        nbt.put_compound("normal_config", normal_cmp);
-
-        let mut ominous_cmp = NbtCompound::new();
-        self.ominous.write_nbt(&mut ominous_cmp);
-        nbt.put_compound("ominous_config", ominous_cmp);
-
-        nbt.put_long("target_cooldown_length", self.target_cooldown_length);
-        nbt.put_int("required_player_range", self.required_player_range);
+        for (key, config) in [
+            ("normal_config", &self.normal),
+            ("ominous_config", &self.ominous),
+        ] {
+            let mut config_nbt = NbtCompound::new();
+            config.write_nbt(&mut config_nbt);
+            if !config_nbt.is_empty() {
+                nbt.put_compound(key, config_nbt);
+            }
+        }
+        if self.target_cooldown_length != TrialSpawner::DEFAULT_TARGET_COOLDOWN_LENGTH {
+            nbt.put_int(
+                "target_cooldown_length",
+                i32::try_from(self.target_cooldown_length).unwrap_or(i32::MAX),
+            );
+        }
+        if self.required_player_range != TrialSpawner::DEFAULT_PLAYER_SCAN_RANGE {
+            nbt.put_int("required_player_range", self.required_player_range);
+        }
     }
 }
 
@@ -1522,6 +1558,28 @@ impl TrialSpawnerBlockEntity {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A spawner set up with only a `normal_config`, like `/setblock` makes, saves back the
+    /// same keys instead of spelling out every default.
+    #[test]
+    fn trial_spawner_config_saves_only_non_defaults() {
+        let mut potential = NbtCompound::new();
+        let mut entity = NbtCompound::new();
+        entity.put_string("id", "minecraft:zombie".to_string());
+        let mut data = NbtCompound::new();
+        data.put_compound("entity", entity);
+        potential.put_compound("data", data);
+        potential.put_int("weight", 1);
+        let mut normal = NbtCompound::new();
+        normal.put_list("spawn_potentials", vec![NbtTag::Compound(potential)]);
+        let mut nbt = NbtCompound::new();
+        nbt.put_compound("normal_config", normal);
+        nbt.put_int("required_player_range", 2);
+
+        let mut saved = NbtCompound::new();
+        TrialSpawnerFullConfig::from_nbt(&nbt).write_nbt(&mut saved);
+        assert_eq!(saved, nbt);
+    }
 
     #[test]
     fn trial_spawner_config_scaling() {
