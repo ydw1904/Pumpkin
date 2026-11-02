@@ -367,17 +367,9 @@ impl EndermanEntity {
             return false;
         }
 
-        let enderman_eye_pos = Vector3::new(enderman_pos.x, enderman_eye_y, enderman_pos.z);
-        let player_eye_pos = Vector3::new(player_pos.x, player_eye_y, player_pos.z);
-        let world = entity.world.load();
-        world
-            .clip(&pumpkin_world::clip::ClipContext::new(
-                enderman_eye_pos,
-                player_eye_pos,
-                pumpkin_world::clip::ClipBlock::Visual,
-                pumpkin_world::clip::ClipFluid::None,
-            ))
-            .is_miss
+        // Vanilla `isLookingAtMe(..., seeThroughTransparentBlocks = false, ...)`: the player's
+        // collider line of sight, so endermen aren't provoked through glass.
+        (player as &dyn EntityBase).has_line_of_sight(entity)
     }
 }
 

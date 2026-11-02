@@ -12,7 +12,7 @@ pub enum ClipBlock {
     Collider,
     /// Tests outline selection shapes (`BlockState::outline_shapes`).
     Outline,
-    /// Tests visual occlusion shapes (`BlockState::visual_shapes`) for line-of-sight.
+    /// Tests vanilla's visual shapes, which see through glass, panes, bars and powder snow.
     Visual,
     /// Tests full block shape for blocks in `#minecraft:fall_damage_resetting`.
     FallDamageResetting,
@@ -279,6 +279,46 @@ fn clip_fluid(
     intersects_aabb_with_hit(from, to, world_min, world_max)
 }
 
+/// Which shape vanilla `getVisualShape` returns for a block.
+enum VisualShape {
+    Empty,
+    FullBlock,
+    Outline,
+    Collision,
+}
+
+/// Vanilla `getVisualShape`, which defaults to the collision shape. Visual shapes aren't
+/// extracted, so this follows the block classes that override it.
+fn visual_shape(block: &Block) -> VisualShape {
+    // TransparentBlock (glass, stained and tinted glass, copper grates), IronBarsBlock (bars and
+    // panes) and PowderSnowBlock.
+    if block.has_tag(&pumpkin_data::tag::Block::C_GLASS_BLOCKS)
+        || block.has_tag(&pumpkin_data::tag::Block::C_GLASS_PANES)
+        || block.has_tag(&pumpkin_data::tag::Block::MINECRAFT_BARS)
+        || [
+            &Block::COPPER_GRATE,
+            &Block::EXPOSED_COPPER_GRATE,
+            &Block::WEATHERED_COPPER_GRATE,
+            &Block::OXIDIZED_COPPER_GRATE,
+            &Block::WAXED_COPPER_GRATE,
+            &Block::WAXED_EXPOSED_COPPER_GRATE,
+            &Block::WAXED_WEATHERED_COPPER_GRATE,
+            &Block::WAXED_OXIDIZED_COPPER_GRATE,
+            &Block::POWDER_SNOW,
+        ]
+        .contains(&block)
+    {
+        VisualShape::Empty
+    } else if block == &Block::MUD || block == &Block::SOUL_SAND {
+        VisualShape::FullBlock
+    } else if block == &Block::SNOW || block.has_tag(&pumpkin_data::tag::Block::MINECRAFT_FENCES) {
+        // SnowLayerBlock and FenceBlock return their outline shape.
+        VisualShape::Outline
+    } else {
+        VisualShape::Collision
+    }
+}
+
 fn check_block(
     accessor: &(impl BlockAccessor + ?Sized),
     block_pos: &BlockPos,
@@ -317,13 +357,37 @@ fn check_block(
 pub fn clip(accessor: &(impl BlockAccessor + ?Sized), context: &ClipContext) -> BlockHitResult {
     let (from, to) = (context.from, context.to);
     clip_blocks(accessor, context, |state, block_pos| match context.block {
-        ClipBlock::Collider | ClipBlock::Visual => clip_block_shapes(
+        ClipBlock::Collider => clip_block_shapes(
             state.get_block_collision_shapes_at(block_pos),
             state,
             block_pos,
             from,
             to,
         ),
+        ClipBlock::Visual => match visual_shape(Block::from_state_id(state.id)) {
+            VisualShape::Empty => None,
+            VisualShape::FullBlock => clip_block_shapes(
+                std::iter::once(BoundingBox::full_block()),
+                state,
+                block_pos,
+                from,
+                to,
+            ),
+            VisualShape::Outline => clip_block_shapes(
+                state.get_block_outline_shapes_at(block_pos),
+                state,
+                block_pos,
+                from,
+                to,
+            ),
+            VisualShape::Collision => clip_block_shapes(
+                state.get_block_collision_shapes_at(block_pos),
+                state,
+                block_pos,
+                from,
+                to,
+            ),
+        },
         ClipBlock::Outline => clip_block_shapes(
             state.get_block_outline_shapes_at(block_pos),
             state,
@@ -634,5 +698,33 @@ mod tests {
         ));
         assert!(hit_stone.is_hit());
         assert_eq!(hit_stone.block_pos, BlockPos::new(2, 0, 0));
+
+        // Glass has an empty visual shape but still collides
+        world.set_block(BlockPos::new(2, 0, 0), &Block::GLASS);
+        let visual = world.clip(&ClipContext::new(
+            from,
+            to,
+            ClipBlock::Visual,
+            ClipFluid::None,
+        ));
+        assert!(visual.is_miss());
+        let collider = world.clip(&ClipContext::new(
+            from,
+            to,
+            ClipBlock::Collider,
+            ClipFluid::None,
+        ));
+        assert!(collider.is_hit());
+
+        // Soul sand's visual shape is a full block, taller than its collision shape
+        world.set_block(BlockPos::new(2, 0, 0), &Block::SOUL_SAND);
+        let over_top = Vector3::new(0.5, 0.95, 0.5);
+        let visual = world.clip(&ClipContext::new(
+            over_top,
+            Vector3::new(5.5, 0.95, 0.5),
+            ClipBlock::Visual,
+            ClipFluid::None,
+        ));
+        assert!(visual.is_hit());
     }
 }

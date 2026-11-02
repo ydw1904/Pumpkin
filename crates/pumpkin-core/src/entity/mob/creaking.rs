@@ -285,7 +285,21 @@ impl CreakingEntity {
             if distance > 0.001 {
                 let norm_dir = Vector3::new(dir.x / distance, dir.y / distance, dir.z / distance);
                 let dot = look_dir.dot(&norm_dir);
-                if dot > 1.0 - 0.5 / distance {
+                // Vanilla `isLookingAtMe(..., seeThroughTransparentBlocks = true, ...)` then
+                // `hasLineOfSight` with visual shapes, which see through glass.
+                if dot > 1.0 - 0.5 / distance
+                    && distance <= 128.0
+                    && player_entity
+                        .world
+                        .load()
+                        .clip(&pumpkin_world::clip::ClipContext::new(
+                            player_eye_pos,
+                            target,
+                            pumpkin_world::clip::ClipBlock::Visual,
+                            pumpkin_world::clip::ClipFluid::None,
+                        ))
+                        .is_miss
+                {
                     return true;
                 }
             }

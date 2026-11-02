@@ -505,7 +505,6 @@ impl PiglinEntity {
         let entity = &self.mob_entity.living_entity.entity;
         let world = entity.world.load();
         let pos = entity.pos.load();
-        let eye_pos = entity.get_eye_pos();
         let search_box = entity.bounding_box.load().expand(
             PiglinAi::ITEM_SCAN_RANGE,
             PiglinAi::ITEM_SCAN_RANGE_Y,
@@ -535,15 +534,9 @@ impl PiglinEntity {
             candidates
                 .into_iter()
                 .map(|(_, candidate)| candidate)
+                // Vanilla `NearestItemSensor` filters with `hasLineOfSight`, a collider check.
                 .find(|candidate| {
-                    world
-                        .clip(&pumpkin_world::clip::ClipContext::new(
-                            eye_pos,
-                            candidate.get_entity().get_eye_pos(),
-                            pumpkin_world::clip::ClipBlock::Visual,
-                            pumpkin_world::clip::ClipFluid::None,
-                        ))
-                        .is_miss
+                    (self as &dyn EntityBase).has_line_of_sight(candidate.get_entity())
                 })
         } else {
             None
