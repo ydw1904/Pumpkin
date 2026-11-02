@@ -514,6 +514,34 @@ mod test {
     use pumpkin_util::math::position::BlockPos;
     use std::sync::Arc;
 
+    /// 26.3 saves furnace progress as ints; reading them as shorts reset every furnace.
+    #[test]
+    fn furnace_progress_saved_by_vanilla_is_kept() {
+        let mut nbt = NbtCompound::new();
+        nbt.put_string("id", "minecraft:furnace".to_string());
+        for axis in ["x", "y", "z"] {
+            nbt.put_int(axis, 0);
+        }
+        nbt.put_int("cooking_time_spent", 67);
+        nbt.put_int("cooking_total_time", 200);
+        nbt.put_int("lit_time_remaining", 383);
+        nbt.put_int("lit_total_time", 1600);
+
+        let mut saved = NbtCompound::new();
+        block_entity_from_nbt(&nbt)
+            .expect("furnace loads")
+            .write_internal(&mut saved);
+
+        for key in [
+            "cooking_time_spent",
+            "cooking_total_time",
+            "lit_time_remaining",
+            "lit_total_time",
+        ] {
+            assert_eq!(saved.get(key), nbt.get(key), "{key}");
+        }
+    }
+
     #[test]
     fn block_entity_ids_without_a_namespace_load() {
         let mut nbt = NbtCompound::new();

@@ -525,8 +525,8 @@ impl crate::block::entities::BlockEntity for BrewingStandBlockEntity {
 
     fn write_nbt(&self, nbt: &mut NbtCompound) {
         // Persist brew state
-        nbt.put_short("BrewTime", self.brew_time.load(Ordering::Relaxed) as i16);
-        nbt.put_byte("Fuel", self.fuel.load(Ordering::Relaxed) as i8);
+        nbt.put_int("BrewTime", self.brew_time.load(Ordering::Relaxed));
+        nbt.put_int("Fuel", self.fuel.load(Ordering::Relaxed));
 
         // Save inventory contents to NBT
         self.write_inventory_nbt(nbt, true);
@@ -538,8 +538,8 @@ impl crate::block::entities::BlockEntity for BrewingStandBlockEntity {
 
     fn chunk_data_nbt(&self) -> Option<NbtCompound> {
         let mut nbt = NbtCompound::new();
-        nbt.put_short("BrewTime", self.brew_time.load(Ordering::Relaxed) as i16);
-        nbt.put_byte("Fuel", self.fuel.load(Ordering::Relaxed) as i8);
+        nbt.put_int("BrewTime", self.brew_time.load(Ordering::Relaxed));
+        nbt.put_int("Fuel", self.fuel.load(Ordering::Relaxed));
         if let Ok(items) = self.items.try_read() {
             sync_write_items_to_nbt(&*items, &mut nbt);
         }
