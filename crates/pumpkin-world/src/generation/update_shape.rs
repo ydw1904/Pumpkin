@@ -5,6 +5,7 @@
 use pumpkin_data::block_properties::{
     BlockProperties, OakLeavesLikeProperties, VineLikeProperties,
 };
+use pumpkin_data::fluid::Fluid;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::{Block, BlockDirection, BlockId, BlockState, BlockStateId};
 use pumpkin_util::math::vector3::Vector3;
@@ -234,6 +235,44 @@ pub fn update_from_neighbour_shapes<L: BlockPlacer + ?Sized>(
     new_state
 }
 
+/// Vanilla `BlockState.getFluidState`: the fluid's type and whether it is a source.
+#[must_use]
+pub fn fluid_state(state: BlockStateId) -> (&'static Fluid, bool) {
+    match Fluid::from_state_id(state) {
+        Some(fluid) => (
+            fluid,
+            fluid.id == Fluid::WATER.id || fluid.id == Fluid::LAVA.id,
+        ),
+        None if state.is_waterlogged()
+            || matches!(
+                state.to_block_id(),
+                BlockId::KELP
+                    | BlockId::KELP_PLANT
+                    | BlockId::SEAGRASS
+                    | BlockId::TALL_SEAGRASS
+                    | BlockId::BUBBLE_COLUMN
+            ) =>
+        {
+            (&Fluid::WATER, true)
+        }
+        None => (&Fluid::EMPTY, false),
+    }
+}
+
+/// Blocks whose vanilla class (`FallingBlock` or `BrushableBlock`) schedules a fall check in
+/// `updateShape`. Concrete powder also falls, but hardens next to water first, which isn't
+/// ported here.
+fn is_falling_block(block: &Block) -> bool {
+    matches!(
+        block.id,
+        BlockId::SAND
+            | BlockId::RED_SAND
+            | BlockId::GRAVEL
+            | BlockId::SUSPICIOUS_SAND
+            | BlockId::SUSPICIOUS_GRAVEL
+    ) || block.has_tag(&tag::Block::MINECRAFT_ANVIL)
+}
+
 /// Vanilla `BlockState.updateShape` for the blocks whose shape updates matter in generated
 /// terrain. Other blocks keep their state.
 pub fn update_shape<L: BlockPlacer + ?Sized>(
@@ -245,14 +284,62 @@ pub fn update_shape<L: BlockPlacer + ?Sized>(
     neighbor_state: BlockStateId,
 ) -> BlockStateId {
     let block = state.to_block();
+    if let Some(fluid) = Fluid::from_state_id(state).filter(|fluid| fluid.id != Fluid::EMPTY.id) {
+        update_liquid_shape(
+            level,
+            pos,
+            state,
+            block,
+            fluid,
+            dir_to_neighbor,
+            neighbor_state,
+        );
+        return state;
+    }
     if block.has_tag(&tag::Block::MINECRAFT_LEAVES) {
         update_leaves_shape(level, pos, state, block, neighbor_state);
         return state;
     }
+    // `SimpleWaterloggedBlock` implementors start the water's tick in their `updateShape`.
+    if state.is_waterlogged() {
+        level.schedule_fluid_tick(&pos, &Fluid::WATER);
+    }
     if block.id == BlockId::VINE {
         return update_vine_shape(level, pos, state, dir_to_neighbor);
     }
+    if is_falling_block(block) {
+        level.schedule_block_tick(&pos, block);
+    }
     state
+}
+
+/// Vanilla `LiquidBlock.updateShape`. The fluid tick lets water flow into air a structure or
+/// feature left next to it.
+fn update_liquid_shape<L: BlockPlacer + ?Sized>(
+    level: &mut L,
+    pos: Vector3<i32>,
+    state: BlockStateId,
+    block: &'static Block,
+    fluid: &'static Fluid,
+    dir_to_neighbor: BlockDirection,
+    neighbor_state: BlockStateId,
+) {
+    let (_, is_source) = fluid_state(state);
+    if is_source || fluid_state(neighbor_state).1 {
+        level.schedule_fluid_tick(&pos, fluid);
+    }
+    // `shouldBubbleColumnOccupy` and `tryScheduleBubbleBlockColumn`
+    if dir_to_neighbor == BlockDirection::Down
+        && fluid.id == Fluid::WATER.id
+        && (neighbor_state
+            .to_block()
+            .has_tag(&tag::Block::MINECRAFT_ENABLES_BUBBLE_COLUMN_DRAG_DOWN)
+            || neighbor_state
+                .to_block()
+                .has_tag(&tag::Block::MINECRAFT_ENABLES_BUBBLE_COLUMN_PUSH_UP))
+    {
+        level.schedule_block_tick(&pos, block);
+    }
 }
 
 /// Vanilla `LeavesBlock.updateShape`. Its ticks run once the chunk is loaded and let the leaves
@@ -266,7 +353,7 @@ fn update_leaves_shape<L: BlockPlacer + ?Sized>(
 ) {
     let props = OakLeavesLikeProperties::from_state_id(state);
     if props.waterlogged {
-        level.schedule_fluid_tick(&pos, &pumpkin_data::fluid::Fluid::WATER);
+        level.schedule_fluid_tick(&pos, &Fluid::WATER);
     }
     let distance_from_neighbor = optional_distance_at(neighbor_state).unwrap_or(DECAY_DISTANCE) + 1;
     if distance_from_neighbor != 1 || props.distance != distance_from_neighbor {
