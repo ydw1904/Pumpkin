@@ -39,6 +39,7 @@ use crate::world::loot::LootContextParameters;
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::AttributeModifierSlot;
 use pumpkin_data::attributes::Attributes;
+use pumpkin_data::block_properties::{LadderLikeProperties, OakTrapdoorLikeProperties};
 use pumpkin_data::data_component_impl::Operation;
 use pumpkin_data::data_component_impl::food::{ConsumableImpl, ConsumeEffect};
 use pumpkin_data::data_component_impl::{
@@ -2116,60 +2117,47 @@ impl LivingEntity {
             return;
         }
 
-        // If spectator: return false
-
-        // TODO
-        // let mut pos = self.entity.block_pos.load();
-
-        // let world = self.entity.world.read().await;
-
-        // let (block, state) = world.get_block_and_state(&pos);
-
-        // let name = block.properties(state.id).map(|props| props.name());
-
-        // if let Some(name) = name {
-        //     if name == "LadderLikeProperties"
-        //         || name == "ScaffoldingLikeProperties"
-        //         || name == "CaveVinesLikeProperties"
-        //         || name == "CaveVinesPlantLikeProperties"
-        //     {
-        //         self.climbing.store(true, Relaxed);
-
-        //         self.climbing_pos.store(Some(pos));
-
-        //         return;
-        //     }
-
-        //     if name == "OakTrapdoorLikeProperties" {
-        //         let trapdoor = OakTrapdoorLikeProperties::from_state_id(state.id);
-
-        //         pos.0.y -= 1;
-
-        //         let (down_block, down_state) = world.get_block_and_state(&pos);
-
-        //         let is_ladder = down_block
-        //             .properties(down_state.id)
-        //             .is_some_and(|down_props| down_props.name() == "LadderLikeProperties");
-
-        //         if is_ladder {
-        //             let ladder = LadderLikeProperties::from_state_id(down_state.id);
-
-        //             if trapdoor.r#facing == ladder.r#facing {
-        //                 self.climbing.store(true, Relaxed);
-
-        //                 self.climbing_pos.store(Some(pos));
-
-        //                 return;
-        //             }
-        //         }
-        //     }
-        // }
+        // Vanilla `LivingEntity.onClimbable`. Players never get here (their movement is client
+        // authoritative) and no mob is a spectator.
+        let pos = self.entity.block_pos.load();
+        let world = self.entity.world.load();
+        let (block, state) = world.get_block_and_state(&pos);
+        let climbable = if self.entity.is_fall_flying()
+            && block.has_tag(&tag::Block::MINECRAFT_CAN_GLIDE_THROUGH)
+        {
+            false
+        } else if block.has_tag(&tag::Block::MINECRAFT_CLIMBABLE) {
+            true
+        } else {
+            block.has_tag(&tag::Block::MINECRAFT_TRAPDOORS)
+                && Self::trapdoor_usable_as_ladder(&world, &pos, state)
+        };
+        if climbable {
+            self.climbing.store(true, Relaxed);
+            self.climbing_pos.store(Some(pos));
+            return;
+        }
 
         self.climbing.store(false, Relaxed);
 
         if self.entity.on_ground.load(SeqCst) {
             self.climbing_pos.store(None);
         }
+    }
+
+    /// Vanilla `LivingEntity.trapdoorUsableAsLadder`.
+    fn trapdoor_usable_as_ladder(
+        world: &crate::world::World,
+        pos: &BlockPos,
+        state: &pumpkin_data::BlockState,
+    ) -> bool {
+        let trapdoor = OakTrapdoorLikeProperties::from_state_id(state.id);
+        if !trapdoor.open {
+            return false;
+        }
+        let (below_block, below_state) = world.get_block_and_state(&pos.down());
+        below_block == &Block::LADDER
+            && LadderLikeProperties::from_state_id(below_state.id).facing == trapdoor.facing
     }
 
     fn apply_climbing_speed(&self) {
