@@ -337,12 +337,14 @@ pub struct LocationPredicate {
     pub block: Option<TagOrIdMatcher>,
     pub can_see_sky: Option<bool>,
     pub smokey: Option<bool>,
-    pub structure: Option<String>,
+    pub structure: Option<TagOrIdMatcher>,
     pub stepping_on: Option<TagOrIdMatcher>,
     pub feet_item: Option<TagOrIdMatcher>,
 }
 
 impl LocationPredicate {
+    /// `has_structure_piece` answers vanilla
+    /// `StructureManager.getStructureWithPieceAt(pos, structures).isValid()` at the position.
     #[must_use]
     #[expect(clippy::too_many_arguments)]
     pub fn matches(
@@ -355,6 +357,7 @@ impl LocationPredicate {
         smokey: Option<bool>,
         stepping_block: Option<&str>,
         feet_item: Option<&str>,
+        has_structure_piece: &dyn Fn(&TagOrIdMatcher) -> bool,
     ) -> bool {
         if let Some(x) = &self.x
             && !x.matches(pos.0)
@@ -386,6 +389,11 @@ impl LocationPredicate {
             if !biome_matcher.matches(RegistryKey::WorldgenBiome, b) {
                 return false;
             }
+        }
+        if let Some(structure_matcher) = &self.structure
+            && !has_structure_piece(structure_matcher)
+        {
+            return false;
         }
         if let Some(block_matcher) = &self.block {
             let Some(blk) = step_block else {
@@ -474,8 +482,7 @@ impl LocationPredicate {
         let structure = loc_map
             .get("structures")
             .or_else(|| loc_map.get("structure"))
-            .and_then(Value::as_str)
-            .map(ToString::to_string);
+            .and_then(TagOrIdMatcher::from_value);
 
         let player_pred = map.get("player").and_then(|p| p.get("predicate"));
         let stepping_on = player_pred
@@ -1432,7 +1439,9 @@ impl From<pumpkin_data::advancement_data::AdvancementCondition> for CriterionCon
                 }),
                 can_see_sky: l.can_see_sky,
                 smokey: l.smokey,
-                structure: l.structure.map(ToString::to_string),
+                structure: l.structure.map(|s| TagOrIdMatcher {
+                    patterns: vec![s.to_string()],
+                }),
                 stepping_on: l.stepping_on.map(|b| TagOrIdMatcher {
                     patterns: vec![b.to_string()],
                 }),
@@ -2043,7 +2052,8 @@ pub fn matches_inventory_condition(
     )
 }
 
-/// Evaluates conditions for `minecraft:location`.
+/// Evaluates conditions for `minecraft:location`. `structures` are the structures with a
+/// piece at `pos`.
 #[expect(
     clippy::too_many_arguments,
     reason = "location condition has many properties"
@@ -2054,7 +2064,7 @@ pub fn matches_location_condition(
     pos: (f64, f64, f64),
     biome: Option<&str>,
     dimension: Option<&str>,
-    _features: &[&str],
+    structures: &[&str],
     can_see_sky: Option<bool>,
     step_block: Option<&str>,
     feet_item: Option<&str>,
@@ -2069,6 +2079,11 @@ pub fn matches_location_condition(
         None,
         step_block,
         feet_item,
+        &|matcher| {
+            structures
+                .iter()
+                .any(|structure| matcher.matches(RegistryKey::WorldgenStructure, structure))
+        },
     )
 }
 
@@ -2237,6 +2252,31 @@ mod tests {
     }
 
     #[test]
+    fn location_structure_condition_needs_the_structure() {
+        let cond = json!({
+            "player": {
+                "predicate": { "location": { "structures": "minecraft:fortress" } }
+            }
+        });
+        let matches = |structures: &[&str]| {
+            matches_location_condition(
+                &cond,
+                (0.0, 64.0, 0.0),
+                None,
+                Some("minecraft:the_nether"),
+                structures,
+                None,
+                None,
+                None,
+                false,
+            )
+        };
+        assert!(!matches(&[]));
+        assert!(!matches(&["bastion_remnant"]));
+        assert!(matches(&["fortress"]));
+    }
+
+    #[test]
     fn matches_dimension_condition_works() {
         let cond = json!({
             "to": "minecraft:the_nether"
@@ -2362,7 +2402,8 @@ mod tests {
                     None,
                     None,
                     Some("powder_snow"),
-                    Some("leather_boots")
+                    Some("leather_boots"),
+                    &|_| false
                 ));
                 assert!(!pred.matches(
                     (0.0, 64.0, 0.0),
@@ -2372,7 +2413,8 @@ mod tests {
                     None,
                     None,
                     Some("stone"),
-                    Some("leather_boots")
+                    Some("leather_boots"),
+                    &|_| false
                 ));
                 assert!(!pred.matches(
                     (0.0, 64.0, 0.0),
@@ -2382,7 +2424,8 @@ mod tests {
                     None,
                     None,
                     Some("powder_snow"),
-                    Some("diamond_boots")
+                    Some("diamond_boots"),
+                    &|_| false
                 ));
             }
             _ => panic!("Expected Location variant"),

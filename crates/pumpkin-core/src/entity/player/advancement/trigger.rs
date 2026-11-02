@@ -306,6 +306,16 @@ impl Player {
                         None,
                         stepping_block,
                         feet_item.as_deref(),
+                        &|matcher| {
+                            world
+                                .level
+                                .is_inside_structure_piece(&block_pos, |structure| {
+                                    matcher.matches(
+                                        pumpkin_data::tag::RegistryKey::WorldgenStructure,
+                                        structure.to_name(),
+                                    )
+                                })
+                        },
                     ),
                     CriterionConditions::Custom { .. } => true,
                     _ => false,
