@@ -761,17 +761,24 @@ impl World {
         };
 
         for block_entity in block_entities {
-            let mut nbt = NbtCompound::new();
-            block_entity.write_internal(&mut nbt);
-            if let Some(custom_data) = self
-                .custom_block_entity_data
-                .get(&block_entity.get_position())
-                && !custom_data.is_empty()
-            {
-                nbt.put_compound("PumpkinCustomData", custom_data.clone());
-            }
+            let nbt = self.saved_block_entity_nbt(block_entity.as_ref());
             self.add_block_entity_nbt(block_entity.get_position(), &nbt);
         }
+    }
+
+    /// The NBT a block entity is saved with. The chunk keeps this copy whenever the
+    /// entity changes: a chunk can be written out on unload before
+    /// `save_block_entities` gets to it.
+    fn saved_block_entity_nbt(&self, block_entity: &dyn BlockEntity) -> NbtCompound {
+        let mut nbt = block_entity_nbt(block_entity);
+        if let Some(custom_data) = self
+            .custom_block_entity_data
+            .get(&block_entity.get_position())
+            && !custom_data.is_empty()
+        {
+            nbt.put_compound("PumpkinCustomData", custom_data.clone());
+        }
+        nbt
     }
 
     /// Broadcasts an entity status update / event to all players tracking the specified entity,
@@ -6987,8 +6994,7 @@ impl World {
     pub fn add_block_entity(&self, block_entity: Arc<dyn BlockEntity>) {
         let block_pos = block_entity.get_position();
         let chunk_pos = block_pos.chunk_position();
-        let block_entity_nbt = block_entity.chunk_data_nbt();
-        let entity_id = block_entity.resource_location().to_string();
+        let saved_nbt = self.saved_block_entity_nbt(block_entity.as_ref());
 
         if let Some(nbt) = block_entity.update_packet_nbt() {
             let bytes = pumpkin_nbt::Nbt::from(nbt).write_unnamed();
@@ -7014,14 +7020,7 @@ impl World {
             .or_default()
             .insert(block_pos, block_entity);
 
-        if let Some(nbt) = block_entity_nbt {
-            let mut full_nbt = nbt;
-            full_nbt.put_string("id", entity_id);
-            full_nbt.put_int("x", block_pos.0.x);
-            full_nbt.put_int("y", block_pos.0.y);
-            full_nbt.put_int("z", block_pos.0.z);
-            self.add_block_entity_nbt(block_pos, &full_nbt);
-        }
+        self.add_block_entity_nbt(block_pos, &saved_nbt);
 
         self.level.read_chunk_sync(&chunk_pos, |chunk| {
             chunk.mark_dirty(true);
@@ -7157,7 +7156,6 @@ impl World {
     pub fn update_block_entity(&self, block_entity: &Arc<dyn BlockEntity>) {
         let block_pos = block_entity.get_position();
         let chunk_pos = block_pos.chunk_position();
-        let block_entity_nbt = block_entity.chunk_data_nbt();
 
         if let Some(nbt) = block_entity.update_packet_nbt() {
             let bytes = pumpkin_nbt::Nbt::from(nbt).write_unnamed();
@@ -7170,15 +7168,10 @@ impl World {
                 ),
             );
         }
-        if let Some(nbt) = &block_entity_nbt {
-            let mut full_nbt = nbt.clone();
-            full_nbt.put_string("id", block_entity.resource_location().to_string());
-            let pos = block_entity.get_position();
-            full_nbt.put_int("x", pos.0.x);
-            full_nbt.put_int("y", pos.0.y);
-            full_nbt.put_int("z", pos.0.z);
-            self.add_block_entity_nbt(block_pos, &full_nbt);
-        }
+        self.add_block_entity_nbt(
+            block_pos,
+            &self.saved_block_entity_nbt(block_entity.as_ref()),
+        );
 
         let state = self.get_block_state(&block_pos);
         if let Some(data) = bedrock_chest_block_actor(state.id, block_pos)
@@ -8407,6 +8400,44 @@ mod tests {
         nbt.put_int("y", position.0.y);
         nbt.put_int("z", position.0.z);
         nbt
+    }
+
+    /// A chunk can be written out on unload before `save_block_entities` runs, so the
+    /// copy it holds after an update must be the saved form, not the client one.
+    #[tokio::test]
+    async fn updated_block_entity_keeps_its_saved_fields_in_the_chunk() {
+        let folder = tempfile::tempdir().unwrap();
+        let world = crate::entity::ai::test_support::world(&folder);
+        let chunk_pos = pumpkin_util::math::vector2::Vector2::new(0, 0);
+        world
+            .level
+            .loaded_chunks
+            .insert(chunk_pos, ChunkData::empty_sync(0, 0));
+        let position = BlockPos::new(1, 64, 1);
+        let mut nbt = block_entity_nbt("minecraft:chest", position);
+        nbt.put_string("LootTable", "minecraft:chests/simple_dungeon".to_string());
+        let chest = crate::block::entities::block_entity_from_nbt(&nbt).unwrap();
+
+        world.update_block_entity(&chest);
+
+        let saved = world
+            .level
+            .loaded_chunks
+            .get(&chunk_pos)
+            .and_then(|chunk| {
+                chunk
+                    .pending_block_entities
+                    .lock()
+                    .unwrap()
+                    .get(&position)
+                    .cloned()
+            })
+            .unwrap();
+        assert_eq!(
+            saved.get_string("LootTable"),
+            Some("minecraft:chests/simple_dungeon")
+        );
+        world.level.shutdown().await;
     }
 
     #[test]
