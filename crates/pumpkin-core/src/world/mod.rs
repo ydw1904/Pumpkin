@@ -178,6 +178,7 @@ use time::LevelTime;
 pub mod block_placer;
 pub mod border;
 pub mod bossbar;
+pub mod cat_spawner;
 pub mod custom_bossbar;
 pub mod dragon_fight;
 pub mod end_podium;
@@ -308,6 +309,8 @@ pub struct World {
     pub phantom_spawner: std::sync::Mutex<phantom_spawner::PhantomSpawner>,
     /// Vanilla `PatrolSpawner`; only ticked in the overworld.
     pub patrol_spawner: std::sync::Mutex<patrol_spawner::PatrolSpawner>,
+    /// Vanilla `CatSpawner`; only ticked in the overworld.
+    pub cat_spawner: std::sync::Mutex<cat_spawner::CatSpawner>,
     /// Vanilla `WanderingTraderSpawner`; only ticked in the overworld.
     pub wandering_trader_spawner:
         std::sync::Mutex<wandering_trader_spawner::WanderingTraderSpawner>,
@@ -484,6 +487,7 @@ impl World {
             raids: std::sync::Mutex::new(raid::Raids::default()),
             phantom_spawner: std::sync::Mutex::default(),
             patrol_spawner: std::sync::Mutex::default(),
+            cat_spawner: std::sync::Mutex::default(),
             wandering_trader_spawner,
             dragon_fight,
             spawn_state: ArcSwap::new(Arc::new(SpawnState::empty())),
@@ -2320,6 +2324,10 @@ impl World {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .tick(self, !peaceful && spawn_monsters);
+            self.cat_spawner
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .tick(self);
             self.wandering_trader_spawner
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
