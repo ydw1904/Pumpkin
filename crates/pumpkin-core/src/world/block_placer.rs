@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
+use pumpkin_data::fluid::Fluid;
 use pumpkin_data::{Block, BlockState, BlockStateId};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_world::generation::structure::template::BlockPlacer;
 use pumpkin_world::level::Level;
+use pumpkin_world::tick::TickPriority;
 
 use crate::block::entities::block_entity_name;
 use crate::world::World;
@@ -78,7 +80,25 @@ impl BlockPlacer for WorldBlockPlacer<'_> {
         self.changed_positions.push((block_pos, state.id));
     }
 
-    fn add_block_entity(&mut self, nbt: NbtCompound) {
+    fn set_block_state_with_post_processing(&mut self, pos: &Vector3<i32>, state: &BlockState) {
+        self.set_block_state(pos, state);
+    }
+
+    fn add_block_entity(&mut self, _pos: &Vector3<i32>, nbt: NbtCompound) {
         self.block_entity_nbts.push(nbt);
+    }
+
+    fn schedule_fluid_tick(&mut self, pos: &Vector3<i32>, fluid: &'static Fluid) {
+        self.world.schedule_fluid_tick(
+            fluid,
+            BlockPos(*pos),
+            fluid.flow_speed,
+            TickPriority::Normal,
+        );
+    }
+
+    fn schedule_block_tick(&mut self, pos: &Vector3<i32>, block: &'static Block) {
+        self.world
+            .schedule_block_tick(block, BlockPos(*pos), 1, TickPriority::Normal);
     }
 }

@@ -1,10 +1,8 @@
 use decorator::TreeDecorator;
 use foliage::FoliagePlacer;
+use pumpkin_data::BlockState;
 use pumpkin_data::block_properties::{BlockProperties, OakLeavesLikeProperties};
-use pumpkin_data::fluid::Fluid;
-use pumpkin_data::tag::Taggable;
 use pumpkin_data::{BlockId, tag};
-use pumpkin_data::{BlockState, BlockStateId};
 use pumpkin_util::{math::position::BlockPos, random::RandomGenerator};
 use root::RootPlacer;
 
@@ -12,6 +10,9 @@ use trunk::TrunkPlacer;
 
 use super::JavaBlockPosHashSet;
 use crate::generation::proto_chunk::GenerationCache;
+use crate::generation::update_shape::{
+    DiscreteVoxelShape, GenerationRegion, optional_distance_at, update_shape_at_edge,
+};
 use crate::generation::{block_state_provider::BlockStateProvider, feature::size::FeatureSize};
 use crate::world::WorldPortalExt;
 
@@ -36,21 +37,6 @@ pub struct TreeNode {
     center: BlockPos,
     foliage_radius: i32,
     giant_trunk: bool,
-}
-
-/// Vanilla `LeavesBlock.DECAY_DISTANCE`.
-const DECAY_DISTANCE: u8 = 7;
-
-/// Vanilla `LeavesBlock.getOptionalDistanceAt`.
-fn optional_distance_at(state: BlockStateId) -> Option<u8> {
-    let block = state.to_block();
-    if block.has_tag(&tag::Block::MINECRAFT_PREVENTS_NEARBY_LEAF_DECAY) {
-        Some(0)
-    } else if OakLeavesLikeProperties::handles_block_id(block.id) {
-        Some(OakLeavesLikeProperties::from_state_id(state).distance)
-    } else {
-        None
-    }
 }
 
 impl TreeFeature {
@@ -129,38 +115,18 @@ impl TreeFeature {
             return;
         }
 
-        let (mut min_x, mut min_y, mut min_z) = (i32::MAX, i32::MAX, i32::MAX);
-        let (mut max_x, mut max_y, mut max_z) = (i32::MIN, i32::MIN, i32::MIN);
-
-        for pos in logs.iter().chain(roots).chain(foliage).chain(decorations) {
-            min_x = min_x.min(pos.0.x);
-            min_y = min_y.min(pos.0.y);
-            min_z = min_z.min(pos.0.z);
-            max_x = max_x.max(pos.0.x);
-            max_y = max_y.max(pos.0.y);
-            max_z = max_z.max(pos.0.z);
-        }
-
-        let (x_span, y_span, z_span) = (
-            (max_x - min_x + 1) as usize,
-            (max_y - min_y + 1) as usize,
-            (max_z - min_z + 1) as usize,
-        );
-        let mut shape = vec![false; x_span * y_span * z_span];
-
-        let get_index = |x: i32, y: i32, z: i32| -> Option<usize> {
-            (x >= min_x && x <= max_x && y >= min_y && y <= max_y && z >= min_z && z <= max_z).then(
-                || {
-                    (((x - min_x) as usize * y_span + (y - min_y) as usize) * z_span)
-                        + (z - min_z) as usize
-                },
-            )
+        let all: Vec<_> = logs
+            .iter()
+            .chain(roots)
+            .chain(foliage)
+            .chain(decorations)
+            .map(|pos| pos.0)
+            .collect();
+        let Some(mut shape) = DiscreteVoxelShape::covering(&all) else {
+            return;
         };
-
         for pos in roots.iter().chain(decorations.iter()) {
-            if let Some(idx) = get_index(pos.0.x, pos.0.y, pos.0.z) {
-                shape[idx] = true;
-            }
+            shape.fill(pos.0);
         }
 
         let mut to_check: [JavaBlockPosHashSet; 7] = Default::default();
@@ -174,9 +140,7 @@ impl TreeFeature {
         loop {
             while smallest_distance >= 7 || !to_check[smallest_distance].is_empty() {
                 if smallest_distance >= 7 {
-                    Self::update_shape_at_edge(
-                        chunk, &shape, min_x, min_y, min_z, x_span, y_span, z_span,
-                    );
+                    update_shape_at_edge(&mut GenerationRegion(chunk), &shape);
                     return;
                 }
 
@@ -184,7 +148,7 @@ impl TreeFeature {
                     break;
                 };
 
-                if let Some(idx) = get_index(pos.0.x, pos.0.y, pos.0.z) {
+                if shape.is_filled(pos.0).is_some() {
                     if smallest_distance != 0 {
                         let (block, state) = chunk.get_block_and_state(&pos);
                         if OakLeavesLikeProperties::handles_block_id(block.id) {
@@ -195,15 +159,12 @@ impl TreeFeature {
                         }
                     }
 
-                    shape[idx] = true;
+                    shape.fill(pos.0);
 
                     for direction in pumpkin_data::BlockDirection::all() {
                         let offset = direction.to_offset();
                         let neighbor_pos = pos.offset(offset);
-                        if let Some(n_idx) =
-                            get_index(neighbor_pos.0.x, neighbor_pos.0.y, neighbor_pos.0.z)
-                            && !shape[n_idx]
-                        {
+                        if shape.is_filled(neighbor_pos.0) == Some(false) {
                             let n_state = GenerationCache::get_block_state(chunk, &neighbor_pos.0);
                             if let Some(dist) = optional_distance_at(n_state) {
                                 let new_distance = (dist as usize).min(smallest_distance + 1);
@@ -218,199 +179,6 @@ impl TreeFeature {
             }
 
             smallest_distance += 1;
-        }
-    }
-
-    #[expect(clippy::too_many_arguments)]
-    fn update_shape_at_edge<T: GenerationCache>(
-        chunk: &mut T,
-        shape: &[bool],
-        min_x: i32,
-        min_y: i32,
-        min_z: i32,
-        x_span: usize,
-        y_span: usize,
-        z_span: usize,
-    ) {
-        let is_full = |x: i32, y: i32, z: i32| -> bool {
-            if x < 0
-                || x >= x_span as i32
-                || y < 0
-                || y >= y_span as i32
-                || z < 0
-                || z >= z_span as i32
-            {
-                false
-            } else {
-                shape[(x as usize * y_span + y as usize) * z_span + z as usize]
-            }
-        };
-
-        let mut consume = |direction: pumpkin_data::BlockDirection, x: i32, y: i32, z: i32| {
-            let pos = BlockPos::new(min_x + x, min_y + y, min_z + z);
-            let neighbor_pos = pos.offset(direction.to_offset());
-            Self::update_edge_pair(chunk, pos, direction, neighbor_pos);
-        };
-
-        // Pass 1: AxisCycle.NONE (cAxis = Z: North / South)
-        for x in 0..x_span as i32 {
-            for y in 0..y_span as i32 {
-                let mut last_full = false;
-                for z in 0..=z_span as i32 {
-                    let full = z != z_span as i32 && is_full(x, y, z);
-                    if !last_full && full {
-                        consume(pumpkin_data::BlockDirection::North, x, y, z);
-                    }
-                    if last_full && !full {
-                        consume(pumpkin_data::BlockDirection::South, x, y, z - 1);
-                    }
-                    last_full = full;
-                }
-            }
-        }
-
-        // Pass 2: AxisCycle.FORWARD / inverse = BACKWARD (cAxis = Y: Down / Up)
-        for z in 0..z_span as i32 {
-            for x in 0..x_span as i32 {
-                let mut last_full = false;
-                for y in 0..=y_span as i32 {
-                    let full = y != y_span as i32 && is_full(x, y, z);
-                    if !last_full && full {
-                        consume(pumpkin_data::BlockDirection::Down, x, y, z);
-                    }
-                    if last_full && !full {
-                        consume(pumpkin_data::BlockDirection::Up, x, y - 1, z);
-                    }
-                    last_full = full;
-                }
-            }
-        }
-
-        // Pass 3: AxisCycle.BACKWARD / inverse = FORWARD (cAxis = X: West / East)
-        for y in 0..y_span as i32 {
-            for z in 0..z_span as i32 {
-                let mut last_full = false;
-                for x in 0..=x_span as i32 {
-                    let full = x != x_span as i32 && is_full(x, y, z);
-                    if !last_full && full {
-                        consume(pumpkin_data::BlockDirection::West, x, y, z);
-                    }
-                    if last_full && !full {
-                        consume(pumpkin_data::BlockDirection::East, x - 1, y, z);
-                    }
-                    last_full = full;
-                }
-            }
-        }
-    }
-
-    fn update_edge_pair<T: GenerationCache>(
-        chunk: &mut T,
-        pos: BlockPos,
-        direction: pumpkin_data::BlockDirection,
-        neighbor_pos: BlockPos,
-    ) {
-        let neighbor_state = GenerationCache::get_block_state(chunk, &neighbor_pos.0);
-        Self::schedule_leaf_update(chunk, pos, neighbor_state);
-        if let Some(new_state) = Self::get_updated_edge_state(chunk, pos, direction) {
-            chunk.set_block_state(&pos.0, new_state);
-        }
-        let new_state = GenerationCache::get_block_state(chunk, &pos.0);
-        Self::schedule_leaf_update(chunk, neighbor_pos, new_state);
-        if let Some(new_neighbor_state) =
-            Self::get_updated_edge_state(chunk, neighbor_pos, direction.opposite())
-        {
-            chunk.set_block_state(&neighbor_pos.0, new_neighbor_state);
-        }
-    }
-
-    /// The ticks vanilla `LeavesBlock.updateShape` schedules. They run once the chunk is
-    /// loaded and let the leaves recount their distance with every log around them.
-    fn schedule_leaf_update<T: GenerationCache>(
-        chunk: &mut T,
-        pos: BlockPos,
-        neighbor_state: BlockStateId,
-    ) {
-        let (block, state) = chunk.get_block_and_state(&pos);
-        if !block.has_tag(&tag::Block::MINECRAFT_LEAVES) {
-            return;
-        }
-        let props = OakLeavesLikeProperties::from_state_id(state.id);
-        let distance_from_neighbor =
-            optional_distance_at(neighbor_state).unwrap_or(DECAY_DISTANCE) + 1;
-        let Some(pos_chunk) = chunk.get_chunk_mut(pos.0.x >> 4, pos.0.z >> 4) else {
-            return;
-        };
-        if props.waterlogged {
-            pos_chunk.schedule_fluid_tick(pos.0.x, pos.0.y, pos.0.z, &Fluid::WATER);
-        }
-        if distance_from_neighbor != 1 || props.distance != distance_from_neighbor {
-            pos_chunk.schedule_block_tick(pos, block, 1);
-        }
-    }
-
-    fn get_updated_edge_state<T: GenerationCache>(
-        chunk: &T,
-        pos: BlockPos,
-        dir_to_neighbor: pumpkin_data::BlockDirection,
-    ) -> Option<&'static BlockState> {
-        use pumpkin_data::block_properties::VineLikeProperties;
-        use pumpkin_data::{Block, BlockDirection};
-
-        let state_id = GenerationCache::get_block_state(chunk, &pos.0);
-        if BlockId::from_state_id(state_id) != BlockId::VINE
-            || dir_to_neighbor == BlockDirection::Down
-        {
-            return None;
-        }
-
-        let is_acceptable = |support_pos: BlockPos, face_to_check: BlockDirection| -> bool {
-            let s_id = GenerationCache::get_block_state(chunk, &support_pos.0);
-            let s_state = s_id.to_state();
-            s_state.is_side_solid(face_to_check) || s_state.is_full_cube()
-        };
-
-        let mut props = VineLikeProperties::from_state_id(state_id);
-        let orig = props;
-        let above_pos = pos.up();
-        if props.up {
-            props.up = is_acceptable(above_pos, BlockDirection::Down);
-        }
-        let mut above_vine_props: Option<VineLikeProperties> = None;
-        let mut check_horiz = |flag: &mut bool, dir: BlockDirection| {
-            if *flag {
-                let mut ok = is_acceptable(pos.offset(dir.to_offset()), dir.opposite());
-                if !ok {
-                    let av = above_vine_props.get_or_insert_with(|| {
-                        let a_id = GenerationCache::get_block_state(chunk, &above_pos.0);
-                        if BlockId::from_state_id(a_id) == BlockId::VINE {
-                            VineLikeProperties::from_state_id(a_id)
-                        } else {
-                            VineLikeProperties::default(&Block::VINE)
-                        }
-                    });
-                    ok = match dir {
-                        BlockDirection::North => av.north,
-                        BlockDirection::East => av.east,
-                        BlockDirection::South => av.south,
-                        BlockDirection::West => av.west,
-                        _ => false,
-                    };
-                }
-                *flag = ok;
-            }
-        };
-        check_horiz(&mut props.north, BlockDirection::North);
-        check_horiz(&mut props.east, BlockDirection::East);
-        check_horiz(&mut props.south, BlockDirection::South);
-        check_horiz(&mut props.west, BlockDirection::West);
-
-        if !props.up && !props.north && !props.east && !props.south && !props.west {
-            Some(Block::AIR.default_state)
-        } else if props != orig {
-            Some(BlockState::from_id(props.to_state_id(&Block::VINE)))
-        } else {
-            None
         }
     }
 

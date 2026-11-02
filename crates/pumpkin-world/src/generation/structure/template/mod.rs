@@ -30,9 +30,11 @@ pub mod processor;
 mod structure_template;
 mod template_piece;
 
+use pumpkin_data::Block;
 use pumpkin_data::BlockStateId;
 use pumpkin_data::Mirror;
 use pumpkin_data::Rotation;
+use pumpkin_data::fluid::Fluid;
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::random::{RandomImpl, hash_block_pos, legacy_rand::LegacyRand};
@@ -55,12 +57,19 @@ pub use structure_template::{
 };
 pub use template_piece::TemplatePiece;
 
-/// Abstraction over block placement, implemented by both [`ProtoChunk`] (worldgen) and
+/// Abstraction over block placement, implemented by [`ProtoChunk`] and
+/// [`GenerationRegion`](crate::generation::update_shape::GenerationRegion) (worldgen) and
 /// [`WorldBlockPlacer`] (live `/place template` command).
 pub trait BlockPlacer {
     fn get_block_state(&self, pos: &Vector3<i32>) -> BlockStateId;
+    /// Sets a block like vanilla does with `UPDATE_KNOWN_SHAPE` (flag 16).
     fn set_block_state(&mut self, pos: &Vector3<i32>, state: &BlockState);
-    fn add_block_entity(&mut self, nbt: NbtCompound);
+    /// Sets a block like vanilla `WorldGenRegion.setBlock` without `UPDATE_KNOWN_SHAPE`, which
+    /// also marks the block's post-processing position.
+    fn set_block_state_with_post_processing(&mut self, pos: &Vector3<i32>, state: &BlockState);
+    fn add_block_entity(&mut self, pos: &Vector3<i32>, nbt: NbtCompound);
+    fn schedule_fluid_tick(&mut self, pos: &Vector3<i32>, fluid: &'static Fluid);
+    fn schedule_block_tick(&mut self, pos: &Vector3<i32>, block: &'static Block);
 }
 
 /// Places a template at a world origin with an un-rotated XZ offset.
@@ -246,7 +255,7 @@ pub fn place_template_with_options(
                 placed_nbt.put_long("LootTableSeed", random.next_i64());
             }
 
-            placer.add_block_entity(placed_nbt);
+            placer.add_block_entity(&world_pos, placed_nbt);
         }
     }
 }
@@ -396,7 +405,15 @@ mod tests {
             self.0.push(state.id);
         }
 
-        fn add_block_entity(&mut self, _nbt: NbtCompound) {}
+        fn set_block_state_with_post_processing(&mut self, pos: &Vector3<i32>, state: &BlockState) {
+            self.set_block_state(pos, state);
+        }
+
+        fn add_block_entity(&mut self, _pos: &Vector3<i32>, _nbt: NbtCompound) {}
+
+        fn schedule_fluid_tick(&mut self, _pos: &Vector3<i32>, _fluid: &'static Fluid) {}
+
+        fn schedule_block_tick(&mut self, _pos: &Vector3<i32>, _block: &'static Block) {}
     }
 
     #[test]
