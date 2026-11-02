@@ -3280,7 +3280,7 @@ impl Player {
                         }
                         let item_id = p.inventory().held_item().item.id;
                         p.increment_stat(StatisticCategory::Used, item_id as i32, 1);
-                        p.increment_stat(StatisticCategory::Mined, state.id.as_u16() as i32, 1);
+                        p.increment_stat(StatisticCategory::Mined, block.id.as_u16() as i32, 1);
                     }
                 }
             }
@@ -7725,10 +7725,6 @@ impl EntityBase for Player {
         if let Some(vehicle_uuid) = vehicle_uuid {
             write_root_vehicle(nbt, vehicle_uuid);
         }
-        self.stats
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .write_nbt(nbt);
     }
 
     #[expect(clippy::too_many_lines)]

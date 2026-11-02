@@ -19,15 +19,23 @@ use tracing::{debug, error};
 /// convenience methods for player handling.
 pub struct ServerPlayerData {
     storage: Arc<PlayerDataStorage>,
+    /// Vanilla's `players/stats`, holding a `<uuid>.json` per player.
+    stats_path: PathBuf,
     save_interval: Duration,
     last_save: AtomicCell<Instant>,
 }
 
 impl ServerPlayerData {
     /// Creates a new `ServerPlayerData` with specified configuration.
-    pub fn new(data_path: impl Into<PathBuf>, save_interval: Duration, enabled: bool) -> Self {
+    pub fn new(
+        data_path: impl Into<PathBuf>,
+        stats_path: impl Into<PathBuf>,
+        save_interval: Duration,
+        enabled: bool,
+    ) -> Self {
         Self {
             storage: Arc::new(PlayerDataStorage::new(data_path, enabled)),
+            stats_path: stats_path.into(),
             save_interval,
             last_save: AtomicCell::new(Instant::now()),
         }
@@ -56,7 +64,30 @@ impl ServerPlayerData {
         player.write_nbt(&mut nbt);
 
         self.storage.save_player_data(&player.gameprofile.id, nbt)?;
+        if self.storage.is_save_enabled() {
+            save_stats(&self.stats_path, player.gameprofile.id, &stats_json(player));
+        }
         Ok(())
+    }
+
+    /// Reads a player's `players/stats/<uuid>.json`, if they have one.
+    #[must_use]
+    pub fn load_stats(&self, uuid: &uuid::Uuid) -> Option<serde_json::Value> {
+        if !self.storage.is_save_enabled() {
+            return None;
+        }
+        let path = self.stats_path.join(format!("{uuid}.json"));
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+            Err(e) => {
+                error!("Couldn't read statistics file {}: {e}", path.display());
+                return None;
+            }
+        };
+        serde_json::from_str(&text)
+            .inspect_err(|e| error!("Couldn't parse statistics file {}: {e}", path.display()))
+            .ok()
     }
 
     /// Performs periodic maintenance tasks.
@@ -78,7 +109,7 @@ impl ServerPlayerData {
                 for player in world.players.load().iter() {
                     let mut nbt = NbtCompound::new();
                     player.write_nbt(&mut nbt);
-                    snapshots.push((player.gameprofile.id, nbt));
+                    snapshots.push((player.gameprofile.id, nbt, stats_json(player)));
                 }
             }
 
@@ -87,13 +118,15 @@ impl ServerPlayerData {
             }
 
             let storage = self.storage.clone();
+            let stats_path = self.stats_path.clone();
             // The tick runs on a simulation thread with no Tokio context, so use the
             // server's runtime handle instead of `tokio::task::spawn_blocking`.
             server.runtime.spawn_blocking(move || {
-                for (uuid, nbt) in snapshots {
+                for (uuid, nbt, stats) in snapshots {
                     if let Err(e) = storage.save_player_data(&uuid, nbt) {
                         error!("Failed to save player data for {uuid}: {e}");
                     }
+                    save_stats(&stats_path, uuid, &stats);
                 }
                 debug!("Periodic player data save completed");
             });
@@ -177,7 +210,28 @@ impl ServerPlayerData {
         player.write_nbt(&mut nbt);
 
         self.storage.save_player_data(&uuid, nbt)?;
+        save_stats(&self.stats_path, uuid, &stats_json(player));
         Ok(())
+    }
+}
+
+fn stats_json(player: &Player) -> serde_json::Value {
+    player
+        .stats
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .to_json(pumpkin_world::world_info::MAXIMUM_SUPPORTED_WORLD_DATA_VERSION)
+}
+
+/// Vanilla `ServerStatsCounter.save`.
+fn save_stats(stats_path: &std::path::Path, uuid: uuid::Uuid, stats: &serde_json::Value) {
+    let path = stats_path.join(format!("{uuid}.json"));
+    let result = std::fs::create_dir_all(stats_path).and_then(|()| {
+        let json = serde_json::to_string_pretty(stats).map_err(std::io::Error::other)?;
+        std::fs::write(&path, json)
+    });
+    if let Err(e) = result {
+        error!("Couldn't save stats to {}: {e}", path.display());
     }
 }
 
@@ -284,7 +338,8 @@ mod test {
         let path = temp_dir.path().to_path_buf();
         let save_interval = Duration::from_mins(5);
 
-        let player_data = ServerPlayerData::new(path, save_interval, true);
+        let player_data =
+            ServerPlayerData::new(path.clone(), path.join("stats"), save_interval, true);
 
         assert_eq!(player_data.save_interval, save_interval);
         assert!(

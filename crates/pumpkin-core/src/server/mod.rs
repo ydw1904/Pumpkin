@@ -253,6 +253,7 @@ impl Server {
         let players_dir = world_path.join("players");
         let player_data_storage = ServerPlayerData::new(
             players_dir.join("data"),
+            players_dir.join("stats"),
             Duration::from_secs(advanced_config.player_data.save_player_cron_interval),
             advanced_config.player_data.save_player_data,
         );
@@ -829,10 +830,20 @@ impl Server {
 
         if let Some(mut nbt_data) = nbt {
             player.read_nbt(&mut nbt_data);
+            // Older Pumpkin versions kept the stats in the player file; they're in `players/stats` now.
+            nbt_data.child_tags.remove("Statistics");
             crate::entity::Entity::remember_unmodelled_nbt(&player, &nbt_data);
             // The data file itself proves this is a returning player. Older Bedrock
             // sessions could persist HasPlayedBefore as false and mask a valid Pos.
             player.has_played_before.store(true, Ordering::Relaxed);
+        }
+
+        if let Some(stats) = self.player_data_storage.load_stats(&player.gameprofile.id) {
+            player
+                .stats
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .read_json(&stats);
         }
 
         // Wrap in Arc after data is loaded

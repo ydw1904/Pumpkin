@@ -27,6 +27,10 @@ pub fn build() -> TokenStream {
     let mut category_from_name_arms = Vec::new();
     let mut custom_stat_variants = Vec::new();
     let mut custom_stat_from_id_arms = Vec::new();
+    let mut category_name_arms = Vec::new();
+    let mut category_registry_arms = Vec::new();
+    let mut custom_stat_name_arms = Vec::new();
+    let mut custom_stat_from_name_arms = Vec::new();
 
     for (category_name, data) in &stats_data {
         let category_ident = format_ident!(
@@ -39,6 +43,9 @@ pub fn build() -> TokenStream {
         let category_name_stripped = category_name.replace("minecraft:", "");
         category_from_name_arms
             .push(quote! { #category_name_stripped => Some(Self::#category_ident) });
+        category_name_arms.push(quote! { Self::#category_ident => #category_name });
+        let registry = &data.registry;
+        category_registry_arms.push(quote! { Self::#category_ident => #registry });
 
         if category_name == "minecraft:custom" {
             for (stat_name, entry) in &data.entries {
@@ -47,6 +54,10 @@ pub fn build() -> TokenStream {
                 let stat_id = entry.id;
                 custom_stat_variants.push(quote! { #stat_ident = #stat_id });
                 custom_stat_from_id_arms.push(quote! { #stat_id => Some(Self::#stat_ident) });
+                custom_stat_name_arms.push(quote! { Self::#stat_ident => #stat_name });
+                let stat_name_stripped = stat_name.replace("minecraft:", "");
+                custom_stat_from_name_arms
+                    .push(quote! { #stat_name_stripped => Some(Self::#stat_ident) });
             }
         }
     }
@@ -77,6 +88,22 @@ pub fn build() -> TokenStream {
                     _ => None,
                 }
             }
+
+            /// The stat type's registry key, like `minecraft:mined`.
+            #[must_use]
+            pub const fn registry_key(self) -> &'static str {
+                match self {
+                    #(#category_name_arms,)*
+                }
+            }
+
+            /// The registry this stat type's values come from, like `minecraft:block`.
+            #[must_use]
+            pub const fn value_registry(self) -> &'static str {
+                match self {
+                    #(#category_registry_arms,)*
+                }
+            }
         }
 
         impl TryFrom<i32> for StatisticCategory {
@@ -98,6 +125,23 @@ pub fn build() -> TokenStream {
             pub const fn from_i32(id: i32) -> Option<Self> {
                 match id {
                     #(#custom_stat_from_id_arms,)*
+                    _ => None,
+                }
+            }
+
+            /// The custom stat's registry key, like `minecraft:jump`.
+            #[must_use]
+            pub const fn registry_key(self) -> &'static str {
+                match self {
+                    #(#custom_stat_name_arms,)*
+                }
+            }
+
+            #[must_use]
+            pub fn from_registry_key(name: &str) -> Option<Self> {
+                let name = name.strip_prefix("minecraft:").unwrap_or(name);
+                match name {
+                    #(#custom_stat_from_name_arms,)*
                     _ => None,
                 }
             }
