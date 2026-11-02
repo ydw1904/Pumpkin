@@ -140,7 +140,7 @@ pub trait Squid: AgeableWaterCreature {
             let living = &self.get_mob_entity().living_entity;
             let mut yd = entity.velocity.load().y;
             if let Some(effect) = living.get_effect(&StatusEffect::LEVITATION) {
-                yd = 0.05 * f64::from(effect.amplifier + 1);
+                yd = 0.05 * (f64::from(effect.amplifier) + 1.0);
             } else if !entity.has_no_gravity() {
                 yd -= self.get_mob_gravity();
             }

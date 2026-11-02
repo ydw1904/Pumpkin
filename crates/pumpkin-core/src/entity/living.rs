@@ -1940,7 +1940,7 @@ impl LivingEntity {
         let levitation = self.get_effect(&StatusEffect::LEVITATION);
 
         if let Some(lev) = levitation {
-            velo.y += 0.05f64.mul_add(f64::from(lev.amplifier + 1), -velo.y) * 0.2;
+            velo.y += 0.05f64.mul_add(f64::from(lev.amplifier) + 1.0, -velo.y) * 0.2;
         } else {
             velo.y -= self.get_effective_gravity(caller);
 
@@ -2247,7 +2247,7 @@ impl LivingEntity {
         strength *= self.get_attribute_value(&Attributes::JUMP_STRENGTH);
         strength *= f64::from(self.entity.get_jump_velocity_multiplier());
         if let Some(effect) = self.get_effect(&StatusEffect::JUMP_BOOST) {
-            strength += 0.1 * f64::from(effect.amplifier + 1);
+            strength += 0.1 * (f64::from(effect.amplifier) + 1.0);
         }
         strength
     }
@@ -3395,7 +3395,7 @@ impl LivingEntity {
         if !damage_type.has_tag(&tag::DamageType::MINECRAFT_BYPASSES_RESISTANCE)
             && let Some(effect) = self.get_effect(&StatusEffect::RESISTANCE)
         {
-            let absorb_value = (effect.amplifier + 1) * 5;
+            let absorb_value = (i32::from(effect.amplifier) + 1) * 5;
             let absorb = 25 - absorb_value;
             let v = damage * absorb as f32;
             let old_damage = damage;
