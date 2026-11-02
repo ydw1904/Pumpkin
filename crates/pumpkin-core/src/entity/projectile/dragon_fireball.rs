@@ -1,4 +1,4 @@
-use crate::entity::area_effect_cloud::AreaEffectCloudEntity;
+use crate::entity::area_effect_cloud::{AreaEffectCloudEntity, CloudParticle};
 use crate::entity::projectile::fireball::{AIR_INERTIA, INITIAL_ACCELERATION_POWER, WATER_INERTIA};
 use crate::entity::projectile::owner::ProjectileOwner;
 use crate::entity::{
@@ -6,6 +6,8 @@ use crate::entity::{
     projectile::{ProjectileHit, ThrownItemEntity},
 };
 use crate::server::Server;
+use pumpkin_data::data_component_impl::StatusEffectInstance;
+use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::world::WorldEvent;
 use pumpkin_util::math::position::BlockPos;
@@ -127,14 +129,32 @@ impl EntityBase for DragonFireballEntity {
             BlockPos::floored_v(pos),
             if fireball.is_silent() { -1 } else { 1 },
         );
-        let cloud_entity = Entity::new(world.clone(), cloud_pos, &EntityType::AREA_EFFECT_CLOUD);
-        let cloud = AreaEffectCloudEntity::new_dragon_breath(
-            cloud_entity,
-            CLOUD_RADIUS,
-            CLOUD_DURATION,
-            (CLOUD_MAX_RADIUS - CLOUD_RADIUS) / CLOUD_DURATION as f32,
-            1,
-        );
+        let cloud = AreaEffectCloudEntity::new(Entity::new(
+            world.clone(),
+            cloud_pos,
+            &EntityType::AREA_EFFECT_CLOUD,
+        ));
+        if let Some(owner) = self
+            .thrown
+            .owner
+            .get(&world)
+            .filter(|owner| owner.get_living_entity().is_some())
+        {
+            cloud.set_owner(Some(owner.get_entity()));
+        }
+        cloud.set_custom_particle(Some(CloudParticle::DragonBreath { power: 1.0 }));
+        cloud.set_radius(CLOUD_RADIUS);
+        cloud.set_duration(CLOUD_DURATION);
+        cloud.set_radius_per_tick((CLOUD_MAX_RADIUS - cloud.radius()) / cloud.duration() as f32);
+        cloud.set_potion_duration_scale(0.25);
+        cloud.add_effect(StatusEffectInstance {
+            effect_id: StatusEffect::INSTANT_DAMAGE.minecraft_name.into(),
+            amplifier: 1,
+            duration: 1,
+            ambient: false,
+            show_particles: true,
+            show_icon: true,
+        });
         world.spawn_entity(cloud as Arc<dyn EntityBase>);
     }
 }

@@ -1,20 +1,39 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::Ordering::Relaxed;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use crate::entity::living::EffectSource;
+use crate::entity::projectile::owner::EntityReference;
+use crate::item::potion::{OPAQUE, PotionContents};
 use crate::{
     entity::{Entity, EntityBase},
     server::Server,
 };
-use pumpkin_data::effect::StatusEffect;
-use pumpkin_util::math::boundingbox::BoundingBox;
-use pumpkin_util::math::vector3::Vector3;
-
-type EffectEntry = (&'static StatusEffect, i32, u8, bool, bool, bool);
+use pumpkin_data::data_component_impl::{
+    PotionContentsImpl, PotionDurationScaleImpl, StatusEffectInstance,
+};
+use pumpkin_data::entity::EntityType;
 use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::particle::Particle;
+use pumpkin_data::tracked_data::area_effect_cloud::{PARTICLE, RADIUS, WAITING};
+use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_protocol::codec::var_int::VarInt;
+use pumpkin_util::math::boundingbox::EntityDimensions;
+
+const TIME_BETWEEN_APPLICATIONS: i32 = 5;
+const MAX_RADIUS: f32 = 32.0;
+const MINIMAL_RADIUS: f32 = 0.5;
+const DEFAULT_RADIUS: f32 = 3.0;
+const HEIGHT: f32 = 0.5;
+pub const INFINITE_DURATION: i32 = -1;
+const DEFAULT_WAIT_TIME: i32 = 20;
+const DEFAULT_REAPPLICATION_DELAY: i32 = 20;
+/// The potency vanilla applies instant effects with from a cloud.
+const INSTANT_EFFECT_SCALE: f64 = 0.5;
 
 #[derive(Clone)]
 struct ParticleMeta {
-    particle_id: pumpkin_protocol::codec::var_int::VarInt,
+    particle_id: VarInt,
     data: Box<[u8]>,
 }
 
@@ -30,465 +49,413 @@ impl pumpkin_protocol::java::client::play::MetadataSerializer for ParticleMeta {
     }
 }
 
-/// The effect cloud entity that is spawned where a lingering potion lands.
+/// A cloud's `custom_particle`. Only the dragon's breath particle vanilla itself uses is supported.
+#[derive(Clone, Copy, PartialEq)]
+pub enum CloudParticle {
+    /// `PowerParticleOption` of `minecraft:dragon_breath`.
+    DragonBreath { power: f32 },
+}
+
+impl CloudParticle {
+    fn write_nbt(self) -> NbtCompound {
+        let mut nbt = NbtCompound::new();
+        match self {
+            Self::DragonBreath { power } => {
+                nbt.put_string("type", "minecraft:dragon_breath".to_string());
+                nbt.put_float("power", power);
+            }
+        }
+        nbt
+    }
+
+    fn read_nbt(nbt: &NbtCompound) -> Option<Self> {
+        let name = nbt.get_string("type")?;
+        match name.strip_prefix("minecraft:").unwrap_or(name) {
+            "dragon_breath" => Some(Self::DragonBreath {
+                power: nbt.get_float("power").unwrap_or(1.0),
+            }),
+            _ => None,
+        }
+    }
+}
+
+struct CloudState {
+    radius: f32,
+    waiting: bool,
+    custom_particle: Option<CloudParticle>,
+    potion_contents: Option<PotionContentsImpl>,
+    potion_duration_scale: f32,
+    /// Entity id to the tick count from which it can be affected again.
+    victims: HashMap<i32, i32>,
+    duration: i32,
+    wait_time: i32,
+    reapplication_delay: i32,
+    duration_on_use: i32,
+    radius_on_use: f32,
+    radius_per_tick: f32,
+}
+
+/// Vanilla `AreaEffectCloud`, left by lingering potions, creepers with effects and the ender dragon.
 pub struct AreaEffectCloudEntity {
     pub entity: Entity,
-    /// Stored potion item stack (may be empty) to read effects from.
-    pub item_stack: Mutex<ItemStack>,
-    /// Active potion effects as tuples: (`StatusEffect`, `duration_ticks`, `amplifier`, `ambient`, `show_particles`, `show_icon`)
-    pub effects: Mutex<Vec<EffectEntry>>,
-    pub radius: Mutex<f32>,
-    pub duration: Mutex<i32>,
-    pub age: Mutex<i32>,
-    /// ticks between reapplications to the same entity
-    pub reapplication_delay: Mutex<i32>,
-    /// map of `entity_id` -> ticks remaining until that entity can be affected again
-    pub reapplication_map: Mutex<HashMap<i32, i32>>,
-    /// linear radius change per tick
-    pub radius_on_tick: Mutex<f32>,
-    /// radius change when an entity is affected
-    pub radius_on_use: Mutex<f32>,
-    /// duration change (ticks) when an entity is affected
-    pub duration_on_use: Mutex<i32>,
-    /// ticks to wait before the cloud becomes active and applies effects (grace period)
-    pub wait_time: Mutex<i32>,
+    owner: EntityReference,
+    state: Mutex<CloudState>,
 }
 
 impl AreaEffectCloudEntity {
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(entity: Entity) -> Arc<dyn EntityBase> {
-        entity
-            .no_physics
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+    #[must_use]
+    pub fn new(entity: Entity) -> Arc<Self> {
+        entity.no_physics.store(true, Relaxed);
         let cloud = Self {
             entity,
-            item_stack: Mutex::new(ItemStack::new(0, &pumpkin_data::item::Item::GLASS_BOTTLE)),
-            effects: Mutex::new(Vec::new()),
-            radius: Mutex::new(3.0),
-            duration: Mutex::new(600), // default for lingering potions
-            age: Mutex::new(0),
-            reapplication_delay: Mutex::new(20),
-            reapplication_map: Mutex::new(HashMap::new()),
-            radius_on_tick: Mutex::new(-3.0 / 600.0), // default for lingering potions
-            radius_on_use: Mutex::new(0.0),
-            duration_on_use: Mutex::new(0),
-            wait_time: Mutex::new(20),
+            owner: EntityReference::none(),
+            state: Mutex::new(CloudState {
+                radius: DEFAULT_RADIUS,
+                waiting: false,
+                custom_particle: None,
+                potion_contents: None,
+                potion_duration_scale: 1.0,
+                victims: HashMap::new(),
+                duration: INFINITE_DURATION,
+                wait_time: DEFAULT_WAIT_TIME,
+                reapplication_delay: DEFAULT_REAPPLICATION_DELAY,
+                duration_on_use: 0,
+                radius_on_use: 0.0,
+                radius_per_tick: 0.0,
+            }),
         };
-
+        cloud.set_radius(DEFAULT_RADIUS);
+        cloud.update_particle();
         Arc::new(cloud)
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn create(
-        entity: Entity,
-        item_stack: ItemStack,
-        effects_in: Vec<EffectEntry>,
-        duration_in: i32,
-        radius_in: f32,
-        reapplication_delay_in: i32,
-        wait_time_in: i32,
-        radius_on_use_in: f32,
-        duration_on_use_in: i32,
-    ) -> Arc<dyn EntityBase> {
-        entity
-            .no_physics
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-        let cloud = Self {
-            entity,
-            item_stack: Mutex::new(item_stack),
-            effects: Mutex::new(effects_in),
-            radius: Mutex::new(radius_in),
-            duration: Mutex::new(duration_in),
-            age: Mutex::new(0),
-            reapplication_delay: Mutex::new(reapplication_delay_in),
-            reapplication_map: Mutex::new(HashMap::new()),
-            radius_on_tick: Mutex::new(-radius_in / (duration_in as f32).max(1.0)),
-            radius_on_use: Mutex::new(radius_on_use_in),
-            duration_on_use: Mutex::new(duration_on_use_in),
-            wait_time: Mutex::new(wait_time_in),
-        };
-
-        Arc::new(cloud)
+    fn state(&self) -> MutexGuard<'_, CloudState> {
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// A dragon's breath cloud as the ender dragon and its fireballs leave them: an instant damage
-    /// cloud with the dragon's breath particle, which glass bottles can collect.
-    pub fn new_dragon_breath(
-        entity: Entity,
-        radius: f32,
-        duration: i32,
-        radius_per_tick: f32,
-        amplifier: u8,
-    ) -> Arc<Self> {
-        entity
-            .no_physics
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-        Arc::new(Self {
-            entity,
-            item_stack: Mutex::new(ItemStack::new(0, &pumpkin_data::item::Item::DRAGON_BREATH)),
-            effects: Mutex::new(vec![(
-                &StatusEffect::INSTANT_DAMAGE,
-                1,
-                amplifier,
-                false,
-                true,
-                true,
-            )]),
-            radius: Mutex::new(radius),
-            duration: Mutex::new(duration),
-            age: Mutex::new(0),
-            reapplication_delay: Mutex::new(20),
-            reapplication_map: Mutex::new(HashMap::new()),
-            radius_on_tick: Mutex::new(radius_per_tick),
-            radius_on_use: Mutex::new(0.0),
-            duration_on_use: Mutex::new(0),
-            wait_time: Mutex::new(20),
-        })
+    #[must_use]
+    pub fn radius(&self) -> f32 {
+        self.state().radius
+    }
+
+    /// Vanilla `setRadius`: clamped, synced, and resizes the bounding box.
+    pub fn set_radius(&self, radius: f32) {
+        let radius = radius.clamp(0.0, MAX_RADIUS);
+        self.state().radius = radius;
+        self.entity.set_synced_data(RADIUS, radius);
+        let eye_height = self.entity.entity_type.eye_height;
+        self.entity
+            .set_default_dimensions(EntityDimensions::new(radius * 2.0, HEIGHT, eye_height));
+    }
+
+    pub fn set_radius_on_use(&self, radius_on_use: f32) {
+        self.state().radius_on_use = radius_on_use;
+    }
+
+    pub fn set_radius_per_tick(&self, radius_per_tick: f32) {
+        self.state().radius_per_tick = radius_per_tick;
+    }
+
+    #[must_use]
+    pub fn duration(&self) -> i32 {
+        self.state().duration
+    }
+
+    pub fn set_duration(&self, duration: i32) {
+        self.state().duration = duration;
+    }
+
+    pub fn set_wait_time(&self, wait_time: i32) {
+        self.state().wait_time = wait_time;
+    }
+
+    pub fn set_potion_duration_scale(&self, scale: f32) {
+        self.state().potion_duration_scale = scale;
+    }
+
+    pub fn set_potion_contents(&self, contents: Option<PotionContentsImpl>) {
+        self.state().potion_contents = contents;
+        self.update_particle();
+    }
+
+    pub fn set_custom_particle(&self, particle: Option<CloudParticle>) {
+        self.state().custom_particle = particle;
+        self.update_particle();
+    }
+
+    /// Vanilla `addEffect`: appends a custom effect to the potion contents.
+    pub fn add_effect(&self, effect: StatusEffectInstance) {
+        self.state()
+            .potion_contents
+            .get_or_insert_with(|| PotionContentsImpl {
+                potion_id: None,
+                custom_color: None,
+                custom_effects: Vec::new(),
+                custom_name: None,
+            })
+            .custom_effects
+            .push(effect);
+        self.update_particle();
+    }
+
+    /// Vanilla `applyComponentsFromItemStack` for the potion components a cloud reads.
+    pub fn apply_components_from_item_stack(&self, stack: &ItemStack) {
+        if let Some(contents) = stack.get_data_component::<PotionContentsImpl>() {
+            self.set_potion_contents(Some(contents.clone()));
+        }
+        if let Some(scale) = stack.get_data_component::<PotionDurationScaleImpl>() {
+            self.set_potion_duration_scale(scale.scale);
+        }
+    }
+
+    pub fn set_owner(&self, owner: Option<&Entity>) {
+        self.owner.set(owner);
+    }
+
+    /// Vanilla `getOwner`: only a living owner counts.
+    #[must_use]
+    pub fn owner(&self) -> Option<Arc<dyn EntityBase>> {
+        self.owner
+            .get(&self.entity.world.load())
+            .filter(|owner| owner.get_living_entity().is_some())
+    }
+
+    fn update_particle(&self) {
+        let state = self.state();
+        let meta = match state.custom_particle {
+            Some(CloudParticle::DragonBreath { power }) => ParticleMeta {
+                particle_id: VarInt(Particle::DragonBreath as i32),
+                data: Box::new(power.to_be_bytes()),
+            },
+            None => {
+                let color = PotionContents::color(state.potion_contents.as_ref()) | OPAQUE;
+                ParticleMeta {
+                    particle_id: VarInt(Particle::EntityEffect as i32),
+                    data: Box::new(color.to_be_bytes()),
+                }
+            }
+        };
+        drop(state);
+        self.entity.set_synced_data(PARTICLE, meta);
+    }
+
+    /// Vanilla `serverTick`.
+    #[expect(clippy::too_many_lines, reason = "mirrors vanilla's single method")]
+    fn server_tick(&self) {
+        let tick_count = self.entity.tick_count.load(Relaxed);
+        let mut state = self.state();
+        if state.duration != INFINITE_DURATION && tick_count - state.wait_time >= state.duration {
+            drop(state);
+            self.entity.remove();
+            return;
+        }
+
+        let should_wait = tick_count < state.wait_time;
+        if state.waiting != should_wait {
+            state.waiting = should_wait;
+            self.entity.set_synced_data(WAITING, should_wait);
+        }
+        if should_wait {
+            return;
+        }
+
+        let mut radius = state.radius;
+        if state.radius_per_tick != 0.0 {
+            radius += state.radius_per_tick;
+            if radius < MINIMAL_RADIUS {
+                drop(state);
+                self.entity.remove();
+                return;
+            }
+            drop(state);
+            self.set_radius(radius);
+            state = self.state();
+        }
+
+        if tick_count % TIME_BETWEEN_APPLICATIONS != 0 {
+            return;
+        }
+        state.victims.retain(|_, until| tick_count < *until);
+        let effects = state
+            .potion_contents
+            .as_ref()
+            .map(PotionContents::effects_of)
+            .unwrap_or_default();
+        if effects.is_empty() {
+            state.victims.clear();
+            return;
+        }
+        let duration_scale = state.potion_duration_scale;
+        let reapplication_delay = state.reapplication_delay;
+        let effects: Vec<_> = effects
+            .into_iter()
+            .map(|mut effect| {
+                // `MobEffectInstance.withScaledDuration`.
+                if effect.duration != INFINITE_DURATION && effect.duration != 0 {
+                    effect.duration =
+                        ((effect.duration as f32 * duration_scale).floor() as i32).max(1);
+                }
+                effect
+            })
+            .collect();
+        drop(state);
+
+        let world = self.entity.world.load();
+        let bounding_box = self.entity.bounding_box.load();
+        let pos = self.entity.pos.load();
+        let owner = self.owner();
+        for candidate in world.get_entities_and_players_at_box(&bounding_box) {
+            let Some(living) = candidate.get_living_entity() else {
+                continue;
+            };
+            let candidate_entity = candidate.get_entity();
+            // `isAffectedByPotions`, and `getEntitiesOfClass` skipping spectators.
+            if candidate.is_spectator()
+                || living.is_dead_or_dying()
+                || candidate_entity.entity_type == &EntityType::ARMOR_STAND
+                || !effects.iter().any(|effect| living.can_be_affected(effect))
+                || self
+                    .state()
+                    .victims
+                    .contains_key(&candidate_entity.entity_id)
+            {
+                continue;
+            }
+            let candidate_pos = candidate_entity.pos.load();
+            let dx = candidate_pos.x - pos.x;
+            let dz = candidate_pos.z - pos.z;
+            if dx * dx + dz * dz > f64::from(radius * radius) {
+                continue;
+            }
+
+            self.state()
+                .victims
+                .insert(candidate_entity.entity_id, tick_count + reapplication_delay);
+            for effect in &effects {
+                if !living.apply_instant_effect(
+                    effect.effect_type,
+                    effect.amplifier,
+                    Some(INSTANT_EFFECT_SCALE),
+                    Some(EffectSource {
+                        direct: self,
+                        owner: owner.as_deref(),
+                    }),
+                ) {
+                    match candidate.get_player() {
+                        Some(player) => player.add_effect(effect.clone()),
+                        None => living.add_effect(effect.clone()),
+                    }
+                }
+            }
+
+            let mut state = self.state();
+            if state.radius_on_use != 0.0 {
+                radius += state.radius_on_use;
+                if radius < MINIMAL_RADIUS {
+                    drop(state);
+                    self.entity.remove();
+                    return;
+                }
+                drop(state);
+                self.set_radius(radius);
+                state = self.state();
+            }
+            if state.duration_on_use != 0 && state.duration != INFINITE_DURATION {
+                state.duration += state.duration_on_use;
+                if state.duration <= 0 {
+                    drop(state);
+                    self.entity.remove();
+                    return;
+                }
+            }
+        }
     }
 }
 
 impl EntityBase for AreaEffectCloudEntity {
     fn init_data_tracker(&self) {
-        // Send initial radius and particle (color) so clients render correctly
-        let radius = *self
-            .radius
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        // Compute particle color
-        let stack = self
-            .item_stack
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
-        let effects = self
-            .effects
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
-
-        // Use ARGB format
-        let mut color: i32 = (0xFFi32 << 24) | 0x385dc6; // default water-like color
-
-        if let Some(pc) =
-            stack.get_data_component::<pumpkin_data::data_component_impl::PotionContentsImpl>()
-        {
-            if let Some(c) = pc.custom_color {
-                color = c | (0xFFi32 << 24);
-            } else if !effects.is_empty() {
-                let mut r_sum = 0.0f32;
-                let mut g_sum = 0.0f32;
-                let mut b_sum = 0.0f32;
-                let count = effects.len() as f32;
-                for (eff, _, _, _, _, _) in &effects {
-                    let c = eff.color;
-                    r_sum += ((c >> 16) & 0xFF) as f32;
-                    g_sum += ((c >> 8) & 0xFF) as f32;
-                    b_sum += (c & 0xFF) as f32;
-                }
-                let r = (r_sum / count) as i32;
-                let g = (g_sum / count) as i32;
-                let b = (b_sum / count) as i32;
-                color = (0xFFi32 << 24) | (r << 16) | (g << 8) | b;
-            }
-        } else if !effects.is_empty() {
-            let mut r_sum = 0.0f32;
-            let mut g_sum = 0.0f32;
-            let mut b_sum = 0.0f32;
-            let count = effects.len() as f32;
-            for (eff, _, _, _, _, _) in &effects {
-                let c = eff.color;
-                r_sum += ((c >> 16) & 0xFF) as f32;
-                g_sum += ((c >> 8) & 0xFF) as f32;
-                b_sum += (c & 0xFF) as f32;
-            }
-            let r = (r_sum / count) as i32;
-            let g = (g_sum / count) as i32;
-            let b = (b_sum / count) as i32;
-            color = (0xFFi32 << 24) | (r << 16) | (g << 8) | b;
-        }
-
-        // Dragon's breath clouds use vanilla's custom `dragon_breath` particle with power 1.
-        let meta = if stack.item.id == pumpkin_data::item::Item::DRAGON_BREATH.id {
-            ParticleMeta {
-                particle_id: pumpkin_protocol::codec::var_int::VarInt(
-                    pumpkin_data::particle::Particle::DragonBreath as i32,
-                ),
-                data: Box::new(1.0f32.to_be_bytes()),
-            }
-        } else {
-            ParticleMeta {
-                particle_id: pumpkin_protocol::codec::var_int::VarInt(
-                    pumpkin_data::particle::Particle::EntityEffect as i32,
-                ),
-                data: Box::new(color.to_be_bytes()),
-            }
+        let (radius, waiting) = {
+            let state = self.state();
+            (state.radius, state.waiting)
         };
-
-        self.entity.set_synced_data(
-            pumpkin_data::tracked_data::area_effect_cloud::PARTICLE,
-            meta,
-        );
-
-        self.entity.set_synced_data(
-            pumpkin_data::tracked_data::area_effect_cloud::RADIUS,
-            radius,
-        );
-
-        // Initial waiting flag
-        let wait_time = *self
-            .wait_time
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let is_waiting = 0 < wait_time;
-        self.entity.set_synced_data(
-            pumpkin_data::tracked_data::area_effect_cloud::WAITING,
-            is_waiting,
-        );
+        self.entity.set_synced_data(RADIUS, radius);
+        self.entity.set_synced_data(WAITING, waiting);
+        self.update_particle();
     }
 
-    #[allow(clippy::too_many_lines)]
-    #[allow(clippy::semicolon_outside_block)]
-    fn tick(&self, _caller: &dyn EntityBase, _server: &Server) {
-        // Age & duration handling
-        {
-            let mut age = self
-                .age
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            *age += 1;
-            let duration = *self
-                .duration
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if *age > duration {
-                // Remove old entities
-                self.entity.remove();
-                return;
-            }
-        }
-
-        // Get current age and waiting period
-        let age = *self
-            .age
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let wait_time = *self
-            .wait_time
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        // When the waiting period ends, notify clients so they render full particles
-        if age == wait_time && wait_time > 0 {
-            self.entity.set_synced_data(
-                pumpkin_data::tracked_data::area_effect_cloud::WAITING,
-                false,
-            );
-        }
-
-        if age < wait_time {
-            // Respect waiting/grace period
+    fn tick(&self, caller: &dyn EntityBase, server: &Server) {
+        self.entity.tick(caller, server);
+        if self.entity.is_removed() {
             return;
         }
+        self.server_tick();
+    }
 
-        // Update radius
+    fn get_owner_entity(&self) -> Option<Arc<dyn EntityBase>> {
+        self.owner()
+    }
+
+    fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
+        nbt.put_int("Age", self.entity.tick_count.load(Relaxed));
+        let state = self.state();
+        nbt.put_int("Duration", state.duration);
+        nbt.put_int("WaitTime", state.wait_time);
+        nbt.put_int("ReapplicationDelay", state.reapplication_delay);
+        nbt.put_int("DurationOnUse", state.duration_on_use);
+        nbt.put_float("RadiusOnUse", state.radius_on_use);
+        nbt.put_float("RadiusPerTick", state.radius_per_tick);
+        nbt.put_float("Radius", state.radius);
+        if let Some(particle) = state.custom_particle {
+            nbt.put_compound("custom_particle", particle.write_nbt());
+        }
+        self.owner.write_nbt(nbt, "Owner");
+        if let Some(contents) = &state.potion_contents {
+            use pumpkin_data::data_component_impl::DataComponentImpl;
+            nbt.put("potion_contents", contents.write_data());
+        }
+        if state.potion_duration_scale != 1.0 {
+            nbt.put_float("potion_duration_scale", state.potion_duration_scale);
+        }
+    }
+
+    /// Updates only the keys present, so a partial read keeps the rest.
+    fn read_custom_nbt(&self, nbt: &NbtCompound) {
+        if let Some(age) = nbt.get_int("Age") {
+            self.entity.tick_count.store(age, Relaxed);
+        }
         {
-            let mut radius = self
-                .radius
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let delta = *self
-                .radius_on_tick
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            *radius += delta;
-            let current_radius = *radius;
-            if current_radius <= 0.0 {
-                self.entity.remove();
-                return;
+            let mut state = self.state();
+            if let Some(duration) = nbt.get_int("Duration") {
+                state.duration = duration;
             }
-
-            // Send new radius
-            drop(radius);
-            self.entity.set_synced_data(
-                pumpkin_data::tracked_data::area_effect_cloud::RADIUS,
-                current_radius,
-            );
+            if let Some(wait_time) = nbt.get_int("WaitTime") {
+                state.wait_time = wait_time;
+            }
+            if let Some(delay) = nbt.get_int("ReapplicationDelay") {
+                state.reapplication_delay = delay;
+            }
+            if let Some(duration_on_use) = nbt.get_int("DurationOnUse") {
+                state.duration_on_use = duration_on_use;
+            }
+            if let Some(radius_on_use) = nbt.get_float("RadiusOnUse") {
+                state.radius_on_use = radius_on_use;
+            }
+            if let Some(radius_per_tick) = nbt.get_float("RadiusPerTick") {
+                state.radius_per_tick = radius_per_tick;
+            }
+            if let Some(scale) = nbt.get_float("potion_duration_scale") {
+                state.potion_duration_scale = scale;
+            }
         }
-
-        // Tick down reapplication map
-        {
-            let mut map = self
-                .reapplication_map
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            map.retain(|_, v| {
-                *v -= 1;
-                *v > 0
-            });
+        if let Some(radius) = nbt.get_float("Radius") {
+            self.set_radius(radius);
         }
-
-        // Apply effects to nearby entities if eligible
-        let pos = self.entity.pos.load();
-        let r = *self
-            .radius
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) as f64;
-        let min = Vector3::new(pos.x - r, pos.y - r, pos.z - r);
-        let max = Vector3::new(pos.x + r, pos.y + r, pos.z + r);
-        let aabb = BoundingBox::new(min, max);
-        let world = self.entity.world.load();
-
-        let mut candidates = world.get_entities_at_box(&aabb);
-        let players = world.get_players_at_box(&aabb);
-        for p in players {
-            candidates.push(p.clone() as Arc<dyn EntityBase>);
+        self.owner.read_nbt(nbt, "Owner");
+        if let Some(particle) = nbt.get_compound("custom_particle") {
+            self.set_custom_particle(CloudParticle::read_nbt(particle));
         }
-
-        for cand in candidates {
-            let cand_clone = cand.clone();
-
-            // Skip self and other `AreaEffectCloud` entities
-            if cand_clone.get_entity().entity_id == self.get_entity().entity_id {
-                continue;
-            }
-            if *cand_clone.get_entity().entity_type
-                == pumpkin_data::entity::EntityType::AREA_EFFECT_CLOUD
-            {
-                continue;
-            }
-
-            // Determine candidate id early
-            let ent_id = cand_clone.get_entity().entity_id;
-
-            {
-                let map = self
-                    .reapplication_map
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if map.contains_key(&ent_id) {
-                    continue;
-                }
-            }
-
-            let radius_f = *self
-                .radius
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                as f64;
-            let pos_e = cand_clone.get_entity().pos.load();
-            let dx = pos_e.x - pos.x;
-            let dy = pos_e.y - pos.y;
-            let dz = pos_e.z - pos.z;
-            let dist = (dx * dx + dy * dy + dz * dz).sqrt();
-            if dist > radius_f {
-                continue;
-            }
-
-            let scale = 1.0f32 - (dist as f32 / radius_f as f32);
-
-            // Decide whether this contact will actually apply an effect
-            let effs_clone = self
-                .effects
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .clone();
-            let mut will_apply = false;
-
-            // Only living entities can receive effects
-            if let Some(living_ref) = cand_clone.get_living_entity() {
-                for (eff, _, _, _, _, _) in &effs_clone {
-                    // Instant effects always apply
-                    let is_instant = eff.id
-                        == pumpkin_data::effect::StatusEffect::INSTANT_DAMAGE.id
-                        || eff.id == pumpkin_data::effect::StatusEffect::INSTANT_HEALTH.id;
-                    if is_instant {
-                        will_apply = true;
-                        break;
-                    }
-
-                    // Only apply if entity does not already have that effect
-                    if !living_ref.has_effect(eff) {
-                        will_apply = true;
-                        break;
-                    }
-                }
-            }
-
-            // If nothing would be applied, skip
-            if !will_apply {
-                continue;
-            }
-
-            // Apply scaled effects inside a spawned task
-            if let Some(living) = cand_clone.get_living_entity() {
-                crate::item::potion::PotionContents::apply_effects_to(
-                    living,
-                    effs_clone,
-                    scale,
-                    crate::item::potion::PotionApplicationSource::AreaEffectCloud,
-                    Some(crate::entity::living::EffectSource {
-                        direct: self,
-                        owner: None,
-                    }),
-                );
-            }
-
-            // Set reapplication delay for this entity
-            let delay = *self
-                .reapplication_delay
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            self.reapplication_map
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .insert(ent_id, delay);
-
-            // Apply radius-on-use (shrink)
-            let radius_on_use = *self
-                .radius_on_use
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if radius_on_use != 0.0 {
-                let mut radius_lock = self
-                    .radius
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                *radius_lock += radius_on_use;
-                let current_radius = *radius_lock;
-                if current_radius < 0.5 {
-                    drop(radius_lock);
-                    self.entity.remove();
-                    return;
-                }
-                drop(radius_lock);
-
-                // Send updated radius to clients
-                self.entity.set_synced_data(
-                    pumpkin_data::tracked_data::area_effect_cloud::RADIUS,
-                    current_radius,
-                );
-            }
-
-            // Apply duration-on-use (shorten lifespan)
-            let duration_on_use = *self
-                .duration_on_use
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if duration_on_use != 0 {
-                let mut duration_lock = self
-                    .duration
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if *duration_lock != -1 {
-                    *duration_lock += duration_on_use;
-                    if *duration_lock <= 0 {
-                        drop(duration_lock);
-                        self.entity.remove();
-                        return;
-                    }
-                }
-            }
+        if let Some(contents) = nbt.get("potion_contents") {
+            self.set_potion_contents(PotionContentsImpl::read_data(contents));
         }
     }
 

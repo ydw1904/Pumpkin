@@ -8,6 +8,7 @@ use crate::server::Server;
 use pumpkin_data::block_properties::WaterCauldronLikeProperties;
 use pumpkin_data::data_component::DataComponent;
 use pumpkin_data::data_component_impl::PotionContentsImpl;
+use pumpkin_data::entity::EntityType;
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -111,30 +112,11 @@ impl ItemBehaviour for GlassBottleItem {
                 .cast_any()
                 .downcast_ref::<crate::entity::area_effect_cloud::AreaEffectCloudEntity>(
             ) && cloud.entity.is_alive()
-                && cloud
-                    .item_stack
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .item
-                    .id
-                    == Item::DRAGON_BREATH.id
+                && cloud.owner().is_some_and(|owner| {
+                    owner.get_entity().entity_type == &EntityType::ENDER_DRAGON
+                })
             {
-                let mut radius = cloud
-                    .radius
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                *radius -= 0.5;
-                let new_radius = *radius;
-                drop(radius);
-                if new_radius <= 0.0 {
-                    cloud.entity.remove();
-                } else {
-                    cloud.entity.set_synced_data(
-                        pumpkin_data::tracked_data::area_effect_cloud::RADIUS,
-                        new_radius,
-                    );
-                }
-
+                cloud.set_radius(cloud.radius() - 0.5);
                 world.play_sound(
                     Sound::ItemBottleFillDragonbreath,
                     SoundCategory::Neutral,

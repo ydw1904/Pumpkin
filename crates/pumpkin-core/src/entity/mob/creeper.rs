@@ -3,6 +3,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicI32, Ordering},
 };
 
+use pumpkin_data::data_component_impl::StatusEffectInstance;
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::tag::{self, Taggable};
@@ -62,42 +63,33 @@ impl CreeperEntity {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .values()
-            .map(|effect| {
-                // `setPotionDurationScale(0.25F)`.
-                let duration = if effect.duration < 0 {
-                    effect.duration
-                } else {
-                    (effect.duration as f32 * 0.25) as i32
-                };
-                (
-                    effect.effect_type,
-                    duration,
-                    effect.amplifier,
-                    effect.ambient,
-                    effect.show_particles,
-                    effect.show_icon,
-                )
+            .map(|effect| StatusEffectInstance {
+                effect_id: effect.effect_type.minecraft_name.into(),
+                amplifier: i32::from(effect.amplifier),
+                duration: effect.duration,
+                ambient: effect.ambient,
+                show_particles: effect.show_particles,
+                show_icon: effect.show_icon,
             })
             .collect();
         if effects.is_empty() {
             return;
         }
         let entity = &self.mob_entity.living_entity.entity;
-        let cloud = AreaEffectCloudEntity::create(
-            Entity::new(
-                world.clone(),
-                entity.pos.load(),
-                &EntityType::AREA_EFFECT_CLOUD,
-            ),
-            ItemStack::new(0, &Item::GLASS_BOTTLE),
-            effects,
-            300,
-            2.5,
-            20,
-            10,
-            -0.5,
-            0,
-        );
+        let cloud = AreaEffectCloudEntity::new(Entity::new(
+            world.clone(),
+            entity.pos.load(),
+            &EntityType::AREA_EFFECT_CLOUD,
+        ));
+        cloud.set_radius(2.5);
+        cloud.set_radius_on_use(-0.5);
+        cloud.set_wait_time(10);
+        cloud.set_duration(300);
+        cloud.set_potion_duration_scale(0.25);
+        cloud.set_radius_per_tick(-cloud.radius() / cloud.duration() as f32);
+        for effect in effects {
+            cloud.add_effect(effect);
+        }
         world.spawn_entity(cloud);
     }
 }

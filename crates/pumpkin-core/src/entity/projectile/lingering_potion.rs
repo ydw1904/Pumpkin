@@ -206,23 +206,35 @@ impl EntityBase for LingeringPotionEntity {
             return;
         }
 
-        let cloud_entity = crate::entity::Entity::from_uuid(
-            Uuid::new_v4(),
-            world.clone(),
-            hit_pos,
-            &pumpkin_data::entity::EntityType::AREA_EFFECT_CLOUD,
+        // Vanilla `ThrownLingeringPotion.onHitAsPotion`.
+        let cloud_pos = match &hit {
+            crate::entity::projectile::ProjectileHit::Entity { entity, .. } => {
+                entity.get_entity().pos.load()
+            }
+            crate::entity::projectile::ProjectileHit::Block { .. } => hit_pos,
+        };
+        let cloud = crate::entity::area_effect_cloud::AreaEffectCloudEntity::new(
+            crate::entity::Entity::from_uuid(
+                Uuid::new_v4(),
+                world.clone(),
+                cloud_pos,
+                &pumpkin_data::entity::EntityType::AREA_EFFECT_CLOUD,
+            ),
         );
-        let cloud = crate::entity::area_effect_cloud::AreaEffectCloudEntity::create(
-            cloud_entity,
-            stack,
-            effects,
-            600,
-            3.0,
-            20,
-            20,
-            -0.5,
-            -100,
-        );
+        if let Some(owner) = self
+            .thrown
+            .owner
+            .get(&world)
+            .filter(|owner| owner.get_living_entity().is_some())
+        {
+            cloud.set_owner(Some(owner.get_entity()));
+        }
+        cloud.set_radius(3.0);
+        cloud.set_radius_on_use(-0.5);
+        cloud.set_duration(600);
+        cloud.set_wait_time(10);
+        cloud.set_radius_per_tick(-cloud.radius() / cloud.duration() as f32);
+        cloud.apply_components_from_item_stack(&stack);
 
         world.spawn_entity(cloud);
     }

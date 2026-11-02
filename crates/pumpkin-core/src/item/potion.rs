@@ -1,6 +1,13 @@
 use crate::entity::living::{EffectSource, LivingEntity};
+use pumpkin_data::data_component_impl::PotionContentsImpl;
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::potion::{Effect, Potion};
+
+/// Vanilla `PotionContents.BASE_POTION_COLOR`.
+pub const BASE_POTION_COLOR: i32 = -13_083_194;
+/// Vanilla `ARGB.opaque`'s alpha bits.
+pub const OPAQUE: i32 = 0xFF00_0000u32.cast_signed();
 
 /// Utilities for reading potion contents from an `ItemStack` and applying effects.
 pub struct PotionContents;
@@ -10,15 +17,12 @@ pub struct PotionContents;
 pub enum PotionApplicationSource {
     /// Normal application (drinking / splash)
     Normal,
-    /// `AreaEffectCloud` application (shorter durations and weaker instant potency)
-    AreaEffectCloud,
     Arrow,
 }
 
 impl PotionApplicationSource {
     const fn instant_scale(self, scale: f32) -> Option<f32> {
         match self {
-            Self::AreaEffectCloud => Some(scale * 0.5),
             Self::Arrow => None,
             Self::Normal => Some(scale),
         }
@@ -26,7 +30,6 @@ impl PotionApplicationSource {
 
     const fn duration_scale(self, scale: f32) -> f32 {
         match self {
-            Self::AreaEffectCloud => scale * 0.25,
             Self::Arrow | Self::Normal => scale,
         }
     }
@@ -38,96 +41,74 @@ impl PotionContents {
     pub fn read_potion_effects(
         stack: &ItemStack,
     ) -> Vec<(&'static StatusEffect, i32, u8, bool, bool, bool)> {
-        // Prefer generated potion id if present, otherwise use custom_effects
-        if let Some(pc) =
-            stack.get_data_component::<pumpkin_data::data_component_impl::PotionContentsImpl>()
-        {
-            // Custom effects present
-            let mut out = Vec::new();
-            if let Some(potion_id) = pc.potion_id {
-                // Map potion id to generated Potion if possible
-                macro_rules! try_push_potion {
-                    ($p:expr) => {
-                        if $p.id as i32 == potion_id {
-                            for e in $p.effects {
-                                out.push((
-                                    e.effect_type,
-                                    e.duration,
-                                    e.amplifier,
-                                    e.ambient,
-                                    e.show_particles,
-                                    e.show_icon,
-                                ));
-                            }
-                        }
-                    };
-                }
-                try_push_potion!(pumpkin_data::potion::Potion::AWKWARD);
-                try_push_potion!(pumpkin_data::potion::Potion::FIRE_RESISTANCE);
-                try_push_potion!(pumpkin_data::potion::Potion::HARMING);
-                try_push_potion!(pumpkin_data::potion::Potion::HEALING);
-                try_push_potion!(pumpkin_data::potion::Potion::INFESTED);
-                try_push_potion!(pumpkin_data::potion::Potion::INVISIBILITY);
-                try_push_potion!(pumpkin_data::potion::Potion::LEAPING);
-                try_push_potion!(pumpkin_data::potion::Potion::LONG_FIRE_RESISTANCE);
-                try_push_potion!(pumpkin_data::potion::Potion::LONG_INVISIBILITY);
-                try_push_potion!(pumpkin_data::potion::Potion::LONG_LEAPING);
-                try_push_potion!(pumpkin_data::potion::Potion::LONG_NIGHT_VISION);
-                try_push_potion!(pumpkin_data::potion::Potion::LONG_POISON);
-                try_push_potion!(pumpkin_data::potion::Potion::LONG_REGENERATION);
-                try_push_potion!(pumpkin_data::potion::Potion::LONG_SLOW_FALLING);
-                try_push_potion!(pumpkin_data::potion::Potion::LONG_SLOWNESS);
-                try_push_potion!(pumpkin_data::potion::Potion::LONG_STRENGTH);
-                try_push_potion!(pumpkin_data::potion::Potion::LONG_SWIFTNESS);
-                try_push_potion!(pumpkin_data::potion::Potion::LONG_TURTLE_MASTER);
-                try_push_potion!(pumpkin_data::potion::Potion::LONG_WATER_BREATHING);
-                try_push_potion!(pumpkin_data::potion::Potion::LONG_WEAKNESS);
-                try_push_potion!(pumpkin_data::potion::Potion::LUCK);
-                try_push_potion!(pumpkin_data::potion::Potion::MUNDANE);
-                try_push_potion!(pumpkin_data::potion::Potion::NIGHT_VISION);
-                try_push_potion!(pumpkin_data::potion::Potion::OOZING);
-                try_push_potion!(pumpkin_data::potion::Potion::POISON);
-                try_push_potion!(pumpkin_data::potion::Potion::REGENERATION);
-                try_push_potion!(pumpkin_data::potion::Potion::SLOW_FALLING);
-                try_push_potion!(pumpkin_data::potion::Potion::SLOWNESS);
-                try_push_potion!(pumpkin_data::potion::Potion::STRENGTH);
-                try_push_potion!(pumpkin_data::potion::Potion::STRONG_HARMING);
-                try_push_potion!(pumpkin_data::potion::Potion::STRONG_HEALING);
-                try_push_potion!(pumpkin_data::potion::Potion::STRONG_LEAPING);
-                try_push_potion!(pumpkin_data::potion::Potion::STRONG_POISON);
-                try_push_potion!(pumpkin_data::potion::Potion::STRONG_REGENERATION);
-                try_push_potion!(pumpkin_data::potion::Potion::STRONG_SLOWNESS);
-                try_push_potion!(pumpkin_data::potion::Potion::STRONG_STRENGTH);
-                try_push_potion!(pumpkin_data::potion::Potion::STRONG_SWIFTNESS);
-                try_push_potion!(pumpkin_data::potion::Potion::STRONG_TURTLE_MASTER);
-                try_push_potion!(pumpkin_data::potion::Potion::SWIFTNESS);
-                try_push_potion!(pumpkin_data::potion::Potion::THICK);
-                try_push_potion!(pumpkin_data::potion::Potion::TURTLE_MASTER);
-                try_push_potion!(pumpkin_data::potion::Potion::WATER);
-                try_push_potion!(pumpkin_data::potion::Potion::WATER_BREATHING);
-                try_push_potion!(pumpkin_data::potion::Potion::WEAKNESS);
-                try_push_potion!(pumpkin_data::potion::Potion::WEAVING);
-                try_push_potion!(pumpkin_data::potion::Potion::WIND_CHARGED);
-            }
+        stack
+            .get_data_component::<PotionContentsImpl>()
+            .map(Self::effects_of)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|e| {
+                (
+                    e.effect_type,
+                    e.duration,
+                    e.amplifier,
+                    e.ambient,
+                    e.show_particles,
+                    e.show_icon,
+                )
+            })
+            .collect()
+    }
 
-            // Custom effects appended
-            for ce in &pc.custom_effects {
-                if let Some(se) = StatusEffect::from_minecraft_name(&ce.effect_id) {
-                    out.push((
-                        se,
-                        ce.duration,
-                        ce.amplifier as u8,
-                        ce.ambient,
-                        ce.show_particles,
-                        ce.show_icon,
-                    ));
-                }
-            }
+    /// Vanilla `PotionContents.getAllEffects`: the base potion's effects, then the custom ones.
+    #[must_use]
+    pub fn effects_of(contents: &PotionContentsImpl) -> Vec<Effect> {
+        let potion = contents
+            .potion_id
+            .and_then(|id| u8::try_from(id).ok())
+            .and_then(Potion::from_id);
+        let mut effects: Vec<Effect> = potion.map(|p| p.effects.to_vec()).unwrap_or_default();
+        effects.extend(contents.custom_effects.iter().filter_map(|custom| {
+            Some(Effect {
+                effect_type: StatusEffect::from_minecraft_name(&custom.effect_id)?,
+                duration: custom.duration,
+                amplifier: custom.amplifier as u8,
+                ambient: custom.ambient,
+                show_particles: custom.show_particles,
+                show_icon: custom.show_icon,
+                blend: false,
+            })
+        }));
+        effects
+    }
 
-            return out;
+    /// Vanilla `PotionContents.getColor`: the custom color, else the visible effects' colors
+    /// weighted by amplifier, else `BASE_POTION_COLOR`.
+    #[must_use]
+    pub fn color(contents: Option<&PotionContentsImpl>) -> i32 {
+        let Some(contents) = contents else {
+            return BASE_POTION_COLOR;
+        };
+        if let Some(color) = contents.custom_color {
+            return color;
         }
-
-        Vec::new()
+        let (mut red, mut green, mut blue, mut total_weight) = (0, 0, 0, 0);
+        for effect in Self::effects_of(contents) {
+            if effect.show_particles {
+                let color = effect.effect_type.color;
+                let weight = i32::from(effect.amplifier) + 1;
+                red += weight * ((color >> 16) & 0xFF);
+                green += weight * ((color >> 8) & 0xFF);
+                blue += weight * (color & 0xFF);
+                total_weight += weight;
+            }
+        }
+        if total_weight == 0 {
+            return BASE_POTION_COLOR;
+        }
+        OPAQUE
+            | ((red / total_weight) << 16)
+            | ((green / total_weight) << 8)
+            | (blue / total_weight)
     }
 
     /// Apply instant or duration effects to a target living entity.

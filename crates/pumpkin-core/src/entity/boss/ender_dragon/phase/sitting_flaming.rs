@@ -1,7 +1,9 @@
 use super::{EnderDragonPhase, Phase, sitting_on_hurt};
-use crate::entity::area_effect_cloud::AreaEffectCloudEntity;
+use crate::entity::area_effect_cloud::{AreaEffectCloudEntity, CloudParticle};
 use crate::entity::boss::ender_dragon::EnderDragonEntity;
 use crate::entity::{Entity, EntityBase};
+use pumpkin_data::data_component_impl::StatusEffectInstance;
+use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
@@ -54,18 +56,25 @@ impl SittingFlamingPhase {
         }
         let y = y.floor() + 1.0;
 
-        let cloud_entity = Entity::new(
+        let cloud = AreaEffectCloudEntity::new(Entity::new(
             world.clone(),
             Vector3::new(x, y, z),
             &EntityType::AREA_EFFECT_CLOUD,
-        );
-        let flame: Arc<dyn EntityBase> = AreaEffectCloudEntity::new_dragon_breath(
-            cloud_entity,
-            FLAME_RADIUS,
-            FLAME_DURATION,
-            0.0,
-            0,
-        );
+        ));
+        cloud.set_owner(Some(dragon.get_entity()));
+        cloud.set_radius(FLAME_RADIUS);
+        cloud.set_duration(FLAME_DURATION);
+        cloud.set_custom_particle(Some(CloudParticle::DragonBreath { power: 1.0 }));
+        cloud.set_potion_duration_scale(0.25);
+        cloud.add_effect(StatusEffectInstance {
+            effect_id: StatusEffect::INSTANT_DAMAGE.minecraft_name.into(),
+            amplifier: 0,
+            duration: 0,
+            ambient: false,
+            show_particles: true,
+            show_icon: true,
+        });
+        let flame: Arc<dyn EntityBase> = cloud;
         world.spawn_entity(flame.clone());
         flame
     }
