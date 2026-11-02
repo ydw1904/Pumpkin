@@ -9,10 +9,11 @@ use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tag::{self, Taggable};
-use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_util::math::position::BlockPos;
 
+use crate::block::blocks::weathering_copper::WeatherState as BlockWeatherState;
 use crate::entity::{
     Entity, EntityBase,
     ai::goal::{
@@ -208,14 +209,26 @@ impl Mob for CopperGolemEntity {
             "next_weather_age",
             self.next_weathering_tick.load(Ordering::Relaxed),
         );
-        nbt.put_int("weather_state", self.get_weather_state().id());
+        // Vanilla stores `WeatheringCopper.WeatherState` by name.
+        if let Some(state) = BlockWeatherState::from_ordinal(self.get_weather_state().id() as usize)
+        {
+            nbt.put_string("weather_state", state.as_str().to_string());
+        }
     }
 
     fn mob_read_nbt(&self, nbt: &NbtCompound) {
         if let Some(next) = nbt.get_long("next_weather_age") {
             self.next_weathering_tick.store(next, Ordering::Relaxed);
         }
-        if let Some(state) = nbt.get_int("weather_state") {
+        // Older Pumpkin saves stored the ordinal.
+        let state = match nbt.get("weather_state") {
+            Some(NbtTag::String(name)) => {
+                BlockWeatherState::from_name(name).map(|state| state.ordinal() as i32)
+            }
+            Some(NbtTag::Int(id)) => Some(*id),
+            _ => None,
+        };
+        if let Some(state) = state {
             self.set_weather_state(WeatherState::from_id(state));
         }
     }
