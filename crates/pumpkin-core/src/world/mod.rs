@@ -569,6 +569,7 @@ impl World {
             }
         }
         let mut newly_loaded = Vec::new();
+        let mut unloaded = std::collections::HashSet::new();
         for change in self.level.loaded_chunk_changes() {
             match change {
                 pumpkin_world::level::LoadedChunkChange::Loaded(pos) => {
@@ -583,6 +584,7 @@ impl World {
                 pumpkin_world::level::LoadedChunkChange::Unloaded(pos) => {
                     if !self.level.is_chunk_loaded(&pos) {
                         tracker.loaded_block_ticking_chunks.remove(&pos);
+                        unloaded.insert(pos);
                     }
                 }
             }
@@ -603,6 +605,7 @@ impl World {
             self.post_process_generation(pos);
             self.migrate_pending_block_entities(pos);
         }
+        self.unload_chunk_pois(&unloaded);
         for pos in newly_loaded {
             self.level.light_engine.check_pending(&self.level, pos);
             self.register_chunk_pois(pos);
@@ -7698,6 +7701,28 @@ impl World {
         self.level.save_loaded_entity_chunks().await;
     }
 
+    /// Writes the POI data, then drops the regions no loaded chunk is in so the POIs of
+    /// every region ever visited don't stay in memory.
+    pub fn save_poi(&self) {
+        self.save_village_poi_tickets();
+        let mut portal_poi = self
+            .portal_poi
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Err(e) = portal_poi.save_all() {
+            error!("Failed to save POI data: {e}");
+            return;
+        }
+        portal_poi.unload_regions(|rx, rz| {
+            (0..32).any(|x| {
+                (0..32).any(|z| {
+                    self.level
+                        .is_chunk_loaded(&Vector2::new(rx * 32 + x, rz * 32 + z))
+                })
+            })
+        });
+    }
+
     pub async fn save(&self) {
         self.autosave_entities().await;
 
@@ -7710,10 +7735,7 @@ impl World {
             self.save_block_entities(chunk_pos);
         }
 
-        self.save_village_poi_tickets();
-        if let Ok(mut portal_poi) = self.portal_poi.try_lock() {
-            let _ = portal_poi.save_all();
-        }
+        self.save_poi();
 
         {
             let custom_data = self

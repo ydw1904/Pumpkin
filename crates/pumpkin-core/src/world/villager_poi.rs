@@ -39,6 +39,15 @@ impl VillagePoiType {
         profession_for_block(block).map(Self::JobSite)
     }
 
+    /// The village POI type registered as `key`.
+    fn from_key(key: &str) -> Option<Self> {
+        (0..)
+            .map_while(VillagerProfession::from_i32)
+            .map(Self::JobSite)
+            .chain([Self::Home, Self::Meeting])
+            .find(|poi_type| poi_type.key() == key && key != "minecraft:none")
+    }
+
     /// Vanilla `PoiType.maxTickets`.
     #[must_use]
     pub const fn max_tickets(self) -> usize {
@@ -300,6 +309,29 @@ impl VillagerPoiStorage {
                 Some((position, record.poi_type, record.free_tickets))
             })
             .collect()
+    }
+
+    /// Drops the records of unloaded chunks, returning those whose tickets changed since the
+    /// last save. Vanilla keeps every section it ever loaded; Paper unloads them with their
+    /// chunks, so long-running servers don't keep the POIs of every chunk ever visited.
+    fn unload_chunks(
+        &mut self,
+        chunks: &HashSet<Vector2<i32>>,
+    ) -> Vec<(BlockPos, VillagePoiType, i32)> {
+        let mut changed = Vec::new();
+        self.records.retain(|position, record| {
+            if !chunks.contains(&Vector2::new(position.0.x >> 4, position.0.z >> 4)) {
+                return true;
+            }
+            if self.dirty_tickets.remove(position) {
+                changed.push((*position, record.poi_type, record.free_tickets));
+            }
+            self.recovered.records.remove(position);
+            self.distance_tracker
+                .occupancy_changed(*position, record.is_occupied(), false);
+            false
+        });
+        changed
     }
 
     /// Vanilla `PoiManager.getInRange` in its stream order: chunks row by row (z outer, x
@@ -577,7 +609,8 @@ impl World {
                 .map(|(pos, poi_type)| {
                     // Vanilla keeps the free tickets saved with the POI section.
                     let (free_tickets, legacy_format) = saved
-                        .get_entry(pos, poi_type.key())
+                        .get_entry(pos)
+                        .filter(|entry| entry.poi_type == poi_type.key())
                         .map(|entry| (entry.free_tickets, entry.legacy_format))
                         .unwrap_or_else(|| {
                             let free_tickets = poi_type.max_tickets() as i32;
@@ -630,6 +663,71 @@ impl World {
                     poi_type.max_tickets() as i32,
                 );
             }
+        }
+    }
+
+    /// Drops the village POIs of unloaded chunks, keeping their tickets in the saved POI data.
+    pub(crate) fn unload_chunk_pois(&self, chunks: &HashSet<Vector2<i32>>) {
+        if chunks.is_empty() {
+            return;
+        }
+        let changed = self
+            .villager_poi
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unload_chunks(chunks);
+        if changed.is_empty() {
+            return;
+        }
+        let mut saved = self
+            .portal_poi
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for (pos, poi_type, free_tickets) in changed {
+            saved.add_with_free_tickets(pos, poi_type.key(), free_tickets);
+        }
+    }
+
+    /// Vanilla `Villager.releasePoi`: frees a ticket of the POI at `pos` if its type is
+    /// accepted. Vanilla loads the POI section to do so, so the saved tickets of a POI in an
+    /// unloaded chunk are released too.
+    pub(crate) fn release_village_poi(
+        &self,
+        pos: BlockPos,
+        accepts: impl Fn(VillagePoiType) -> bool,
+    ) {
+        let mut villager_poi = self
+            .villager_poi
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(poi_type) = villager_poi.get_type(pos) {
+            if accepts(poi_type) {
+                villager_poi.release(pos);
+            }
+            return;
+        }
+        drop(villager_poi);
+        if self
+            .level
+            .is_chunk_loaded(&Vector2::new(pos.0.x >> 4, pos.0.z >> 4))
+        {
+            return;
+        }
+        let mut saved = self
+            .portal_poi
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some((poi_type, free_tickets)) = saved.get_entry(pos).and_then(|entry| {
+            Some((
+                VillagePoiType::from_key(&entry.poi_type)?,
+                entry.free_tickets,
+            ))
+        }) else {
+            return;
+        };
+        // Vanilla `PoiRecord.releaseTicket`.
+        if accepts(poi_type) && free_tickets < poi_type.max_tickets() as i32 {
+            saved.add_with_free_tickets(pos, poi_type.key(), free_tickets + 1);
         }
     }
 
@@ -765,7 +863,8 @@ mod tests {
         let mut saved = pumpkin_world::poi::PoiStorage::new(folder.path().join("poi"));
         let mut reloaded = VillagerPoiStorage::default();
         for (pos, poi_type) in [(bed, VillagePoiType::Home), (bell, VillagePoiType::Meeting)] {
-            let entry = saved.get_entry(pos, poi_type.key()).unwrap();
+            let entry = saved.get_entry(pos).unwrap();
+            assert_eq!(entry.poi_type, poi_type.key());
             assert!(!entry.legacy_format);
             reloaded.load_record(pos, poi_type, entry.free_tickets, false);
         }
@@ -779,6 +878,33 @@ mod tests {
         // A chunk loading again must not reset the tickets of a record still in memory.
         reloaded.load_record(bed, VillagePoiType::Home, 0, false);
         assert!(reloaded.take(bed, any).is_some());
+    }
+
+    #[test]
+    fn unloading_a_chunk_drops_its_records_and_village_center() {
+        let bell = BlockPos::new(2, 64, 0);
+        let other_bell = BlockPos::new(20, 64, 0);
+        let any = |_| true;
+        let mut storage = VillagerPoiStorage::default();
+        storage.update_block(bell, Block::BELL.default_state.id);
+        storage.update_block(other_bell, Block::BELL.default_state.id);
+        storage.take(bell, any);
+        assert_eq!(storage.take_dirty_tickets().len(), 1);
+        storage.take(bell, any);
+
+        let changed = storage.unload_chunks(&HashSet::from([Vector2::new(0, 0)]));
+        assert_eq!(changed, [(bell, VillagePoiType::Meeting, 30)]);
+        assert_eq!(storage.get_type(bell), None);
+        assert_eq!(storage.get_type(other_bell), Some(VillagePoiType::Meeting));
+        assert_eq!(storage.sections_to_village(bell), MAX_SECTIONS_TO_VILLAGE);
+        assert!(storage.take_dirty_tickets().is_empty());
+
+        storage.load_record(bell, VillagePoiType::Meeting, 30, false);
+        assert_eq!(storage.sections_to_village(bell), 0);
+        assert_eq!(
+            storage.count_in_range(bell, 0, any, Occupancy::IsOccupied),
+            1
+        );
     }
 
     #[test]

@@ -1359,7 +1359,11 @@ impl Server {
             {
                 for world in worlds.iter() {
                     let world = world.clone();
-                    self.spawn_task(async move { world.autosave_entities().await });
+                    self.spawn_task(async move {
+                        world.autosave_entities().await;
+                        // Vanilla's autosave flushes the POI storage with the chunks.
+                        world.save_poi();
+                    });
                 }
                 // Vanilla's autosave also writes level.dat, so a crash keeps the spawn point,
                 // clocks, weather and game rules.

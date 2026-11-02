@@ -510,13 +510,12 @@ impl PoiStorage {
         });
     }
 
-    /// The saved POI of `poi_type` at `pos`, if there is one.
-    pub fn get_entry(&mut self, pos: BlockPos, poi_type: &str) -> Option<&PoiEntry> {
+    /// The saved POI at `pos`, if there is one.
+    pub fn get_entry(&mut self, pos: BlockPos) -> Option<&PoiEntry> {
         let (rx, rz) = Self::region_coords(&pos);
         self.get_or_load_region(rx, rz)
             .entries
             .get(&PoiRegion::pos_key(&pos))
-            .filter(|entry| entry.poi_type == poi_type)
     }
 
     pub fn add_portal(&mut self, pos: BlockPos) {
@@ -633,6 +632,12 @@ impl PoiStorage {
             info!("Saved {saved} POI region(s)");
         }
         Ok(())
+    }
+
+    /// Drops the saved regions `in_use` rejects. Regions with unsaved changes stay.
+    pub fn unload_regions(&mut self, in_use: impl Fn(i32, i32) -> bool) {
+        self.regions
+            .retain(|&(rx, rz), region| region.is_dirty() || in_use(rx, rz));
     }
 
     /// Get count of loaded regions

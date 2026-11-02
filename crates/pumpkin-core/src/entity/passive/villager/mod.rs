@@ -1303,11 +1303,7 @@ impl VillagerEntity {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         if let Some(pos) = potential {
-            world
-                .villager_poi
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .release(pos);
+            world.release_village_poi(pos, |_| true);
         }
     }
 
@@ -1625,13 +1621,7 @@ impl VillagerEntity {
     /// Vanilla `Villager.releasePoi`: frees the ticket of a remembered POI if it is still of
     /// the type the memory holds.
     fn release_poi(world: &World, pos: BlockPos, poi_type: impl Fn(VillagePoiType) -> bool) {
-        let mut villager_poi = world
-            .villager_poi
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if villager_poi.get_type(pos).is_some_and(poi_type) {
-            villager_poi.release(pos);
-        }
+        world.release_village_poi(pos, poi_type);
     }
 
     /// Vanilla `Villager.releaseAllPois`.
