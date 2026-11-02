@@ -164,10 +164,10 @@ impl CommandExecutor for BaseSetExecutor {
                     TextComponent::text(java_double_string(value)),
                 ],
             ),
-            true,
+            false,
         );
 
-        Ok(value as i32)
+        Ok(1)
     }
 }
 
@@ -194,7 +194,14 @@ impl CommandExecutor for BaseResetExecutor {
             ));
         }
 
-        let default_val = attribute.default_value;
+        // Vanilla `AttributeMap.resetBaseValue`: back to this entity type's default.
+        let default_val = target
+            .get_entity()
+            .entity_type
+            .attributes
+            .iter()
+            .find(|(a, _)| a.id == attribute.id)
+            .map_or(attribute.default_value, |(_, base)| *base);
         living.set_attribute_base(&attribute, default_val);
         crate::entity::attributes::send_attribute_updates_for_living(
             living,
@@ -211,10 +218,10 @@ impl CommandExecutor for BaseResetExecutor {
                     TextComponent::text(java_double_string(default_val)),
                 ],
             ),
-            true,
+            false,
         );
 
-        Ok(default_val as i32)
+        Ok(1)
     }
 }
 
@@ -277,7 +284,7 @@ impl CommandExecutor for ModifierAddExecutor {
                     target.get_name(),
                 ],
             ),
-            true,
+            false,
         );
 
         Ok(1)
@@ -339,7 +346,7 @@ impl CommandExecutor for ModifierRemoveExecutor {
                     target.get_name(),
                 ],
             ),
-            true,
+            false,
         );
 
         Ok(1)
