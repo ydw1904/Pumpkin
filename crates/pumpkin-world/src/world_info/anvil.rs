@@ -291,17 +291,32 @@ fn level_data_from_nbt(data: &NbtCompound, seed: i64) -> LevelData {
     level_data
 }
 
+/// Keys older Pumpkin versions wrote into `level.dat` that 26.3 keeps elsewhere or dropped.
+const LEGACY_LEVEL_DAT_KEYS: [&str; 17] = [
+    "BorderCenterX",
+    "BorderCenterZ",
+    "BorderDamagePerBlock",
+    "BorderSize",
+    "BorderSafeZone",
+    "BorderSizeLerpTarget",
+    "BorderSizeLerpTime",
+    "BorderWarningBlocks",
+    "BorderWarningTime",
+    "Difficulty",
+    "DifficultyLocked",
+    "SpawnX",
+    "SpawnY",
+    "SpawnZ",
+    "SpawnAngle",
+    "SpawnPitch",
+    "map_id",
+];
+
 fn level_data_to_nbt(info: &LevelData, data: &mut NbtCompound) {
+    for key in LEGACY_LEVEL_DAT_KEYS {
+        data.child_tags.remove(key);
+    }
     data.put_bool("allowCommands", info.allow_commands);
-    data.put_double("BorderCenterX", info.border_center_x);
-    data.put_double("BorderCenterZ", info.border_center_z);
-    data.put_double("BorderDamagePerBlock", info.border_damage_per_block);
-    data.put_double("BorderSize", info.border_size);
-    data.put_double("BorderSafeZone", info.border_safe_zone);
-    data.put_double("BorderSizeLerpTarget", info.border_size_lerp_target);
-    data.put_long("BorderSizeLerpTime", info.border_size_lerp_time);
-    data.put_double("BorderWarningBlocks", info.border_warning_blocks);
-    data.put_double("BorderWarningTime", info.border_warning_time);
     data.put_compound("DataPacks", data_packs_to_nbt(&info.data_packs));
     data.put_int("DataVersion", info.data_version);
 
@@ -318,8 +333,6 @@ fn level_data_to_nbt(info: &LevelData, data: &mut NbtCompound) {
     diff_comp.put_bool("locked", info.difficulty_locked);
     data.put_compound("difficulty_settings", diff_comp);
 
-    data.put_byte("Difficulty", info.difficulty as i8);
-    data.put_bool("DifficultyLocked", info.difficulty_locked);
     data.put_long("LastPlayed", info.last_played);
     data.put_long("Time", info.game_time);
     data.put_string("LevelName", info.level_name.clone());
@@ -335,14 +348,9 @@ fn level_data_to_nbt(info: &LevelData, data: &mut NbtCompound) {
     spawn_comp.put_float("yaw", info.spawn_yaw);
     data.put_compound("spawn", spawn_comp);
 
-    data.put_int("SpawnX", info.spawn_x);
-    data.put_int("SpawnY", info.spawn_y);
-    data.put_int("SpawnZ", info.spawn_z);
-    data.put_float("SpawnAngle", info.spawn_yaw);
-    data.put_float("SpawnPitch", info.spawn_pitch);
     data.put_compound("Version", world_version_to_nbt(&info.world_version));
     data.put_int("version", info.level_version);
-    data.put_int("map_id", info.map_id);
+    // A backup of the seed in case `world_gen_settings.dat` is lost; vanilla ignores it.
     put_world_gen_settings_seed(data, info.world_gen_settings.seed);
 }
 
@@ -817,10 +825,7 @@ mod test {
         original.set_pos(16, -32);
         original.spawn_y = 64;
         original.spawn_yaw = 45.0;
-        original.border_size = 2048.0;
-        original.border_center_x = 8.0;
         original.day_time = 12_345;
-        original.map_id = 3;
 
         AnvilLevelInfo
             .write_world_info(&original, temp_dir.path())
@@ -837,16 +842,16 @@ mod test {
             Some(MAXIMUM_SUPPORTED_LEVEL_VERSION)
         );
         assert_eq!(data.get_string("LevelName"), Some("Round Trip"));
-        assert_eq!(data.get_byte("Difficulty"), Some(Difficulty::Easy as i8));
-        assert_eq!(data.get_bool("DifficultyLocked"), Some(true));
+        let difficulty = data.get_compound("difficulty_settings").unwrap();
+        assert_eq!(difficulty.get_string("difficulty"), Some("easy"));
+        assert_eq!(difficulty.get_bool("locked"), Some(true));
         assert_eq!(data.get_bool("allowCommands"), Some(true));
-        assert_eq!(data.get_int("SpawnX"), Some(16));
-        assert_eq!(data.get_int("SpawnY"), Some(64));
-        assert_eq!(data.get_int("SpawnZ"), Some(-32));
-        assert_eq!(data.get_float("SpawnAngle"), Some(45.0));
-        assert_eq!(data.get_double("BorderSize"), Some(2048.0));
-        assert_eq!(data.get_double("BorderCenterX"), Some(8.0));
-        assert_eq!(data.get_int("map_id"), Some(3));
+        let spawn = data.get_compound("spawn").unwrap();
+        assert_eq!(spawn.get_int_array("pos"), Some([16, 64, -32].as_slice()));
+        assert_eq!(spawn.get_float("yaw"), Some(45.0));
+        for key in super::LEGACY_LEVEL_DAT_KEYS {
+            assert!(!data.has(key), "{key} is not a 26.3 level.dat key");
+        }
         assert!(data.get_long("LastPlayed").is_some_and(|played| played > 0));
 
         let version = data.get_compound("Version").unwrap();
