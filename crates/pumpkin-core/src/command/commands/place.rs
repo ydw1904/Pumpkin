@@ -57,6 +57,10 @@ static STRUCTURE_INVALID: CommandErrorType<1> = CommandErrorType::new(
     translation::java::COMMANDS_PLACE_STRUCTURE_INVALID,
     "commands.place.structure.invalid",
 );
+static STRUCTURE_FAILED: CommandErrorType<0> = CommandErrorType::new(
+    translation::java::COMMANDS_PLACE_STRUCTURE_FAILED,
+    "commands.place.structure.failed",
+);
 /// Vanilla 26.3 reports an unknown feature through its `ResourceOrIdArgument`; the old
 /// `commands.place.feature.invalid` key is gone from the client.
 static FEATURE_INVALID: CommandErrorType<2> = CommandErrorType::new(
@@ -353,10 +357,7 @@ impl CommandExecutor for PlaceStructureExecutor {
                     LiquidSettings::ApplyWaterlog,
                     &pool_alias_lookup,
                 )
-                .ok_or_else(|| {
-                    JIGSAW_FAILED
-                        .create_without_context(TextComponent::text(structure_name.clone()))
-                })?;
+                .ok_or_else(|| STRUCTURE_FAILED.create_without_context())?;
 
                 let collector = position
                     .collector
@@ -406,10 +407,7 @@ impl CommandExecutor for PlaceStructureExecutor {
                     },
                     &mut |_| true,
                 )
-                .ok_or_else(|| {
-                    STRUCTURE_INVALID
-                        .create_without_context(TextComponent::text(structure_name.clone()))
-                })?;
+                .ok_or_else(|| STRUCTURE_FAILED.create_without_context())?;
 
                 let mut collector = position
                     .collector
