@@ -2430,17 +2430,19 @@ impl World {
         // the spawn candidates that tick and have a player within 128 blocks, and ticks them even
         // when no category can spawn, for thunder and inhabited time.
         let players = self.players.load();
-        let mut spawning_chunks = Vec::new();
-        for pos in &active_chunks.spawn_candidates {
-            if !self.level.is_chunk_ticking_ready(pos)
-                || !natural_spawner::any_player_close_enough_for_spawning(&players, *pos)
-            {
-                continue;
-            }
-            if let Some(chunk) = self.level.read_chunk_sync(pos, std::clone::Clone::clone) {
-                spawning_chunks.push((*pos, chunk));
-            }
-        }
+        let mut spawning_chunks: Vec<_> = active_chunks
+            .spawn_candidates
+            .par_iter()
+            .filter(|pos| {
+                self.level.is_chunk_ticking_ready(pos)
+                    && natural_spawner::any_player_close_enough_for_spawning(&players, **pos)
+            })
+            .filter_map(|pos| {
+                self.level
+                    .read_chunk_sync(pos, std::clone::Clone::clone)
+                    .map(|chunk| (*pos, chunk))
+            })
+            .collect();
         drop(players);
 
         game_random().shuffle(&mut spawning_chunks);
