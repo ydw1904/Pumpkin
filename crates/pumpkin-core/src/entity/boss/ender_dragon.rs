@@ -10,6 +10,7 @@ use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::math::{cos, sin, wrap_degrees};
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::{chunk::ChunkHeightmapType, world::BlockFlags};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
@@ -176,6 +177,7 @@ pub struct EnderDragonEntity {
     pub dragon_death_time: Mutex<i32>,
     pub sitting_damage_received: Mutex<f32>,
     pub y_rot_a: Mutex<f32>,
+    nearest_crystal: Mutex<Option<Arc<dyn EntityBase>>>,
 
     pub fight_origin: Mutex<BlockPos>,
     nodes: Mutex<Option<[DragonNode; NODE_COUNT]>>,
@@ -218,6 +220,7 @@ impl EnderDragonEntity {
             dragon_death_time: Mutex::new(0),
             sitting_damage_received: Mutex::new(0.0),
             y_rot_a: Mutex::new(0.0),
+            nearest_crystal: Mutex::new(None),
             fight_origin: Mutex::new(BlockPos::new(0, 0, 0)),
             nodes: Mutex::new(None),
             phase_manager: PhaseManager::default(),
@@ -629,30 +632,96 @@ impl EnderDragonEntity {
         }
     }
 
-    fn tick_crystal_healing(&self) {
-        let world = self.mob_entity.living_entity.entity.world.load();
-        let pos = self.mob_entity.living_entity.entity.pos.load();
-
-        let mut nearest_crystal = None;
-        let mut min_dist_sq = 1024.0; // 32 blocks
-
-        for entity in world.entities.load().iter() {
-            if entity.get_entity().entity_type == &EntityType::END_CRYSTAL {
-                let crystal_pos = entity.get_entity().pos.load();
-                let dist_sq = pos.squared_distance_to_vec(&crystal_pos);
-                if dist_sq < min_dist_sq {
-                    min_dist_sq = dist_sq;
-                    nearest_crystal = Some(entity.clone());
+    /// Vanilla `EnderDragon.checkCrystals`: heal 1 every 10 ticks while a crystal is beaming at
+    /// the dragon, and look for the nearest crystal now and then.
+    fn check_crystals(&self) {
+        let entity = self.get_entity();
+        {
+            let mut nearest_crystal = self
+                .nearest_crystal
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(crystal) = nearest_crystal.as_ref() {
+                if crystal.get_entity().is_removed() {
+                    *nearest_crystal = None;
+                } else {
+                    let living = &self.mob_entity.living_entity;
+                    let health = living.health.load();
+                    if entity.tick_count.load(Ordering::Relaxed) % 10 == 0
+                        && health < living.get_max_health()
+                    {
+                        living.set_health(health + 1.0);
+                    }
                 }
             }
         }
 
-        if let Some(_crystal) = nearest_crystal {
-            let living = &self.mob_entity.living_entity;
-            if living.health.load() < living.get_max_health() {
-                living.heal(1.0);
-            }
+        if game_random().random_range(0..10) == 0 {
+            let world = entity.world.load();
+            let pos = entity.pos.load();
+            let search_box = entity.bounding_box.load().expand(32.0, 32.0, 32.0);
+            let nearest = world
+                .get_entities_at_box(&search_box)
+                .into_iter()
+                .filter(|crystal| crystal.get_entity().entity_type == &EntityType::END_CRYSTAL)
+                .min_by(|a, b| {
+                    a.get_entity()
+                        .pos
+                        .load()
+                        .squared_distance_to_vec(&pos)
+                        .total_cmp(&b.get_entity().pos.load().squared_distance_to_vec(&pos))
+                });
+            *self
+                .nearest_crystal
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = nearest;
         }
+    }
+
+    /// Vanilla `EnderDragon.onCrystalDestroyed`: losing the crystal that was healing it hurts the
+    /// dragon, and the current phase may go after the player who broke it.
+    pub fn on_crystal_destroyed(&self, crystal: &dyn EntityBase, cause: Option<&dyn EntityBase>) {
+        let world = self.get_entity().world.load();
+        let crystal_pos = crystal.get_entity().pos.load();
+        let player = cause
+            .and_then(|cause| world.get_player_by_id(cause.get_entity().entity_id))
+            .or_else(|| {
+                let block_pos = crystal.get_entity().block_pos.load();
+                let targeting = TargetPredicate::create_attackable().set_base_max_distance(64.0);
+                world.get_nearest_player(block_pos.0.to_f64(), f64::INFINITY, |player| {
+                    targeting.test(&world, None, player.as_ref())
+                })
+            });
+
+        let was_nearest = self
+            .nearest_crystal
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .is_some_and(|nearest| {
+                nearest.get_entity().entity_id == crystal.get_entity().entity_id
+            });
+        if was_nearest {
+            let damage_type = if player.is_some() {
+                DamageType::PLAYER_EXPLOSION
+            } else {
+                DamageType::EXPLOSION
+            };
+            self.hurt(
+                self,
+                true,
+                10.0,
+                damage_type,
+                Some(crystal_pos),
+                Some(crystal),
+                player
+                    .as_ref()
+                    .map(|player| player.as_ref() as &dyn EntityBase),
+            );
+        }
+
+        self.current_phase()
+            .on_crystal_destroyed(self, player.as_ref());
     }
 
     fn tick_block_breaking(&self) {
@@ -789,7 +858,7 @@ impl EnderDragonEntity {
             return;
         }
 
-        self.tick_crystal_healing();
+        self.check_crystals();
         let vel = entity.velocity.load();
         let flap_speed =
             0.2 / (vel.horizontal_length() as f32 * 10.0 + 1.0) * 2.0f64.powf(vel.y) as f32;
@@ -902,6 +971,9 @@ impl EnderDragonEntity {
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .set_dragon_killed(&world, entity.entity_uuid);
+            }
+            for part in &self.parts {
+                part.entity.remove();
             }
             entity.remove();
             entity.emit_own_game_event(caller, GameEvent::EntityDie);

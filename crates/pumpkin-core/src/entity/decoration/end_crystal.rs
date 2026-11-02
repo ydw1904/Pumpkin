@@ -1,18 +1,23 @@
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use crate::block::blocks::fire::{FireBlockBase, fire::FireBlock};
+use crate::entity::boss::ender_dragon::EnderDragonEntity;
 use crate::entity::{Entity, EntityBase, living::LivingEntity};
+use crate::server::Server;
 use pumpkin_data::{
+    Block,
     damage::DamageType,
+    entity::EntityType,
     tag::{self, Taggable},
 };
 use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
+use pumpkin_world::world::BlockFlags;
 
 pub struct EndCrystalEntity {
     entity: Entity,
     beam_target: Mutex<Option<BlockPos>>,
     show_bottom: AtomicBool,
-    invulnerable: AtomicBool,
 }
 
 impl EndCrystalEntity {
@@ -23,7 +28,6 @@ impl EndCrystalEntity {
             entity,
             beam_target: Mutex::new(None),
             show_bottom: AtomicBool::new(false),
-            invulnerable: AtomicBool::new(false),
         }
     }
 
@@ -58,11 +62,33 @@ impl EndCrystalEntity {
     }
 
     pub fn set_invulnerable(&self, invulnerable: bool) {
-        self.invulnerable.store(invulnerable, Ordering::Relaxed);
+        self.entity
+            .invulnerable
+            .store(invulnerable, Ordering::Relaxed);
     }
 
-    pub fn is_invulnerable(&self) -> bool {
-        self.invulnerable.load(Ordering::Relaxed)
+    /// Vanilla `EndCrystal.onDestroyedBy`: tell the dragon fight, then the dragon. The fight's
+    /// lock is released before the dragon reacts, since the dragon asks the fight for its
+    /// crystals.
+    fn on_destroyed_by(&self, cause: Option<&dyn EntityBase>) {
+        let world = self.entity.world.load();
+        let Some(fight) = &world.dragon_fight else {
+            return;
+        };
+        let dragon_uuid = fight
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .on_crystal_destroyed(&world, self.entity.entity_uuid);
+        if let Some(dragon_uuid) = dragon_uuid
+            && let Some(dragon) = world
+                .entities
+                .load()
+                .iter()
+                .find(|entity| entity.get_entity().entity_uuid == dragon_uuid)
+            && let Some(dragon) = dragon.cast_any().downcast_ref::<EnderDragonEntity>()
+        {
+            dragon.on_crystal_destroyed(self, cause);
+        }
     }
 }
 
@@ -75,6 +101,8 @@ impl EntityBase for EndCrystalEntity {
         None
     }
 
+    /// Vanilla `EndCrystal.hurtServer`: any hit but the dragon's destroys the crystal, which
+    /// explodes unless an explosion destroyed it.
     fn damage_with_context(
         &self,
         _caller: &dyn EntityBase,
@@ -82,26 +110,47 @@ impl EntityBase for EndCrystalEntity {
         damage_type: DamageType,
         _position: Option<Vector3<f64>>,
         _source: Option<&dyn EntityBase>,
-        _cause: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
     ) -> bool {
-        if self.is_invulnerable() {
+        if self.entity.is_invulnerable_to(&damage_type, cause) {
+            return false;
+        }
+        if cause.is_some_and(|cause| cause.get_entity().entity_type == &EntityType::ENDER_DRAGON) {
             return false;
         }
 
         self.entity.remove();
-        let world = self.entity.world.load();
         if !damage_type.has_tag(&tag::DamageType::MINECRAFT_IS_EXPLOSION) {
-            let pos = self.entity.pos.load();
-            world.explode(pos, 6.0, crate::world::ExplosionInteraction::Block);
+            let world = self.entity.world.load();
+            world.explode(
+                self.entity.pos.load(),
+                6.0,
+                crate::world::ExplosionInteraction::Block,
+            );
         }
-
-        if let Some(ref fight_mutex) = world.dragon_fight
-            && let Ok(mut fight) = fight_mutex.lock()
-        {
-            fight.on_crystal_destroyed(&world, self.entity.entity_uuid);
-        }
-
+        self.on_destroyed_by(cause);
         true
+    }
+
+    /// Vanilla `EndCrystal.kill`.
+    fn kill(&self, _caller: &dyn EntityBase) {
+        self.on_destroyed_by(None);
+        self.entity.remove();
+    }
+
+    /// Vanilla `EndCrystal.tick`: keeps a fire burning under the crystals of a dragon fight.
+    fn tick(&self, caller: &dyn EntityBase, server: &Server) {
+        self.entity.tick(caller, server);
+        let world = self.entity.world.load();
+        let pos = self.entity.block_pos.load();
+        if world.dragon_fight.is_some() && world.get_block_state(&pos).is_air() {
+            let fire = if FireBlockBase::get_fire_type(&world, &pos) == Block::SOUL_FIRE {
+                Block::SOUL_FIRE.default_state.id
+            } else {
+                FireBlock.get_state_for_position(world.as_ref(), &Block::FIRE, &pos)
+            };
+            world.set_block_state(&pos, fire, BlockFlags::NOTIFY_ALL);
+        }
     }
 
     fn cast_any(&self) -> &dyn std::any::Any {

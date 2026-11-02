@@ -541,11 +541,16 @@ impl DragonFight {
 
     // ── Crystal destruction ───────────────────────────────────────────────────
 
-    pub fn on_crystal_destroyed(&mut self, world: &Arc<World>, crystal_uuid: Uuid) {
+    /// Vanilla `EnderDragonFight.onCrystalDestroyed`. Returns the dragon that should react to the
+    /// crystal through `EnderDragon.onCrystalDestroyed`, which the caller runs after releasing
+    /// the fight.
+    pub fn on_crystal_destroyed(&mut self, world: &Arc<World>, crystal_uuid: Uuid) -> Option<Uuid> {
         if self.respawn_stage.is_some() && self.respawn_crystals.contains(&crystal_uuid) {
             self.abort_respawn_sequence(world);
+            None
         } else {
             self.update_crystal_count(world);
+            self.dragon_uuid
         }
     }
 
