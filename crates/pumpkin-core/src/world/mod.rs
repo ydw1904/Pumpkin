@@ -4075,30 +4075,31 @@ impl World {
         player.set_health(20.0);
     }
 
+    /// Vanilla `level.explode(source, ...)`: `source` is skipped by the blast and attributed
+    /// in its damage source.
     pub fn explode(
         self: &Arc<Self>,
+        source: Option<&dyn EntityBase>,
         position: Vector3<f64>,
         power: f32,
         interaction: ExplosionInteraction,
     ) {
-        self.explode_with_calculator(position, power, interaction, None);
+        self.explode_with_calculator(source, position, power, interaction, None);
     }
 
     /// An explosion that also sets fire, like vanilla's `level.explode(..., fire = true, ...)`.
     pub fn explode_with_fire(
         self: &Arc<Self>,
+        source: Option<&dyn EntityBase>,
         position: Vector3<f64>,
         power: f32,
         interaction: ExplosionInteraction,
-        damage_calculator: Option<Arc<dyn ExplosionDamageCalculator>>,
     ) {
-        self.explode_with_fire_and_damage_type(
-            position,
-            power,
-            interaction,
-            damage_calculator,
-            DamageType::EXPLOSION,
-        );
+        let block_interaction = self.get_block_interaction(interaction);
+        let explosion = Explosion::new(power, position, block_interaction)
+            .with_source(source)
+            .with_fire();
+        self.run_explosion(&explosion, position, power);
     }
 
     /// [`Self::explode_with_fire`] hurting entities with `damage_type`.
@@ -4122,22 +4123,30 @@ impl World {
 
     pub fn explode_with_calculator(
         self: &Arc<Self>,
+        source: Option<&dyn EntityBase>,
         position: Vector3<f64>,
         power: f32,
         interaction: ExplosionInteraction,
         damage_calculator: Option<Arc<dyn ExplosionDamageCalculator>>,
     ) {
         let block_interaction = self.get_block_interaction(interaction);
-        let mut explosion = Explosion::new(power, position, block_interaction);
+        let mut explosion = Explosion::new(power, position, block_interaction).with_source(source);
         if let Some(calc) = damage_calculator {
             explosion = explosion.with_damage_calculator(calc);
         }
         self.run_explosion(&explosion, position, power);
     }
 
-    pub fn explode_tnt_minecart(self: &Arc<Self>, position: Vector3<f64>, power: f32) {
+    pub fn explode_tnt_minecart(
+        self: &Arc<Self>,
+        source: &dyn EntityBase,
+        position: Vector3<f64>,
+        power: f32,
+    ) {
         let block_interaction = self.get_block_interaction(ExplosionInteraction::Tnt);
-        let explosion = Explosion::new(power, position, block_interaction).preserving_rails();
+        let explosion = Explosion::new(power, position, block_interaction)
+            .with_source(Some(source))
+            .preserving_rails();
         self.run_explosion(&explosion, position, power);
     }
 
@@ -4179,7 +4188,9 @@ impl World {
         power: f32,
     ) {
         let mut event = crate::plugin::api::events::entity::entity_explode::EntityExplodeEvent::new(
-            0, position, power,
+            explosion.source_id().unwrap_or(0),
+            position,
+            power,
         );
         if let Some(server) = self.server.upgrade() {
             server.plugin_manager.fire_blocking(&server, &mut event);

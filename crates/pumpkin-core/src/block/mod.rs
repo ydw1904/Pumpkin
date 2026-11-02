@@ -371,6 +371,8 @@ pub struct ExplodeArgs<'a> {
     pub world: &'a Arc<World>,
     pub block: &'a Block,
     pub position: &'a BlockPos,
+    /// The explosion's `getIndirectSourceEntity`.
+    pub indirect_source: Option<&'a dyn EntityBase>,
 }
 
 pub struct OnSyncedBlockEventArgs<'a> {

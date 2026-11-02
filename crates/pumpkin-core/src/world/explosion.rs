@@ -195,7 +195,19 @@ impl ExplosionDamageCalculator for SimpleExplosionDamageCalculator {
     }
 }
 
-pub struct Explosion {
+/// Vanilla `Explosion.getIndirectSourceEntity`'s result, which may be the source itself.
+enum IndirectSource<'a> {
+    None,
+    Source(&'a dyn EntityBase),
+    Entity(Arc<dyn EntityBase>),
+}
+
+pub struct Explosion<'a> {
+    /// Vanilla `ServerExplosion.source`: the exploding entity, which the blast skips.
+    source: Option<&'a dyn EntityBase>,
+    indirect_source: IndirectSource<'a>,
+    /// The causing entity of an explicit `DamageSources.explosion(source, attacker)`.
+    attacker: Option<&'a dyn EntityBase>,
     power: f32,
     pos: Vector3<f64>,
     block_interaction: BlockInteraction,
@@ -206,14 +218,17 @@ pub struct Explosion {
     pub(super) small_particle: Particle,
     pub(super) large_particle: Particle,
     pub(super) sound: Sound,
-    /// The damage source vanilla passes to `ServerLevel.explode`.
-    damage_type: DamageType,
+    /// A damage source without entities, set in place of `DamageSources.explosion`.
+    damage_type: Option<DamageType>,
 }
 
-impl Explosion {
+impl<'a> Explosion<'a> {
     #[must_use]
     pub const fn new(power: f32, pos: Vector3<f64>, block_interaction: BlockInteraction) -> Self {
         Self {
+            source: None,
+            indirect_source: IndirectSource::None,
+            attacker: None,
             power,
             pos,
             block_interaction,
@@ -223,14 +238,81 @@ impl Explosion {
             small_particle: Particle::Explosion,
             large_particle: Particle::ExplosionEmitter,
             sound: Sound::EntityGenericExplode,
-            damage_type: DamageType::EXPLOSION,
+            damage_type: None,
         }
+    }
+
+    /// Vanilla `ServerExplosion.source`, which also makes the default damage source
+    /// `DamageSources.explosion(source, getIndirectSourceEntity())`.
+    #[must_use]
+    pub fn with_source(mut self, source: Option<&'a dyn EntityBase>) -> Self {
+        self.source = source;
+        self.indirect_source = source.map_or(IndirectSource::None, Self::indirect_source_of);
+        self
+    }
+
+    /// An explicit `DamageSources.explosion(source, attacker)`, as end crystals pass.
+    /// `None` keeps the default damage source, like vanilla's `null`.
+    #[must_use]
+    pub fn with_attacker(mut self, attacker: Option<&'a dyn EntityBase>) -> Self {
+        self.attacker = attacker;
+        self
+    }
+
+    /// Vanilla `Explosion.getIndirectSourceEntity`: a primed TNT's owner, a living source
+    /// itself, or a projectile's living owner.
+    fn indirect_source_of(source: &'a dyn EntityBase) -> IndirectSource<'a> {
+        if let Some(tnt) = source
+            .cast_any()
+            .downcast_ref::<crate::entity::tnt::TNTEntity>()
+        {
+            return tnt
+                .owner()
+                .map_or(IndirectSource::None, IndirectSource::Entity);
+        }
+        if source.get_living_entity().is_some() {
+            return IndirectSource::Source(source);
+        }
+        source
+            .get_owner_entity()
+            .filter(|owner| owner.get_living_entity().is_some())
+            .map_or(IndirectSource::None, IndirectSource::Entity)
+    }
+
+    #[must_use]
+    pub fn source_id(&self) -> Option<i32> {
+        self.source.map(|source| source.get_entity().entity_id)
+    }
+
+    /// Vanilla `getIndirectSourceEntity`.
+    #[must_use]
+    pub fn indirect_source_entity(&self) -> Option<&dyn EntityBase> {
+        match &self.indirect_source {
+            IndirectSource::None => None,
+            IndirectSource::Source(source) => Some(*source),
+            IndirectSource::Entity(entity) => Some(entity.as_ref()),
+        }
+    }
+
+    /// The damage source's type, direct entity and causing entity.
+    fn damage_source(&self) -> (DamageType, Option<&dyn EntityBase>, Option<&dyn EntityBase>) {
+        if let Some(damage_type) = self.damage_type {
+            return (damage_type, None, None);
+        }
+        let attacker = self.attacker.or_else(|| self.indirect_source_entity());
+        // Vanilla `DamageSources.explosion(entity, cause)`.
+        let damage_type = if self.source.is_some() && attacker.is_some() {
+            DamageType::PLAYER_EXPLOSION
+        } else {
+            DamageType::EXPLOSION
+        };
+        (damage_type, self.source, attacker)
     }
 
     /// Hurts entities with `damage_type` instead of a plain explosion.
     #[must_use]
     pub const fn with_damage_type(mut self, damage_type: DamageType) -> Self {
-        self.damage_type = damage_type;
+        self.damage_type = Some(damage_type);
         self
     }
 
@@ -469,7 +551,13 @@ impl Explosion {
             None => &default_calc,
         };
 
+        let (damage_type, direct, attacker) = self.damage_source();
+        let source_id = self.source_id();
         for entity_base in entities {
+            // Vanilla `level.getEntities(source, ...)` leaves the source out.
+            if source_id == Some(entity_base.get_entity().entity_id) {
+                continue;
+            }
             if entity_base.is_immune_to_explosion() {
                 continue;
             }
@@ -502,7 +590,14 @@ impl Explosion {
             if should_damage {
                 let damage =
                     calc.get_entity_damage_amount(self, entity_base.as_ref(), exposure as f32);
-                entity.damage(entity_base.as_ref(), damage, self.damage_type);
+                entity_base.damage_with_context(
+                    entity_base.as_ref(),
+                    damage,
+                    damage_type,
+                    None,
+                    direct,
+                    attacker,
+                );
             }
 
             // Calculate and apply knockback
@@ -626,6 +721,7 @@ impl Explosion {
                             world,
                             block,
                             position: pos,
+                            indirect_source: self.indirect_source_entity(),
                         });
                     }
                 }
@@ -684,6 +780,7 @@ impl Explosion {
                             world,
                             block,
                             position: pos,
+                            indirect_source: self.indirect_source_entity(),
                         });
                     }
                 }

@@ -107,6 +107,7 @@ impl WindChargeEntity {
             position,
             world.get_block_interaction(crate::world::ExplosionInteraction::Trigger),
         )
+        .with_source(Some(self))
         .with_damage_calculator(calculator)
         .with_particles_and_sound(
             Particle::GustEmitterSmall,

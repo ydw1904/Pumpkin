@@ -78,6 +78,7 @@ impl super::EnchantmentEntityEffectExt for ExplodeEffect {
         let r = self.calculate_radius(enchantment_level);
         let center = position + self.offset;
         world.explode(
+            None,
             center,
             r,
             if self.create_fire {

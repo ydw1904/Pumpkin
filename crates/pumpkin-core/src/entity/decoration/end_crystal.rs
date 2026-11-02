@@ -5,6 +5,7 @@ use crate::block::blocks::fire::{FireBlockBase, fire::FireBlock};
 use crate::entity::boss::ender_dragon::EnderDragonEntity;
 use crate::entity::{Entity, EntityBase, living::LivingEntity};
 use crate::server::Server;
+use crate::world::explosion::Explosion;
 use pumpkin_data::{
     Block,
     damage::DamageType,
@@ -122,11 +123,16 @@ impl EntityBase for EndCrystalEntity {
         self.entity.remove();
         if !damage_type.has_tag(&tag::DamageType::MINECRAFT_IS_EXPLOSION) {
             let world = self.entity.world.load();
-            world.explode(
-                self.entity.pos.load(),
+            let pos = self.entity.pos.load();
+            // `damageSources().explosion(this, source.getEntity())`.
+            let explosion = Explosion::new(
                 6.0,
-                crate::world::ExplosionInteraction::Block,
-            );
+                pos,
+                world.get_block_interaction(crate::world::ExplosionInteraction::Block),
+            )
+            .with_source(Some(self))
+            .with_attacker(cause);
+            world.run_explosion(&explosion, pos, 6.0);
         }
         self.on_destroyed_by(cause);
         true

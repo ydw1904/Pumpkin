@@ -1096,6 +1096,7 @@ impl BlockRegistry {
                 world,
                 block,
                 position,
+                indirect_source: None,
             });
         }
     }
