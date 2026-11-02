@@ -1,5 +1,4 @@
 use crate::generation::proto_chunk::GenerationCache;
-use crate::lighting::engine::{BlockLightProvider, LightProvider};
 use pumpkin_data::block_properties::{
     BlockProperties, GrassBlockLikeProperties, SnowLikeProperties,
 };
@@ -132,13 +131,13 @@ fn block_light_at<T: GenerationCache>(chunk: &T, x: i32, y: i32, z: i32) -> u8 {
     let Ok(section_idx) = usize::try_from((y - i32::from(proto.bottom_y())) / 16) else {
         return 0;
     };
-    BlockLightProvider::get_light_proto(
-        proto,
-        section_idx,
-        (x & 15) as usize,
-        (y & 15) as usize,
-        (z & 15) as usize,
-    )
+    proto
+        .light
+        .block_light
+        .get(section_idx)
+        .map_or(0, |section| {
+            section.get((x & 15) as usize, (y & 15) as usize, (z & 15) as usize)
+        })
 }
 
 #[cfg(test)]
