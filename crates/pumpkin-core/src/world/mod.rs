@@ -5780,18 +5780,24 @@ impl World {
             self.villager_poi
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .update_block(*position, new_block);
+                .update_block(*position, block_state_id);
 
-            if is_new_block {
+            let old_poi = villager_poi::VillagePoiType::for_state(replaced_block_state_id);
+            let new_poi = villager_poi::VillagePoiType::for_state(block_state_id);
+            if old_poi != new_poi {
                 let mut poi = self
                     .portal_poi
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if villager_poi::poi_type_for_block(old_block).is_some() {
+                if old_poi.is_some() {
                     poi.remove(position);
                 }
-                if let Some(poi_type) = villager_poi::poi_type_for_block(new_block) {
-                    poi.add_with_free_tickets(*position, poi_type, 1);
+                if let Some(poi_type) = new_poi {
+                    poi.add_with_free_tickets(
+                        *position,
+                        poi_type.key(),
+                        poi_type.max_tickets() as i32,
+                    );
                 }
             }
         }

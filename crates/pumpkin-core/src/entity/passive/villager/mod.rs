@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::block::blocks::bed::BedBlock;
 use pumpkin_data::Enchantment;
 use pumpkin_data::attributes::Attributes;
-use pumpkin_data::block_properties::{BedPart, WhiteBedLikeProperties as BedProperties};
+use pumpkin_data::block_properties::WhiteBedLikeProperties as BedProperties;
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::{EntityPose, EntityType};
 use pumpkin_data::item::{Item, JavaToBedrockItemMapping};
@@ -47,9 +47,45 @@ use crate::entity::{
     mob::{Mob, MobEntity, spawn::SpawnGroupData},
 };
 use crate::world::World;
-use crate::world::villager_poi::profession_for_block;
+use crate::world::villager_poi::{VillagePoiType, profession_for_block};
+use acquire_poi::AcquirePoi;
+use pumpkin_data::environment_attribute::Activity;
 
+mod acquire_poi;
 pub mod data;
+mod walk_to_poi;
+
+/// Vanilla `ValidateNearbyPoi.MAX_DISTANCE`.
+const VALIDATE_POI_MAX_DISTANCE: f64 = 16.0;
+/// Vanilla `SleepInBed.COOLDOWN_AFTER_BEING_WOKEN`.
+const SLEEP_COOLDOWN_AFTER_BEING_WOKEN: i64 = 100;
+/// The delay vanilla `SleepInBed.stop` puts on its next start.
+const SLEEP_RESTART_DELAY: i64 = 40;
+/// The box radius of vanilla's `NearestLivingEntitySensor`.
+const NEAREST_LIVING_ENTITY_RANGE: f64 = 16.0;
+
+fn job_site_accepts(
+    expected: Option<VillagerProfession>,
+) -> impl Fn(VillagePoiType) -> bool + Copy {
+    move |poi_type| {
+        matches!(poi_type, VillagePoiType::JobSite(profession)
+            if expected.is_none_or(|expected| expected == profession))
+    }
+}
+
+/// The bed half of vanilla `ValidateNearbyPoi.bedIsOccupied`.
+fn is_villager_bed_occupied(world: &World, pos: BlockPos) -> bool {
+    let (block, state) = world.get_block_and_state(&pos);
+    block.has_tag(&pumpkin_data::tag::Block::MINECRAFT_VILLAGERS_CAN_SLEEP_ON_BED)
+        && BedProperties::from_state_id(state.id).occupied
+}
+
+/// Vanilla `VillagerGoalPackages.validateBedPoi`.
+fn is_vacant_villager_bed(world: &World, pos: BlockPos) -> bool {
+    let (block, state) = world.get_block_and_state(&pos);
+    block.has_tag(&pumpkin_data::tag::Block::MINECRAFT_VILLAGERS_CAN_SLEEP_ON_BED)
+        && !BedProperties::from_state_id(state.id).occupied
+}
 pub use data::{
     BREEDING_FOOD_THRESHOLD, GossipType, VillagerData, VillagerProfession, VillagerType,
     get_food_points, villager_type_by_biome,
@@ -375,6 +411,18 @@ pub struct VillagerEntity {
     pub job_site: std::sync::Mutex<Option<BlockPos>>,
     pub job_site_pending: AtomicBool,
     pub home_pos: std::sync::Mutex<Option<BlockPos>>,
+    /// Vanilla `MemoryModuleType.MEETING_POINT`.
+    pub meeting_point: std::sync::Mutex<Option<BlockPos>>,
+    acquire_home: std::sync::Mutex<AcquirePoi>,
+    acquire_meeting_point: std::sync::Mutex<AcquirePoi>,
+    /// Vanilla `MemoryModuleType.LAST_WOKEN`.
+    last_woken: std::sync::Mutex<Option<i64>>,
+    /// Vanilla `SleepInBed.nextOkStartTime`.
+    sleep_next_ok_start: AtomicI64,
+    /// Vanilla `LivingEntity.getSleepingPos`.
+    sleeping_pos: std::sync::Mutex<Option<BlockPos>>,
+    /// Whether the home and meeting point read from NBT got their tickets back.
+    poi_tickets_restored: AtomicBool,
     pub self_weak: std::sync::Mutex<Option<Weak<Self>>>,
 }
 
@@ -450,6 +498,13 @@ impl VillagerEntity {
             job_site: std::sync::Mutex::new(None),
             job_site_pending: AtomicBool::new(false),
             home_pos: std::sync::Mutex::new(None),
+            meeting_point: std::sync::Mutex::new(None),
+            acquire_home: std::sync::Mutex::default(),
+            acquire_meeting_point: std::sync::Mutex::default(),
+            last_woken: std::sync::Mutex::new(None),
+            sleep_next_ok_start: AtomicI64::new(0),
+            sleeping_pos: std::sync::Mutex::new(None),
+            poi_tickets_restored: AtomicBool::new(false),
             self_weak: std::sync::Mutex::new(None),
         };
         let mob_arc = Arc::new(villager);
@@ -480,6 +535,11 @@ impl VillagerEntity {
             goal_selector.add_goal(2, Box::new(TradeWithPlayerGoal::new()));
             // Basic movement and looking (Vanilla uses 0.5 speed)
             goal_selector.add_goal(3, Box::new(WorkAtJobSiteGoal::new(0.5)));
+            goal_selector.add_goal(3, Box::new(walk_to_poi::WalkToRememberedPoiGoal::home(0.5)));
+            goal_selector.add_goal(
+                3,
+                Box::new(walk_to_poi::WalkToRememberedPoiGoal::meeting_point(0.5)),
+            );
             goal_selector.add_goal(4, Box::new(WanderAroundGoal::new(0.5)));
             goal_selector.add_goal(
                 5,
@@ -1110,13 +1170,12 @@ impl VillagerEntity {
                 .squared_distance_to_vec(&self.get_entity().pos.load())
                 < 16.0f64.powi(2)
         {
-            let (block, _state) = world.get_block_and_state(&current_site);
             let expected = (profession != VillagerProfession::None).then_some(profession);
             let valid = world
                 .villager_poi
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .claim(current_site, block, owner.clone(), expected)
+                .claim(current_site, owner.clone(), job_site_accepts(expected))
                 .is_some();
 
             if !valid {
@@ -1203,7 +1262,7 @@ impl VillagerEntity {
 
             let mut navigator = Navigator::default();
             let mut claimed = None;
-            for (_, position, block, _) in candidates.into_iter().take(5) {
+            for (_, position, _, _) in candidates.into_iter().take(5) {
                 if !navigator.can_reach_within(
                     &self.mob_entity.living_entity,
                     position.to_centered_f64(),
@@ -1215,7 +1274,7 @@ impl VillagerEntity {
                     .villager_poi
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .claim(position, block, owner.clone(), expected)
+                    .claim(position, owner.clone(), job_site_accepts(expected))
                     .is_some()
                 {
                     claimed = Some(position);
@@ -1231,6 +1290,7 @@ impl VillagerEntity {
                 self.job_site_pending.store(true, Ordering::Relaxed);
             }
         }
+        self.yield_job_site(world);
 
         if self.job_site_pending.load(Ordering::Relaxed)
             && let Some(site) = self.get_job_site()
@@ -1264,6 +1324,406 @@ impl VillagerEntity {
                     self.set_villager_data(VillagerData::new(r#type, claimed_profession, 1));
                 }
             }
+        }
+    }
+
+    /// Vanilla `YieldJobSite`: an unemployed villager hands the job site it is heading to over to
+    /// a nearby villager who already has the matching profession.
+    fn yield_job_site(&self, world: &World) {
+        let entity = self.get_entity();
+        if !self.job_site_pending.load(Ordering::Relaxed)
+            || entity.age.load(Ordering::Relaxed) < 0
+            || self
+                .villager_data
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .profession_enum()
+                != VillagerProfession::None
+        {
+            return;
+        }
+        let Some(poi_pos) = self.get_job_site() else {
+            return;
+        };
+        let Some(VillagePoiType::JobSite(site_profession)) = world
+            .villager_poi
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_type(poi_pos)
+        else {
+            return;
+        };
+
+        // Vanilla's `NEAREST_LIVING_ENTITIES` sensor box, closest first.
+        let my_pos = entity.pos.load();
+        let bb = entity.bounding_box.load().expand(
+            NEAREST_LIVING_ENTITY_RANGE,
+            NEAREST_LIVING_ENTITY_RANGE,
+            NEAREST_LIVING_ENTITY_RANGE,
+        );
+        let mut nearby = world.get_entities_at_box(&bb);
+        nearby.sort_by(|a, b| {
+            a.get_entity()
+                .pos
+                .load()
+                .squared_distance_to_vec(&my_pos)
+                .total_cmp(&b.get_entity().pos.load().squared_distance_to_vec(&my_pos))
+        });
+        let Some(new_owner) = nearby.iter().find_map(|other| {
+            let villager = other.cast_any().downcast_ref::<Self>()?;
+            (villager.get_entity().entity_id != entity.entity_id
+                && villager.mob_entity.living_entity.is_alive()
+                && villager.wants_job_site(site_profession, poi_pos))
+            .then_some(villager)
+        }) else {
+            return;
+        };
+
+        *self
+            .job_site
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        self.job_site_pending.store(false, Ordering::Relaxed);
+        if new_owner.get_job_site().is_none() {
+            *new_owner
+                .job_site
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(poi_pos);
+            new_owner.job_site_pending.store(true, Ordering::Relaxed);
+        }
+        if let Some(owner) = new_owner.poi_owner() {
+            world
+                .villager_poi
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .transfer(poi_pos, entity.entity_uuid, owner);
+        }
+    }
+
+    /// Vanilla `YieldJobSite.nearbyWantsJobsite`.
+    fn wants_job_site(&self, site_profession: VillagerProfession, poi_pos: BlockPos) -> bool {
+        if self.job_site_pending.load(Ordering::Relaxed)
+            || self
+                .villager_data
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .profession_enum()
+                != site_profession
+        {
+            return false;
+        }
+        self.get_job_site().map_or_else(
+            || {
+                self.mob_entity
+                    .navigator
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .create_path(
+                        &self.mob_entity.living_entity,
+                        poi_pos.to_f64(),
+                        VillagePoiType::JobSite(site_profession).valid_range(),
+                    )
+                    .is_some_and(|path| path.can_reach())
+            },
+            |job_site| job_site == poi_pos,
+        )
+    }
+
+    fn is_sleeping(&self) -> bool {
+        self.get_entity().pose.load() == EntityPose::Sleeping
+    }
+
+    /// Vanilla `LivingEntity.startSleeping`.
+    fn start_sleeping(&self, world: &Arc<World>, bed_pos: BlockPos) -> bool {
+        let (block, state) = world.get_block_and_state(&bed_pos);
+        if !block.has_tag(&pumpkin_data::tag::Block::MINECRAFT_BEDS) {
+            return false;
+        }
+        let entity = self.get_entity();
+        // Vanilla `setPosToBed`: the bed's 9/16 top plus 1/8.
+        entity.set_pos(bed_pos.to_f64().add_raw(0.0, 0.6875, 0.0));
+        BedBlock::set_occupied(true, world, block, &bed_pos, state.id);
+        entity.set_pose(EntityPose::Sleeping);
+        *self
+            .sleeping_pos
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(bed_pos);
+        entity.set_synced_data(
+            pumpkin_data::tracked_data::villager::SLEEPING_POS_ID,
+            Some(bed_pos),
+        );
+        entity.set_velocity(Vector3::default());
+        true
+    }
+
+    /// Vanilla `Villager.stopSleeping`.
+    fn stop_sleeping(&self, world: &Arc<World>, game_time: i64) {
+        let entity = self.get_entity();
+        let bed_pos = self
+            .sleeping_pos
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(bed_pos) = bed_pos {
+            let (block, state) = world.get_block_and_state(&bed_pos);
+            if block.has_tag(&pumpkin_data::tag::Block::MINECRAFT_BEDS) {
+                BedBlock::set_occupied(false, world, block, &bed_pos, state.id);
+                let facing = BedProperties::from_state_id(state.id).facing;
+                let stand_up = Player::find_bed_spawn_position(world, &bed_pos, facing)
+                    .unwrap_or_else(|| bed_pos.up().to_f64().add_raw(0.0, 0.1, 0.0));
+                entity.set_pos(stand_up);
+            }
+        }
+        entity.set_pose(EntityPose::Standing);
+        entity.set_synced_data(
+            pumpkin_data::tracked_data::villager::SLEEPING_POS_ID,
+            None::<BlockPos>,
+        );
+        *self
+            .last_woken
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(game_time);
+    }
+
+    /// Vanilla `ValidateNearbyPoi`: forgets a remembered POI within 16 blocks that is gone, or a
+    /// bed someone else lies in.
+    fn validate_nearby_poi(
+        &self,
+        world: &World,
+        memory: &std::sync::Mutex<Option<BlockPos>>,
+        poi_type: VillagePoiType,
+    ) {
+        let Some(pos) = *memory
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        else {
+            return;
+        };
+        if pos
+            .to_centered_f64()
+            .squared_distance_to_vec(&self.get_entity().pos.load())
+            >= VALIDATE_POI_MAX_DISTANCE.powi(2)
+        {
+            return;
+        }
+        let exists = world
+            .villager_poi
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_type(pos)
+            == Some(poi_type);
+        if !exists {
+            *memory
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        } else if is_villager_bed_occupied(world, pos) && !self.is_sleeping() {
+            *memory
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+            let occupied_by_villager = world
+                .get_entities_at_box(&BoundingBox::from_block(&pos))
+                .iter()
+                .any(|other| {
+                    other.get_entity().entity_type == &EntityType::VILLAGER
+                        && other.get_entity().pose.load() == EntityPose::Sleeping
+                });
+            if !occupied_by_villager {
+                world
+                    .villager_poi
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .release(pos, self.get_entity().entity_uuid);
+            }
+        }
+    }
+
+    /// Vanilla `SleepInBed`, which runs in the REST activity.
+    fn sleep_in_bed(&self, world: &Arc<World>, game_time: i64, resting: bool) {
+        let entity = self.get_entity();
+        let home = self.get_home();
+        let pos = entity.pos.load();
+        if self.is_sleeping() {
+            let can_still_use = resting
+                && home.is_some_and(|bed| {
+                    pos.y > f64::from(bed.0.y) + 0.4
+                        && bed.to_centered_f64().squared_distance_to_vec(&pos) < 1.14f64.powi(2)
+                });
+            if !can_still_use {
+                self.stop_sleeping(world, game_time);
+                self.sleep_next_ok_start
+                    .store(game_time + SLEEP_RESTART_DELAY, Ordering::Relaxed);
+            }
+            return;
+        }
+        let Some(bed) = home else {
+            return;
+        };
+        if !resting || entity.has_vehicle() {
+            return;
+        }
+        let last_woken = *self
+            .last_woken
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if last_woken.is_some_and(|woken| {
+            let since = game_time - woken;
+            since > 0 && since < SLEEP_COOLDOWN_AFTER_BEING_WOKEN
+        }) {
+            return;
+        }
+        let (block, state) = world.get_block_and_state(&bed);
+        if bed.to_centered_f64().squared_distance_to_vec(&pos) >= 2.0f64.powi(2)
+            || !block.has_tag(&pumpkin_data::tag::Block::MINECRAFT_VILLAGERS_CAN_SLEEP_ON_BED)
+            || BedProperties::from_state_id(state.id).occupied
+        {
+            return;
+        }
+        if game_time > self.sleep_next_ok_start.load(Ordering::Relaxed) {
+            self.start_sleeping(world, bed);
+            self.mob_entity.steered().navigator().stop();
+        }
+    }
+
+    /// Re-takes the tickets of the home and meeting point a loaded villager remembers, which
+    /// vanilla keeps in the saved POI data instead.
+    fn restore_poi_tickets(&self, world: &World) {
+        let Some(owner) = self.poi_owner() else {
+            return;
+        };
+        let mut villager_poi = world
+            .villager_poi
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for (pos, poi_type) in [
+            (self.get_home(), VillagePoiType::Home),
+            (self.get_meeting_point(), VillagePoiType::Meeting),
+        ] {
+            if let Some(pos) = pos {
+                villager_poi.claim(pos, owner.clone(), |found| found == poi_type);
+            }
+        }
+    }
+
+    /// Vanilla `Villager.releasePoi` followed by erasing the memory.
+    fn forget_remembered_poi(&self, home: bool) {
+        let memory = if home {
+            &self.home_pos
+        } else {
+            &self.meeting_point
+        };
+        let pos = memory
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(pos) = pos {
+            self.get_entity()
+                .world
+                .load()
+                .villager_poi
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .release(pos, self.get_entity().entity_uuid);
+        }
+    }
+
+    fn get_meeting_point(&self) -> Option<BlockPos> {
+        *self
+            .meeting_point
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// The home and meeting point parts of the villager brain: vanilla `WakeUp`,
+    /// `ValidateNearbyPoi`, `SleepInBed` and the `AcquirePoi` behaviors for `HOME` and
+    /// `MEETING_POINT`, in brain priority order.
+    fn tick_poi_memories(&self, world: &Arc<World>, game_time: i64) {
+        let entity = self.get_entity();
+        if !self.poi_tickets_restored.swap(true, Ordering::Relaxed) {
+            self.restore_poi_tickets(world);
+        }
+
+        // Vanilla `LivingEntity.tick`: a sleeper whose bed is gone wakes up.
+        if self.is_sleeping() {
+            let bed_pos = *self
+                .sleeping_pos
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if bed_pos.is_none_or(|bed| {
+                !world
+                    .get_block(&bed)
+                    .has_tag(&pumpkin_data::tag::Block::MINECRAFT_BEDS)
+            }) {
+                self.stop_sleeping(world, game_time);
+            }
+        }
+
+        let is_baby = entity.age.load(Ordering::Relaxed) < 0;
+        let activity = world.villager_activity(&entity.block_pos.load(), is_baby);
+        let resting = activity == Activity::Rest;
+        // Vanilla `WakeUp`.
+        if !resting && self.is_sleeping() {
+            self.stop_sleeping(world, game_time);
+        }
+        if resting {
+            self.validate_nearby_poi(world, &self.home_pos, VillagePoiType::Home);
+        }
+        self.sleep_in_bed(world, game_time, resting);
+        if activity == Activity::Meet {
+            self.validate_nearby_poi(world, &self.meeting_point, VillagePoiType::Meeting);
+        }
+
+        let Some(owner) = self.poi_owner() else {
+            return;
+        };
+        let random = self.get_random();
+        if self.get_home().is_none()
+            && let Some(home) = self
+                .acquire_home
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .tick(
+                    world,
+                    &self.mob_entity,
+                    owner.clone(),
+                    |poi_type| poi_type == VillagePoiType::Home,
+                    is_vacant_villager_bed,
+                    random,
+                )
+        {
+            *self
+                .home_pos
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(home);
+            world.send_entity_status(
+                entity,
+                pumpkin_data::entity::EntityStatus::VillagerHappy,
+                ActorEventID::VillagerHappy,
+            );
+        }
+        if !is_baby
+            && self.get_meeting_point().is_none()
+            && let Some(meeting_point) = self
+                .acquire_meeting_point
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .tick(
+                    world,
+                    &self.mob_entity,
+                    owner,
+                    |poi_type| poi_type == VillagePoiType::Meeting,
+                    |_, _| true,
+                    random,
+                )
+        {
+            *self
+                .meeting_point
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(meeting_point);
+            world.send_entity_status(
+                entity,
+                pumpkin_data::entity::EntityStatus::VillagerHappy,
+                ActorEventID::VillagerHappy,
+            );
         }
     }
 
@@ -1613,162 +2073,13 @@ impl VillagerEntity {
         };
         self.decay_gossips(game_time);
         self.work_at_job_site(game_time, day_time, day);
+        self.tick_poi_memories(&world, game_time);
 
         let age = self.get_entity().tick_count.load(Ordering::Relaxed);
         if age % 20 != 0 {
             return;
         }
         self.update_job_site(&world);
-
-        // 1. Bed / Sleeping logic (for all villagers: babies, nitwits, adults)
-        let is_sleeping = self.get_entity().pose.load() == EntityPose::Sleeping;
-
-        // Check if current bed is still valid
-        if let Some(current_home) = self.get_home_pos() {
-            let (block, state) = world.get_block_and_state(&current_home);
-            let valid = if block.has_tag(&pumpkin_data::tag::Block::MINECRAFT_BEDS) {
-                let bed_props = BedProperties::from_state_id(state.id);
-                bed_props.part == BedPart::Head
-            } else {
-                false
-            };
-
-            if !valid {
-                *self
-                    .home_pos
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
-                if is_sleeping {
-                    // Wake up if bed was broken
-                    self.get_entity().set_pose(EntityPose::Standing);
-                    self.get_entity().set_synced_data(
-                        pumpkin_data::tracked_data::villager::SLEEPING_POS_ID,
-                        None::<BlockPos>,
-                    );
-                }
-            }
-        }
-
-        // If no bed, search for one
-        if self.get_home_pos().is_none() {
-            let pos = self.get_entity().block_pos.load();
-            let start = BlockPos::new(pos.0.x - 16, pos.0.y - 4, pos.0.z - 16);
-            let end = BlockPos::new(pos.0.x + 16, pos.0.y + 4, pos.0.z + 16);
-
-            let aabb = BoundingBox::new(
-                Vector3::new(
-                    pos.0.x as f64 - 32.0,
-                    pos.0.y as f64 - 16.0,
-                    pos.0.z as f64 - 32.0,
-                ),
-                Vector3::new(
-                    pos.0.x as f64 + 32.0,
-                    pos.0.y as f64 + 16.0,
-                    pos.0.z as f64 + 32.0,
-                ),
-            );
-            let nearby_entities = world.get_all_at_box(&aabb);
-
-            let mut claimed_homes = Vec::new();
-            for entity in nearby_entities {
-                if entity.get_entity().entity_id != self.get_entity().entity_id
-                    && entity.get_entity().entity_type
-                        == &pumpkin_data::entity::EntityType::VILLAGER
-                    && let Some(home) = entity.get_home_pos()
-                {
-                    claimed_homes.push(home);
-                }
-            }
-
-            let mut best_home = None;
-            let mut best_dist = f64::MAX;
-
-            for p in BlockPos::iterate(start, end) {
-                let (block, state) = world.get_block_and_state(&p);
-                if block.has_tag(&pumpkin_data::tag::Block::MINECRAFT_BEDS) {
-                    let bed_props = BedProperties::from_state_id(state.id);
-                    let bed_head_pos = if bed_props.part == BedPart::Head {
-                        p
-                    } else {
-                        p.offset(bed_props.facing.to_offset())
-                    };
-
-                    if claimed_homes.contains(&bed_head_pos) {
-                        continue;
-                    }
-
-                    let dist = bed_head_pos
-                        .to_f64()
-                        .squared_distance_to_vec(&self.get_entity().pos.load());
-                    if dist < best_dist {
-                        best_dist = dist;
-                        best_home = Some(bed_head_pos);
-                    }
-                }
-            }
-
-            if let Some(home) = best_home {
-                *self
-                    .home_pos
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(home);
-            }
-        }
-
-        // Handle Sleeping/Waking up based on time
-        let is_sleeping = self.get_entity().pose.load() == EntityPose::Sleeping;
-        if let Some(home_pos) = self.get_home_pos() {
-            let time = world.get_time_of_day();
-            let is_night = (12000..=23000).contains(&time);
-
-            if is_night {
-                if !is_sleeping {
-                    // Check distance to bed. If close enough, go to sleep
-                    let dist = home_pos
-                        .to_f64()
-                        .squared_distance_to_vec(&self.get_entity().pos.load());
-                    if dist <= 4.0 {
-                        // Within 2 blocks (squared distance 4.0)
-                        let (block, state) = world.get_block_and_state(&home_pos);
-                        if block.has_tag(&pumpkin_data::tag::Block::MINECRAFT_BEDS) {
-                            let bed_props = BedProperties::from_state_id(state.id);
-                            if !bed_props.occupied {
-                                // Make bed occupied
-                                BedBlock::set_occupied(true, &world, block, &home_pos, state.id);
-
-                                self.get_entity().set_pose(EntityPose::Sleeping);
-                                self.get_entity().set_synced_data(
-                                    pumpkin_data::tracked_data::villager::SLEEPING_POS_ID,
-                                    Some(home_pos),
-                                );
-                            }
-                        }
-                    }
-                }
-            } else if is_sleeping {
-                // It is day, wake up!
-                let (block, state) = world.get_block_and_state(&home_pos);
-                if block.has_tag(&pumpkin_data::tag::Block::MINECRAFT_BEDS) {
-                    let bed_props = BedProperties::from_state_id(state.id);
-                    if bed_props.occupied {
-                        BedBlock::set_occupied(false, &world, block, &home_pos, state.id);
-                    }
-                }
-
-                self.get_entity().set_pose(EntityPose::Standing);
-                self.get_entity().set_synced_data(
-                    pumpkin_data::tracked_data::villager::SLEEPING_POS_ID,
-                    None::<BlockPos>,
-                );
-            }
-        } else if is_sleeping {
-            // Wake up during the day
-            self.get_entity().set_pose(EntityPose::Standing);
-            self.get_entity().set_synced_data(
-                pumpkin_data::tracked_data::villager::SLEEPING_POS_ID,
-                None::<BlockPos>,
-            );
-        }
 
         // 2. Iron Golem spawning logic (only for adults)
         let profession = self
@@ -1907,6 +2218,12 @@ impl Mob for VillagerEntity {
             nbt.put_int("HomeX", pos.0.x);
             nbt.put_int("HomeY", pos.0.y);
             nbt.put_int("HomeZ", pos.0.z);
+        }
+
+        if let Some(pos) = self.get_meeting_point() {
+            nbt.put_int("MeetingPointX", pos.0.x);
+            nbt.put_int("MeetingPointY", pos.0.y);
+            nbt.put_int("MeetingPointZ", pos.0.z);
         }
 
         let offers = self
@@ -2051,6 +2368,19 @@ impl Mob for VillagerEntity {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
         }
+
+        *self
+            .meeting_point
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = match (
+            nbt.get_int("MeetingPointX"),
+            nbt.get_int("MeetingPointY"),
+            nbt.get_int("MeetingPointZ"),
+        ) {
+            (Some(x), Some(y), Some(z)) => Some(BlockPos::new(x, y, z)),
+            _ => None,
+        };
+        self.poi_tickets_restored.store(false, Ordering::Relaxed);
 
         if let Some(offers_compound) = nbt.get_compound("Offers")
             && let Some(recipes) = offers_compound.get_list("Recipes")
@@ -2250,6 +2580,16 @@ impl Mob for VillagerEntity {
         _damage_type: pumpkin_data::damage::DamageType,
         source: Option<&dyn EntityBase>,
     ) {
+        // Vanilla `LivingEntity.hurtServer` wakes a sleeper.
+        if self.is_sleeping() {
+            let world = self.get_entity().world.load_full();
+            let game_time = world
+                .level_time
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .world_age;
+            self.stop_sleeping(&world, game_time);
+        }
         let Some(source) = source.filter(|source| {
             source.get_entity().entity_type == &pumpkin_data::entity::EntityType::PLAYER
         }) else {
