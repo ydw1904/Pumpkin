@@ -163,7 +163,7 @@ pub fn place_template_with_options(
         }
 
         // Processors see the template's own states; vanilla rotates the result in `placeInWorld`.
-        let Some(mut state) = BlockStateResolver::resolve_simple(&placed_entry) else {
+        let Some(state) = BlockStateResolver::resolve_simple(&placed_entry) else {
             continue;
         };
 
@@ -187,37 +187,17 @@ pub fn place_template_with_options(
 
         let mut world_pos = Vector3::new(wx, wy, wz);
 
-        // Vanilla `StructureTemplate.processBlockInfos`: every processor sees the position the
-        // previous ones left, and seeds its own random from it.
-        let mut should_place = true;
-        let mut capped_idx = 0;
-        for processor in processors {
-            if let processor::StructureProcessor::Gravity { heightmap, offset } = processor {
-                // `GravityProcessor` keeps the block's height within the template.
-                world_pos.y = placer.get_height((*heightmap).into(), world_pos.x, world_pos.z)
-                    + offset
-                    + block.pos.y;
-                continue;
-            }
-            let mut rng =
-                LegacyRand::from_seed(hash_block_pos(world_pos.x, world_pos.y, world_pos.z) as u64);
-            let Some(processed_state) = processor.process_with_context(
-                placer,
-                world_pos,
-                state,
-                &mut block_entity_nbt,
-                &mut context,
-                &mut capped_idx,
-                &mut rng,
-            ) else {
-                should_place = false;
-                break;
-            };
-            state = processed_state;
-        }
-        if !should_place {
+        let Some(state) = process_block(
+            placer,
+            processors,
+            &mut context,
+            block.pos.y,
+            &mut world_pos,
+            state,
+            &mut block_entity_nbt,
+        ) else {
             continue;
-        }
+        };
         // Legacy pool elements ignore air after jigsaw replacement and custom processors.
         if skip_air && state.id.to_block_id() == pumpkin_data::Block::AIR.id {
             continue;
@@ -269,6 +249,42 @@ pub fn place_template_with_options(
     }
 
     placement.finish(placer);
+}
+
+/// Runs the processors on one template block, like the loop in vanilla
+/// `StructureTemplate.processBlockInfos`. Every processor sees the position the previous ones
+/// left and seeds its own random from it (`StructurePlaceSettings.getRandom(pos)`).
+pub(crate) fn process_block(
+    placer: &impl BlockPlacer,
+    processors: &[StructureProcessor],
+    context: &mut processor::ProcessorContext,
+    template_y: i32,
+    world_pos: &mut Vector3<i32>,
+    mut state: &'static BlockState,
+    nbt: &mut Option<NbtCompound>,
+) -> Option<&'static BlockState> {
+    let mut capped_idx = 0;
+    for processor in processors {
+        if let StructureProcessor::Gravity { heightmap, offset } = processor {
+            // `GravityProcessor` keeps the block's height within the template.
+            world_pos.y = placer.get_height((*heightmap).into(), world_pos.x, world_pos.z)
+                + offset
+                + template_y;
+            continue;
+        }
+        let mut rng =
+            LegacyRand::from_seed(hash_block_pos(world_pos.x, world_pos.y, world_pos.z) as u64);
+        state = processor.process_with_context(
+            placer,
+            *world_pos,
+            state,
+            nbt,
+            context,
+            &mut capped_idx,
+            &mut rng,
+        )?;
+    }
+    Some(state)
 }
 
 pub(crate) fn place_template_entities(

@@ -19,7 +19,7 @@ use crate::{
             },
             template::{
                 BlockStateResolver, StructurePlaceSettings, StructureTemplate,
-                TemplateBlockPlacement, get_template,
+                TemplateBlockPlacement, get_template, process_block,
                 processor::{IgnoredBlock, ProcessorContext, StructureProcessor},
             },
         },
@@ -204,7 +204,7 @@ impl IglooPiece {
 
             let local_pos =
                 StructureTemplate::transform_block_pos(block.pos, mirror, rotation, pivot);
-            let world_pos = self.template_position + local_pos;
+            let mut world_pos = self.template_position + local_pos;
 
             if !chunk_box.contains_pos(&world_pos) {
                 continue;
@@ -228,24 +228,15 @@ impl IglooPiece {
                 continue;
             };
 
-            let mut processed_state = Some(state);
-            let mut capped_idx = 0;
-            for processor in self.place_settings.get_processors() {
-                let Some(current_state) = processed_state else {
-                    break;
-                };
-                processed_state = processor.process_with_context(
-                    chunk,
-                    world_pos,
-                    current_state,
-                    &mut block_entity_nbt,
-                    &mut context,
-                    &mut capped_idx,
-                    &mut context_rng,
-                );
-            }
-
-            let Some(final_state) = processed_state else {
+            let Some(final_state) = process_block(
+                chunk,
+                self.place_settings.get_processors(),
+                &mut context,
+                block.pos.y,
+                &mut world_pos,
+                state,
+                &mut block_entity_nbt,
+            ) else {
                 continue;
             };
             // Vanilla `placeInWorld` mirrors and rotates the processed state.
