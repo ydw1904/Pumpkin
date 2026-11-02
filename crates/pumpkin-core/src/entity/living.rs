@@ -1278,6 +1278,22 @@ impl LivingEntity {
                 .insert(effect.effect_type, effect);
         }
         self.sync_effect_particles();
+        self.trigger_effects_changed();
+    }
+
+    /// Vanilla `ServerPlayer.onEffectAdded`, `onEffectUpdated` and `onEffectsRemoved` fire the
+    /// `effects_changed` trigger once the effects are in their new state.
+    fn trigger_effects_changed(&self) {
+        if let Some(player) = self
+            .entity
+            .world
+            .load()
+            .get_player_by_id(self.entity.entity_id)
+        {
+            player.trigger_advancement(
+                crate::entity::player::advancement::trigger::AdvancementTrigger::EffectsChanged,
+            );
+        }
     }
 
     /// Applies the effect's attribute modifiers at its amplifier and syncs them to clients.
@@ -1528,6 +1544,7 @@ impl LivingEntity {
 
         if succeeded {
             self.sync_effect_particles();
+            self.trigger_effects_changed();
         }
 
         succeeded
@@ -2900,6 +2917,7 @@ impl LivingEntity {
             self.broadcast_effect(&effect, false);
         }
         self.sync_effect_particles();
+        self.trigger_effects_changed();
     }
 
     /// Vanilla: `LivingEntity.checkTotemDeathProtection`.
