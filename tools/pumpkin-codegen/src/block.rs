@@ -45,6 +45,89 @@ fn fill_state_array(array: Vec<(Ident, usize, u16)>) -> Vec<TokenStream> {
     ret
 }
 
+/// Resolution of the face masks. Every light-occluding shape in vanilla sits on a 1/16 grid.
+const FACE_GRID: usize = 16;
+
+/// Computes each state's light occlusion faces (`LightEngine.getOcclusionShape(state, direction)`),
+/// stores the table index in `light_occlusion_faces` and returns the deduplicated table.
+///
+/// A face is the part of the occlusion shape touching that side of the block, projected onto it,
+/// like `VoxelShape.getFaceShape`. It is empty when `LightEngine.isEmptyShape` holds.
+fn light_occlusion_faces(assets: &mut BlockAssets) -> Vec<TokenStream> {
+    type Face = [u16; FACE_GRID];
+    let mut table: Vec<[Face; 6]> = vec![[[0; FACE_GRID]; 6]];
+    let shapes = &assets.shapes;
+
+    let grid = |value: f64| -> usize {
+        let scaled = value * FACE_GRID as f64;
+        assert!(
+            scaled.fract() == 0.0,
+            "light occlusion shape coordinate {value} is not on the 1/16 grid"
+        );
+        scaled as usize
+    };
+
+    for block in &mut assets.blocks {
+        for state in &mut block.states {
+            if !state.can_occlude() || !state.use_shape_for_light_occlusion() {
+                continue;
+            }
+            let boxes = state
+                .occlusion_shapes
+                .as_ref()
+                .unwrap_or(&state.outline_shapes);
+            let mut faces = [[0u16; FACE_GRID]; 6];
+            for &index in boxes {
+                let shape = &shapes[index as usize];
+                let (min, max) = (shape.min, shape.max);
+                let (x0, y0, z0) = (grid(min.x), grid(min.y), grid(min.z));
+                let (x1, y1, z1) = (grid(max.x), grid(max.y), grid(max.z));
+                // Down, Up, North, South, West, East: (touches side, row range, column range).
+                // Y faces use (z, x), Z faces (y, x) and X faces (y, z).
+                let sides = [
+                    (y0 == 0, z0..z1, x0..x1),
+                    (y1 == FACE_GRID, z0..z1, x0..x1),
+                    (z0 == 0, y0..y1, x0..x1),
+                    (z1 == FACE_GRID, y0..y1, x0..x1),
+                    (x0 == 0, y0..y1, z0..z1),
+                    (x1 == FACE_GRID, y0..y1, z0..z1),
+                ];
+                for (face, (touches, rows, columns)) in faces.iter_mut().zip(sides) {
+                    if !touches {
+                        continue;
+                    }
+                    let mask = columns.fold(0u16, |mask, column| mask | (1 << column));
+                    for row in rows {
+                        face[row] |= mask;
+                    }
+                }
+            }
+            let index = table
+                .iter()
+                .position(|entry| *entry == faces)
+                .unwrap_or_else(|| {
+                    table.push(faces);
+                    table.len() - 1
+                });
+            state.light_occlusion_faces =
+                u8::try_from(index).expect("more than 256 distinct light occlusion shapes");
+        }
+    }
+
+    table
+        .iter()
+        .map(|faces| {
+            let faces = faces.iter().map(|rows| {
+                let rows = rows
+                    .iter()
+                    .map(|row| proc_macro2::Literal::u16_unsuffixed(*row));
+                quote! { OcclusionFace([#(#rows),*]) }
+            });
+            quote! { [#(#faces),*] }
+        })
+        .collect()
+}
+
 /// Converts a block registry name into the SCREAMING_SNAKE_CASE constant identifier.
 ///
 /// # Arguments
@@ -641,6 +724,12 @@ pub struct BlockState {
     pub collision_shapes: Vec<u16>,
     /// Indices into the global shapes array for outline (selection) shape segments.
     pub outline_shapes: Vec<u16>,
+    /// Indices into the global shapes array for the occlusion shape, when it differs from the outline shape.
+    #[serde(default)]
+    pub occlusion_shapes: Option<Vec<u16>>,
+    /// Index into the generated `LIGHT_OCCLUSION_FACES` table, filled in by [`light_occlusion_faces`].
+    #[serde(skip)]
+    pub light_occlusion_faces: u8,
     /// Opacity value for light propagation, if non-full.
     pub opacity: Option<u8>,
     /// Index into the global sound type array.
@@ -732,6 +821,7 @@ impl BlockState {
     const IS_SOLID_RENDER: u16 = 1 << 10;
     const CAN_OCCLUDE: u16 = 1 << 11;
     const HAS_ANALOG_OUTPUT_SIGNAL: u16 = 1 << 12;
+    const USE_SHAPE_FOR_LIGHT_OCCLUSION: u16 = 1 << 13;
 
     /// Returns `true` if this state receives random tick events.
     const fn has_random_ticks(&self) -> bool {
@@ -757,6 +847,10 @@ impl BlockState {
 
     pub const fn has_analog_output_signal(&self) -> bool {
         self.state_flags & Self::HAS_ANALOG_OUTPUT_SIGNAL != 0
+    }
+
+    pub const fn use_shape_for_light_occlusion(&self) -> bool {
+        self.state_flags & Self::USE_SHAPE_FOR_LIGHT_OCCLUSION != 0
     }
 
     /// Emits the `BlockState { … }` struct literal token stream for code generation.
@@ -791,6 +885,8 @@ impl BlockState {
             .map(|shape_id| LitInt::new(&shape_id.to_string(), Span::call_site()));
         let piston_behavior = &self.piston_behavior.to_tokens();
         let sound_type = LitInt::new(&self.sound_type.to_string(), Span::call_site());
+        let light_occlusion_faces =
+            LitInt::new(&self.light_occlusion_faces.to_string(), Span::call_site());
 
         tokens.extend(quote! {
             BlockState {
@@ -803,6 +899,7 @@ impl BlockState {
                 hardness: #hardness,
                 collision_shapes: &[#(#collision_shapes),*],
                 outline_shapes: &[#(#outline_shapes),*],
+                light_occlusion_faces: #light_occlusion_faces,
                 opacity: #opacity,
                 sound_type: #sound_type,
                 block_entity_type: #block_entity_type,
@@ -1089,9 +1186,10 @@ pub fn build() -> TokenStream {
         .get_list("bedrock_mappings")
         .expect("Missing bedrock_mappings list in Geyser blocks.nbt");
 
-    let blocks_assets: BlockAssets =
+    let mut blocks_assets: BlockAssets =
         serde_json::from_str(&fs::read_to_string("../../assets/blocks.json").unwrap())
             .expect("Failed to parse blocks.json");
+    let light_occlusion_faces = light_occlusion_faces(&mut blocks_assets);
 
     let shape_offset_arms = blocks_assets
         .blocks
@@ -1637,7 +1735,7 @@ pub fn build() -> TokenStream {
             BlockState, BlockStateId, Block, BlockId,
             blocks::{Flammable, ShapeOffset, ShapeOffsetType, SpawnFloorPredicate, SuffocationPredicate},
         };
-        use crate::block_state::{PistonBehavior, SoundType};
+        use crate::block_state::{OcclusionFace, PistonBehavior, SoundType};
         use crate::sound::Sound;
         use pumpkin_util::math::int_provider::{UniformIntProvider, IntProvider, NormalIntProvider};
         use pumpkin_util::math::experience::Experience;
@@ -1758,6 +1856,12 @@ pub fn build() -> TokenStream {
 
         pub const COLLISION_SHAPES: &[BoundingBox] = &[
             #(#shapes),*
+        ];
+
+        /// Face occlusion shapes used by lighting, indexed by `BlockState::light_occlusion_faces`
+        /// and then by `BlockDirection`. Entry 0 is the empty shape.
+        pub const LIGHT_OCCLUSION_FACES: &[[OcclusionFace; 6]] = &[
+            #(#light_occlusion_faces),*
         ];
 
         pub const SOUND_TYPES: &[SoundType] = &[

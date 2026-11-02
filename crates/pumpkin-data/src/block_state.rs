@@ -1,6 +1,8 @@
 use pumpkin_util::math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3};
 
-use crate::block_properties::{COLLISION_SHAPES, NoteblockInstrument, SOUND_TYPES};
+use crate::block_properties::{
+    COLLISION_SHAPES, LIGHT_OCCLUSION_FACES, NoteblockInstrument, SOUND_TYPES,
+};
 use crate::blocks::SuffocationPredicate;
 use crate::sound::Sound;
 use crate::tag::{self, Taggable};
@@ -31,6 +33,8 @@ pub struct BlockState {
     pub collision_shapes: &'static [u16],
     /// Indices into a global voxel-shape registry for the selection highlight box.
     pub outline_shapes: &'static [u16],
+    /// Index into [`LIGHT_OCCLUSION_FACES`], see [`Self::light_occlusion_face`].
+    pub light_occlusion_faces: u8,
     /// How much light is subtracted as it passes through this block (0 for transparent, 15 for opaque).
     pub opacity: u8,
     /// Index into [`SOUND_TYPES`], see [`Self::get_sound_type`].
@@ -45,6 +49,25 @@ pub struct BlockState {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct BlockStateId(u16);
+
+/// One face of an occlusion shape on the 1/16 grid: 16 rows of 16 bits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OcclusionFace(pub [u16; 16]);
+
+impl OcclusionFace {
+    /// Whether the two faces together cover the whole side, like vanilla `Shapes.faceShapeOccludes`.
+    #[must_use]
+    pub const fn occludes_with(&self, other: &Self) -> bool {
+        let mut i = 0;
+        while i < 16 {
+            if self.0[i] | other.0[i] != u16::MAX {
+                return false;
+            }
+            i += 1;
+        }
+        true
+    }
+}
 
 /// Vanilla `SoundType`: the sounds a block makes when broken, stepped on, placed, hit or fallen on.
 #[derive(Debug)]
@@ -155,6 +178,20 @@ impl BlockState {
     #[must_use]
     pub const fn can_occlude(&self) -> bool {
         self.state_flags & CAN_OCCLUDE != 0
+    }
+
+    /// `useShapeForLightOcclusion()` in Java.
+    #[must_use]
+    pub const fn use_shape_for_light_occlusion(&self) -> bool {
+        self.state_flags & USE_SHAPE_FOR_LIGHT_OCCLUSION != 0
+    }
+
+    /// The occlusion shape's face on `side` as lighting sees it, like vanilla
+    /// `LightEngine.getOcclusionShape(state, direction)`. Empty unless the state can occlude and
+    /// uses its shape for light occlusion.
+    #[must_use]
+    pub const fn light_occlusion_face(&self, side: BlockDirection) -> &'static OcclusionFace {
+        &LIGHT_OCCLUSION_FACES[self.light_occlusion_faces as usize][side as usize]
     }
 
     /// Returns whether this block produces an analog output signal for comparators (`hasAnalogOutputSignal()` in Java).
@@ -417,6 +454,7 @@ const HAS_RANDOM_TICKS: u16 = 1 << 9;
 const IS_SOLID_RENDER: u16 = 1 << 10;
 const CAN_OCCLUDE: u16 = 1 << 11;
 const HAS_ANALOG_OUTPUT_SIGNAL: u16 = 1 << 12;
+const USE_SHAPE_FOR_LIGHT_OCCLUSION: u16 = 1 << 13;
 
 // side_flags
 const DOWN_SIDE_SOLID: u8 = 1 << 0;
