@@ -24,13 +24,16 @@ fn read_text(tag: &NbtTag) -> Option<String> {
     read_component(tag).map(TextComponent::get_text)
 }
 
+/// Writes a `Filterable<String>`: vanilla reads `raw` with a plain string codec.
 fn text_tag(value: &str) -> NbtTag {
-    text_component_tag(&TextComponent::text(value.to_string()))
+    let mut compound = NbtCompound::new();
+    compound.put("raw", NbtTag::String(value.into()));
+    NbtTag::Compound(compound)
 }
 
 fn text_component_tag(component: &TextComponent) -> NbtTag {
     let mut compound = NbtCompound::new();
-    compound.put("raw", NbtTag::Compound(component.0.to_nbt_compound()));
+    compound.put("raw", component.0.to_nbt_tag());
     NbtTag::Compound(compound)
 }
 
@@ -70,13 +73,20 @@ pub struct WrittenBookContentImpl {
     pub title: String,
     pub author: String,
     pub pages: Vec<TextComponent>,
+    /// 0 for an original, up to 3 for a copy of a copy.
+    pub generation: i32,
+    pub resolved: bool,
 }
 impl WrittenBookContentImpl {
     pub fn read_data(tag: &NbtTag) -> Option<Self> {
         let mut pages = Vec::new();
         let mut title = String::new();
         let mut author = String::new();
+        let mut generation = 0;
+        let mut resolved = false;
         if let NbtTag::Compound(c) = tag {
+            generation = c.get_int("generation").unwrap_or(0);
+            resolved = c.get_bool("resolved").unwrap_or(false);
             if let Some(value) = c.get("title").and_then(read_text) {
                 title = value;
             }
@@ -95,6 +105,8 @@ impl WrittenBookContentImpl {
             title,
             author,
             pages,
+            generation,
+            resolved,
         })
     }
 }
@@ -103,8 +115,14 @@ impl DataComponentImpl for WrittenBookContentImpl {
         let mut compound = NbtCompound::new();
         compound.put("title", text_tag(&self.title));
         compound.put_string("author", self.author.clone());
+        if self.generation != 0 {
+            compound.put_int("generation", self.generation);
+        }
         let pages_tags: Vec<NbtTag> = self.pages.iter().map(text_component_tag).collect();
         compound.put("pages", NbtTag::List(pages_tags));
+        if self.resolved {
+            compound.put_bool("resolved", true);
+        }
         NbtTag::Compound(compound)
     }
     default_impl!(WrittenBookContent);
@@ -229,6 +247,8 @@ mod tests {
             title: "Title".to_string(),
             author: "Author".to_string(),
             pages: vec![TextComponent::text("one"), TextComponent::text("two")],
+            generation: 1,
+            resolved: true,
         };
         let tag = content.write_data();
         let written_compound = match &tag {
@@ -241,5 +261,27 @@ mod tests {
         ));
         let read_back = WrittenBookContentImpl::read_data(&tag).unwrap();
         assert_eq!(read_back, content);
+    }
+
+    /// The layout a 26.3 server saves; vanilla rejects a title whose `raw` is a compound.
+    #[test]
+    fn written_book_round_trips_the_vanilla_layout() {
+        let raw = |value: NbtTag| compound(&[("raw", value)]);
+        let bold_page = compound(&[
+            ("text", NbtTag::String("page two".into())),
+            ("bold", NbtTag::Byte(1)),
+        ]);
+        let vanilla = compound(&[
+            ("title", raw(NbtTag::String("Round Trip".into()))),
+            ("author", NbtTag::String("Bot".into())),
+            ("generation", NbtTag::Int(1)),
+            (
+                "pages",
+                NbtTag::List(vec![raw(NbtTag::String("page one".into())), raw(bold_page)]),
+            ),
+            ("resolved", NbtTag::Byte(1)),
+        ]);
+        let content = WrittenBookContentImpl::read_data(&vanilla).unwrap();
+        assert_eq!(content.write_data(), vanilla);
     }
 }

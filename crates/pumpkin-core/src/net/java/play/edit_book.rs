@@ -39,6 +39,8 @@ impl JavaClient {
                 title,
                 author: player.gameprofile.name.clone(),
                 pages: pages.into_iter().map(TextComponent::text).collect(),
+                generation: 0,
+                resolved: false,
             };
             written_book
                 .patch

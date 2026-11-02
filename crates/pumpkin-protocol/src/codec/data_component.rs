@@ -2540,7 +2540,7 @@ impl DataComponentCodec<Self> for WrittenBookContentImpl {
         seq.write_string(&self.title)?;
         seq.write_bool(false)?;
         seq.write_string(&self.author)?;
-        seq.write_var_int(&VarInt(0))?;
+        seq.write_var_int(&VarInt(self.generation))?;
         seq.write_var_int(&VarInt::from(self.pages.len() as i32))?;
         for page in &self.pages {
             seq.write_slice(&page.encode_for_version(&JavaMinecraftVersion::V_26_2))?;
@@ -2555,7 +2555,7 @@ impl DataComponentCodec<Self> for WrittenBookContentImpl {
             let _ = seq.get_str()?;
         }
         let author = seq.get_str()?.to_string();
-        let _generation = seq.get_var_int()?.0;
+        let generation = seq.get_var_int()?.0;
         let pages_len = read_count(seq, usize::MAX)?;
         let mut pages = Vec::with_capacity(pages_len.min(MAX_INITIAL_COLLECTION_SIZE));
         for _ in 0..pages_len {
@@ -2569,11 +2569,13 @@ impl DataComponentCodec<Self> for WrittenBookContentImpl {
             }
             pages.push(comp);
         }
-        let _resolved = seq.get_bool()?;
+        let resolved = seq.get_bool()?;
         Ok(Self {
             title,
             author,
             pages,
+            generation,
+            resolved,
         })
     }
 }
