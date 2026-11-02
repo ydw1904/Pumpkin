@@ -412,18 +412,26 @@ pub enum NumberFormat {
 }
 
 impl NumberFormat {
-    pub fn write(&self, write: &mut impl ser::NetworkWriteExt) -> Result<(), ser::WritingError> {
+    pub fn write(
+        &self,
+        write: &mut impl ser::NetworkWriteExt,
+        version: &JavaMinecraftVersion,
+    ) -> Result<(), ser::WritingError> {
         match self {
             Self::Blank => write.write_var_int(&0.into()),
-            Self::Styled(_style) => {
+            Self::Styled(style) => {
                 write.write_var_int(&1.into())?;
-                // TODO: Style write
-                Ok(())
+                // Vanilla `StyledFormat` sends the style's fields as an NBT compound.
+                let mut component = TextComponent::text("");
+                *component.0.style = style.clone();
+                let mut nbt = component.0.to_nbt_compound_for_version(version);
+                nbt.child_tags.remove("text");
+                nbt.child_tags.remove("type");
+                write.write_compound_nbt_with_version(Some(&nbt), version)
             }
             Self::Fixed(text) => {
                 write.write_var_int(&2.into())?;
-                write.write_slice(&text.encode())?;
-                Ok(())
+                write.write_component(text, version)
             }
         }
     }

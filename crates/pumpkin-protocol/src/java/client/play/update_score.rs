@@ -70,7 +70,7 @@ impl ClientPacket for CUpdateScore {
             write.write_string(&self.objective_name)?;
             write.write_var_int(&self.value)?;
             write.write_option(&self.display_name, |w, t| w.write_component(t, version))?;
-            write.write_option(&self.number_format, |w, n| n.write(w))
+            write.write_option(&self.number_format, |w, n| n.write(w, version))
         } else if *version <= pumpkin_util::version::JavaMinecraftVersion::V_1_7_6 {
             write.write_u8(0)?;
             write.write_string(&self.objective_name)?;
@@ -113,5 +113,32 @@ mod tests {
         assert!(!buf_modern.is_empty());
         assert!(!buf_legacy.is_empty());
         assert!(!buf_v1_7.is_empty());
+    }
+
+    /// Vanilla `StyledFormat` writes the style as an unnamed NBT compound after its type id.
+    #[test]
+    fn styled_number_format_writes_the_style() {
+        use pumpkin_util::text::{color::NamedColor, style::Style};
+        let style = Style {
+            color: Some(pumpkin_util::text::color::Color::Named(NamedColor::Red)),
+            ..Style::default()
+        };
+        let packet = CUpdateScore::new(
+            "a".into(),
+            "o".into(),
+            VarInt(1),
+            None,
+            Some(NumberFormat::Styled(style)),
+        );
+        let mut buf = Vec::new();
+        packet
+            .write_packet_data(&mut buf, &JavaMinecraftVersion::V_26_3)
+            .unwrap();
+        let mut expected = vec![1, b'a', 1, b'o', 1, 0, 1, 1, 10, 8, 0, 5];
+        expected.extend_from_slice(b"color");
+        expected.extend_from_slice(&[0, 3]);
+        expected.extend_from_slice(b"red");
+        expected.push(0);
+        assert_eq!(buf, expected);
     }
 }
