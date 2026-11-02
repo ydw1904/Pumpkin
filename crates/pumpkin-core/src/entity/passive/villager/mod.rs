@@ -56,6 +56,7 @@ mod acquire_poi;
 pub mod data;
 mod golem;
 mod meet;
+mod show_trades;
 mod walk_to_poi;
 
 /// Vanilla `ValidateNearbyPoi.MAX_DISTANCE`.
@@ -445,6 +446,8 @@ pub struct VillagerEntity {
     golem_detected_until: AtomicI64,
     /// Ticks until vanilla's `GolemSensor` scans again.
     golem_sensor_countdown: AtomicI32,
+    /// Vanilla `ShowTradesToPlayer`, while it runs.
+    show_trades: std::sync::Mutex<Option<show_trades::ShowTrades>>,
     /// Vanilla `SleepInBed.nextOkStartTime`.
     sleep_next_ok_start: AtomicI64,
     /// Vanilla `LivingEntity.getSleepingPos`.
@@ -539,6 +542,7 @@ impl VillagerEntity {
             golem_sensor_countdown: AtomicI32::new(
                 game_random().random_range(0..golem::GOLEM_SENSOR_SCAN_RATE),
             ),
+            show_trades: std::sync::Mutex::new(None),
             sleep_next_ok_start: AtomicI64::new(0),
             sleeping_pos: std::sync::Mutex::new(None),
             self_weak: std::sync::Mutex::new(None),
@@ -741,6 +745,30 @@ impl VillagerEntity {
             Some(MapIdImpl { id: map_id }.to_dyn()),
         ));
         Some(stack)
+    }
+
+    /// Vanilla `AbstractVillager.getOffers`, which generates the first trades on demand.
+    fn ensure_offers(&self) {
+        let trade_params = {
+            let offers = self
+                .offers
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if offers.is_empty() {
+                let data = self
+                    .villager_data
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                (data.profession_enum() != VillagerProfession::None
+                    && data.profession_enum() != VillagerProfession::Nitwit)
+                    .then(|| (data.profession_enum(), data.level.0))
+            } else {
+                None
+            }
+        };
+        if let Some((prof, level)) = trade_params {
+            self.generate_trades(prof, level);
+        }
     }
 
     #[allow(clippy::too_many_lines)]
@@ -2264,6 +2292,12 @@ impl VillagerEntity {
         self.tick_poi_memories(&world, game_time);
         self.assign_profession_from_job_site(&world);
         self.tick_meet(&world, game_time);
+        let entity = self.get_entity();
+        let activity = world.villager_activity(
+            &entity.block_pos.load(),
+            entity.age.load(Ordering::Relaxed) < 0,
+        );
+        self.tick_show_trades(&world, game_time, activity);
         self.reset_profession();
         self.tick_golem_spawning(&world, game_time);
     }
@@ -2693,26 +2727,7 @@ impl Mob for VillagerEntity {
             return true;
         }
 
-        let trade_params = {
-            let offers = self
-                .offers
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if offers.is_empty() {
-                let data = self
-                    .villager_data
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                (data.profession_enum() != VillagerProfession::None
-                    && data.profession_enum() != VillagerProfession::Nitwit)
-                    .then(|| (data.profession_enum(), data.level.0))
-            } else {
-                None
-            }
-        };
-        if let Some((prof, level)) = trade_params {
-            self.generate_trades(prof, level);
-        }
+        self.ensure_offers();
 
         let has_offers = !self
             .offers

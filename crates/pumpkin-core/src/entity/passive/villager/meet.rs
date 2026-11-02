@@ -93,7 +93,10 @@ impl VillagerEntity {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    fn interaction_target(&self, world: &World) -> Option<std::sync::Arc<dyn EntityBase>> {
+    pub(super) fn interaction_target(
+        &self,
+        world: &World,
+    ) -> Option<std::sync::Arc<dyn EntityBase>> {
         let id = (*self
             .interaction_target
             .lock()
@@ -101,7 +104,7 @@ impl VillagerEntity {
         world.get_entity_by_id(id)
     }
 
-    fn set_interaction_target(&self, target: Option<i32>) {
+    pub(super) fn set_interaction_target(&self, target: Option<i32>) {
         *self
             .interaction_target
             .lock()
@@ -115,9 +118,11 @@ impl VillagerEntity {
         let entity = self.get_entity();
         let is_baby = entity.age.load(Ordering::Relaxed) < 0;
         if world.villager_activity(&entity.block_pos.load(), is_baby) != Activity::Meet {
-            // Leaving the activity stops its behaviors, and the gate erases the interaction
-            // target on the way out.
-            self.set_interaction_target(None);
+            // Leaving the activity stops its behaviors, and the trade gate erases the
+            // interaction target on the way out. Trades shown in IDLE keep theirs.
+            if !self.is_showing_trades() {
+                self.set_interaction_target(None);
+            }
             return;
         }
         let Some(meeting_point) = self.get_meeting_point() else {
@@ -201,6 +206,10 @@ impl VillagerEntity {
             self.set_interaction_target(None);
             return;
         };
+        // Vanilla's trade gate doesn't start for a player, whom `ShowTradesToPlayer` handles.
+        if target.get_entity().entity_type == &EntityType::PLAYER {
+            return;
+        }
         let Some(villager) = target
             .cast_any()
             .downcast_ref::<Self>()
