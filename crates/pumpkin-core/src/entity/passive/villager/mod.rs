@@ -2429,9 +2429,10 @@ impl Mob for VillagerEntity {
             .inventory
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if !inventory.is_empty() {
+        // Vanilla `SimpleContainer.createItemList` only writes the non-empty stacks.
+        if inventory.iter().any(|item| !item.is_empty()) {
             let mut inventory_list = Vec::new();
-            for item in inventory.iter() {
+            for item in inventory.iter().filter(|item| !item.is_empty()) {
                 let mut item_compound = NbtCompound::new();
                 item.write_item_stack(&mut item_compound);
                 inventory_list.push(NbtTag::Compound(item_compound));
@@ -2565,12 +2566,13 @@ impl Mob for VillagerEntity {
                 .inventory
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            inventory.clear();
+            // Vanilla `SimpleContainer.fromItemList`: empty the 8 slots, then `addItem` each stack.
+            inventory.fill(ItemStack::EMPTY.clone());
             for tag in inventory_list {
                 if let Some(item_compound) = tag.extract_compound()
-                    && let Some(stack) = ItemStack::read_item_stack(item_compound)
+                    && let Some(mut stack) = ItemStack::read_item_stack(item_compound)
                 {
-                    inventory.push(stack);
+                    inventory::add_item(&mut inventory, &mut stack);
                 }
             }
         }
