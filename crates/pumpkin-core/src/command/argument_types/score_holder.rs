@@ -14,7 +14,7 @@ use crate::command::{
 };
 use crate::entity::EntityBase;
 use pumpkin_data::translation;
-use pumpkin_util::text::TextComponent;
+use pumpkin_util::text::{TextComponent, hover::HoverEvent};
 use rustc_hash::FxHashSet;
 use uuid::Uuid;
 
@@ -34,21 +34,30 @@ pub enum ScoreHolder {
 /// A resolved holder's storage key and its user-facing name.
 pub struct ResolvedScoreHolder {
     pub name: String,
+    /// Vanilla `ScoreHolder.getFeedbackDisplayName`.
     pub display_name: TextComponent,
+    /// Vanilla `ScoreHolder.getDisplayName`, which only entities have.
+    pub entity_display_name: Option<TextComponent>,
 }
 
 impl ResolvedScoreHolder {
     fn named(name: String) -> Self {
         Self {
             display_name: TextComponent::text(name.clone()),
+            entity_display_name: None,
             name,
         }
     }
 
     fn entity(entity: &dyn EntityBase) -> Self {
+        let name = entity.get_scoreboard_name();
+        let display_name = entity.get_display_name();
         Self {
-            name: entity.get_scoreboard_name(),
-            display_name: entity.get_display_name(),
+            display_name: display_name
+                .clone()
+                .hover_event(HoverEvent::show_text(TextComponent::text(name.clone()))),
+            entity_display_name: Some(display_name),
+            name,
         }
     }
 

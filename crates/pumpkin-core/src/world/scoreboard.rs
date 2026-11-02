@@ -15,7 +15,7 @@ use pumpkin_protocol::{
         RenderType, TeamMethod, TeamParameters,
     },
 };
-use pumpkin_util::text::{TextComponent, color::NamedColor, style::Style};
+use pumpkin_util::text::{TextComponent, color::NamedColor, hover::HoverEvent, style::Style};
 use tracing::warn;
 
 use super::World;
@@ -219,9 +219,11 @@ impl Scoreboard {
             .find(|team| team.players.iter().any(|p| p == entity_name))
     }
 
+    /// Like vanilla's `ServerScoreboard`, clients only learn about objectives shown in a display
+    /// slot ("tracked" objectives), so adding one sends nothing.
     pub fn add_objective(
         &mut self,
-        target: &impl ScoreboardTarget,
+        _target: &impl ScoreboardTarget,
         objective: ScoreboardObjective,
     ) {
         if self.objectives.contains_key(&objective.name) {
@@ -231,28 +233,10 @@ impl Scoreboard {
             );
             return;
         }
-
-        let je_update = CUpdateObjectives::new(
-            objective.name.clone(),
-            Mode::Add,
-            objective.display_name.clone(),
-            objective.render_type,
-            objective.number_format.clone(),
-        );
-
-        let be_update = BSetDisplayObjective {
-            display_slot_name: "sidebar".to_string(), // Default to sidebar
-            objective_name: objective.name.clone(),
-            objective_display_name: objective.display_name.clone().get_text(),
-            criteria_name: "dummy".to_string(),
-            sort_order: VarInt(0),
-        };
-
-        target.send_editioned(&je_update, &be_update);
-
         self.objectives.insert(objective.name.clone(), objective);
     }
 
+    /// Vanilla `ServerScoreboard.onObjectiveChanged`.
     pub fn update_objective(
         &mut self,
         target: &impl ScoreboardTarget,
@@ -265,64 +249,133 @@ impl Scoreboard {
             );
             return;
         }
-
-        let je_update = CUpdateObjectives::new(
-            objective.name.clone(),
-            Mode::Update,
-            objective.display_name.clone(),
-            objective.render_type,
-            objective.number_format.clone(),
-        );
-
-        let be_update = BSetDisplayObjective {
-            display_slot_name: "sidebar".to_string(),
-            objective_name: objective.name.clone(),
-            objective_display_name: objective.display_name.clone().get_text(),
-            criteria_name: "dummy".to_string(),
-            sort_order: VarInt(0),
-        };
-
-        target.send_editioned(&je_update, &be_update);
-
+        if self.is_tracked(&objective.name) {
+            target.send_je(&objective.packet(Mode::Update));
+        }
         self.objectives.insert(objective.name.clone(), objective);
     }
 
+    /// Whether the objective is shown in a display slot, which is when vanilla's
+    /// `ServerScoreboard` tracks it for clients.
+    #[must_use]
+    pub fn is_tracked(&self, objective_name: &str) -> bool {
+        self.display_slots
+            .values()
+            .any(|name| name == objective_name)
+    }
+
+    fn display_packets(
+        &self,
+        slot: ScoreboardDisplaySlot,
+        objective_name: Option<&str>,
+    ) -> (CDisplayObjective, BSetDisplayObjective) {
+        let name = objective_name.unwrap_or_default();
+        let display_name = objective_name
+            .and_then(|name| self.objectives.get(name))
+            .map_or_else(|| name.to_string(), |o| o.display_name.clone().get_text());
+        let slot_str = match slot {
+            ScoreboardDisplaySlot::List => "list",
+            ScoreboardDisplaySlot::BelowName => "belowname",
+            _ => "sidebar",
+        };
+        (
+            CDisplayObjective::new(slot, name.to_string()),
+            BSetDisplayObjective {
+                display_slot_name: slot_str.to_string(),
+                objective_name: name.to_string(),
+                objective_display_name: display_name,
+                criteria_name: "dummy".to_string(),
+                sort_order: VarInt(0),
+            },
+        )
+    }
+
+    fn send_display(
+        &self,
+        target: &impl ScoreboardTarget,
+        slot: ScoreboardDisplaySlot,
+        objective_name: Option<&str>,
+    ) {
+        let (je, be) = self.display_packets(slot, objective_name);
+        target.send_editioned(&je, &be);
+    }
+
+    /// Vanilla `ServerScoreboard.getStartTrackingPackets`.
+    fn send_start_tracking(&self, target: &impl ScoreboardTarget, objective_name: &str) {
+        let Some(objective) = self.objectives.get(objective_name) else {
+            return;
+        };
+        target.send_je(&objective.packet(Mode::Add));
+        for slot in ALL_DISPLAY_SLOTS {
+            if self.get_display_objective(slot) == Some(objective_name) {
+                self.send_display(target, slot, Some(objective_name));
+            }
+        }
+        if let Some(scores) = self.scores.get(objective_name) {
+            for score in scores.values() {
+                let (je, be) = score.packets();
+                target.send_editioned(&je, &be);
+            }
+        }
+    }
+
+    /// Vanilla `ServerScoreboard.getStopTrackingPackets`.
+    fn send_stop_tracking(&self, target: &impl ScoreboardTarget, objective_name: &str) {
+        target.send_editioned(
+            &CUpdateObjectives::new(
+                objective_name.to_string(),
+                Mode::Remove,
+                TextComponent::empty(),
+                RenderType::Integer,
+                None,
+            ),
+            &BRemoveObjective {
+                objective_name: objective_name.to_string(),
+            },
+        );
+        for slot in ALL_DISPLAY_SLOTS {
+            if self.get_display_objective(slot) == Some(objective_name) {
+                self.send_display(target, slot, Some(objective_name));
+            }
+        }
+    }
+
+    /// Vanilla `ServerScoreboard.setDisplayObjective`.
     pub fn set_display_objective(
         &mut self,
         target: &impl ScoreboardTarget,
         slot: ScoreboardDisplaySlot,
         objective_name: Option<&str>,
     ) {
-        let slot_str = match slot {
-            ScoreboardDisplaySlot::List => "list",
-            ScoreboardDisplaySlot::BelowName => "belowname",
-            _ => "sidebar",
-        };
-
-        let obj_name_str = objective_name.unwrap_or("");
-
-        let display_name = objective_name
-            .and_then(|name| self.objectives.get(name))
-            .map_or_else(
-                || obj_name_str.to_string(),
-                |o| o.display_name.clone().get_text(),
-            );
-
-        let je_display = CDisplayObjective::new(slot, obj_name_str.to_string());
-        let be_display = BSetDisplayObjective {
-            display_slot_name: slot_str.to_string(),
-            objective_name: obj_name_str.to_string(),
-            objective_display_name: display_name,
-            criteria_name: "dummy".to_string(),
-            sort_order: VarInt(0),
-        };
-
-        target.send_editioned(&je_display, &be_display);
-
+        if let Some(name) = objective_name
+            && !self.objectives.contains_key(name)
+        {
+            warn!("Tried to display an objective which does not exist: {name}");
+            return;
+        }
+        let old = self.display_slots.get(&slot).cloned();
+        let was_tracked = objective_name.is_some_and(|name| self.is_tracked(name));
         if let Some(name) = objective_name {
             self.display_slots.insert(slot, name.to_string());
         } else {
             self.display_slots.remove(&slot);
+        }
+
+        if let Some(old) = old.as_deref()
+            && Some(old) != objective_name
+        {
+            if self.is_tracked(old) {
+                self.send_display(target, slot, objective_name);
+            } else {
+                self.send_stop_tracking(target, old);
+            }
+        }
+        if let Some(name) = objective_name {
+            if was_tracked {
+                self.send_display(target, slot, Some(name));
+            } else {
+                self.send_start_tracking(target, name);
+            }
         }
     }
 
@@ -334,6 +387,8 @@ impl Scoreboard {
         self.set_display_objective(target, slot, None);
     }
 
+    /// Vanilla `Scoreboard.removeObjective`: the objective leaves its display slots first,
+    /// which stops tracking it.
     pub fn remove_objective(&mut self, target: &impl ScoreboardTarget, name: &str) {
         if !self.objectives.contains_key(name) {
             warn!(
@@ -342,26 +397,17 @@ impl Scoreboard {
             );
             return;
         }
-
-        let je_packet = CUpdateObjectives::new(
-            name.to_string(),
-            Mode::Remove,
-            TextComponent::empty(),
-            RenderType::Integer,
-            None,
-        );
-
-        let be_packet = BRemoveObjective {
-            objective_name: name.to_string(),
-        };
-
-        target.send_editioned(&je_packet, &be_packet);
-
+        for slot in ALL_DISPLAY_SLOTS {
+            if self.get_display_objective(slot) == Some(name) {
+                self.set_display_objective(target, slot, None);
+            }
+        }
         self.objectives.remove(name);
         self.scores.remove(name);
-        self.display_slots.retain(|_, obj| obj != name);
     }
 
+    /// Stores the score and, when its objective is tracked, sends it like vanilla's
+    /// `ServerScoreboard.onScoreChanged`.
     pub fn update_score(&mut self, target: &impl ScoreboardTarget, score: ScoreboardScore) {
         if !self.objectives.contains_key(&score.objective_name) {
             warn!(
@@ -371,27 +417,10 @@ impl Scoreboard {
             return;
         }
 
-        let je_packet = CUpdateScore::new(
-            score.entity_name.clone(),
-            score.objective_name.clone(),
-            score.value,
-            score.display_name.clone(),
-            score.number_format.clone(),
-        );
-
-        let be_packet = BSetScore {
-            action: VarInt(0), // Change
-            entries: vec![BScoreEntry {
-                scoreboard_id: score.entity_name.as_ptr() as i64, // Internal ID
-                objective_name: score.objective_name.clone(),
-                score: score.value,
-                entry_type: VarInt(3), // Fake player / Literal
-                entity_unique_id: 0,
-                custom_name: score.entity_name.clone(),
-            }],
-        };
-
-        target.send_editioned(&je_packet, &be_packet);
+        if self.is_tracked(&score.objective_name) {
+            let (je, be) = score.packets();
+            target.send_editioned(&je, &be);
+        }
 
         self.scores
             .entry(score.objective_name.clone())
@@ -406,18 +435,48 @@ impl Scoreboard {
         objective_name: impl Into<String>,
         value: i32,
     ) {
-        let entity_s = entity_name.into();
-        let obj_s = objective_name.into();
-        let existing = self.get_score(&entity_s, &obj_s).cloned();
-        let score = ScoreboardScore {
-            entity_name: entity_s,
-            objective_name: obj_s,
-            value: VarInt(value),
-            display_name: existing.as_ref().and_then(|s| s.display_name.clone()),
-            number_format: existing.as_ref().and_then(|s| s.number_format.clone()),
-            locked: existing.as_ref().is_none_or(|s| s.locked),
-        };
-        self.update_score(target, score);
+        self.set_holder_score(
+            target,
+            &entity_name.into(),
+            None,
+            &objective_name.into(),
+            value,
+        );
+    }
+
+    /// Vanilla `ScoreAccess.set`: `holder_display` is the holder entity's display name, which
+    /// `displayAutoUpdate` objectives copy onto the score. Nothing is sent when nothing changed.
+    pub fn set_holder_score(
+        &mut self,
+        target: &impl ScoreboardTarget,
+        holder: &str,
+        holder_display: Option<&TextComponent>,
+        objective_name: &str,
+        value: i32,
+    ) {
+        let auto_update = self
+            .objectives
+            .get(objective_name)
+            .is_some_and(|o| o.display_auto_update);
+        let existing = self.get_score(holder, objective_name);
+        let mut changed = existing.is_none();
+        let mut score = existing
+            .cloned()
+            .unwrap_or_else(|| ScoreboardScore::new(holder, objective_name, VarInt(0), None, None));
+        if auto_update
+            && let Some(display) = holder_display
+            && score.display_name.as_ref() != Some(display)
+        {
+            score.display_name = Some(display.clone());
+            changed = true;
+        }
+        if score.value.0 != value {
+            score.value = VarInt(value);
+            changed = true;
+        }
+        if changed {
+            self.update_score(target, score);
+        }
     }
 
     pub fn add_score(
@@ -435,60 +494,85 @@ impl Scoreboard {
         new_val
     }
 
+    fn holder_has_scores(&self, entity_name: &str) -> bool {
+        self.scores
+            .values()
+            .any(|scores| scores.contains_key(entity_name))
+    }
+
+    fn bedrock_reset_packet(entity_name: &str, objective_names: &[&str]) -> BSetScore {
+        BSetScore {
+            action: VarInt(1), // Remove
+            entries: objective_names
+                .iter()
+                .map(|objective_name| BScoreEntry {
+                    scoreboard_id: entity_name.as_ptr() as i64,
+                    objective_name: (*objective_name).to_string(),
+                    score: VarInt(0),
+                    entry_type: VarInt(3),
+                    entity_unique_id: 0,
+                    custom_name: entity_name.to_string(),
+                })
+                .collect(),
+        }
+    }
+
+    /// Vanilla `Scoreboard.resetSinglePlayerScore`: a holder losing its last score is reset
+    /// as a whole.
     pub fn remove_score(
         &mut self,
         target: &impl ScoreboardTarget,
         entity_name: &str,
         objective_name: &str,
     ) {
-        let je_packet = CResetScore::new(entity_name.to_string(), Some(objective_name.to_string()));
-
-        let be_packet = BSetScore {
-            action: VarInt(1), // Remove
-            entries: vec![BScoreEntry {
-                scoreboard_id: entity_name.as_ptr() as i64,
-                objective_name: objective_name.to_string(),
-                score: VarInt(0),
-                entry_type: VarInt(3),
-                entity_unique_id: 0,
-                custom_name: entity_name.to_string(),
-            }],
-        };
-
-        target.send_editioned(&je_packet, &be_packet);
-
-        if let Some(objective_scores) = self.scores.get_mut(objective_name) {
-            objective_scores.remove(entity_name);
+        let removed = self
+            .scores
+            .get_mut(objective_name)
+            .and_then(|scores| scores.remove(entity_name))
+            .is_some();
+        if !removed {
+            return;
+        }
+        let be_packet = Self::bedrock_reset_packet(entity_name, &[objective_name]);
+        if !self.holder_has_scores(entity_name) {
+            if !self.display_slots.is_empty() {
+                target.send_editioned(&CResetScore::new(entity_name.to_string(), None), &be_packet);
+            }
+        } else if self.is_tracked(objective_name) {
+            target.send_editioned(
+                &CResetScore::new(entity_name.to_string(), Some(objective_name.to_string())),
+                &be_packet,
+            );
         }
     }
 
+    /// Vanilla `Scoreboard.resetAllPlayerScores`.
     pub fn reset_scores_for_entity(&mut self, target: &impl ScoreboardTarget, entity_name: &str) {
-        let je_packet = CResetScore::new(entity_name.to_string(), None);
-
-        let mut be_entries = Vec::new();
-        for (obj_name, obj_scores) in &self.scores {
-            if obj_scores.contains_key(entity_name) {
-                be_entries.push(BScoreEntry {
-                    scoreboard_id: entity_name.as_ptr() as i64,
-                    objective_name: obj_name.clone(),
-                    score: VarInt(0),
-                    entry_type: VarInt(3),
-                    entity_unique_id: 0,
-                    custom_name: entity_name.to_string(),
-                });
+        let mut removed = Vec::new();
+        for (objective_name, scores) in &mut self.scores {
+            if scores.remove(entity_name).is_some() {
+                removed.push(objective_name.as_str());
             }
         }
-
-        let be_packet = BSetScore {
-            action: VarInt(1), // Remove
-            entries: be_entries,
-        };
-
-        target.send_editioned(&je_packet, &be_packet);
-
-        for obj_scores in self.scores.values_mut() {
-            obj_scores.remove(entity_name);
+        if !removed.is_empty() && !self.display_slots.is_empty() {
+            target.send_editioned(
+                &CResetScore::new(entity_name.to_string(), None),
+                &Self::bedrock_reset_packet(entity_name, &removed),
+            );
         }
+    }
+
+    /// Vanilla `Scoreboard.getTrackedPlayers`: every holder with a score.
+    #[must_use]
+    pub fn tracked_holders(&self) -> Vec<&str> {
+        let mut holders: Vec<&str> = self
+            .scores
+            .values()
+            .flat_map(|scores| scores.keys().map(String::as_str))
+            .collect();
+        holders.sort_unstable();
+        holders.dedup();
+        holders
     }
 
     pub fn add_team(&mut self, target: &impl ScoreboardTarget, team: Team) {
@@ -623,78 +707,24 @@ impl Scoreboard {
         team.players.clear();
     }
 
+    /// Vanilla `PlayerList.updateEntireScoreboard`: teams, then each displayed objective once.
     pub fn send_to_player(&self, player: &Player) {
-        for objective in self.objectives.values() {
-            let je_update = CUpdateObjectives::new(
-                objective.name.clone(),
-                Mode::Add,
-                objective.display_name.clone(),
-                objective.render_type,
-                objective.number_format.clone(),
-            );
-            let be_update = BSetDisplayObjective {
-                display_slot_name: "sidebar".to_string(),
-                objective_name: objective.name.clone(),
-                objective_display_name: objective.display_name.clone().get_text(),
-                criteria_name: "dummy".to_string(),
-                sort_order: VarInt(0),
-            };
-            player.try_enqueue_packet_editioned(&je_update, &be_update);
-        }
-
-        for (slot, objective_name) in &self.display_slots {
-            let slot_str = match slot {
-                ScoreboardDisplaySlot::List => "list",
-                ScoreboardDisplaySlot::BelowName => "belowname",
-                _ => "sidebar",
-            };
-            let display_name = self.objectives.get(objective_name).map_or_else(
-                || objective_name.clone(),
-                |o| o.display_name.clone().get_text(),
-            );
-            let je_display = CDisplayObjective::new(*slot, objective_name.clone());
-            let be_display = BSetDisplayObjective {
-                display_slot_name: slot_str.to_string(),
-                objective_name: objective_name.clone(),
-                objective_display_name: display_name,
-                criteria_name: "dummy".to_string(),
-                sort_order: VarInt(0),
-            };
-            player.try_enqueue_packet_editioned(&je_display, &be_display);
-        }
-
-        for objective_scores in self.scores.values() {
-            for score in objective_scores.values() {
-                let je_packet = CUpdateScore::new(
-                    score.entity_name.clone(),
-                    score.objective_name.clone(),
-                    score.value,
-                    score.display_name.clone(),
-                    score.number_format.clone(),
-                );
-                let be_packet = BSetScore {
-                    action: VarInt(0),
-                    entries: vec![BScoreEntry {
-                        scoreboard_id: score.entity_name.as_ptr() as i64,
-                        objective_name: score.objective_name.clone(),
-                        score: score.value,
-                        entry_type: VarInt(3),
-                        entity_unique_id: 0,
-                        custom_name: score.entity_name.clone(),
-                    }],
-                };
-                player.try_enqueue_packet_editioned(&je_packet, &be_packet);
-            }
-        }
-
         for team in self.teams.values() {
-            let je_packet = CSetPlayerTeam {
+            player.try_send_client_packet(&CSetPlayerTeam {
                 team_name: team.name.clone(),
                 method: TeamMethod::Create,
                 parameters: Some(team.parameters()),
                 players: team.players.clone().into(),
-            };
-            player.try_send_client_packet(&je_packet);
+            });
+        }
+        let mut sent: Vec<&str> = Vec::new();
+        for slot in ALL_DISPLAY_SLOTS {
+            if let Some(name) = self.get_display_objective(slot)
+                && !sent.contains(&name)
+            {
+                self.send_start_tracking(player, name);
+                sent.push(name);
+            }
         }
     }
 }
@@ -710,6 +740,27 @@ pub struct ScoreboardObjective {
 }
 
 impl ScoreboardObjective {
+    /// Vanilla `Objective.getFormattedDisplayName`.
+    #[must_use]
+    pub fn formatted_display_name(&self) -> TextComponent {
+        self.display_name
+            .clone()
+            .hover_event(HoverEvent::show_text(TextComponent::text(
+                self.name.clone(),
+            )))
+            .wrap_in_square_brackets()
+    }
+
+    fn packet(&self, mode: Mode) -> CUpdateObjectives {
+        CUpdateObjectives::new(
+            self.name.clone(),
+            mode,
+            self.display_name.clone(),
+            self.render_type,
+            self.number_format.clone(),
+        )
+    }
+
     #[must_use]
     pub fn new(
         name: impl Into<String>,
@@ -740,6 +791,29 @@ pub struct ScoreboardScore {
 }
 
 impl ScoreboardScore {
+    fn packets(&self) -> (CUpdateScore, BSetScore) {
+        (
+            CUpdateScore::new(
+                self.entity_name.clone(),
+                self.objective_name.clone(),
+                self.value,
+                self.display_name.clone(),
+                self.number_format.clone(),
+            ),
+            BSetScore {
+                action: VarInt(0), // Change
+                entries: vec![BScoreEntry {
+                    scoreboard_id: self.entity_name.as_ptr() as i64,
+                    objective_name: self.objective_name.clone(),
+                    score: self.value,
+                    entry_type: VarInt(3), // Fake player / Literal
+                    entity_unique_id: 0,
+                    custom_name: self.entity_name.clone(),
+                }],
+            },
+        )
+    }
+
     #[must_use]
     pub fn new(
         entity_name: impl Into<String>,
@@ -946,7 +1020,7 @@ impl Team {
 }
 
 /// Vanilla `DisplaySlot` serialized names.
-const fn display_slot_name(slot: ScoreboardDisplaySlot) -> &'static str {
+pub(crate) const fn display_slot_name(slot: ScoreboardDisplaySlot) -> &'static str {
     match slot {
         ScoreboardDisplaySlot::List => "list",
         ScoreboardDisplaySlot::Sidebar => "sidebar",
@@ -970,7 +1044,7 @@ const fn display_slot_name(slot: ScoreboardDisplaySlot) -> &'static str {
     }
 }
 
-const ALL_DISPLAY_SLOTS: [ScoreboardDisplaySlot; 19] = [
+pub(crate) const ALL_DISPLAY_SLOTS: [ScoreboardDisplaySlot; 19] = [
     ScoreboardDisplaySlot::List,
     ScoreboardDisplaySlot::Sidebar,
     ScoreboardDisplaySlot::BelowName,
@@ -1001,7 +1075,7 @@ fn style_to_nbt(style: &Style) -> NbtCompound {
     nbt
 }
 
-fn style_from_nbt(nbt: &NbtCompound) -> Style {
+pub(crate) fn style_from_nbt(nbt: &NbtCompound) -> Style {
     let mut nbt = nbt.clone();
     nbt.put_string("text", String::new());
     *TextComponent::from_nbt(&NbtTag::Compound(nbt)).0.style
@@ -1648,6 +1722,84 @@ mod tests {
 
     fn string(s: &str) -> NbtTag {
         NbtTag::String(s.into())
+    }
+
+    /// Records the packet types a scoreboard sends.
+    #[derive(Default)]
+    struct Recorder(std::sync::Mutex<Vec<&'static str>>);
+
+    impl Recorder {
+        fn record<J>(&self) {
+            let name = std::any::type_name::<J>()
+                .rsplit("::")
+                .next()
+                .unwrap_or_default();
+            self.0.lock().unwrap().push(name);
+        }
+
+        fn take(&self) -> Vec<&'static str> {
+            std::mem::take(&mut *self.0.lock().unwrap())
+        }
+    }
+
+    impl ScoreboardTarget for Recorder {
+        fn send_editioned<J: ClientPacket + Sync, B: BClientPacket + Sync>(&self, _: &J, _: &B) {
+            self.record::<J>();
+        }
+
+        fn send_je<J: ClientPacket + Sync>(&self, _: &J) {
+            self.record::<J>();
+        }
+    }
+
+    /// Vanilla `ServerScoreboard` only sends objectives while a display slot shows them.
+    #[test]
+    fn objectives_are_sent_only_while_displayed() {
+        let target = Recorder::default();
+        let mut scoreboard = Scoreboard::new();
+        let objective = |name: &str| {
+            ScoreboardObjective::new(
+                name,
+                TextComponent::text(name.to_string()),
+                RenderType::Integer,
+                None,
+                "dummy",
+            )
+        };
+        scoreboard.add_objective(&target, objective("a"));
+        scoreboard.add_objective(&target, objective("b"));
+        scoreboard.set_score_value(&target, "Steve", "a", 1);
+        assert!(target.take().is_empty());
+
+        scoreboard.set_display_objective(&target, ScoreboardDisplaySlot::Sidebar, Some("a"));
+        assert_eq!(
+            target.take(),
+            ["CUpdateObjectives", "CDisplayObjective", "CUpdateScore"]
+        );
+        // Unchanged scores are not resent.
+        scoreboard.set_score_value(&target, "Steve", "a", 1);
+        scoreboard.set_score_value(&target, "Steve", "b", 1);
+        assert!(target.take().is_empty());
+
+        // Replacing the only slot showing `a` stops tracking it and starts tracking `b`.
+        scoreboard.set_display_objective(&target, ScoreboardDisplaySlot::Sidebar, Some("b"));
+        assert_eq!(
+            target.take(),
+            [
+                "CUpdateObjectives",
+                "CUpdateObjectives",
+                "CDisplayObjective",
+                "CUpdateScore"
+            ]
+        );
+
+        scoreboard.remove_objective(&target, "b");
+        assert_eq!(target.take(), ["CUpdateObjectives"]);
+        assert!(
+            scoreboard
+                .get_display_objective(ScoreboardDisplaySlot::Sidebar)
+                .is_none()
+        );
     }
 
     #[test]
