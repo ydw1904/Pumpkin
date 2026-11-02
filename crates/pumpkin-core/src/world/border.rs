@@ -3,6 +3,7 @@ use pumpkin_protocol::java::client::play::{
     CSetBorderWarningDelay, CSetBorderWarningDistance,
 };
 
+use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_world::world_info::data_files::WorldBorderData;
 
 use crate::net::java::JavaClient;
@@ -183,6 +184,25 @@ impl Worldborder {
         let min_z = self.center_z - half;
         let max_z = self.center_z + half;
         x >= min_x && x < max_x && z >= min_z && z < max_z
+    }
+
+    /// Vanilla `WorldBorder.isWithinBounds(AABB)`.
+    #[must_use]
+    pub fn contains_box(&self, bounding_box: &BoundingBox) -> bool {
+        let epsilon = f64::from(1.0E-5f32);
+        self.contains(bounding_box.min.x, bounding_box.min.z)
+            && self.contains(bounding_box.max.x - epsilon, bounding_box.max.z - epsilon)
+    }
+
+    /// Vanilla `WorldBorder.getDistanceToBorder`: negative outside the border.
+    #[must_use]
+    pub fn distance_to_border(&self, x: f64, z: f64) -> f64 {
+        let half = self.new_diameter / 2.0;
+        let from_north = z - (self.center_z - half);
+        let from_south = (self.center_z + half) - z;
+        let from_west = x - (self.center_x - half);
+        let from_east = (self.center_x + half) - x;
+        from_west.min(from_east).min(from_north).min(from_south)
     }
 
     #[must_use]

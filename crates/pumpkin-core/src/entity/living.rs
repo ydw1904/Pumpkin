@@ -1317,6 +1317,24 @@ impl LivingEntity {
         self.trigger_effects_changed();
     }
 
+    /// Vanilla `LivingEntity.baseTick`: how much a player outside the world border's safe zone
+    /// is hurt this tick.
+    fn outside_border_damage(&self) -> Option<f32> {
+        let world = self.entity.world.load();
+        let border = world
+            .worldborder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if border.contains_box(&self.entity.bounding_box.load()) {
+            return None;
+        }
+        let pos = self.entity.pos.load();
+        let dist = border.distance_to_border(pos.x, pos.z) + f64::from(border.buffer);
+        let damage_per_block = f64::from(border.damage_per_block);
+        (dist < 0.0 && damage_per_block > 0.0)
+            .then(|| ((-dist * damage_per_block).floor() as i32).max(1) as f32)
+    }
+
     /// Vanilla `ServerPlayer.onEffectAdded`, `onEffectUpdated` and `onEffectsRemoved` fire the
     /// `effects_changed` trigger once the effects are in their new state.
     fn trigger_effects_changed(&self) {
@@ -4076,6 +4094,8 @@ impl EntityBase for LivingEntity {
                     .is_some_and(super::player::Player::is_sleeping)
             {
                 caller.damage(caller, 1.0, DamageType::IN_WALL);
+            } else if let Some(damage) = self.outside_border_damage() {
+                caller.damage(caller, damage, DamageType::OUTSIDE_BORDER);
             }
 
             // Vanilla `ServerPlayer.pushEntities`: players still tick while the game is frozen,
