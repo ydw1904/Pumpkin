@@ -58,14 +58,21 @@ impl CellRange {
     }
 }
 
+struct Tracked {
+    slot: usize,
+    range: Option<CellRange>,
+    synced: u32,
+}
+
+/// Cells hold entity IDs, so a registry change only moves slots instead of rebuilding them.
 #[derive(Default)]
 struct Index {
     registry: Weak<Registry>,
-    slots: FxHashMap<i32, usize>,
+    generation: u32,
+    entries: FxHashMap<i32, Tracked>,
     uuids: FxHashMap<Uuid, usize>,
-    ranges: Vec<Option<CellRange>>,
-    cells: FxHashMap<Cell, Vec<usize>>,
-    oversized: Vec<usize>,
+    cells: FxHashMap<Cell, Vec<i32>>,
+    oversized: Vec<i32>,
 }
 
 impl Index {
@@ -73,21 +80,59 @@ impl Index {
         self.registry.as_ptr() == Arc::as_ptr(registry)
     }
 
-    fn rebuild(&mut self, registry: &Arc<Registry>) {
-        self.slots.clear();
+    fn sync(&mut self, registry: &Arc<Registry>) {
+        self.generation = self.generation.wrapping_add(1);
+        let generation = self.generation;
         self.uuids.clear();
-        self.ranges.clear();
-        self.cells.clear();
-        self.oversized.clear();
         for (slot, entity) in registry.iter().enumerate() {
             let entity = entity.get_entity();
-            self.slots.insert(entity.entity_id, slot);
             // The first in list order wins, like a linear search.
             self.uuids.entry(entity.entity_uuid).or_insert(slot);
             let range = Self::entity_range(&entity.bounding_box.load());
-            self.ranges.push(range);
-            self.insert(slot, range);
+            match self.entries.entry(entity.entity_id) {
+                std::collections::hash_map::Entry::Occupied(mut entry) => {
+                    let entry = entry.get_mut();
+                    entry.slot = slot;
+                    entry.synced = generation;
+                    if entry.range != range {
+                        Self::remove(
+                            &mut self.cells,
+                            &mut self.oversized,
+                            entity.entity_id,
+                            entry.range,
+                        );
+                        Self::insert(
+                            &mut self.cells,
+                            &mut self.oversized,
+                            entity.entity_id,
+                            range,
+                        );
+                        entry.range = range;
+                    }
+                }
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    entry.insert(Tracked {
+                        slot,
+                        range,
+                        synced: generation,
+                    });
+                    Self::insert(
+                        &mut self.cells,
+                        &mut self.oversized,
+                        entity.entity_id,
+                        range,
+                    );
+                }
+            }
         }
+        let (cells, oversized) = (&mut self.cells, &mut self.oversized);
+        self.entries.retain(|&entity_id, entry| {
+            let kept = entry.synced == generation;
+            if !kept {
+                Self::remove(cells, oversized, entity_id, entry.range);
+            }
+            kept
+        });
         self.registry = Arc::downgrade(registry);
     }
 
@@ -95,58 +140,71 @@ impl Index {
         CellRange::of(area).filter(|range| range.count() <= MAX_ENTITY_CELLS)
     }
 
-    fn insert(&mut self, slot: usize, range: Option<CellRange>) {
+    fn insert(
+        cells: &mut FxHashMap<Cell, Vec<i32>>,
+        oversized: &mut Vec<i32>,
+        entity_id: i32,
+        range: Option<CellRange>,
+    ) {
         if let Some(range) = range {
             for cell in range.cells() {
-                self.cells.entry(cell).or_default().push(slot);
+                cells.entry(cell).or_default().push(entity_id);
             }
         } else {
-            self.oversized.push(slot);
+            oversized.push(entity_id);
         }
     }
 
-    fn update(&mut self, entity_id: i32, area: &BoundingBox) {
-        let Some(&slot) = self.slots.get(&entity_id) else {
-            return;
-        };
-        let next = Self::entity_range(area);
-        let previous = self.ranges[slot];
-        if previous == next {
-            return;
-        }
-        if let Some(previous) = previous {
-            for cell in previous.cells() {
-                if let std::collections::hash_map::Entry::Occupied(mut entry) =
-                    self.cells.entry(cell)
+    fn remove(
+        cells: &mut FxHashMap<Cell, Vec<i32>>,
+        oversized: &mut Vec<i32>,
+        entity_id: i32,
+        range: Option<CellRange>,
+    ) {
+        if let Some(range) = range {
+            for cell in range.cells() {
+                if let std::collections::hash_map::Entry::Occupied(mut members) = cells.entry(cell)
                 {
-                    entry.get_mut().retain(|member| *member != slot);
-                    if entry.get().is_empty() {
-                        entry.remove();
+                    members.get_mut().retain(|member| *member != entity_id);
+                    if members.get().is_empty() {
+                        members.remove();
                     }
                 }
             }
         } else {
-            self.oversized.retain(|member| *member != slot);
+            oversized.retain(|member| *member != entity_id);
         }
-        self.ranges[slot] = next;
-        self.insert(slot, next);
+    }
+
+    fn update(&mut self, entity_id: i32, area: &BoundingBox) {
+        let Some(entry) = self.entries.get_mut(&entity_id) else {
+            return;
+        };
+        let next = Self::entity_range(area);
+        if entry.range == next {
+            return;
+        }
+        let previous = std::mem::replace(&mut entry.range, next);
+        Self::remove(&mut self.cells, &mut self.oversized, entity_id, previous);
+        Self::insert(&mut self.cells, &mut self.oversized, entity_id, next);
     }
 
     fn candidates(&self, area: &BoundingBox, len: usize) -> Vec<usize> {
         let Some(range) = CellRange::of(area) else {
             return (0..len).collect();
         };
-        let mut slots = self.oversized.clone();
+        let slot_of = |entity_id: &i32| self.entries.get(entity_id).map(|entry| entry.slot);
+        let mut slots: Vec<usize> = self.oversized.iter().filter_map(slot_of).collect();
         if range.count() <= self.cells.len() as u64 {
             for cell in range.cells() {
                 if let Some(members) = self.cells.get(&cell) {
-                    slots.extend_from_slice(members);
+                    slots.extend(members.iter().filter_map(slot_of));
                 }
             }
         } else {
             for (&cell, members) in &self.cells {
                 if range.contains(cell) {
-                    slots.extend_from_slice(members);
+                    slots.extend(members.iter().filter_map(slot_of));
                 }
             }
         }
@@ -178,7 +236,7 @@ impl EntityIndex {
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if !index.matches(registry) {
-            index.rebuild(registry);
+            index.sync(registry);
         }
         query(&index)
     }
@@ -209,9 +267,9 @@ impl EntityIndex {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let next = Index::entity_range(&area);
         if index
-            .slots
+            .entries
             .get(&entity_id)
-            .is_none_or(|&slot| index.ranges[slot] == next)
+            .is_none_or(|entry| entry.range == next)
         {
             bounds.store(area);
             return;
