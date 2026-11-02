@@ -186,12 +186,13 @@ impl ActiveChunkTracker {
         }
     }
 
+    /// Applies a new forced chunk set and returns the chunks that were added and removed.
     pub fn sync_forced_chunks(
         &mut self,
         forced_chunks: &FxHashSet<Vector2<i32>>,
         active: &mut ActiveChunks,
         newly_block_ticking: &mut Vec<Vector2<i32>>,
-    ) {
+    ) -> (Vec<Vector2<i32>>, Vec<Vector2<i32>>) {
         let removed: Vec<_> = self
             .forced_chunks
             .difference(forced_chunks)
@@ -201,13 +202,14 @@ impl ActiveChunkTracker {
             .difference(&self.forced_chunks)
             .copied()
             .collect();
-        for pos in removed {
+        for &pos in &removed {
             self.update_squares(forced_squares(pos), [None; 3], active, newly_block_ticking);
         }
-        for pos in added {
+        for &pos in &added {
             self.update_squares([None; 3], forced_squares(pos), active, newly_block_ticking);
         }
         self.forced_chunks.clone_from(forced_chunks);
+        (added, removed)
     }
 }
 

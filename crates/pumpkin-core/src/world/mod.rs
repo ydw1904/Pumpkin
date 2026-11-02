@@ -574,7 +574,7 @@ impl World {
         for id in removed_players {
             tracker.remove_player(id, Arc::make_mut(&mut active_chunks));
         }
-        tracker.sync_forced_chunks(
+        let (forced_added, forced_removed) = tracker.sync_forced_chunks(
             &forced_chunks,
             Arc::make_mut(&mut active_chunks),
             &mut newly_block_ticking,
@@ -618,6 +618,7 @@ impl World {
         let spawnable_chunks = active_chunks.spawn_candidates.len() as i32;
         drop(active_chunks);
         drop(tracker);
+        self.update_forced_entity_chunks(&forced_added, &forced_removed);
         for pos in migrations {
             self.post_process_generation(pos);
             self.migrate_pending_block_entities(pos);
@@ -4803,7 +4804,13 @@ impl World {
 
     // NOTE: This function doesn't actually await on anything, it just spawns two tokio tasks
     /// IMPORTANT: Chunks have to be non-empty
-    fn spawn_world_entity_chunks(self: &Arc<Self>, player: Arc<Player>, chunks: Vec<Vector2<i32>>) {
+    /// Loads the entity chunks of `chunks` and makes their entities live. `player` is the
+    /// watcher that caused the load, or `None` for a forced chunk.
+    fn spawn_world_entity_chunks(
+        self: &Arc<Self>,
+        player: Option<Arc<Player>>,
+        chunks: Vec<Vector2<i32>>,
+    ) {
         #[cfg(debug_assertions)]
         let inst = std::time::Instant::now();
 
@@ -4815,19 +4822,23 @@ impl World {
         let level = self.level.clone();
         let world = self.clone();
 
-        player.clone().spawn_task(async move {
+        let player_task = player.clone();
+        let task = async move {
             'main: loop {
-                let recv_result = tokio::select! {
-                    () = player.client.await_close_interrupt() => {
-                        debug!("Canceling player packet processing");
-                        None
+                let recv_result = match &player {
+                    Some(player) => tokio::select! {
+                        () = player.client.await_close_interrupt() => {
+                            debug!("Canceling player packet processing");
+                            None
+                        },
+                        recv_result = entity_receiver.recv() => {
+                            recv_result
+                        }
                     },
-                    recv_result = entity_receiver.recv() => {
-                        recv_result
-                    }
+                    None => entity_receiver.recv().await,
                 };
 
-                let Some((chunk_weak, first_load)) = recv_result else {
+                let Some(chunk_weak) = recv_result else {
                     break;
                 };
 
@@ -4848,7 +4859,10 @@ impl World {
                     continue 'main;
                 }
 
-                if first_load {
+                // A chunk can be in memory before anyone watched it (an autosave loads one
+                // for an entity that walked in), so this asks the chunk whether it is live
+                // rather than whether this call read it from disk.
+                if !chunk.live.swap(true, Relaxed) {
                     // First watcher: consume the serialized entities and make them
                     // live. The live entity list becomes the single source of
                     // truth, so the chunk's NBT is taken (cleared) to avoid keeping
@@ -4860,7 +4874,6 @@ impl World {
                             .lock()
                             .unwrap_or_else(std::sync::PoisonError::into_inner),
                     );
-                    chunk.live.store(true, Relaxed);
                     for entity_nbt in &entity_nbts {
                         let Some(root) =
                             load_entity_from_nbt(entity_nbt, Vector3::default(), &world)
@@ -4881,21 +4894,68 @@ impl World {
                             // UUID-dedupes if another watcher already loaded this entity.
                             // Tracker owns pairing (spawn packets + vehicle restore).
                             world.add_entity_silent(entity.clone());
-                            player.try_restore_vehicle(&entity);
+                            if let Some(player) = &player {
+                                player.try_restore_vehicle(&entity);
+                            }
                         }
                     }
-                } else {
+                } else if let Some(player) = &player {
                     // Already live for other watchers: pair this player now so
                     // spawn packets and vehicle restore do not wait on a tracker tick.
                     world
                         .entity_tracker
-                        .update_player_chunks(&player, &world, &[position]);
+                        .update_player_chunks(player, &world, &[position]);
                 }
             }
 
             #[cfg(debug_assertions)]
             debug!("Chunks queued after {}ms", inst.elapsed().as_millis());
-        });
+        };
+        match player_task {
+            Some(player) => {
+                player.spawn_task(task);
+            }
+            None => {
+                self.level.spawn_task(task);
+            }
+        }
+    }
+
+    /// Gives the full chunks around each forced chunk a watcher, so their entities load and
+    /// stay loaded with no player nearby, like vanilla loads the entities of every full chunk.
+    fn update_forced_entity_chunks(
+        self: &Arc<Self>,
+        added: &[Vector2<i32>],
+        removed: &[Vector2<i32>],
+    ) {
+        use pumpkin_world::chunk_system::ChunkLoading;
+        let radius = i32::from(ChunkLoading::FULL_CHUNK_LEVEL - ChunkLoading::FORCED_TICKET_LEVEL);
+        let full_area = |chunks: &[Vector2<i32>]| {
+            chunks
+                .iter()
+                .flat_map(|pos| {
+                    (-radius..=radius).flat_map(move |dx| {
+                        (-radius..=radius).map(move |dz| Vector2::new(pos.x + dx, pos.y + dz))
+                    })
+                })
+                .collect::<Vec<_>>()
+        };
+        if !added.is_empty() {
+            let mut added = full_area(added);
+            // Each forced chunk counts as a watcher of its whole area, overlaps included.
+            self.level.mark_chunks_as_newly_watched(&added);
+            added.sort_unstable_by_key(|pos| (pos.x, pos.y));
+            added.dedup();
+            self.spawn_world_entity_chunks(None, added);
+        }
+        let chunks_to_clean = self.level.mark_chunks_as_not_watched(full_area(removed));
+        if !chunks_to_clean.is_empty() {
+            let world = self.clone();
+            self.level.spawn_task(async move {
+                world.remove_entities_in_chunks(&chunks_to_clean).await;
+                world.level.clean_entity_chunks(&chunks_to_clean);
+            });
+        }
     }
 
     /// Gets a `Player` by an entity id
@@ -5696,7 +5756,14 @@ impl World {
         &self,
         chunks: impl IntoIterator<Item = impl std::borrow::Borrow<Vector2<i32>>>,
     ) {
-        let chunks_set: FxHashSet<_> = chunks.into_iter().map(|c| *c.borrow()).collect();
+        // `clean_entity_chunks` keeps the entity chunks still in use, so their entities have to
+        // stay live too. A chunk can also be watched again (a player came back, or it was
+        // forced) between the caller finding it unused and this task running.
+        let chunks_set: FxHashSet<_> = chunks
+            .into_iter()
+            .map(|c| *c.borrow())
+            .filter(|pos| !self.level.is_entity_chunk_in_use(pos))
+            .collect();
         if chunks_set.is_empty() {
             return;
         }
@@ -8911,6 +8978,43 @@ mod tests {
         }
         Ok(())
     }
+    #[tokio::test]
+    async fn forced_chunk_entities_survive_autosave_and_memory_cleanup()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use crate::entity::{Entity, EntityBase, ai::test_support::world, passive::cow::CowEntity};
+        use pumpkin_data::entity::EntityType;
+        use pumpkin_util::math::{vector2::Vector2, vector3::Vector3};
+        use std::sync::Arc;
+
+        let folder = tempfile::tempdir()?;
+        let world = world(&folder);
+        let chunk = Vector2::new(0, 0);
+        world
+            .forced_chunks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(chunk);
+        world.update_active_chunks();
+        let cow = CowEntity::new(Entity::new(
+            world.clone(),
+            Vector3::new(0.5, 64.0, 0.5),
+            &EntityType::COW,
+        ));
+        world.entities.store(Arc::new(vec![cow.clone()]));
+
+        // The autosave loads the entity chunk; the next memory cleanup used to unload it.
+        world.autosave_entities().await;
+        let cleaned = world.level.clean_memory();
+        world.remove_entities_in_chunks(&cleaned).await;
+        world.level.clean_entity_chunks(&cleaned);
+
+        let cow_id = cow.get_entity().entity_id;
+        let alive = !cow.get_entity().is_removed() && world.get_entity_by_id(cow_id).is_some();
+        world.level.shutdown().await;
+        assert!(alive);
+        Ok(())
+    }
+
     #[tokio::test]
     async fn removing_a_wither_clears_its_bossbar_registration_without_dropping_loot()
     -> Result<(), Box<dyn std::error::Error>> {

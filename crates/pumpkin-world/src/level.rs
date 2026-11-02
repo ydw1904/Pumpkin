@@ -538,13 +538,7 @@ impl Level {
             .into_iter()
             .filter_map(|pos_borrow| {
                 let pos = pos_borrow.borrow();
-                // Only include chunks with no watchers
-                let has_watchers = self
-                    .chunk_watchers
-                    .get(pos)
-                    .is_some_and(|count| *count != 0);
-
-                if has_watchers {
+                if self.is_entity_chunk_in_use(pos) {
                     return None;
                 }
 
@@ -690,13 +684,23 @@ impl Level {
         self.chunk_watchers.get(chunk).is_some()
     }
 
+    /// Whether a chunk's entities must stay loaded: a player or a forced ticket watches it, or
+    /// it is still a full chunk. Vanilla only unloads entities once their chunk drops below
+    /// full, so entities that walk out of a forced chunk stay in the world.
+    pub fn is_entity_chunk_in_use(&self, chunk: &Vector2<i32>) -> bool {
+        self.chunk_watchers
+            .get(chunk)
+            .is_some_and(|count| *count != 0)
+            || self.loaded_chunks.contains_key(chunk)
+    }
+
     pub fn clean_memory(self: &Arc<Self>) -> Vec<Vector2<i32>> {
         self.chunk_watchers.retain(|_, watcher| *watcher != 0);
 
         let entity_chunks_to_remove: Vec<_> = self
             .loaded_entity_chunks
             .iter()
-            .filter(|entry| !self.chunk_watchers.contains_key(entry.key()))
+            .filter(|entry| !self.is_entity_chunk_in_use(entry.key()))
             .map(|entry| *entry.key())
             .collect();
 
@@ -786,7 +790,7 @@ impl Level {
     pub fn receive_entity_chunks(
         self: &Arc<Self>,
         chunks: Vec<Vector2<i32>>,
-    ) -> Receiver<(Weak<ChunkEntityData>, bool)> {
+    ) -> Receiver<Weak<ChunkEntityData>> {
         let (sender, receiver) = mpsc::channel(64);
         let level = self.clone();
 
@@ -798,7 +802,7 @@ impl Level {
                     .iter()
                     .filter(|pos| {
                         level.loaded_entity_chunks.get(pos).is_none_or(|chunk| {
-                            let _ = sender.try_send((Arc::downgrade(chunk.value()), false));
+                            let _ = sender.try_send(Arc::downgrade(chunk.value()));
                             false // Don't fetch
                         })
                     })
@@ -820,7 +824,7 @@ impl Level {
                             LoadedData::Loaded(chunk) => {
                                 let pos = Vector2::new(chunk.x, chunk.z);
                                 level.loaded_entity_chunks.insert(pos, chunk.clone());
-                                let _ = sender.send((Arc::downgrade(&chunk), true)).await;
+                                let _ = sender.send(Arc::downgrade(&chunk)).await;
                             }
                             LoadedData::Missing(pos) | LoadedData::Error((pos, _)) => {
                                 let (tx, rx) = oneshot::channel();
@@ -836,8 +840,7 @@ impl Level {
                                 let sender_clone = sender.clone();
                                 level.spawn_task(async move {
                                     if let Ok(chunk) = rx.await {
-                                        let _ =
-                                            sender_clone.send((Arc::downgrade(&chunk), true)).await;
+                                        let _ = sender_clone.send(Arc::downgrade(&chunk)).await;
                                     }
                                 });
                             }

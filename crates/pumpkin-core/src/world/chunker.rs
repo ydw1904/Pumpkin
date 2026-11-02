@@ -173,6 +173,6 @@ pub fn update_position(player: &Arc<Player>) {
     }
 
     if !loading_chunks.is_empty() {
-        world.spawn_world_entity_chunks(player.clone(), loading_chunks);
+        world.spawn_world_entity_chunks(Some(player.clone()), loading_chunks);
     }
 }
