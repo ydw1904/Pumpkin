@@ -9,6 +9,12 @@ impl super::Phase for LandingApproachPhase {
         EnderDragonPhase::LandingApproach
     }
 
+    /// Vanilla `DragonLandingPhase.getTurnSpeed`, the phase that flies down onto the podium.
+    fn get_turn_speed(&self, dragon: &EnderDragonEntity) -> f32 {
+        let rot_speed = dragon.horizontal_speed() + 1.0;
+        rot_speed.min(40.0) / rot_speed
+    }
+
     fn tick(&self, dragon: &EnderDragonEntity) {
         let origin = {
             let guard = dragon

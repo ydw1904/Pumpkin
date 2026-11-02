@@ -1,4 +1,5 @@
 use super::EnderDragonPhase;
+use crate::entity::EntityBase;
 use crate::entity::boss::ender_dragon::EnderDragonEntity;
 use pumpkin_util::random::gameplay::game_random;
 
@@ -7,6 +8,14 @@ pub struct SitAttackingPhase;
 impl super::Phase for SitAttackingPhase {
     fn get_type(&self) -> EnderDragonPhase {
         EnderDragonPhase::SitAttacking
+    }
+
+    fn is_sitting(&self) -> bool {
+        true
+    }
+
+    fn on_hurt(&self, source: Option<&dyn EntityBase>, damage: f32) -> f32 {
+        super::sitting_on_hurt(source, damage)
     }
 
     fn begin(&self, dragon: &EnderDragonEntity) {
@@ -42,18 +51,6 @@ impl super::Phase for SitAttackingPhase {
             } else if should_take_off {
                 dragon.set_phase(EnderDragonPhase::TakingOff);
             }
-        } else {
-            drop(timer);
-        }
-
-        let mut dmg = dragon
-            .sitting_damage_received
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if *dmg > 150.0 {
-            *dmg = 0.0;
-            drop(dmg);
-            dragon.set_phase(EnderDragonPhase::TakingOff);
         }
     }
 }

@@ -1643,6 +1643,20 @@ pub trait Mob: EntityBase + Send + Sync {
         amount
     }
 
+    /// A vanilla `hurtServer` override that replaces the shared mob damage path, like the ender
+    /// dragon's. `None` runs the shared path.
+    fn mob_hurt_server(
+        &self,
+        _caller: &dyn EntityBase,
+        _amount: f32,
+        _damage_type: DamageType,
+        _position: Option<Vector3<f64>>,
+        _source: Option<&dyn EntityBase>,
+        _cause: Option<&dyn EntityBase>,
+    ) -> Option<bool> {
+        None
+    }
+
     /// Vanilla `Entity.killedEntity`: this mob dealt the killing blow to `victim`. Returns whether
     /// the victim perished and should still drop its loot and experience.
     fn killed_entity(&self, _victim: &dyn EntityBase) -> bool {
@@ -2350,6 +2364,11 @@ impl<T: Mob + Send + 'static> EntityBase for T {
         source: Option<&dyn EntityBase>,
         cause: Option<&dyn EntityBase>,
     ) -> bool {
+        if let Some(damaged) =
+            self.mob_hurt_server(caller, amount, damage_type, position, source, cause)
+        {
+            return damaged;
+        }
         // pre_damage hook: allows mobs to dodge/cancel damage (e.g. enderman projectile dodge)
         if !self.pre_damage_with_context(damage_type, source, cause) {
             return false;

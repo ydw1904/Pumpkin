@@ -10,6 +10,10 @@ impl super::Phase for HoveringPhase {
         EnderDragonPhase::Hovering
     }
 
+    fn is_sitting(&self) -> bool {
+        true
+    }
+
     fn tick(&self, dragon: &EnderDragonEntity) {
         let origin = {
             let guard = dragon

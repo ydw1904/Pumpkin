@@ -1,4 +1,6 @@
+use crate::entity::EntityBase;
 use crate::entity::boss::ender_dragon::EnderDragonEntity;
+use pumpkin_data::entity::EntityType;
 use pumpkin_util::math::vector3::Vector3;
 use std::sync::Arc;
 
@@ -31,14 +33,22 @@ pub trait Phase: Send + Sync {
     fn tick(&self, dragon: &EnderDragonEntity);
     fn begin(&self, _dragon: &EnderDragonEntity) {}
     fn end(&self, _dragon: &EnderDragonEntity) {}
+    /// Vanilla `DragonPhaseInstance.isSitting`, which decides whether hits count towards taking
+    /// off again.
     fn is_sitting(&self) -> bool {
         false
     }
     fn get_fly_speed(&self) -> f32 {
         0.6
     }
-    fn get_turn_speed(&self) -> f32 {
-        0.1
+    /// Vanilla `AbstractDragonPhaseInstance.getTurnSpeed`.
+    fn get_turn_speed(&self, dragon: &EnderDragonEntity) -> f32 {
+        let rot_speed = dragon.horizontal_speed() + 1.0;
+        0.7 / rot_speed.min(40.0) / rot_speed
+    }
+    /// Vanilla `DragonPhaseInstance.onHurt`: the damage left after the phase reacted to the hit.
+    fn on_hurt(&self, _source: Option<&dyn EntityBase>, damage: f32) -> f32 {
+        damage
     }
     fn get_fly_target_location(&self) -> Option<Vector3<f64>> {
         None
@@ -113,5 +123,26 @@ impl PhaseManager {
     #[must_use]
     pub fn get_phase(&self, phase_type: EnderDragonPhase) -> Arc<dyn Phase> {
         self.phases[phase_type as usize].clone()
+    }
+}
+
+/// Vanilla `AbstractDragonSittingPhase.onHurt`: a sitting dragon sets arrows and wind charges on
+/// fire and takes no damage from them.
+fn sitting_on_hurt(source: Option<&dyn EntityBase>, damage: f32) -> f32 {
+    match source {
+        Some(direct)
+            if [
+                &EntityType::ARROW,
+                &EntityType::SPECTRAL_ARROW,
+                &EntityType::TRIDENT,
+                &EntityType::WIND_CHARGE,
+            ]
+            .iter()
+            .any(|entity_type| std::ptr::eq(direct.get_entity().entity_type, *entity_type)) =>
+        {
+            direct.set_on_fire_for(1.0);
+            0.0
+        }
+        _ => damage,
     }
 }

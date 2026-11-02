@@ -70,10 +70,12 @@ impl super::Phase for DyingPhase {
             let collided = entity.horizontal_collision.load(Ordering::Relaxed)
                 || entity.vertical_collision.load(Ordering::Relaxed);
             if (100.0..=22500.0).contains(&dist_sq) && !collided {
-                // Vanilla `AbstractDragonPhaseInstance.getTurnSpeed`.
-                let rot_speed = entity.velocity.load().horizontal_length() as f32 + 1.0;
-                let turn_speed = 0.7 / rot_speed.min(40.0) / rot_speed;
-                dragon.steer_toward(pos, target_pos, self.get_fly_speed(), turn_speed);
+                dragon.steer_toward(
+                    pos,
+                    target_pos,
+                    self.get_fly_speed(),
+                    self.get_turn_speed(dragon),
+                );
                 // The lethal hit marked the dragon dead, which skips the usual travel. Vanilla's
                 // dragon has `noPhysics`, so it flies straight through the podium's pillar.
                 entity.set_pos(pos + entity.velocity.load());

@@ -1,6 +1,7 @@
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::game_event::GameEvent;
+use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::{Block, BlockStateId};
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
@@ -146,13 +147,16 @@ pub fn find_path(
 pub struct EnderDragonPart {
     pub entity: Entity,
     pub dragon_uuid: uuid::Uuid,
+    /// The head and neck take full damage; every other part a reduced amount.
+    pub head_or_neck: bool,
 }
 
 impl EnderDragonPart {
-    pub const fn new(entity: Entity, dragon_uuid: uuid::Uuid) -> Self {
+    pub const fn new(entity: Entity, dragon_uuid: uuid::Uuid, head_or_neck: bool) -> Self {
         Self {
             entity,
             dragon_uuid,
+            head_or_neck,
         }
     }
 }
@@ -162,17 +166,40 @@ impl EntityBase for EnderDragonPart {
         &self.entity
     }
 
-    fn damage(&self, source: &dyn EntityBase, amount: f32, damage_type: DamageType) -> bool {
+    fn damage(&self, caller: &dyn EntityBase, amount: f32, damage_type: DamageType) -> bool {
+        self.damage_with_context(caller, amount, damage_type, None, None, None)
+    }
+
+    /// Vanilla `EnderDragonPart.hurtServer`: the hit goes to the dragon, scaled by part.
+    fn damage_with_context(
+        &self,
+        _caller: &dyn EntityBase,
+        amount: f32,
+        damage_type: DamageType,
+        position: Option<Vector3<f64>>,
+        source: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
+    ) -> bool {
         let world = self.entity.world.load();
-        if let Some(dragon_base) = world
-            .entities
-            .load()
+        let entities = world.entities.load();
+        let Some(dragon_base) = entities
             .iter()
             .find(|e| e.get_entity().entity_uuid == self.dragon_uuid)
-        {
-            return dragon_base.damage(source, amount, damage_type);
-        }
-        false
+        else {
+            return false;
+        };
+        let Some(dragon) = dragon_base.cast_any().downcast_ref::<EnderDragonEntity>() else {
+            return false;
+        };
+        dragon.hurt(
+            dragon_base.as_ref(),
+            self.head_or_neck,
+            amount,
+            damage_type,
+            position,
+            source,
+            cause,
+        )
     }
 
     fn cast_any(&self) -> &dyn std::any::Any {
@@ -240,7 +267,8 @@ impl EnderDragonEntity {
                 entity.pos.load(),
                 &EntityType::ENDER_DRAGON,
             );
-            let part = Arc::new(EnderDragonPart::new(part_entity, dragon_uuid));
+            // Parts 1 and 2 are the head and the neck.
+            let part = Arc::new(EnderDragonPart::new(part_entity, dragon_uuid, i <= 2));
             world.add_entity_lookup_only(part.clone() as Arc<dyn EntityBase>);
             parts.push(part);
         }
@@ -826,24 +854,85 @@ impl EnderDragonEntity {
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(target) = target_location {
                 let pos = self.mob_entity.living_entity.entity.pos.load();
-                self.steer_toward(pos, target, phase.get_fly_speed(), phase.get_turn_speed());
+                self.steer_toward(
+                    pos,
+                    target,
+                    phase.get_fly_speed(),
+                    phase.get_turn_speed(self),
+                );
             }
         }
 
         self.tick_parts();
     }
 
-    pub fn hurt(&self, damage: f32) {
-        let phase_type: EnderDragonPhase = *self
+    #[must_use]
+    pub fn horizontal_speed(&self) -> f32 {
+        self.mob_entity
+            .living_entity
+            .entity
+            .velocity
+            .load()
+            .horizontal_length() as f32
+    }
+
+    fn current_phase(&self) -> Arc<dyn phase::Phase> {
+        let phase_type = *self
             .phase
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if phase_type.is_sitting() {
-            *self
-                .sitting_damage_received
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) += damage;
+        self.phase_manager.get_phase(phase_type)
+    }
+
+    /// Vanilla `EnderDragon.hurt(ServerLevel, EnderDragonPart, DamageSource, float)`. `caller` is
+    /// the dragon itself. Only players and `#always_hurts_ender_dragons` damage it, but other
+    /// hits still count as landed.
+    #[expect(clippy::too_many_arguments)]
+    pub fn hurt(
+        &self,
+        caller: &dyn EntityBase,
+        head_or_neck: bool,
+        amount: f32,
+        damage_type: DamageType,
+        position: Option<Vector3<f64>>,
+        source: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
+    ) -> bool {
+        let phase = self.current_phase();
+        if phase.get_type() == EnderDragonPhase::Dying {
+            return false;
         }
+        let mut damage = phase.on_hurt(source, amount);
+        if !head_or_neck {
+            damage = damage / 4.0 + damage.min(1.0);
+        }
+        if damage < 0.01 {
+            return false;
+        }
+
+        if cause.is_some_and(|cause| cause.get_player().is_some())
+            || damage_type.has_tag(&tag::DamageType::MINECRAFT_ALWAYS_HURTS_ENDER_DRAGONS)
+        {
+            let living = &self.mob_entity.living_entity;
+            let health_before = living.health.load();
+            // Vanilla `reallyHurt`: the plain living entity damage.
+            if living.damage_with_context(caller, damage, damage_type, position, source, cause) {
+                self.on_damage_with_context(damage_type, source, cause);
+            }
+            if self.current_phase().is_sitting() {
+                let mut received = self
+                    .sitting_damage_received
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                *received += health_before - living.health.load();
+                if *received > 0.25 * living.get_max_health() {
+                    *received = 0.0;
+                    drop(received);
+                    self.set_phase(EnderDragonPhase::TakingOff);
+                }
+            }
+        }
+        true
     }
 }
 
@@ -854,6 +943,19 @@ impl Mob for EnderDragonEntity {
 
     fn mob_tick(&self, _caller: &dyn EntityBase) {
         self.ai_step();
+    }
+
+    /// Vanilla `EnderDragon.hurtServer`: a hit on the dragon itself counts as one on its body.
+    fn mob_hurt_server(
+        &self,
+        caller: &dyn EntityBase,
+        amount: f32,
+        damage_type: DamageType,
+        position: Option<Vector3<f64>>,
+        source: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
+    ) -> Option<bool> {
+        Some(self.hurt(caller, false, amount, damage_type, position, source, cause))
     }
 
     /// Vanilla `EnderDragon.tickDeath`: the dying phase runs the 200 tick death.

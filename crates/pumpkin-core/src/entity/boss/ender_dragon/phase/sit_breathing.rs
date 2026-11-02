@@ -1,4 +1,5 @@
 use super::EnderDragonPhase;
+use crate::entity::EntityBase;
 use crate::entity::{
     Entity, area_effect_cloud::AreaEffectCloudEntity, boss::ender_dragon::EnderDragonEntity,
 };
@@ -10,6 +11,14 @@ pub struct SitBreathingPhase;
 impl super::Phase for SitBreathingPhase {
     fn get_type(&self) -> EnderDragonPhase {
         EnderDragonPhase::SitBreathing
+    }
+
+    fn is_sitting(&self) -> bool {
+        true
+    }
+
+    fn on_hurt(&self, source: Option<&dyn EntityBase>, damage: f32) -> f32 {
+        super::sitting_on_hurt(source, damage)
     }
 
     fn begin(&self, dragon: &EnderDragonEntity) {
