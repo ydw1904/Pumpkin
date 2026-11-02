@@ -1744,7 +1744,7 @@ impl World {
             .iter()
             .map(|entity| block_chunk(entity.get_entity().pos.load()))
             .collect::<FxHashSet<_>>()
-            .into_iter()
+            .into_par_iter()
             .filter(|chunk| level_for_entities.is_chunk_entity_ticking_ready(chunk))
             .collect();
         // Vanilla `ServerLevel.tick` keeps entities whose chunk can entity tick in its tick list,
