@@ -3,10 +3,10 @@ use pumpkin_data::block_properties::Half;
 use pumpkin_data::block_properties::HorizontalFacing;
 use pumpkin_data::block_properties::StairsShape;
 use pumpkin_data::fluid::Fluid;
-use pumpkin_data::tag::Taggable;
-use pumpkin_data::{Block, BlockDirection, BlockState, BlockStateId, Mirror, Rotation, tag};
+use pumpkin_data::{Block, BlockDirection, BlockState, BlockStateId, Mirror, Rotation};
 use pumpkin_macros::pumpkin_block_from_tag;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_world::generation::update_shape::stairs_shape;
 use pumpkin_world::tick::TickPriority;
 
 use crate::block::{
@@ -34,12 +34,7 @@ impl BlockBehaviour for StairBlock {
             },
         };
 
-        stair_props.shape = compute_stair_shape(
-            args.world,
-            args.position,
-            stair_props.facing,
-            stair_props.half,
-        );
+        stair_props.shape = compute_stair_shape(args.world, args.position, stair_props);
 
         stair_props.to_state_id(args.block)
     }
@@ -59,12 +54,7 @@ impl BlockBehaviour for StairBlock {
         }
 
         if args.direction.is_horizontal() {
-            stair_props.shape = compute_stair_shape(
-                args.world,
-                args.position,
-                stair_props.facing,
-                stair_props.half,
-            );
+            stair_props.shape = compute_stair_shape(args.world, args.position, stair_props);
             return stair_props.to_state_id(args.block);
         }
 
@@ -128,57 +118,9 @@ impl BlockBehaviour for StairBlock {
 fn compute_stair_shape(
     world: &World,
     block_pos: &BlockPos,
-    facing: HorizontalFacing,
-    half: Half,
+    props: StairsProperties,
 ) -> StairsShape {
-    let right_locked = get_stair_properties_if_exists(
-        world,
-        &block_pos.offset(facing.rotate_clockwise().to_offset()),
-    )
-    .is_some_and(|other_stair_props| {
-        other_stair_props.half == half && other_stair_props.facing == facing
-    });
-
-    let left_locked = get_stair_properties_if_exists(
-        world,
-        &block_pos.offset(facing.rotate_counter_clockwise().to_offset()),
-    )
-    .is_some_and(|other_stair_props| {
-        other_stair_props.half == half && other_stair_props.facing == facing
-    });
-
-    if left_locked && right_locked {
-        return StairsShape::Straight;
-    }
-
-    if let Some(other_stair_props) =
-        get_stair_properties_if_exists(world, &block_pos.offset(facing.to_offset()))
-        && other_stair_props.half == half
-    {
-        if !left_locked && other_stair_props.facing == facing.rotate_clockwise() {
-            return StairsShape::OuterRight;
-        } else if !right_locked && other_stair_props.facing == facing.rotate_counter_clockwise() {
-            return StairsShape::OuterLeft;
-        }
-    }
-
-    if let Some(other_stair_props) =
-        get_stair_properties_if_exists(world, &block_pos.offset(facing.opposite().to_offset()))
-        && other_stair_props.half == half
-    {
-        if !right_locked && other_stair_props.facing == facing.rotate_clockwise() {
-            return StairsShape::InnerRight;
-        } else if !left_locked && other_stair_props.facing == facing.rotate_counter_clockwise() {
-            return StairsShape::InnerLeft;
-        }
-    }
-
-    StairsShape::Straight
-}
-
-fn get_stair_properties_if_exists(world: &World, block_pos: &BlockPos) -> Option<StairsProperties> {
-    let (block, block_state) = world.get_block_and_state_id(block_pos);
-    block
-        .has_tag(&tag::Block::MINECRAFT_STAIRS)
-        .then(|| StairsProperties::from_state_id(block_state))
+    stairs_shape(props, |direction| {
+        world.get_block_state_id(&block_pos.offset(direction.to_offset()))
+    })
 }

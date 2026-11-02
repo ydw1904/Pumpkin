@@ -324,7 +324,9 @@ pub fn update_shape<L: BlockPlacer + ?Sized>(
         }
         if block.has_tag(&tag::Block::MINECRAFT_STAIRS) {
             let mut props = WhiteWoolStairsLikeProperties::from_state_id(state);
-            props.shape = stairs_shape(level, pos, props);
+            props.shape = stairs_shape(props, |direction| {
+                level.get_block_state(&(pos + direction.to_offset()))
+            });
             return props.to_state_id(block);
         }
     }
@@ -397,14 +399,14 @@ fn with_side(
     props.to_state_id(block)
 }
 
-/// Vanilla `StairBlock.getStairsShape`.
-fn stairs_shape<L: BlockPlacer + ?Sized>(
-    level: &L,
-    pos: Vector3<i32>,
+/// Vanilla `StairBlock.getStairsShape`, with `neighbor` giving the state next to the stairs in
+/// a direction.
+pub fn stairs_shape(
     props: WhiteWoolStairsLikeProperties,
+    neighbor: impl Fn(BlockDirection) -> BlockStateId,
 ) -> StairsShape {
     let stairs_at = |direction: BlockDirection| {
-        let state = level.get_block_state(&(pos + direction.to_offset()));
+        let state = neighbor(direction);
         state
             .to_block()
             .has_tag(&tag::Block::MINECRAFT_STAIRS)
@@ -551,5 +553,73 @@ fn update_vine_shape<L: BlockPlacer + ?Sized>(
         props.to_state_id(&Block::VINE)
     } else {
         state
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::generation::structure::template::{
+        BlockStateResolver, all_template_names, get_template,
+    };
+    use rustc_hash::FxHashMap;
+
+    const HORIZONTAL: [BlockDirection; 4] = [
+        BlockDirection::North,
+        BlockDirection::South,
+        BlockDirection::West,
+        BlockDirection::East,
+    ];
+
+    /// The states of a vanilla template by position. Vanilla built the templates in a world, so
+    /// blocks whose neighbours are all in the template carry the shapes vanilla gave them.
+    fn template_states() -> Vec<(&'static str, FxHashMap<Vector3<i32>, BlockStateId>)> {
+        all_template_names()
+            .iter()
+            .filter_map(|name| {
+                let template = get_template(name)?;
+                let states = template
+                    .blocks
+                    .iter()
+                    .filter_map(|block| {
+                        let entry = &template.palette[block.state as usize];
+                        BlockStateResolver::resolve_simple(entry).map(|state| (block.pos, state.id))
+                    })
+                    .collect();
+                Some((*name, states))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn stairs_shape_matches_vanilla_templates() {
+        let (mut checked, mut mismatched) = (0, Vec::new());
+        // The shipwreck templates keep outer corner stairs that have no stairs next to them.
+        for (name, states) in template_states()
+            .into_iter()
+            .filter(|(name, _)| !name.contains("shipwreck/"))
+        {
+            for (&pos, &state) in &states {
+                if !state.to_block().has_tag(&tag::Block::MINECRAFT_STAIRS)
+                    || HORIZONTAL
+                        .iter()
+                        .any(|direction| !states.contains_key(&(pos + direction.to_offset())))
+                {
+                    continue;
+                }
+                let props = WhiteWoolStairsLikeProperties::from_state_id(state);
+                let shape = stairs_shape(props, |direction| states[&(pos + direction.to_offset())]);
+                checked += 1;
+                if shape != props.shape {
+                    mismatched.push(format!("{name} {pos:?}: {:?} -> {shape:?}", props.shape));
+                }
+            }
+        }
+        assert!(checked > 0);
+        assert!(
+            mismatched.is_empty(),
+            "{checked} checked, {} mismatched: {mismatched:#?}",
+            mismatched.len()
+        );
     }
 }
