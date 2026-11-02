@@ -6,11 +6,13 @@
 use std::io::Cursor;
 use std::sync::OnceLock;
 
+use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::{Block, BlockStateId, Mirror, Rotation};
 use pumpkin_nbt::{compound::NbtCompound, nbt_compress::read_gzip_compound_tag, tag::NbtTag};
 use pumpkin_util::math::{block_box::BlockBox, vector3::Vector3};
 use thiserror::Error;
 
+use super::BlockStateResolver;
 use super::processor::StructureProcessor;
 use crate::generation::structure::structures::jigsaw::{JigsawBlock, JigsawJointType};
 
@@ -1212,31 +1214,23 @@ impl StructureTemplate {
     ) {
         if info.nbt.is_some() {
             block_entities_list.push(info);
-        } else if Self::is_full_cube_block(&info.state.name) {
+        } else if Self::is_collision_shape_full_block(&info.state) {
             full_block_list.push(info);
         } else {
             other_blocks_list.push(info);
         }
     }
 
-    fn is_full_cube_block(name: &str) -> bool {
-        let stripped = name.strip_prefix("minecraft:").unwrap_or(name);
-        !(stripped.contains("air")
-            || stripped.contains("stair")
-            || stripped.contains("slab")
-            || stripped.contains("fence")
-            || stripped.contains("wall")
-            || stripped.contains("door")
-            || stripped.contains("torch")
-            || stripped.contains("pane")
-            || stripped.contains("glass_pane")
-            || stripped.contains("lantern")
-            || stripped.contains("carpet")
-            || stripped.contains("chain")
-            || stripped.contains("iron_bars")
-            || stripped.contains("candle")
-            || stripped.contains("bell")
-            || stripped.contains("scaffolding"))
+    /// Vanilla `!hasDynamicShape() && isCollisionShapeFullBlock(...)`. Of vanilla's dynamic shape
+    /// blocks, only shulker boxes have a full collision shape.
+    fn is_collision_shape_full_block(entry: &PaletteEntry) -> bool {
+        BlockStateResolver::resolve_simple(entry).is_some_and(|state| {
+            state.is_full_cube()
+                && !state
+                    .id
+                    .to_block()
+                    .has_tag(&tag::Block::MINECRAFT_SHULKER_BOXES)
+        })
     }
 
     fn build_info_list(
@@ -1494,6 +1488,37 @@ mod tests {
                 .iter()
                 .any(|entry| !entry.properties.is_empty() && entry.name.contains("trapdoor")),
             "the palette must keep the block properties"
+        );
+    }
+
+    /// Vanilla places blocks with a full collision shape first, so a ladder goes after the stone
+    /// above it, and a shulker box (dynamic shape) goes with the other blocks.
+    #[test]
+    fn full_block_list_uses_collision_shapes() {
+        let (mut full, mut block_entities, mut other) = (Vec::new(), Vec::new(), Vec::new());
+        for (y, name) in [
+            (0, "minecraft:ladder"),
+            (1, "minecraft:stone"),
+            (2, "minecraft:moss_carpet"),
+            (3, "minecraft:shulker_box"),
+        ] {
+            let info = StructureBlockInfo::new(
+                Vector3::new(0, y, 0),
+                PaletteEntry::new(name.to_string()),
+                None,
+            );
+            StructureTemplate::add_to_lists(info, &mut full, &mut block_entities, &mut other);
+        }
+        let blocks = StructureTemplate::build_info_list(full, block_entities, other);
+        let order: Vec<_> = blocks.iter().map(|info| info.state.name.as_str()).collect();
+        assert_eq!(
+            order,
+            [
+                "minecraft:stone",
+                "minecraft:ladder",
+                "minecraft:moss_carpet",
+                "minecraft:shulker_box"
+            ]
         );
     }
 
