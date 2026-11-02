@@ -14,6 +14,7 @@ use pumpkin_util::{
     math::{position::BlockPos, vector2::Vector2, vector3::Vector3},
     text::TextComponent,
 };
+use pumpkin_world::chunk::ChunkHeightmapType;
 use pumpkin_world::world::BlockFlags;
 
 use super::{
@@ -496,13 +497,18 @@ impl DragonFight {
         self.spawn_new_gateway(world);
 
         // Place the dragon egg on the first kill.
+        // Vanilla puts it on top of whatever stands on the podium's pillar.
         if !self.previously_killed {
-            let podium_pos = self.exit_portal_location.unwrap_or(self.origin);
-            let egg_pos = BlockPos::new(podium_pos.0.x, podium_pos.0.y + 4, podium_pos.0.z);
+            let podium = super::end_podium::get_location(self.origin);
+            let egg_y = world.get_heightmap_height(
+                ChunkHeightmapType::MotionBlocking,
+                podium.0.x,
+                podium.0.z,
+            ) + 1;
             world.set_block_state(
-                &egg_pos,
+                &BlockPos::new(podium.0.x, egg_y, podium.0.z),
                 Block::DRAGON_EGG.default_state.id,
-                BlockFlags::NOTIFY_LISTENERS,
+                BlockFlags::NOTIFY_ALL,
             );
         }
 
