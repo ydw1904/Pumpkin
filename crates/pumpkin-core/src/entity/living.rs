@@ -33,10 +33,13 @@ use crate::entity::breath::DROWNING_INTERVAL;
 use crate::entity::combat::{CombatRules, CombatTracker, FallLocation, knockback_after_resistance};
 use crate::entity::mob::equipment::DEFAULT_EQUIPMENT_DROP_CHANCE;
 use crate::entity::mob::neutral::find_by_uuid;
+use crate::entity::player::Player;
 use crate::entity::player::statistics::{CustomStatistic, StatisticCategory};
 use crate::item::items::spear::SpearItem;
 use crate::server::Server;
+use crate::world::World;
 use crate::world::loot::LootContextParameters;
+use crate::world::scoreboard::NameTagVisibility;
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::AttributeModifierSlot;
 use pumpkin_data::attributes::Attributes;
@@ -2800,14 +2803,22 @@ impl LivingEntity {
                     final_death_message = event.death_message;
                 }
 
-                player.handle_killed(&final_death_message);
-            }
+                // Vanilla `ServerPlayer.die` sends an empty death screen message when the
+                // gamerule hides death messages.
+                let empty = TextComponent::empty();
+                player.handle_killed(if show_death_messages {
+                    &final_death_message
+                } else {
+                    &empty
+                });
 
-            if show_death_messages && let Some(server) = world.server.upgrade() {
-                // Vanilla's `PlayerList.broadcastSystemMessage` also logs it to the console.
-                tracing::info!("{}", final_death_message.clone().to_pretty_console());
-                for player in server.get_all_players() {
-                    player.send_system_message(&final_death_message);
+                if show_death_messages && let Some(server) = world.server.upgrade() {
+                    Self::broadcast_player_death_message(
+                        &world,
+                        &server,
+                        player,
+                        &final_death_message,
+                    );
                 }
             }
         } else if self.entity.custom_name.load().is_some() {
@@ -2817,6 +2828,51 @@ impl LivingEntity {
                 dyn_self.get_display_name().to_pretty_console(),
                 death_message.to_pretty_console()
             );
+        }
+    }
+
+    /// The death message broadcast of vanilla `ServerPlayer.die`, filtered by the team's
+    /// `deathMessageVisibility`.
+    fn broadcast_player_death_message(
+        world: &World,
+        server: &Server,
+        victim: &Player,
+        message: &TextComponent,
+    ) {
+        let victim_name = &victim.gameprofile.name;
+        let team = world
+            .scoreboard
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_entity_team(victim_name)
+            .map(|team| (team.death_message_visibility, team.players.clone()));
+        let in_team =
+            |player: &Player, members: &[String]| members.contains(&player.gameprofile.name);
+        match team {
+            None | Some((NameTagVisibility::Always, _)) => {
+                // Vanilla's `PlayerList.broadcastSystemMessage` also logs it to the console.
+                tracing::info!("{}", message.clone().to_pretty_console());
+                for player in server.get_all_players() {
+                    player.send_system_message(message);
+                }
+            }
+            // `PlayerList.broadcastSystemToTeam` skips the victim itself.
+            Some((NameTagVisibility::HideForOtherTeams, members)) => {
+                for player in server.get_all_players() {
+                    if player.gameprofile.id != victim.gameprofile.id && in_team(&player, &members)
+                    {
+                        player.send_system_message(message);
+                    }
+                }
+            }
+            Some((NameTagVisibility::HideForOwnTeam, members)) => {
+                for player in server.get_all_players() {
+                    if !in_team(&player, &members) {
+                        player.send_system_message(message);
+                    }
+                }
+            }
+            Some((NameTagVisibility::Never, _)) => {}
         }
     }
 
