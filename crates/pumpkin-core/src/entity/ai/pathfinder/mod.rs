@@ -2126,6 +2126,11 @@ impl PathNavigationTrait for AmphibiousPathNavigation {
         self.inner.set_progress(goal);
     }
 
+    // Anything but air underneath will do, so a spot in open water counts.
+    fn is_stable_destination(&self, world: &World, pos: &BlockPos) -> bool {
+        !world.get_block_state(&pos.down()).is_air()
+    }
+
     fn set_speed(&mut self, speed: f64) {
         self.inner.set_speed(speed);
     }
@@ -2183,41 +2188,55 @@ impl PathNavigationTrait for AmphibiousPathNavigation {
         self.inner.can_reach_within(entity, destination, distance)
     }
 
-    #[allow(clippy::too_many_lines)]
+    /// Vanilla `PathNavigation.tick` with `AmphibiousPathNavigation`'s overrides: it always
+    /// follows the path, measures from the middle of the mob, aims at the node itself rather than
+    /// the floor below it, and cuts corners only while in a liquid.
     fn tick(&mut self, entity: &LivingEntity) -> Option<NavigationTarget> {
-        if entity.entity.touching_water.load(Ordering::Relaxed) {
-            self.inner.tick_count += 1;
-            self.inner.update_path(entity);
+        let inner = &mut self.inner;
+        inner.tick_count += 1;
+        inner.update_path(entity);
+        if inner.path.as_ref().is_none_or(Path::is_done) {
+            inner.stop();
+            return None;
+        }
 
-            let mob_pos = Vector3::new(
-                entity.entity.pos.load().x,
-                entity.entity.pos.load().y + f64::from(entity.entity.height()) * 0.5,
-                entity.entity.pos.load().z,
-            );
-            self.inner.do_stuck_detection(mob_pos, entity);
-
-            if self.is_done() {
-                self.inner.stop();
-            } else if let Some(path) = &mut self.inner.path
-                && let Some(pos) = path.get_next_node_pos()
+        let pos = entity.entity.pos.load();
+        let height = entity.entity.height();
+        let width = entity.entity.width();
+        let mob_pos = Vector3::new(pos.x, pos.y + f64::from(height) * 0.5, pos.z);
+        inner.max_distance_to_waypoint = PathNavigation::waypoint_margin(width);
+        let reach = f64::from(inner.max_distance_to_waypoint);
+        let in_liquid = entity.entity.touching_water.load(Ordering::Relaxed)
+            || entity.entity.touching_lava.load(Ordering::Relaxed);
+        if let Some(path) = &mut inner.path
+            && let Some(next) = path.get_next_node_pos()
+        {
+            let close_enough = (pos.x - (f64::from(next.0.x) + 0.5)).abs() < reach
+                && (pos.z - (f64::from(next.0.z) + 0.5)).abs() < reach
+                && (pos.y - f64::from(next.0.y)).abs() < NODE_REACH_Y;
+            let next_entity_pos = path.get_next_entity_pos(width);
+            let world = entity.entity.world.load();
+            if close_enough
+                || (path
+                    .get_next_node()
+                    .is_some_and(|node| PathNavigation::can_cut_corner(node.path_type))
+                    && PathNavigation::should_target_next_node_in_direction(mob_pos, path, || {
+                        in_liquid
+                            && next_entity_pos.is_some_and(|stop| {
+                                PathNavigation::can_move_directly(
+                                    &world, mob_pos, stop, height, false,
+                                )
+                            })
+                    }))
             {
-                let target_pos = Vector3::new(
-                    f64::from(pos.0.x) + 0.5,
-                    f64::from(pos.0.y) + 0.5,
-                    f64::from(pos.0.z) + 0.5,
-                );
-                let current_pos = entity.entity.pos.load();
-                let dx = target_pos.x - current_pos.x;
-                let dy = target_pos.y - current_pos.y;
-                let dz = target_pos.z - current_pos.z;
-                let dist_sq = dx * dx + dy * dy + dz * dz;
-
-                if dist_sq < 0.5 * 0.5 {
-                    path.advance();
-                }
+                path.advance();
             }
-        } else {
-            self.inner.tick_ground(entity)?;
+        }
+        inner.do_stuck_detection(mob_pos, entity);
+
+        if self.is_done() {
+            self.inner.stop();
+            return None;
         }
         self.inner.target(entity)
     }
