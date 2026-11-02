@@ -187,6 +187,14 @@ impl TemplatePiece {
         );
 
         for block in &self.template.blocks {
+            // Transform position to world coordinates
+            let world_pos = self.transform_pos(block.pos);
+
+            // Check bounds against both the piece bounding box and the current chunk box
+            if !box_limit.contains_pos(&world_pos) || !chunk_box.contains_pos(&world_pos) {
+                continue;
+            }
+
             let palette_entry = &self.template.palette[block.state as usize];
 
             // Structure blocks are data markers
@@ -194,18 +202,20 @@ impl TemplatePiece {
                 continue;
             }
 
-            let mut placed_entry = palette_entry.clone();
             let mut block_entity_nbt = block.nbt.clone();
-
-            // Jigsaw blocks are replaced with final_state
-            if palette_entry.name == "minecraft:jigsaw" {
+            let jigsaw_entry: PaletteEntry;
+            let placed_entry = if palette_entry.name == "minecraft:jigsaw" {
+                // Jigsaw blocks are replaced with final_state
                 let final_state = block_entity_nbt
                     .as_ref()
                     .and_then(|nbt| nbt.get_string("final_state"))
                     .unwrap_or("minecraft:air");
-                placed_entry = PaletteEntry::from_string(final_state);
+                jigsaw_entry = PaletteEntry::from_string(final_state);
                 block_entity_nbt = None;
-            }
+                &jigsaw_entry
+            } else {
+                palette_entry
+            };
 
             // Skip structure void blocks
             if Self::is_structure_void(&placed_entry.name) {
@@ -214,20 +224,12 @@ impl TemplatePiece {
 
             // Resolve the block state with rotation/mirror
             let Some(state) = BlockStateResolver::resolve(
-                &placed_entry,
+                placed_entry,
                 self.place_settings.get_rotation(),
                 self.place_settings.get_mirror(),
             ) else {
                 continue;
             };
-
-            // Transform position to world coordinates
-            let world_pos = self.transform_pos(block.pos);
-
-            // Check bounds against both the piece bounding box and the current chunk box
-            if !box_limit.contains_pos(&world_pos) || !chunk_box.contains_pos(&world_pos) {
-                continue;
-            }
 
             placement.set_block(chunk, world_pos, state);
 
