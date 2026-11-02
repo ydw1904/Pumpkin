@@ -60,6 +60,11 @@ const NAMETAG_VISIBILITY_UNCHANGED_ERROR: CommandErrorType<0> = CommandErrorType
     translation::java::COMMANDS_TEAM_OPTION_NAMETAGVISIBILITY_UNCHANGED,
 );
 
+const DEATH_MESSAGE_VISIBILITY_UNCHANGED_ERROR: CommandErrorType<0> = CommandErrorType::new(
+    translation::java::COMMANDS_TEAM_OPTION_DEATHMESSAGEVISIBILITY_UNCHANGED,
+    translation::java::COMMANDS_TEAM_OPTION_DEATHMESSAGEVISIBILITY_UNCHANGED,
+);
+
 const COLLISION_RULE_UNCHANGED_ERROR: CommandErrorType<0> = CommandErrorType::new(
     translation::java::COMMANDS_TEAM_OPTION_COLLISIONRULE_UNCHANGED,
     translation::java::COMMANDS_TEAM_OPTION_COLLISIONRULE_UNCHANGED,
@@ -116,6 +121,7 @@ impl CommandExecutor for TeamAddExecutor {
             display_name: display_name_clone.clone(),
             options: 0,
             nametag_visibility: NameTagVisibility::Always,
+            death_message_visibility: NameTagVisibility::Always,
             collision_rule: CollisionRule::Always,
             color: NamedColor::White,
             player_prefix: TextComponent::empty(),
@@ -818,7 +824,7 @@ impl CommandExecutor for TeamModifyNametagVisibilityExecutor {
 }
 
 struct TeamModifyDeathMessageVisibilityExecutor {
-    value: &'static str,
+    value: NameTagVisibility,
 }
 
 impl CommandExecutor for TeamModifyDeathMessageVisibilityExecutor {
@@ -828,7 +834,7 @@ impl CommandExecutor for TeamModifyDeathMessageVisibilityExecutor {
         let team_name_owned = team_name.to_string();
         let value = self.value;
 
-        let scoreboard = world
+        let mut scoreboard = world
             .scoreboard
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -839,13 +845,23 @@ impl CommandExecutor for TeamModifyDeathMessageVisibilityExecutor {
             );
         };
 
+        if team.death_message_visibility == value {
+            return Err(DEATH_MESSAGE_VISIBILITY_UNCHANGED_ERROR.create_without_context());
+        }
+
+        let mut team = team.clone();
+        team.death_message_visibility = value;
         let team_display_name = team.display_name.clone();
+        scoreboard.update_team(&world, team);
 
         context.source.send_feedback(
             TextComponent::translate_cross(
                 translation::java::COMMANDS_TEAM_OPTION_DEATHMESSAGEVISIBILITY_SUCCESS,
                 translation::java::COMMANDS_TEAM_OPTION_DEATHMESSAGEVISIBILITY_SUCCESS,
-                [team_display_name, TextComponent::text(value.to_string())],
+                [
+                    team_display_name,
+                    TextComponent::text(value.to_str().to_string()),
+                ],
             ),
             true,
         );
@@ -1020,21 +1036,23 @@ fn modify_branch() -> LiteralArgumentBuilder {
             .then(
                 literal("deathMessageVisibility")
                     .then(
-                        literal("always")
-                            .executes(TeamModifyDeathMessageVisibilityExecutor { value: "always" }),
+                        literal("always").executes(TeamModifyDeathMessageVisibilityExecutor {
+                            value: NameTagVisibility::Always,
+                        }),
                     )
                     .then(
-                        literal("never")
-                            .executes(TeamModifyDeathMessageVisibilityExecutor { value: "never" }),
+                        literal("never").executes(TeamModifyDeathMessageVisibilityExecutor {
+                            value: NameTagVisibility::Never,
+                        }),
                     )
                     .then(literal("hideForOtherTeams").executes(
                         TeamModifyDeathMessageVisibilityExecutor {
-                            value: "hideForOtherTeams",
+                            value: NameTagVisibility::HideForOtherTeams,
                         },
                     ))
                     .then(literal("hideForOwnTeam").executes(
                         TeamModifyDeathMessageVisibilityExecutor {
-                            value: "hideForOwnTeam",
+                            value: NameTagVisibility::HideForOwnTeam,
                         },
                     )),
             )

@@ -1,6 +1,7 @@
 use crate::entity::player::Player;
 use crate::server::Server;
-use crate::world::bossbar::{Bossbar, BossbarColor, BossbarDivisions};
+use crate::world::bossbar::{Bossbar, BossbarColor, BossbarDivisions, BossbarFlags};
+use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_util::text::TextComponent;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -25,6 +26,12 @@ pub struct CustomBossbar {
     pub visible: bool,
     pub players: Vec<Uuid>,
 }
+
+const BOSSBAR_FLAGS: [(&str, BossbarFlags); 3] = [
+    ("DarkenScreen", BossbarFlags::DARKEN_SKY),
+    ("PlayBossMusic", BossbarFlags::DRAGON_BAR),
+    ("CreateWorldFog", BossbarFlags::CREATE_FOG),
+];
 
 impl CustomBossbar {
     #[deny(clippy::new_without_default)]
@@ -51,12 +58,133 @@ impl Default for CustomBossbars {
     }
 }
 
+const BOSSBAR_COLORS: [(BossbarColor, &str); 7] = [
+    (BossbarColor::Pink, "pink"),
+    (BossbarColor::Blue, "blue"),
+    (BossbarColor::Red, "red"),
+    (BossbarColor::Green, "green"),
+    (BossbarColor::Yellow, "yellow"),
+    (BossbarColor::Purple, "purple"),
+    (BossbarColor::White, "white"),
+];
+
+const BOSSBAR_OVERLAYS: [(BossbarDivisions, &str); 5] = [
+    (BossbarDivisions::NoDivision, "progress"),
+    (BossbarDivisions::Notches6, "notched_6"),
+    (BossbarDivisions::Notches10, "notched_10"),
+    (BossbarDivisions::Notches12, "notched_12"),
+    (BossbarDivisions::Notches20, "notched_20"),
+];
+
+impl CustomBossbar {
+    /// Vanilla `CustomBossEvent.Packed`, whose `optionalFieldOf` fields are left out at their
+    /// default.
+    fn pack(&self) -> NbtCompound {
+        let data = &self.bossbar_data;
+        let mut nbt = NbtCompound::new();
+        nbt.put("Name", data.title.0.to_nbt_tag());
+        if self.visible {
+            nbt.put_bool("Visible", true);
+        }
+        if self.value != 0 {
+            nbt.put_int("Value", self.value);
+        }
+        if self.max != 100 {
+            nbt.put_int("Max", self.max);
+        }
+        if let Some((_, name)) = BOSSBAR_COLORS
+            .iter()
+            .find(|(c, _)| *c == data.color && *c != BossbarColor::White)
+        {
+            nbt.put_string("Color", (*name).to_string());
+        }
+        if let Some((_, name)) = BOSSBAR_OVERLAYS
+            .iter()
+            .find(|(d, _)| *d == data.division && *d != BossbarDivisions::NoDivision)
+        {
+            nbt.put_string("Overlay", (*name).to_string());
+        }
+        for (key, flag) in BOSSBAR_FLAGS {
+            if data.flags.contains(flag) {
+                nbt.put_bool(key, true);
+            }
+        }
+        if !self.players.is_empty() {
+            nbt.put_list(
+                "Players",
+                self.players
+                    .iter()
+                    .map(|uuid| NbtTag::uuid(*uuid))
+                    .collect(),
+            );
+        }
+        nbt
+    }
+
+    /// Vanilla `CustomBossEvent.load`, which gives the bar a new random UUID.
+    fn load(id: String, nbt: &NbtCompound) -> Option<Self> {
+        let mut data = Bossbar::new(TextComponent::from_nbt(nbt.get("Name")?));
+        data.color = nbt
+            .get_string("Color")
+            .and_then(|name| BOSSBAR_COLORS.iter().find(|(_, n)| *n == name))
+            .map_or(BossbarColor::White, |(c, _)| *c);
+        data.division = nbt
+            .get_string("Overlay")
+            .and_then(|name| BOSSBAR_OVERLAYS.iter().find(|(_, n)| *n == name))
+            .map_or(BossbarDivisions::NoDivision, |(d, _)| *d);
+        for (key, flag) in BOSSBAR_FLAGS {
+            data.flags.set(flag, nbt.get_bool(key).unwrap_or(false));
+        }
+        let value = nbt.get_int("Value").unwrap_or(0);
+        let max = nbt.get_int("Max").unwrap_or(100);
+        // CustomBossEvent.setValue/setMax: progress = clamp(value / max, 0, 1)
+        data.health = (value as f32 / max as f32).clamp(0.0, 1.0);
+        Some(Self {
+            namespace: id,
+            bossbar_data: data,
+            max,
+            value,
+            visible: nbt.get_bool("Visible").unwrap_or(false),
+            players: nbt
+                .get_list("Players")
+                .unwrap_or_default()
+                .iter()
+                .filter_map(NbtTag::extract_uuid)
+                .collect(),
+        })
+    }
+}
+
 impl CustomBossbars {
     #[must_use]
     pub fn new() -> Self {
         Self {
             custom_bossbars: FxHashMap::default(),
         }
+    }
+
+    /// Loads vanilla's `custom_boss_events.dat` contents, a map of bar id to bar.
+    #[must_use]
+    pub fn load_saved_data(data: &NbtCompound) -> Self {
+        let mut bars = Self::new();
+        for (id, tag) in &data.child_tags {
+            if let Some(bar) = tag
+                .extract_compound()
+                .and_then(|nbt| CustomBossbar::load(id.to_string(), nbt))
+            {
+                bars.custom_bossbars.insert(id.to_string(), bar);
+            }
+        }
+        bars
+    }
+
+    #[must_use]
+    pub fn to_saved_data(&self) -> NbtCompound {
+        let mut data = NbtCompound::new();
+        for (id, bar) in &self.custom_bossbars {
+            data.put_compound(id, bar.pack());
+        }
+        data
     }
 
     #[must_use]

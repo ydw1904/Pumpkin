@@ -859,6 +859,54 @@ pub fn write_stopwatches_stub(
         .map_err(|e| WorldInfoError::SerializationError(e.to_string()))
 }
 
+fn saved_data_path(level_folder: &Path, namespace: &str, path: &str) -> PathBuf {
+    level_folder
+        .join("data")
+        .join(namespace)
+        .join(format!("{path}.dat"))
+}
+
+/// Reads the `data` compound of a vanilla `SavedData` file, `<world>/data/<namespace>/<path>.dat`.
+#[must_use]
+pub fn read_saved_data(level_folder: &Path, namespace: &str, path: &str) -> Option<NbtCompound> {
+    let file_path = saved_data_path(level_folder, namespace, path);
+    let compound = match File::open(&file_path) {
+        Ok(f) => match read_gzip_compound_tag(f) {
+            Ok(compound) => compound,
+            Err(e) => {
+                warn!("Failed to deserialize {}: {e}", file_path.display());
+                return None;
+            }
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => {
+            warn!("Failed to open {}: {e}", file_path.display());
+            return None;
+        }
+    };
+    compound.get_compound("data").cloned()
+}
+
+/// Writes a vanilla `SavedData` file, `<world>/data/<namespace>/<path>.dat`.
+pub fn write_saved_data(
+    level_folder: &Path,
+    namespace: &str,
+    path: &str,
+    data: NbtCompound,
+    data_version: i32,
+) -> Result<(), WorldInfoError> {
+    let file_path = saved_data_path(level_folder, namespace, path);
+    if let Some(dir) = file_path.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    let file = File::create(&file_path)?;
+    let mut root = NbtCompound::new();
+    root.put_compound("data", data);
+    root.put_int("DataVersion", data_version);
+    pumpkin_nbt::nbt_compress::write_gzip_compound_tag(root, BufWriter::new(file))
+        .map_err(|e| WorldInfoError::SerializationError(e.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

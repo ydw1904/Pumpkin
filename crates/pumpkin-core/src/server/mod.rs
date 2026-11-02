@@ -30,6 +30,7 @@ use pumpkin_world::dimension::into_level;
 use pumpkin_world::world::WorldPortalExt;
 use tracing::{debug, error, info, warn};
 
+use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_protocol::java::client::login::CEncryptionRequest;
 use pumpkin_protocol::java::client::play::{CChangeDifficulty, CTabList};
 use pumpkin_protocol::{ClientPacket, java::client::config::CPluginMessage};
@@ -38,9 +39,12 @@ use pumpkin_util::text::TextComponent;
 use pumpkin_world::world_info::anvil::{
     AnvilLevelInfo, LEVEL_DAT_BACKUP_FILE_NAME, LEVEL_DAT_FILE_NAME,
 };
+use pumpkin_world::world_info::data_files::{read_saved_data, write_saved_data};
 use pumpkin_world::world_info::{LevelData, WorldInfoError, WorldInfoReader, WorldInfoWriter};
 use rayon::prelude::*;
 use rsa::RsaPublicKey;
+use rustc_hash::FxHashMap;
+use std::collections::HashMap;
 use std::fs;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -115,6 +119,8 @@ pub struct Server {
     pub mojang_public_keys: ArcSwap<Vec<RsaPublicKey>>,
     /// The server's custom bossbars
     pub bossbars: std::sync::Mutex<CustomBossbars>,
+    /// The scoreboard every dimension shares, saved in `data/minecraft/scoreboard.dat`.
+    pub scoreboard: Arc<std::sync::Mutex<crate::world::scoreboard::Scoreboard>>,
     /// Manages all maps on the server
     pub map_manager: MapManager,
     /// The default gamemode when a player joins the server (reset every restart)
@@ -324,11 +330,17 @@ impl Server {
             listing,
             player_join_lock: std::sync::Mutex::new(()),
             branding: CachedBranding::new(),
-            bossbars: std::sync::Mutex::new(CustomBossbars::new()),
+            bossbars: std::sync::Mutex::new(
+                read_saved_data(&world_path, "minecraft", "custom_boss_events")
+                    .map_or_else(CustomBossbars::new, |data| {
+                        CustomBossbars::load_saved_data(&data)
+                    }),
+            ),
+            scoreboard: Arc::new(std::sync::Mutex::new(load_scoreboard(&world_path))),
             map_manager: MapManager::new(),
             defaultgamemode,
             player_data_storage,
-            command_storage: std::sync::Mutex::new(std::collections::HashMap::new()),
+            command_storage: std::sync::Mutex::new(load_command_storage(&world_path)),
             stopwatches: std::sync::Mutex::new(crate::world::stopwatches::Stopwatches::new()),
             random_sequences: std::sync::Mutex::new(
                 crate::world::random_sequences::RandomSequences::new(),
@@ -597,7 +609,69 @@ impl Server {
         self.sync_level_time();
         let level_data = self.level_info.load();
         self.world_info_writer
-            .write_world_info(&level_data, &self.basic_config.get_world_path())
+            .write_world_info(&level_data, &self.basic_config.get_world_path())?;
+        self.save_server_data();
+        Ok(())
+    }
+
+    /// Writes the server-wide saved data files that vanilla keeps in `data/`.
+    fn save_server_data(&self) {
+        let world_path = self.basic_config.get_world_path();
+        let data_version = pumpkin_world::world_info::MAXIMUM_SUPPORTED_WORLD_DATA_VERSION;
+        let scoreboard = self
+            .scoreboard
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .to_saved_data();
+        if let Err(err) = write_saved_data(
+            &world_path,
+            "minecraft",
+            "scoreboard",
+            scoreboard,
+            data_version,
+        ) {
+            error!("Failed to save scoreboard.dat: {err}");
+        }
+        let bossbars = self
+            .bossbars
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .to_saved_data();
+        if let Err(err) = write_saved_data(
+            &world_path,
+            "minecraft",
+            "custom_boss_events",
+            bossbars,
+            data_version,
+        ) {
+            error!("Failed to save custom_boss_events.dat: {err}");
+        }
+        // Vanilla `CommandStorage`: one `command_storage.dat` per namespace.
+        let mut storage_by_namespace: FxHashMap<&str, NbtCompound> = FxHashMap::default();
+        let command_storage = self
+            .command_storage
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for (id, contents) in command_storage.iter() {
+            let (namespace, path) = id.split_once(':').unwrap_or(("minecraft", id));
+            let container = storage_by_namespace.entry(namespace).or_default();
+            if !contents.is_empty() {
+                container.put_compound(path, contents.clone());
+            }
+        }
+        for (namespace, contents) in storage_by_namespace {
+            let mut data = NbtCompound::new();
+            data.put_compound("contents", contents);
+            if let Err(err) = write_saved_data(
+                &world_path,
+                namespace,
+                "command_storage",
+                data,
+                data_version,
+            ) {
+                error!("Failed to save {namespace} command_storage.dat: {err}");
+            }
+        }
     }
 
     pub fn reload_datapacks(&self, server: &Arc<Self>) {
@@ -926,6 +1000,7 @@ impl Server {
         {
             error!("Failed to save level.dat: {err}");
         }
+        self.save_server_data();
         info!("Completed worlds");
     }
 
@@ -1504,4 +1579,35 @@ impl Server {
             );
         self.plugin_manager.fire(self, &mut disable_event).await;
     }
+}
+
+fn load_scoreboard(world_path: &std::path::Path) -> crate::world::scoreboard::Scoreboard {
+    let mut scoreboard = crate::world::scoreboard::Scoreboard::default();
+    if let Some(data) = read_saved_data(world_path, "minecraft", "scoreboard") {
+        scoreboard.load_saved_data(&data);
+    }
+    scoreboard
+}
+
+fn load_command_storage(world_path: &std::path::Path) -> HashMap<String, NbtCompound> {
+    let mut storage = HashMap::new();
+    let Ok(namespaces) = std::fs::read_dir(world_path.join("data")) else {
+        return storage;
+    };
+    for namespace in namespaces.flatten() {
+        let Ok(namespace) = namespace.file_name().into_string() else {
+            continue;
+        };
+        let Some(contents) = read_saved_data(world_path, &namespace, "command_storage")
+            .and_then(|data| data.get_compound("contents").cloned())
+        else {
+            continue;
+        };
+        for (path, tag) in contents.child_tags {
+            if let NbtTag::Compound(compound) = tag {
+                storage.insert(format!("{namespace}:{path}"), compound);
+            }
+        }
+    }
+    storage
 }

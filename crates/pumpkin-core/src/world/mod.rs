@@ -281,8 +281,8 @@ pub struct World {
     island_schedule: std::sync::Mutex<entity_islands::Schedule>,
     /// Lookup-only entities (e.g. multipart-mob hitboxes): findable by id, never ticked or saved.
     pub lookup_only_entities: ArcSwap<Vec<Arc<dyn EntityBase>>>,
-    /// The world's scoreboard, used for tracking scores, objectives, and display information.
-    pub scoreboard: std::sync::Mutex<Scoreboard>,
+    /// The server's scoreboard, which every dimension shares like vanilla.
+    pub scoreboard: Arc<std::sync::Mutex<Scoreboard>>,
     /// The world's worldborder, defining the playable area and controlling its expansion or contraction.
     pub worldborder: std::sync::Mutex<Worldborder>,
     /// The world's time, including counting ticks for weather, time cycles, and statistics.
@@ -488,7 +488,10 @@ impl World {
             entity_index: Arc::default(),
             island_schedule: std::sync::Mutex::default(),
             lookup_only_entities: ArcSwap::new(Arc::new(Vec::new())),
-            scoreboard: std::sync::Mutex::new(Scoreboard::default()),
+            scoreboard: server
+                .upgrade()
+                .map(|server| server.scoreboard.clone())
+                .unwrap_or_default(),
             worldborder: std::sync::Mutex::new(worldborder),
             level_time: std::sync::Mutex::new(level_time),
             dimension,
