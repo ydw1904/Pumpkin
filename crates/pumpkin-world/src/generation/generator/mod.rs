@@ -148,6 +148,7 @@ pub struct VanillaGenerator {
     pub structure_allowed_biomes: FxHashMap<usize, Vec<u16>>,
     pub enabled_structure_sets: FxHashSet<usize>,
     pub possible_biomes: FxHashSet<u16>,
+    pub uniform_carvers: Option<&'static [&'static pumpkin_data::carver::CarverConfig]>,
 }
 
 impl VanillaGenerator {
@@ -222,6 +223,22 @@ impl VanillaGenerator {
         }
 
         let possible_biomes = biome_supplier.possible_biomes();
+        let uniform_carvers = {
+            let mut iter = possible_biomes
+                .iter()
+                .filter_map(|&id| pumpkin_data::chunk::Biome::from_id(id as u8).map(|b| b.carvers));
+            iter.next().map_or(Some(&[][..]), |first| {
+                iter.all(|carvers| {
+                    std::ptr::eq(first, carvers)
+                        || (first.len() == carvers.len()
+                            && first
+                                .iter()
+                                .zip(carvers.iter())
+                                .all(|(&a, &b)| std::ptr::eq(a, b)))
+                })
+                .then_some(first)
+            })
+        };
         let enabled_structure_sets = StructureSet::NAMES
             .iter()
             .enumerate()
@@ -268,6 +285,7 @@ impl VanillaGenerator {
             structure_allowed_biomes,
             enabled_structure_sets,
             possible_biomes,
+            uniform_carvers,
         }
     }
 }

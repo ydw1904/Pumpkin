@@ -22,7 +22,7 @@ use crate::{
 use super::{
     noise::perlin::DoublePerlinNoiseSampler,
     noise::router::{
-        chunk_noise_router::ChunkNoiseRouter,
+        chunk_noise_router::ChunkVeinRouter,
         density_volume::{DensityBuffer, DensityVolume},
         proto_noise_router::DoublePerlinNoiseBuilder,
         surface_height_sampler::SurfaceHeightEstimateSampler,
@@ -91,8 +91,8 @@ struct NoiseThresholdSampler {
 pub struct VeinContext<'a> {
     pub volume: DensityVolume,
     pub vein_toggle: DensityBuffer,
-    pub vein_ridged: DensityBuffer,
-    pub router: ChunkNoiseRouter<'a>,
+    pub vein_ridged: Option<DensityBuffer>,
+    pub router: ChunkVeinRouter<'a>,
     pub ore_random_deriver: &'a XoroshiroSplitter,
 }
 
@@ -107,33 +107,38 @@ impl VeinContext<'_> {
     pub const MIN_Y: i32 = Self::IRON_MIN_Y;
     pub const MAX_Y: i32 = Self::COPPER_MAX_Y;
 
-    #[must_use]
-    pub fn get_density(&self, is_iron: bool, x: i32, y: i32, z: i32) -> f32 {
+    pub fn get_density(&mut self, is_iron: bool, x: i32, y: i32, z: i32) -> f32 {
         let Some(index) = self.volume.index_of_block(x, y, z) else {
             return -1.0;
         };
-        let ridged = self.vein_ridged[index];
-        if ridged < 0.0 {
-            return -1.0;
-        }
         let toggle = self.vein_toggle[index];
-        if is_iron {
+        let input = if is_iron {
             if !(Self::IRON_MIN_Y..Self::IRON_MAX_Y).contains(&y) {
                 return -1.0;
             }
             let closest_to_bound = (Self::IRON_MAX_Y - y).min(y - Self::IRON_MIN_Y) as f32;
             let edge_roundoff = (closest_to_bound.clamp(0.0, 20.0) * 0.01) - 0.2;
-            let input = -toggle - 0.4 + edge_roundoff;
-            if input >= 0.0 { 0.7 } else { -1.0 }
+            -toggle - 0.4 + edge_roundoff
         } else {
             if !(Self::COPPER_MIN_Y..Self::COPPER_MAX_Y).contains(&y) {
                 return -1.0;
             }
             let closest_to_bound = (Self::COPPER_MAX_Y - y).min(y - Self::COPPER_MIN_Y) as f32;
             let edge_roundoff = (closest_to_bound.clamp(0.0, 20.0) * 0.01) - 0.2;
-            let input = toggle - 0.4 + edge_roundoff;
-            if input >= 0.0 { 0.7 } else { -1.0 }
+            toggle - 0.4 + edge_roundoff
+        };
+        if input < 0.0 {
+            return -1.0;
         }
+        let vein_ridged = self.vein_ridged.get_or_insert_with(|| {
+            let mut ridged = DensityBuffer::acquire(&self.volume);
+            self.router.vein_ridged_volume(&mut ridged, &self.volume);
+            ridged
+        });
+        if vein_ridged[index] < 0.0 {
+            return -1.0;
+        }
+        0.7
     }
 
     #[must_use]
@@ -333,9 +338,9 @@ impl<'a> MaterialRuleContext<'a> {
         let biome = self.surface_biomes.map_or_else(
             || chunk.get_terrain_gen_biome(x, y, z),
             |surface_biomes| {
-                let Some(id) =
+                let Some(id) = surface_biomes.single_biome().or_else(|| {
                     chunk.get_terrain_gen_biome_id_from_neighborhood(surface_biomes, x, y, z)
-                else {
+                }) else {
                     panic!("surface biome neighborhood must cover fuzzy biome lookup");
                 };
                 Biome::from_id(id).unwrap_or(&Biome::PLAINS)
