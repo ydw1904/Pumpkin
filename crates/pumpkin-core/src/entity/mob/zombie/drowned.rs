@@ -4,6 +4,7 @@ use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::Sound;
+use pumpkin_data::tag;
 use pumpkin_data::{Block, BlockDirection};
 use pumpkin_util::Hand;
 use pumpkin_util::math::position::BlockPos;
@@ -26,6 +27,7 @@ use crate::entity::ai::pathfinder::{Navigator, NavigatorGoal};
 use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::ai::util::default_random_pos;
 use crate::entity::living::LivingEntity;
+use crate::entity::mob::spawn::SpawnGroupData;
 use crate::entity::mob::zombie::ZombieEntityBase;
 use crate::entity::projectile::arrow::ArrowPickup;
 use crate::entity::projectile::trident::TridentEntity;
@@ -36,6 +38,9 @@ use crate::entity::{
 use crate::world::World;
 use pumpkin_data::entity::EntityType;
 use pumpkin_nbt::compound::NbtCompound;
+
+/// Vanilla `Drowned.NAUTILUS_SHELL_CHANCE`.
+const NAUTILUS_SHELL_CHANCE: f32 = 0.03;
 
 const DROWNED_HUNTS: &[Hunt] = &[
     Hunt::new(2, TargetMatch::Type(&EntityType::PLAYER), true).matching(ok_target),
@@ -226,6 +231,30 @@ impl Mob for DrownedEntity {
         self.entity.spawn_as_baby()
     }
 
+    fn finalize_spawn(
+        &self,
+        _world: &Arc<World>,
+        group_data: Option<SpawnGroupData>,
+    ) -> Option<SpawnGroupData> {
+        let group_data = self.finalize_spawn_super(group_data);
+        let mob_entity = &self.entity.mob_entity;
+        let offhand_empty = mob_entity
+            .living_entity
+            .entity_equipment
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&EquipmentSlot::OFF_HAND)
+            .is_empty();
+        if offhand_empty && game_random().random::<f32>() < NAUTILUS_SHELL_CHANCE {
+            mob_entity.set_item_slot(
+                &EquipmentSlot::OFF_HAND,
+                ItemStack::new(1, &Item::NAUTILUS_SHELL),
+            );
+            mob_entity.set_guaranteed_drop(&EquipmentSlot::OFF_HAND);
+        }
+        group_data
+    }
+
     /// Vanilla `Drowned.updateSwimming`, which runs from `baseTick`.
     fn base_tick(&self) {
         let mob_entity = &self.entity.mob_entity;
@@ -250,6 +279,26 @@ impl Mob for DrownedEntity {
 
     fn mob_is_pushed_by_fluids(&self) -> bool {
         !self.get_entity().is_swimming()
+    }
+
+    fn get_preferred_weapon_type(&self) -> Option<&'static tag::Tag> {
+        Some(&tag::Item::MINECRAFT_DROWNED_PREFERRED_WEAPONS)
+    }
+
+    fn can_replace_current_item(
+        &self,
+        new_item: &ItemStack,
+        current_item: &ItemStack,
+        slot: &EquipmentSlot,
+    ) -> bool {
+        current_item.item.id != Item::NAUTILUS_SHELL.id
+            && crate::entity::mob::equipment::can_replace_current_item(
+                self.get_mob_entity(),
+                self.get_preferred_weapon_type(),
+                new_item,
+                current_item,
+                slot,
+            )
     }
 
     fn mob_write_nbt(&self, nbt: &mut NbtCompound) {
