@@ -1655,23 +1655,58 @@ impl World {
         let level_for_entities = self.level.clone();
 
         let t_entities = std::time::Instant::now();
-        let tickable: Vec<_> = entities_to_tick
+        let block_chunk = |pos: Vector3<f64>| {
+            Vector2::new(
+                get_section_cord(pos.x.floor() as i32),
+                get_section_cord(pos.z.floor() as i32),
+            )
+        };
+        let entity_ticking_ready: FxHashSet<_> = entities_to_tick
+            .iter()
+            .map(|entity| block_chunk(entity.get_entity().pos.load()))
+            .collect::<FxHashSet<_>>()
+            .into_iter()
+            .filter(|chunk| level_for_entities.is_chunk_entity_ticking_ready(chunk))
+            .collect();
+        // Vanilla `ServerLevel.tick` keeps entities whose chunk can entity tick in its tick list,
+        // and ticks those in entity ticking range. A passenger in the list ticks with its root
+        // vehicle (`tickPassenger`), and a player always ticks.
+        let (tickable, frozen): (Vec<_>, Vec<_>) = entities_to_tick
             .par_iter()
             .filter_map(|entity| {
-                let entity_pos = entity.get_entity().pos.load();
-                let entity_chunk = Vector2::new(
-                    get_section_cord(entity_pos.x.floor() as i32),
-                    get_section_cord(entity_pos.z.floor() as i32),
-                );
-                if !active_chunks.entity_ticking.contains(&entity_chunk) {
+                let entity_chunk = block_chunk(entity.get_entity().pos.load());
+                if !entity_ticking_ready.contains(&entity_chunk) {
                     return None;
                 }
-                if !level_for_entities.is_chunk_loaded(&entity_chunk) {
-                    return None;
-                }
-                Some((entity, entity_chunk))
+                let ticks = match entity.get_entity().get_root_vehicle() {
+                    Some(root) if root.get_player().is_some() => true,
+                    Some(root) => {
+                        let root_chunk = block_chunk(root.get_entity().pos.load());
+                        entity_ticking_ready.contains(&root_chunk)
+                            && active_chunks.entity_ticking.contains(&root_chunk)
+                    }
+                    None => active_chunks.entity_ticking.contains(&entity_chunk),
+                };
+                Some((entity, entity_chunk, ticks))
             })
-            .collect();
+            .partition_map(|(entity, entity_chunk, ticks)| {
+                if ticks {
+                    rayon::iter::Either::Left((entity, entity_chunk))
+                } else {
+                    rayon::iter::Either::Right(entity)
+                }
+            });
+        // Entities outside entity ticking range stay frozen, but vanilla still checks whether
+        // they despawn.
+        for entity in frozen {
+            if let Some(mob) = entity.get_mob() {
+                gameplay::with_entity_owner(
+                    entity.get_entity().entity_id,
+                    || entity.rng_owner_base(),
+                    || mob.get_mob_entity().check_despawn(mob),
+                );
+            }
+        }
 
         // Entities that can affect each other tick in list order; separate islands run in
         // parallel.
