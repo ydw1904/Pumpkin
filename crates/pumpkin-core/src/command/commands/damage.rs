@@ -37,7 +37,8 @@ fn send_damage_result(
         TextComponent::translate_cross(
             translation::java::COMMANDS_DAMAGE_SUCCESS,
             translation::bedrock::COMMANDS_DAMAGE_SUCCESS,
-            [TextComponent::text(amount.to_string()), target_name],
+            // Java formats the float with `Float.toString`, e.g. `10.0`.
+            [TextComponent::text(format!("{amount:?}")), target_name],
         ),
         true,
     );
