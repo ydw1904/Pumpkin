@@ -4,8 +4,9 @@ use super::jigsaw_placement::{
 use crate::generation::structure::structures::{
     StructureGenerator, StructureGeneratorContext, StructurePieceBase, StructurePosition,
 };
+use crate::generation::structure::template::processor::HeightmapType;
 use crate::generation::structure::template::{
-    BlockMirror, BlockPlacer, BlockRotation, PaletteEntry, StructureTemplate,
+    BlockMirror, BlockPlacer, BlockRotation, PaletteEntry, StructureProcessor, StructureTemplate,
 };
 use pumpkin_util::math::block_box::BlockBox;
 use pumpkin_util::math::position::BlockPos;
@@ -101,6 +102,31 @@ pub enum ProcessorListRef {
     Named(String),
     #[default]
     Empty,
+}
+
+impl ProcessorListRef {
+    /// The processors vanilla `SinglePoolElement.getSettings` adds: the element's list, then
+    /// its projection's.
+    fn load_with_projection(&self, projection: JigsawProjection) -> Arc<[StructureProcessor]> {
+        let processors = match self {
+            Self::Named(name) => {
+                crate::generation::structure::template::processor::load_processor_list(name)
+            }
+            Self::Empty => Arc::from([]),
+        };
+        match projection {
+            JigsawProjection::Rigid => processors,
+            // `StructureTemplatePool.Projection.TERRAIN_MATCHING`
+            JigsawProjection::TerrainMatching => processors
+                .iter()
+                .cloned()
+                .chain([StructureProcessor::Gravity {
+                    heightmap: HeightmapType::WorldSurfaceWg,
+                    offset: -1,
+                }])
+                .collect(),
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -841,12 +867,7 @@ impl StructurePieceBase for PoolElementStructurePiece {
                     origin.y,
                     origin.z + corner.1.min(0),
                 );
-                let processors = match processor_list {
-                    ProcessorListRef::Named(name) => {
-                        crate::generation::structure::template::processor::load_processor_list(name)
-                    }
-                    ProcessorListRef::Empty => Arc::from([]),
-                };
+                let processors = processor_list.load_with_projection(self.element.projection);
                 crate::generation::structure::template::place_template(
                     &mut crate::generation::update_shape::GenerationRegion(region),
                     &template,
@@ -904,12 +925,7 @@ pub fn place_pool_element_templates(
                 origin.y,
                 origin.z + corner.1.min(0),
             );
-            let processors = match processor_list {
-                ProcessorListRef::Named(name) => {
-                    crate::generation::structure::template::processor::load_processor_list(name)
-                }
-                ProcessorListRef::Empty => Arc::from([]),
-            };
+            let processors = processor_list.load_with_projection(piece.element.projection);
             crate::generation::structure::template::place_template_with_options(
                 placer,
                 &template,

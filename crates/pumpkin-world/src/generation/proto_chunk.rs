@@ -1977,6 +1977,10 @@ impl BlockPlacer for ProtoChunk {
         self.get_block_state(pos)
     }
 
+    fn get_height(&self, heightmap: HeightMap, x: i32, z: i32) -> i32 {
+        Self::get_top_y(self, &heightmap, x, z)
+    }
+
     fn set_block_state(&mut self, pos: &Vector3<i32>, state: &BlockState) {
         Self::set_block_state(self, pos.x, pos.y, pos.z, state);
     }

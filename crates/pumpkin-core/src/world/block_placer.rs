@@ -3,8 +3,10 @@ use std::sync::Arc;
 use pumpkin_data::fluid::Fluid;
 use pumpkin_data::{Block, BlockState, BlockStateId};
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_util::HeightMap;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_world::chunk::ChunkHeightmapType;
 use pumpkin_world::generation::structure::template::BlockPlacer;
 use pumpkin_world::level::Level;
 use pumpkin_world::tick::TickPriority;
@@ -60,6 +62,20 @@ impl BlockPlacer for WorldBlockPlacer<'_> {
     fn get_block_state(&self, pos: &Vector3<i32>) -> BlockStateId {
         self.world
             .get_block_state_id(&BlockPos::new(pos.x, pos.y, pos.z))
+    }
+
+    fn get_height(&self, heightmap: HeightMap, x: i32, z: i32) -> i32 {
+        // Like vanilla `GravityProcessor` in a `ServerLevel`, worldgen heightmaps read their
+        // final counterparts. Level chunks keep no ocean floor heightmap.
+        let heightmap = match heightmap {
+            HeightMap::WorldSurfaceWg
+            | HeightMap::WorldSurface
+            | HeightMap::OceanFloorWg
+            | HeightMap::OceanFloor => ChunkHeightmapType::WorldSurface,
+            HeightMap::MotionBlocking => ChunkHeightmapType::MotionBlocking,
+            HeightMap::MotionBlockingNoLeaves => ChunkHeightmapType::MotionBlockingNoLeaves,
+        };
+        self.world.get_heightmap_height(heightmap, x, z) + 1
     }
 
     fn set_block_state(&mut self, pos: &Vector3<i32>, state: &BlockState) {

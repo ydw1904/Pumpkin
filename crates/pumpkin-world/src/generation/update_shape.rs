@@ -40,6 +40,10 @@ impl<T: GenerationCache + ?Sized> BlockPlacer for GenerationRegion<'_, T> {
         GenerationCache::get_block_state(self.0, pos)
     }
 
+    fn get_height(&self, heightmap: pumpkin_util::HeightMap, x: i32, z: i32) -> i32 {
+        self.0.get_top_y(&heightmap, x, z)
+    }
+
     fn set_block_state(&mut self, pos: &Vector3<i32>, state: &BlockState) {
         if let Some(chunk) = self.0.get_chunk_mut(pos.x >> 4, pos.z >> 4) {
             chunk.set_block_state(pos.x, pos.y, pos.z, state);

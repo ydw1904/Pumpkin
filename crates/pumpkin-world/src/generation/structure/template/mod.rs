@@ -37,6 +37,7 @@ use pumpkin_data::Mirror;
 use pumpkin_data::Rotation;
 use pumpkin_data::fluid::Fluid;
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
+use pumpkin_util::HeightMap;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::random::{RandomImpl, hash_block_pos, legacy_rand::LegacyRand};
 
@@ -64,6 +65,8 @@ pub use template_piece::TemplatePiece;
 /// [`WorldBlockPlacer`] (live `/place template` command).
 pub trait BlockPlacer {
     fn get_block_state(&self, pos: &Vector3<i32>) -> BlockStateId;
+    /// Vanilla `LevelReader.getHeight`: the Y just above the heightmap's top block.
+    fn get_height(&self, heightmap: HeightMap, x: i32, z: i32) -> i32;
     /// Sets a block like vanilla does with `UPDATE_KNOWN_SHAPE` (flag 16).
     fn set_block_state(&mut self, pos: &Vector3<i32>, state: &BlockState);
     /// Sets a block like vanilla `WorldGenRegion.setBlock` without `UPDATE_KNOWN_SHAPE`, which
@@ -129,10 +132,7 @@ pub fn place_template_with_options(
 
     let mut context_rng = LegacyRand::from_seed(hash_block_pos(world_x, origin.y, world_z) as u64);
     let mut context = processor::ProcessorContext::new(origin, processors, &mut context_rng);
-    // Jigsaw pieces place with a known shape (`SinglePoolElement.getSettings`). The live
-    // commands leave other shape updates to the world's own block updates.
-    let mut placement = TemplateBlockPlacement::new(apply_waterlogging, true);
-
+    let mut processed = Vec::with_capacity(template.blocks.len());
     for block in &template.blocks {
         let palette_entry = &template.palette[block.state as usize];
 
@@ -186,14 +186,22 @@ pub fn place_template_with_options(
             continue;
         }
 
-        let world_pos = Vector3::new(wx, wy, wz);
+        let mut world_pos = Vector3::new(wx, wy, wz);
 
-        // Apply processors
+        // Vanilla `StructureTemplate.processBlockInfos`: every processor sees the position the
+        // previous ones left, and seeds its own random from it.
         let mut should_place = true;
         let mut capped_idx = 0;
-        let mut rng =
-            LegacyRand::from_seed(hash_block_pos(world_pos.x, world_pos.y, world_pos.z) as u64);
         for processor in processors {
+            if let processor::StructureProcessor::Gravity { heightmap, offset } = processor {
+                // `GravityProcessor` keeps the block's height within the template.
+                world_pos.y = placer.get_height((*heightmap).into(), world_pos.x, world_pos.z)
+                    + offset
+                    + block.pos.y;
+                continue;
+            }
+            let mut rng =
+                LegacyRand::from_seed(hash_block_pos(world_pos.x, world_pos.y, world_pos.z) as u64);
             let Some(processed_state) = processor.process_with_context(
                 placer,
                 world_pos,
@@ -215,7 +223,18 @@ pub fn place_template_with_options(
         if skip_air && state.id.to_block_id() == pumpkin_data::Block::AIR.id {
             continue;
         }
+        processed.push((world_pos, state, block_entity_nbt));
+    }
 
+    // Vanilla processes the whole template before placing anything, so rule processors read
+    // the world as it was before this template. Jigsaw pieces place with a known shape
+    // (`SinglePoolElement.getSettings`). The live commands leave other shape updates to the
+    // world's own block updates.
+    let mut placement = TemplateBlockPlacement::new(apply_waterlogging, true);
+    for (world_pos, state, block_entity_nbt) in processed {
+        if chunk_box.is_some_and(|bbox| !bbox.contains_pos(&world_pos)) {
+            continue;
+        }
         placement.set_block(placer, world_pos, state);
 
         // Create block entities for interactive blocks (furnaces, chests, etc.)
@@ -226,9 +245,9 @@ pub fn place_template_with_options(
             let mut placed_nbt = NbtCompound::new();
 
             placed_nbt.put_string("id", fallback_id.to_string());
-            placed_nbt.put_int("x", wx);
-            placed_nbt.put_int("y", wy);
-            placed_nbt.put_int("z", wz);
+            placed_nbt.put_int("x", world_pos.x);
+            placed_nbt.put_int("y", world_pos.y);
+            placed_nbt.put_int("z", world_pos.z);
 
             if let Some(template_nbt) = &block_entity_nbt {
                 for (key, value) in &template_nbt.child_tags {
@@ -241,7 +260,8 @@ pub fn place_template_with_options(
             if placed_nbt.get_string("LootTable").is_some()
                 && placed_nbt.get_long("LootTableSeed").is_none()
             {
-                let mut random = LegacyRand::from_seed(hash_block_pos(wx, wy, wz) as u64);
+                let seed = hash_block_pos(world_pos.x, world_pos.y, world_pos.z);
+                let mut random = LegacyRand::from_seed(seed as u64);
                 placed_nbt.put_long("LootTableSeed", random.next_i64());
             }
 
@@ -391,6 +411,10 @@ mod tests {
     impl BlockPlacer for CollectingPlacer {
         fn get_block_state(&self, _pos: &Vector3<i32>) -> BlockStateId {
             Block::AIR.default_state.id
+        }
+
+        fn get_height(&self, _heightmap: HeightMap, _x: i32, _z: i32) -> i32 {
+            0
         }
 
         fn set_block_state(&mut self, _pos: &Vector3<i32>, state: &BlockState) {
