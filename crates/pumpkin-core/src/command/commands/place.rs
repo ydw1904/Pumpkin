@@ -383,6 +383,7 @@ impl CommandExecutor for PlaceStructureExecutor {
                         height_sampler: None,
                         structure_key: Some(key),
                     },
+                    &mut |_| true,
                 )
                 .ok_or_else(|| {
                     STRUCTURE_INVALID

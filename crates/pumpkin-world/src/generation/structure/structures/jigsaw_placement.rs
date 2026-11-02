@@ -541,7 +541,6 @@ impl Placer {
 
 impl JigsawPlacement {
     #[expect(clippy::too_many_arguments)]
-    #[expect(clippy::too_many_lines)]
     pub fn add_pieces(
         context: &mut StructureGeneratorContext,
         start_pool_id: &str,
@@ -554,6 +553,40 @@ impl JigsawPlacement {
         dimension_padding: DimensionPadding,
         liquid_settings: LiquidSettings,
         pool_alias_lookup: &PoolAliasLookup,
+    ) -> Option<StructurePosition> {
+        Self::add_pieces_if(
+            context,
+            start_pool_id,
+            start_jigsaw,
+            max_depth,
+            position,
+            do_expansion_hack,
+            project_start_to_heightmap,
+            max_distance_from_center,
+            dimension_padding,
+            liquid_settings,
+            pool_alias_lookup,
+            &mut |_| true,
+        )
+    }
+
+    /// Like [`Self::add_pieces`], but only expands the pieces when `is_valid_start` accepts the
+    /// start position, as vanilla checks the biome on the generation stub before running it.
+    #[expect(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_lines)]
+    pub fn add_pieces_if(
+        context: &mut StructureGeneratorContext,
+        start_pool_id: &str,
+        start_jigsaw: Option<&str>,
+        max_depth: i32,
+        position: BlockPos,
+        do_expansion_hack: bool,
+        project_start_to_heightmap: bool,
+        max_distance_from_center: &MaxDistance,
+        dimension_padding: DimensionPadding,
+        liquid_settings: LiquidSettings,
+        pool_alias_lookup: &PoolAliasLookup,
+        is_valid_start: &mut dyn FnMut(BlockPos) -> bool,
     ) -> Option<StructurePosition> {
         if max_distance_from_center.horizontal > MAX_TOTAL_STRUCTURE_RANGE {
             return None;
@@ -631,6 +664,10 @@ impl JigsawPlacement {
         }
 
         let center_y = bottom_y + local_anchor_position.y;
+        let start_pos = BlockPos::new(center_x, center_y, center_z);
+        if !is_valid_start(start_pos) {
+            return None;
+        }
 
         let global_bounding_box = BlockBox::new(
             center_x - max_distance_from_center.horizontal,
@@ -700,7 +737,7 @@ impl JigsawPlacement {
         }
 
         Some(StructurePosition {
-            start_pos: BlockPos::new(center_x, center_y, center_z),
+            start_pos,
             collector: Arc::new(std::sync::Mutex::new(collector)),
         })
     }

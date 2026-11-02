@@ -1005,6 +1005,18 @@ impl StructureGenerator for JigsawGenerator {
         &self,
         context: StructureGeneratorContext<'_>,
     ) -> Option<StructurePosition> {
+        self.get_structure_position_if(context, &mut |_| true)
+    }
+}
+
+impl JigsawGenerator {
+    /// Places the structure only if `is_valid_start` accepts its start position, checked before
+    /// the pieces are expanded like vanilla's `Structure.findValidGenerationPoint`.
+    pub fn get_structure_position_if(
+        &self,
+        context: StructureGeneratorContext<'_>,
+        is_valid_start: &mut dyn FnMut(BlockPos) -> bool,
+    ) -> Option<StructurePosition> {
         let mut context = context;
         let structure = context
             .structure_key
@@ -1080,7 +1092,7 @@ impl StructureGenerator for JigsawGenerator {
             &self.start_pool
         };
 
-        JigsawPlacement::add_pieces(
+        JigsawPlacement::add_pieces_if(
             &mut context,
             start_pool,
             start_jigsaw,
@@ -1092,6 +1104,7 @@ impl StructureGenerator for JigsawGenerator {
             dimension_padding,
             liquid_settings,
             &pool_alias_lookup,
+            is_valid_start,
         )
     }
 }
