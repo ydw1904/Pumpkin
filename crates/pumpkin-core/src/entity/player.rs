@@ -407,6 +407,8 @@ pub const DATA_VERSION: i32 = 5023; // 26.3
 /// non-creative players holding a tool that can harvest the block, so callers
 /// must apply the same gating.
 pub const MINE_BLOCK_EXHAUSTION: f32 = 0.005; // Vanilla: 0.005F
+/// Vanilla `ServerPlayer.lastSentHealth` start value, so the first tick always sends health.
+pub const LAST_SENT_HEALTH_UNSENT: f32 = -1.0E8;
 
 const fn bedrock_inventory_slot(player_screen_slot: i16) -> Option<u32> {
     match player_screen_slot {
@@ -521,7 +523,7 @@ pub struct Player {
     pub last_attacked_ticks: AtomicU32,
     /// The player's last known experience level.
     pub last_sent_xp: AtomicI32,
-    pub last_sent_health: AtomicI32,
+    pub last_sent_health: AtomicCell<f32>,
     pub last_sent_food: AtomicU8,
     pub last_food_saturation: AtomicBool,
     /// The player's permission level.
@@ -849,7 +851,7 @@ impl Player {
             held_chunk_tickets: Mutex::new(None),
             chunk_send_epoch: AtomicU32::new(0),
             last_sent_xp: AtomicI32::new(-1),
-            last_sent_health: AtomicI32::new(-1),
+            last_sent_health: AtomicCell::new(LAST_SENT_HEALTH_UNSENT),
             last_sent_food: AtomicU8::new(0),
             last_food_saturation: AtomicBool::new(true),
             subscribed_debug_sample: AtomicBool::new(false),
@@ -4501,7 +4503,8 @@ impl Player {
 
                 self.on_screen_handler_opened(&self.player_screen_handler);
 
-                self.send_health();
+                // Vanilla `ServerPlayer.teleport` to another level: resend health next tick.
+                self.last_sent_health.store(LAST_SENT_HEALTH_UNSENT);
 
                 new_world.send_world_info(&player);
                 new_world.send_center_chunk(&player).await;
@@ -4845,7 +4848,6 @@ impl Player {
 
     pub fn heal(&self, additional_health: f32) {
         self.living_entity.heal(additional_health);
-        self.send_health();
     }
 
     pub fn damage(
@@ -4982,16 +4984,16 @@ impl Player {
             return;
         }
 
-        let health = self.living_entity.health.load() as i32;
+        let health = self.living_entity.health.load();
         let food = self.hunger_manager.level.load();
         let saturation = self.hunger_manager.saturation.load();
 
-        let last_health = self.last_sent_health.load(Ordering::Relaxed);
+        let last_health = self.last_sent_health.load();
         let last_food = self.last_sent_food.load(Ordering::Relaxed);
         let last_saturation = self.last_food_saturation.load(Ordering::Relaxed);
 
         if health != last_health || food != last_food || (saturation == 0.0) != last_saturation {
-            self.last_sent_health.store(health, Ordering::Relaxed);
+            self.last_sent_health.store(health);
             self.last_sent_food.store(food, Ordering::Relaxed);
             self.last_food_saturation
                 .store(saturation == 0.0, Ordering::Relaxed);
@@ -5050,12 +5052,10 @@ impl Player {
 
     pub fn set_health(&self, health: f32) {
         self.living_entity.set_health(health);
-        self.send_health();
     }
 
     pub fn set_max_health(&self, max_health: f32) {
         self.living_entity.set_max_health(max_health);
-        self.send_health();
     }
 
     pub fn get_food_level(&self) -> u8 {
@@ -5077,7 +5077,6 @@ impl Player {
             return;
         }
         self.hunger_manager.set_level(food_event.food_level);
-        self.send_health();
     }
 
     pub fn get_saturation(&self) -> f32 {
@@ -5086,7 +5085,6 @@ impl Player {
 
     pub fn set_saturation(&self, saturation: f32) {
         self.hunger_manager.set_saturation(saturation);
-        self.send_health();
     }
 
     pub fn set_allow_flight(&self, allow: bool) {
@@ -5138,7 +5136,6 @@ impl Player {
 
     pub fn set_exhaustion(&self, exhaustion: f32) {
         self.hunger_manager.set_exhaustion(exhaustion);
-        self.send_health();
     }
 
     pub fn get_absorption(&self) -> f32 {

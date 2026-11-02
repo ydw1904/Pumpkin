@@ -48,7 +48,7 @@ impl CakeBlock {
             pumpkin_data::statistic::CustomStatistic::EatCakeSlice as i32,
             1,
         );
-        player.hunger_manager.eat(player, 2, 0.4);
+        player.hunger_manager.eat(2, 0.4);
         world.emit_game_event(GameEvent::Eat.name(), location.to_centered_f64());
 
         let mut properties = CakeLikeProperties::from_state_id(state_id);

@@ -4515,7 +4515,9 @@ impl World {
         // Vanilla `restoreFrom`: a player back from the credits keeps health, food, effects,
         // inventory and experience; the new client player needs all of them sent again.
         if alive {
-            player.last_sent_health.store(-1, Ordering::Relaxed);
+            player
+                .last_sent_health
+                .store(crate::entity::player::LAST_SENT_HEALTH_UNSENT);
             player.last_sent_xp.store(-1, Ordering::Relaxed);
             player.send_active_effects();
         } else {

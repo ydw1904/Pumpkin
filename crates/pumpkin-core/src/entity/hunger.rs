@@ -94,9 +94,6 @@ impl HungerManager {
             self.tick_timer.store(timer);
         }
 
-        if needs_sync {
-            player.send_health();
-        }
         if heal_amount > 0.0 {
             player.heal(heal_amount);
         }
@@ -107,14 +104,12 @@ impl HungerManager {
         }
     }
 
-    pub fn eat(&self, player: &Player, food: u8, saturation: f32) {
+    pub fn eat(&self, food: u8, saturation: f32) {
         let new_level = self.level.load().saturating_add(food).min(MAX_FOOD);
         let new_sat = (self.saturation.load() + saturation).clamp(0.0, f32::from(new_level));
 
         self.level.store(new_level);
         self.saturation.store(new_sat);
-
-        player.send_health();
     }
 
     /// Add exhaustion to trigger hunger decrease
