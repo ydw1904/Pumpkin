@@ -536,7 +536,6 @@ impl PathNavigation {
         self.last_stuck_check_pos = goal.current_progress;
         self.has_pending_path = true;
         self.current_goal = Some(goal);
-        self.reset_stuck_timeout();
     }
 
     pub const fn set_speed(&mut self, speed: f64) {
@@ -1239,7 +1238,6 @@ impl PathNavigationTrait for GroundPathNavigation {
             );
             self.inner.last_stuck_check = self.inner.tick_count;
             self.inner.last_stuck_check_pos = mob_pos;
-            self.inner.reset_stuck_timeout();
             self.inner.is_idle.store(false, Ordering::Relaxed);
             true
         } else {
@@ -1504,7 +1502,6 @@ impl PathNavigationTrait for FlyingPathNavigation {
             let mob_pos = entity.entity.pos.load();
             self.inner.last_stuck_check = self.inner.tick_count;
             self.inner.last_stuck_check_pos = mob_pos;
-            self.inner.reset_stuck_timeout();
             self.inner.is_idle.store(false, Ordering::Relaxed);
             true
         } else {
@@ -1789,7 +1786,6 @@ impl PathNavigationTrait for WaterBoundPathNavigation {
             );
             self.inner.last_stuck_check = self.inner.tick_count;
             self.inner.last_stuck_check_pos = mob_pos;
-            self.inner.reset_stuck_timeout();
             self.inner.is_idle.store(false, Ordering::Relaxed);
             true
         } else {
@@ -2301,7 +2297,6 @@ impl PathNavigationTrait for AmphibiousPathNavigation {
             );
             self.inner.last_stuck_check = self.inner.tick_count;
             self.inner.last_stuck_check_pos = mob_pos;
-            self.inner.reset_stuck_timeout();
             self.inner.is_idle.store(false, Ordering::Relaxed);
             true
         } else {
