@@ -1,14 +1,18 @@
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, Ordering};
 use std::time::Instant;
 
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::translation;
-use pumpkin_protocol::java::client::play::{CSystemChatMessage, CTickingState, CTickingStep};
-use pumpkin_util::text::{TextComponent, color::NamedColor};
+use pumpkin_protocol::java::client::play::{CTickingState, CTickingStep};
+use pumpkin_util::text::TextComponent;
 
+use crate::command::CommandSender;
 use crate::entity::player::Player;
 use crate::server::Server;
 const NANOSECONDS_PER_SECOND: i64 = 1_000_000_000;
+const NANOSECONDS_PER_MILLISECOND: f64 = 1_000_000.0;
+const MILLISECONDS_PER_SECOND: f64 = 1000.0;
 /// Vanilla `TickRateManager.MIN_TICKRATE`.
 const MIN_TICKRATE: f32 = 1.0;
 /// Vanilla `TickCommand.MAX_TICKRATE`. Without this, `nanoseconds_per_tick` could truncates to 0.
@@ -144,7 +148,7 @@ impl ServerTickRateManager {
         was_sprinting
     }
 
-    pub fn stop_sprinting(&self, server: &Server) -> bool {
+    pub fn stop_sprinting(&self, server: &Arc<Server>) -> bool {
         if self.is_sprinting() {
             self.finish_tick_sprint(server);
             true
@@ -169,47 +173,34 @@ impl ServerTickRateManager {
         self.remaining_sprint_ticks.fetch_sub(1, Ordering::Relaxed) == 1
     }
 
-    pub fn finish_tick_sprint(&self, server: &Server) {
-        let total_sprinted_ticks = self.scheduled_current_sprint_ticks.load(Ordering::Relaxed)
+    /// Vanilla `ServerTickRateManager.finishTickSprint`.
+    pub fn finish_tick_sprint(&self, server: &Arc<Server>) {
+        let completed_ticks = self.scheduled_current_sprint_ticks.load(Ordering::Relaxed)
             - self.remaining_sprint_ticks.load(Ordering::Relaxed);
-        let time_spent_nanos = self.sprint_time_spend.load(Ordering::Relaxed);
-
-        let inner_message = if total_sprinted_ticks > 0 && time_spent_nanos > 0 {
-            let time_spent_ms = time_spent_nanos as f64 / 1_000_000.0;
-            let tps = (total_sprinted_ticks as f64 * 1000.0) / time_spent_ms;
-            let mspt = time_spent_ms / total_sprinted_ticks as f64;
-
+        let milliseconds_to_complete = (self.sprint_time_spend.load(Ordering::Relaxed) as f64)
+            .max(1.0)
+            / NANOSECONDS_PER_MILLISECOND;
+        let ticks_per_second =
+            (MILLISECONDS_PER_SECOND * completed_ticks as f64 / milliseconds_to_complete) as i32;
+        let milliseconds_per_tick = if completed_ticks == 0 {
+            f64::from(self.nanoseconds_per_tick() as f32 / NANOSECONDS_PER_MILLISECOND as f32)
+        } else {
+            milliseconds_to_complete / completed_ticks as f64
+        };
+        self.scheduled_current_sprint_ticks
+            .store(0, Ordering::Relaxed);
+        self.sprint_time_spend.store(0, Ordering::Relaxed);
+        CommandSender::Console.into_source(server).send_feedback(
             TextComponent::translate_cross(
                 translation::java::COMMANDS_TICK_SPRINT_REPORT,
                 translation::java::COMMANDS_TICK_SPRINT_REPORT,
                 [
-                    TextComponent::text(format!("{tps:.2}")),
-                    TextComponent::text(format!("{mspt:.2}")),
+                    TextComponent::text(ticks_per_second.to_string()),
+                    TextComponent::text(format!("{milliseconds_per_tick:.2}")),
                 ],
-            )
-        } else {
-            // This is the message for `/tick sprint stop` or a zero-tick sprint.
-            TextComponent::translate_cross(
-                translation::java::COMMANDS_TICK_SPRINT_STOP_SUCCESS,
-                translation::java::COMMANDS_TICK_SPRINT_STOP_SUCCESS,
-                [],
-            )
-        };
-
-        // Construct the final component with the [Server: ...] wrapper
-        let final_report = TextComponent::text("[Server: ")
-            .add_child(inner_message)
-            .add_child(TextComponent::text("]"))
-            .italic()
-            .color_named(NamedColor::Gray);
-
-        // Send as a system chat message, which does not add a sender prefix.
-        server.broadcast_packet_all(&CSystemChatMessage::new(&final_report, false));
-
-        // Reset state after sending the report
-        self.scheduled_current_sprint_ticks
-            .store(0, Ordering::Relaxed);
-        self.sprint_time_spend.store(0, Ordering::Relaxed);
+            ),
+            true,
+        );
         self.remaining_sprint_ticks.store(0, Ordering::Relaxed);
         self.set_frozen(server, self.previous_is_frozen.load(Ordering::Relaxed));
         // server.on_tick_rate_changed();
