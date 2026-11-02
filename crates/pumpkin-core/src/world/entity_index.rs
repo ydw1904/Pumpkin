@@ -9,10 +9,14 @@ use crossbeam::atomic::AtomicCell;
 
 type Registry = Vec<Arc<dyn EntityBase>>;
 type Cell = [i32; 3];
+type Column = [i32; 2];
 
 const CELL_SIZE: f64 = 4.0;
 // This limits index allocation, not entity size or query coverage.
 const MAX_ENTITY_CELLS: u64 = 64;
+// Cells per column side, so columns span 16 blocks and the full height.
+const COLUMN_CELLS: i32 = 4;
+const COLUMN_QUERY_RATIO: u64 = 8;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct CellRange {
@@ -56,12 +60,91 @@ impl CellRange {
     fn contains(self, cell: Cell) -> bool {
         (0..3).all(|axis| self.min[axis] <= cell[axis] && cell[axis] <= self.max[axis])
     }
+
+    const fn column_bounds(self) -> (Column, Column) {
+        (
+            [
+                self.min[0].div_euclid(COLUMN_CELLS),
+                self.min[2].div_euclid(COLUMN_CELLS),
+            ],
+            [
+                self.max[0].div_euclid(COLUMN_CELLS),
+                self.max[2].div_euclid(COLUMN_CELLS),
+            ],
+        )
+    }
+
+    fn column_count(self) -> u64 {
+        let (min, max) = self.column_bounds();
+        min.into_iter().zip(max).fold(1u64, |count, (min, max)| {
+            count.saturating_mul((i64::from(max) - i64::from(min) + 1) as u64)
+        })
+    }
+
+    fn columns(self) -> impl Iterator<Item = Column> {
+        let (min, max) = self.column_bounds();
+        (min[0]..=max[0]).flat_map(move |x| (min[1]..=max[1]).map(move |z| [x, z]))
+    }
+
+    fn contains_column(self, column: Column) -> bool {
+        let (min, max) = self.column_bounds();
+        (0..2).all(|axis| min[axis] <= column[axis] && column[axis] <= max[axis])
+    }
 }
 
 struct Tracked {
     slot: usize,
     range: Option<CellRange>,
     synced: u32,
+}
+
+/// Entity IDs by fine cell, and by column of cells for wide queries.
+#[derive(Default)]
+struct Buckets {
+    cells: FxHashMap<Cell, Vec<i32>>,
+    columns: FxHashMap<Column, Vec<i32>>,
+    oversized: Vec<i32>,
+}
+
+impl Buckets {
+    fn insert(&mut self, entity_id: i32, range: Option<CellRange>) {
+        let Some(range) = range else {
+            self.oversized.push(entity_id);
+            return;
+        };
+        for cell in range.cells() {
+            self.cells.entry(cell).or_default().push(entity_id);
+        }
+        for column in range.columns() {
+            self.columns.entry(column).or_default().push(entity_id);
+        }
+    }
+
+    fn remove(&mut self, entity_id: i32, range: Option<CellRange>) {
+        let Some(range) = range else {
+            self.oversized.retain(|member| *member != entity_id);
+            return;
+        };
+        for cell in range.cells() {
+            remove_member(&mut self.cells, cell, entity_id);
+        }
+        for column in range.columns() {
+            remove_member(&mut self.columns, column, entity_id);
+        }
+    }
+}
+
+fn remove_member<K: std::hash::Hash + Eq>(
+    map: &mut FxHashMap<K, Vec<i32>>,
+    key: K,
+    entity_id: i32,
+) {
+    if let std::collections::hash_map::Entry::Occupied(mut members) = map.entry(key) {
+        members.get_mut().retain(|member| *member != entity_id);
+        if members.get().is_empty() {
+            members.remove();
+        }
+    }
 }
 
 /// Cells hold entity IDs, so a registry change only moves slots instead of rebuilding them.
@@ -71,8 +154,7 @@ struct Index {
     generation: u32,
     entries: FxHashMap<i32, Tracked>,
     uuids: FxHashMap<Uuid, usize>,
-    cells: FxHashMap<Cell, Vec<i32>>,
-    oversized: Vec<i32>,
+    buckets: Buckets,
 }
 
 impl Index {
@@ -95,18 +177,8 @@ impl Index {
                     entry.slot = slot;
                     entry.synced = generation;
                     if entry.range != range {
-                        Self::remove(
-                            &mut self.cells,
-                            &mut self.oversized,
-                            entity.entity_id,
-                            entry.range,
-                        );
-                        Self::insert(
-                            &mut self.cells,
-                            &mut self.oversized,
-                            entity.entity_id,
-                            range,
-                        );
+                        self.buckets.remove(entity.entity_id, entry.range);
+                        self.buckets.insert(entity.entity_id, range);
                         entry.range = range;
                     }
                 }
@@ -116,20 +188,15 @@ impl Index {
                         range,
                         synced: generation,
                     });
-                    Self::insert(
-                        &mut self.cells,
-                        &mut self.oversized,
-                        entity.entity_id,
-                        range,
-                    );
+                    self.buckets.insert(entity.entity_id, range);
                 }
             }
         }
-        let (cells, oversized) = (&mut self.cells, &mut self.oversized);
+        let buckets = &mut self.buckets;
         self.entries.retain(|&entity_id, entry| {
             let kept = entry.synced == generation;
             if !kept {
-                Self::remove(cells, oversized, entity_id, entry.range);
+                buckets.remove(entity_id, entry.range);
             }
             kept
         });
@@ -138,42 +205,6 @@ impl Index {
 
     fn entity_range(area: &BoundingBox) -> Option<CellRange> {
         CellRange::of(area).filter(|range| range.count() <= MAX_ENTITY_CELLS)
-    }
-
-    fn insert(
-        cells: &mut FxHashMap<Cell, Vec<i32>>,
-        oversized: &mut Vec<i32>,
-        entity_id: i32,
-        range: Option<CellRange>,
-    ) {
-        if let Some(range) = range {
-            for cell in range.cells() {
-                cells.entry(cell).or_default().push(entity_id);
-            }
-        } else {
-            oversized.push(entity_id);
-        }
-    }
-
-    fn remove(
-        cells: &mut FxHashMap<Cell, Vec<i32>>,
-        oversized: &mut Vec<i32>,
-        entity_id: i32,
-        range: Option<CellRange>,
-    ) {
-        if let Some(range) = range {
-            for cell in range.cells() {
-                if let std::collections::hash_map::Entry::Occupied(mut members) = cells.entry(cell)
-                {
-                    members.get_mut().retain(|member| *member != entity_id);
-                    if members.get().is_empty() {
-                        members.remove();
-                    }
-                }
-            }
-        } else {
-            oversized.retain(|member| *member != entity_id);
-        }
     }
 
     fn update(&mut self, entity_id: i32, area: &BoundingBox) {
@@ -185,32 +216,47 @@ impl Index {
             return;
         }
         let previous = std::mem::replace(&mut entry.range, next);
-        Self::remove(&mut self.cells, &mut self.oversized, entity_id, previous);
-        Self::insert(&mut self.cells, &mut self.oversized, entity_id, next);
+        self.buckets.remove(entity_id, previous);
+        self.buckets.insert(entity_id, next);
     }
 
+    /// Slots that may overlap `area`, unsorted and possibly repeated.
     fn candidates(&self, area: &BoundingBox, len: usize) -> Vec<usize> {
         let Some(range) = CellRange::of(area) else {
             return (0..len).collect();
         };
         let slot_of = |entity_id: &i32| self.entries.get(entity_id).map(|entry| entry.slot);
-        let mut slots: Vec<usize> = self.oversized.iter().filter_map(slot_of).collect();
-        if range.count() <= self.cells.len() as u64 {
+        let mut slots: Vec<usize> = self.buckets.oversized.iter().filter_map(slot_of).collect();
+        let buckets = &self.buckets;
+        let columns = range.column_count();
+        // Wide or tall queries visit far fewer columns than cells.
+        if range.count() > columns.saturating_mul(COLUMN_QUERY_RATIO) {
+            if columns <= buckets.columns.len() as u64 {
+                for column in range.columns() {
+                    if let Some(members) = buckets.columns.get(&column) {
+                        slots.extend(members.iter().filter_map(slot_of));
+                    }
+                }
+            } else {
+                for (&column, members) in &buckets.columns {
+                    if range.contains_column(column) {
+                        slots.extend(members.iter().filter_map(slot_of));
+                    }
+                }
+            }
+        } else if range.count() <= buckets.cells.len() as u64 {
             for cell in range.cells() {
-                if let Some(members) = self.cells.get(&cell) {
+                if let Some(members) = buckets.cells.get(&cell) {
                     slots.extend(members.iter().filter_map(slot_of));
                 }
             }
         } else {
-            for (&cell, members) in &self.cells {
+            for (&cell, members) in &buckets.cells {
                 if range.contains(cell) {
                     slots.extend(members.iter().filter_map(slot_of));
                 }
             }
         }
-        // Keep the registry order, including entities spanning several cells.
-        slots.sort_unstable();
-        slots.dedup();
         slots
     }
 }
@@ -246,7 +292,10 @@ impl EntityIndex {
         registry: Arc<Registry>,
         area: BoundingBox,
     ) -> impl Iterator<Item = Arc<dyn EntityBase>> + use<> {
-        let slots = self.with_index(&registry, |index| index.candidates(&area, registry.len()));
+        let mut slots = self.with_index(&registry, |index| index.candidates(&area, registry.len()));
+        // Keep the registry order, including entities spanning several cells.
+        slots.sort_unstable();
+        slots.dedup();
         slots.into_iter().filter_map(move |slot| {
             let entity = &registry[slot];
             area.intersects(&entity.get_entity().bounding_box.load())
@@ -398,6 +447,20 @@ mod tests {
             ids(&world, &huge),
             [wide.entity.entity_id, near.entity.entity_id]
         );
+        // Wide queries go through columns, which still need the exact height check.
+        let wide_area = BoundingBox::new(
+            Vector3::new(-40.0, 60.0, -40.0),
+            Vector3::new(40.0, 68.0, 40.0),
+        );
+        assert_eq!(
+            ids(&world, &wide_area),
+            [wide.entity.entity_id, near.entity.entity_id]
+        );
+        let above = BoundingBox::new(
+            Vector3::new(-40.0, 80.0, -40.0),
+            Vector3::new(40.0, 88.0, 40.0),
+        );
+        assert!(ids(&world, &above).is_empty());
         // Registry order can change independently of bounds, including island spawn ordering.
         world
             .entities
