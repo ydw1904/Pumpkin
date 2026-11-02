@@ -463,6 +463,21 @@ impl World {
                 || Worldborder::new(0.0, 0.0, 5.999_996_8E7, 0, 5, 300),
                 |saved| Worldborder::from_saved(&saved),
             );
+        let forced_chunks: FxHashSet<Vector2<i32>> =
+            pumpkin_world::world_info::data_files::read_forced_chunks(&data_dir)
+                .into_iter()
+                .map(|(x, z)| Vector2::new(x, z))
+                .collect();
+        if !forced_chunks.is_empty() {
+            let mut chunk_loading = level
+                .chunk_loading
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            for pos in &forced_chunks {
+                chunk_loading.add_force_ticket(*pos);
+            }
+            chunk_loading.send_change();
+        }
 
         Self {
             uuid: Uuid::new_v4(),
@@ -497,7 +512,7 @@ impl World {
             navigation_change_sequence: std::sync::atomic::AtomicU64::new(0),
             tick_spawns: std::sync::Mutex::new(Vec::new()),
             active_chunk_tracker: std::sync::Mutex::new(ActiveChunkTracker::default()),
-            forced_chunks: std::sync::Mutex::new(FxHashSet::default()),
+            forced_chunks: std::sync::Mutex::new(forced_chunks),
             server,
             block_entities: DashMap::new(),
             pending_block_entity_migrations: crossbeam::queue::SegQueue::new(),
@@ -686,6 +701,7 @@ impl World {
             self.save_block_entities(chunk_pos);
         }
         self.save_world_border();
+        self.save_forced_chunks();
 
         // Save portal POI to disk
         self.save_village_poi_tickets();
@@ -766,6 +782,27 @@ impl World {
         for block_entity in block_entities {
             let nbt = self.saved_block_entity_nbt(block_entity.as_ref());
             self.add_block_entity_nbt(block_entity.get_position(), &nbt);
+        }
+    }
+
+    /// Vanilla keeps `/forceload` chunks in each dimension's `chunk_tickets.dat`.
+    fn save_forced_chunks(&self) {
+        let forced: Vec<(i32, i32)> = self
+            .forced_chunks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .map(|pos| (pos.x, pos.y))
+            .collect();
+        let data_dir = pumpkin_world::world_info::data_files::minecraft_data_dir(
+            &self.level.level_folder.dim_folder,
+        );
+        if let Err(e) = pumpkin_world::world_info::data_files::write_forced_chunks(
+            &data_dir,
+            forced,
+            pumpkin_world::world_info::MAXIMUM_SUPPORTED_WORLD_DATA_VERSION,
+        ) {
+            error!("Failed to save the forced chunks: {e}");
         }
     }
 
@@ -7783,6 +7820,7 @@ impl World {
             self.save_block_entities(chunk_pos);
         }
         self.save_world_border();
+        self.save_forced_chunks();
 
         self.save_poi();
 
