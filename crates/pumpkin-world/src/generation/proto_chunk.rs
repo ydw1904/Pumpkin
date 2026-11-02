@@ -1240,12 +1240,20 @@ impl ProtoChunk {
         z: i32,
     ) -> Option<u8> {
         let biome_pos = self.get_terrain_gen_biome_pos(x, y, z);
+        self.terrain_gen_biome_id_at_quart(surface_biomes, biome_pos.x, biome_pos.y, biome_pos.z)
+    }
 
-        if biome_pos.x >> 2 == self.x && biome_pos.z >> 2 == self.z {
-            return Some(self.get_biome_id(biome_pos.x, biome_pos.y, biome_pos.z));
+    pub(crate) fn terrain_gen_biome_id_at_quart(
+        &self,
+        surface_biomes: &SurfaceBiomeNeighborhood,
+        quart_x: i32,
+        quart_y: i32,
+        quart_z: i32,
+    ) -> Option<u8> {
+        if quart_x >> 2 == self.x && quart_z >> 2 == self.z {
+            return Some(self.get_biome_id(quart_x, quart_y, quart_z));
         }
-
-        surface_biomes.get_biome_id(biome_pos.x, biome_pos.y, biome_pos.z)
+        surface_biomes.get_biome_id(quart_x, quart_y, quart_z)
     }
 
     #[must_use]
@@ -1284,13 +1292,15 @@ impl ProtoChunk {
             &terrain_cache.secondary_noise,
             settings.sea_level,
         );
-        let mut vein_context = settings.ore_veins_enabled.then(|| {
+        let vein_min_y = VeinContext::MIN_Y.max(i32::from(min_y));
+        let vein_max_y = VeinContext::MAX_Y.min(i32::from(min_y) + i32::from(self.height()));
+        let mut vein_context = (settings.ore_veins_enabled && vein_min_y < vein_max_y).then(|| {
             let volume = DensityVolume::with_block_step(
                 16,
-                self.height() as usize,
+                (vein_max_y - vein_min_y) as usize,
                 16,
                 start_x,
-                i32::from(min_y),
+                vein_min_y,
                 start_z,
             );
             let mut router = ChunkNoiseRouter::generate(
@@ -1310,6 +1320,7 @@ impl ProtoChunk {
             }
         });
         context.vein_context = vein_context.as_mut();
+        context.set_surface_biomes(self, surface_biomes);
         for local_x in 0..16 {
             for local_z in 0..16 {
                 let x = start_x + local_x;
@@ -1384,15 +1395,6 @@ impl ProtoChunk {
                     context.init_vertical(stone_depth_above, stone_depth_below, y, fluid_height);
 
                     if !state.is_air() && !state.is_liquid() {
-                        let Some(biome_id) = self.get_terrain_gen_biome_id_from_neighborhood(
-                            surface_biomes,
-                            context.block_pos_x,
-                            context.block_pos_y,
-                            context.block_pos_z,
-                        ) else {
-                            panic!("surface biome neighborhood must cover fuzzy biome lookup");
-                        };
-                        context.biome = Biome::from_id(biome_id).unwrap_or(&Biome::PLAINS);
                         let new_state = try_apply_material_rule(
                             generator.surface_rule,
                             self,
@@ -1400,8 +1402,10 @@ impl ProtoChunk {
                             surface_height_estimate_sampler,
                         );
 
-                        if let Some(state) = new_state {
-                            self.set_block_state(x, y, z, state);
+                        if let Some(new_state) = new_state
+                            && new_state.id != state.id
+                        {
+                            self.set_block_state(x, y, z, new_state);
                         }
                     }
                 }

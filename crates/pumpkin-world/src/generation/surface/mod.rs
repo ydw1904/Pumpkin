@@ -15,7 +15,8 @@ use terrain::SurfaceTerrainBuilder;
 
 use crate::{
     ProtoChunk,
-    generation::{positions::chunk_pos, section_coords},
+    chunk_system::generation_cache::SurfaceBiomeNeighborhood,
+    generation::{biome_coords, positions::chunk_pos, section_coords},
 };
 
 use super::{
@@ -41,7 +42,12 @@ pub struct MaterialRuleContext<'a> {
     pub block_pos_x: i32,
     pub block_pos_y: i32,
     pub block_pos_z: i32,
-    pub biome: &'a Biome,
+    /// Biome at the current block, resolved on first use like vanilla's `MaterialRuleContext.getBiome`.
+    biome: Option<&'static Biome>,
+    surface_biomes: Option<&'a SurfaceBiomeNeighborhood>,
+    /// Every biome `biome()` can return for this chunk, so biome conditions that can never
+    /// (or always) match skip the lookup, like vanilla's `BiomeCondition.compile`.
+    possible_biomes: Option<BiomeSet>,
     pub run_depth: i32,
     pub secondary_depth: f32,
     packed_chunk_pos: i64,
@@ -57,7 +63,10 @@ pub struct MaterialRuleContext<'a> {
     pub terrain_builder: &'a SurfaceTerrainBuilder,
     pub sea_level: i32,
     steep_material_condition: Option<bool>,
-    /// Noise samplers built by [`test_noise_threshold`], keyed by noise parameter id.
+    /// Bumped on every `init_horizontal` and `init_vertical`, like vanilla's `lastUpdateY`.
+    unique_vertical_pos_value: i64,
+    /// Noise samplers built by [`test_noise_threshold`], keyed by noise parameter id and
+    /// dimensionality like vanilla's `noiseSamplers2d`/`noiseSamplers3d`.
     ///
     /// For generated constants, `DoublePerlinNoiseParameters::id` uniquely identifies
     /// the complete parameter set; generated surface rules only reference those constants.
@@ -65,8 +74,18 @@ pub struct MaterialRuleContext<'a> {
     /// Building one is expensive and only depends on `random_deriver`, so they are
     /// reused for the lifetime of the context. Surface rules reference very few
     /// distinct noises, so a linear scan beats hashing here.
-    noise_threshold_samplers: Vec<(usize, DoublePerlinNoiseSampler)>,
+    noise_threshold_samplers: Vec<NoiseThresholdSampler>,
     pub vein_context: Option<&'a mut VeinContext<'a>>,
+}
+
+/// A noise sampler with its last value, which stays valid until the column (2D noise) or
+/// block (3D noise) changes.
+struct NoiseThresholdSampler {
+    id: usize,
+    is_3d: bool,
+    sampler: DoublePerlinNoiseSampler,
+    last_update: i64,
+    value: f64,
 }
 
 pub struct VeinContext<'a> {
@@ -78,6 +97,16 @@ pub struct VeinContext<'a> {
 }
 
 impl VeinContext<'_> {
+    /// Vanilla `OreVeinRule.VeinType.IRON` `minY`/`maxY`.
+    const IRON_MIN_Y: i32 = -60;
+    const IRON_MAX_Y: i32 = -8;
+    /// Vanilla `OreVeinRule.VeinType.COPPER` `minY`/`maxY`.
+    const COPPER_MIN_Y: i32 = 0;
+    const COPPER_MAX_Y: i32 = 50;
+    /// Blocks outside this range never get a vein, so their densities aren't sampled.
+    pub const MIN_Y: i32 = Self::IRON_MIN_Y;
+    pub const MAX_Y: i32 = Self::COPPER_MAX_Y;
+
     #[must_use]
     pub fn get_density(&self, is_iron: bool, x: i32, y: i32, z: i32) -> f32 {
         let Some(index) = self.volume.index_of_block(x, y, z) else {
@@ -89,18 +118,18 @@ impl VeinContext<'_> {
         }
         let toggle = self.vein_toggle[index];
         if is_iron {
-            if !(-60..-8).contains(&y) {
+            if !(Self::IRON_MIN_Y..Self::IRON_MAX_Y).contains(&y) {
                 return -1.0;
             }
-            let closest_to_bound = (-8 - y).min(y - -60) as f32;
+            let closest_to_bound = (Self::IRON_MAX_Y - y).min(y - Self::IRON_MIN_Y) as f32;
             let edge_roundoff = (closest_to_bound.clamp(0.0, 20.0) * 0.01) - 0.2;
             let input = -toggle - 0.4 + edge_roundoff;
             if input >= 0.0 { 0.7 } else { -1.0 }
         } else {
-            if !(0..50).contains(&y) {
+            if !(Self::COPPER_MIN_Y..Self::COPPER_MAX_Y).contains(&y) {
                 return -1.0;
             }
-            let closest_to_bound = (50 - y).min(y) as f32;
+            let closest_to_bound = (Self::COPPER_MAX_Y - y).min(y - Self::COPPER_MIN_Y) as f32;
             let edge_roundoff = (closest_to_bound.clamp(0.0, 20.0) * 0.01) - 0.2;
             let input = toggle - 0.4 + edge_roundoff;
             if input >= 0.0 { 0.7 } else { -1.0 }
@@ -153,7 +182,9 @@ impl<'a> MaterialRuleContext<'a> {
             block_pos_x: 0,
             block_pos_y: 0,
             block_pos_z: 0,
-            biome: &Biome::PLAINS,
+            biome: None,
+            surface_biomes: None,
+            possible_biomes: None,
             run_depth: 0,
             secondary_depth: 0.0,
             surface_noise,
@@ -162,6 +193,7 @@ impl<'a> MaterialRuleContext<'a> {
             stone_depth_above: 0,
             sea_level,
             steep_material_condition: None,
+            unique_vertical_pos_value: HORIZONTAL_POS - 1,
             noise_threshold_samplers: Vec::new(),
             vein_context: None,
         }
@@ -228,6 +260,7 @@ impl<'a> MaterialRuleContext<'a> {
 
     pub fn init_horizontal(&mut self, x: i32, z: i32) {
         self.unique_horizontal_pos_value += 1;
+        self.unique_vertical_pos_value += 1;
         self.block_pos_x = x;
         self.block_pos_z = z;
         self.run_depth = self.sample_run_depth();
@@ -240,7 +273,9 @@ impl<'a> MaterialRuleContext<'a> {
         y: i32,
         fluid_height: i32,
     ) {
+        self.unique_vertical_pos_value += 1;
         self.block_pos_y = y;
+        self.biome = None;
         self.fluid_height = fluid_height;
         self.stone_depth_below = stone_depth_below;
         self.stone_depth_above = stone_depth_above;
@@ -256,6 +291,60 @@ impl<'a> MaterialRuleContext<'a> {
         self.secondary_depth
     }
 
+    /// Makes biome lookups for blocks in `chunk` read neighbouring chunks' biomes from `surface_biomes`.
+    pub(crate) fn set_surface_biomes(
+        &mut self,
+        chunk: &ProtoChunk,
+        surface_biomes: &'a SurfaceBiomeNeighborhood,
+    ) {
+        self.surface_biomes = Some(surface_biomes);
+        // The fuzzy lookup reaches at most one quart past the chunk's edges.
+        let start_x = biome_coords::from_block(chunk_pos::start_block_x(chunk.x));
+        let start_z = biome_coords::from_block(chunk_pos::start_block_z(chunk.z));
+        let bottom = biome_coords::from_block(i32::from(chunk.bottom_y()));
+        let top = bottom + biome_coords::from_block(i32::from(chunk.height()));
+        let mut possible = BiomeSet::default();
+        for quart_x in start_x - 1..=start_x + 4 {
+            for quart_z in start_z - 1..=start_z + 4 {
+                for quart_y in bottom..top {
+                    if let Some(id) = chunk.terrain_gen_biome_id_at_quart(
+                        surface_biomes,
+                        quart_x,
+                        quart_y,
+                        quart_z,
+                    ) {
+                        possible.insert(id);
+                    }
+                }
+            }
+        }
+        self.possible_biomes = Some(possible);
+    }
+
+    #[expect(
+        clippy::panic,
+        reason = "surface scheduling guarantees a complete 3x3 biome neighborhood"
+    )]
+    fn biome(&mut self, chunk: &ProtoChunk) -> &'static Biome {
+        if let Some(biome) = self.biome {
+            return biome;
+        }
+        let (x, y, z) = (self.block_pos_x, self.block_pos_y, self.block_pos_z);
+        let biome = self.surface_biomes.map_or_else(
+            || chunk.get_terrain_gen_biome(x, y, z),
+            |surface_biomes| {
+                let Some(id) =
+                    chunk.get_terrain_gen_biome_id_from_neighborhood(surface_biomes, x, y, z)
+                else {
+                    panic!("surface biome neighborhood must cover fuzzy biome lookup");
+                };
+                Biome::from_id(id).unwrap_or(&Biome::PLAINS)
+            },
+        );
+        self.biome = Some(biome);
+        biome
+    }
+
     pub const fn set_steep_material_condition(&mut self, steep: bool) {
         self.steep_material_condition = Some(steep);
     }
@@ -268,7 +357,9 @@ pub fn test_condition(
     surface_height_estimate_sampler: &mut SurfaceHeightEstimateSampler,
 ) -> bool {
     match condition {
-        MaterialCondition::Biome(biome) => BiomeMaterialCondition::test(biome.biome_is, context),
+        MaterialCondition::Biome(biome) => {
+            BiomeMaterialCondition::test(biome.biome_is, chunk, context)
+        }
         MaterialCondition::NoiseThreshold(noise_threshold) => {
             test_noise_threshold(noise_threshold, context)
         }
@@ -278,7 +369,7 @@ pub fn test_condition(
         MaterialCondition::YAbove(above_y) => test_above_y_material(above_y, context),
         MaterialCondition::Water(water) => test_water_material(water, context),
         MaterialCondition::Temperature => {
-            let temperature = context.biome.weather.compute_temperature(
+            let temperature = context.biome(chunk).weather.compute_temperature(
                 context.block_pos_x as f64,
                 context.block_pos_y,
                 context.block_pos_z as f64,
@@ -413,11 +504,42 @@ pub fn estimate_surface_height(
     context.surface_min_y
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+struct BiomeSet([u64; 4]);
+
+impl BiomeSet {
+    const fn insert(&mut self, id: u8) {
+        self.0[(id >> 6) as usize] |= 1 << (id & 63);
+    }
+
+    const fn contains(&self, id: u8) -> bool {
+        self.0[(id >> 6) as usize] & (1 << (id & 63)) != 0
+    }
+}
+
 pub struct BiomeMaterialCondition;
 
 impl BiomeMaterialCondition {
-    pub fn test(biome_is: &[&'static Biome], context: &MaterialRuleContext) -> bool {
-        biome_is.contains(&context.biome)
+    pub fn test(
+        biome_is: &[&'static Biome],
+        chunk: &ProtoChunk,
+        context: &mut MaterialRuleContext,
+    ) -> bool {
+        if let Some(possible) = &context.possible_biomes {
+            let mut matching = BiomeSet::default();
+            for biome in biome_is {
+                if possible.contains(biome.id) {
+                    matching.insert(biome.id);
+                }
+            }
+            if matching == BiomeSet::default() {
+                return false;
+            }
+            if matching == *possible {
+                return true;
+            }
+        }
+        biome_is.contains(&context.biome(chunk))
     }
 }
 
@@ -425,10 +547,16 @@ pub fn test_noise_threshold(
     condition: &NoiseThresholdMaterialCondition,
     context: &mut MaterialRuleContext,
 ) -> bool {
+    let is_3d = condition.is_3d;
+    let update = if is_3d {
+        context.unique_vertical_pos_value
+    } else {
+        context.unique_horizontal_pos_value
+    };
     let cached = context
         .noise_threshold_samplers
         .iter()
-        .position(|(id, _)| *id == condition.noise.id);
+        .position(|entry| entry.id == condition.noise.id && entry.is_3d == is_3d);
     let index = cached.unwrap_or_else(|| {
         let sampler = DoublePerlinNoiseBuilder::get_noise_sampler(
             context.random_deriver,
@@ -438,20 +566,28 @@ pub fn test_noise_threshold(
         );
         context
             .noise_threshold_samplers
-            .push((condition.noise.id, sampler));
+            .push(NoiseThresholdSampler {
+                id: condition.noise.id,
+                is_3d,
+                sampler,
+                last_update: update.wrapping_sub(1),
+                value: 0.0,
+            });
         context.noise_threshold_samplers.len() - 1
     });
-    // Vanilla `MaterialRuleContext.getNoiseSampler`: 2D noise is sampled at y = 0.
-    let y = if condition.is_3d {
-        f64::from(context.block_pos_y)
-    } else {
-        0.0
-    };
-    let value = f64::from(context.noise_threshold_samplers[index].1.sample(
-        context.block_pos_x as f64,
-        y,
-        context.block_pos_z as f64,
-    ));
+    let (x, y, z) = (
+        context.block_pos_x,
+        context.block_pos_y,
+        context.block_pos_z,
+    );
+    let entry = &mut context.noise_threshold_samplers[index];
+    if entry.last_update != update {
+        entry.last_update = update;
+        // Vanilla `MaterialRuleContext.getNoiseSampler`: 2D noise is sampled at y = 0.
+        let y = if is_3d { f64::from(y) } else { 0.0 };
+        entry.value = f64::from(entry.sampler.sample(f64::from(x), y, f64::from(z)));
+    }
+    let value = entry.value;
     value >= condition.min_threshold && value <= condition.max_threshold
 }
 

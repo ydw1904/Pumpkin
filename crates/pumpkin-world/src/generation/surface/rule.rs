@@ -58,10 +58,31 @@ pub fn try_apply_sequence(
     surface_height_estimate_sampler: &mut SurfaceHeightEstimateSampler,
 ) -> Option<&'static BlockState> {
     for seq in rule.sequence {
-        if let Some(state) =
-            try_apply_material_rule(seq, chunk, context, surface_height_estimate_sampler)
-        {
-            return Some(state);
+        // Most entries are `condition -> block`; resolving those here saves two calls each.
+        let state = match seq {
+            MaterialRule::Condition(condition) => {
+                if !test_condition(
+                    &condition.if_true,
+                    chunk,
+                    context,
+                    surface_height_estimate_sampler,
+                ) {
+                    continue;
+                }
+                match condition.then_run {
+                    MaterialRule::Block(block) => Some(block.result_state),
+                    then_run => try_apply_material_rule(
+                        then_run,
+                        chunk,
+                        context,
+                        surface_height_estimate_sampler,
+                    ),
+                }
+            }
+            _ => try_apply_material_rule(seq, chunk, context, surface_height_estimate_sampler),
+        };
+        if state.is_some() {
+            return state;
         }
     }
     None
