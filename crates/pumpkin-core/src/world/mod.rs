@@ -1809,14 +1809,11 @@ impl World {
                     .zip(&tickable)
                     .map(|(report, (entity, _))| report.block_write_check(entity.as_ref()))
                     .collect();
-                let mut reaches = entity_islands::resolve(reports, islands_config)?;
-                entity_islands::prune_block_writes(self, &mut reaches, &block_write_checks)?;
-                let nodes: Vec<_> = tickable
+                let ids: Vec<_> = tickable
                     .iter()
                     .map(|(entity, _)| entity.get_entity().entity_id)
-                    .zip(reaches)
                     .collect();
-                let ticking: FxHashSet<i32> = nodes.iter().map(|(id, _)| *id).collect();
+                let ticking: FxHashSet<i32> = ids.iter().copied().collect();
                 let idle_entities: Vec<_> = entities_to_tick
                     .iter()
                     .map(|entity| entity.get_entity())
@@ -1830,8 +1827,15 @@ impl World {
                         (entity.entity_id, entity.bounding_box.load())
                     })
                     .collect();
-                let mut islands =
-                    entity_islands::partition(&nodes, &idle_entities, &player_bodies)?;
+                let mut islands = entity_islands::plan(
+                    self,
+                    &ids,
+                    reports,
+                    &block_write_checks,
+                    &idle_entities,
+                    &player_bodies,
+                    islands_config,
+                )?;
                 // Start the largest islands first.
                 islands
                     .islands

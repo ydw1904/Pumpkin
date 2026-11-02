@@ -60,6 +60,8 @@ const MAX_PLANNING_WORK: usize = 262_144;
 // everything in one group.
 const GROUP_CELL_SIZE: f64 = 64.0;
 const MAX_GROUP_CELLS: usize = 1024;
+/// Pushers an audited entity may count while its group plans on its own.
+const MAX_GROUPED_PUSHERS: usize = 256;
 
 struct PlanningBudget {
     remaining: usize,
@@ -277,6 +279,7 @@ fn changes_on_contact(block: &Block) -> bool {
         .any(|candidate| candidate.id == block.id)
 }
 
+#[derive(Clone)]
 pub enum EntityReach {
     Audited(AuditedReach),
     Conservative(TickReach),
@@ -290,6 +293,20 @@ pub(crate) enum BlockWriteCheck {
 }
 
 impl EntityReach {
+    const fn is_global(&self) -> bool {
+        match self {
+            Self::Audited(reach) => reach.global,
+            Self::Conservative(reach) => reach.global,
+        }
+    }
+
+    fn links(&self) -> &[i32] {
+        match self {
+            Self::Audited(reach) => &reach.links,
+            Self::Conservative(reach) => &reach.links,
+        }
+    }
+
     #[must_use]
     pub(crate) fn block_write_check(&self, entity: &dyn EntityBase) -> BlockWriteCheck {
         match self {
@@ -413,10 +430,16 @@ pub fn links_of(entity: &dyn EntityBase) -> Vec<i32> {
 /// Returns `None` when the tick needs serial execution or planning exceeds its budget.
 #[must_use]
 pub fn resolve(reports: Vec<EntityReach>, config: &EntityIslandsConfig) -> Option<Vec<TickReach>> {
-    if reports.iter().any(|report| match report {
-        EntityReach::Audited(reach) => reach.global,
-        EntityReach::Conservative(reach) => reach.global,
-    }) {
+    resolve_bounded(reports, config, usize::MAX)
+}
+
+/// [`resolve`], but also `None` when an audited entity counts more than `max_pushers`.
+fn resolve_bounded(
+    reports: Vec<EntityReach>,
+    config: &EntityIslandsConfig,
+    max_pushers: usize,
+) -> Option<Vec<TickReach>> {
+    if reports.iter().any(EntityReach::is_global) {
         return None;
     }
     let mut budget = PlanningBudget::default();
@@ -442,6 +465,9 @@ pub fn resolve(reports: Vec<EntityReach>, config: &EntityIslandsConfig) -> Optio
                     &mut budget,
                     |_| count += 1,
                 )?;
+                if count > max_pushers {
+                    return None;
+                }
                 let pushes = PUSH_SPEED * count as f64;
                 let probe = grown_body(&audited, pushes + config.knockback_reach.max(PUSH_SLACK));
                 let mut threatened = false;
@@ -687,6 +713,83 @@ pub struct Islands {
 /// Island of each entity and player.
 pub type IslandMap = FxHashMap<i32, usize>;
 
+/// Plans this tick's islands from each ticking entity's ID, report and block write check.
+/// Groups that can't touch each other resolve, prune and partition on their own and in
+/// parallel. Returns `None` when the tick needs serial execution or planning exceeds its budget.
+pub(crate) fn plan(
+    world: &World,
+    ids: &[i32],
+    reports: Vec<EntityReach>,
+    checks: &[BlockWriteCheck],
+    idle_entities: &[(i32, BoundingBox)],
+    players: &[(i32, BoundingBox)],
+    config: &EntityIslandsConfig,
+) -> Option<Islands> {
+    if reports.iter().any(EntityReach::is_global) {
+        return None;
+    }
+    // Audited bodies grow with the pushers they count, so their group bounds assume the most a
+    // group lets them count.
+    let grouped_extra =
+        PUSH_SPEED * MAX_GROUPED_PUSHERS as f64 + config.knockback_reach.max(PUSH_SLACK);
+    let bounds: Vec<_> = ids
+        .iter()
+        .zip(&reports)
+        .map(|(id, report)| {
+            let bounds = match report {
+                EntityReach::Conservative(reach) => total_bounds(reach),
+                EntityReach::Audited(audited) => {
+                    total_bounds(&finish(audited.clone(), grouped_extra))
+                }
+            };
+            (*id, bounds)
+        })
+        .collect();
+    let groups = groups(
+        &bounds,
+        |slot| reports[slot].links(),
+        idle_entities,
+        players,
+    );
+    let grouped = groups
+        .par_iter()
+        .map(|group| {
+            let group_reports = group
+                .nodes
+                .iter()
+                .map(|&slot| reports[slot].clone())
+                .collect();
+            let mut reaches = resolve_bounded(group_reports, config, MAX_GROUPED_PUSHERS)?;
+            let group_checks: Vec<_> = group.nodes.iter().map(|&slot| checks[slot]).collect();
+            prune_block_writes(world, &mut reaches, &group_checks)?;
+            let nodes: Vec<_> = group
+                .nodes
+                .iter()
+                .map(|&slot| ids[slot])
+                .zip(reaches)
+                .collect();
+            let local = Group {
+                nodes: (0..nodes.len()).collect(),
+                idle_entities: group.idle_entities.clone(),
+                players: group.players.clone(),
+            };
+            let mut islands = partition_group(&nodes, idle_entities, players, &local)?;
+            for slot in islands.islands.iter_mut().flatten() {
+                *slot = group.nodes[*slot];
+            }
+            Some(islands)
+        })
+        .collect::<Option<Vec<_>>>();
+    if let Some(parts) = grouped {
+        return Some(merge(parts));
+    }
+    // A group exceeded its pusher bound or budget, so plan the whole tick at once.
+    let mut reaches = resolve(reports, config)?;
+    prune_block_writes(world, &mut reaches, checks)?;
+    let nodes: Vec<_> = ids.iter().copied().zip(reaches).collect();
+    partition(&nodes, idle_entities, players)
+}
+
 /// Splits `nodes` (ticking entities in list order) into islands. Idle entities and players only
 /// connect islands.
 /// Returns `None` when the tick needs serial execution or planning exceeds its budget.
@@ -699,11 +802,20 @@ pub fn partition(
     if nodes.iter().any(|(_, reach)| reach.global) {
         return None;
     }
+    let bounds: Vec<_> = nodes
+        .iter()
+        .map(|(id, reach)| (*id, total_bounds(reach)))
+        .collect();
     // Groups can't touch each other, so each one is split on its own and in parallel.
-    let parts: Vec<_> = groups(nodes, idle_entities, players)
+    let parts: Vec<_> = groups(&bounds, |slot| &nodes[slot].1.links, idle_entities, players)
         .par_iter()
         .map(|group| partition_group(nodes, idle_entities, players, group))
         .collect::<Option<_>>()?;
+    Some(merge(parts))
+}
+
+/// Joins the islands of separate groups.
+fn merge(parts: Vec<Islands>) -> Islands {
     let mut islands = Vec::new();
     #[cfg(debug_assertions)]
     let mut island_of = IslandMap::default();
@@ -716,11 +828,21 @@ pub fn partition(
         );
         islands.extend(part.islands);
     }
-    Some(Islands {
+    Islands {
         islands,
         #[cfg(debug_assertions)]
         island_of: Arc::new(island_of),
-    })
+    }
+}
+
+/// Everything a reach can touch, as one box.
+const fn total_bounds(reach: &TickReach) -> BoundingBox {
+    let mut bounds = union(&union(&reach.body, &reach.entities), &reach.players);
+    bounds = union(&bounds, &reach.block_reads);
+    if let Some(writes) = reach.block_writes {
+        bounds = union(&bounds, &writes);
+    }
+    bounds
 }
 
 /// Nodes, idle entities and players that may touch each other, by index.
@@ -732,8 +854,9 @@ struct Group {
 
 /// Joins everything whose combined bounds share a coarse cell or a link. This only ever joins
 /// more than `partition_group` does, so it never separates entities that interact.
-fn groups(
-    nodes: &[(i32, TickReach)],
+fn groups<'a>(
+    nodes: &[(i32, BoundingBox)],
+    links: impl Fn(usize) -> &'a [i32],
     idle_entities: &[(i32, BoundingBox)],
     players: &[(i32, BoundingBox)],
 ) -> Vec<Group> {
@@ -763,13 +886,8 @@ fn groups(
         Some(())
     };
     let mut slots: FxHashMap<i32, usize> = FxHashMap::default();
-    for (slot, (id, reach)) in nodes.iter().enumerate() {
-        let mut bounds = union(&union(&reach.body, &reach.entities), &reach.players);
-        bounds = union(&bounds, &reach.block_reads);
-        if let Some(writes) = reach.block_writes {
-            bounds = union(&bounds, &writes);
-        }
-        if add(&mut sets, slot, &bounds).is_none() {
+    for (slot, (id, bounds)) in nodes.iter().enumerate() {
+        if add(&mut sets, slot, bounds).is_none() {
             return whole();
         }
         slots.insert(*id, slot);
@@ -786,8 +904,8 @@ fn groups(
         }
         slots.insert(*id, first_player + offset);
     }
-    for (slot, (_, reach)) in nodes.iter().enumerate() {
-        for link in &reach.links {
+    for slot in 0..nodes.len() {
+        for link in links(slot) {
             let other = *slots.entry(*link).or_insert_with(|| sets.push());
             sets.union(slot, other);
         }
@@ -1776,6 +1894,56 @@ mod tests {
             .is_none()
         );
         assert!(reaches.iter().all(|reach| reach.block_writes.is_some()));
+        world.level.shutdown().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn grouped_planning_matches_planning_the_whole_tick()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let folder = tempfile::tempdir()?;
+        let world = crate::entity::ai::test_support::world(&folder);
+        let config = EntityIslandsConfig::default();
+        let conservative = |x: f64| {
+            EntityReach::Conservative(TickReach::conservative(&cube(x, 1.0), 20.0, Vec::new()))
+        };
+        let pushed: Vec<_> = (0..16)
+            .flat_map(|cluster| {
+                let base = f64::from(cluster) * 3000.0;
+                [
+                    conservative(base),
+                    audited(base + 5.0),
+                    audited(base + 22.0),
+                    audited(base + 200.0),
+                ]
+            })
+            .collect();
+        // Past the grouped pusher bound, planning falls back to the whole tick.
+        let crowded: Vec<_> = (0..300)
+            .map(|_| audited(0.0))
+            .chain([audited(5000.0)])
+            .collect();
+        for reports in [pushed, crowded] {
+            let ids: Vec<i32> = (0..reports.len() as i32).collect();
+            let checks = vec![BlockWriteCheck::Unconditional; reports.len()];
+            let mut grouped = plan(&world, &ids, reports.clone(), &checks, &[], &[], &config)
+                .ok_or("grouped planning refused")?
+                .islands;
+            let mut reaches = resolve(reports, &config).ok_or("resolve refused")?;
+            prune_block_writes(&world, &mut reaches, &checks).ok_or("pruning refused")?;
+            let nodes: Vec<_> = ids.iter().copied().zip(reaches).collect();
+            let whole = Group {
+                nodes: (0..nodes.len()).collect(),
+                idle_entities: Vec::new(),
+                players: Vec::new(),
+            };
+            let mut expected = partition_group(&nodes, &[], &[], &whole)
+                .ok_or("partition refused")?
+                .islands;
+            grouped.sort();
+            expected.sort();
+            assert_eq!(grouped, expected);
+        }
         world.level.shutdown().await;
         Ok(())
     }
