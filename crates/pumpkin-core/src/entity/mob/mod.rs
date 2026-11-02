@@ -902,10 +902,11 @@ impl MobEntity {
     }
 
     pub fn is_in_attack_range(&self, target: &dyn EntityBase) -> bool {
-        const DEFAULT_ATTACK_RANGE: f64 = 0.828_427_12; // sqrt(2.04) - 0.6
+        // `Math.sqrt(2.04F) - 0.6F`, with Java's float literals widened to double.
+        const DEFAULT_ATTACK_REACH: f64 = 0.828_285_648_512_600_4;
 
         // TODO: Implement DataComponent lookup for ATTACK_RANGE when components are ready
-        let max_range = DEFAULT_ATTACK_RANGE;
+        let max_range = DEFAULT_ATTACK_REACH;
         let min_range = 0.0;
 
         let target_hitbox = target.get_entity().bounding_box.load();
