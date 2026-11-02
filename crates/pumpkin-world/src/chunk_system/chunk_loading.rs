@@ -114,9 +114,10 @@ impl ChunkLoading {
     #[inline]
     #[must_use]
     pub const fn get_level_from_simulation_distance(simulation_distance: u8) -> i8 {
-        // One more ring than the chunks that tick, so every ticking chunk has full neighbours
-        // like vanilla's simulation ticket gives.
-        Self::FULL_CHUNK_LEVEL - (simulation_distance as i8) - 1
+        // Chunks entity tick out to the simulation distance and block tick one ring further.
+        // Load full chunks two rings past that, so entity ticking chunks have the two full rings
+        // and block ticking chunks the one full ring vanilla waits for.
+        Self::FULL_CHUNK_LEVEL - (simulation_distance as i8) - 2
     }
 
     pub fn new(sender: Arc<LevelChannel>) -> Self {

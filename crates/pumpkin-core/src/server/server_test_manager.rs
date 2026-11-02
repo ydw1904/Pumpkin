@@ -333,7 +333,7 @@ impl ServerGameTestWorld {
             for chunk_z in min_chunk_z..=max_chunk_z {
                 let chunk = Vector2::new(chunk_x, chunk_z);
                 if !self.world.level.is_chunk_ticking_ready(&chunk)
-                    || !active_chunks.contains(&chunk)
+                    || !active_chunks.entity_ticking.contains(&chunk)
                 {
                     return false;
                 }

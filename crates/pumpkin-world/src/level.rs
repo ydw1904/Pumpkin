@@ -570,9 +570,13 @@ impl Level {
         gameplay::block_random_pos(&self.rand_value, x, y, z, y_mask)
     }
 
+    /// Collects this tick's random ticks and precipitation from `entity_ticking` chunks, and its
+    /// due scheduled ticks from `block_ticking` chunks, like vanilla's `tickChunk` and
+    /// `LevelTicks.tick` split them.
     pub fn get_tick_data(
         &self,
-        active_chunks: &FxHashSet<Vector2<i32>>,
+        entity_ticking: &FxHashSet<Vector2<i32>>,
+        block_ticking: &FxHashSet<Vector2<i32>>,
         random_tick_speed: i64,
     ) -> TickData {
         let samples_per_section = random_tick_speed.max(0);
@@ -580,12 +584,12 @@ impl Level {
         let mut ticks = TickData {
             block_ticks: Vec::new(),
             fluid_ticks: Vec::new(),
-            random_ticks: Vec::with_capacity(active_chunks.len() * 3),
+            random_ticks: Vec::with_capacity(entity_ticking.len() * 3),
             precipitation: Vec::new(),
         };
 
         // 1. Process active chunks (random ticks, block entities)
-        for pos in active_chunks {
+        for pos in entity_ticking {
             if !self.is_chunk_ticking_ready(pos) {
                 continue;
             }
@@ -655,7 +659,7 @@ impl Level {
             .map(|p| *p)
             .collect();
         for pos in scheduled_chunk_pos {
-            if !active_chunks.contains(&pos) || !self.is_chunk_ticking_ready(&pos) {
+            if !block_ticking.contains(&pos) || !self.is_chunk_ticking_ready(&pos) {
                 continue;
             }
             if let Some(chunk) = self.loaded_chunks.get(&pos) {
@@ -960,8 +964,18 @@ impl Level {
     /// chunk once its ticking future is done, which waits for those neighbours
     /// (`ServerChunkCache.isPositionTicking`).
     pub fn is_chunk_ticking_ready(&self, coordinates: &Vector2<i32>) -> bool {
-        (-1..=1).all(|dx| {
-            (-1..=1).all(|dz| {
+        self.are_chunks_loaded_around(*coordinates, 1)
+    }
+
+    /// Whether the chunk and the two rings around it are loaded full chunks, which vanilla's
+    /// entity ticking future waits for (`ChunkMap.prepareEntityTickingChunk`).
+    pub fn is_chunk_entity_ticking_ready(&self, coordinates: &Vector2<i32>) -> bool {
+        self.are_chunks_loaded_around(*coordinates, 2)
+    }
+
+    fn are_chunks_loaded_around(&self, coordinates: Vector2<i32>, radius: i32) -> bool {
+        (-radius..=radius).all(|dx| {
+            (-radius..=radius).all(|dz| {
                 self.loaded_chunks
                     .contains_key(&Vector2::new(coordinates.x + dx, coordinates.y + dz))
             })
@@ -1231,12 +1245,28 @@ mod tests {
         level.schedule_fluid_tick(&Fluid::WATER, fluid_pos, 0, TickPriority::Normal);
 
         let inactive = FxHashSet::default();
-        assert!(level.get_tick_data(&inactive, 0).block_ticks.is_empty());
-        assert!(level.get_tick_data(&inactive, 0).fluid_ticks.is_empty());
+        assert!(
+            level
+                .get_tick_data(&inactive, &inactive, 0)
+                .block_ticks
+                .is_empty()
+        );
+        assert!(
+            level
+                .get_tick_data(&inactive, &inactive, 0)
+                .fluid_ticks
+                .is_empty()
+        );
 
-        // An active chunk still waits until all its neighbours are loaded.
+        // Scheduled ticks only need a block ticking chunk, but still wait until all its
+        // neighbours are loaded.
         let active = FxHashSet::from_iter([chunk_pos]);
-        assert!(level.get_tick_data(&active, 0).block_ticks.is_empty());
+        assert!(
+            level
+                .get_tick_data(&inactive, &active, 0)
+                .block_ticks
+                .is_empty()
+        );
         for dx in -1..=1 {
             for dz in -1..=1 {
                 let pos = Vector2::new(chunk_pos.x + dx, chunk_pos.y + dz);
@@ -1247,7 +1277,7 @@ mod tests {
                 }
             }
         }
-        let ticks = level.get_tick_data(&active, 0);
+        let ticks = level.get_tick_data(&inactive, &active, 0);
         assert_eq!(ticks.block_ticks.len(), 1);
         assert_eq!(ticks.fluid_ticks.len(), 1);
     }

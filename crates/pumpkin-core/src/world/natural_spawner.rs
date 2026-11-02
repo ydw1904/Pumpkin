@@ -1,6 +1,7 @@
 use crate::block::PathComputationType;
 use crate::entity::EntityBase;
 use crate::entity::mob::spawn::finalize_spawn;
+use crate::entity::player::Player;
 use crate::entity::r#type::{check_spawn_rules, from_type};
 use crate::world::World;
 use arc_swap::ArcSwap;
@@ -111,13 +112,31 @@ impl fmt::Debug for LocalMobCapCalculator {
     }
 }
 
-impl LocalMobCapCalculator {
-    const fn calc_distance(chunk_pos: Vector2<i32>, player_pos: &Vector3<f64>) -> f64 {
-        let dx = ((chunk_pos.x << 4) + 8) as f64 - player_pos.x;
-        let dy = ((chunk_pos.y << 4) + 8) as f64 - player_pos.z;
-        dx * dx + dy * dy
-    }
+/// Vanilla `ChunkMap.euclideanDistanceSquared`: horizontal distance from the chunk's center.
+const fn chunk_center_distance_squared(chunk_pos: Vector2<i32>, player_pos: &Vector3<f64>) -> f64 {
+    let dx = ((chunk_pos.x << 4) + 8) as f64 - player_pos.x;
+    let dy = ((chunk_pos.y << 4) + 8) as f64 - player_pos.z;
+    dx * dx + dy * dy
+}
 
+/// Vanilla `ChunkMap.playerIsCloseEnoughForSpawning`: a non-spectator within 128 blocks of the
+/// chunk's center.
+fn player_is_close_enough_for_spawning(player: &Player, chunk_pos: Vector2<i32>) -> bool {
+    player.gamemode.load() != GameMode::Spectator
+        && chunk_center_distance_squared(chunk_pos, &player.position()) < 16384.0
+}
+
+/// Vanilla `ChunkMap.anyPlayerCloseEnoughForSpawningInternal`.
+pub fn any_player_close_enough_for_spawning(
+    players: &[Arc<Player>],
+    chunk_pos: Vector2<i32>,
+) -> bool {
+    players
+        .iter()
+        .any(|player| player_is_close_enough_for_spawning(player, chunk_pos))
+}
+
+impl LocalMobCapCalculator {
     fn get_players_near(&self, world: &World, chunk_pos: Vector2<i32>) -> Arc<[i32]> {
         if let Some(players) = self.players_near_chunk.get(&chunk_pos) {
             return players.value().clone();
@@ -125,10 +144,7 @@ impl LocalMobCapCalculator {
 
         let mut players = Vec::new();
         for player in world.players.load().iter() {
-            if player.gamemode.load() == GameMode::Spectator {
-                continue;
-            }
-            if Self::calc_distance(chunk_pos, &player.position()) < 16384.0 {
+            if player_is_close_enough_for_spawning(player, chunk_pos) {
                 players.push(player.entity_id());
             }
         }
@@ -364,11 +380,6 @@ impl SpawnState {
         let potential = PotentialCalculator::default();
         let local_mob_cap = LocalMobCapCalculator::default();
         let counter = MobCounts::default();
-        let active_chunks = world
-            .active_chunks
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
         for entity in entities.load().iter() {
             if let Some(mob) = entity.get_mob()
                 && (mob.get_mob_entity().persistence_required.load(Relaxed)
@@ -381,8 +392,9 @@ impl SpawnState {
             if entity_type.category == &MobCategory::MISC {
                 continue;
             }
+            // Vanilla `NaturalSpawner.createState` counts mobs in every loaded full chunk.
             let chunk_pos = base_entity.chunk_pos.load();
-            if !active_chunks.contains(&chunk_pos) {
+            if !world.level.is_chunk_loaded(&chunk_pos) {
                 continue;
             }
             let entity_pos = base_entity.block_pos.load();
@@ -891,17 +903,7 @@ pub fn is_right_distance_to_player_and_spawn_point(
     let chunk_x = get_section_cord(pos.0.x);
     let chunk_z = get_section_cord(pos.0.z);
     let target_chunk = Vector2::new(chunk_x, chunk_z);
-    target_chunk == *chunk_pos
-        || (world
-            .active_chunks
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .contains(&target_chunk)
-            && world
-                .worldborder
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .contains_block(pos.0.x, pos.0.z))
+    target_chunk == *chunk_pos || world.can_spawn_entities_in_chunk(target_chunk)
 }
 
 /// Vanilla `NetherFortressStructure.FORTRESS_ENEMIES`.
