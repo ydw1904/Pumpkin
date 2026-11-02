@@ -27,7 +27,7 @@ use std::sync::atomic::Ordering::{AcqRel, Relaxed};
 use std::sync::{
     Arc, Mutex,
     atomic::{
-        AtomicBool, AtomicU8, AtomicU32,
+        AtomicBool, AtomicI32, AtomicU8,
         Ordering::{self},
     },
 };
@@ -38,7 +38,7 @@ use crate::world::entity_islands::{self, AuditedReach};
 
 pub struct ItemEntity {
     entity: Entity,
-    item_age: AtomicU32,
+    item_age: AtomicI32,
     thrower: crossbeam::atomic::AtomicCell<Option<uuid::Uuid>>,
     // These cannot be atomic values because we mutate their state based on what they are; we run
     // into the ABA problem
@@ -90,7 +90,11 @@ impl Drop for ItemMergeReservation<'_> {
 }
 
 /// Vanilla `ItemEntity.LIFETIME`.
-const LIFETIME: u32 = 6000; // 5 minutes in ticks
+const LIFETIME: i32 = 6000; // 5 minutes in ticks
+/// Vanilla `ItemEntity.INFINITE_PICKUP_DELAY`, saved for items nobody can pick up.
+const INFINITE_PICKUP_DELAY: i16 = 32767;
+/// Vanilla `ItemEntity.INFINITE_LIFETIME`, saved for items that never despawn.
+const INFINITE_LIFETIME: i16 = -32768;
 /// Vanilla `ItemEntity.merge(to, from, 64)`: cap on top of `getMaxStackSize`.
 const MERGE_MAX_COUNT: u8 = 64;
 
@@ -117,7 +121,7 @@ impl ItemEntity {
         Self {
             entity,
             item_stack: Mutex::new(item_stack),
-            item_age: AtomicU32::new(0),
+            item_age: AtomicI32::new(0),
             thrower: crossbeam::atomic::AtomicCell::new(None),
             pickup_delay: AtomicU8::new(Self::DEFAULT_PICKUP_DELAY),
             health: AtomicF32::new(5.0),
@@ -141,7 +145,7 @@ impl ItemEntity {
         Self {
             entity,
             item_stack: Mutex::new(item_stack),
-            item_age: AtomicU32::new(0),
+            item_age: AtomicI32::new(0),
             thrower: crossbeam::atomic::AtomicCell::new(None),
             pickup_delay: AtomicU8::new(pickup_delay), // Vanilla pickup delay is 10 ticks
             health: AtomicF32::new(5.0),
@@ -163,7 +167,7 @@ impl ItemEntity {
         Self {
             entity,
             item_stack: Mutex::new(ItemStack::new(1, &pumpkin_data::item::Item::AIR)),
-            item_age: AtomicU32::new(0),
+            item_age: AtomicI32::new(0),
             thrower: crossbeam::atomic::AtomicCell::new(None),
             pickup_delay: AtomicU8::new(0),
             health: AtomicF32::new(5.0),
@@ -747,6 +751,7 @@ impl EntityBase for ItemEntity {
 
     fn on_player_collision(&self, player: &Arc<Player>) {
         if self.pickup_delay.load(Ordering::Relaxed) > 0
+            || self.never_pickup.load(Ordering::Relaxed)
             || player.living_entity.health.load() <= 0.0
             || player.is_spectator()
         {
@@ -853,11 +858,18 @@ impl EntityBase for ItemEntity {
         item.write_item_stack(&mut item_compound);
         nbt.put_compound("Item", item_compound);
 
-        nbt.put_short("Age", self.item_age.load(Ordering::Relaxed) as i16);
-        nbt.put_short(
-            "PickupDelay",
-            self.pickup_delay.load(Ordering::Relaxed) as i16,
-        );
+        let age = if self.never_despawn.load(Ordering::Relaxed) {
+            INFINITE_LIFETIME
+        } else {
+            self.item_age.load(Ordering::Relaxed) as i16
+        };
+        nbt.put_short("Age", age);
+        let pickup_delay = if self.never_pickup.load(Ordering::Relaxed) {
+            INFINITE_PICKUP_DELAY
+        } else {
+            i16::from(self.pickup_delay.load(Ordering::Relaxed))
+        };
+        nbt.put_short("PickupDelay", pickup_delay);
         nbt.put_short("Health", self.health.load(Relaxed) as i16);
         if let Some(thrower) = self.thrower.load() {
             nbt.put_uuid("Thrower", thrower);
@@ -879,12 +891,17 @@ impl EntityBase for ItemEntity {
         }
 
         // Vanilla stores Age as a short
-        self.item_age
-            .store(nbt.get_short("Age").unwrap_or(0) as u32, Ordering::Relaxed);
+        let age = nbt.get_short("Age").unwrap_or(0);
+        self.never_despawn
+            .store(age == INFINITE_LIFETIME, Ordering::Relaxed);
+        self.item_age.store(i32::from(age), Ordering::Relaxed);
 
         // Vanilla stores PickupDelay as a short
         if let Some(delay) = nbt.get_short("PickupDelay") {
-            self.pickup_delay.store(delay as u8, Ordering::Relaxed);
+            self.never_pickup
+                .store(delay == INFINITE_PICKUP_DELAY, Ordering::Relaxed);
+            self.pickup_delay
+                .store(delay.clamp(0, i16::from(u8::MAX)) as u8, Ordering::Relaxed);
         }
 
         // Vanilla stores Health as a short
@@ -959,6 +976,34 @@ mod tests {
     use pumpkin_data::{Enchantment, damage::DamageType};
     use pumpkin_nbt::compound::NbtCompound;
     use pumpkin_util::text::TextComponent;
+
+    /// Age -32768 and pickup delay 32767 mark items that never despawn and that nobody can
+    /// pick up. Read as plain numbers, such an item despawned on its first tick.
+    #[tokio::test]
+    async fn infinite_age_and_pickup_delay_survive_a_save() {
+        let folder = tempfile::tempdir().unwrap();
+        let world = crate::entity::ai::test_support::world(&folder);
+        let mut item = NbtCompound::new();
+        ItemStack::new(2, &Item::NETHER_STAR).write_item_stack(&mut item);
+        let mut nbt = NbtCompound::new();
+        nbt.put_string("id", "minecraft:item".to_string());
+        nbt.put_compound("Item", item);
+        nbt.put_short("Age", -32768);
+        nbt.put_short("PickupDelay", 32767);
+
+        let entity = crate::entity::r#type::load_entity_from_nbt(
+            &nbt,
+            pumpkin_util::math::vector3::Vector3::new(0.5, 64.0, 0.5),
+            &world,
+        )
+        .unwrap();
+        let mut saved = NbtCompound::new();
+        entity.write_nbt(&mut saved);
+
+        assert_eq!(saved.get_short("Age"), Some(-32768));
+        assert_eq!(saved.get_short("PickupDelay"), Some(32767));
+        world.level.shutdown().await;
+    }
 
     #[test]
     fn different_counts_merge_up_to_max_stack() {
