@@ -116,6 +116,18 @@ impl Dirtiable for ChunkData {
     }
 }
 
+/// Whether vanilla knows the block entity's type. Other namespaces are kept for plugins.
+#[must_use]
+pub fn is_vanilla_block_entity(nbt: &NbtCompound) -> bool {
+    let types = pumpkin_data::block_properties::BLOCK_ENTITY_TYPES;
+    nbt.get_string("id")
+        .is_some_and(|id| match id.split_once(':') {
+            Some(("minecraft", name)) => types.contains(&name),
+            Some(_) => true,
+            None => types.contains(&id),
+        })
+}
+
 /// The section stores `Y` as a byte, short, int or long depending on who wrote
 /// the file. The datafixer writes ints. Reading only bytes would map every int
 /// section to `Y = 0`, and they would overwrite each other.
@@ -584,7 +596,12 @@ impl ChunkData {
                 .pending_block_entities
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            entities_guard.values().cloned().collect::<Vec<_>>()
+            // Pumpkin-only block entities, like the bed one Bedrock needs, are invalid to vanilla.
+            entities_guard
+                .values()
+                .filter(|nbt| is_vanilla_block_entity(nbt))
+                .cloned()
+                .collect::<Vec<_>>()
         };
 
         let light_lock = self

@@ -185,20 +185,24 @@ pub fn write_chunk_data(
         .pending_block_entities
         .lock()
         .map_err(|_| WritingError::Message("block_entities lock poisoned".into()))?;
-    write.write_var_int(&VarInt(block_entities.len() as i32))?;
-    for (pos, nbt) in block_entities.iter() {
+    // Block entities the Java client has no type for, like Pumpkin's Bedrock-only bed one, are left out.
+    let typed: Vec<_> = block_entities
+        .iter()
+        .filter_map(|(pos, nbt)| {
+            let id_str = nbt.get_string("id")?;
+            let name = id_str.strip_prefix("minecraft:").unwrap_or(id_str);
+            let id = pumpkin_data::block_properties::BLOCK_ENTITY_TYPES
+                .iter()
+                .position(|&n| n == name)?;
+            Some((pos, nbt, id))
+        })
+        .collect();
+    write.write_var_int(&VarInt(typed.len() as i32))?;
+    for (pos, nbt, id) in typed {
         let local_xz = ((get_local_cord(pos.0.x) & 0xF) << 4) | (get_local_cord(pos.0.z) & 0xF);
 
         write.write_u8(local_xz as u8)?;
         write.write_i16_be(pos.0.y as i16)?;
-
-        let id = nbt.get_string("id").map_or(0, |id_str| {
-            let name = id_str.split(':').next_back().unwrap_or(id_str);
-            pumpkin_data::block_properties::BLOCK_ENTITY_TYPES
-                .iter()
-                .position(|&n| n == name)
-                .unwrap_or(0)
-        });
         write.write_var_int(&VarInt(id as i32))?;
 
         // Vanilla `BlockEntityInfo.create` sends the block entity's update tag, never its
