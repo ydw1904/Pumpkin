@@ -13,15 +13,22 @@ use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 
+use crate::block::PathComputationType;
 use crate::entity::{
     Entity, EntityBase,
     ageable::{AgeableData, AgeableMob},
     ai::goal::{
-        breed::BreedGoal, escape_danger::EscapeDangerGoal, follow_parent::FollowParentGoal,
-        look_around::RandomLookAroundGoal, look_at_entity::LookAtEntityGoal, tempt::TemptGoal,
+        Controls, Goal, ParentHandle,
+        breed::BreedGoal,
+        escape_danger::EscapeDangerGoal,
+        follow_parent::FollowParentGoal,
+        look_around::RandomLookAroundGoal,
+        look_at_entity::LookAtEntityGoal,
+        move_to_target_pos::{MoveToTargetPos, MoveToTargetPosGoal},
+        tempt::TemptGoal,
         wander_around::WanderAroundGoal,
     },
-    ai::pathfinder::node::PathType,
+    ai::pathfinder::{GroundPathNavigation, Navigator, node::PathType},
     item_steerable::{ItemBasedSteering, ItemSteerable},
     mob::{Mob, MobEntity},
     passive::animal::Animal,
@@ -53,6 +60,79 @@ pub(crate) fn lava_collision_shape_for_entity(
     .then_some(LIQUID_COLLISION_SHAPE)
 }
 
+/// Vanilla `Strider.StriderGoToLavaGoal`: a strider out of lava heads for a lava block nearby.
+struct StriderGoToLavaGoal {
+    move_to_block: MoveToTargetPosGoal<Self>,
+}
+
+impl StriderGoToLavaGoal {
+    #[expect(
+        clippy::unnecessary_box_returns,
+        reason = "the inner goal points back into this heap allocation"
+    )]
+    fn new(speed: f64) -> Box<Self> {
+        let mut this = Box::new(Self {
+            move_to_block: MoveToTargetPosGoal::new(ParentHandle::none(), speed, 8, 2),
+        });
+        // SAFETY: the boxed goal never moves, so the handle stays valid for the goal's lifetime.
+        this.move_to_block.move_to_target_pos = unsafe { ParentHandle::new(&this) };
+        this
+    }
+}
+
+impl Goal for StriderGoToLavaGoal {
+    fn can_start(&mut self, mob: &dyn Mob) -> bool {
+        !mob.get_entity().touching_lava.load(Ordering::Relaxed) && self.move_to_block.can_start(mob)
+    }
+
+    fn should_continue(&mut self, mob: &dyn Mob) -> bool {
+        let entity = mob.get_entity();
+        !entity.touching_lava.load(Ordering::Relaxed)
+            && self.is_target_pos(entity.world.load_full(), self.move_to_block.target_pos)
+    }
+
+    fn start(&mut self, mob: &dyn Mob) {
+        self.move_to_block.start(mob);
+    }
+
+    fn stop(&mut self, mob: &dyn Mob) {
+        self.move_to_block.stop(mob);
+    }
+
+    fn tick(&mut self, mob: &dyn Mob) {
+        self.move_to_block.tick(mob);
+    }
+
+    fn should_run_every_tick(&self) -> bool {
+        self.move_to_block.should_run_every_tick()
+    }
+
+    fn controls(&self) -> Controls {
+        self.move_to_block.controls()
+    }
+}
+
+impl MoveToTargetPos for StriderGoToLavaGoal {
+    fn is_target_pos(&self, world: Arc<World>, block_pos: BlockPos) -> bool {
+        let above = block_pos.up();
+        let (above_block, above_state) = world.get_block_and_state(&above);
+        world.get_block(&block_pos).id == pumpkin_data::Block::LAVA.id
+            && world.block_registry.is_pathfindable(
+                above_block,
+                above_state,
+                PathComputationType::Land,
+            )
+    }
+
+    fn get_move_to_target(&self, target_pos: BlockPos) -> BlockPos {
+        target_pos
+    }
+
+    fn should_recalculate_path(&self, trying_time: i32) -> bool {
+        trying_time % 20 == 0
+    }
+}
+
 pub struct StriderEntity {
     pub mob_entity: MobEntity,
     pub ageable_data: AgeableData,
@@ -82,6 +162,7 @@ impl StriderEntity {
             .navigator
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *navigator = Navigator::new(GroundPathNavigation::strider());
         navigator.set_pathfinding_malus(PathType::Water, -1.0);
         navigator.set_pathfinding_malus(PathType::Lava, 0.0);
         navigator.set_pathfinding_malus(PathType::DangerFire, 0.0);
@@ -90,12 +171,12 @@ impl StriderEntity {
 
         {
             // Vanilla `Strider.registerGoals`: no float goal, it stands on lava.
-            // TODO: `StriderGoToLavaGoal` at priority 4.
             let goal_selector = &mob_arc.mob_entity.goals_selector;
 
             goal_selector.add_goal(1, EscapeDangerGoal::new(1.65));
             goal_selector.add_goal(2, BreedGoal::new(1.0));
             goal_selector.add_goal(3, Box::new(TemptGoal::new(1.4, TEMPT_ITEMS, false)));
+            goal_selector.add_goal(4, StriderGoToLavaGoal::new(1.0));
             goal_selector.add_goal(5, Box::new(FollowParentGoal::new(1.0)));
             goal_selector.add_goal(7, Box::new(WanderAroundGoal::with_interval(1.0, 60)));
             goal_selector.add_goal(
