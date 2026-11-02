@@ -21,6 +21,9 @@ impl ChunkLoading {
     // pub const FULL_CHUNK_LEVEL: i8 = 33;
     pub const FULL_CHUNK_LEVEL: i8 = 43;
     pub const MAX_LEVEL: i8 = 49; // level 49 will be unloaded.
+    /// Vanilla's forced ticket sits two levels below a full chunk, so a forced chunk ticks with
+    /// two rings of full chunks around it.
+    pub const FORCED_TICKET_LEVEL: i8 = Self::FULL_CHUNK_LEVEL - 2;
     fn debug_check_error(&self) -> bool {
         let mut temp = ChunkLevel::default();
         for (ticket_pos, levels) in &self.ticket {
@@ -111,7 +114,9 @@ impl ChunkLoading {
     #[inline]
     #[must_use]
     pub const fn get_level_from_simulation_distance(simulation_distance: u8) -> i8 {
-        Self::FULL_CHUNK_LEVEL - (simulation_distance as i8)
+        // One more ring than the chunks that tick, so every ticking chunk has full neighbours
+        // like vanilla's simulation ticket gives.
+        Self::FULL_CHUNK_LEVEL - (simulation_distance as i8) - 1
     }
 
     pub fn new(sender: Arc<LevelChannel>) -> Self {
@@ -178,7 +183,7 @@ impl ChunkLoading {
         // debug!("add force ticket at {pos:?}");
         self.high_priority.push(pos);
         self.is_priority_dirty = true;
-        self.add_ticket(pos, Self::FULL_CHUNK_LEVEL);
+        self.add_ticket(pos, Self::FORCED_TICKET_LEVEL);
     }
 
     pub fn remove_force_ticket(&mut self, pos: ChunkPos) {
@@ -187,7 +192,7 @@ impl ChunkLoading {
             self.high_priority.remove(index);
         }
         self.is_priority_dirty = true;
-        self.remove_ticket(pos, Self::FULL_CHUNK_LEVEL);
+        self.remove_ticket(pos, Self::FORCED_TICKET_LEVEL);
     }
 
     pub fn add_ticket(&mut self, pos: ChunkPos, level: i8) {

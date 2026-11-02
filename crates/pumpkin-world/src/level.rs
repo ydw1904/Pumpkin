@@ -586,6 +586,9 @@ impl Level {
 
         // 1. Process active chunks (random ticks, block entities)
         for pos in active_chunks {
+            if !self.is_chunk_ticking_ready(pos) {
+                continue;
+            }
             if let Some(chunk) = self.loaded_chunks.get(pos) {
                 let chunk = chunk.value();
                 // Vanilla `ServerLevel.tickChunk`, which the RNG lockdown keys by chunk.
@@ -652,7 +655,7 @@ impl Level {
             .map(|p| *p)
             .collect();
         for pos in scheduled_chunk_pos {
-            if !active_chunks.contains(&pos) {
+            if !active_chunks.contains(&pos) || !self.is_chunk_ticking_ready(&pos) {
                 continue;
             }
             if let Some(chunk) = self.loaded_chunks.get(&pos) {
@@ -953,6 +956,18 @@ impl Level {
         self.loaded_chunks.contains_key(coordinates)
     }
 
+    /// Whether the chunk and its eight neighbours are loaded full chunks. Vanilla only ticks a
+    /// chunk once its ticking future is done, which waits for those neighbours
+    /// (`ServerChunkCache.isPositionTicking`).
+    pub fn is_chunk_ticking_ready(&self, coordinates: &Vector2<i32>) -> bool {
+        (-1..=1).all(|dx| {
+            (-1..=1).all(|dz| {
+                self.loaded_chunks
+                    .contains_key(&Vector2::new(coordinates.x + dx, coordinates.y + dz))
+            })
+        })
+    }
+
     pub fn read_chunk_sync<R, F: Fn(&SyncChunk) -> R>(
         &self,
         coordinates: &Vector2<i32>,
@@ -1219,7 +1234,19 @@ mod tests {
         assert!(level.get_tick_data(&inactive, 0).block_ticks.is_empty());
         assert!(level.get_tick_data(&inactive, 0).fluid_ticks.is_empty());
 
+        // An active chunk still waits until all its neighbours are loaded.
         let active = FxHashSet::from_iter([chunk_pos]);
+        assert!(level.get_tick_data(&active, 0).block_ticks.is_empty());
+        for dx in -1..=1 {
+            for dz in -1..=1 {
+                let pos = Vector2::new(chunk_pos.x + dx, chunk_pos.y + dz);
+                if pos != chunk_pos {
+                    level
+                        .loaded_chunks
+                        .insert(pos, ChunkData::empty_sync(pos.x, pos.y));
+                }
+            }
+        }
         let ticks = level.get_tick_data(&active, 0);
         assert_eq!(ticks.block_ticks.len(), 1);
         assert_eq!(ticks.fluid_ticks.len(), 1);
