@@ -69,13 +69,26 @@ impl ZombieEntityBase {
             .alerting_others_except(|entity_type| entity_type == &EntityType::ZOMBIFIED_PIGLIN)
     }
 
-    /// For subclasses that replace the target goals, like the drowned.
-    pub fn with_targets(
+    /// Vanilla `Zombie.registerGoals` followed by `addBehaviourGoals`.
+    fn with_targets(
         entity: Entity,
         can_break_doors: bool,
         revenge: RevengeGoal,
         hunts: &[Hunt],
     ) -> Arc<Self> {
+        let mob_arc = Self::without_behaviour_goals(entity, can_break_doors);
+        let goal_selector = &mob_arc.mob_entity.goals_selector;
+        let target_selector = &mob_arc.mob_entity.target_selector;
+        goal_selector.add_goal(2, ZombieAttackGoal::new(1.0, false));
+        goal_selector.add_goal(7, Box::new(WanderAroundGoal::water_avoiding(1.0)));
+        target_selector.add_goal(1, Box::new(revenge));
+        hunting::apply(target_selector, &mob_arc.mob_entity, hunts);
+        mob_arc
+    }
+
+    /// Vanilla `Zombie.registerGoals` without `addBehaviourGoals`, for zombies that bring their
+    /// own behaviour goals, like the drowned.
+    pub fn without_behaviour_goals(entity: Entity, can_break_doors: bool) -> Arc<Self> {
         let mob_entity = MobEntity::new(entity);
         let zombie = Self {
             mob_entity,
@@ -95,32 +108,16 @@ impl ZombieEntityBase {
             Arc::downgrade(&mob_arc)
         };
 
-        {
-            let goal_selector = &mob_arc.mob_entity.goals_selector;
-            let target_selector = &mob_arc.mob_entity.target_selector;
-
-            if can_break_doors {
-                goal_selector.add_goal(1, Box::new(BreakDoorGoal::default()));
-            }
-            goal_selector.add_goal(2, ZombieAttackGoal::new(1.0, false));
-            goal_selector.add_goal(4, DestroyEggGoal::new(1.0, 3));
-            // Vanilla zombies stroll avoiding water; the drowned's own goals use a plain stroll.
-            let stroll =
-                if mob_arc.mob_entity.living_entity.entity.entity_type == &EntityType::DROWNED {
-                    WanderAroundGoal::new(1.0)
-                } else {
-                    WanderAroundGoal::water_avoiding(1.0)
-                };
-            goal_selector.add_goal(7, Box::new(stroll));
-            goal_selector.add_goal(
-                8,
-                LookAtEntityGoal::with_default(mob_weak, &EntityType::PLAYER, 8.0),
-            );
-            goal_selector.add_goal(8, Box::new(RandomLookAroundGoal::default()));
-
-            target_selector.add_goal(1, Box::new(revenge));
-            hunting::apply(target_selector, &mob_arc.mob_entity, hunts);
-        };
+        let goal_selector = &mob_arc.mob_entity.goals_selector;
+        if can_break_doors {
+            goal_selector.add_goal(1, Box::new(BreakDoorGoal::default()));
+        }
+        goal_selector.add_goal(4, DestroyEggGoal::new(1.0, 3));
+        goal_selector.add_goal(
+            8,
+            LookAtEntityGoal::with_default(mob_weak, &EntityType::PLAYER, 8.0),
+        );
+        goal_selector.add_goal(8, Box::new(RandomLookAroundGoal::default()));
 
         mob_arc
     }
