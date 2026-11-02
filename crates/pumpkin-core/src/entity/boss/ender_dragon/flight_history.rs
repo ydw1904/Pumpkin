@@ -20,12 +20,18 @@ impl Default for DragonFlightHistory {
 }
 
 impl DragonFlightHistory {
+    /// Vanilla `DragonFlightHistory.record`: the first sample fills the whole history, so the
+    /// tail doesn't start out stretched down to y 0.
     pub const fn record(&mut self, y: f64, y_rot: f32) {
+        let sample = Sample { y, y_rot };
+        if self.head < 0 {
+            self.samples = [sample; 64];
+        }
         self.head += 1;
         if self.head >= 64 {
             self.head = 0;
         }
-        self.samples[self.head as usize] = Sample { y, y_rot };
+        self.samples[self.head as usize] = sample;
     }
 
     #[must_use]
