@@ -3,6 +3,8 @@
 
 use std::collections::VecDeque;
 
+use rayon::prelude::*;
+
 #[cfg(debug_assertions)]
 use std::sync::Arc;
 
@@ -51,6 +53,11 @@ const MAX_CONTACT_BLOCKS: usize = 4096;
 
 // Cell operations and candidate visits allowed in each planning phase.
 const MAX_PLANNING_WORK: usize = 262_144;
+
+// Cells used to group entities before exact partitioning. Larger combined bounds leave
+// everything in one group.
+const GROUP_CELL_SIZE: f64 = 64.0;
+const MAX_GROUP_CELLS: usize = 1024;
 
 struct PlanningBudget {
     remaining: usize,
@@ -690,29 +697,163 @@ pub fn partition(
     if nodes.iter().any(|(_, reach)| reach.global) {
         return None;
     }
+    // Groups can't touch each other, so each one is split on its own and in parallel.
+    let parts: Vec<_> = groups(nodes, idle_entities, players)
+        .par_iter()
+        .map(|group| partition_group(nodes, idle_entities, players, group))
+        .collect::<Option<_>>()?;
+    let mut islands = Vec::new();
+    #[cfg(debug_assertions)]
+    let mut island_of = IslandMap::default();
+    for part in parts {
+        #[cfg(debug_assertions)]
+        island_of.extend(
+            part.island_of
+                .iter()
+                .map(|(id, island)| (*id, island + islands.len())),
+        );
+        islands.extend(part.islands);
+    }
+    Some(Islands {
+        islands,
+        #[cfg(debug_assertions)]
+        island_of: Arc::new(island_of),
+    })
+}
+
+/// Nodes, idle entities and players that may touch each other, by index.
+struct Group {
+    nodes: Vec<usize>,
+    idle_entities: Vec<usize>,
+    players: Vec<usize>,
+}
+
+/// Joins everything whose combined bounds share a coarse cell or a link. This only ever joins
+/// more than `partition_group` does, so it never separates entities that interact.
+fn groups(
+    nodes: &[(i32, TickReach)],
+    idle_entities: &[(i32, BoundingBox)],
+    players: &[(i32, BoundingBox)],
+) -> Vec<Group> {
+    let whole = || {
+        vec![Group {
+            nodes: (0..nodes.len()).collect(),
+            idle_entities: (0..idle_entities.len()).collect(),
+            players: (0..players.len()).collect(),
+        }]
+    };
+    let first_idle = nodes.len();
+    let first_player = first_idle + idle_entities.len();
+    let mut sets = DisjointSets::new(first_player + players.len());
+    let mut cells: FxHashMap<(i32, i32), usize> = FxHashMap::default();
+    let mut add = |sets: &mut DisjointSets, slot: usize, area: &BoundingBox| -> Option<()> {
+        let xs = cells_of(area.min.x, area.max.x, GROUP_CELL_SIZE)?;
+        let zs = cells_of(area.min.z, area.max.z, GROUP_CELL_SIZE)?;
+        if cell_count(&xs)?.checked_mul(cell_count(&zs)?)? > MAX_GROUP_CELLS {
+            return None;
+        }
+        for x in xs {
+            for z in zs.clone() {
+                let first = *cells.entry((x, z)).or_insert(slot);
+                sets.union(slot, first);
+            }
+        }
+        Some(())
+    };
+    let mut slots: FxHashMap<i32, usize> = FxHashMap::default();
+    for (slot, (id, reach)) in nodes.iter().enumerate() {
+        let mut bounds = union(&union(&reach.body, &reach.entities), &reach.players);
+        bounds = union(&bounds, &reach.block_reads);
+        if let Some(writes) = reach.block_writes {
+            bounds = union(&bounds, &writes);
+        }
+        if add(&mut sets, slot, &bounds).is_none() {
+            return whole();
+        }
+        slots.insert(*id, slot);
+    }
+    for (offset, (id, body)) in idle_entities.iter().enumerate() {
+        if add(&mut sets, first_idle + offset, body).is_none() {
+            return whole();
+        }
+        slots.insert(*id, first_idle + offset);
+    }
+    for (offset, (id, body)) in players.iter().enumerate() {
+        if add(&mut sets, first_player + offset, body).is_none() {
+            return whole();
+        }
+        slots.insert(*id, first_player + offset);
+    }
+    for (slot, (_, reach)) in nodes.iter().enumerate() {
+        for link in &reach.links {
+            let other = *slots.entry(*link).or_insert_with(|| sets.push());
+            sets.union(slot, other);
+        }
+    }
+
+    let mut group_of_root: FxHashMap<usize, usize> = FxHashMap::default();
+    let mut groups: Vec<Group> = Vec::new();
+    for slot in 0..nodes.len() {
+        let group = *group_of_root.entry(sets.find(slot)).or_insert_with(|| {
+            groups.push(Group {
+                nodes: Vec::new(),
+                idle_entities: Vec::new(),
+                players: Vec::new(),
+            });
+            groups.len() - 1
+        });
+        groups[group].nodes.push(slot);
+    }
+    // Idle entities and players that share no group with a node can't connect islands.
+    for offset in 0..idle_entities.len() {
+        if let Some(&group) = group_of_root.get(&sets.find(first_idle + offset)) {
+            groups[group].idle_entities.push(offset);
+        }
+    }
+    for offset in 0..players.len() {
+        if let Some(&group) = group_of_root.get(&sets.find(first_player + offset)) {
+            groups[group].players.push(offset);
+        }
+    }
+    groups
+}
+
+fn partition_group(
+    nodes: &[(i32, TickReach)],
+    idle_entities: &[(i32, BoundingBox)],
+    players: &[(i32, BoundingBox)],
+    group: &Group,
+) -> Option<Islands> {
+    let node = |slot: usize| &nodes[group.nodes[slot]];
+    let players: Vec<_> = group.players.iter().map(|&index| players[index]).collect();
     let mut budget = PlanningBudget::default();
-    budget.spend(nodes.len())?;
-    budget.spend(idle_entities.len())?;
+    budget.spend(group.nodes.len())?;
+    budget.spend(group.idle_entities.len())?;
     budget.spend(players.len())?;
 
-    let mut sets = DisjointSets::new(nodes.len() + idle_entities.len() + players.len());
+    let mut sets = DisjointSets::new(group.nodes.len() + group.idle_entities.len() + players.len());
     let mut slots: FxHashMap<i32, usize> = FxHashMap::default();
-    let bodies = nodes
-        .iter()
-        .map(|(id, reach)| (*id, reach.body))
-        .chain(idle_entities.iter().copied());
+    let bodies = (0..group.nodes.len())
+        .map(|slot| (node(slot).0, node(slot).1.body))
+        .chain(
+            group
+                .idle_entities
+                .iter()
+                .map(|&index| idle_entities[index]),
+        );
     let mut entity_grid = Grid::default();
     for (slot, (id, body)) in bodies.enumerate() {
         slots.insert(id, slot);
         entity_grid.insert(slot, body, &mut budget)?;
     }
-    let first_player = nodes.len() + idle_entities.len();
+    let first_player = group.nodes.len() + group.idle_entities.len();
     for (offset, (id, _)) in players.iter().enumerate() {
         slots.insert(*id, first_player + offset);
     }
 
     let mut query = Query::new(sets.len());
-    for (slot, (_, reach)) in nodes.iter().enumerate() {
+    for slot in 0..group.nodes.len() {
+        let reach = &node(slot).1;
         entity_grid.union_overlapping(&mut sets, &mut query, slot, &reach.entities, &mut budget)?;
         budget.spend(players.len())?;
         for (offset, (_, body)) in players.iter().enumerate() {
@@ -727,15 +868,13 @@ pub fn partition(
         }
     }
 
-    let writers: Vec<_> = nodes
-        .iter()
-        .enumerate()
-        .filter_map(|(slot, (_, reach))| reach.block_writes.map(|writes| (slot, writes)))
+    let writers: Vec<_> = (0..group.nodes.len())
+        .filter_map(|slot| node(slot).1.block_writes.map(|writes| (slot, writes)))
         .collect();
     if !writers.is_empty() {
         let mut block_grid = Grid::default();
-        for (slot, (_, reach)) in nodes.iter().enumerate() {
-            block_grid.insert(slot, reach.block_reads, &mut budget)?;
+        for slot in 0..group.nodes.len() {
+            block_grid.insert(slot, node(slot).1.block_reads, &mut budget)?;
         }
         let mut query = Query::new(sets.len());
         for (slot, writes) in writers {
@@ -745,13 +884,13 @@ pub fn partition(
 
     let mut island_of_root: FxHashMap<usize, usize> = FxHashMap::default();
     let mut islands: Vec<Vec<usize>> = Vec::new();
-    for slot in 0..nodes.len() {
+    for slot in 0..group.nodes.len() {
         let root = sets.find(slot);
         let island = *island_of_root.entry(root).or_insert_with(|| {
             islands.push(Vec::new());
             islands.len() - 1
         });
-        islands[island].push(slot);
+        islands[island].push(group.nodes[slot]);
     }
     #[cfg(debug_assertions)]
     let island_of = slots
@@ -1405,6 +1544,29 @@ mod tests {
         linked[0].1.links.push(40);
         linked[1].1.links.push(40);
         assert_eq!(islands(&linked, &[], &[]), [vec![0, 1]]);
+        // Links join entities in different coarse groups.
+        let mut far = [node(10, 0.0, 1.0), node(11, 10_000.0, 1.0)];
+        far[0].1.links.push(11);
+        assert_eq!(islands(&far, &[], &[]), [vec![0, 1]]);
+    }
+
+    #[test]
+    fn distant_clusters_fit_the_budget_separately() {
+        // Together the clusters exceed one planning budget; each fits on its own.
+        let nodes: Vec<_> = (0..16)
+            .flat_map(|cluster| {
+                (0..150).map(move |index| {
+                    node(
+                        cluster * 150 + index,
+                        f64::from(cluster) * 2000.0 + f64::from(index) * 0.1,
+                        40.0,
+                    )
+                })
+            })
+            .collect();
+        let islands = islands(&nodes, &[], &[]);
+        assert_eq!(islands.len(), 16);
+        assert!(islands.iter().all(|island| island.len() == 150));
     }
 
     #[test]
