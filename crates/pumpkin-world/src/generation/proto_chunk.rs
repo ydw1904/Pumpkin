@@ -2029,6 +2029,106 @@ impl BlockAccessor for ProtoChunk {
     }
 }
 
+// Lets code that only holds a `dyn GenerationCache`, such as a structure piece, run the
+// generic features over the whole region instead of only the centre chunk.
+impl HeightLimitView for &mut (dyn GenerationCache + '_) {
+    fn height(&self) -> u16 {
+        (**self).height()
+    }
+
+    fn bottom_y(&self) -> i8 {
+        (**self).bottom_y()
+    }
+}
+
+impl BlockAccessor for &mut (dyn GenerationCache + '_) {
+    fn get_block(&self, position: &BlockPos) -> &'static Block {
+        BlockAccessor::get_block(&**self, position)
+    }
+
+    fn get_block_state(&self, position: &BlockPos) -> &'static BlockState {
+        BlockAccessor::get_block_state(&**self, position)
+    }
+
+    fn get_block_state_id(&self, position: &BlockPos) -> BlockStateId {
+        BlockAccessor::get_block_state_id(&**self, position)
+    }
+
+    fn get_block_and_state(&self, position: &BlockPos) -> (&'static Block, &'static BlockState) {
+        BlockAccessor::get_block_and_state(&**self, position)
+    }
+}
+
+impl GenerationCache for &mut (dyn GenerationCache + '_) {
+    fn get_center_chunk_mut(&mut self) -> &mut ProtoChunk {
+        (**self).get_center_chunk_mut()
+    }
+    fn get_center_chunk(&self) -> &ProtoChunk {
+        (**self).get_center_chunk()
+    }
+    fn get_chunk_mut(&mut self, chunk_x: i32, chunk_z: i32) -> Option<&mut ProtoChunk> {
+        (**self).get_chunk_mut(chunk_x, chunk_z)
+    }
+    fn get_chunk(&self, chunk_x: i32, chunk_z: i32) -> Option<&ProtoChunk> {
+        (**self).get_chunk(chunk_x, chunk_z)
+    }
+    fn try_get_proto_chunk(&self, chunk_x: i32, chunk_z: i32) -> Option<&ProtoChunk> {
+        (**self).try_get_proto_chunk(chunk_x, chunk_z)
+    }
+    fn get_block_state(&self, pos: &Vector3<i32>) -> BlockStateId {
+        GenerationCache::get_block_state(&**self, pos)
+    }
+    fn get_fluid_and_fluid_state(&self, position: &Vector3<i32>) -> (Fluid, FluidState) {
+        (**self).get_fluid_and_fluid_state(position)
+    }
+    fn set_block_state(&mut self, pos: &Vector3<i32>, block_state: &BlockState) {
+        GenerationCache::set_block_state(&mut **self, pos, block_state);
+    }
+    fn add_block_entity(&mut self, pos: &Vector3<i32>, nbt: NbtCompound) {
+        GenerationCache::add_block_entity(&mut **self, pos, nbt);
+    }
+    fn top_motion_blocking_block_height_exclusive(&self, x: i32, z: i32) -> i32 {
+        (**self).top_motion_blocking_block_height_exclusive(x, z)
+    }
+    fn top_motion_blocking_block_no_leaves_height_exclusive(&self, x: i32, z: i32) -> i32 {
+        (**self).top_motion_blocking_block_no_leaves_height_exclusive(x, z)
+    }
+    fn get_top_y(&self, heightmap: &HeightMap, x: i32, z: i32) -> i32 {
+        GenerationCache::get_top_y(&**self, heightmap, x, z)
+    }
+    fn top_block_height_exclusive(&self, x: i32, z: i32) -> i32 {
+        GenerationCache::top_block_height_exclusive(&**self, x, z)
+    }
+    fn ocean_floor_height_exclusive(&self, x: i32, z: i32) -> i32 {
+        GenerationCache::ocean_floor_height_exclusive(&**self, x, z)
+    }
+    fn top_block_wg_height_exclusive(&self, x: i32, z: i32) -> i32 {
+        GenerationCache::top_block_wg_height_exclusive(&**self, x, z)
+    }
+    fn ocean_floor_wg_height_exclusive(&self, x: i32, z: i32) -> i32 {
+        GenerationCache::ocean_floor_wg_height_exclusive(&**self, x, z)
+    }
+    fn is_air(&self, local_pos: &Vector3<i32>) -> bool {
+        GenerationCache::is_air(&**self, local_pos)
+    }
+    fn get_biome_for_terrain_gen(&self, x: i32, y: i32, z: i32) -> &'static Biome {
+        (**self).get_biome_for_terrain_gen(x, y, z)
+    }
+    fn get_blending_data(
+        &self,
+        chunk_x: i32,
+        chunk_z: i32,
+    ) -> Option<&crate::generation::blender::blending_data::BlendingData> {
+        (**self).get_blending_data(chunk_x, chunk_z)
+    }
+    fn get_sea_level(&self) -> i32 {
+        GenerationCache::get_sea_level(&**self)
+    }
+    fn world_seed(&self) -> u64 {
+        (**self).world_seed()
+    }
+}
+
 impl BlockPlacer for ProtoChunk {
     fn get_block_state(&self, pos: &Vector3<i32>) -> BlockStateId {
         self.get_block_state(pos)

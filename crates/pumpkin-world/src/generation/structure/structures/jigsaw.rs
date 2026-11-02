@@ -842,13 +842,16 @@ impl StructurePieceBase for PoolElementStructurePiece {
         seed: i64,
         chunk_box: &pumpkin_util::math::block_box::BlockBox,
     ) {
-        self.place_in_region(
+        let reference_pos =
+            crate::generation::structure::structures::start_reference_pos(&self.bounding_box());
+        self.place_element(
             chunk,
             block_registry,
             random,
             seed,
             chunk_box,
-            crate::generation::structure::structures::start_reference_pos(&self.bounding_box()),
+            reference_pos,
+            false,
         );
     }
 
@@ -861,58 +864,15 @@ impl StructurePieceBase for PoolElementStructurePiece {
         chunk_box: &pumpkin_util::math::block_box::BlockBox,
         reference_pos: Vector3<i32>,
     ) {
-        let origin =
-            pumpkin_util::math::vector3::Vector3::new(self.pos.0.x, self.pos.0.y, self.pos.0.z);
-
-        self.element
-            .for_each_template(|_name, processor_list, legacy, template| {
-                let corner = self.rotation.rotate_offset(
-                    template.size.x.saturating_sub(1),
-                    template.size.z.saturating_sub(1),
-                );
-                let placement_origin = pumpkin_util::math::vector3::Vector3::new(
-                    origin.x + corner.0.min(0),
-                    origin.y,
-                    origin.z + corner.1.min(0),
-                );
-                let processors = processor_list.load_with_projection(self.element.projection);
-                crate::generation::structure::template::place_template_with_options(
-                    &mut crate::generation::update_shape::GenerationRegion(region),
-                    &template,
-                    placement_origin,
-                    (0, 0),
-                    self.rotation,
-                    legacy,
-                    self.liquid_settings == LiquidSettings::ApplyWaterlog,
-                    processors.as_ref(),
-                    Some(chunk_box),
-                    false,
-                    reference_pos,
-                    seed,
-                );
-                crate::generation::structure::template::place_template_entities(
-                    region.get_center_chunk_mut(),
-                    &template,
-                    placement_origin,
-                    self.rotation,
-                    chunk_box,
-                    // Vanilla `SinglePoolElement` places with `setFinalizeEntities(true)`.
-                    true,
-                );
-            });
-
-        if let Some(feature) = self.element.feature()
-            && let Some(placed_feature) =
-                crate::generation::feature::placed_features::PLACED_FEATURES.get(&feature)
-        {
-            placed_feature.generate_in_proto_chunk(
-                region.get_center_chunk_mut(),
-                block_registry,
-                feature,
-                random,
-                self.pos,
-            );
-        }
+        self.place_element(
+            region,
+            block_registry,
+            random,
+            seed,
+            chunk_box,
+            reference_pos,
+            true,
+        );
     }
 }
 
@@ -961,6 +921,90 @@ pub fn place_pool_element_templates(
 }
 
 impl PoolElementStructurePiece {
+    /// `in_region` is whether `region` is a world generation region whose neighbouring chunks a
+    /// feature may read and write, rather than a lone chunk.
+    #[expect(clippy::too_many_arguments)]
+    fn place_element(
+        &self,
+        region: &mut dyn crate::generation::proto_chunk::GenerationCache,
+        block_registry: &dyn crate::world::WorldPortalExt,
+        random: &mut pumpkin_util::random::RandomGenerator,
+        seed: i64,
+        chunk_box: &pumpkin_util::math::block_box::BlockBox,
+        reference_pos: Vector3<i32>,
+        in_region: bool,
+    ) {
+        let origin =
+            pumpkin_util::math::vector3::Vector3::new(self.pos.0.x, self.pos.0.y, self.pos.0.z);
+
+        self.element
+            .for_each_template(|_name, processor_list, legacy, template| {
+                let corner = self.rotation.rotate_offset(
+                    template.size.x.saturating_sub(1),
+                    template.size.z.saturating_sub(1),
+                );
+                let placement_origin = pumpkin_util::math::vector3::Vector3::new(
+                    origin.x + corner.0.min(0),
+                    origin.y,
+                    origin.z + corner.1.min(0),
+                );
+                let processors = processor_list.load_with_projection(self.element.projection);
+                crate::generation::structure::template::place_template_with_options(
+                    &mut crate::generation::update_shape::GenerationRegion(region),
+                    &template,
+                    placement_origin,
+                    (0, 0),
+                    self.rotation,
+                    legacy,
+                    self.liquid_settings == LiquidSettings::ApplyWaterlog,
+                    processors.as_ref(),
+                    Some(chunk_box),
+                    false,
+                    reference_pos,
+                    seed,
+                );
+                crate::generation::structure::template::place_template_entities(
+                    region.get_center_chunk_mut(),
+                    &template,
+                    placement_origin,
+                    self.rotation,
+                    chunk_box,
+                    // Vanilla `SinglePoolElement` places with `setFinalizeEntities(true)`.
+                    true,
+                );
+            });
+
+        if let Some(feature) = self.element.feature()
+            && let Some(placed_feature) =
+                crate::generation::feature::placed_features::PLACED_FEATURES.get(&feature)
+        {
+            if in_region {
+                // Vanilla `FeaturePoolElement.place` runs the feature in the `WorldGenRegion`, so
+                // it reads and writes the neighbouring chunks too.
+                let min_y = region.get_center_chunk().generation_bottom_y();
+                let height = region.get_center_chunk().generation_height();
+                let mut region = region;
+                placed_feature.generate(
+                    &mut region,
+                    block_registry,
+                    min_y,
+                    height,
+                    feature,
+                    random,
+                    self.pos,
+                );
+            } else {
+                placed_feature.generate_in_proto_chunk(
+                    region.get_center_chunk_mut(),
+                    block_registry,
+                    feature,
+                    random,
+                    self.pos,
+                );
+            }
+        }
+    }
+
     pub fn add_junction(&mut self, junction: JigsawJunction) {
         self.junctions.push(junction);
     }
