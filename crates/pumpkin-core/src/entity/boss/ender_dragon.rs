@@ -1142,6 +1142,11 @@ impl Mob for EnderDragonEntity {
         self.ai_step(caller);
     }
 
+    /// Vanilla `EnderDragon.checkDespawn` does nothing: the dragon never despawns.
+    fn requires_custom_persistence(&self) -> bool {
+        true
+    }
+
     /// The dragon moves itself in `aiStep` instead of travelling like other mobs.
     fn travel(&self, _caller: &dyn EntityBase) -> bool {
         true
