@@ -2243,7 +2243,7 @@ impl DataComponentCodec<Self> for BlocksAttacksImpl {
         if seq.get_bool()? {
             let _ = seq.get_var_int()?;
         }
-        Ok(Self)
+        Ok(Self { raw: None })
     }
 }
 

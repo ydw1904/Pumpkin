@@ -477,7 +477,7 @@ impl ToTokens for ItemComponents {
         }
 
         if self.blocks_attacks.is_some() {
-            tokens.extend(quote! { (BlocksAttacks, &BlocksAttacksImpl), });
+            tokens.extend(quote! { (BlocksAttacks, &BlocksAttacksImpl { raw: None }), });
         }
 
         if let Some(death_protection) = &self.death_protection {

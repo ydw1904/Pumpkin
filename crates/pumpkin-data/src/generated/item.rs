@@ -97118,7 +97118,7 @@ impl Item {
                     attribute_modifiers: Cow::Borrowed(&[]),
                 },
             ),
-            (BlocksAttacks, &BlocksAttacksImpl),
+            (BlocksAttacks, &BlocksAttacksImpl { raw: None }),
             (
                 Equippable,
                 &EquippableImpl {

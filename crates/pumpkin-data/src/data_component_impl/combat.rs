@@ -978,14 +978,23 @@ impl DataComponentImpl for DeathProtectionImpl {
     default_impl!(DeathProtection);
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct BlocksAttacksImpl;
+/// Pumpkin doesn't model the blocking parameters yet, so a component read from NBT is kept
+/// as is to be saved again. An item's default component is `None`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BlocksAttacksImpl {
+    pub raw: Option<NbtTag>,
+}
 impl BlocksAttacksImpl {
-    pub const fn read_data(_data: &NbtTag) -> Option<Self> {
-        Some(Self)
+    pub fn read_data(data: &NbtTag) -> Option<Self> {
+        Some(Self {
+            raw: Some(data.clone()),
+        })
     }
 }
 impl DataComponentImpl for BlocksAttacksImpl {
+    fn write_data(&self) -> NbtTag {
+        self.raw.clone().unwrap_or(NbtTag::End)
+    }
     default_impl!(BlocksAttacks);
 }
 
