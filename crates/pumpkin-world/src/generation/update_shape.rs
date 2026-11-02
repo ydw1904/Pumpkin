@@ -450,8 +450,44 @@ pub fn update_wall_shape(
     )
 }
 
-/// An area of a block's bottom face, in sixteenths: `[min_x, min_z, max_x, max_z]`.
+/// An area of a block face in sixteenths, `[min_a, min_b, max_a, max_b]` along the face's two
+/// axes: x and z for up and down, x and y for north and south, y and z for west and east.
 type FaceArea = [f64; 4];
+
+/// The areas of vanilla `state.getCollisionShape(level, pos).getFaceShape(direction)`.
+fn face_shape(state: BlockStateId, pos: Vector3<i32>, direction: BlockDirection) -> Vec<FaceArea> {
+    // `VoxelShape.getFaceShape` slices the shape just inside the face.
+    let inside = if direction.positive() {
+        0.999_999_9
+    } else {
+        1.0E-7
+    };
+    state
+        .to_state()
+        .get_block_collision_shapes_at(&BlockPos(pos))
+        .filter_map(|shape| {
+            let (min, max) = (shape.min, shape.max);
+            let (depth, area) = match direction {
+                BlockDirection::Down | BlockDirection::Up => {
+                    ((min.y, max.y), [min.x, min.z, max.x, max.z])
+                }
+                BlockDirection::North | BlockDirection::South => {
+                    ((min.z, max.z), [min.x, min.y, max.x, max.y])
+                }
+                BlockDirection::West | BlockDirection::East => {
+                    ((min.x, max.x), [min.y, min.z, max.y, max.z])
+                }
+            };
+            (depth.0 <= inside && inside < depth.1).then(|| area.map(|c| c * 16.0))
+        })
+        .collect()
+}
+
+/// Vanilla `Block.isFaceFull` of the block's collision shape.
+#[must_use]
+pub fn is_face_full(state: BlockStateId, pos: Vector3<i32>, direction: BlockDirection) -> bool {
+    is_covered(&face_shape(state, pos, direction), [0.0, 0.0, 16.0, 16.0])
+}
 
 /// Vanilla `WallBlock.TEST_SHAPE_POST`.
 const TEST_SHAPE_POST: FaceArea = [7.0, 7.0, 9.0, 9.0];
@@ -481,12 +517,7 @@ pub fn wall_shape(
     connections: [bool; 4],
 ) -> BlockStateId {
     // `topNeighbour.getCollisionShape(level, topPos).getFaceShape(Direction.DOWN)`
-    let above_shape: Vec<FaceArea> = above_state
-        .to_state()
-        .get_block_collision_shapes_at(&BlockPos(above_pos))
-        .filter(|shape| shape.min.y <= 1.0E-7 && shape.max.y > 1.0E-7)
-        .map(|shape| [shape.min.x, shape.min.z, shape.max.x, shape.max.z].map(|c| c * 16.0))
-        .collect();
+    let above_shape = face_shape(above_state, above_pos, BlockDirection::Down);
     // `makeWallState`
     let [north, east, south, west] = std::array::from_fn(|i| {
         if !connections[i] {

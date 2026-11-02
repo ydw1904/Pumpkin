@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use pumpkin_data::{
-    Block, BlockId, BlockState, Mirror, Rotation, block_properties::blocks_movement,
+    Block, BlockDirection, BlockId, BlockState, Mirror, Rotation,
+    block_properties::{VineLikeProperties, blocks_movement},
     structures::StructureKeys,
 };
 use pumpkin_util::{
@@ -28,7 +29,7 @@ use crate::{
             },
         },
     },
-    generation::update_shape::GenerationRegion,
+    generation::update_shape::{GenerationRegion, is_face_full},
 };
 
 const STRUCTURE_LOCATION_PORTALS: &[&str] = &[
@@ -663,27 +664,34 @@ impl RuinedPortalPiece {
         chunk: &mut dyn GenerationCache,
         pos: Vector3<i32>,
     ) {
-        use pumpkin_data::Property;
         let state = GenerationCache::get_block_state(chunk, &pos);
-        let block_id = state.to_block_id();
-        if block_id != Block::AIR.id && block_id != Block::VINE.id {
-            let dir_idx = random.next_bounded_i32(4);
-            let (dir_offset, vine_face) = match dir_idx {
-                0 => (Vector3::new(0, 0, -1), Property::South(true)),
-                1 => (Vector3::new(0, 0, 1), Property::North(true)),
-                2 => (Vector3::new(-1, 0, 0), Property::East(true)),
-                _ => (Vector3::new(1, 0, 0), Property::West(true)),
-            };
-            let neighbor_pos = pos + dir_offset;
-            if GenerationCache::get_block_state(chunk, &neighbor_pos).to_block_id() == Block::AIR.id
+        if !state.to_state().is_air() && state.to_block_id() != BlockId::VINE {
+            // `StructurePiece.getRandomHorizontalDirection`
+            let direction = [
+                BlockDirection::North,
+                BlockDirection::East,
+                BlockDirection::South,
+                BlockDirection::West,
+            ][random.next_bounded_i32(4) as usize];
+            let neighbor_pos = pos + direction.to_offset();
+            if GenerationCache::get_block_state(chunk, &neighbor_pos)
+                .to_state()
+                .is_air()
+                && is_face_full(state, pos, direction)
             {
-                let entry =
-                    PaletteEntry::with_properties("minecraft:vine".to_string(), vec![vine_face]);
-                if let Some(vine_state) =
-                    BlockStateResolver::resolve(&entry, Rotation::None, Mirror::None)
-                {
-                    GenerationCache::set_block_state(chunk, &neighbor_pos, vine_state);
+                // `VineBlock.getPropertyForFace(direction.getOpposite())`
+                let mut vine = VineLikeProperties::default(&Block::VINE);
+                match direction {
+                    BlockDirection::North => vine.south = true,
+                    BlockDirection::East => vine.west = true,
+                    BlockDirection::South => vine.north = true,
+                    _ => vine.east = true,
                 }
+                GenerationCache::set_block_state(
+                    chunk,
+                    &neighbor_pos,
+                    vine.to_state_id(&Block::VINE).to_state(),
+                );
             }
         }
     }
