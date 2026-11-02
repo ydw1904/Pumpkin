@@ -207,8 +207,15 @@ impl<'a> EnvironmentAttributes<'a> {
 
     /// Evaluates a boolean environment attribute at a position.
     #[must_use]
-    pub fn get_value_bool(&self, attribute: EnvironmentAttribute, _pos: &BlockPos) -> bool {
-        self.get_dimension_value_bool(attribute)
+    pub fn get_value_bool(&self, attribute: EnvironmentAttribute, pos: &BlockPos) -> bool {
+        let value = self.get_dimension_value_bool(attribute);
+        match attribute {
+            // The early game timeline `and`s onto the biome's value.
+            EnvironmentAttribute::GameplayCanPillagerPatrolSpawn => {
+                value && self.world.get_biome(pos).can_pillager_patrol_spawn
+            }
+            _ => value,
+        }
     }
 
     /// Evaluates a float environment attribute at a position.

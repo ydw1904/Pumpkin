@@ -1,13 +1,16 @@
 use std::{collections::HashMap, sync::Weak};
 
 use pumpkin_data::{Block, villager::VillagerProfession};
-use pumpkin_util::math::{position::BlockPos, vector2::Vector2};
+use pumpkin_util::math::{position::BlockPos, vector2::Vector2, vector3::Vector3};
 
 use crate::entity::EntityBase;
 use crate::world::World;
 
 /// Vanilla `PoiTypes.MEETING`, used to place wandering traders near a village bell.
 pub const POI_TYPE_MEETING: &str = "minecraft:meeting";
+
+/// The level vanilla's POI distance tracker gives sections with no village nearby.
+const MAX_SECTIONS_TO_VILLAGE: i32 = 7;
 
 struct JobSite {
     profession: VillagerProfession,
@@ -107,6 +110,25 @@ impl VillagerPoiStorage {
         sites.into_iter().map(|(_, position)| position).collect()
     }
 
+    /// Vanilla `PoiManager.sectionsToVillage`: the chebyshev distance in sections to the nearest
+    /// section with an occupied village POI, capped at 7. Only job sites track their occupant.
+    #[must_use]
+    pub fn sections_to_village(&self, pos: BlockPos) -> i32 {
+        let section = Vector3::new(pos.0.x >> 4, pos.0.y >> 4, pos.0.z >> 4);
+        self.job_sites
+            .iter()
+            .filter(|(_, site)| site.owner.as_ref().and_then(Self::live_owner).is_some())
+            .map(|(site_pos, _)| {
+                let delta =
+                    Vector3::new(site_pos.0.x >> 4, site_pos.0.y >> 4, site_pos.0.z >> 4) - section;
+                delta.x.abs().max(delta.y.abs()).max(delta.z.abs())
+            })
+            .min()
+            .map_or(MAX_SECTIONS_TO_VILLAGE, |distance| {
+                distance.min(MAX_SECTIONS_TO_VILLAGE)
+            })
+    }
+
     #[must_use]
     pub fn get_nearest_job_site(&self, origin: BlockPos, radius: i32) -> Option<BlockPos> {
         let radius_squared = i64::from(radius).pow(2);
@@ -127,6 +149,16 @@ impl VillagerPoiStorage {
 }
 
 impl World {
+    /// Vanilla `ServerLevel.isCloseToVillage`.
+    #[must_use]
+    pub fn is_close_to_village(&self, pos: &BlockPos, sections: i32) -> bool {
+        self.villager_poi
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .sections_to_village(*pos)
+            <= sections
+    }
+
     /// Registers the village POI blocks of a freshly loaded chunk, as vanilla's
     /// `PoiManager.checkConsistencyWithBlocks` does for chunks without saved POI data.
     pub(crate) fn register_chunk_pois(&self, chunk_pos: Vector2<i32>) {

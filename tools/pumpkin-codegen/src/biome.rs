@@ -472,6 +472,11 @@ pub fn build() -> TokenStream {
             .get("minecraft:gameplay/snow_golem_melts")
             .and_then(Value::as_bool)
             .unwrap_or(false);
+        let can_pillager_patrol_spawn = biome
+            .attributes
+            .get("minecraft:gameplay/can_pillager_patrol_spawn")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
 
         variants.extend([quote! {
             pub const #format_name: Biome = Biome {
@@ -488,6 +493,7 @@ pub fn build() -> TokenStream {
                 carvers: &[#(#carvers),*],
                 creature_spawn_probability: #creature_spawn_probability,
                 snow_golem_melts: #snow_golem_melts,
+                can_pillager_patrol_spawn: #can_pillager_patrol_spawn,
                 spawners: #spawners,
                 spawn_costs: phf::phf_map! {
                     #(#spawn_costs),*
@@ -522,6 +528,8 @@ pub fn build() -> TokenStream {
             pub creature_spawn_probability: f32,
             /// The biome's `gameplay/snow_golem_melts` environment attribute.
             pub snow_golem_melts: bool,
+            /// The biome's `gameplay/can_pillager_patrol_spawn` environment attribute.
+            pub can_pillager_patrol_spawn: bool,
             pub spawners: SpawnGroups,
             pub spawn_costs: phf::Map<&'static str, SpawnCosts>,
         }
