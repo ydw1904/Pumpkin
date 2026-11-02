@@ -197,6 +197,28 @@ impl ZombieEntityBase {
         group_data: Option<SpawnGroupData>,
     ) -> Option<SpawnGroupData> {
         let group_data = mob.finalize_spawn_super(group_data);
+        self.finalize_zombie(mob, world, group_data, false)
+    }
+
+    /// Vanilla `Zombie.finalizeSpawn` with `EntitySpawnReason.CONVERSION`: no loot pickup or
+    /// equipment roll, and a leader bonus doesn't heal.
+    pub fn finalize_zombie_conversion(
+        &self,
+        mob: &dyn Mob,
+        world: &Arc<World>,
+        group_data: Option<SpawnGroupData>,
+    ) -> Option<SpawnGroupData> {
+        self.mob_entity.finalize_conversion_base();
+        self.finalize_zombie(mob, world, group_data, true)
+    }
+
+    fn finalize_zombie(
+        &self,
+        mob: &dyn Mob,
+        world: &Arc<World>,
+        group_data: Option<SpawnGroupData>,
+        conversion: bool,
+    ) -> Option<SpawnGroupData> {
         let difficulty_modifier =
             RegionalDifficulty::at(world, self.mob_entity.living_entity.entity.pos.load())
                 .special_multiplier;
@@ -222,7 +244,7 @@ impl ZombieEntityBase {
                 mob,
             );
         }
-        self.handle_attributes(mob, difficulty_modifier, false);
+        self.handle_attributes(mob, difficulty_modifier, conversion);
         group_data
     }
 
@@ -403,14 +425,21 @@ impl ZombieEntityBase {
                 if let Some(mob) = zombie_villager.get_mob() {
                     mob.mob_read_nbt(&villager_nbt);
                 }
-                finalize_spawn(
-                    zombie_villager,
-                    &world,
-                    Some(SpawnGroupData::Zombie {
-                        is_baby: false,
-                        can_spawn_jockey: true,
-                    }),
-                );
+                // The villager's data read above already fixed the type, so the biome type pick
+                // of `ZombieVillager.finalizeSpawn` has nothing left to do.
+                let converted = zombie_villager.cast_any();
+                if let Some(zombie_villager) =
+                    converted.downcast_ref::<zombie_villager::ZombieVillagerEntity>()
+                {
+                    zombie_villager.mob_entity.finalize_zombie_conversion(
+                        zombie_villager,
+                        &world,
+                        Some(SpawnGroupData::Zombie {
+                            is_baby: false,
+                            can_spawn_jockey: true,
+                        }),
+                    );
+                }
                 if !zombie_entity.is_silent() {
                     world.sync_world_event(
                         WorldEvent::SoundZombieInfected,

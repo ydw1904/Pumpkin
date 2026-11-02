@@ -51,8 +51,16 @@ pub enum PendingVehicle {
 }
 
 impl MobEntity {
-    /// Vanilla `Mob.finalizeSpawn`: random follow range bonus and left-handedness.
+    /// Vanilla `Mob.finalizeSpawn` followed by the loot pickup and equipment rolls of the
+    /// subclasses.
     pub fn finalize_spawn_base(&self) {
+        self.finalize_conversion_base();
+        self.populate_spawn_equipment();
+    }
+
+    /// Vanilla `Mob.finalizeSpawn` alone: random follow range bonus and left-handedness. A
+    /// conversion (`EntitySpawnReason.CONVERSION`) skips the loot pickup and equipment rolls.
+    pub fn finalize_conversion_base(&self) {
         let rng = game_random();
         {
             let mut attributes = self
@@ -75,7 +83,6 @@ impl MobEntity {
             }
         }
         self.set_left_handed(rng.random::<f32>() < 0.05);
-        self.populate_spawn_equipment();
     }
 
     /// Loot pickup and spawn equipment of the mobs in `EQUIPMENT_REGISTRY`, rolled once in
