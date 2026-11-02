@@ -26,6 +26,7 @@ use pumpkin_data::{Block, BlockStateId, block_properties::has_random_ticks, flui
 use pumpkin_util::math::{position::BlockPos, vector2::Vector2};
 use pumpkin_util::random::gameplay;
 use pumpkin_util::world_seed::Seed;
+use rayon::prelude::*;
 use rustc_hash::FxHashSet;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::Duration;
@@ -564,6 +565,71 @@ impl Level {
         gameplay::block_random_pos(&self.rand_value, x, y, z, y_mask)
     }
 
+    /// One chunk's part of vanilla `ServerLevel.tickChunk`: precipitation positions and random
+    /// tick samples.
+    fn random_tick_samples(
+        chunk: &ChunkData,
+        samples_per_section: i64,
+    ) -> (Vec<BlockPos>, Vec<RandomTickSample>) {
+        // Vanilla `ServerLevel.tickChunk`, which the RNG lockdown keys by chunk.
+        let _owner = gameplay::is_locked_down()
+            .then(|| gameplay::OwnerScope::enter(format!("chunk@{},{}", chunk.x, chunk.z)));
+        // A chunk-local stand-in for the level's `randValue`, so parallel chunks don't contend.
+        // The lockdown keeps its own value per owner and must not see an extra draw.
+        let rand_value = std::sync::atomic::AtomicI32::new(if gameplay::is_locked_down() {
+            0
+        } else {
+            gameplay::game_random().next_i32()
+        });
+        let random_pos = |x, y, z, y_mask| gameplay::block_random_pos(&rand_value, x, y, z, y_mask);
+        let chunk_x_base = chunk.x * 16;
+        let chunk_z_base = chunk.z * 16;
+        let mut precipitation = Vec::new();
+        let mut samples = Vec::new();
+
+        for _ in 0..samples_per_section {
+            if gameplay::game_random().next_bounded_i32(48) == 0 {
+                precipitation.push(random_pos(chunk_x_base, 0, chunk_z_base, 15));
+            }
+        }
+
+        // Use the bitmask to skip sections
+        let mask = chunk.section.randomly_ticking_mask.load(Ordering::Relaxed);
+        if mask != 0 {
+            let sections = chunk
+                .section
+                .block_sections
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let min_y = chunk.section.min_y;
+
+            for i in 0..chunk.section.count {
+                if (mask & (1 << i)) == 0 {
+                    continue;
+                }
+                let y_base = min_y + (i as i32 * 16);
+                for _ in 0..samples_per_section {
+                    let position = random_pos(chunk_x_base, y_base, chunk_z_base, 15);
+                    let block_state_id = sections[i].get(
+                        (position.0.x - chunk_x_base) as usize,
+                        (position.0.y - y_base) as usize,
+                        (position.0.z - chunk_z_base) as usize,
+                    );
+                    let tick_block = has_random_ticks(block_state_id);
+                    let tick_fluid = has_random_ticking_fluid(block_state_id);
+                    if tick_block || tick_fluid {
+                        samples.push(RandomTickSample {
+                            position,
+                            tick_block,
+                            tick_fluid,
+                        });
+                    }
+                }
+            }
+        }
+        (precipitation, samples)
+    }
+
     /// Collects this tick's random ticks and precipitation from `entity_ticking` chunks, and its
     /// due scheduled ticks from `block_ticking` chunks, like vanilla's `tickChunk` and
     /// `LevelTicks.tick` split them.
@@ -575,74 +641,29 @@ impl Level {
     ) -> TickData {
         let samples_per_section = random_tick_speed.max(0);
 
+        // 1. Random ticks and precipitation. Chunks sample in parallel; each chunk keeps its own
+        // samples in order.
+        let per_chunk: Vec<(Vec<BlockPos>, Vec<RandomTickSample>)> = entity_ticking
+            .par_iter()
+            .filter(|pos| self.is_chunk_ticking_ready(pos))
+            .filter_map(|pos| {
+                self.loaded_chunks
+                    .get(pos)
+                    .map(|chunk| chunk.value().clone())
+            })
+            .map(|chunk| Self::random_tick_samples(&chunk, samples_per_section))
+            .collect();
         let mut ticks = TickData {
             block_ticks: Vec::new(),
             fluid_ticks: Vec::new(),
-            random_ticks: Vec::with_capacity(entity_ticking.len() * 3),
+            random_ticks: Vec::with_capacity(
+                per_chunk.iter().map(|(_, samples)| samples.len()).sum(),
+            ),
             precipitation: Vec::new(),
         };
-
-        // 1. Process active chunks (random ticks, block entities)
-        for pos in entity_ticking {
-            if !self.is_chunk_ticking_ready(pos) {
-                continue;
-            }
-            if let Some(chunk) = self.loaded_chunks.get(pos) {
-                let chunk = chunk.value();
-                // Vanilla `ServerLevel.tickChunk`, which the RNG lockdown keys by chunk.
-                let _owner = gameplay::is_locked_down()
-                    .then(|| gameplay::OwnerScope::enter(format!("chunk@{},{}", chunk.x, chunk.z)));
-                let chunk_x_base = chunk.x * 16;
-                let chunk_z_base = chunk.z * 16;
-                let section_count = chunk.section.count;
-
-                for _ in 0..samples_per_section {
-                    if gameplay::game_random().next_bounded_i32(48) == 0 {
-                        ticks.precipitation.push(self.get_block_random_pos(
-                            chunk_x_base,
-                            0,
-                            chunk_z_base,
-                            15,
-                        ));
-                    }
-                }
-
-                // Use the bitmask to skip sections
-                let mask = chunk.section.randomly_ticking_mask.load(Ordering::Relaxed);
-                if mask != 0 {
-                    let sections = chunk
-                        .section
-                        .block_sections
-                        .read()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    let min_y = chunk.section.min_y;
-
-                    for i in 0..section_count {
-                        if (mask & (1 << i)) == 0 {
-                            continue;
-                        }
-                        let y_base = min_y + (i as i32 * 16);
-                        for _ in 0..samples_per_section {
-                            let position =
-                                self.get_block_random_pos(chunk_x_base, y_base, chunk_z_base, 15);
-                            let block_state_id = sections[i].get(
-                                (position.0.x - chunk_x_base) as usize,
-                                (position.0.y - y_base) as usize,
-                                (position.0.z - chunk_z_base) as usize,
-                            );
-                            let tick_block = has_random_ticks(block_state_id);
-                            let tick_fluid = has_random_ticking_fluid(block_state_id);
-                            if tick_block || tick_fluid {
-                                ticks.random_ticks.push(RandomTickSample {
-                                    position,
-                                    tick_block,
-                                    tick_fluid,
-                                });
-                            }
-                        }
-                    }
-                }
-            }
+        for (precipitation, samples) in per_chunk {
+            ticks.precipitation.extend(precipitation);
+            ticks.random_ticks.extend(samples);
         }
 
         // 2. Process chunks with scheduled ticks
