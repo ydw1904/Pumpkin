@@ -554,10 +554,16 @@ impl PathNavigation {
     }
 
     pub fn stop(&mut self) {
+        self.finish();
+        self.path = None;
+    }
+
+    /// Ends navigation at a finished path but, like vanilla `PathNavigation.tick`, keeps the
+    /// path installed, so `moveTo` with the same route doesn't walk it again.
+    fn finish(&mut self) {
         self.is_idle.store(true, Ordering::Relaxed);
         self.current_goal = None;
         self.has_pending_path = false;
-        self.path = None;
     }
 
     fn install_path(&mut self, mut path: Path, entity: &LivingEntity) {
@@ -1098,7 +1104,7 @@ impl PathNavigation {
 
         if let Some(path) = &mut self.path {
             if path.is_done() {
-                self.stop();
+                self.finish();
                 return None;
             }
 
@@ -1134,7 +1140,7 @@ impl PathNavigation {
                     return self.ground_target(entity);
                 }
             } else {
-                self.stop();
+                self.finish();
                 return None;
             }
         }
@@ -1768,7 +1774,7 @@ impl PathNavigationTrait for WaterBoundPathNavigation {
         self.inner.tick_count += 1;
         self.inner.update_path(entity);
         if self.is_done() {
-            self.inner.stop();
+            self.inner.finish();
             return None;
         }
         let current_pos = entity.entity.pos.load();
@@ -2070,7 +2076,7 @@ impl PathNavigationTrait for WallClimberNavigation {
 
             if close_enough {
                 self.path_to_position = None;
-                self.inner.inner.stop();
+                self.inner.inner.finish();
             } else {
                 return Some(NavigationTarget {
                     position: Vector3::new(
@@ -2305,7 +2311,7 @@ impl PathNavigationTrait for AmphibiousPathNavigation {
         inner.tick_count += 1;
         inner.update_path(entity);
         if inner.path.as_ref().is_none_or(Path::is_done) {
-            inner.stop();
+            inner.finish();
             return None;
         }
 
@@ -2344,7 +2350,7 @@ impl PathNavigationTrait for AmphibiousPathNavigation {
         inner.do_stuck_detection(mob_pos, entity);
 
         if self.is_done() {
-            self.inner.stop();
+            self.inner.finish();
             return None;
         }
         self.inner.target(entity)
