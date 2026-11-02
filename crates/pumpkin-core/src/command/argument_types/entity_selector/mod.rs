@@ -521,7 +521,7 @@ impl EntitySelectorPredicate {
                 has_tag ^ invert
             }
             Self::Team(expected_team, invert) => {
-                let actual_name = entity_actual_name(entity);
+                let actual_name = entity.get_scoreboard_name();
                 let world = entity.get_entity().world.load();
                 let scoreboard = world
                     .scoreboard
@@ -533,7 +533,7 @@ impl EntitySelectorPredicate {
                 has_team ^ invert
             }
             Self::Scores(scores_map) => {
-                let actual_name = entity_actual_name(entity);
+                let actual_name = entity.get_scoreboard_name();
                 let world = entity.get_entity().world.load();
                 let scoreboard = world
                     .scoreboard
