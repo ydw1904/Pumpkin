@@ -456,7 +456,7 @@ impl World {
             &level.level_folder.dim_folder,
         );
         let wandering_trader_spawner = std::sync::Mutex::new(
-            wandering_trader_spawner::WanderingTraderSpawner::new(data_dir.clone()),
+            wandering_trader_spawner::WanderingTraderSpawner::new(&level.level_folder.root_folder),
         );
         let worldborder = pumpkin_world::world_info::data_files::read_world_border(&data_dir)
             .map_or_else(

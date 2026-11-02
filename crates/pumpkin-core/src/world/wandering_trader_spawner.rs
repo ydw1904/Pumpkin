@@ -48,8 +48,11 @@ pub struct WanderingTraderSpawner {
 }
 
 impl WanderingTraderSpawner {
+    /// Vanilla keeps `wandering_trader.dat` in the server's data storage, so `level_folder`
+    /// is the world's root folder, not a dimension's.
     #[must_use]
-    pub fn new(data_dir: PathBuf) -> Self {
+    pub fn new(level_folder: &std::path::Path) -> Self {
+        let data_dir = pumpkin_world::world_info::data_files::minecraft_data_dir(level_folder);
         let mut data = read_wandering_trader(&data_dir);
         data.data_version = MAXIMUM_SUPPORTED_WORLD_DATA_VERSION;
         Self {
