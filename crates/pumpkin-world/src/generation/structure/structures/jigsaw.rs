@@ -842,7 +842,14 @@ impl StructurePieceBase for PoolElementStructurePiece {
         seed: i64,
         chunk_box: &pumpkin_util::math::block_box::BlockBox,
     ) {
-        self.place_in_region(chunk, block_registry, random, seed, chunk_box);
+        self.place_in_region(
+            chunk,
+            block_registry,
+            random,
+            seed,
+            chunk_box,
+            crate::generation::structure::structures::start_reference_pos(&self.bounding_box()),
+        );
     }
 
     fn place_in_region(
@@ -852,6 +859,7 @@ impl StructurePieceBase for PoolElementStructurePiece {
         random: &mut pumpkin_util::random::RandomGenerator,
         _seed: i64,
         chunk_box: &pumpkin_util::math::block_box::BlockBox,
+        reference_pos: Vector3<i32>,
     ) {
         let origin =
             pumpkin_util::math::vector3::Vector3::new(self.pos.0.x, self.pos.0.y, self.pos.0.z);
@@ -868,7 +876,7 @@ impl StructurePieceBase for PoolElementStructurePiece {
                     origin.z + corner.1.min(0),
                 );
                 let processors = processor_list.load_with_projection(self.element.projection);
-                crate::generation::structure::template::place_template(
+                crate::generation::structure::template::place_template_with_options(
                     &mut crate::generation::update_shape::GenerationRegion(region),
                     &template,
                     placement_origin,
@@ -878,6 +886,8 @@ impl StructurePieceBase for PoolElementStructurePiece {
                     self.liquid_settings == LiquidSettings::ApplyWaterlog,
                     processors.as_ref(),
                     Some(chunk_box),
+                    false,
+                    reference_pos,
                 );
                 crate::generation::structure::template::place_template_entities(
                     region.get_center_chunk_mut(),
@@ -905,11 +915,16 @@ impl StructurePieceBase for PoolElementStructurePiece {
     }
 }
 
+/// Places a pool element's templates outside world generation.
+///
+/// `reference_pos` is what position rule tests measure from: the structure's start reference, or
+/// the position `/place jigsaw` and jigsaw blocks generate at.
 pub fn place_pool_element_templates(
     piece: &PoolElementStructurePiece,
     placer: &mut impl BlockPlacer,
     chunk_box: Option<&BlockBox>,
     keep_jigsaws: bool,
+    reference_pos: Vector3<i32>,
 ) {
     let origin = Vector3::new(piece.pos.0.x, piece.pos.0.y, piece.pos.0.z);
 
@@ -937,6 +952,7 @@ pub fn place_pool_element_templates(
                 processors.as_ref(),
                 chunk_box,
                 keep_jigsaws,
+                reference_pos,
             );
         });
 }

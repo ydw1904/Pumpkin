@@ -269,7 +269,14 @@ impl StructurePieceBase for ShipwreckPiece {
         seed: i64,
         chunk_box: &BlockBox,
     ) {
-        self.place_in_region(chunk, block_registry, random, seed, chunk_box);
+        self.place_in_region(
+            chunk,
+            block_registry,
+            random,
+            seed,
+            chunk_box,
+            crate::generation::structure::structures::start_reference_pos(&self.bounding_box()),
+        );
     }
 
     #[expect(clippy::too_many_lines)]
@@ -280,6 +287,7 @@ impl StructurePieceBase for ShipwreckPiece {
         random: &mut RandomGenerator,
         _seed: i64,
         chunk_box: &BlockBox,
+        _reference_pos: Vector3<i32>,
     ) {
         if !self.height_adjusted && !self.is_too_big_to_fit_in_world_gen_region() {
             let heightmap_type = if self.is_beached {

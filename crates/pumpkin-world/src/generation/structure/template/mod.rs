@@ -109,6 +109,7 @@ pub fn place_template(
         processors,
         chunk_box,
         false,
+        origin,
     );
 }
 
@@ -124,13 +125,14 @@ pub fn place_template_with_options(
     processors: &[StructureProcessor],
     chunk_box: Option<&pumpkin_util::math::block_box::BlockBox>,
     keep_jigsaws: bool,
+    reference_pos: Vector3<i32>,
 ) {
     let (rotated_ox, rotated_oz) = rotation.rotate_offset(offset.0, offset.1);
     let world_x = origin.x + rotated_ox;
     let world_z = origin.z + rotated_oz;
 
     let mut context_rng = LegacyRand::from_seed(hash_block_pos(world_x, origin.y, world_z) as u64);
-    let mut context = processor::ProcessorContext::new(origin, processors, &mut context_rng);
+    let mut context = processor::ProcessorContext::new(reference_pos, processors, &mut context_rng);
     let mut processed = Vec::with_capacity(template.blocks.len());
     for block in &template.blocks {
         let palette_entry = &template.palette[block.state as usize];

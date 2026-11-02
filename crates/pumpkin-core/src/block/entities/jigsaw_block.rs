@@ -118,11 +118,16 @@ impl JigsawBlockEntity {
         };
 
         if let Some(structure) = structure {
-            Self::place_structure(world, &structure, keep_jigsaws);
+            Self::place_structure(world, &structure, position, keep_jigsaws);
         }
     }
 
-    fn place_structure(world: &Arc<World>, structure: &StructurePosition, keep_jigsaws: bool) {
+    fn place_structure(
+        world: &Arc<World>,
+        structure: &StructurePosition,
+        position: BlockPos,
+        keep_jigsaws: bool,
+    ) {
         let mut pieces = std::mem::take(
             &mut structure
                 .collector
@@ -138,6 +143,8 @@ impl JigsawBlockEntity {
                     &mut placer,
                     None,
                     keep_jigsaws,
+                    // Vanilla `JigsawPlacement.generateJigsaw` places with the generation position.
+                    position.0,
                 );
             }
         }

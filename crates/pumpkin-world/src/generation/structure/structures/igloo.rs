@@ -341,7 +341,14 @@ impl StructurePieceBase for IglooPiece {
         seed: i64,
         chunk_box: &BlockBox,
     ) {
-        self.place_in_region(chunk, block_registry, random, seed, chunk_box);
+        self.place_in_region(
+            chunk,
+            block_registry,
+            random,
+            seed,
+            chunk_box,
+            crate::generation::structure::structures::start_reference_pos(&self.bounding_box()),
+        );
     }
 
     fn place_in_region(
@@ -351,6 +358,7 @@ impl StructurePieceBase for IglooPiece {
         random: &mut RandomGenerator,
         _seed: i64,
         chunk_box: &BlockBox,
+        _reference_pos: Vector3<i32>,
     ) {
         let settings = make_settings(self.place_settings.get_rotation(), &self.template_name);
         let offset = get_offset(&self.template_name);

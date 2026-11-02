@@ -39,6 +39,14 @@ pub mod shipwreck;
 pub mod stronghold;
 pub mod swamp_hut;
 
+/// Vanilla `StructureStart.placeInChunk`'s reference position: the center of the first piece's
+/// box, at the bottom of that box.
+#[must_use]
+pub const fn start_reference_pos(first_piece_box: &BlockBox) -> Vector3<i32> {
+    let center = first_piece_box.get_center();
+    Vector3::new(center.x, first_piece_box.min.y, center.z)
+}
+
 pub trait BlockRandomizer {
     fn get_block(&self, rng: &mut RandomGenerator, is_border: bool) -> &BlockState;
 }
@@ -71,6 +79,8 @@ pub trait StructurePieceBase: Send + Sync {
 
     /// Places the piece with access to the whole generation region, the `WorldGenLevel` vanilla
     /// `postProcess` gets. Pieces that read or update blocks across the chunk border override it.
+    /// `reference_pos` is the structure's [`start_reference_pos`], which position rule tests
+    /// measure from.
     fn place_in_region(
         &mut self,
         region: &mut dyn GenerationCache,
@@ -78,6 +88,7 @@ pub trait StructurePieceBase: Send + Sync {
         random: &mut RandomGenerator,
         seed: i64,
         chunk_box: &BlockBox,
+        _reference_pos: Vector3<i32>,
     ) {
         self.place(
             region.get_center_chunk_mut(),
@@ -751,9 +762,20 @@ impl StructurePiecesCollector {
             chunk_z + 15,
         );
 
+        let Some(first_piece) = self.pieces.first() else {
+            return;
+        };
+        let reference_pos = start_reference_pos(&first_piece.bounding_box());
         for piece in &mut self.pieces {
             if piece.bounding_box().intersects(&chunk_box) {
-                piece.place_in_region(region, block_registry, random, seed, &chunk_box);
+                piece.place_in_region(
+                    region,
+                    block_registry,
+                    random,
+                    seed,
+                    &chunk_box,
+                    reference_pos,
+                );
             }
         }
     }

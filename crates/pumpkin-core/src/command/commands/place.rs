@@ -26,12 +26,14 @@ use crate::command::node::{CommandExecutor, CommandExecutorResult};
 use crate::world::block_placer::WorldBlockPlacer;
 use pumpkin_world::generation::feature::configured_features::CONFIGURED_FEATURES;
 use pumpkin_world::generation::feature::placed_features::{Feature, PLACED_FEATURES};
-use pumpkin_world::generation::structure::structures::StructureGeneratorContext;
 use pumpkin_world::generation::structure::structures::jigsaw::{
     PoolElementStructurePiece, place_pool_element_templates,
 };
 use pumpkin_world::generation::structure::structures::jigsaw_placement::{
     DimensionPadding, JigsawPlacement, LiquidSettings, MaxDistance, PoolAliasLookup,
+};
+use pumpkin_world::generation::structure::structures::{
+    StructureGeneratorContext, start_reference_pos,
 };
 use pumpkin_world::generation::structure::template::BlockPlacer;
 
@@ -249,7 +251,14 @@ impl CommandExecutor for PlaceJigsawExecutor {
                 if let Some(jigsaw_piece) =
                     piece.as_any().downcast_ref::<PoolElementStructurePiece>()
                 {
-                    place_pool_element_templates(jigsaw_piece, &mut placer, None, false);
+                    // Vanilla `JigsawPlacement.generateJigsaw` places with the command position.
+                    place_pool_element_templates(
+                        jigsaw_piece,
+                        &mut placer,
+                        None,
+                        false,
+                        block_pos.0,
+                    );
                 }
             }
 
@@ -354,11 +363,20 @@ impl CommandExecutor for PlaceStructureExecutor {
                 let piece_count = collector.pieces.len();
 
                 let mut placer = WorldBlockPlacer::new(context.world());
+                let reference_pos = collector.pieces.first().map_or(block_pos.0, |piece| {
+                    start_reference_pos(&piece.bounding_box())
+                });
                 for piece in &collector.pieces {
                     if let Some(jigsaw_piece) =
                         piece.as_any().downcast_ref::<PoolElementStructurePiece>()
                     {
-                        place_pool_element_templates(jigsaw_piece, &mut placer, None, false);
+                        place_pool_element_templates(
+                            jigsaw_piece,
+                            &mut placer,
+                            None,
+                            false,
+                            reference_pos,
+                        );
                     }
                 }
 
@@ -397,12 +415,21 @@ impl CommandExecutor for PlaceStructureExecutor {
                 let piece_count = collector.pieces.len();
 
                 let mut placer = WorldBlockPlacer::new(context.world());
+                let reference_pos = collector.pieces.first().map_or(block_pos.0, |piece| {
+                    start_reference_pos(&piece.bounding_box())
+                });
 
                 for piece in &collector.pieces {
                     if let Some(jigsaw_piece) =
                         piece.as_any().downcast_ref::<PoolElementStructurePiece>()
                     {
-                        place_pool_element_templates(jigsaw_piece, &mut placer, None, false);
+                        place_pool_element_templates(
+                            jigsaw_piece,
+                            &mut placer,
+                            None,
+                            false,
+                            reference_pos,
+                        );
                     }
                 }
 

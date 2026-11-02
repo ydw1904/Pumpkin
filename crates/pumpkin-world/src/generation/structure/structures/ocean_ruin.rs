@@ -506,7 +506,14 @@ impl StructurePieceBase for OceanRuinPiece {
         seed: i64,
         chunk_box: &BlockBox,
     ) {
-        self.place_in_region(chunk, block_registry, random, seed, chunk_box);
+        self.place_in_region(
+            chunk,
+            block_registry,
+            random,
+            seed,
+            chunk_box,
+            crate::generation::structure::structures::start_reference_pos(&self.bounding_box()),
+        );
     }
 
     #[allow(clippy::too_many_lines)]
@@ -517,6 +524,7 @@ impl StructurePieceBase for OceanRuinPiece {
         random: &mut RandomGenerator,
         _seed: i64,
         chunk_box: &BlockBox,
+        _reference_pos: Vector3<i32>,
     ) {
         let height = region.get_top_y(
             &HeightMap::OceanFloorWg,

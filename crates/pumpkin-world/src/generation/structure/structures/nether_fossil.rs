@@ -278,7 +278,14 @@ impl StructurePieceBase for NetherFossilPiece {
         seed: i64,
         chunk_box: &BlockBox,
     ) {
-        self.place_in_region(chunk, block_registry, random, seed, chunk_box);
+        self.place_in_region(
+            chunk,
+            block_registry,
+            random,
+            seed,
+            chunk_box,
+            crate::generation::structure::structures::start_reference_pos(&self.bounding_box()),
+        );
     }
 
     fn place_in_region(
@@ -288,6 +295,7 @@ impl StructurePieceBase for NetherFossilPiece {
         _random: &mut RandomGenerator,
         seed: i64,
         chunk_box: &BlockBox,
+        _reference_pos: Vector3<i32>,
     ) {
         let fossil_bb = self.piece.bounding_box;
         let mut enlarged_box = *chunk_box;
