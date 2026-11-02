@@ -11,14 +11,16 @@ use pumpkin_util::{
 
 use crate::{
     ProtoChunk,
+    generation::proto_chunk::GenerationCache,
     generation::structure::{
         piece::StructurePieceType,
         structures::{
             StructureGenerator, StructureGeneratorContext, StructurePiece, StructurePieceBase,
             StructurePiecesCollector, StructurePosition,
         },
-        template::{BlockStateResolver, PaletteEntry, get_block_entity_id},
+        template::{BlockStateResolver, PaletteEntry, TemplateBlockPlacement, get_block_entity_id},
     },
+    generation::update_shape::GenerationRegion,
     world::WorldPortalExt,
 };
 
@@ -94,10 +96,12 @@ impl EndCityTemplatePiece {
 
     fn place_blocks(
         &self,
-        chunk: &mut ProtoChunk,
+        region: &mut dyn GenerationCache,
         random: &mut RandomGenerator,
         chunk_box: &BlockBox,
     ) {
+        let chunk = region.get_center_chunk_mut();
+        let mut placement = TemplateBlockPlacement::new(true, false);
         for block in &self.descriptor.template.blocks {
             let palette = &self.descriptor.template.palette[block.state as usize];
             if matches!(
@@ -116,9 +120,11 @@ impl EndCityTemplatePiece {
             else {
                 continue;
             };
-            chunk.set_block_state(position.x, position.y, position.z, state);
+            placement.set_block(chunk, position, state);
             Self::place_block_entity(chunk, palette, block.nbt.as_ref(), position, random);
         }
+        placement.finish(&mut GenerationRegion(region));
+        let chunk = region.get_center_chunk_mut();
 
         for block in &self.descriptor.template.blocks {
             let palette = &self.descriptor.template.palette[block.state as usize];
@@ -273,12 +279,23 @@ impl StructurePieceBase for EndCityTemplatePiece {
     fn place(
         &mut self,
         chunk: &mut ProtoChunk,
+        block_registry: &dyn WorldPortalExt,
+        random: &mut RandomGenerator,
+        seed: i64,
+        chunk_box: &BlockBox,
+    ) {
+        self.place_in_region(chunk, block_registry, random, seed, chunk_box);
+    }
+
+    fn place_in_region(
+        &mut self,
+        region: &mut dyn GenerationCache,
         _block_registry: &dyn WorldPortalExt,
         random: &mut RandomGenerator,
         _seed: i64,
         chunk_box: &BlockBox,
     ) {
-        self.place_blocks(chunk, random, chunk_box);
+        self.place_blocks(region, random, chunk_box);
     }
 }
 

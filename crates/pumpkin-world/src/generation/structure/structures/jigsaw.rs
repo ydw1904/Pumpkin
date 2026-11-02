@@ -813,6 +813,17 @@ impl StructurePieceBase for PoolElementStructurePiece {
         chunk: &mut crate::ProtoChunk,
         block_registry: &dyn crate::world::WorldPortalExt,
         random: &mut pumpkin_util::random::RandomGenerator,
+        seed: i64,
+        chunk_box: &pumpkin_util::math::block_box::BlockBox,
+    ) {
+        self.place_in_region(chunk, block_registry, random, seed, chunk_box);
+    }
+
+    fn place_in_region(
+        &mut self,
+        region: &mut dyn crate::generation::proto_chunk::GenerationCache,
+        block_registry: &dyn crate::world::WorldPortalExt,
+        random: &mut pumpkin_util::random::RandomGenerator,
         _seed: i64,
         chunk_box: &pumpkin_util::math::block_box::BlockBox,
     ) {
@@ -837,7 +848,7 @@ impl StructurePieceBase for PoolElementStructurePiece {
                     ProcessorListRef::Empty => Arc::from([]),
                 };
                 crate::generation::structure::template::place_template(
-                    chunk,
+                    &mut crate::generation::update_shape::GenerationRegion(region),
                     &template,
                     placement_origin,
                     (0, 0),
@@ -848,7 +859,7 @@ impl StructurePieceBase for PoolElementStructurePiece {
                     Some(chunk_box),
                 );
                 crate::generation::structure::template::place_template_entities(
-                    chunk,
+                    region.get_center_chunk_mut(),
                     &template,
                     placement_origin,
                     self.rotation,
@@ -863,7 +874,7 @@ impl StructurePieceBase for PoolElementStructurePiece {
                 crate::generation::feature::placed_features::PLACED_FEATURES.get(&feature)
         {
             placed_feature.generate_in_proto_chunk(
-                chunk,
+                region.get_center_chunk_mut(),
                 block_registry,
                 feature,
                 random,

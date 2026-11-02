@@ -7,7 +7,10 @@ use pumpkin_util::{
 
 use crate::generation::{
     proto_chunk::GenerationCache,
-    structure::template::{BlockStateResolver, StructureTemplate, get_template},
+    structure::template::{
+        BlockStateResolver, StructureTemplate, TemplateBlockPlacement, get_template,
+    },
+    update_shape::GenerationRegion,
 };
 
 pub struct FossilFeature {
@@ -169,6 +172,7 @@ fn place_fossil_template<T: GenerationCache>(
     random: &mut RandomGenerator,
     placement_box: &BlockBox,
 ) {
+    let mut placement = TemplateBlockPlacement::new(true, false);
     for block in &template.blocks {
         let local_pos = rotation.transform_pos(block.pos, template.size);
         let world_pos = origin + local_pos;
@@ -192,7 +196,12 @@ fn place_fossil_template<T: GenerationCache>(
 
         if let Some(state) = BlockStateResolver::resolve(palette_entry, rotation, Mirror::default())
         {
-            chunk.set_block_state(&world_pos, processor.process(state));
+            placement.set_block(
+                &mut GenerationRegion(&mut *chunk),
+                world_pos,
+                processor.process(state),
+            );
         }
     }
+    placement.finish(&mut GenerationRegion(chunk));
 }

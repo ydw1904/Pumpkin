@@ -13,14 +13,19 @@ use pumpkin_util::{
 
 use crate::{
     ProtoChunk,
+    generation::proto_chunk::GenerationCache,
     generation::structure::{
         piece::StructurePieceType,
         structures::{StructurePiece, StructurePieceBase},
     },
+    generation::update_shape::GenerationRegion,
     world::WorldPortalExt,
 };
 
-use super::{BlockStateResolver, PaletteEntry, StructurePlaceSettings, StructureTemplate};
+use super::{
+    BlockStateResolver, PaletteEntry, StructurePlaceSettings, StructureTemplate,
+    TemplateBlockPlacement,
+};
 
 /// A structure piece that places blocks from an NBT template matching vanilla `TemplateStructurePiece`.
 ///
@@ -166,7 +171,7 @@ impl TemplatePiece {
     }
 
     /// Places all blocks from the template into the chunk matching vanilla `postProcess`.
-    fn place_blocks(&mut self, chunk: &mut ProtoChunk, chunk_box: &BlockBox) {
+    fn place_blocks(&mut self, region: &mut dyn GenerationCache, chunk_box: &BlockBox) {
         self.place_settings = self
             .place_settings
             .clone()
@@ -175,6 +180,11 @@ impl TemplatePiece {
             .template
             .get_bounding_box(&self.place_settings, self.template_position);
         let box_limit = self.piece.bounding_box;
+        let chunk = region.get_center_chunk_mut();
+        let mut placement = TemplateBlockPlacement::new(
+            self.place_settings.should_apply_waterlogging(),
+            self.place_settings.get_known_shape(),
+        );
 
         for block in &self.template.blocks {
             let palette_entry = &self.template.palette[block.state as usize];
@@ -203,7 +213,7 @@ impl TemplatePiece {
             }
 
             // Resolve the block state with rotation/mirror
-            let Some(mut state) = BlockStateResolver::resolve(
+            let Some(state) = BlockStateResolver::resolve(
                 &placed_entry,
                 self.place_settings.get_rotation(),
                 self.place_settings.get_mirror(),
@@ -219,27 +229,7 @@ impl TemplatePiece {
                 continue;
             }
 
-            // Handle waterlogging if enabled
-            if self.place_settings.should_apply_waterlogging()
-                && chunk.get_block_state(&world_pos).to_block_id() == pumpkin_data::Block::WATER.id
-                && let Some(waterlogged) =
-                    placed_entry.properties.iter_mut().find_map(|p| match p {
-                        pumpkin_data::Property::Waterlogged(w) => Some(w),
-                        _ => None,
-                    })
-            {
-                *waterlogged = true;
-                if let Some(waterlogged_state) = BlockStateResolver::resolve(
-                    &placed_entry,
-                    self.place_settings.get_rotation(),
-                    self.place_settings.get_mirror(),
-                ) {
-                    state = waterlogged_state;
-                }
-            }
-
-            // Place the block
-            chunk.set_block_state(world_pos.x, world_pos.y, world_pos.z, state);
+            placement.set_block(chunk, world_pos, state);
 
             let final_block = pumpkin_data::Block::from_id(state.id.to_block_id());
             let block_entity_id = super::get_block_entity_id(final_block.name);
@@ -280,6 +270,7 @@ impl TemplatePiece {
                 chunk.add_block_entity(placed_nbt);
             }
         }
+        placement.finish(&mut GenerationRegion(region));
     }
 }
 
@@ -291,12 +282,23 @@ impl StructurePieceBase for TemplatePiece {
     fn place(
         &mut self,
         chunk: &mut ProtoChunk,
+        block_registry: &dyn WorldPortalExt,
+        random: &mut RandomGenerator,
+        seed: i64,
+        chunk_box: &BlockBox,
+    ) {
+        self.place_in_region(chunk, block_registry, random, seed, chunk_box);
+    }
+
+    fn place_in_region(
+        &mut self,
+        region: &mut dyn GenerationCache,
         _block_registry: &dyn WorldPortalExt,
         _random: &mut RandomGenerator,
         _seed: i64,
         chunk_box: &BlockBox,
     ) {
-        self.place_blocks(chunk, chunk_box);
+        self.place_blocks(region, chunk_box);
     }
 
     fn translate(&mut self, x: i32, y: i32, z: i32) {

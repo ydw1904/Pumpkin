@@ -16,6 +16,7 @@ use crate::{
     ProtoChunk,
     generation::{
         positions::chunk_pos::{start_block_x, start_block_z},
+        proto_chunk::GenerationCache,
         structure::piece::StructurePieceType,
     },
 };
@@ -67,6 +68,25 @@ pub trait StructurePieceBase: Send + Sync {
         seed: i64,
         _chunk_box: &BlockBox,
     );
+
+    /// Places the piece with access to the whole generation region, the `WorldGenLevel` vanilla
+    /// `postProcess` gets. Pieces that read or update blocks across the chunk border override it.
+    fn place_in_region(
+        &mut self,
+        region: &mut dyn GenerationCache,
+        block_registry: &dyn WorldPortalExt,
+        random: &mut RandomGenerator,
+        seed: i64,
+        chunk_box: &BlockBox,
+    ) {
+        self.place(
+            region.get_center_chunk_mut(),
+            block_registry,
+            random,
+            seed,
+            chunk_box,
+        );
+    }
 
     #[expect(clippy::too_many_arguments)]
     fn fill_openings(
@@ -714,11 +734,12 @@ impl StructurePiecesCollector {
     /// Iterates over all pieces and generates them if they intersect the current chunk.
     pub fn generate_in_chunk(
         &mut self,
-        chunk: &mut ProtoChunk,
+        region: &mut dyn GenerationCache,
         block_registry: &dyn WorldPortalExt,
         random: &mut RandomGenerator,
         seed: i64,
     ) {
+        let chunk = region.get_center_chunk();
         let chunk_x = start_block_x(chunk.x);
         let chunk_z = start_block_z(chunk.z);
         let chunk_box = BlockBox::new(
@@ -732,7 +753,7 @@ impl StructurePiecesCollector {
 
         for piece in &mut self.pieces {
             if piece.bounding_box().intersects(&chunk_box) {
-                piece.place(chunk, block_registry, random, seed, &chunk_box);
+                piece.place_in_region(region, block_registry, random, seed, &chunk_box);
             }
         }
     }

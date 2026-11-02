@@ -53,7 +53,7 @@ impl Default for StructurePlaceSettings {
             rotation_pivot: Vector3::new(0, 0, 0),
             bounding_box: None,
             ignore_entities: false,
-            apply_waterlogging: false,
+            apply_waterlogging: true,
             known_shape: false,
             processors: Vec::new(),
             finalize_entities: false,

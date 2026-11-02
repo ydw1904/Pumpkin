@@ -1598,12 +1598,11 @@ impl ProtoChunk {
             let decorator_seed = get_decorator_seed(population_seed, index as u64, step as u64);
             let mut random = RandomGenerator::Worldgen(WorldgenRandom::from_seed(decorator_seed));
 
-            let chunk = cache.get_center_chunk_mut();
             for collector_arc in tasks {
                 let mut collector = collector_arc
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                collector.generate_in_chunk(chunk, block_registry, &mut random, world_seed);
+                collector.generate_in_chunk(cache, block_registry, &mut random, world_seed);
             }
         }
     }

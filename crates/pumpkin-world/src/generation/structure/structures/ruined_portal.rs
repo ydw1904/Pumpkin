@@ -12,6 +12,7 @@ use pumpkin_util::{
 
 use crate::{
     ProtoChunk,
+    generation::proto_chunk::GenerationCache,
     generation::structure::{
         piece::StructurePieceType,
         structures::{
@@ -20,13 +21,14 @@ use crate::{
         },
         template::{
             BlockStateResolver, PaletteEntry, StructurePlaceSettings, StructureTemplate,
-            get_template,
+            TemplateBlockPlacement, get_template,
             processor::{
                 IgnoredBlock, PosRuleTest, ProcessorContext, ProcessorRule, RuleTest,
                 StructureProcessor,
             },
         },
     },
+    generation::update_shape::GenerationRegion,
 };
 
 const STRUCTURE_LOCATION_PORTALS: &[&str] = &[
@@ -438,7 +440,8 @@ impl RuinedPortalPiece {
         }
     }
 
-    fn place_blocks(&self, chunk: &mut ProtoChunk, chunk_box: &BlockBox) {
+    fn place_blocks(&self, region: &mut dyn GenerationCache, chunk_box: &BlockBox) {
+        let chunk = region.get_center_chunk_mut();
         let rotation = self.place_settings.get_rotation();
         let mirror = self.place_settings.get_mirror();
         let pivot = self.place_settings.get_rotation_pivot();
@@ -453,15 +456,17 @@ impl RuinedPortalPiece {
             self.place_settings.get_processors(),
             &mut context_rng,
         );
+        let mut placement = TemplateBlockPlacement::new(
+            self.place_settings.should_apply_waterlogging(),
+            self.place_settings.get_known_shape(),
+        );
 
         for block in &self.template.blocks {
             let palette_entry = &self.template.palette[block.state as usize];
 
             let mut block_entity_nbt = block.nbt.clone();
-            let placed_entry = palette_entry.clone();
 
-            let Some(mut state) = BlockStateResolver::resolve(&placed_entry, rotation, mirror)
-            else {
+            let Some(state) = BlockStateResolver::resolve(palette_entry, rotation, mirror) else {
                 continue;
             };
 
@@ -490,27 +495,11 @@ impl RuinedPortalPiece {
                 );
             }
 
-            let Some(final_state) = processed_state else {
+            let Some(state) = processed_state else {
                 continue;
             };
 
-            if chunk.get_block_state(&world_pos).to_block_id() == Block::WATER.id
-                && placed_entry
-                    .properties
-                    .contains(&pumpkin_data::Property::Waterlogged(true))
-            {
-                if let Some(waterlogged_state) =
-                    BlockStateResolver::resolve(&placed_entry, rotation, mirror)
-                {
-                    state = waterlogged_state;
-                } else {
-                    state = final_state;
-                }
-            } else {
-                state = final_state;
-            }
-
-            chunk.set_block_state(world_pos.x, world_pos.y, world_pos.z, state);
+            placement.set_block(chunk, world_pos, state);
 
             let final_block = Block::from_id(state.id.to_block_id());
             let block_entity_id =
@@ -549,6 +538,7 @@ impl RuinedPortalPiece {
                 chunk.add_block_entity(placed_nbt);
             }
         }
+        placement.finish(&mut GenerationRegion(region));
     }
 
     fn spread_netherrack(
@@ -744,6 +734,17 @@ impl StructurePieceBase for RuinedPortalPiece {
     fn place(
         &mut self,
         chunk: &mut ProtoChunk,
+        block_registry: &dyn WorldPortalExt,
+        random: &mut RandomGenerator,
+        seed: i64,
+        chunk_box: &BlockBox,
+    ) {
+        self.place_in_region(chunk, block_registry, random, seed, chunk_box);
+    }
+
+    fn place_in_region(
+        &mut self,
+        region: &mut dyn GenerationCache,
         _block_registry: &dyn WorldPortalExt,
         random: &mut RandomGenerator,
         _seed: i64,
@@ -762,7 +763,8 @@ impl StructurePieceBase for RuinedPortalPiece {
             let mut enlarged_box = *chunk_box;
             enlarged_box.encompass(&bounding_box);
 
-            self.place_blocks(chunk, &enlarged_box);
+            self.place_blocks(region, &enlarged_box);
+            let chunk = region.get_center_chunk_mut();
             self.spread_netherrack(random, chunk, &enlarged_box);
             self.add_netherrack_drip_columns_below_portal(random, chunk, &enlarged_box);
 

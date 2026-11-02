@@ -10,6 +10,7 @@ use crate::{
     ProtoChunk,
     generation::{
         positions::chunk_pos::{start_block_x, start_block_z},
+        proto_chunk::GenerationCache,
         structure::{
             piece::StructurePieceType,
             structures::{
@@ -17,10 +18,12 @@ use crate::{
                 StructurePiecesCollector, StructurePosition, WorldPortalExt,
             },
             template::{
-                BlockStateResolver, StructurePlaceSettings, StructureTemplate, get_template,
+                BlockStateResolver, StructurePlaceSettings, StructureTemplate,
+                TemplateBlockPlacement, get_template,
                 processor::{IgnoredBlock, ProcessorContext, StructureProcessor},
             },
         },
+        update_shape::GenerationRegion,
     },
 };
 
@@ -171,10 +174,11 @@ impl IglooPiece {
     #[expect(clippy::too_many_lines)]
     fn place_blocks(
         &self,
-        chunk: &mut ProtoChunk,
+        region: &mut dyn GenerationCache,
         chunk_box: &BlockBox,
         random: &mut RandomGenerator,
     ) {
+        let chunk = region.get_center_chunk_mut();
         let rotation = self.place_settings.get_rotation();
         let mirror = self.place_settings.get_mirror();
         let pivot = self.place_settings.get_rotation_pivot();
@@ -189,6 +193,11 @@ impl IglooPiece {
             self.place_settings.get_processors(),
             &mut context_rng,
         );
+        let mut placement = TemplateBlockPlacement::new(
+            self.place_settings.should_apply_waterlogging(),
+            self.place_settings.get_known_shape(),
+        );
+        let mut chest_markers = Vec::new();
 
         for block in &self.template.blocks {
             let palette_entry = &self.template.palette[block.state as usize];
@@ -207,21 +216,7 @@ impl IglooPiece {
                 let mode = nbt.get_string("mode").unwrap_or("");
                 let metadata = nbt.get_string("metadata").unwrap_or("");
                 if mode == "DATA" && metadata == "chest" {
-                    chunk.set_block_state(
-                        world_pos.x,
-                        world_pos.y,
-                        world_pos.z,
-                        Block::AIR.default_state,
-                    );
-                    let below_pos = world_pos - Vector3::new(0, 1, 0);
-                    let mut chest_nbt = pumpkin_nbt::compound::NbtCompound::new();
-                    chest_nbt.put_string("id", "minecraft:chest".to_string());
-                    chest_nbt.put_int("x", below_pos.x);
-                    chest_nbt.put_int("y", below_pos.y);
-                    chest_nbt.put_int("z", below_pos.z);
-                    chest_nbt.put_string("LootTable", "minecraft:chests/igloo_chest".to_string());
-                    chest_nbt.put_long("LootTableSeed", random.next_i64());
-                    chunk.add_block_entity(chest_nbt);
+                    chest_markers.push(world_pos);
                 }
                 continue;
             }
@@ -254,7 +249,7 @@ impl IglooPiece {
                 continue;
             };
 
-            chunk.set_block_state(world_pos.x, world_pos.y, world_pos.z, final_state);
+            placement.set_block(chunk, world_pos, final_state);
 
             let final_block = Block::from_id(final_state.id.to_block_id());
             let block_entity_id =
@@ -294,6 +289,8 @@ impl IglooPiece {
             }
         }
 
+        placement.finish(&mut GenerationRegion(region));
+        let chunk = region.get_center_chunk_mut();
         crate::generation::structure::template::place_template_entities(
             chunk,
             &self.template,
@@ -302,6 +299,25 @@ impl IglooPiece {
             chunk_box,
             false,
         );
+
+        // Vanilla `IglooPiece.handleDataMarker`, after `placeInWorld`.
+        for world_pos in chest_markers {
+            chunk.set_block_state(
+                world_pos.x,
+                world_pos.y,
+                world_pos.z,
+                Block::AIR.default_state,
+            );
+            let below_pos = world_pos - Vector3::new(0, 1, 0);
+            let mut chest_nbt = pumpkin_nbt::compound::NbtCompound::new();
+            chest_nbt.put_string("id", "minecraft:chest".to_string());
+            chest_nbt.put_int("x", below_pos.x);
+            chest_nbt.put_int("y", below_pos.y);
+            chest_nbt.put_int("z", below_pos.z);
+            chest_nbt.put_string("LootTable", "minecraft:chests/igloo_chest".to_string());
+            chest_nbt.put_long("LootTableSeed", random.next_i64());
+            chunk.add_block_entity(chest_nbt);
+        }
     }
 }
 
@@ -318,11 +334,23 @@ impl StructurePieceBase for IglooPiece {
     fn place(
         &mut self,
         chunk: &mut ProtoChunk,
+        block_registry: &dyn WorldPortalExt,
+        random: &mut RandomGenerator,
+        seed: i64,
+        chunk_box: &BlockBox,
+    ) {
+        self.place_in_region(chunk, block_registry, random, seed, chunk_box);
+    }
+
+    fn place_in_region(
+        &mut self,
+        region: &mut dyn GenerationCache,
         _block_registry: &dyn WorldPortalExt,
         random: &mut RandomGenerator,
         _seed: i64,
         chunk_box: &BlockBox,
     ) {
+        let chunk = region.get_center_chunk_mut();
         let settings = make_settings(self.place_settings.get_rotation(), &self.template_name);
         let offset = get_offset(&self.template_name);
         let entrance_rel = StructureTemplate::calculate_relative_position(
@@ -342,8 +370,9 @@ impl StructurePieceBase for IglooPiece {
             .template
             .get_bounding_box(&self.place_settings, self.template_position);
 
-        self.place_blocks(chunk, chunk_box, random);
+        self.place_blocks(region, chunk_box, random);
 
+        let chunk = region.get_center_chunk_mut();
         if self.template_name == STRUCTURE_LOCATION_IGLOO {
             let trap_door_rel =
                 StructureTemplate::calculate_relative_position(&settings, Vector3::new(3, 0, 5));
@@ -376,6 +405,8 @@ fn make_settings(rotation: Rotation, template_location: &str) -> StructurePlaceS
             block_id: Block::STRUCTURE_BLOCK.id,
             properties: None,
         }]))
+        // `LiquidSettings.IGNORE_WATERLOGGING`
+        .set_apply_waterlogging(false)
 }
 
 fn make_position(template_location: &str, position: Vector3<i32>, depth: i32) -> Vector3<i32> {

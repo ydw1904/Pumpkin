@@ -12,6 +12,7 @@ use crate::{
     ProtoChunk,
     generation::{
         positions::chunk_pos::{start_block_x, start_block_z},
+        proto_chunk::GenerationCache,
         structure::{
             piece::StructurePieceType,
             structures::{
@@ -19,10 +20,12 @@ use crate::{
                 StructurePiecesCollector, StructurePosition, WorldPortalExt,
             },
             template::{
-                BlockStateResolver, StructurePlaceSettings, StructureTemplate, get_template,
+                BlockStateResolver, StructurePlaceSettings, StructureTemplate,
+                TemplateBlockPlacement, get_template,
                 processor::{IgnoredBlock, ProcessorContext, StructureProcessor},
             },
         },
+        update_shape::GenerationRegion,
     },
 };
 
@@ -155,7 +158,8 @@ impl NetherFossilPiece {
         }
     }
 
-    fn place_blocks(&self, chunk: &mut ProtoChunk, chunk_box: &BlockBox) {
+    fn place_blocks(&self, region: &mut dyn GenerationCache, chunk_box: &BlockBox) {
+        let chunk = region.get_center_chunk_mut();
         let rotation = self.place_settings.get_rotation();
         let mirror = self.place_settings.get_mirror();
         let pivot = self.place_settings.get_rotation_pivot();
@@ -169,6 +173,10 @@ impl NetherFossilPiece {
             self.template_position,
             self.place_settings.get_processors(),
             &mut context_rng,
+        );
+        let mut placement = TemplateBlockPlacement::new(
+            self.place_settings.should_apply_waterlogging(),
+            self.place_settings.get_known_shape(),
         );
 
         for block in &self.template.blocks {
@@ -210,8 +218,9 @@ impl NetherFossilPiece {
                 continue;
             };
 
-            chunk.set_block_state(world_pos.x, world_pos.y, world_pos.z, final_state);
+            placement.set_block(chunk, world_pos, final_state);
         }
+        placement.finish(&mut GenerationRegion(region));
     }
 
     fn place_dried_ghast(
@@ -262,6 +271,17 @@ impl StructurePieceBase for NetherFossilPiece {
     fn place(
         &mut self,
         chunk: &mut ProtoChunk,
+        block_registry: &dyn WorldPortalExt,
+        random: &mut RandomGenerator,
+        seed: i64,
+        chunk_box: &BlockBox,
+    ) {
+        self.place_in_region(chunk, block_registry, random, seed, chunk_box);
+    }
+
+    fn place_in_region(
+        &mut self,
+        region: &mut dyn GenerationCache,
         _block_registry: &dyn WorldPortalExt,
         _random: &mut RandomGenerator,
         seed: i64,
@@ -271,8 +291,8 @@ impl StructurePieceBase for NetherFossilPiece {
         let mut enlarged_box = *chunk_box;
         enlarged_box.encompass(&fossil_bb);
 
-        self.place_blocks(chunk, &enlarged_box);
-        Self::place_dried_ghast(chunk, seed, &fossil_bb, chunk_box);
+        self.place_blocks(region, &enlarged_box);
+        Self::place_dried_ghast(region.get_center_chunk_mut(), seed, &fossil_bb, chunk_box);
     }
 }
 

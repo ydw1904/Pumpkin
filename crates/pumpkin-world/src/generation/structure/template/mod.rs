@@ -26,6 +26,7 @@
 
 mod block_state_resolver;
 mod cache;
+mod place_in_world;
 pub mod processor;
 mod structure_template;
 mod template_piece;
@@ -46,6 +47,7 @@ pub use cache::{
     TemplateCache, all_embedded_datapack_names, all_pool_names, all_structure_names,
     all_template_names, get_template, global_cache,
 };
+pub use place_in_world::TemplateBlockPlacement;
 pub use processor::{
     StructureProcessor, clear_dynamic_processors, load_processor_list,
     register_dynamic_processor_list,
@@ -127,6 +129,9 @@ pub fn place_template_with_options(
 
     let mut context_rng = LegacyRand::from_seed(hash_block_pos(world_x, origin.y, world_z) as u64);
     let mut context = processor::ProcessorContext::new(origin, processors, &mut context_rng);
+    // Jigsaw pieces place with a known shape (`SinglePoolElement.getSettings`). The live
+    // commands leave other shape updates to the world's own block updates.
+    let mut placement = TemplateBlockPlacement::new(apply_waterlogging, true);
 
     for block in &template.blocks {
         let palette_entry = &template.palette[block.state as usize];
@@ -183,21 +188,6 @@ pub fn place_template_with_options(
 
         let world_pos = Vector3::new(wx, wy, wz);
 
-        if apply_waterlogging
-            && placer.get_block_state(&world_pos).to_block_id() == pumpkin_data::Block::WATER.id
-            && let Some(waterlogged) = placed_entry.properties.iter_mut().find_map(|p| match p {
-                pumpkin_data::Property::Waterlogged(w) => Some(w),
-                _ => None,
-            })
-        {
-            *waterlogged = true;
-            if let Some(waterlogged_state) =
-                BlockStateResolver::resolve(&placed_entry, rotation, Mirror::default())
-            {
-                state = waterlogged_state;
-            }
-        }
-
         // Apply processors
         let mut should_place = true;
         let mut capped_idx = 0;
@@ -226,7 +216,7 @@ pub fn place_template_with_options(
             continue;
         }
 
-        placer.set_block_state(&Vector3::new(wx, wy, wz), state);
+        placement.set_block(placer, world_pos, state);
 
         // Create block entities for interactive blocks (furnaces, chests, etc.)
         let final_block = pumpkin_data::Block::from_id(state.id.to_block_id());
@@ -258,6 +248,8 @@ pub fn place_template_with_options(
             placer.add_block_entity(&world_pos, placed_nbt);
         }
     }
+
+    placement.finish(placer);
 }
 
 pub(crate) fn place_template_entities(

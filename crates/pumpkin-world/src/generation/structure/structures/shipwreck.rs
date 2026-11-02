@@ -12,14 +12,18 @@ use crate::{
     ProtoChunk,
     generation::{
         positions::chunk_pos::{get_center_x, get_center_z, start_block_x, start_block_z},
+        proto_chunk::GenerationCache,
         structure::{
             piece::StructurePieceType,
             structures::{
                 StructureGenerator, StructureGeneratorContext, StructurePiece, StructurePieceBase,
                 StructurePiecesCollector, StructurePosition, WorldPortalExt,
             },
-            template::{BlockStateResolver, StructureTemplate, get_template},
+            template::{
+                BlockStateResolver, StructureTemplate, TemplateBlockPlacement, get_template,
+            },
         },
+        update_shape::GenerationRegion,
     },
 };
 
@@ -257,15 +261,27 @@ impl StructurePieceBase for ShipwreckPiece {
         &mut self.piece
     }
 
-    #[expect(clippy::too_many_lines)]
     fn place(
         &mut self,
         chunk: &mut ProtoChunk,
+        block_registry: &dyn WorldPortalExt,
+        random: &mut RandomGenerator,
+        seed: i64,
+        chunk_box: &BlockBox,
+    ) {
+        self.place_in_region(chunk, block_registry, random, seed, chunk_box);
+    }
+
+    #[expect(clippy::too_many_lines)]
+    fn place_in_region(
+        &mut self,
+        region: &mut dyn GenerationCache,
         _block_registry: &dyn WorldPortalExt,
         random: &mut RandomGenerator,
         _seed: i64,
         chunk_box: &BlockBox,
     ) {
+        let chunk = region.get_center_chunk_mut();
         if !self.height_adjusted && !self.is_too_big_to_fit_in_world_gen_region() {
             let heightmap_type = if self.is_beached {
                 HeightMap::WorldSurfaceWg
@@ -307,6 +323,7 @@ impl StructurePieceBase for ShipwreckPiece {
 
         // Place non-marker blocks
         let box_limit = self.piece.bounding_box;
+        let mut placement = TemplateBlockPlacement::new(true, false);
         for block in &self.template.blocks {
             let palette_entry = &self.template.palette[block.state as usize];
 
@@ -330,30 +347,13 @@ impl StructurePieceBase for ShipwreckPiece {
                 continue;
             }
 
-            let Some(mut state) =
+            let Some(state) =
                 BlockStateResolver::resolve(palette_entry, self.rotation, Mirror::None)
             else {
                 continue;
             };
 
-            if chunk.get_block_state(&world_pos).to_block_id() == pumpkin_data::Block::WATER.id {
-                let mut modified_entry = palette_entry.clone();
-                if let Some(waterlogged) =
-                    modified_entry.properties.iter_mut().find_map(|p| match p {
-                        pumpkin_data::Property::Waterlogged(w) => Some(w),
-                        _ => None,
-                    })
-                {
-                    *waterlogged = true;
-                    if let Some(waterlogged_state) =
-                        BlockStateResolver::resolve(&modified_entry, self.rotation, Mirror::None)
-                    {
-                        state = waterlogged_state;
-                    }
-                }
-            }
-
-            chunk.set_block_state(world_pos.x, world_pos.y, world_pos.z, state);
+            placement.set_block(chunk, world_pos, state);
 
             let final_block = pumpkin_data::Block::from_id(state.id.to_block_id());
             let block_entity_id =
@@ -392,6 +392,8 @@ impl StructurePieceBase for ShipwreckPiece {
                 chunk.add_block_entity(placed_nbt);
             }
         }
+        placement.finish(&mut GenerationRegion(region));
+        let chunk = region.get_center_chunk_mut();
 
         // Process data markers
         for block in &self.template.blocks {

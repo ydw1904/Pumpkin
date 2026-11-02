@@ -12,6 +12,7 @@ use pumpkin_util::{
 
 use crate::{
     ProtoChunk,
+    generation::proto_chunk::GenerationCache,
     generation::structure::{
         piece::StructurePieceType,
         structures::{
@@ -19,9 +20,11 @@ use crate::{
             StructurePiecesCollector, StructurePosition,
         },
         template::{
-            BlockStateResolver, PaletteEntry, StructureTemplate, get_block_entity_id, get_template,
+            BlockStateResolver, PaletteEntry, StructureTemplate, TemplateBlockPlacement,
+            get_block_entity_id, get_template,
         },
     },
+    generation::update_shape::GenerationRegion,
     world::WorldPortalExt,
 };
 
@@ -272,10 +275,13 @@ impl MansionTemplatePiece {
 
     fn place_blocks(
         &self,
-        chunk: &mut ProtoChunk,
+        region: &mut dyn GenerationCache,
         random: &mut RandomGenerator,
         chunk_box: &BlockBox,
     ) {
+        let chunk = region.get_center_chunk_mut();
+        let mut placement = TemplateBlockPlacement::new(true, false);
+        let mut markers = Vec::new();
         for template_block in &self.template.blocks {
             let palette = &self.template.palette[template_block.state as usize];
             let position = self.world_position(template_block.pos);
@@ -291,29 +297,17 @@ impl MansionTemplatePiece {
                     .as_ref()
                     .and_then(|nbt| nbt.get_string("metadata"))
                 {
-                    self.handle_marker(chunk, random, marker, position);
+                    markers.push((marker, position));
                 }
                 continue;
             }
 
-            let mut placed_entry = palette.clone();
-            if chunk.get_block_state(&position).to_block_id() == Block::WATER.id
-                && let Some(waterlogged) =
-                    placed_entry.properties.iter_mut().find_map(|p| match p {
-                        pumpkin_data::Property::Waterlogged(w) => Some(w),
-                        _ => None,
-                    })
-            {
-                *waterlogged = true;
-            }
-            let Some(state) = BlockStateResolver::resolve(
-                &placed_entry,
-                self.rotation,
-                self.mirror.state_mirror(),
-            ) else {
+            let Some(state) =
+                BlockStateResolver::resolve(palette, self.rotation, self.mirror.state_mirror())
+            else {
                 continue;
             };
-            chunk.set_block_state(position.x, position.y, position.z, state);
+            placement.set_block(chunk, position, state);
             Self::place_block_entity(
                 chunk,
                 palette,
@@ -321,6 +315,13 @@ impl MansionTemplatePiece {
                 position,
                 random,
             );
+        }
+
+        placement.finish(&mut GenerationRegion(region));
+        let chunk = region.get_center_chunk_mut();
+        // Vanilla `WoodlandMansionPiece.handleDataMarker`, after `placeInWorld`.
+        for (marker, position) in markers {
+            self.handle_marker(chunk, random, marker, position);
         }
     }
 
@@ -439,12 +440,23 @@ impl StructurePieceBase for MansionTemplatePiece {
     fn place(
         &mut self,
         chunk: &mut ProtoChunk,
+        block_registry: &dyn WorldPortalExt,
+        random: &mut RandomGenerator,
+        seed: i64,
+        chunk_box: &BlockBox,
+    ) {
+        self.place_in_region(chunk, block_registry, random, seed, chunk_box);
+    }
+
+    fn place_in_region(
+        &mut self,
+        region: &mut dyn GenerationCache,
         _block_registry: &dyn WorldPortalExt,
         random: &mut RandomGenerator,
         _seed: i64,
         chunk_box: &BlockBox,
     ) {
-        self.place_blocks(chunk, random, chunk_box);
+        self.place_blocks(region, random, chunk_box);
     }
 }
 
