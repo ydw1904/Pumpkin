@@ -86,7 +86,7 @@ impl VillagerEntity {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = target;
     }
 
-    fn walk_target(&self) -> Option<WalkTarget> {
+    pub(super) fn walk_target(&self) -> Option<WalkTarget> {
         *self
             .walk_target
             .lock()
@@ -130,25 +130,40 @@ impl VillagerEntity {
         };
 
         let random = self.get_random();
+        let mut next_ok_start = self.stroll_next_ok_start.load(Ordering::Relaxed);
+        let mut stroll = || {
+            self.stroll_around_poi(
+                meeting_point,
+                STROLL_MAX_DISTANCE_FROM_POI,
+                &mut next_ok_start,
+                game_time,
+            )
+        };
         if random.random_bool(0.5) {
             if !self.socialize_at_bell(world, meeting_point) {
-                self.stroll_around_poi(meeting_point, game_time);
+                stroll();
             }
-        } else if !self.stroll_around_poi(meeting_point, game_time) {
+        } else if !stroll() {
             self.socialize_at_bell(world, meeting_point);
         }
+        self.stroll_next_ok_start
+            .store(next_ok_start, Ordering::Relaxed);
         self.trade_with_villager(world, game_time);
     }
 
     /// Vanilla `StrollAroundPoi`.
-    fn stroll_around_poi(&self, poi: BlockPos, game_time: i64) -> bool {
+    pub(super) fn stroll_around_poi(
+        &self,
+        poi: BlockPos,
+        max_distance_from_poi: f64,
+        next_ok_start: &mut i64,
+        game_time: i64,
+    ) -> bool {
         let pos = self.get_entity().pos.load();
-        if poi.to_centered_f64().squared_distance_to_vec(&pos)
-            >= STROLL_MAX_DISTANCE_FROM_POI.powi(2)
-        {
+        if poi.to_centered_f64().squared_distance_to_vec(&pos) >= max_distance_from_poi.powi(2) {
             return false;
         }
-        if game_time <= self.stroll_next_ok_start.load(Ordering::Relaxed) {
+        if game_time <= *next_ok_start {
             return true;
         }
         let land_pos = land_random_pos::get_pos(self, STROLL_MAX_XZ_DIST, STROLL_MAX_Y_DIST);
@@ -157,8 +172,7 @@ impl VillagerEntity {
             speed: STROLL_SPEED,
             close_enough_dist: 1,
         }));
-        self.stroll_next_ok_start
-            .store(game_time + MIN_TIME_BETWEEN_STROLLS, Ordering::Relaxed);
+        *next_ok_start = game_time + MIN_TIME_BETWEEN_STROLLS;
         true
     }
 
@@ -350,7 +364,7 @@ impl VillagerEntity {
         selected.len()
     }
 
-    fn count_item(&self, item: &Item) -> i32 {
+    pub(super) fn count_item(&self, item: &Item) -> i32 {
         self.inventory
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

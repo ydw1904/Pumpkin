@@ -40,6 +40,25 @@ pub mod sweet_berry_bush;
 pub mod torch_flower;
 pub mod wheat;
 
+/// Whether a vanilla `CropBlock` (wheat, carrots, potatoes, beetroots and the torchflower crop)
+/// is at `isMaxAge`, or `None` for any other block.
+#[must_use]
+pub fn is_crop_at_max_age(block: &Block, state: BlockStateId) -> Option<bool> {
+    fn max_age<C: CropBlockBase>(crop: &C, block: &Block, state: BlockStateId) -> bool {
+        crop.get_age(state, block) >= crop.max_age()
+    }
+    Some(match block.id {
+        id if id == Block::WHEAT.id => max_age(&wheat::WheatBlock, block, state),
+        id if id == Block::CARROTS.id => max_age(&carrot::CarrotBlock, block, state),
+        id if id == Block::POTATOES.id => max_age(&potatoes::PotatoBlock, block, state),
+        id if id == Block::BEETROOTS.id => max_age(&beetroot::BeetrootBlock, block, state),
+        id if id == Block::TORCHFLOWER_CROP.id => {
+            max_age(&torch_flower::TorchFlowerBlock, block, state)
+        }
+        _ => return None,
+    })
+}
+
 trait CropBlockBase: PlantBlockBase {
     // Deliberately NOT named `can_plant_on_top`: that would collide with the
     // `PlantBlockBase` method of the same name without overriding it, and

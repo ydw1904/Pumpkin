@@ -21,6 +21,7 @@ pub mod follow_flock_leader;
 pub mod follow_mob;
 pub mod follow_owner;
 pub mod follow_parent;
+pub mod go_to_potential_job_site;
 pub mod go_to_wanted_item;
 pub mod goal_selector;
 pub mod interact;
@@ -60,7 +61,6 @@ pub mod try_find_water;
 pub mod use_item;
 pub mod wander_around;
 pub mod water_avoiding_random_flying;
-pub mod work_at_job_site;
 pub mod zombie_attack;
 
 #[must_use]

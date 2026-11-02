@@ -3,12 +3,13 @@ use pumpkin_util::math::position::BlockPos;
 use super::{Controls, Goal};
 use crate::entity::{ai::pathfinder::NavigatorGoal, mob::Mob};
 
-pub struct WorkAtJobSiteGoal {
+/// The walk of vanilla `GoToPotentialJobSite` to the job site a villager is about to claim.
+pub struct GoToPotentialJobSiteGoal {
     speed: f64,
     target: Option<BlockPos>,
 }
 
-impl WorkAtJobSiteGoal {
+impl GoToPotentialJobSiteGoal {
     #[must_use]
     pub const fn new(speed: f64) -> Self {
         Self {
@@ -16,27 +17,11 @@ impl WorkAtJobSiteGoal {
             target: None,
         }
     }
-
-    /// The potential job site `GoToPotentialJobSite` walks to, or the job site during work
-    /// hours.
-    fn walk_target(mob: &dyn Mob) -> Option<BlockPos> {
-        if let Some(potential) = mob.get_potential_job_site_walk_target() {
-            return Some(potential);
-        }
-        let world = mob.get_mob_entity().living_entity.entity.world.load();
-        let daytime = world
-            .level_time
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .query_daytime();
-        mob.get_job_site()
-            .filter(|_| (2_000..9_000).contains(&daytime))
-    }
 }
 
-impl Goal for WorkAtJobSiteGoal {
+impl Goal for GoToPotentialJobSiteGoal {
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
-        let Some(target) = Self::walk_target(mob) else {
+        let Some(target) = mob.get_potential_job_site_walk_target() else {
             return false;
         };
         let position = mob.get_mob_entity().living_entity.entity.pos.load();
@@ -51,7 +36,7 @@ impl Goal for WorkAtJobSiteGoal {
         let Some(target) = self.target else {
             return false;
         };
-        if Self::walk_target(mob) != Some(target) {
+        if mob.get_potential_job_site_walk_target() != Some(target) {
             return false;
         }
         let entity = &mob.get_mob_entity().living_entity.entity;

@@ -39,9 +39,9 @@ use crate::entity::player::Player;
 use crate::entity::{
     Entity, EntityBase,
     ai::goal::{
-        look_around::RandomLookAroundGoal, look_at_entity::LookAtEntityGoal,
-        open_door::OpenDoorGoal, swim::SwimGoal, trade_with_player::TradeWithPlayerGoal,
-        wander_around::WanderAroundGoal, work_at_job_site::WorkAtJobSiteGoal,
+        go_to_potential_job_site::GoToPotentialJobSiteGoal, look_around::RandomLookAroundGoal,
+        look_at_entity::LookAtEntityGoal, open_door::OpenDoorGoal, swim::SwimGoal,
+        trade_with_player::TradeWithPlayerGoal, wander_around::WanderAroundGoal,
     },
     experience_orb::ExperienceOrbEntity,
     mob::{Mob, MobEntity, spawn::SpawnGroupData},
@@ -55,9 +55,11 @@ use pumpkin_data::environment_attribute::Activity;
 mod acquire_poi;
 pub mod data;
 mod golem;
+mod inventory;
 mod meet;
 mod show_trades;
 mod walk_to_poi;
+mod work;
 
 /// Vanilla `ValidateNearbyPoi.MAX_DISTANCE`.
 const VALIDATE_POI_MAX_DISTANCE: f64 = 16.0;
@@ -444,6 +446,13 @@ pub struct VillagerEntity {
     golem_detected_until: AtomicI64,
     /// Ticks until vanilla's `GolemSensor` scans again.
     golem_sensor_countdown: AtomicI32,
+    /// Vanilla `MemoryModuleType.NEAREST_VISIBLE_WANTED_ITEM`, by entity id.
+    nearest_wanted_item: std::sync::Mutex<Option<i32>>,
+    /// Vanilla `MemoryModuleType.SECONDARY_JOB_SITE`; empty when the memory is absent.
+    secondary_job_sites: std::sync::Mutex<Vec<BlockPos>>,
+    /// Ticks until vanilla's `SecondaryPoiSensor` scans again.
+    secondary_poi_sensor_countdown: AtomicI32,
+    work: std::sync::Mutex<work::WorkPackage>,
     /// Vanilla `ShowTradesToPlayer`, while it runs.
     show_trades: std::sync::Mutex<Option<show_trades::ShowTrades>>,
     /// Vanilla `SleepInBed.nextOkStartTime`.
@@ -540,6 +549,12 @@ impl VillagerEntity {
             golem_sensor_countdown: AtomicI32::new(
                 game_random().random_range(0..golem::GOLEM_SENSOR_SCAN_RATE),
             ),
+            nearest_wanted_item: std::sync::Mutex::new(None),
+            secondary_job_sites: std::sync::Mutex::new(Vec::new()),
+            secondary_poi_sensor_countdown: AtomicI32::new(
+                game_random().random_range(0..work::SECONDARY_POI_SCAN_RATE),
+            ),
+            work: std::sync::Mutex::default(),
             show_trades: std::sync::Mutex::new(None),
             sleep_next_ok_start: AtomicI64::new(0),
             sleeping_pos: std::sync::Mutex::new(None),
@@ -553,6 +568,7 @@ impl VillagerEntity {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .set_can_open_doors(true);
+        mob_arc.mob_entity.set_can_pick_up_loot(true);
         *mob_arc
             .self_weak
             .lock()
@@ -572,7 +588,7 @@ impl VillagerEntity {
 
             goal_selector.add_goal(2, Box::new(TradeWithPlayerGoal::new()));
             // Basic movement and looking (Vanilla uses 0.5 speed)
-            goal_selector.add_goal(3, Box::new(WorkAtJobSiteGoal::new(0.5)));
+            goal_selector.add_goal(3, Box::new(GoToPotentialJobSiteGoal::new(0.5)));
             goal_selector.add_goal(3, Box::new(walk_to_poi::WalkToRememberedPoiGoal::home(0.5)));
             goal_selector.add_goal(
                 3,
@@ -1105,33 +1121,19 @@ impl VillagerEntity {
         }
     }
 
-    fn work_at_job_site(&self, game_time: i64, day_time: i64, day: i64) {
-        if !(2_000..9_000).contains(&day_time)
-            || game_time - self.last_worked_at_poi.load(Ordering::Relaxed) < 300
-            || !game_random().random_bool(0.5)
-        {
-            return;
-        }
+    /// Vanilla `WorkAtPoi.start`: works at the job site, then restocks if it should.
+    fn start_work_at_poi(&self, world: &Arc<World>, game_time: i64, day: i64) {
         self.last_worked_at_poi.store(game_time, Ordering::Relaxed);
-
         let Some(job_site) = self.get_job_site() else {
             return;
         };
-        if job_site
-            .to_centered_f64()
-            .squared_distance_to_vec(&self.get_entity().pos.load())
-            >= 1.73f64.powi(2)
-        {
-            return;
-        }
-
-        let profession = self
-            .villager_data
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .profession_enum();
+        self.look_at_position(job_site.to_centered_f64());
+        let profession = self.profession();
         if let Some(sound) = profession.work_sound() {
             self.get_entity().play_sound(sound);
+        }
+        if profession == VillagerProfession::Farmer {
+            self.work_at_composter(world, job_site);
         }
 
         let last_restock = self.last_restock_time.load(Ordering::Relaxed);
@@ -2276,19 +2278,21 @@ impl VillagerEntity {
             }
         }
 
-        let (game_time, day_time, day) = {
+        let (game_time, day) = {
             let time = world
                 .level_time
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            (time.world_age, time.query_daytime(), time.query_day())
+            (time.world_age, time.query_day())
         };
         self.decay_gossips(game_time);
-        self.work_at_job_site(game_time, day_time, day);
         let age = self.get_entity().tick_count.load(Ordering::Relaxed);
-        // Vanilla's nearest entity sensor refreshes every 20 ticks.
-        self.tick_job_site_memories(&world, game_time, age % 20 == 0);
+        // Vanilla's nearest entity and item sensors refresh every 20 ticks.
+        let sensed = age % 20 == 0;
+        self.tick_secondary_poi_sensor(&world);
+        self.tick_job_site_memories(&world, game_time, sensed);
         self.tick_poi_memories(&world, game_time);
+        self.go_to_wanted_item(&world, sensed);
         self.assign_profession_from_job_site(&world);
         self.tick_meet(&world, game_time);
         let entity = self.get_entity();
@@ -2296,9 +2300,12 @@ impl VillagerEntity {
             &entity.block_pos.load(),
             entity.age.load(Ordering::Relaxed) < 0,
         );
+        self.tick_work(&world, game_time, day, activity);
         self.tick_show_trades(&world, game_time, activity);
         self.reset_profession();
         self.tick_golem_spawning(&world, game_time);
+        // Vanilla `Mob.aiStep` picks items up after the brain has ticked.
+        self.pick_up_items(&world);
     }
 }
 
