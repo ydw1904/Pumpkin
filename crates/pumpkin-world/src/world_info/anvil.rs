@@ -329,7 +329,13 @@ fn level_data_to_nbt(info: &LevelData, data: &mut NbtCompound) {
         Difficulty::Hard => "hard",
     };
     diff_comp.put_string("difficulty", diff_name.to_string());
-    diff_comp.put_bool("hardcore", false);
+    // Pumpkin doesn't model hardcore, so keep what the world was created with.
+    let hardcore = data
+        .get_compound("difficulty_settings")
+        .and_then(|settings| settings.get_bool("hardcore"))
+        .or_else(|| data.get_bool("hardcore"))
+        .unwrap_or(false);
+    diff_comp.put_bool("hardcore", hardcore);
     diff_comp.put_bool("locked", info.difficulty_locked);
     data.put_compound("difficulty_settings", diff_comp);
 
