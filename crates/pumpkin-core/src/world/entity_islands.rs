@@ -1126,12 +1126,31 @@ impl Grid {
                         }
                         continue;
                     }
+                    if cell.merged {
+                        // One overlapping member joins the whole cell.
+                        if sets.find(cell.members[0]) == sets.find(slot) {
+                            budget.spend(1)?;
+                            continue;
+                        }
+                        for &member in &cell.members {
+                            budget.spend(1)?;
+                            if overlaps(area, &self.boxes[member]) {
+                                sets.union(slot, member);
+                                break;
+                            }
+                        }
+                        continue;
+                    }
                     budget.spend(cell.members.len())?;
+                    let mut joined = true;
                     for &member in &cell.members {
                         if query.visit(member) && overlaps(area, &self.boxes[member]) {
                             sets.union(slot, member);
+                        } else if sets.find(member) != sets.find(slot) {
+                            joined = false;
                         }
                     }
+                    cell.merged = joined;
                 }
             }
         }
@@ -1578,6 +1597,22 @@ mod tests {
         assert_eq!(islands(&nodes, &[], &[]), [vec![0], vec![1]]);
         nodes[1].1.block_reads = nodes[1].1.body.expand(15.0, 15.0, 15.0);
         assert_eq!(islands(&nodes, &[], &[]), [vec![0, 1]]);
+    }
+
+    #[test]
+    fn dense_block_writers_fit_the_budget() {
+        // Like a crowd of unaudited mobs: wide block writes over full-height reads.
+        let nodes: Vec<_> = (0..150)
+            .map(|id| {
+                let (id, mut reach) = node(id, f64::from(id) * 0.5, 0.0);
+                reach.block_reads = reach.body.expand(77.0, 0.0, 77.0);
+                reach.block_reads.min.y = f64::NEG_INFINITY;
+                reach.block_reads.max.y = f64::INFINITY;
+                reach.block_writes = Some(reach.body.expand(77.0, 77.0, 77.0));
+                (id, reach)
+            })
+            .collect();
+        assert_eq!(islands(&nodes, &[], &[]), [(0..150).collect::<Vec<_>>()]);
     }
 
     #[test]
