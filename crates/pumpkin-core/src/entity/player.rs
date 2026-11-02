@@ -3435,6 +3435,12 @@ impl Player {
     }
 
     #[must_use]
+    /// Vanilla `ServerPlayer.doTick` sends health and experience from the first tick, before
+    /// the client reports it has loaded; Bedrock clients still wait until they've spawned.
+    fn may_send_stats(&self) -> bool {
+        !matches!(self.client.as_ref(), ClientPlatform::Bedrock(_)) || self.has_client_loaded()
+    }
+
     pub fn has_client_loaded(&self) -> bool {
         if !self.supports_player_loaded() {
             return true;
@@ -4910,7 +4916,7 @@ impl Player {
     }
 
     pub fn send_health(&self) {
-        if !self.has_client_loaded() {
+        if !self.may_send_stats() {
             return;
         }
 
@@ -4980,7 +4986,7 @@ impl Player {
     }
 
     pub fn tick_health(&self) {
-        if !self.has_client_loaded() {
+        if !self.may_send_stats() {
             return;
         }
 
@@ -5769,7 +5775,7 @@ impl Player {
     }
 
     pub fn tick_experience(&self) {
-        if !self.has_client_loaded() {
+        if !self.may_send_stats() {
             return;
         }
 
