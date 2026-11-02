@@ -358,7 +358,13 @@ impl HostCommandBlockEntity for PluginHostState {
     }
 
     fn last_output(&mut self, res: Resource<CommandBlockEntity>) -> wasmtime::Result<String> {
-        Ok(self.get(&res)?.last_output.lock_ignore_poison().clone())
+        Ok(self
+            .get(&res)?
+            .last_output
+            .lock_ignore_poison()
+            .as_ref()
+            .map(|output| output.clone().get_text())
+            .unwrap_or_default())
     }
 
     fn track_output(&mut self, res: Resource<CommandBlockEntity>) -> wasmtime::Result<bool> {

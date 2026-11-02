@@ -5,6 +5,7 @@ use std::sync::{
 
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::text::TextComponent;
 
 use super::BlockEntity;
 
@@ -16,7 +17,7 @@ pub struct CommandBlockEntity {
     pub auto: AtomicBool,
     pub dirty: AtomicBool,
     pub command: StdMutex<String>,
-    pub last_output: StdMutex<String>,
+    pub last_output: StdMutex<Option<TextComponent>>,
     pub track_output: AtomicBool,
     pub success_count: AtomicU32,
     /// Vanilla `BaseCommandBlock.updateLastExecution`: run at most once per tick.
@@ -34,7 +35,7 @@ impl CommandBlockEntity {
             auto: AtomicBool::new(is_chain),
             dirty: AtomicBool::new(false),
             command: StdMutex::new(String::new()),
-            last_output: StdMutex::new(String::new()),
+            last_output: StdMutex::new(None),
             track_output: AtomicBool::new(track_output),
             success_count: AtomicU32::new(0),
             update_last_execution: AtomicBool::new(true),
@@ -51,15 +52,19 @@ impl CommandBlockEntity {
                 .to_string(),
         );
         nbt.put_bool("conditionMet", self.condition_met.load(Ordering::SeqCst));
-        nbt.put_string(
-            "LastOutput",
-            self.last_output
+        let track_output = self.track_output.load(Ordering::SeqCst);
+        // Vanilla `BaseCommandBlock.save` stores the output as a component, and only when tracked.
+        if track_output
+            && let Some(last_output) = self
+                .last_output
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .to_string(),
-        );
+                .as_ref()
+        {
+            nbt.put("LastOutput", last_output.0.to_nbt_tag());
+        }
         nbt.put_bool("powered", self.powered.load(Ordering::SeqCst));
-        nbt.put_bool("TrackOutput", self.track_output.load(Ordering::SeqCst));
+        nbt.put_bool("TrackOutput", track_output);
         nbt.put_bool(
             "UpdateLastExecution",
             self.update_last_execution.load(Ordering::SeqCst),
@@ -87,8 +92,13 @@ impl BlockEntity for CommandBlockEntity {
         let auto = AtomicBool::new(nbt.get_bool("auto").unwrap_or(false));
         let powered = AtomicBool::new(nbt.get_bool("powered").unwrap_or(false));
         let command = StdMutex::new(nbt.get_string("Command").unwrap_or("").to_string());
-        let last_output = StdMutex::new(nbt.get_string("LastOutput").unwrap_or("").to_string());
-        let track_output = AtomicBool::new(nbt.get_bool("TrackOutput").unwrap_or(false));
+        let tracks_output = nbt.get_bool("TrackOutput").unwrap_or(true);
+        let last_output = StdMutex::new(
+            nbt.get("LastOutput")
+                .filter(|_| tracks_output)
+                .map(TextComponent::from_nbt),
+        );
+        let track_output = AtomicBool::new(tracks_output);
         let success_count =
             AtomicU32::new(nbt.get_int("SuccessCount").unwrap_or(0).cast_unsigned());
         let update_last_execution =
@@ -136,7 +146,9 @@ impl BlockEntity for CommandBlockEntity {
             .last_output
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
+            .as_ref()
+            .map(|output| output.clone().get_text())
+            .unwrap_or_default();
         Some(crate::block::entities::bedrock::build_command_block_actor(
             self.position,
             &command,

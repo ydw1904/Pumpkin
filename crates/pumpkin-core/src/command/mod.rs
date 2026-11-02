@@ -183,7 +183,7 @@ impl CommandSender {
                     .format(&format)
                     .unwrap_or_else(|_| "00:00:00".to_string());
 
-                *last_output = format!("[{}] {}", timestamp, text.get_text());
+                *last_output = Some(TextComponent::text(format!("[{timestamp}] ")).add_child(text));
             }
             Self::Dummy => {}
         }

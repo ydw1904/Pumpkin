@@ -358,7 +358,9 @@ impl HostCommandBlockEntity for PluginHostState {
             .last_output
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone())
+            .as_ref()
+            .map(|output| output.clone().get_text())
+            .unwrap_or_default())
     }
 
     fn track_output(&mut self, res: Resource<CommandBlockEntity>) -> wasmtime::Result<bool> {
