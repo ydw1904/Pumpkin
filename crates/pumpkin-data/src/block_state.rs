@@ -233,10 +233,10 @@ impl BlockState {
     }
 
     /// Returns block-local collision shapes with vanilla's coordinate-derived offset applied.
-    pub fn get_block_collision_shapes_at(
-        &self,
+    pub fn get_block_collision_shapes_at<'a>(
+        &'a self,
         pos: &BlockPos,
-    ) -> impl Iterator<Item = BoundingBox> + '_ {
+    ) -> impl Iterator<Item = BoundingBox> + use<'a> {
         let offset = Block::from_state_id(self.id).shape_offset_delta(pos);
         self.get_block_collision_shapes()
             .map(move |shape| shape.shift(offset))

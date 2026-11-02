@@ -1366,7 +1366,7 @@ pub trait Mob: EntityBase + Send + Sync {
             .sensing
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .has_line_of_sight(&mob_entity.living_entity.entity, target)
+            .has_line_of_sight(&mob_entity.living_entity, target)
     }
 
     fn requires_custom_persistence(&self) -> bool {

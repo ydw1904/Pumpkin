@@ -191,6 +191,33 @@ impl dyn EntityBase + '_ {
                 .get_team()
                 .is_some_and(|team| team.is_allow_friendly_fire())
     }
+
+    /// Vanilla `LivingEntity.hasLineOfSight(Entity)`: no block collision shape, as this entity
+    /// collides with it, between the two eye positions, at most 128 blocks apart.
+    #[must_use]
+    pub fn has_line_of_sight(&self, target: &Entity) -> bool {
+        let entity = self.get_entity();
+        let world = entity.world.load_full();
+        if !Arc::ptr_eq(&world, &target.world.load()) {
+            return false;
+        }
+        let from = entity.get_eye_pos();
+        let to = target.get_eye_pos();
+        if from.squared_distance_to_vec(&to) > 128.0 * 128.0 {
+            return false;
+        }
+        pumpkin_world::clip::clip_with_collision_shapes(
+            world.as_ref(),
+            &pumpkin_world::clip::ClipContext::new(
+                from,
+                to,
+                pumpkin_world::clip::ClipBlock::Collider,
+                pumpkin_world::clip::ClipFluid::None,
+            ),
+            |state, pos| World::entity_collision_shapes(self, state, pos),
+        )
+        .is_miss
+    }
 }
 
 /// Maps Java entity types to Bedrock runtime entity identifiers where the naming differs.
@@ -4132,25 +4159,6 @@ impl Entity {
             pos.y + f64::from(self.entity_dimension.load().eye_height),
             pos.z,
         )
-    }
-
-    /// No visual-blocking block between the two eye positions (matching vanilla `ClipContext.Block.VISUAL`).
-    #[must_use]
-    pub fn has_line_of_sight(&self, other: &Self) -> bool {
-        let from = self.get_eye_pos();
-        let to = other.get_eye_pos();
-        if from.squared_distance_to_vec(&to) > 128.0 * 128.0 {
-            return false;
-        }
-        self.world
-            .load_full()
-            .clip(&pumpkin_world::clip::ClipContext::new(
-                from,
-                to,
-                pumpkin_world::clip::ClipBlock::Visual,
-                pumpkin_world::clip::ClipFluid::None,
-            ))
-            .is_miss
     }
 
     pub fn get_eye_y(&self) -> f64 {

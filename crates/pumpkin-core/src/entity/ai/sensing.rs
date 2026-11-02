@@ -1,6 +1,6 @@
 use rustc_hash::FxHashSet;
 
-use crate::entity::Entity;
+use crate::entity::{Entity, EntityBase};
 
 /// Per tick cache of the line of sight checks a mob makes, so several goals asking
 /// about the same target only pay for one raycast.
@@ -16,7 +16,7 @@ impl Sensing {
         self.unseen.clear();
     }
 
-    pub fn has_line_of_sight(&mut self, mob: &Entity, target: &Entity) -> bool {
+    pub fn has_line_of_sight(&mut self, mob: &dyn EntityBase, target: &Entity) -> bool {
         let target_id = target.entity_id;
         if self.seen.contains(&target_id) {
             return true;

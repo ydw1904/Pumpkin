@@ -2515,6 +2515,28 @@ impl World {
         }
     }
 
+    /// Block-local collision shapes of `state` for `entity`, like vanilla
+    /// `getCollisionShape(level, pos, CollisionContext.of(entity))`.
+    pub fn entity_collision_shapes<'a>(
+        entity: &dyn EntityBase,
+        state: &'a BlockState,
+        pos: &BlockPos,
+    ) -> impl Iterator<Item = BoundingBox> + use<'a> {
+        let block = Block::from_state_id(state.id);
+        let powder_snow = (block == &Block::POWDER_SNOW)
+            .then(|| crate::block::blocks::powder_snow::collision_shape_for_entity(entity, pos))
+            .flatten();
+        let scaffolding = (block == &Block::SCAFFOLDING).then(|| {
+            crate::block::blocks::scaffolding::collision_shapes_for_entity(entity, state, pos)
+        });
+        let plain = (block != &Block::POWDER_SNOW && block != &Block::SCAFFOLDING)
+            .then(|| state.get_block_collision_shapes_at(pos));
+        powder_snow
+            .into_iter()
+            .chain(scaffolding.into_iter().flatten())
+            .chain(plain.into_iter().flatten())
+    }
+
     // For adjusting movement
     pub fn get_block_collisions(
         &self,
@@ -2536,29 +2558,13 @@ impl World {
                 continue;
             }
 
-            let block = Block::from_state_id(state.id);
             let mut collided = false;
-            let mut collide = |shape: BoundingBox| {
+            for shape in Self::entity_collision_shapes(entity, state, &pos) {
                 let shape = shape.at_pos(pos);
                 if shape.intersects(&bounding_box) {
                     collided = true;
                     collisions.push(shape);
                 }
-            };
-
-            if block == &Block::POWDER_SNOW {
-                if let Some(shape) =
-                    crate::block::blocks::powder_snow::collision_shape_for_entity(entity, &pos)
-                {
-                    collide(shape);
-                }
-            } else if block == &Block::SCAFFOLDING {
-                crate::block::blocks::scaffolding::collision_shapes_for_entity(entity, state, &pos)
-                    .for_each(&mut collide);
-            } else {
-                state
-                    .get_block_collision_shapes_at(&pos)
-                    .for_each(&mut collide);
             }
 
             if collided {

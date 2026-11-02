@@ -27,8 +27,8 @@ const ABOVE_EPSILON: f64 = 1.0E-5f32 as f64;
 pub(crate) fn collision_shapes_for_entity<'a>(
     entity: &dyn EntityBase,
     state: &'a BlockState,
-    position: &'a BlockPos,
-) -> impl Iterator<Item = BoundingBox> + 'a {
+    position: &BlockPos,
+) -> impl Iterator<Item = BoundingBox> + use<'a> {
     let entity = entity.get_entity();
     let entity_bottom = entity.pos.load().y;
     let y = f64::from(position.0.y);

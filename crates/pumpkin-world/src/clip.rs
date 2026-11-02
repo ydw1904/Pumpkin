@@ -216,14 +216,17 @@ pub fn intersects_aabb_with_hit(
     Some((t_hit, direction, hit_pos, is_inside))
 }
 
+/// Ray parameter, hit face, hit position and whether the ray started inside the shape.
+type ShapeHit = (f64, BlockDirection, Vector3<f64>, bool);
+
 fn clip_block_shapes(
     shapes: impl Iterator<Item = BoundingBox>,
     _state: &BlockState,
     block_pos: &BlockPos,
     from: Vector3<f64>,
     to: Vector3<f64>,
-) -> Option<(f64, BlockDirection, Vector3<f64>, bool)> {
-    let mut closest_hit: Option<(f64, BlockDirection, Vector3<f64>, bool)> = None;
+) -> Option<ShapeHit> {
+    let mut closest_hit: Option<ShapeHit> = None;
 
     for shape in shapes {
         let world_min = shape.min.add(&block_pos.0.to_f64());
@@ -281,11 +284,39 @@ fn check_block(
     block_pos: &BlockPos,
     from: Vector3<f64>,
     to: Vector3<f64>,
-    context: &ClipContext,
+    fluid: ClipFluid,
+    block_shape_hit: &impl Fn(&'static BlockState, &BlockPos) -> Option<ShapeHit>,
 ) -> Option<BlockHitResult> {
     let state = accessor.get_block_state(block_pos);
 
-    let block_hit = match context.block {
+    let block_hit = block_shape_hit(state, block_pos);
+
+    let fluid_hit = clip_fluid(state, block_pos, from, to, fluid);
+
+    match (block_hit, fluid_hit) {
+        (Some((bt, bdir, bpos, binside)), Some((ft, fdir, fpos, finside))) => {
+            if bt <= ft {
+                Some(BlockHitResult::hit(bpos, bdir, *block_pos, binside))
+            } else {
+                Some(BlockHitResult::hit(fpos, fdir, *block_pos, finside))
+            }
+        }
+        (Some((_, bdir, bpos, binside)), None) => {
+            Some(BlockHitResult::hit(bpos, bdir, *block_pos, binside))
+        }
+        (None, Some((_, fdir, fpos, finside))) => {
+            Some(BlockHitResult::hit(fpos, fdir, *block_pos, finside))
+        }
+        (None, None) => None,
+    }
+}
+
+/// Traces a ray segment through the block grid from `context.from` to `context.to`,
+/// testing voxel shapes and fluid shapes according to `context`.
+/// Matches vanilla `BlockGetter.clip(ClipContext)`.
+pub fn clip(accessor: &(impl BlockAccessor + ?Sized), context: &ClipContext) -> BlockHitResult {
+    let (from, to) = (context.from, context.to);
+    clip_blocks(accessor, context, |state, block_pos| match context.block {
         ClipBlock::Collider | ClipBlock::Visual => clip_block_shapes(
             state.get_block_collision_shapes_at(block_pos),
             state,
@@ -311,36 +342,38 @@ fn check_block(
                 None
             }
         }
-    };
-
-    let fluid_hit = clip_fluid(state, block_pos, from, to, context.fluid);
-
-    match (block_hit, fluid_hit) {
-        (Some((bt, bdir, bpos, binside)), Some((ft, fdir, fpos, finside))) => {
-            if bt <= ft {
-                Some(BlockHitResult::hit(bpos, bdir, *block_pos, binside))
-            } else {
-                Some(BlockHitResult::hit(fpos, fdir, *block_pos, finside))
-            }
-        }
-        (Some((_, bdir, bpos, binside)), None) => {
-            Some(BlockHitResult::hit(bpos, bdir, *block_pos, binside))
-        }
-        (None, Some((_, fdir, fpos, finside))) => {
-            Some(BlockHitResult::hit(fpos, fdir, *block_pos, finside))
-        }
-        (None, None) => None,
-    }
+    })
 }
 
-/// Traces a ray segment through the block grid from `context.from` to `context.to`,
-/// testing voxel shapes and fluid shapes according to `context`.
-/// Matches vanilla `BlockGetter.clip(ClipContext)`.
-pub fn clip(accessor: &(impl BlockAccessor + ?Sized), context: &ClipContext) -> BlockHitResult {
+/// [`clip`] with `ClipBlock::Collider`, where the caller supplies each block's collision shapes
+/// so shapes that depend on vanilla's entity `CollisionContext` can be used. `context.block`
+/// is ignored.
+pub fn clip_with_collision_shapes<I: IntoIterator<Item = BoundingBox>>(
+    accessor: &(impl BlockAccessor + ?Sized),
+    context: &ClipContext,
+    collision_shapes: impl Fn(&'static BlockState, &BlockPos) -> I,
+) -> BlockHitResult {
+    let (from, to) = (context.from, context.to);
+    clip_blocks(accessor, context, |state, block_pos| {
+        clip_block_shapes(
+            collision_shapes(state, block_pos).into_iter(),
+            state,
+            block_pos,
+            from,
+            to,
+        )
+    })
+}
+
+fn clip_blocks(
+    accessor: &(impl BlockAccessor + ?Sized),
+    context: &ClipContext,
+    block_shape_hit: impl Fn(&'static BlockState, &BlockPos) -> Option<ShapeHit>,
+) -> BlockHitResult {
     let from = context.from;
     let to = context.to;
     traverse_blocks(from, to, |block| {
-        check_block(accessor, block, from, to, context)
+        check_block(accessor, block, from, to, context.fluid, &block_shape_hit)
     })
     .unwrap_or_else(|| {
         let miss_vec = from.sub(&to);
