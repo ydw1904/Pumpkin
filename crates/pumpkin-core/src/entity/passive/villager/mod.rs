@@ -65,8 +65,6 @@ const VALIDATE_POI_MAX_DISTANCE: f64 = 16.0;
 const SLEEP_COOLDOWN_AFTER_BEING_WOKEN: i64 = 100;
 /// The delay vanilla `SleepInBed.stop` puts on its next start.
 const SLEEP_RESTART_DELAY: i64 = 40;
-/// The box radius of vanilla's `NearestLivingEntitySensor`.
-const NEAREST_LIVING_ENTITY_RANGE: f64 = 16.0;
 
 /// Vanilla `GoToPotentialJobSite.TICKS_UNTIL_TIMEOUT`.
 const GO_TO_POTENTIAL_JOB_SITE_DURATION: i64 = 1200;
@@ -1204,16 +1202,17 @@ impl VillagerEntity {
             .profession_enum()
     }
 
-    /// Vanilla's `NEAREST_LIVING_ENTITIES` sensor: living entities in its box, closest first.
+    /// Vanilla's `NEAREST_LIVING_ENTITIES` sensor: living entities, players included, within
+    /// the follow range box, closest first.
     fn nearest_living_entities(&self, world: &World) -> Vec<Arc<dyn EntityBase>> {
         let entity = self.get_entity();
         let my_pos = entity.pos.load();
-        let bb = entity.bounding_box.load().expand(
-            NEAREST_LIVING_ENTITY_RANGE,
-            NEAREST_LIVING_ENTITY_RANGE,
-            NEAREST_LIVING_ENTITY_RANGE,
-        );
-        let mut nearby = world.get_entities_at_box(&bb);
+        let range = self
+            .mob_entity
+            .living_entity
+            .get_attribute_value(&Attributes::FOLLOW_RANGE);
+        let bb = entity.bounding_box.load().expand(range, range, range);
+        let mut nearby = world.get_all_at_box(&bb);
         nearby.retain(|other| {
             other.get_entity().entity_id != entity.entity_id
                 && other
