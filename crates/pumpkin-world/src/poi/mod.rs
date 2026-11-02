@@ -30,6 +30,9 @@ pub struct PoiEntry {
     pub pos: BlockPos,
     pub poi_type: String,
     pub free_tickets: i32,
+    /// Read from the `x`/`y`/`z` records of older Pumpkin versions, whose village POI
+    /// tickets weren't kept reliably.
+    pub legacy_format: bool,
 }
 
 impl PoiEntry {
@@ -39,6 +42,7 @@ impl PoiEntry {
             pos,
             poi_type: POI_TYPE_NETHER_PORTAL.to_string(),
             free_tickets: 0,
+            legacy_format: false,
         }
     }
 
@@ -61,18 +65,22 @@ impl PoiEntry {
 
     /// Reads vanilla records and the `x`/`y`/`z` ints older Pumpkin versions wrote.
     fn from_nbt(record: &NbtCompound) -> Option<Self> {
-        let pos = match record.get("pos") {
-            Some(tag) => read_block_pos(tag)?,
-            None => BlockPos::new(
-                record.get_int("x")?,
-                record.get_int("y")?,
-                record.get_int("z")?,
+        let (pos, legacy_format) = match record.get("pos") {
+            Some(tag) => (read_block_pos(tag)?, false),
+            None => (
+                BlockPos::new(
+                    record.get_int("x")?,
+                    record.get_int("y")?,
+                    record.get_int("z")?,
+                ),
+                true,
             ),
         };
         Some(Self {
             pos,
             poi_type: record.get_string("type")?.to_string(),
             free_tickets: record.get_int("free_tickets").unwrap_or(0),
+            legacy_format,
         })
     }
 }
@@ -498,17 +506,17 @@ impl PoiStorage {
             pos,
             poi_type: poi_type.to_string(),
             free_tickets,
+            legacy_format: false,
         });
     }
 
-    /// The saved free tickets of the POI of `poi_type` at `pos`, if there is one.
-    pub fn get_free_tickets(&mut self, pos: BlockPos, poi_type: &str) -> Option<i32> {
+    /// The saved POI of `poi_type` at `pos`, if there is one.
+    pub fn get_entry(&mut self, pos: BlockPos, poi_type: &str) -> Option<&PoiEntry> {
         let (rx, rz) = Self::region_coords(&pos);
         self.get_or_load_region(rx, rz)
             .entries
             .get(&PoiRegion::pos_key(&pos))
             .filter(|entry| entry.poi_type == poi_type)
-            .map(|entry| entry.free_tickets)
     }
 
     pub fn add_portal(&mut self, pos: BlockPos) {

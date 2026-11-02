@@ -4,6 +4,7 @@ use pumpkin_data::block_properties::{BedPart, WhiteBedLikeProperties};
 use pumpkin_data::tag::Taggable;
 use pumpkin_data::{Block, BlockStateId, villager::VillagerProfession};
 use pumpkin_util::math::{position::BlockPos, vector2::Vector2, vector3::Vector3};
+use uuid::Uuid;
 
 use crate::world::World;
 
@@ -149,6 +150,18 @@ pub struct VillagerPoiStorage {
     /// Records whose free tickets changed since the last save.
     dirty_tickets: HashSet<BlockPos>,
     distance_tracker: DistanceTracker,
+    recovered: RecoveredClaims,
+}
+
+/// Vanilla always saves POI tickets, but older Pumpkin saves didn't keep them reliably. Records
+/// read from those saves get their occupancy back from the villagers that remember them, as
+/// the villagers load.
+#[derive(Default)]
+struct RecoveredClaims {
+    /// Loaded records from old saves, with the villagers whose claims were counted.
+    records: HashMap<BlockPos, HashSet<Uuid>>,
+    /// Claims of villagers from old saves on records that aren't loaded yet.
+    pending: HashMap<BlockPos, HashSet<Uuid>>,
 }
 
 impl VillagerPoiStorage {
@@ -157,6 +170,7 @@ impl VillagerPoiStorage {
     pub fn update_block(&mut self, position: BlockPos, state_id: BlockStateId) {
         let Some(poi_type) = VillagePoiType::for_state(state_id) else {
             if let Some(old) = self.records.remove(&position) {
+                self.recovered.records.remove(&position);
                 self.distance_tracker
                     .occupancy_changed(position, old.is_occupied(), false);
             }
@@ -170,14 +184,22 @@ impl VillagerPoiStorage {
             return;
         }
         if let Some(old) = self.records.insert(position, PoiRecord::new(poi_type)) {
+            self.recovered.records.remove(&position);
             self.distance_tracker
                 .occupancy_changed(position, old.is_occupied(), false);
         }
     }
 
     /// Registers a POI of a loaded chunk with the free tickets saved for it. A record still in
-    /// memory keeps its own tickets.
-    fn load_record(&mut self, position: BlockPos, poi_type: VillagePoiType, free_tickets: i32) {
+    /// memory keeps its own tickets. A record from an old save without reliable tickets starts
+    /// with one ticket taken for each villager that already claimed it.
+    fn load_record(
+        &mut self,
+        position: BlockPos,
+        poi_type: VillagePoiType,
+        free_tickets: i32,
+        legacy_format: bool,
+    ) {
         if self
             .records
             .get(&position)
@@ -185,8 +207,18 @@ impl VillagerPoiStorage {
         {
             return;
         }
+        let max_tickets = poi_type.max_tickets() as i32;
+        let claims = self.recovered.pending.remove(&position).unwrap_or_default();
+        let free_tickets = if legacy_format {
+            self.dirty_tickets.insert(position);
+            let free_tickets = max_tickets - claims.len() as i32;
+            self.recovered.records.insert(position, claims);
+            free_tickets
+        } else {
+            free_tickets
+        };
         let mut record = PoiRecord::new(poi_type);
-        record.free_tickets = free_tickets.clamp(0, poi_type.max_tickets() as i32);
+        record.free_tickets = free_tickets.clamp(0, max_tickets);
         let occupied = record.is_occupied();
         let was_occupied = self
             .records
@@ -219,6 +251,28 @@ impl VillagerPoiStorage {
         self.distance_tracker
             .occupancy_changed(position, was_occupied, true);
         Some(poi_type)
+    }
+
+    /// Takes the ticket a villager loaded from an old save holds on `position`, if the record
+    /// came from an old save too and the villager's claim wasn't counted yet.
+    pub fn recover_claim(&mut self, position: BlockPos, villager: Uuid) {
+        let Some(record) = self.records.get_mut(&position) else {
+            self.recovered
+                .pending
+                .entry(position)
+                .or_default()
+                .insert(villager);
+            return;
+        };
+        let Some(claims) = self.recovered.records.get_mut(&position) else {
+            return;
+        };
+        let was_occupied = record.is_occupied();
+        if claims.insert(villager) && record.acquire_ticket() {
+            self.dirty_tickets.insert(position);
+            self.distance_tracker
+                .occupancy_changed(position, was_occupied, true);
+        }
     }
 
     /// Vanilla `PoiManager.release`.
@@ -522,15 +576,15 @@ impl World {
                 .into_iter()
                 .map(|(pos, poi_type)| {
                     // Vanilla keeps the free tickets saved with the POI section.
-                    let free_tickets =
-                        saved
-                            .get_free_tickets(pos, poi_type.key())
-                            .unwrap_or_else(|| {
-                                let free_tickets = poi_type.max_tickets() as i32;
-                                saved.add_with_free_tickets(pos, poi_type.key(), free_tickets);
-                                free_tickets
-                            });
-                    (pos, poi_type, free_tickets)
+                    let (free_tickets, legacy_format) = saved
+                        .get_entry(pos, poi_type.key())
+                        .map(|entry| (entry.free_tickets, entry.legacy_format))
+                        .unwrap_or_else(|| {
+                            let free_tickets = poi_type.max_tickets() as i32;
+                            saved.add_with_free_tickets(pos, poi_type.key(), free_tickets);
+                            (free_tickets, false)
+                        });
+                    (pos, poi_type, free_tickets, legacy_format)
                 })
                 .collect::<Vec<_>>()
         };
@@ -538,8 +592,8 @@ impl World {
             .villager_poi
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        for (pos, poi_type, free_tickets) in found {
-            villager_poi.load_record(pos, poi_type, free_tickets);
+        for (pos, poi_type, free_tickets, legacy_format) in found {
+            villager_poi.load_record(pos, poi_type, free_tickets, legacy_format);
         }
     }
 
@@ -675,8 +729,9 @@ mod tests {
         let mut saved = pumpkin_world::poi::PoiStorage::new(folder.path().join("poi"));
         let mut reloaded = VillagerPoiStorage::default();
         for (pos, poi_type) in [(bed, VillagePoiType::Home), (bell, VillagePoiType::Meeting)] {
-            let free_tickets = saved.get_free_tickets(pos, poi_type.key()).unwrap();
-            reloaded.load_record(pos, poi_type, free_tickets);
+            let entry = saved.get_entry(pos, poi_type.key()).unwrap();
+            assert!(!entry.legacy_format);
+            reloaded.load_record(pos, poi_type, entry.free_tickets, false);
         }
         assert!(reloaded.take(bed, any).is_none());
         assert_eq!(
@@ -686,8 +741,44 @@ mod tests {
         assert!(reloaded.release(bed));
         assert!(!reloaded.release(bed));
         // A chunk loading again must not reset the tickets of a record still in memory.
-        reloaded.load_record(bed, VillagePoiType::Home, 0);
+        reloaded.load_record(bed, VillagePoiType::Home, 0, false);
         assert!(reloaded.take(bed, any).is_some());
+    }
+
+    #[test]
+    fn old_saves_recover_tickets_from_the_villagers_that_claimed_them() {
+        let bed = BlockPos::new(1, 64, 0);
+        let bell = BlockPos::new(2, 64, 0);
+        let [first, second, third] = [Uuid::from_u128(1), Uuid::from_u128(2), Uuid::from_u128(3)];
+        let any = |_| true;
+        let mut storage = VillagerPoiStorage::default();
+
+        // Villagers can load before or after the records they remember.
+        storage.recover_claim(bed, first);
+        storage.recover_claim(bell, first);
+        storage.load_record(bed, VillagePoiType::Home, 1, true);
+        storage.load_record(bell, VillagePoiType::Meeting, 32, true);
+        storage.recover_claim(bell, second);
+        // A villager loading again (its chunk reloaded) holds the same ticket.
+        storage.recover_claim(bell, second);
+
+        assert!(storage.take(bed, any).is_none());
+        assert_eq!(storage.sections_to_village(bed), 0);
+        let mut taken = 0;
+        while storage.take(bell, any).is_some() {
+            taken += 1;
+        }
+        assert_eq!(taken, 30);
+        // A second claim on a full home takes nothing.
+        storage.recover_claim(bed, third);
+        assert!(storage.release(bed));
+        assert!(!storage.release(bed));
+
+        // Records saved in the current format keep their saved tickets.
+        let other_bed = BlockPos::new(40, 64, 0);
+        storage.recover_claim(other_bed, third);
+        storage.load_record(other_bed, VillagePoiType::Home, 1, false);
+        assert!(storage.take(other_bed, any).is_some());
     }
 
     #[test]

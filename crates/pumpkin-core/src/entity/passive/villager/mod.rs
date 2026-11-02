@@ -2015,7 +2015,9 @@ impl ScreenHandlerFactory for VillagerEntity {
 
 impl VillagerEntity {
     /// The villager memories vanilla keeps as `GlobalPos` values in `Brain.memories`.
-    fn global_pos_memories(&self) -> [(MemoryModuleId, &std::sync::Mutex<Option<BlockPos>>); 4] {
+    const fn global_pos_memories(
+        &self,
+    ) -> [(MemoryModuleId, &std::sync::Mutex<Option<BlockPos>>); 4] {
         [
             (memory_types::HOME.id(), &self.home_pos),
             (memory_types::JOB_SITE.id(), &self.job_site),
@@ -2067,7 +2069,8 @@ impl VillagerEntity {
 
     /// Reads the memories `write_brain_memories` writes, or the `HomeX`-style ints of older
     /// Pumpkin saves. Positions remembered in another dimension are dropped, since the
-    /// villager keeps no dimension and must not validate or release them in this one.
+    /// villager keeps no dimension and must not validate or release them in this one. Old
+    /// saves didn't keep POI tickets reliably, so their villagers claim the POIs again.
     fn read_brain_memories(&self, nbt: &NbtCompound) {
         let world = self.get_entity().world.load();
         let memories = nbt
@@ -2088,11 +2091,19 @@ impl VillagerEntity {
             legacy_pos("MeetingPoint"),
         ];
         for ((id, memory), legacy) in self.global_pos_memories().into_iter().zip(legacy) {
-            let pos = match memory_value(id) {
-                Some(tag) => global_pos_from_tag(tag)
+            let pos = if let Some(tag) = memory_value(id) {
+                global_pos_from_tag(tag)
                     .filter(|pos| pos.dimension.minecraft_name == world.dimension.minecraft_name)
-                    .map(|pos| pos.pos),
-                None => legacy,
+                    .map(|pos| pos.pos)
+            } else {
+                if let Some(pos) = legacy {
+                    world
+                        .villager_poi
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .recover_claim(pos, self.get_entity().entity_uuid);
+                }
+                legacy
             };
             *memory
                 .lock()
