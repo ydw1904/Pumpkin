@@ -51,6 +51,14 @@ impl SkeletonEntity {
 }
 
 impl Mob for SkeletonEntity {
+    fn finalize_spawn(
+        &self,
+        _world: &std::sync::Arc<crate::world::World>,
+        group_data: Option<crate::entity::mob::spawn::SpawnGroupData>,
+    ) -> Option<crate::entity::mob::spawn::SpawnGroupData> {
+        self.entity.finalize_skeleton_spawn(self, group_data)
+    }
+
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
         self.play_entity_sound(Sound::EntitySkeletonStep, 0.15, 1.0);
     }

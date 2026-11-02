@@ -47,6 +47,17 @@ pub struct SkeletonEntityBase {
 }
 
 impl SkeletonEntityBase {
+    /// Vanilla `AbstractSkeleton.finalizeSpawn`: the shared spawn setup, then the Halloween head.
+    pub fn finalize_skeleton_spawn(
+        &self,
+        mob: &dyn Mob,
+        group_data: Option<crate::entity::mob::spawn::SpawnGroupData>,
+    ) -> Option<crate::entity::mob::spawn::SpawnGroupData> {
+        let group_data = mob.finalize_spawn_super(group_data);
+        self.mob_entity.wear_halloween_head();
+        group_data
+    }
+
     pub fn new(entity: Entity) -> Arc<Self> {
         Self::with_hunts(entity, &[])
     }

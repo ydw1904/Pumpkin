@@ -22,6 +22,14 @@ impl ParchedSkeletonEntity {
 
 // TODO: arrows inflict Weakness for 600 ticks, immune to Weakness.
 impl Mob for ParchedSkeletonEntity {
+    fn finalize_spawn(
+        &self,
+        _world: &std::sync::Arc<crate::world::World>,
+        group_data: Option<crate::entity::mob::spawn::SpawnGroupData>,
+    ) -> Option<crate::entity::mob::spawn::SpawnGroupData> {
+        self.entity.finalize_skeleton_spawn(self, group_data)
+    }
+
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
         self.play_entity_sound(Sound::EntityParchedStep, 0.15, 1.0);
     }
