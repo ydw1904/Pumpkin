@@ -2048,7 +2048,13 @@ impl Player {
     /// # Note
     /// This function does NOT send any packets. The caller is responsible for
     /// sending `NoRespawnBlockAvailable` if this returns `None`.
-    pub async fn calculate_respawn_point(&self) -> Option<CalculatedRespawnPoint> {
+    ///
+    /// Like vanilla `findRespawnPositionAndUseSpawnBlock`, a respawn anchor only loses a charge
+    /// when `consume_spawn_block` is set.
+    pub async fn calculate_respawn_point(
+        &self,
+        consume_spawn_block: bool,
+    ) -> Option<CalculatedRespawnPoint> {
         type BedProperties = pumpkin_data::block_properties::WhiteBedLikeProperties;
         type AnchorProperties = pumpkin_data::block_properties::RespawnAnchorLikeProperties;
 
@@ -2144,15 +2150,15 @@ impl Player {
 
             // Try positions around the anchor
             if let Some(spawn_pos) = Self::find_anchor_spawn_position(&world, pos) {
-                // Decrement charges after successful respawn position found
-                let new_charges = charges - 1;
-                let mut new_props = anchor_props;
-                new_props.charges = new_charges;
-                world.set_block_state(
-                    pos,
-                    new_props.to_state_id(block),
-                    pumpkin_world::world::BlockFlags::NOTIFY_ALL,
-                );
+                if consume_spawn_block {
+                    let mut new_props = anchor_props;
+                    new_props.charges = charges - 1;
+                    world.set_block_state(
+                        pos,
+                        new_props.to_state_id(block),
+                        pumpkin_world::world::BlockFlags::NOTIFY_ALL,
+                    );
+                }
 
                 return Some(CalculatedRespawnPoint {
                     position: spawn_pos,

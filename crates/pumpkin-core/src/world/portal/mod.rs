@@ -132,8 +132,9 @@ impl PortalType {
                     } else {
                         // Leaving the End through the exit portal. Vanilla `EndPortalBlock`
                         // shows the credits instead the first time (`showEndCredits`); a Java
-                        // player then stays put until the client asks to respawn. Bedrock has
-                        // no respawn request after the credits, so it travels straight away.
+                        // player then leaves the level until the client asks to respawn.
+                        // Bedrock has no respawn request after the credits, so it travels
+                        // straight away.
                         if let Some(player) =
                             current_level.get_player_by_id(caller.get_entity().entity_id)
                         {
@@ -150,6 +151,12 @@ impl PortalType {
                                             client.try_enqueue_packet(data);
                                         }
                                         player.won_game.store(true, Ordering::Relaxed);
+                                        // Vanilla `removePlayerImmediately`: nobody sees the
+                                        // player while the credits run.
+                                        current_level.entity_tracker.remove_entity(
+                                            player.as_ref() as &dyn crate::entity::EntityBase,
+                                            current_level,
+                                        );
                                         return None;
                                     }
                                     crate::net::ClientPlatform::Bedrock(client) => {
@@ -165,6 +172,34 @@ impl PortalType {
                                         }
                                     }
                                 }
+                            }
+
+                            // Vanilla `findRespawnPositionAndUseSpawnBlock(false, ...)`: the bed
+                            // or charged anchor, without using up a charge.
+                            if let Some(respawn) = player.calculate_respawn_point(false).await
+                                && let Some(server) = current_level.server.upgrade()
+                            {
+                                return Some(TeleportTransition {
+                                    new_world: server.get_world_from_dimension(&respawn.dimension),
+                                    position: respawn.position,
+                                    yaw: Some(respawn.yaw),
+                                    pitch: Some(respawn.pitch),
+                                });
+                            }
+                            let missing_respawn_block = player
+                                .respawn_point
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                .is_some();
+                            if missing_respawn_block {
+                                player
+                                    .send_client_packet(
+                                        &pumpkin_protocol::java::client::play::CGameEvent::new(
+                                            pumpkin_protocol::java::client::play::GameEvent::NoRespawnBlockAvailable,
+                                            0.0,
+                                        ),
+                                    )
+                                    .await;
                             }
                         }
 
