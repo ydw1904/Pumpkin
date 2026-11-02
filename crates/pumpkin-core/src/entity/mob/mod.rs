@@ -1034,6 +1034,34 @@ impl MobEntity {
         damaged
     }
 
+    /// Vanilla `Mob.lookAt`: turns the body (not only the head) towards `target`, by at most
+    /// `y_max` degrees of yaw and `x_max` degrees of pitch.
+    pub fn look_at(&self, target: &dyn EntityBase, y_max: f32, x_max: f32) {
+        let entity = &self.living_entity.entity;
+        let pos = entity.pos.load();
+        let target_entity = target.get_entity();
+        let target_pos = target_entity.pos.load();
+        let xd = target_pos.x - pos.x;
+        let zd = target_pos.z - pos.z;
+        let target_y = if target.get_living_entity().is_some() {
+            target_entity.get_eye_pos().y
+        } else {
+            let bounding_box = target_entity.bounding_box.load();
+            f64::midpoint(bounding_box.min.y, bounding_box.max.y)
+        };
+        let yd = target_y - entity.get_eye_pos().y;
+        let sd = xd.hypot(zd);
+        let y_rot = (zd.atan2(xd).to_degrees() as f32) - 90.0;
+        let x_rot = -(yd.atan2(sd).to_degrees() as f32);
+        // Vanilla `Mob.rotlerp`, which unlike `MoveControl.rotlerp` doesn't wrap the result.
+        let rotlerp =
+            |a: f32, b: f32, max: f32| a + pumpkin_util::math::wrap_degrees(b - a).clamp(-max, max);
+        entity
+            .pitch
+            .store(rotlerp(entity.pitch.load(), x_rot, x_max));
+        entity.yaw.store(rotlerp(entity.yaw.load(), y_rot, y_max));
+    }
+
     fn get_attack_box(&self, attack_range: f64) -> BoundingBox {
         let vehicle_opt = self.living_entity.entity.get_vehicle();
 
@@ -1730,6 +1758,11 @@ pub trait Mob: EntityBase + Send + Sync {
 
     fn can_attack_with_owner(&self, _target: &dyn EntityBase, _owner: &dyn EntityBase) -> bool {
         true
+    }
+
+    /// Vanilla `Mob.chargeSpeedModifier`: how much faster a spear rider charges on this mount.
+    fn charge_speed_modifier(&self) -> f32 {
+        1.0
     }
 
     fn get_mob_gravity(&self) -> f64 {

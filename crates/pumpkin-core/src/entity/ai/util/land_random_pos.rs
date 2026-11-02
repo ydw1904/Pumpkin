@@ -51,6 +51,44 @@ pub fn get_pos_weighted(
     )
 }
 
+/// Vanilla `LandRandomPos.getPosAway` with a minimum distance: a spot between the two
+/// horizontal distances, within 90 degrees of the direction away from `avoid_pos`.
+pub fn get_pos_away(
+    mob: &dyn Mob,
+    min_horizontal_dist: f64,
+    max_horizontal_dist: f64,
+    vertical_dist: i32,
+    avoid_pos: Vector3<f64>,
+) -> Option<Vector3<f64>> {
+    let rng = mob.get_random();
+    let mut dir_away = mob.get_entity().pos.load() - avoid_pos;
+    if dir_away.length() == 0.0 {
+        dir_away = Vector3::new(rng.random::<f64>() - 0.5, 0.0, rng.random::<f64>() - 0.5);
+    }
+    let restrict = goal_utils::mob_restricted(mob, max_horizontal_dist);
+    let world = mob.get_entity().world.load_full();
+    let block_pos = mob.get_entity().block_pos.load();
+    let mut context = PathfindingContext::new(block_pos.0, world.clone());
+
+    random_pos::generate_random_pos(
+        || {
+            let direction = random_pos::generate_random_direction_within_radians(
+                rng,
+                min_horizontal_dist,
+                max_horizontal_dist,
+                vertical_dist,
+                0,
+                dir_away.x,
+                dir_away.z,
+                f64::from(std::f32::consts::FRAC_PI_2),
+            )?;
+            let pos = toward_direction(mob, &world, max_horizontal_dist, restrict, direction, rng)?;
+            move_pos_up_out_of_solid(mob, &world, &mut context, pos)
+        },
+        |pos| f64::from(mob.get_walk_target_value(pos)),
+    )
+}
+
 #[must_use]
 pub fn move_pos_up_out_of_solid(
     mob: &dyn Mob,

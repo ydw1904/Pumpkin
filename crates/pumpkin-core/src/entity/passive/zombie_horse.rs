@@ -123,6 +123,10 @@ impl Animal for ZombieHorseEntity {
 }
 
 impl Mob for ZombieHorseEntity {
+    fn charge_speed_modifier(&self) -> f32 {
+        1.4
+    }
+
     fn is_tamed(&self) -> bool {
         self.is_tame()
     }

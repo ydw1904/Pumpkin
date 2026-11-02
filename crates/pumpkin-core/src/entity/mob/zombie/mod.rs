@@ -4,6 +4,7 @@ use crate::entity::ai::goal::destroy_egg::DestroyEggGoal;
 use crate::entity::ai::goal::look_around::RandomLookAroundGoal;
 use crate::entity::ai::goal::move_through_village::MoveThroughVillageGoal;
 use crate::entity::ai::goal::revenge::RevengeGoal;
+use crate::entity::ai::goal::spear_use::SpearUseGoal;
 use crate::entity::ai::goal::wander_around::WanderAroundGoal;
 use crate::entity::ai::goal::zombie_attack::ZombieAttackGoal;
 use crate::entity::attributes::{Modifier, ModifierOperation};
@@ -89,7 +90,7 @@ impl ZombieEntityBase {
         let mob_arc = Self::without_behaviour_goals(entity, can_break_doors);
         let goal_selector = &mob_arc.mob_entity.goals_selector;
         let target_selector = &mob_arc.mob_entity.target_selector;
-        // Vanilla puts `SpearUseGoal` at 2, which is not ported yet.
+        goal_selector.add_goal(2, SpearUseGoal::new(1.0, 1.0, 10.0, 2.0));
         goal_selector.add_goal(3, ZombieAttackGoal::new(1.0, false));
         let zombie = Arc::downgrade(&mob_arc);
         goal_selector.add_goal(

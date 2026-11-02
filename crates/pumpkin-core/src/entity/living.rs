@@ -34,6 +34,7 @@ use crate::entity::combat::{CombatRules, CombatTracker, FallLocation, knockback_
 use crate::entity::mob::equipment::DEFAULT_EQUIPMENT_DROP_CHANCE;
 use crate::entity::mob::neutral::find_by_uuid;
 use crate::entity::player::statistics::{CustomStatistic, StatisticCategory};
+use crate::item::items::spear::SpearItem;
 use crate::server::Server;
 use crate::world::loot::LootContextParameters;
 use crossbeam::atomic::AtomicCell;
@@ -44,7 +45,7 @@ use pumpkin_data::data_component_impl::Operation;
 use pumpkin_data::data_component_impl::food::{ConsumableImpl, ConsumeEffect};
 use pumpkin_data::data_component_impl::{
     AttributeModifiersImpl, BlocksAttacksImpl, DeathProtectionImpl, EnchantmentsImpl,
-    EquipmentSlot, EquippableImpl, FoodImpl, UseRemainderImpl,
+    EquipmentSlot, EquippableImpl, FoodImpl, KineticWeaponImpl, UseRemainderImpl,
 };
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::{EntityPose, EntityStatus, EntityType};
@@ -847,6 +848,41 @@ impl LivingEntity {
 
         self.set_living_flag(Self::USING_ITEM_FLAG, false);
         self.set_bedrock_blocking(false);
+    }
+
+    /// Vanilla `LivingEntity.updatingUsingItem` for a mob using a kinetic weapon: it stops when
+    /// its hand no longer holds the weapon, and otherwise stabs (`ItemStack.onUseTick`).
+    fn mob_use_tick(&self, caller: &dyn EntityBase) {
+        let remaining_use_ticks = self.item_use_time.load(Ordering::Relaxed);
+        if remaining_use_ticks <= 0 {
+            return;
+        }
+        let Some(item) = self
+            .item_in_use
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+            .filter(|item| item.get_data_component::<KineticWeaponImpl>().is_some())
+        else {
+            return;
+        };
+        let Some(hand) = *self
+            .active_hand
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        else {
+            return;
+        };
+        let held = self
+            .entity_equipment
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&EquipmentSlot::from_hand(hand));
+        if held.item.id == item.item.id {
+            SpearItem::mob_kinetic_attack(caller, &held, remaining_use_ticks);
+        } else {
+            self.clear_active_hand();
+        }
     }
 
     pub fn was_recently_stabbed(&self, target_id: i32, now: i32, allowed_ticks: i32) -> bool {
@@ -4093,6 +4129,8 @@ impl EntityBase for LivingEntity {
                         .on_use_tick(item, player, remaining_use_ticks);
                 }
             }
+        } else {
+            self.mob_use_tick(caller);
         }
 
         // Current active item
