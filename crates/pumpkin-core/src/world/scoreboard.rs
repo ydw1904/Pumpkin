@@ -1575,9 +1575,9 @@ impl ScoreboardBuilder {
             ScoreboardScore::new(entity_s.clone(), obj_s.clone(), VarInt(value), None, None);
         self.scoreboard
             .scores
-            .entry(entity_s)
+            .entry(obj_s)
             .or_default()
-            .insert(obj_s, score);
+            .insert(entity_s, score);
         self
     }
 
@@ -1666,6 +1666,15 @@ mod tests {
 
     fn string(s: &str) -> NbtTag {
         NbtTag::String(s.into())
+    }
+
+    #[test]
+    fn builder_scores_are_found_by_holder_and_objective() {
+        let scoreboard = ScoreboardBuilder::new()
+            .objective("kills", TextComponent::text("Kills"))
+            .score("Steve", "kills", 3)
+            .build();
+        assert_eq!(scoreboard.get_score_value("Steve", "kills"), Some(3));
     }
 
     /// A `scoreboard.dat` written by a 26.3 server loads and saves back unchanged.
