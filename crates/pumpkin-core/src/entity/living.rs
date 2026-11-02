@@ -58,7 +58,7 @@ use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_protocol::java::client::play::{
-    CHurtAnimation, CSwingArm, CTakeItemEntity, CUpdateMobEffect,
+    CHurtAnimation, CRemoveMobEffect, CSwingArm, CTakeItemEntity, CUpdateMobEffect,
 };
 use pumpkin_protocol::{
     codec::item_stack_seralizer::ItemStackSerializer,
@@ -1219,6 +1219,8 @@ impl LivingEntity {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .get(effect.effect_type)
             .cloned();
+        // Vanilla `onEffectAdded` sends the effect with blending, `onEffectUpdated` without.
+        let blend = existing.is_none();
         let effect = match existing {
             Some(existing) => {
                 let mut hidden_effects = self
@@ -1265,7 +1267,7 @@ impl LivingEntity {
             self.entity.set_glowing_from_effect(true);
         }
 
-        self.broadcast_effect(&effect);
+        self.broadcast_effect(&effect, blend);
         if effect.effect_type != &StatusEffect::INSTANT_HEALTH
             && effect.effect_type != &StatusEffect::INSTANT_DAMAGE
         {
@@ -1316,8 +1318,55 @@ impl LivingEntity {
         }
     }
 
-    fn broadcast_effect(&self, effect: &Effect) {
-        // Broadcast effect to nearby players
+    /// The players vanilla tells about this entity's effects: the entity itself if it's a player
+    /// (`ServerPlayer.onEffectAdded`) and its player passengers (`sendEffectToPassengers`).
+    fn effect_packet_recipients(
+        &self,
+    ) -> (
+        Option<Arc<crate::entity::player::Player>>,
+        Vec<Arc<dyn EntityBase>>,
+    ) {
+        let owner = self
+            .entity
+            .world
+            .load()
+            .get_player_by_id(self.entity.entity_id);
+        let passengers = self
+            .entity
+            .passengers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .filter(|passenger| passenger.get_player().is_some())
+            .cloned()
+            .collect();
+        (owner, passengers)
+    }
+
+    fn broadcast_effect(&self, effect: &Effect, blend: bool) {
+        let (owner, passengers) = self.effect_packet_recipients();
+        if let Some(owner) = owner {
+            let (je_packet, be_packet) = self.effect_packets(effect, blend);
+            owner.try_enqueue_packet_editioned(&je_packet, &be_packet);
+        }
+        if !passengers.is_empty() {
+            let (je_packet, be_packet) = self.effect_packets(effect, false);
+            for passenger in &passengers {
+                if let Some(player) = passenger.get_player() {
+                    player.try_enqueue_packet_editioned(&je_packet, &be_packet);
+                }
+            }
+        }
+    }
+
+    fn effect_packets(
+        &self,
+        effect: &Effect,
+        blend: bool,
+    ) -> (
+        CUpdateMobEffect,
+        pumpkin_protocol::bedrock::client::CMobEffect,
+    ) {
         let mut flag: i8 = 0;
         if effect.ambient {
             flag |= 1;
@@ -1328,7 +1377,7 @@ impl LivingEntity {
         if effect.show_icon {
             flag |= 4;
         }
-        if effect.blend {
+        if blend {
             flag |= 8;
         }
 
@@ -1350,12 +1399,7 @@ impl LivingEntity {
             tick: VarULong(0),
             ambient: effect.ambient,
         };
-
-        let chunk_pos = self.entity.chunk_pos.load();
-        self.entity
-            .world
-            .load()
-            .broadcast_to_chunk_editioned(chunk_pos, &je_packet, &be_packet);
+        (je_packet, be_packet)
     }
 
     /// Vanilla `AbsorptionMobEffect.onEffectStarted`: tops absorption up to the effect's
@@ -1405,11 +1449,30 @@ impl LivingEntity {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(&effect_type);
 
-        // Broadcast effect removal
-        self.entity
-            .world
-            .load()
-            .send_remove_mob_effect(&self.entity, effect_type);
+        if succeeded {
+            let je_packet = CRemoveMobEffect::new(
+                self.entity.entity_id.into(),
+                VarInt(i32::from(effect_type.id)),
+            );
+            let be_packet = pumpkin_protocol::bedrock::client::CMobEffect {
+                target_runtime_id: VarULong(self.entity.entity_id as u64),
+                event_id: pumpkin_protocol::bedrock::client::CMobEffect::EVENT_REMOVE,
+                effect_id: VarInt(effect_type.to_bedrock_id()),
+                effect_amplifier: VarInt(0),
+                show_particles: false,
+                effect_duration_ticks: VarInt(0),
+                tick: VarULong(0),
+                ambient: false,
+            };
+            let (owner, passengers) = self.effect_packet_recipients();
+            for player in owner.iter().map(|owner| owner.as_ref()).chain(
+                passengers
+                    .iter()
+                    .filter_map(|passenger| passenger.get_player()),
+            ) {
+                player.try_enqueue_packet_editioned(&je_packet, &be_packet);
+            }
+        }
 
         // Remove attribute modifiers, if any
         if !effect_type.attribute_modifiers.is_empty() {
@@ -2846,7 +2909,7 @@ impl LivingEntity {
                 });
             }
             self.apply_effect_attribute_modifiers(&effect);
-            self.broadcast_effect(&effect);
+            self.broadcast_effect(&effect, false);
         }
         self.sync_effect_particles();
     }

@@ -149,9 +149,7 @@ use pumpkin_protocol::{
 };
 use pumpkin_protocol::{
     codec::item_stack_seralizer::ItemStackSerializer,
-    java::client::play::{
-        CBlockEvent, CParticle, CRemoveMobEffect, CSetEquipment, CUpdateMobEffect,
-    },
+    java::client::play::{CBlockEvent, CParticle, CSetEquipment},
 };
 use pumpkin_util::biome::{Precipitation, Weather as BiomeWeather};
 use pumpkin_util::math::{get_section_cord, position::chunk_section_from_pos, vector2::Vector2};
@@ -198,7 +196,6 @@ pub use pumpkin_data::environment_attribute::{Activity, MoonPhase};
 
 use crate::world::natural_spawner::{SpawnState, spawn_for_chunk};
 use pumpkin_config::lighting::LightingEngineConfig;
-use pumpkin_data::effect::StatusEffect;
 use pumpkin_world::chunk::ChunkHeightmapType::{self, MotionBlocking};
 use uuid::Uuid;
 use weather::Weather;
@@ -818,57 +815,6 @@ impl World {
         bedrock_status: ActorEventID,
     ) {
         self.broadcast_entity_event(entity, java_status, bedrock_status);
-    }
-
-    pub fn send_remove_mob_effect(&self, entity: &Entity, effect_type: &'static StatusEffect) {
-        let je_packet =
-            CRemoveMobEffect::new(entity.entity_id.into(), VarInt(i32::from(effect_type.id)));
-
-        let be_packet = pumpkin_protocol::bedrock::client::CMobEffect {
-            target_runtime_id: VarULong(entity.entity_id as u64),
-            event_id: pumpkin_protocol::bedrock::client::CMobEffect::EVENT_REMOVE,
-            effect_id: VarInt(effect_type.to_bedrock_id()),
-            effect_amplifier: VarInt(0),
-            show_particles: false,
-            effect_duration_ticks: VarInt(0),
-            tick: VarULong(0),
-            ambient: false,
-        };
-        self.send_to_tracking_players_and_self_editioned(entity, &je_packet, &be_packet);
-    }
-
-    pub fn send_add_mob_effect(&self, entity: &Entity, effect: &pumpkin_data::potion::Effect) {
-        let mut flags: i8 = 0;
-        if effect.ambient {
-            flags |= 0x01;
-        }
-        if effect.show_particles {
-            flags |= 0x02;
-        }
-        if effect.show_icon {
-            flags |= 0x04;
-        }
-
-        let je_packet = CUpdateMobEffect::new(
-            VarInt(entity.entity_id),
-            VarInt(i32::from(effect.effect_type.id)),
-            VarInt(i32::from(effect.amplifier)),
-            VarInt(effect.duration),
-            flags,
-        );
-
-        let be_packet = pumpkin_protocol::bedrock::client::CMobEffect {
-            target_runtime_id: VarULong(entity.entity_id as u64),
-            event_id: pumpkin_protocol::bedrock::client::CMobEffect::EVENT_ADD,
-            effect_id: VarInt(effect.effect_type.to_bedrock_id()),
-            effect_amplifier: VarInt(i32::from(effect.amplifier)),
-            show_particles: effect.show_particles,
-            effect_duration_ticks: VarInt(effect.duration),
-            tick: VarULong(0),
-            ambient: effect.ambient,
-        };
-
-        self.send_to_tracking_players_and_self_editioned(entity, &je_packet, &be_packet);
     }
 
     pub fn send_to_tracking_players<P: ClientPacket + Sync>(&self, entity: &Entity, packet: &P) {
@@ -4536,17 +4482,7 @@ impl World {
         if alive {
             player.last_sent_health.store(-1, Ordering::Relaxed);
             player.last_sent_xp.store(-1, Ordering::Relaxed);
-            let effects: Vec<_> = player
-                .living_entity
-                .active_effects
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .values()
-                .cloned()
-                .collect();
-            for effect in &effects {
-                target_world.send_add_mob_effect(player.get_entity(), effect);
-            }
+            player.send_active_effects();
         } else {
             player.living_entity.reset_state();
             player.hunger_manager.restart();

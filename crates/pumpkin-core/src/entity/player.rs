@@ -5981,7 +5981,7 @@ impl Player {
             .cloned()
             .collect();
         for effect in &effects {
-            self.send_effect(effect);
+            self.send_effect(effect, false);
         }
     }
 
@@ -5989,7 +5989,7 @@ impl Player {
      * Send a clientside only effect to the player.
      * It won't be tracked on the server.
      */
-    pub fn send_effect(&self, effect: &Effect) {
+    pub fn send_effect(&self, effect: &Effect, blend: bool) {
         let mut flag: i8 = 0;
 
         if effect.ambient {
@@ -6001,7 +6001,7 @@ impl Player {
         if effect.show_icon {
             flag |= 4;
         }
-        if effect.blend {
+        if blend {
             flag |= 8;
         }
 
@@ -6016,14 +6016,6 @@ impl Player {
     }
 
     pub fn remove_effect(&self, effect_type: &'static StatusEffect) -> bool {
-        let effect_id = VarInt(i32::from(effect_type.id));
-        self.try_send_client_packet(
-            &pumpkin_protocol::java::client::play::CRemoveMobEffect::new(
-                self.entity_id().into(),
-                effect_id,
-            ),
-        );
-
         self.living_entity.remove_effect(effect_type)
 
         // TODO broadcast metadata
@@ -6042,13 +6034,6 @@ impl Player {
             .collect();
         for effect in effects {
             effect_list.push(effect);
-            let effect_id = VarInt(i32::from(effect.id));
-            self.try_send_client_packet(
-                &pumpkin_protocol::java::client::play::CRemoveMobEffect::new(
-                    self.entity_id().into(),
-                    effect_id,
-                ),
-            );
             succeeded = true;
         }
 

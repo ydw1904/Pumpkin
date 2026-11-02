@@ -143,7 +143,6 @@ impl WardenEntity {
                 show_icon: false,
                 blend: true,
             };
-            player.send_effect(&darkness);
             player.living_entity.add_effect(darkness);
         }
     }
