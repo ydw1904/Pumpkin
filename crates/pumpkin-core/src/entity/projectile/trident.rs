@@ -143,7 +143,7 @@ impl TridentEntity {
             return true;
         }
 
-        if !self.owner.can_hit(&self_ent.world.load(), other_ent) {
+        if other.is_spectator() || !self.owner.can_hit(&self_ent.world.load(), other_ent) {
             return true;
         }
 
@@ -263,8 +263,8 @@ impl EntityBase for TridentEntity {
             }
         }
 
-        // Entity collisions
-        let candidates = world.get_entities_at_box(&search_box);
+        // Entity collisions, players included
+        let candidates = world.get_all_at_box(&search_box);
         for cand in candidates {
             if self.should_skip_collision(entity, &cand) {
                 continue;
@@ -365,8 +365,16 @@ impl EntityBase for TridentEntity {
                     }
                 }
 
-                let damage_val = damage as f32;
-                target.damage(&*target, damage_val, DamageType::TRIDENT);
+                let owner = self.owner.get(&world);
+                target.damage_with_context(
+                    target.as_ref(),
+                    damage as f32,
+                    DamageType::TRIDENT,
+                    Some(hit_pos),
+                    Some(self),
+                    // Like vanilla, an ownerless trident is its own cause.
+                    Some(owner.as_deref().unwrap_or(self)),
+                );
 
                 // Play hit sound
                 let sound_packet = CSoundEffect::new(
