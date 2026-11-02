@@ -446,6 +446,27 @@ pub(crate) fn place_template_entities(
     }
 }
 
+/// Block entity types implementing vanilla's `RandomizableContainer`, whose loot seed
+/// `StructureTemplate.placeInWorld` draws from the piece random.
+const RANDOMIZABLE_CONTAINERS: &[&str] = &[
+    "chest",
+    "trapped_chest",
+    "barrel",
+    "dispenser",
+    "dropper",
+    "hopper",
+    "shulker_box",
+    "crafter",
+    "decorated_pot",
+];
+
+/// Whether the state's block entity is a vanilla `RandomizableContainer`.
+pub(crate) fn is_randomizable_container(state: &BlockState) -> bool {
+    pumpkin_data::block_properties::BLOCK_ENTITY_TYPES
+        .get(usize::from(state.block_entity_type))
+        .is_some_and(|name| RANDOMIZABLE_CONTAINERS.contains(name))
+}
+
 /// Returns the block entity ID for blocks that require one, or None if not needed.
 pub(crate) fn get_block_entity_id(block_name: &str) -> Option<&'static str> {
     let name = block_name.strip_prefix("minecraft:").unwrap_or(block_name);

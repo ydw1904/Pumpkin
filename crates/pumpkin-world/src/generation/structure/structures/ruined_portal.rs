@@ -8,7 +8,7 @@ use pumpkin_data::{
 use pumpkin_util::{
     HeightMap,
     math::{block_box::BlockBox, position::BlockPos, vector3::Vector3},
-    random::{RandomGenerator, RandomImpl, hash_block_pos, legacy_rand::LegacyRand},
+    random::{RandomGenerator, RandomImpl},
 };
 
 use crate::{
@@ -22,7 +22,8 @@ use crate::{
         },
         template::{
             BlockPlacer, BlockStateResolver, PaletteEntry, StructurePlaceSettings,
-            StructureTemplate, TemplateBlockPlacement, get_template, process_block,
+            StructureTemplate, TemplateBlockPlacement, get_template, is_randomizable_container,
+            process_block,
             processor::{
                 IgnoredBlock, PosRuleTest, ProcessorContext, ProcessorRule, RuleTest,
                 StructureProcessor,
@@ -441,7 +442,12 @@ impl RuinedPortalPiece {
         }
     }
 
-    fn place_blocks(&self, region: &mut dyn GenerationCache, chunk_box: &BlockBox) {
+    fn place_blocks(
+        &self,
+        region: &mut dyn GenerationCache,
+        random: &mut RandomGenerator,
+        chunk_box: &BlockBox,
+    ) {
         let mut level = GenerationRegion(region);
         let rotation = self.place_settings.get_rotation();
         let mirror = self.place_settings.get_mirror();
@@ -510,14 +516,10 @@ impl RuinedPortalPiece {
                     }
                 }
 
-                if placed_nbt.get_string("LootTable").is_some()
-                    && placed_nbt.get_long("LootTableSeed").is_none()
-                {
-                    let mut rng =
-                        LegacyRand::from_seed(
-                            hash_block_pos(world_pos.x, world_pos.y, world_pos.z) as u64,
-                        );
-                    placed_nbt.put_long("LootTableSeed", rng.next_i64());
+                // Vanilla `placeInWorld` reseeds containers from the piece random, which the
+                // netherrack spread after it then continues from.
+                if block_entity_nbt.is_some() && is_randomizable_container(state) {
+                    placed_nbt.put_long("LootTableSeed", random.next_i64());
                 }
 
                 level.add_block_entity(&world_pos, placed_nbt);
@@ -754,7 +756,7 @@ impl StructurePieceBase for RuinedPortalPiece {
             let mut enlarged_box = *chunk_box;
             enlarged_box.encompass(&bounding_box);
 
-            self.place_blocks(region, &enlarged_box);
+            self.place_blocks(region, random, &enlarged_box);
             let chunk = region;
             self.spread_netherrack(random, chunk);
             self.add_netherrack_drip_columns_below_portal(random, chunk);
