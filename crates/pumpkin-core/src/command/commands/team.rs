@@ -16,7 +16,6 @@ use pumpkin_data::translation;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
-use pumpkin_util::text::color::NamedColor;
 
 const DESCRIPTION: &str = "Manages teams.";
 const PERMISSION: &str = "minecraft:command.team";
@@ -123,7 +122,7 @@ impl CommandExecutor for TeamAddExecutor {
             nametag_visibility: NameTagVisibility::Always,
             death_message_visibility: NameTagVisibility::Always,
             collision_rule: CollisionRule::Always,
-            color: NamedColor::White,
+            color: None,
             player_prefix: TextComponent::empty(),
             player_suffix: TextComponent::empty(),
             players: vec![],
@@ -462,11 +461,11 @@ impl CommandExecutor for TeamModifyColorResetExecutor {
         };
 
         let mut team = team.clone();
-        if team.color == NamedColor::White {
+        if team.color.is_none() {
             return Err(COLOR_UNCHANGED_ERROR.create_without_context());
         }
 
-        team.color = NamedColor::White;
+        team.color = None;
         let team_display_name = team.display_name.clone();
         scoreboard.update_team(&world, team);
 
@@ -505,11 +504,11 @@ impl CommandExecutor for TeamModifyColorExecutor {
         };
 
         let mut team = team.clone();
-        if team.color == new_color {
+        if team.color == Some(new_color) {
             return Err(COLOR_UNCHANGED_ERROR.create_without_context());
         }
 
-        team.color = new_color;
+        team.color = Some(new_color);
         let team_display_name = team.display_name.clone();
         scoreboard.update_team(&world, team);
 

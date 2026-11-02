@@ -497,20 +497,10 @@ impl Scoreboard {
             return;
         }
 
-        let parameters = TeamParameters {
-            display_name: &team.display_name,
-            options: team.options,
-            nametag_visibility: team.nametag_visibility.to_str(),
-            collision_rule: team.collision_rule.to_str(),
-            color: team.color as i32,
-            player_prefix: &team.player_prefix,
-            player_suffix: &team.player_suffix,
-        };
-
         target.send_je(&CSetPlayerTeam {
             team_name: team.name.clone(),
             method: TeamMethod::Create,
-            parameters: Some(parameters),
+            parameters: Some(team.parameters()),
             players: team.players.clone().into(),
         });
 
@@ -527,20 +517,10 @@ impl Scoreboard {
             return;
         }
 
-        let parameters = TeamParameters {
-            display_name: &team.display_name,
-            options: team.options,
-            nametag_visibility: team.nametag_visibility.to_str(),
-            collision_rule: team.collision_rule.to_str(),
-            color: team.color as i32,
-            player_prefix: &team.player_prefix,
-            player_suffix: &team.player_suffix,
-        };
-
         target.send_je(&CSetPlayerTeam {
             team_name: team.name.clone(),
             method: TeamMethod::Update,
-            parameters: Some(parameters),
+            parameters: Some(team.parameters()),
             players: Box::new([]),
         });
 
@@ -708,19 +688,10 @@ impl Scoreboard {
         }
 
         for team in self.teams.values() {
-            let parameters = TeamParameters {
-                display_name: &team.display_name,
-                options: team.options,
-                nametag_visibility: team.nametag_visibility.to_str(),
-                collision_rule: team.collision_rule.to_str(),
-                color: team.color as i32,
-                player_prefix: &team.player_prefix,
-                player_suffix: &team.player_suffix,
-            };
             let je_packet = CSetPlayerTeam {
                 team_name: team.name.clone(),
                 method: TeamMethod::Create,
-                parameters: Some(parameters),
+                parameters: Some(team.parameters()),
                 players: team.players.clone().into(),
             };
             player.try_send_client_packet(&je_packet);
@@ -860,7 +831,8 @@ pub struct Team {
     pub nametag_visibility: NameTagVisibility,
     pub death_message_visibility: NameTagVisibility,
     pub collision_rule: CollisionRule,
-    pub color: NamedColor,
+    /// `None` is a team without a color, like vanilla's empty `Optional<TeamColor>`.
+    pub color: Option<NamedColor>,
     pub player_prefix: TextComponent,
     pub player_suffix: TextComponent,
     pub players: Vec<String>,
@@ -875,14 +847,25 @@ impl Team {
         self.options & Self::ALLOW_FRIENDLY_FIRE != 0
     }
 
+    const fn parameters(&self) -> TeamParameters<'_> {
+        TeamParameters {
+            display_name: &self.display_name,
+            options: self.options,
+            nametag_visibility: self.nametag_visibility.to_str(),
+            collision_rule: self.collision_rule.to_str(),
+            color: self.color,
+            player_prefix: &self.player_prefix,
+            player_suffix: &self.player_suffix,
+        }
+    }
+
     /// Vanilla `PlayerTeam.Packed`.
     fn pack(&self) -> NbtCompound {
         let mut nbt = NbtCompound::new();
         nbt.put_string("Name", self.name.clone());
         nbt.put("DisplayName", self.display_name.0.to_nbt_tag());
-        // Pumpkin uses white for a team without a color.
-        if self.color != NamedColor::White {
-            nbt.put_string("TeamColor", self.color.name().to_string());
+        if let Some(color) = self.color {
+            nbt.put_string("TeamColor", color.name().to_string());
         }
         // Like vanilla's `optionalFieldOf` codecs, fields at their default are left out.
         if !self.is_allow_friendly_fire() {
@@ -948,8 +931,7 @@ impl Team {
                 .unwrap_or(CollisionRule::Always),
             color: nbt
                 .get_string("TeamColor")
-                .and_then(|c| NamedColor::try_from(c).ok())
-                .unwrap_or(NamedColor::White),
+                .and_then(|c| NamedColor::try_from(c).ok()),
             player_prefix: text("MemberNamePrefix").unwrap_or_else(TextComponent::empty),
             player_suffix: text("MemberNameSuffix").unwrap_or_else(TextComponent::empty),
             players: nbt
@@ -1675,6 +1657,44 @@ mod tests {
             .score("Steve", "kills", 3)
             .build();
         assert_eq!(scoreboard.get_score_value("Steve", "kills"), Some(3));
+    }
+
+    #[test]
+    fn white_and_uncoloured_teams_stay_distinct() {
+        let team = |name: &str, color: Option<&str>| {
+            let mut entries = vec![("Name", string(name)), ("DisplayName", string(name))];
+            if let Some(color) = color {
+                entries.push(("TeamColor", string(color)));
+            }
+            NbtTag::Compound(compound(entries))
+        };
+        let data = compound(vec![
+            ("Objectives", NbtTag::List(vec![])),
+            ("PlayerScores", NbtTag::List(vec![])),
+            ("DisplaySlots", NbtTag::Compound(NbtCompound::new())),
+            (
+                "Teams",
+                NbtTag::List(vec![team("white", Some("white")), team("plain", None)]),
+            ),
+        ]);
+        let mut scoreboard = Scoreboard::new();
+        scoreboard.load_saved_data(&data);
+        assert_eq!(
+            scoreboard.get_team("white").unwrap().color,
+            Some(NamedColor::White)
+        );
+        assert_eq!(scoreboard.get_team("plain").unwrap().color, None);
+        let saved = scoreboard.to_saved_data();
+        let teams = saved.get_list("Teams").unwrap();
+        let color_of = |name: &str| {
+            teams
+                .iter()
+                .filter_map(NbtTag::extract_compound)
+                .find(|t| t.get_string("Name") == Some(name))
+                .and_then(|t| t.get_string("TeamColor").map(str::to_string))
+        };
+        assert_eq!(color_of("white").as_deref(), Some("white"));
+        assert_eq!(color_of("plain"), None);
     }
 
     /// A `scoreboard.dat` written by a 26.3 server loads and saves back unchanged.

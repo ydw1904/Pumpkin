@@ -2,7 +2,11 @@ use std::io::Write;
 
 use pumpkin_data::packet::clientbound::play::SET_PLAYER_TEAM;
 use pumpkin_macros::java_packet;
-use pumpkin_util::{text::TextComponent, translation::Locale, version::JavaMinecraftVersion};
+use pumpkin_util::{
+    text::{TextComponent, color::NamedColor},
+    translation::Locale,
+    version::JavaMinecraftVersion,
+};
 
 use crate::{
     ClientPacket,
@@ -26,7 +30,8 @@ pub struct TeamParameters<'a> {
     pub options: i8,
     pub nametag_visibility: &'a str,
     pub collision_rule: &'a str,
-    pub color: i32,
+    /// `None` is a team without a color, vanilla's empty `Optional<TeamColor>`.
+    pub color: Option<NamedColor>,
     pub player_prefix: &'a TextComponent,
     pub player_suffix: &'a TextComponent,
 }
@@ -38,6 +43,9 @@ pub struct CSetPlayerTeam<'a> {
     pub parameters: Option<TeamParameters<'a>>,
     pub players: Box<[String]>,
 }
+
+/// The id of `ChatFormatting.RESET`, which clients before 26.2 read as no team color.
+const CHAT_FORMATTING_RESET: i32 = 21;
 
 fn nametag_visibility_to_id(s: &str) -> i32 {
     match s {
@@ -85,9 +93,9 @@ impl ClientPacket for CSetPlayerTeam<'_> {
                 write
                     .write_var_int(&VarInt(nametag_visibility_to_id(params.nametag_visibility)))?;
                 write.write_var_int(&VarInt(collision_rule_to_id(params.collision_rule)))?;
-                if params.color >= 0 && params.color != 21 {
+                if let Some(color) = params.color {
                     write.write_bool(true)?;
-                    write.write_var_int(&VarInt(params.color))?;
+                    write.write_var_int(&VarInt(color as i32))?;
                 } else {
                     write.write_bool(false)?;
                 }
@@ -104,11 +112,11 @@ impl ClientPacket for CSetPlayerTeam<'_> {
                     write.write_string_bounded(params.nametag_visibility, 40)?;
                     write.write_string_bounded(params.collision_rule, 40)?;
                 }
+                let color_id = params.color.map_or(CHAT_FORMATTING_RESET, |c| c as i32);
                 if *version >= JavaMinecraftVersion::V_1_17 {
-                    let color_id = if params.color < 0 { 21 } else { params.color };
                     write.write_var_int(&VarInt(color_id))?;
                 } else {
-                    write.write_i8(params.color as i8)?;
+                    write.write_i8(color_id as i8)?;
                 }
                 write.write_component(params.player_prefix, version)?;
                 write.write_component(params.player_suffix, version)?;
@@ -135,7 +143,8 @@ impl ClientPacket for CSetPlayerTeam<'_> {
                     if *version >= JavaMinecraftVersion::V_1_9 {
                         write.write_string_bounded(params.collision_rule, 32)?;
                     }
-                    write.write_i8(params.color as i8)?;
+                    // Before 1.13 a team without a color sent -1.
+                    write.write_i8(params.color.map_or(-1, |c| c as i8))?;
                 }
             }
         }

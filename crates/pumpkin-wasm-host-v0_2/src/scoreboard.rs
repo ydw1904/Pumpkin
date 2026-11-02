@@ -721,7 +721,7 @@ fn map_team_settings(
                 pumpkin_core::world::scoreboard::CollisionRule::PushOwnTeam
             }
         },
-        color: map_named_color(settings.color),
+        color: Some(map_named_color(settings.color)),
         player_prefix,
         player_suffix,
         players: Vec::new(),
@@ -798,7 +798,11 @@ fn map_team_to_settings(
         pumpkin_core::world::scoreboard::CollisionRule::PushOwnTeam => CollisionRule::PushOwnTeam,
     };
 
-    let color = map_named_color_rev(team.color);
+    // The plugin API has no "no color", so an uncoloured team reads as white.
+    let color = map_named_color_rev(
+        team.color
+            .unwrap_or(pumpkin_util::text::color::NamedColor::White),
+    );
 
     Ok(TeamSettings {
         display_name,
