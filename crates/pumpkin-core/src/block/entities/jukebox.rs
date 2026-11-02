@@ -6,7 +6,6 @@ use pumpkin_data::data_component_impl::JukeboxPlayableImpl;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::jukebox_song::JukeboxSong;
 use pumpkin_nbt::compound::NbtCompound;
-use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::math::position::BlockPos;
 
 use crate::block::entities::BlockEntity;
@@ -119,24 +118,6 @@ impl BlockEntity for JukeboxBlockEntity {
 
     fn is_dirty(&self) -> bool {
         self.dirty.load(Ordering::Relaxed)
-    }
-
-    fn chunk_data_nbt(&self) -> Option<NbtCompound> {
-        let mut nbt = NbtCompound::new();
-        if let Ok(record) = self.record_stack.try_lock()
-            && !record.is_empty()
-        {
-            let mut record_nbt = NbtCompound::new();
-            record.write_item_stack(&mut record_nbt);
-            nbt.put("RecordItem", NbtTag::Compound(record_nbt));
-        }
-        if self.song_length_ticks.load(Ordering::Relaxed) > 0 {
-            nbt.put_long(
-                TICKS_SINCE_SONG_STARTED_NBT_KEY,
-                self.ticks_since_song_started.load(Ordering::Relaxed) as i64,
-            );
-        }
-        Some(nbt)
     }
 
     fn bedrock_block_actor_data(

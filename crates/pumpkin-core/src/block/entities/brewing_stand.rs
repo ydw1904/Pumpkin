@@ -12,7 +12,7 @@ use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::potion::Potion;
 use pumpkin_data::potion_brewing::BREWING_RECIPES;
 use pumpkin_data::sound::{Sound, SoundCategory};
-use pumpkin_inventory::{Inventory, sync_read_items_from_nbt, sync_write_items_to_nbt};
+use pumpkin_inventory::{Inventory, sync_read_items_from_nbt};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::recipe::DynamicRecipe;
 use pumpkin_util::math::position::BlockPos;
@@ -534,16 +534,6 @@ impl crate::block::entities::BlockEntity for BrewingStandBlockEntity {
 
     fn get_inventory(self: Arc<Self>) -> Option<Arc<dyn Inventory>> {
         Some(self)
-    }
-
-    fn chunk_data_nbt(&self) -> Option<NbtCompound> {
-        let mut nbt = NbtCompound::new();
-        nbt.put_int("BrewTime", self.brew_time.load(Ordering::Relaxed));
-        nbt.put_int("Fuel", self.fuel.load(Ordering::Relaxed));
-        if let Ok(items) = self.items.try_read() {
-            sync_write_items_to_nbt(&*items, &mut nbt);
-        }
-        Some(nbt)
     }
 
     fn bedrock_block_actor_data(

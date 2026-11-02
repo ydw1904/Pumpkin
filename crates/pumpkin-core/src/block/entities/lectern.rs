@@ -1,7 +1,6 @@
 use pumpkin_data::data_component_impl::{WritableBookContentImpl, WrittenBookContentImpl};
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_nbt::compound::NbtCompound;
-use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::math::position::BlockPos;
 use std::{
     any::Any,
@@ -87,19 +86,6 @@ impl BlockEntity for LecternBlockEntity {
 
     fn clear_dirty(&self) {
         self.dirty.store(false, Ordering::Relaxed);
-    }
-
-    fn chunk_data_nbt(&self) -> Option<NbtCompound> {
-        let mut nbt = NbtCompound::new();
-        if let Ok(book) = self.book.try_lock()
-            && !book.is_empty()
-        {
-            let mut book_nbt = NbtCompound::new();
-            book.write_item_stack(&mut book_nbt);
-            nbt.put("Book", NbtTag::Compound(book_nbt));
-        }
-        nbt.put_int("Page", self.page.load(Ordering::Relaxed) as i32);
-        Some(nbt)
     }
 
     fn bedrock_block_actor_data(

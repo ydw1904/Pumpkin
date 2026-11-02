@@ -635,35 +635,6 @@ macro_rules! impl_block_entity_for_cooking {
                 self.dirty.load(Ordering::Relaxed)
             }
 
-            fn chunk_data_nbt(&self) -> Option<pumpkin_nbt::compound::NbtCompound> {
-                let mut nbt = pumpkin_nbt::compound::NbtCompound::new();
-                nbt.put_int("cooking_total_time", i32::from(self.get_cooking_total_time()));
-                nbt.put_int("cooking_time_spent", i32::from(self.get_cooking_time_spent()));
-                nbt.put_int("lit_total_time", i32::from(self.get_lit_total_time()));
-                nbt.put_int("lit_time_remaining", i32::from(self.get_lit_time_remaining()));
-
-                if let Ok(recipes) = self.recipes_used.lock() {
-                    if !recipes.is_empty() {
-                        let mut recipes_compound = pumpkin_nbt::compound::NbtCompound::new();
-                        for (recipe_id, count) in recipes.iter() {
-                            recipes_compound.put(
-                                recipe_id.as_str(),
-                                pumpkin_nbt::tag::NbtTag::Int(*count as i32),
-                            );
-                        }
-                        nbt.put(
-                            "RecipesUsed",
-                            pumpkin_nbt::tag::NbtTag::Compound(recipes_compound),
-                        );
-                    }
-                }
-
-                if let Ok(guard) = self.items.try_read() {
-                    pumpkin_inventory::sync_write_items_to_nbt(&*guard, &mut nbt);
-                }
-                Some(nbt)
-            }
-
             fn bedrock_block_actor_data(&self, _state_id: pumpkin_data::BlockStateId) -> Option<pumpkin_nbt::compound::NbtCompound> {
                 let bedrock_id = match $recipe_kind {
                     pumpkin_data::recipes::CookingRecipeKind::Smelting => "Furnace",

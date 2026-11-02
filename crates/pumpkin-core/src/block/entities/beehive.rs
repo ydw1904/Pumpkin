@@ -64,24 +64,6 @@ impl BlockEntity for BeehiveBlockEntity {
         }
     }
 
-    fn chunk_data_nbt(&self) -> Option<NbtCompound> {
-        let mut nbt = NbtCompound::new();
-        if let Ok(bees) = self.bees.try_lock()
-            && let Some(ref b) = *bees
-        {
-            nbt.put_list("bees", b.clone());
-        }
-        if let Ok(flower_pos) = self.flower_pos.try_lock()
-            && let Some(ref fp) = *flower_pos
-        {
-            nbt.put(
-                "flower_pos",
-                pumpkin_nbt::tag::NbtTag::IntArray(vec![fp.0.x, fp.0.y, fp.0.z]),
-            );
-        }
-        Some(nbt)
-    }
-
     fn collect_item_components(&self, stack: &mut pumpkin_data::item_stack::ItemStack) {
         if let Ok(bees) = self.bees.lock()
             && let Some(bees) = bees.as_ref()

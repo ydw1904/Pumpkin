@@ -39,12 +39,6 @@ impl BlockEntity for SculkShriekerBlockEntity {
         }
     }
 
-    fn chunk_data_nbt(&self) -> Option<NbtCompound> {
-        let mut nbt = NbtCompound::new();
-        nbt.put_int("warning_level", *self.warning_level.try_lock().ok()?);
-        Some(nbt)
-    }
-
     fn on_block_replaced(self: Arc<Self>, world: &Arc<World>, position: &BlockPos) {
         if self.shrieking_can_summon.swap(false, Ordering::Relaxed) {
             let warning_level = *self

@@ -1,6 +1,6 @@
 use crate::block::entities::BlockEntity;
 use pumpkin_data::item_stack::ItemStack;
-use pumpkin_inventory::{Clearable, Inventory, sync_write_items_to_nbt};
+use pumpkin_inventory::{Clearable, Inventory};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::random::gameplay::game_random;
@@ -70,14 +70,6 @@ impl BlockEntity for DispenserBlockEntity {
 
     fn clear_dirty(&self) {
         self.dirty.store(false, Ordering::Relaxed);
-    }
-
-    fn chunk_data_nbt(&self) -> Option<NbtCompound> {
-        let mut nbt = NbtCompound::new();
-        if let Ok(items) = self.items.try_read() {
-            sync_write_items_to_nbt(items.as_slice(), &mut nbt);
-        }
-        Some(nbt)
     }
 
     fn bedrock_block_actor_data(

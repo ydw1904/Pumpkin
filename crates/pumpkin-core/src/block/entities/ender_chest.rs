@@ -38,10 +38,6 @@ impl BlockEntity for EnderChestBlockEntity {
 
     fn write_nbt(&self, _nbt: &mut NbtCompound) {}
 
-    fn chunk_data_nbt(&self) -> Option<NbtCompound> {
-        Some(NbtCompound::new())
-    }
-
     fn tick(&self, world: &Arc<World>) {
         self.viewers
             .update_viewer_count::<Self>(self, world, &self.position);

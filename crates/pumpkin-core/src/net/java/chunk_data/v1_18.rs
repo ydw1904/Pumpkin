@@ -1,4 +1,5 @@
 use super::util::write_compound_nbt;
+use crate::block::entities::block_entity_from_nbt;
 use pumpkin_protocol::codec::bit_set::BitSet;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_protocol::ser::NetworkWriteExt;
@@ -200,16 +201,12 @@ pub fn write_chunk_data(
         });
         write.write_var_int(&VarInt(id as i32))?;
 
-        let mut client_nbt = nbt.clone();
-        client_nbt.child_tags.remove("id");
-        client_nbt.child_tags.remove("x");
-        client_nbt.child_tags.remove("y");
-        client_nbt.child_tags.remove("z");
-        client_nbt.child_tags.remove("LootTable");
-        client_nbt.child_tags.remove("LootTableSeed");
-        client_nbt.child_tags.remove("PumpkinCustomData");
-        client_nbt.child_tags.remove("BukkitValues");
-        write_compound_nbt(&mut write, &client_nbt, *version)?;
+        // Vanilla `BlockEntityInfo.create` sends the block entity's update tag, never its
+        // saved data, so clients can't read chest contents and the like.
+        let update_tag = block_entity_from_nbt(nbt)
+            .and_then(|block_entity| block_entity.chunk_data_nbt())
+            .filter(|tag| !tag.is_empty());
+        write.write_compound_nbt_with_version(update_tag.as_ref(), version)?;
     }
 
     {

@@ -112,7 +112,9 @@ impl BlockEntity for CommandBlockEntity {
         self.write_sync_nbt(nbt);
     }
 
-    fn chunk_data_nbt(&self) -> Option<NbtCompound> {
+    // Vanilla sends a command block's data only to whoever opens it (`openCommandBlock`), never
+    // in chunk data. Pumpkin opens the screen through the block entity update.
+    fn update_packet_nbt(&self) -> Option<NbtCompound> {
         let mut nbt = NbtCompound::new();
         self.write_sync_nbt(&mut nbt);
         Some(nbt)

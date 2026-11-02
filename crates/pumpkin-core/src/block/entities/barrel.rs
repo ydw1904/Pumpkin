@@ -17,7 +17,7 @@ use std::{
 
 use crate::block::viewer::{ViewerCountListener, ViewerCountTracker, ViewerCountTrackerExt};
 use crate::world::{BlockFlags, World};
-use pumpkin_inventory::{Clearable, Inventory, sync_write_items_to_nbt};
+use pumpkin_inventory::{Clearable, Inventory};
 
 use super::BlockEntity;
 
@@ -90,14 +90,6 @@ impl BlockEntity for BarrelBlockEntity {
 
     fn clear_dirty(&self) {
         self.dirty.store(false, Ordering::Relaxed);
-    }
-
-    fn chunk_data_nbt(&self) -> Option<NbtCompound> {
-        let mut nbt = NbtCompound::new();
-        if let Ok(guard) = self.items.try_read() {
-            sync_write_items_to_nbt(&*guard, &mut nbt);
-        }
-        Some(nbt)
     }
 
     fn bedrock_block_actor_data(
