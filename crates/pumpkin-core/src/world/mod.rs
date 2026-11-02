@@ -4823,6 +4823,18 @@ impl World {
             .collect()
     }
 
+    /// Entities and players whose bounding box intersects `aabb`, like vanilla
+    /// `Level.getEntities`, which also returns players.
+    pub fn get_entities_and_players_at_box(&self, aabb: &BoundingBox) -> Vec<Arc<dyn EntityBase>> {
+        let mut entities = self.get_entities_at_box(aabb);
+        entities.extend(
+            self.get_players_at_box(aabb)
+                .into_iter()
+                .map(|player| player as Arc<dyn EntityBase>),
+        );
+        entities
+    }
+
     // Gets all Player entities at a Box
     pub fn get_players_at_box(&self, aabb: &BoundingBox) -> Vec<Arc<Player>> {
         let players_guard = self.players.load();

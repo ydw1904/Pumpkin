@@ -218,7 +218,7 @@ impl ThrownItemEntity {
         }
 
         // Entity collisions
-        let candidates = world.get_entities_at_box(&search_box);
+        let candidates = world.get_entities_and_players_at_box(&search_box);
         for cand in candidates {
             if self.should_skip_collision(&world, entity, &cand) {
                 continue;
@@ -269,7 +269,7 @@ impl ThrownItemEntity {
         other: &Arc<dyn EntityBase>,
     ) -> bool {
         let other_ent = other.get_entity();
-        if other_ent.entity_id == self_ent.entity_id {
+        if other_ent.entity_id == self_ent.entity_id || other.is_spectator() {
             return true;
         }
 

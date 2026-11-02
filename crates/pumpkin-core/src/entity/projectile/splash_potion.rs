@@ -119,7 +119,7 @@ pub(crate) fn hurt_water_sensitive_entities(
         .shift(hit_pos.sub(&entity.pos.load()))
         .expand(4.0, 2.0, 4.0);
 
-    for candidate in world.get_entities_at_box(&hurt_box) {
+    for candidate in world.get_entities_and_players_at_box(&hurt_box) {
         let entity_id = candidate.get_entity().entity_id;
         if let Some(kept_ids) = kept_ids
             && !kept_ids.contains(&entity_id)
@@ -272,11 +272,7 @@ impl EntityBase for SplashPotionEntity {
         let aabb = BoundingBox::new(min, max);
 
         // Gather entity and player candidates
-        let mut candidates = world.get_entities_at_box(&aabb);
-        let players = world.get_players_at_box(&aabb);
-        for p in players {
-            candidates.push(p.clone() as Arc<dyn EntityBase>);
-        }
+        let candidates = world.get_entities_and_players_at_box(&aabb);
 
         let mut affected: Vec<(Arc<dyn EntityBase>, f32)> = Vec::new();
         for cand in candidates {

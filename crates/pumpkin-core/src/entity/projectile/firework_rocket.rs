@@ -171,10 +171,7 @@ impl FireworkRocketEntity {
 
         let rocket_pos = entity.pos.load();
         let search_box = entity.bounding_box.load().expand(5.0, 5.0, 5.0);
-        let mut targets = world.get_entities_at_box(&search_box);
-        for player in world.get_players_at_box(&search_box) {
-            targets.push(player as std::sync::Arc<dyn EntityBase>);
-        }
+        let targets = world.get_entities_and_players_at_box(&search_box);
 
         for target in targets {
             let target_entity = target.get_entity();
