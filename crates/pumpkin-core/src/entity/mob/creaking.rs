@@ -285,9 +285,10 @@ impl CreakingEntity {
             if distance > 0.001 {
                 let norm_dir = Vector3::new(dir.x / distance, dir.y / distance, dir.z / distance);
                 let dot = look_dir.dot(&norm_dir);
-                // Vanilla `isLookingAtMe(..., seeThroughTransparentBlocks = true, ...)` then
-                // `hasLineOfSight` with visual shapes, which see through glass.
-                if dot > 1.0 - 0.5 / distance
+                // Vanilla `isLookingAtMe(player, 0.5, adjustForDistance = false,
+                // seeThroughTransparentBlocks = true, ...)`: a fixed cone, then `hasLineOfSight`
+                // with visual shapes, which see through glass.
+                if dot > 1.0 - 0.5
                     && distance <= 128.0
                     && player_entity
                         .world
