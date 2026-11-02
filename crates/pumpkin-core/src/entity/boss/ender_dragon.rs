@@ -1,10 +1,10 @@
+use pumpkin_data::BlockStateId;
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::tracked_data;
 use pumpkin_data::world::WorldEvent;
-use pumpkin_data::{Block, BlockStateId};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_util::math::boundingbox::{BoundingBox, EntityDimensions};
@@ -781,25 +781,38 @@ impl EnderDragonEntity {
             .on_crystal_destroyed(self, player.as_ref());
     }
 
-    fn tick_block_breaking(&self) {
-        let world = self.mob_entity.living_entity.entity.world.load();
-        let bbox = self.mob_entity.living_entity.entity.bounding_box.load();
-
-        let min = bbox.min_block_pos();
-        let max = bbox.max_block_pos();
-
+    /// Vanilla `EnderDragon.checkWalls`: break the blocks `bounding_box` touches, or report a
+    /// wall when they can't be broken.
+    fn check_walls(&self, bounding_box: &BoundingBox) -> bool {
+        let world = self.get_entity().world.load();
+        let mob_griefing = world.level_info.load().game_rules.mob_griefing;
+        let min = bounding_box.min_block_pos();
+        let max = BlockPos::floored_v(bounding_box.max);
+        let mut hit_wall = false;
+        let mut destroyed_block = false;
         for pos in BlockPos::iterate(min, max) {
-            let block = world.get_block(&pos);
-            if block != &Block::BEDROCK
-                && block != &Block::END_STONE
-                && block != &Block::OBSIDIAN
-                && block != &Block::IRON_BARS
-                && block != &Block::END_PORTAL
-                && block != &Block::END_PORTAL_FRAME
-            {
+            let (block, state) = world.get_block_and_state(&pos);
+            if state.is_air() || block.has_tag(&tag::Block::MINECRAFT_DRAGON_TRANSPARENT) {
+                continue;
+            }
+            if mob_griefing && !block.has_tag(&tag::Block::MINECRAFT_DRAGON_IMMUNE) {
                 world.set_block_state(&pos, BlockStateId::AIR, BlockFlags::NOTIFY_ALL);
+                destroyed_block = true;
+            } else {
+                hit_wall = true;
             }
         }
+
+        if destroyed_block {
+            let random = game_random();
+            let random_pos = BlockPos::new(
+                min.0.x + random.random_range(0..=max.0.x - min.0.x),
+                min.0.y + random.random_range(0..=max.0.y - min.0.y),
+                min.0.z + random.random_range(0..=max.0.z - min.0.z),
+            );
+            world.sync_world_event(WorldEvent::ParticlesDragonBlockBreak, random_pos, 0);
+        }
+        hit_wall
     }
 
     fn tick_parts(&self) {
@@ -991,10 +1004,14 @@ impl EnderDragonEntity {
         }
         entity.body_yaw.store(entity.yaw.load());
 
-        if !self.is_sitting() {
-            self.tick_block_breaking();
-        }
         self.tick_parts();
+        let in_wall = self.parts[0..3].iter().fold(false, |in_wall, part| {
+            self.check_walls(&part.entity.bounding_box.load()) | in_wall
+        });
+        *self
+            .in_wall
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = in_wall;
         self.update_dragon_fight();
     }
 
