@@ -17,6 +17,9 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::version::JavaMinecraftVersion;
 
+/// How far a painting sits from the center of its block towards the wall (`shiftToBlockWall`).
+const SHIFT_TO_BLOCK_WALL: f64 = 0.46875;
+
 /// The world stores a painting facing as a horizontal value: 0 south, 1 west,
 /// 2 north, 3 east (`Direction.get2DDataValue`). The entity data, and the spawn
 /// packet built from it, use the 3D index instead: north 2, south 3, west 4,
@@ -102,9 +105,9 @@ impl PaintingEntity {
         let ccw_step_x = f64::from(face_ccw.to_offset().x);
         let ccw_step_z = f64::from(face_ccw.to_offset().z);
 
-        let mut x = f64::from(target_pos.0.x) + 0.5 - step_x * 0.46875;
+        let mut x = f64::from(target_pos.0.x) + 0.5 - step_x * SHIFT_TO_BLOCK_WALL;
         let mut y = f64::from(target_pos.0.y) + 0.5;
-        let mut z = f64::from(target_pos.0.z) + 0.5 - step_z * 0.46875;
+        let mut z = f64::from(target_pos.0.z) + 0.5 - step_z * SHIFT_TO_BLOCK_WALL;
 
         let width_offset = if width.is_multiple_of(2) { 0.5 } else { 0.0 };
         let height_offset = if height.is_multiple_of(2) { 0.5 } else { 0.0 };
@@ -114,6 +117,29 @@ impl PaintingEntity {
         y += height_offset;
 
         Vector3::new(x, y, z)
+    }
+
+    /// The block the painting hangs in (vanilla's `BlockAttachedEntity.pos`), worked back
+    /// from its center the way [`Self::calculate_center_pos`] places it.
+    fn attached_block_pos(
+        center: Vector3<f64>,
+        face: BlockDirection,
+        width: u32,
+        height: u32,
+    ) -> BlockPos {
+        let face_step = face.to_offset();
+        let ccw_step = face.rotate_counter_clockwise().to_offset();
+        let width_offset = if width.is_multiple_of(2) { 0.5 } else { 0.0 };
+        let height_offset = if height.is_multiple_of(2) { 0.5 } else { 0.0 };
+        BlockPos::new(
+            (center.x + f64::from(face_step.x) * SHIFT_TO_BLOCK_WALL
+                - width_offset * f64::from(ccw_step.x))
+            .floor() as i32,
+            (center.y - height_offset).floor() as i32,
+            (center.z + f64::from(face_step.z) * SHIFT_TO_BLOCK_WALL
+                - width_offset * f64::from(ccw_step.z))
+            .floor() as i32,
+        )
     }
 
     /// Checks if a painting of the specified variant fits on the wall at `location` facing `face`.
@@ -220,6 +246,16 @@ impl EntityBase for PaintingEntity {
                     self.variant().asset_id().to_string()
                 });
         nbt.put_string("variant", variant_str);
+        let variant = self.variant();
+        super::write_block_pos(
+            nbt,
+            Self::attached_block_pos(
+                self.entity.pos.load(),
+                direction,
+                variant.width(),
+                variant.height(),
+            ),
+        );
     }
 
     fn read_custom_nbt(&self, nbt: &NbtCompound) {
@@ -303,6 +339,28 @@ impl EntityBase for PaintingEntity {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Vanilla moves a loaded painting to wherever `block_pos` puts it, so the saved
+    /// block has to give back the painting's own center for every size parity.
+    #[test]
+    fn saved_block_pos_places_the_painting_where_it_was() {
+        let wall = BlockPos::new(10, 64, -7);
+        for face in [
+            BlockDirection::North,
+            BlockDirection::South,
+            BlockDirection::West,
+            BlockDirection::East,
+        ] {
+            for (width, height) in [(1, 1), (2, 1), (1, 2), (4, 3), (4, 4)] {
+                let center = PaintingEntity::calculate_center_pos(wall, face, width, height);
+                assert_eq!(
+                    PaintingEntity::attached_block_pos(center, face, width, height),
+                    wall.offset(face.to_offset()),
+                    "{face:?} {width}x{height}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn horizontal_and_3d_facings_round_trip() {

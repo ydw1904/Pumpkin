@@ -74,6 +74,10 @@ impl LeashKnotEntity {
 use crate::server::Server;
 
 impl EntityBase for LeashKnotEntity {
+    fn write_custom_nbt(&self, nbt: &mut pumpkin_nbt::compound::NbtCompound) {
+        super::write_block_pos(nbt, self.entity.block_pos.load());
+    }
+
     fn get_entity(&self) -> &Entity {
         &self.entity
     }

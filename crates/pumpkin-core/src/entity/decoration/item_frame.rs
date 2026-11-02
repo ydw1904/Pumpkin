@@ -286,6 +286,7 @@ impl EntityBase for ItemFrameEntity {
         nbt.put_byte("Facing", self.facing.load(Ordering::Relaxed) as i8);
         nbt.put_bool("Invisible", self.invisible.load(Ordering::Relaxed));
         nbt.put_bool("Fixed", self.fixed.load(Ordering::Relaxed));
+        super::write_block_pos(nbt, self.entity.block_pos.load());
     }
 
     fn read_custom_nbt(&self, nbt: &NbtCompound) {
