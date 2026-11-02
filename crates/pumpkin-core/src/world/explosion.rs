@@ -206,6 +206,8 @@ pub struct Explosion {
     pub(super) small_particle: Particle,
     pub(super) large_particle: Particle,
     pub(super) sound: Sound,
+    /// The damage source vanilla passes to `ServerLevel.explode`.
+    damage_type: DamageType,
 }
 
 impl Explosion {
@@ -221,7 +223,15 @@ impl Explosion {
             small_particle: Particle::Explosion,
             large_particle: Particle::ExplosionEmitter,
             sound: Sound::EntityGenericExplode,
+            damage_type: DamageType::EXPLOSION,
         }
+    }
+
+    /// Hurts entities with `damage_type` instead of a plain explosion.
+    #[must_use]
+    pub const fn with_damage_type(mut self, damage_type: DamageType) -> Self {
+        self.damage_type = damage_type;
+        self
     }
 
     /// The particles and sound vanilla's `ServerLevel.explode` sends with the explosion.
@@ -492,7 +502,7 @@ impl Explosion {
             if should_damage {
                 let damage =
                     calc.get_entity_damage_amount(self, entity_base.as_ref(), exposure as f32);
-                entity.damage(entity_base.as_ref(), damage, DamageType::EXPLOSION);
+                entity.damage(entity_base.as_ref(), damage, self.damage_type);
             }
 
             // Calculate and apply knockback

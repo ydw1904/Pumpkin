@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::block::entities::bed::BedBlockEntity;
 use pumpkin_data::block_properties::BedPart;
+use pumpkin_data::damage::DamageType;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::translation;
 use pumpkin_data::{Block, BlockState, BlockStateId};
@@ -232,11 +233,12 @@ impl BedBlock {
             world.break_block(&bed_head_pos, None, BlockFlags::SKIP_DROPS);
             world.break_block(&bed_foot_pos, None, BlockFlags::SKIP_DROPS);
 
-            world.explode_with_fire(
+            world.explode_with_fire_and_damage_type(
                 bed_head_pos.to_centered_f64(),
                 5.0,
                 crate::world::ExplosionInteraction::Block,
                 None,
+                DamageType::BAD_RESPAWN_POINT,
             );
 
             return BlockActionResult::SuccessServer;

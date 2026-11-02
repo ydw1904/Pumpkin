@@ -3,6 +3,7 @@ use crate::block::entities::{
 };
 use dashmap::DashMap;
 use pumpkin_data::chunk::Biome;
+use pumpkin_data::damage::DamageType;
 use pumpkin_data::item::{BedrockItem, BedrockItemVersion};
 use pumpkin_data::packet::CURRENT_MC_VERSION;
 use pumpkin_protocol::bedrock::client::item_registry::{CItemRegistry, ItemData};
@@ -4126,8 +4127,28 @@ impl World {
         interaction: ExplosionInteraction,
         damage_calculator: Option<Arc<dyn ExplosionDamageCalculator>>,
     ) {
+        self.explode_with_fire_and_damage_type(
+            position,
+            power,
+            interaction,
+            damage_calculator,
+            DamageType::EXPLOSION,
+        );
+    }
+
+    /// [`Self::explode_with_fire`] hurting entities with `damage_type`.
+    pub fn explode_with_fire_and_damage_type(
+        self: &Arc<Self>,
+        position: Vector3<f64>,
+        power: f32,
+        interaction: ExplosionInteraction,
+        damage_calculator: Option<Arc<dyn ExplosionDamageCalculator>>,
+        damage_type: DamageType,
+    ) {
         let block_interaction = self.get_block_interaction(interaction);
-        let mut explosion = Explosion::new(power, position, block_interaction).with_fire();
+        let mut explosion = Explosion::new(power, position, block_interaction)
+            .with_fire()
+            .with_damage_type(damage_type);
         if let Some(calc) = damage_calculator {
             explosion = explosion.with_damage_calculator(calc);
         }

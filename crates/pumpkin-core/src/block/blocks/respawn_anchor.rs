@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use pumpkin_data::block_properties::RespawnAnchorLikeProperties;
+use pumpkin_data::damage::DamageType;
 use pumpkin_data::fluid::FluidState;
 use pumpkin_data::item::Item;
 use pumpkin_data::sound::{Sound, SoundCategory};
@@ -36,11 +37,12 @@ impl RespawnAnchorBlock {
             || world
                 .get_fluid(&pos.up())
                 .has_tag(&tag::Fluid::MINECRAFT_WATER);
-        world.explode_with_fire(
+        world.explode_with_fire_and_damage_type(
             pos.to_centered_f64(),
             5.0,
             crate::world::ExplosionInteraction::Block,
             Some(Arc::new(RespawnAnchorDamageCalculator { pos, in_water })),
+            DamageType::BAD_RESPAWN_POINT,
         );
     }
 }
