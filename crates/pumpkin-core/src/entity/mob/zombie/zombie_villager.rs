@@ -287,8 +287,10 @@ impl Mob for ZombieVillagerEntity {
         world: &Arc<World>,
         group_data: Option<SpawnGroupData>,
     ) -> Option<SpawnGroupData> {
+        // Vanilla `ZombieVillager.finalizeSpawn`: the type, then `Zombie.finalizeSpawn`.
         self.finalize_villager_type(world, &self.get_entity().block_pos.load());
-        self.finalize_spawn_super(group_data)
+        self.mob_entity
+            .finalize_zombie_spawn(self, world, group_data)
     }
 
     /// Vanilla `applyImplicitComponent` for `villager/variant`.
@@ -317,15 +319,6 @@ impl Mob for ZombieVillagerEntity {
 
     fn spawn_as_baby(&self) -> bool {
         self.mob_entity.spawn_as_baby()
-    }
-
-    fn finalize_spawn(
-        &self,
-        world: &Arc<crate::world::World>,
-        group_data: Option<crate::entity::mob::spawn::SpawnGroupData>,
-    ) -> Option<crate::entity::mob::spawn::SpawnGroupData> {
-        self.mob_entity
-            .finalize_zombie_spawn(self, world, group_data)
     }
 
     fn remove_when_far_away(&self, _distance_sq: f64) -> bool {
