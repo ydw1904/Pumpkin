@@ -33,6 +33,19 @@ pub mod wither_skull;
 
 use pumpkin_data::item_stack::ItemStack;
 
+/// The entities vanilla `ProjectileUtil.getEntityHitResult` considers: `level.getEntities`,
+/// which includes the ender dragon's parts, without the dragon itself, which is not pickable.
+pub(crate) fn hit_candidates(world: &World, area: &BoundingBox) -> Vec<Arc<dyn EntityBase>> {
+    let mut candidates = world.get_all_at_box(area);
+    candidates.retain(|entity| {
+        !entity
+            .cast_any()
+            .is::<crate::entity::boss::ender_dragon::EnderDragonEntity>()
+    });
+    candidates.extend(world.get_dragon_parts_at_box(area));
+    candidates
+}
+
 #[must_use]
 pub fn is_projectile(entity_type: &EntityType) -> bool {
     *entity_type == EntityType::ARROW
@@ -219,7 +232,7 @@ impl ThrownItemEntity {
         }
 
         // Entity collisions
-        let candidates = world.get_entities_and_players_at_box(&search_box);
+        let candidates = hit_candidates(&world, &search_box);
         for cand in candidates {
             if self.should_skip_collision(&world, entity, &cand) {
                 continue;

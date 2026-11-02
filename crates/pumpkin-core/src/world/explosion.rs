@@ -543,7 +543,9 @@ impl<'a> Explosion<'a> {
             Vector3::new(max_x as f64, max_y as f64, max_z as f64),
         );
 
-        let entities = world.get_all_at_box(&search_box);
+        let mut entities = world.get_all_at_box(&search_box);
+        let first_part = entities.len();
+        entities.extend(world.get_dragon_parts_at_box(&search_box));
 
         let default_calc = DefaultExplosionDamageCalculator;
         let calc: &dyn ExplosionDamageCalculator = match &self.damage_calculator {
@@ -553,7 +555,7 @@ impl<'a> Explosion<'a> {
 
         let (damage_type, direct, attacker) = self.damage_source();
         let source_id = self.source_id();
-        for entity_base in entities {
+        for (index, entity_base) in entities.into_iter().enumerate() {
             // Vanilla `level.getEntities(source, ...)` leaves the source out.
             if source_id == Some(entity_base.get_entity().entity_id) {
                 continue;
@@ -598,6 +600,10 @@ impl<'a> Explosion<'a> {
                     direct,
                     attacker,
                 );
+            }
+            // A part's push never reaches clients, since vanilla does not track parts.
+            if index >= first_part {
+                continue;
             }
 
             // Calculate and apply knockback

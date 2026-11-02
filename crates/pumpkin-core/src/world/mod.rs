@@ -4776,6 +4776,20 @@ impl World {
             .collect()
     }
 
+    /// The ender dragon parts intersecting `aabb`, which vanilla `Level.getEntities` appends to
+    /// its result. They are lookup-only here, so the spatial index does not hold them.
+    pub fn get_dragon_parts_at_box(&self, aabb: &BoundingBox) -> Vec<Arc<dyn EntityBase>> {
+        self.lookup_only_entities
+            .load()
+            .iter()
+            .filter(|part| {
+                let part = part.get_entity();
+                !part.is_removed() && part.bounding_box.load().intersects(aabb)
+            })
+            .cloned()
+            .collect()
+    }
+
     /// Entities and players whose bounding box intersects `aabb`, like vanilla
     /// `Level.getEntities`, which also returns players.
     pub fn get_entities_and_players_at_box(&self, aabb: &BoundingBox) -> Vec<Arc<dyn EntityBase>> {

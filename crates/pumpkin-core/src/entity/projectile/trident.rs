@@ -271,7 +271,7 @@ impl EntityBase for TridentEntity {
         let candidates = if self.dealt_damage.load(Ordering::Relaxed) {
             Vec::new()
         } else {
-            world.get_all_at_box(&search_box)
+            super::hit_candidates(&world, &search_box)
         };
         for cand in candidates {
             if self.should_skip_collision(entity, &cand) {
