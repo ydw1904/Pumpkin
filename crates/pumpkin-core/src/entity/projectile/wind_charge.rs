@@ -1,5 +1,7 @@
 use crate::entity::projectile::owner::ProjectileOwner;
 use pumpkin_data::damage::DamageType;
+use pumpkin_data::particle::Particle;
+use pumpkin_data::sound::Sound;
 use pumpkin_data::tag;
 use pumpkin_util::math::vector3::Vector3;
 use std::sync::LazyLock;
@@ -19,7 +21,7 @@ use crate::{
         projectile_deflection::ProjectileDeflectionType,
     },
     server::Server,
-    world::SimpleExplosionDamageCalculator,
+    world::{SimpleExplosionDamageCalculator, explosion::Explosion},
 };
 
 const DEFAULT_DEFLECT_COOLDOWN: u8 = 5;
@@ -87,16 +89,31 @@ impl WindChargeEntity {
     }
 
     pub fn create_explosion(&self, position: Vector3<f64>) {
-        let (power, calculator) = match self.kind {
-            WindChargeKind::Normal { .. } => (1.2, WIND_CHARGE_EXPLOSION_DAMAGE_CALCULATOR.clone()),
-            WindChargeKind::Breeze => (3.0, BREEZE_WIND_CHARGE_EXPLOSION_DAMAGE_CALCULATOR.clone()),
+        let (power, calculator, sound) = match self.kind {
+            WindChargeKind::Normal { .. } => (
+                1.2,
+                WIND_CHARGE_EXPLOSION_DAMAGE_CALCULATOR.clone(),
+                Sound::EntityWindChargeWindBurst,
+            ),
+            WindChargeKind::Breeze => (
+                3.0,
+                BREEZE_WIND_CHARGE_EXPLOSION_DAMAGE_CALCULATOR.clone(),
+                Sound::EntityBreezeWindBurst,
+            ),
         };
-        self.get_entity().world.load().explode_with_calculator(
-            position,
+        let world = self.get_entity().world.load_full();
+        let explosion = Explosion::new(
             power,
-            crate::world::ExplosionInteraction::Trigger,
-            Some(calculator),
+            position,
+            world.get_block_interaction(crate::world::ExplosionInteraction::Trigger),
+        )
+        .with_damage_calculator(calculator)
+        .with_particles_and_sound(
+            Particle::GustEmitterSmall,
+            Particle::GustEmitterLarge,
+            sound,
         );
+        world.run_explosion(&explosion, position, power);
     }
 
     pub fn deflect(
