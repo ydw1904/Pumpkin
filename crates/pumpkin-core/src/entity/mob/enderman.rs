@@ -19,9 +19,10 @@ use pumpkin_data::{
     tag,
     tag::Taggable,
 };
-use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_util::math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3};
+use pumpkin_world::generation::structure::template::PaletteEntry;
 
 use crate::entity::{
     Entity, EntityBase,
@@ -390,13 +391,19 @@ impl Mob for EndermanEntity {
 
     fn mob_write_nbt(&self, nbt: &mut NbtCompound) {
         if let Some(block_state) = self.carried_block.load() {
-            nbt.put_int("carriedBlockState", block_state.as_u16() as i32);
+            nbt.put("carriedBlockState", PaletteEntry::state_to_nbt(block_state));
         }
     }
 
     fn mob_read_nbt(&self, nbt: &NbtCompound) {
-        if let Some(block_state) = nbt.get_int("carriedBlockState") {
-            self.set_carried_block(BlockStateId::new(block_state as u16));
+        let block_state = match nbt.get("carriedBlockState") {
+            // Older Pumpkin saves stored the raw state id.
+            Some(NbtTag::Int(id)) => Some(BlockStateId::new(*id as u16)),
+            Some(tag) => Some(PaletteEntry::state_from_nbt(tag)),
+            None => None,
+        };
+        if let Some(block_state) = block_state {
+            self.set_carried_block(block_state);
         }
     }
 
