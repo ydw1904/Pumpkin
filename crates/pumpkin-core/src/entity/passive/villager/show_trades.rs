@@ -105,21 +105,12 @@ impl VillagerEntity {
         running.look_time -= 1;
     }
 
-    /// Whether `ShowTradesToPlayer` runs, which keeps its player as the interaction target.
-    pub(super) fn is_showing_trades(&self) -> bool {
-        self.show_trades
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .is_some()
-    }
-
     /// Vanilla `SetLookAndInteract`: the closest visible player within 4 blocks becomes the
     /// interaction target.
     fn set_look_and_interact(&self, world: &World) {
         let entity = self.get_entity();
         let pos = entity.pos.load();
         let range = INTERACTION_RANGE_SQR.sqrt();
-        // `nearest_living_entities` leaves out players, which vanilla's sensor includes.
         let closest = world
             .get_players_at_box(&entity.bounding_box.load().expand(range, range, range))
             .into_iter()

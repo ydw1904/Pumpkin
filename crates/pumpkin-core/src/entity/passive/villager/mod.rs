@@ -55,6 +55,7 @@ use pumpkin_data::environment_attribute::Activity;
 mod acquire_poi;
 pub mod data;
 mod golem;
+mod idle;
 mod inventory;
 mod meet;
 mod show_trades;
@@ -453,6 +454,9 @@ pub struct VillagerEntity {
     /// Ticks until vanilla's `SecondaryPoiSensor` scans again.
     secondary_poi_sensor_countdown: AtomicI32,
     work: std::sync::Mutex<work::WorkPackage>,
+    idle: std::sync::Mutex<idle::IdleState>,
+    /// When the running vanilla `TradeWithVillager` times out, or 0.
+    trade_with_villager_end: AtomicI64,
     /// Vanilla `ShowTradesToPlayer`, while it runs.
     show_trades: std::sync::Mutex<Option<show_trades::ShowTrades>>,
     /// Vanilla `SleepInBed.nextOkStartTime`.
@@ -555,6 +559,8 @@ impl VillagerEntity {
                 game_random().random_range(0..work::SECONDARY_POI_SCAN_RATE),
             ),
             work: std::sync::Mutex::default(),
+            idle: std::sync::Mutex::default(),
+            trade_with_villager_end: AtomicI64::new(0),
             show_trades: std::sync::Mutex::new(None),
             sleep_next_ok_start: AtomicI64::new(0),
             sleeping_pos: std::sync::Mutex::new(None),
@@ -2294,12 +2300,14 @@ impl VillagerEntity {
         self.tick_poi_memories(&world, game_time);
         self.go_to_wanted_item(&world, sensed);
         self.assign_profession_from_job_site(&world);
-        self.tick_meet(&world, game_time);
         let entity = self.get_entity();
         let activity = world.villager_activity(
             &entity.block_pos.load(),
             entity.age.load(Ordering::Relaxed) < 0,
         );
+        self.tick_idle(&world, game_time, activity);
+        self.tick_meet(&world, game_time, activity);
+        self.tick_give_gift_to_hero(&world, game_time, activity);
         self.tick_work(&world, game_time, day, activity);
         self.tick_show_trades(&world, game_time, activity);
         self.reset_profession();

@@ -46,6 +46,8 @@ const GOSSIP_TRANSFER_COUNT: usize = 10;
 const MIN_TRANSFERRED_GOSSIP: i32 = 2;
 /// Vanilla `Villager.gossip`'s `spawnGolemIfNeeded(level, timestamp, 5)`.
 const GOSSIP_VILLAGERS_TO_AGREE: usize = 5;
+/// `Behavior`'s default duration, which `TradeWithVillager` keeps.
+const TRADE_WITH_VILLAGER_DURATION: i64 = 60;
 /// Vanilla `TradeWithVillager.throwHalfStack` keeps this many of a small stack.
 const THROW_KEEP_COUNT: u8 = 24;
 
@@ -114,17 +116,20 @@ impl VillagerEntity {
     /// The `MEET` activity of vanilla `VillagerGoalPackages.getMeetPackage` besides walking to
     /// the bell: `TriggerGate.triggerOneShuffled` of `StrollAroundPoi` and `SocializeAtBell`,
     /// then the `TradeWithVillager` gate on the interaction target.
-    pub(super) fn tick_meet(&self, world: &Arc<World>, game_time: i64) {
-        let entity = self.get_entity();
-        let is_baby = entity.age.load(Ordering::Relaxed) < 0;
-        if world.villager_activity(&entity.block_pos.load(), is_baby) != Activity::Meet {
-            // Leaving the activity stops its behaviors, and the trade gate erases the
-            // interaction target on the way out. Trades shown in IDLE keep theirs.
-            if !self.is_showing_trades() {
-                self.set_interaction_target(None);
-            }
-            return;
+    pub(super) fn tick_meet(&self, world: &Arc<World>, game_time: i64, activity: Activity) {
+        if activity == Activity::Meet {
+            self.meet_at_meeting_point(world, game_time);
         }
+        // The trade gate of the MEET and IDLE packages. Like any behavior, a started trade
+        // runs out its time after the activity changes.
+        if matches!(activity, Activity::Meet | Activity::Idle)
+            || self.trade_with_villager_end.load(Ordering::Relaxed) != 0
+        {
+            self.trade_with_villager(world, game_time);
+        }
+    }
+
+    fn meet_at_meeting_point(&self, world: &Arc<World>, game_time: i64) {
         let Some(meeting_point) = self.get_meeting_point() else {
             return;
         };
@@ -148,7 +153,6 @@ impl VillagerEntity {
         }
         self.stroll_next_ok_start
             .store(next_ok_start, Ordering::Relaxed);
-        self.trade_with_villager(world, game_time);
     }
 
     /// Vanilla `StrollAroundPoi`.
@@ -213,43 +217,49 @@ impl VillagerEntity {
         true
     }
 
-    /// Vanilla `TradeWithVillager`: while the interaction target is a living villager, both
-    /// walk up to and look at each other, gossip, and share food and wanted items.
-    fn trade_with_villager(&self, world: &Arc<World>, game_time: i64) {
-        let Some(target) = self.interaction_target(world) else {
-            self.set_interaction_target(None);
-            return;
-        };
-        // Vanilla's trade gate doesn't start for a player, whom `ShowTradesToPlayer` handles.
-        if target.get_entity().entity_type == &EntityType::PLAYER {
-            return;
-        }
-        let Some(villager) = target
-            .cast_any()
-            .downcast_ref::<Self>()
-            .filter(|villager| villager.mob_entity.living_entity.is_alive())
-        else {
-            self.set_interaction_target(None);
-            return;
-        };
-        let pos = self.get_entity().pos.load();
-        if target.get_entity().pos.load().squared_distance_to_vec(&pos) > INTERACT_DIST_SQR {
-            return;
-        }
-        // Vanilla `BehaviorUtils.lockGazeAndWalkToEachOther`.
-        for (walker, other) in [(self, villager), (villager, self)] {
-            walker
-                .mob_entity
-                .look_control
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .look_at_position(walker, other.get_entity().get_eye_pos());
+    /// Vanilla `BehaviorUtils.lockGazeAndWalkToEachOther`.
+    fn lock_gaze_and_walk_to_each_other(&self, other: &Self) {
+        for (walker, other) in [(self, other), (other, self)] {
+            walker.look_at_position(other.get_entity().get_eye_pos());
             walker.set_walk_target(Some(WalkTarget {
                 destination: WalkDestination::Entity(other.get_entity().entity_id),
                 speed: INTERACT_SPEED,
                 close_enough_dist: INTERACT_WALKUP_DIST,
             }));
         }
+    }
+
+    /// Vanilla `TradeWithVillager` behind its gate: for its 60 ticks, while the interaction
+    /// target is a living villager, both walk up to and look at each other, gossip, and share
+    /// food and wanted items. Stopping erases the interaction target.
+    fn trade_with_villager(&self, world: &Arc<World>, game_time: i64) {
+        let end = self.trade_with_villager_end.load(Ordering::Relaxed);
+        let target = self.interaction_target(world).filter(|target| {
+            target
+                .cast_any()
+                .downcast_ref::<Self>()
+                .is_some_and(|villager| villager.mob_entity.living_entity.is_alive())
+        });
+        let Some(target) = target.filter(|_| end == 0 || game_time <= end) else {
+            if end != 0 {
+                self.trade_with_villager_end.store(0, Ordering::Relaxed);
+                self.set_interaction_target(None);
+            }
+            return;
+        };
+        let Some(villager) = target.cast_any().downcast_ref::<Self>() else {
+            return;
+        };
+        if end == 0 {
+            self.trade_with_villager_end
+                .store(game_time + TRADE_WITH_VILLAGER_DURATION, Ordering::Relaxed);
+            self.lock_gaze_and_walk_to_each_other(villager);
+        }
+        let pos = self.get_entity().pos.load();
+        if target.get_entity().pos.load().squared_distance_to_vec(&pos) > INTERACT_DIST_SQR {
+            return;
+        }
+        self.lock_gaze_and_walk_to_each_other(villager);
 
         self.gossip(world, villager, game_time);
         let profession = self.profession();
