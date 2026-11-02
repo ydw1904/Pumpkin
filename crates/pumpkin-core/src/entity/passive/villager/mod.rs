@@ -453,6 +453,13 @@ impl VillagerEntity {
             self_weak: std::sync::Mutex::new(None),
         };
         let mob_arc = Arc::new(villager);
+        // Vanilla `Villager` constructor: `getNavigation().setCanOpenDoors(true)`.
+        mob_arc
+            .mob_entity
+            .navigator
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .set_can_open_doors(true);
         *mob_arc
             .self_weak
             .lock()
