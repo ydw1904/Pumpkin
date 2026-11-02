@@ -372,6 +372,7 @@ fn create_entity(
     let uuid = nbt.get_uuid("UUID").unwrap_or_else(Uuid::new_v4);
     let entity = from_type(entity_type, position, world, uuid);
     entity.read_nbt_non_mut(nbt);
+    Entity::remember_unmodelled_nbt(entity.as_ref(), nbt);
     entity
 }
 

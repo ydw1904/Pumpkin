@@ -253,6 +253,16 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         }
         self.write_custom_nbt(nbt);
         self.get_entity().write_passengers(nbt);
+        let unmodelled = self
+            .get_entity()
+            .unmodelled_nbt
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for (name, tag) in &unmodelled.child_tags {
+            if !nbt.has(name) {
+                nbt.put(name, tag.clone());
+            }
+        }
     }
 
     fn write_custom_nbt(&self, _nbt: &mut NbtCompound) {}
@@ -272,6 +282,16 @@ pub trait EntityBase: Send + Sync + std::any::Any {
 
     /// Explicit removal of top-level keys, since a missing key on read keeps the field.
     fn remove_nbt(&self, removed: &[Box<str>]) {
+        {
+            let mut unmodelled = self
+                .get_entity()
+                .unmodelled_nbt
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            for name in removed {
+                unmodelled.child_tags.remove(name);
+            }
+        }
         if let Some(owner) = self.get_projectile_owner() {
             owner.remove_nbt(removed);
         }
@@ -1388,6 +1408,10 @@ pub struct Entity {
     pub last_sent_velocity: AtomicCell<Vector3<f64>>,
     /// Persistent custom data container for plugins
     pub custom_data: std::sync::Mutex<NbtCompound>,
+    /// Top-level tags the entity was loaded with that this server does not write back,
+    /// such as fields of mobs it only partly models. They are saved again unchanged so a
+    /// world can go back to vanilla without losing them.
+    pub unmodelled_nbt: std::sync::Mutex<NbtCompound>,
 }
 
 /// Entity bounds that keep the world's spatial queries current when written.
@@ -1514,6 +1538,7 @@ impl Entity {
         )
     }
 
+    #[expect(clippy::too_many_lines)]
     pub fn from_uuid_with_id(
         entity_id: i32,
         entity_uuid: uuid::Uuid,
@@ -1625,7 +1650,27 @@ impl Entity {
             last_sent_pos: AtomicCell::new(position),
             last_sent_velocity: AtomicCell::new(Vector3::default()),
             custom_data: std::sync::Mutex::new(NbtCompound::new()),
+            unmodelled_nbt: std::sync::Mutex::new(NbtCompound::new()),
         }
+    }
+
+    /// Remembers the tags of `loaded` that this entity, freshly read from it, does not
+    /// write back. Saving puts them back unchanged.
+    pub fn remember_unmodelled_nbt(entity: &dyn EntityBase, loaded: &NbtCompound) {
+        let mut written = NbtCompound::new();
+        entity.write_nbt(&mut written);
+        let mut unmodelled = NbtCompound::new();
+        for (name, tag) in &loaded.child_tags {
+            // Passengers are loaded as entities of their own after this runs.
+            if &**name != "Passengers" && !written.has(name) {
+                unmodelled.put(name, tag.clone());
+            }
+        }
+        *entity
+            .get_entity()
+            .unmodelled_nbt
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = unmodelled;
     }
 
     pub fn add_velocity(&self, velocity: Vector3<f64>) {
@@ -5346,6 +5391,29 @@ impl Flag {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A donkey's chest items are not modelled yet; they still have to reach the next save.
+    #[tokio::test]
+    async fn unmodelled_tags_survive_a_save() {
+        let folder = tempfile::tempdir().unwrap();
+        let world = crate::entity::ai::test_support::world(&folder);
+        let mut item = NbtCompound::new();
+        item.put_byte("Slot", 2);
+        item.put_string("id", "minecraft:hay_block".to_string());
+        item.put_int("count", 10);
+        let mut nbt = NbtCompound::new();
+        nbt.put_string("id", "minecraft:donkey".to_string());
+        nbt.put_bool("ChestedHorse", true);
+        nbt.put("Items", NbtTag::List(vec![NbtTag::Compound(item)]));
+
+        let donkey =
+            r#type::load_entity_from_nbt(&nbt, Vector3::new(0.5, 64.0, 0.5), &world).unwrap();
+        let mut saved = NbtCompound::new();
+        donkey.write_nbt(&mut saved);
+
+        assert_eq!(saved.get("Items"), nbt.get("Items"));
+        world.level.shutdown().await;
+    }
 
     #[test]
     fn equipment_break_status_maps_all_slots() {
