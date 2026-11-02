@@ -169,6 +169,7 @@ separately. Agents never open upstream PRs; see `AGENTS.md`.
 
 Open upstream PRs cherry-picked onto this branch (authors kept). Drop each when its PR lands.
 
+- Tooling: #4380 (tester waits for the `/setblock` chunk; the branch already had a longer keep-alive).
 - World and saves: #4373 (`/forceload` tickets), #4022 (first commit, bubble columns hold water), #4114 (fluids decide what they replace with `washed_away_by_fluids`).
 - Exploits and dupes: #4119 (shift-click dupe), #4118, #4058 (finished digging validated; plus a local fix so digging only finishes on the block it started on), #4068 (containers close out of reach), #4066 (`/give` capped at 100 stacks), #4057, #3922 (recipe book placement), #4060 (atomic duplicate-login and max-players checks).
 - Data loss: #4416 (attribute modifiers corrupting player saves), #3728 (components with no NBT form truncating chunks), #3707 (unmodelled chunk tags kept), #4332 (entity chunks written on autosave), #4327 (game time and time of day persist), #3859 (block entity NBT removed with its block); locally `fb209a79d` writes level.dat on autosave.
