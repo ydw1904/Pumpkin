@@ -2434,10 +2434,7 @@ impl Mob for VillagerEntity {
             for (uuid, entries) in gossips.iter() {
                 for (gossip_type, val) in entries {
                     let mut gossip_nbt = NbtCompound::new();
-                    let (u1, u2) = uuid.as_u64_pair();
-                    let uuid_array =
-                        vec![(u1 >> 32) as i32, u1 as i32, (u2 >> 32) as i32, u2 as i32];
-                    gossip_nbt.put("Target", NbtTag::IntArray(uuid_array));
+                    gossip_nbt.put_uuid("Target", *uuid);
                     gossip_nbt.put_string("Type", gossip_type.name().to_string());
                     gossip_nbt.put_int("Value", *val);
                     gossip_list.push(NbtTag::Compound(gossip_nbt));
@@ -2573,14 +2570,7 @@ impl Mob for VillagerEntity {
             gossips.clear();
             for tag in gossip_list {
                 if let Some(gossip_nbt) = tag.extract_compound() {
-                    let uuid = gossip_nbt.get_int_array("Target").map(|uuid_array| {
-                        Uuid::from_u128(
-                            (uuid_array[0] as u128) << 96
-                                | (uuid_array[1] as u128) << 64
-                                | (uuid_array[2] as u128) << 32
-                                | (uuid_array[3] as u128),
-                        )
-                    });
+                    let uuid = gossip_nbt.get_uuid("Target");
                     let gossip_type = gossip_nbt
                         .get_string("Type")
                         .and_then(GossipType::from_name)
