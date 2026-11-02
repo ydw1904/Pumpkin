@@ -281,6 +281,15 @@ impl Mob for ZombieVillagerEntity {
         self.mob_entity.spawn_as_baby()
     }
 
+    fn finalize_spawn(
+        &self,
+        world: &Arc<crate::world::World>,
+        group_data: Option<crate::entity::mob::spawn::SpawnGroupData>,
+    ) -> Option<crate::entity::mob::spawn::SpawnGroupData> {
+        self.mob_entity
+            .finalize_zombie_spawn(self, world, group_data)
+    }
+
     fn remove_when_far_away(&self, _distance_sq: f64) -> bool {
         !self.is_converting() && self.villager_xp.load(Ordering::Relaxed) == 0
     }

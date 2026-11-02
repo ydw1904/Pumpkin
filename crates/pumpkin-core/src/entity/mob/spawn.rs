@@ -13,7 +13,7 @@ use crate::entity::mob::equipment::{EQUIPMENT_REGISTRY, RegionalDifficulty, equi
 use crate::entity::passive::fox::FoxVariant;
 use crate::world::World;
 
-const RANDOM_SPAWN_BONUS_ID: &str = "minecraft:random_spawn_bonus";
+pub(crate) const RANDOM_SPAWN_BONUS_ID: &str = "minecraft:random_spawn_bonus";
 
 /// State shared by every mob of one spawn group (vanilla `SpawnGroupData`).
 pub enum SpawnGroupData {
@@ -33,6 +33,10 @@ pub enum SpawnGroupData {
     Fox {
         variant: FoxVariant,
         size: u32,
+    },
+    /// Vanilla `ZombieGroupData`: whether the group spawns as babies.
+    Zombie {
+        is_baby: bool,
     },
 }
 

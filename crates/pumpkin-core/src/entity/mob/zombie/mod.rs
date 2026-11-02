@@ -8,7 +8,7 @@ use crate::entity::ai::goal::zombie_attack::ZombieAttackGoal;
 use crate::entity::attributes::{Modifier, ModifierOperation};
 use crate::entity::mob::conversion_tracker::ConversionTracker;
 use crate::entity::mob::equipment::RegionalDifficulty;
-use crate::entity::mob::spawn::finalize_spawn;
+use crate::entity::mob::spawn::{RANDOM_SPAWN_BONUS_ID, SpawnGroupData, finalize_spawn};
 use crate::entity::passive::villager::VillagerEntity;
 use crate::entity::{
     Entity, EntityBase,
@@ -44,6 +44,8 @@ const ZOMBIE_HUNTS: &[Hunt] = &[
 ];
 
 const SPEED_MODIFIER_BABY_ID: &str = "minecraft:baby";
+const LEADER_ZOMBIE_BONUS_ID: &str = "minecraft:leader_zombie_bonus";
+const ZOMBIE_RANDOM_SPAWN_BONUS_ID: &str = "minecraft:zombie_random_spawn_bonus";
 
 pub struct ZombieEntityBase {
     pub mob_entity: MobEntity,
@@ -169,6 +171,86 @@ impl ZombieEntityBase {
             });
     }
 
+    /// Vanilla `Zombie.finalizeSpawn`, after `Mob.finalizeSpawn` rolled loot pickup and equipment.
+    pub fn finalize_zombie_spawn(
+        &self,
+        mob: &dyn Mob,
+        world: &Arc<World>,
+        group_data: Option<SpawnGroupData>,
+    ) -> Option<SpawnGroupData> {
+        let group_data = mob.finalize_spawn_super(group_data);
+        let difficulty_modifier =
+            RegionalDifficulty::at(world, self.mob_entity.living_entity.entity.pos.load())
+                .special_multiplier;
+        let group_data = group_data.or_else(|| {
+            Some(SpawnGroupData::Zombie {
+                is_baby: game_random().random::<f32>() < 0.05,
+            })
+        });
+        if let Some(SpawnGroupData::Zombie { is_baby }) = &group_data {
+            if *is_baby {
+                self.set_baby(true);
+            }
+            self.set_can_break_doors(
+                game_random().random::<f32>() < difficulty_modifier * 0.1,
+                mob,
+            );
+        }
+        self.handle_attributes(mob, difficulty_modifier, false);
+        group_data
+    }
+
+    /// Vanilla `Zombie.handleAttributes`. A converted zombie keeps its health.
+    pub fn handle_attributes(&self, mob: &dyn Mob, difficulty_modifier: f32, conversion: bool) {
+        let living = &self.mob_entity.living_entity;
+        let rng = game_random();
+        // Vanilla `randomizeReinforcementsChance`.
+        living.set_attribute_base(
+            &Attributes::SPAWN_REINFORCEMENTS,
+            rng.random::<f64>() * f64::from(0.1f32),
+        );
+        let knockback_resistance = rng.random::<f64>() * f64::from(0.05f32);
+        living.update_attribute(&Attributes::KNOCKBACK_RESISTANCE, |attribute| {
+            attribute.add_or_replace_permanent_modifier(Modifier {
+                id: RANDOM_SPAWN_BONUS_ID.to_string(),
+                amount: knockback_resistance,
+                operation: ModifierOperation::Add,
+            });
+        });
+        let follow_range = rng.random::<f64>() * 1.5 * f64::from(difficulty_modifier);
+        if follow_range > 1.0 {
+            living.update_attribute(&Attributes::FOLLOW_RANGE, |attribute| {
+                attribute.add_or_replace_permanent_modifier(Modifier {
+                    id: ZOMBIE_RANDOM_SPAWN_BONUS_ID.to_string(),
+                    amount: follow_range,
+                    operation: ModifierOperation::MultiplyTotal,
+                });
+            });
+        }
+        if rng.random::<f32>() < difficulty_modifier * 0.05 {
+            let reinforcements = rng.random::<f64>().mul_add(0.25, 0.5);
+            living.update_attribute(&Attributes::SPAWN_REINFORCEMENTS, |attribute| {
+                attribute.add_or_replace_permanent_modifier(Modifier {
+                    id: LEADER_ZOMBIE_BONUS_ID.to_string(),
+                    amount: reinforcements,
+                    operation: ModifierOperation::Add,
+                });
+            });
+            let max_health = rng.random::<f64>().mul_add(3.0, 1.0);
+            living.update_attribute(&Attributes::MAX_HEALTH, |attribute| {
+                attribute.add_or_replace_permanent_modifier(Modifier {
+                    id: LEADER_ZOMBIE_BONUS_ID.to_string(),
+                    amount: max_health,
+                    operation: ModifierOperation::MultiplyTotal,
+                });
+            });
+            if !conversion {
+                living.set_health(living.get_max_health());
+            }
+            self.set_can_break_doors(true, mob);
+        }
+    }
+
     /// Vanilla `Zombie.getBaseExperienceReward`: babies give two and a half times as much.
     #[must_use]
     pub fn base_experience_reward(&self) -> u32 {
@@ -207,6 +289,13 @@ impl ZombieEntityBase {
             zombie_nbt.put_bool("CanBreakDoors", self.can_break_doors());
             if let Some(converted) = converted.get_mob() {
                 converted.mob_read_nbt(&zombie_nbt);
+            }
+            if let Some((mob, zombie)) = zombie_base(converted.as_ref()) {
+                let entity = &zombie.mob_entity.living_entity.entity;
+                let difficulty_modifier =
+                    RegionalDifficulty::at(&entity.world.load_full(), entity.pos.load())
+                        .special_multiplier;
+                zombie.handle_attributes(mob, difficulty_modifier, true);
             }
 
             let converted_entity = converted.get_entity();
@@ -251,7 +340,11 @@ impl ZombieEntityBase {
                 if let Some(mob) = zombie_villager.get_mob() {
                     mob.mob_read_nbt(&villager_nbt);
                 }
-                finalize_spawn(zombie_villager, &world, None);
+                finalize_spawn(
+                    zombie_villager,
+                    &world,
+                    Some(SpawnGroupData::Zombie { is_baby: false }),
+                );
                 if !zombie_entity.is_silent() {
                     world.sync_world_event(
                         WorldEvent::SoundZombieInfected,
@@ -261,6 +354,19 @@ impl ZombieEntityBase {
                 }
             })
     }
+}
+
+/// The zombie part of the zombie types that convert into one another.
+fn zombie_base(entity: &dyn EntityBase) -> Option<(&dyn Mob, &ZombieEntityBase)> {
+    let any = entity.cast_any();
+    if let Some(zombie) = any.downcast_ref::<zombie::ZombieEntity>() {
+        return Some((zombie, zombie.base()));
+    }
+    if let Some(husk) = any.downcast_ref::<husk::HuskEntity>() {
+        return Some((husk, husk.base()));
+    }
+    any.downcast_ref::<drowned::DrownedEntity>()
+        .map(|drowned| (drowned as &dyn Mob, drowned.base()))
 }
 
 impl Mob for ZombieEntityBase {

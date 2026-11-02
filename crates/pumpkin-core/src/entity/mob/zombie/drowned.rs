@@ -218,6 +218,12 @@ impl RangedAttackMob for DrownedEntity {
     }
 }
 
+impl DrownedEntity {
+    pub(super) fn base(&self) -> &ZombieEntityBase {
+        &self.entity
+    }
+}
+
 impl Mob for DrownedEntity {
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
         self.play_entity_sound(Sound::EntityDrownedStep, 0.15, 1.0);
@@ -233,10 +239,10 @@ impl Mob for DrownedEntity {
 
     fn finalize_spawn(
         &self,
-        _world: &Arc<World>,
+        world: &Arc<World>,
         group_data: Option<SpawnGroupData>,
     ) -> Option<SpawnGroupData> {
-        let group_data = self.finalize_spawn_super(group_data);
+        let group_data = self.entity.finalize_zombie_spawn(self, world, group_data);
         let mob_entity = &self.entity.mob_entity;
         let offhand_empty = mob_entity
             .living_entity
