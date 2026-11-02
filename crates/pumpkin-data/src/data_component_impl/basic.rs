@@ -1,3 +1,4 @@
+use crate::data_component::DataComponent;
 use crate::data_component_impl::{
     DataComponentImpl, IdOr, get_i32_hash, get_idor_hash, get_str_hash,
 };
@@ -345,13 +346,47 @@ impl DataComponentImpl for CustomModelDataImpl {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct TooltipDisplayImpl;
+pub struct TooltipDisplayImpl {
+    pub hide_tooltip: bool,
+    pub hidden_components: Vec<DataComponent>,
+}
+#[allow(non_upper_case_globals)]
+pub const TooltipDisplayImpl: TooltipDisplayImpl = TooltipDisplayImpl {
+    hide_tooltip: false,
+    hidden_components: Vec::new(),
+};
 impl TooltipDisplayImpl {
-    pub const fn read_data(_data: &NbtTag) -> Option<Self> {
-        Some(Self)
+    pub fn read_data(data: &NbtTag) -> Option<Self> {
+        let compound = data.extract_compound()?;
+        Some(Self {
+            hide_tooltip: compound.get_bool("hide_tooltip").unwrap_or(false),
+            hidden_components: compound
+                .get_list("hidden_components")
+                .unwrap_or_default()
+                .iter()
+                .filter_map(NbtTag::extract_string)
+                .filter_map(DataComponent::try_from_name)
+                .collect(),
+        })
     }
 }
 impl DataComponentImpl for TooltipDisplayImpl {
+    fn write_data(&self) -> NbtTag {
+        let mut compound = NbtCompound::new();
+        if self.hide_tooltip {
+            compound.put_bool("hide_tooltip", true);
+        }
+        if !self.hidden_components.is_empty() {
+            compound.put_list(
+                "hidden_components",
+                self.hidden_components
+                    .iter()
+                    .map(|component| NbtTag::String(component.to_name().into()))
+                    .collect(),
+            );
+        }
+        NbtTag::Compound(compound)
+    }
     default_impl!(TooltipDisplay);
 }
 
