@@ -2,6 +2,7 @@ use super::{Mob, MobEntity, MobMetadata};
 use crate::entity::ai::goal::break_door::BreakDoorGoal;
 use crate::entity::ai::goal::destroy_egg::DestroyEggGoal;
 use crate::entity::ai::goal::look_around::RandomLookAroundGoal;
+use crate::entity::ai::goal::move_through_village::MoveThroughVillageGoal;
 use crate::entity::ai::goal::revenge::RevengeGoal;
 use crate::entity::ai::goal::wander_around::WanderAroundGoal;
 use crate::entity::ai::goal::zombie_attack::ZombieAttackGoal;
@@ -89,6 +90,15 @@ impl ZombieEntityBase {
         let goal_selector = &mob_arc.mob_entity.goals_selector;
         let target_selector = &mob_arc.mob_entity.target_selector;
         goal_selector.add_goal(2, ZombieAttackGoal::new(1.0, false));
+        let zombie = Arc::downgrade(&mob_arc);
+        goal_selector.add_goal(
+            6,
+            Box::new(MoveThroughVillageGoal::new(1.0, true, 4, move || {
+                zombie
+                    .upgrade()
+                    .is_some_and(|zombie| zombie.can_break_doors())
+            })),
+        );
         goal_selector.add_goal(7, Box::new(WanderAroundGoal::water_avoiding(1.0)));
         target_selector.add_goal(1, Box::new(revenge));
         hunting::apply(target_selector, &mob_arc.mob_entity, hunts);
