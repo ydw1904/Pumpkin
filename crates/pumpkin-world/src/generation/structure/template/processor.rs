@@ -453,11 +453,12 @@ impl StructureProcessor {
                 let world_state_id = placer.get_block_state(&world_pos);
                 let world_state = BlockState::from_id(world_state_id);
                 for rule in rules {
-                    if rule
-                        .position_predicate
-                        .test(world_pos, context.structure_start, rng)
-                        && rule.input_predicate.test(state, rng)
+                    // Vanilla `ProcessorRule.test` order, which decides what draws randoms.
+                    if rule.input_predicate.test(state, rng)
                         && rule.location_predicate.test(world_state, rng)
+                        && rule
+                            .position_predicate
+                            .test(world_pos, context.structure_start, rng)
                     {
                         if let Some(modifier) = &rule.block_entity_modifier {
                             modifier.apply(nbt, world_pos, rng);
