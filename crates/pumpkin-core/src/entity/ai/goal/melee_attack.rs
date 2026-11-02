@@ -2,7 +2,7 @@ use super::{Controls, Goal};
 
 use crate::entity::EntityBase;
 use crate::entity::ai::goal::revenge::MobFilter;
-use crate::entity::ai::pathfinder::NavigatorGoal;
+use crate::entity::ai::pathfinder::path::Path;
 use crate::entity::mob::Mob;
 use crate::entity::predicate::EntityPredicate;
 use crate::plugin::api::events::entity::entity_target::TargetReason;
@@ -14,14 +14,13 @@ pub struct MeleeAttackGoal {
     goal_control: Controls,
     speed: f64,
     pause_when_mob_idle: bool,
-    //path: Path, TODO: add path when Navigation is implemented
-    #[expect(dead_code)]
-    target_location: Vector3<f64>,
+    path: Option<Path>,
     update_countdown_ticks: i32,
     pub cooldown: i32,
     #[expect(dead_code)]
     attack_interval_ticks: i32,
     last_update_time: i64,
+    /// Vanilla `pathedTargetX/Y/Z`, kept across restarts.
     last_target_position: Option<Vector3<f64>>,
     gate: Option<MobFilter>,
     attack: Option<fn(&dyn Mob, &dyn EntityBase)>,
@@ -34,7 +33,7 @@ impl MeleeAttackGoal {
             goal_control: Controls::MOVE | Controls::LOOK,
             speed,
             pause_when_mob_idle,
-            target_location: Vector3::new(0.0, 0.0, 0.0),
+            path: None,
             update_countdown_ticks: 0,
             cooldown: 0,
             attack_interval_ticks: 20,
@@ -85,8 +84,14 @@ impl Goal for MeleeAttackGoal {
         if !target.get_entity().is_alive() {
             return false;
         }
-        // TODO: add path when is implemented Navigation
-        true //TODO: modify that because if a path to the target not exists then call mob.is_in_attack_range(target)
+        let mob_entity = mob.get_mob_entity();
+        let steered = mob_entity.steered();
+        self.path = steered.navigator().create_path(
+            &steered.mob_entity().living_entity,
+            target.get_entity().pos.load(),
+            0,
+        );
+        self.path.is_some() || mob_entity.is_in_attack_range(target.as_ref())
     }
 
     fn should_continue(&mut self, mob: &dyn Mob) -> bool {
@@ -121,20 +126,12 @@ impl Goal for MeleeAttackGoal {
     fn start(&mut self, mob: &dyn Mob) {
         mob.get_mob_entity().set_attacking(true);
 
-        let target = mob.get_mob_entity().get_target().clone();
-        if let Some(target) = target {
-            let steered = mob.get_mob_entity().steered();
-            let mut navigator = steered.navigator();
-            let target_pos = target.get_entity().pos.load();
-            navigator.set_progress(NavigatorGoal {
-                current_progress: mob.get_entity().pos.load(),
-                destination: target_pos,
-                speed: self.speed,
-                // Vanilla `createPath(target, 0)`: the path ends in the target's own block.
-                reach_range: 0,
-            });
-            self.last_target_position = Some(target_pos);
-        }
+        let steered = mob.get_mob_entity().steered();
+        steered.navigator().move_to_path(
+            self.path.take(),
+            self.speed,
+            &steered.mob_entity().living_entity,
+        );
         self.update_countdown_ticks = 0;
         self.cooldown = 0;
     }
@@ -156,7 +153,6 @@ impl Goal for MeleeAttackGoal {
 
         // Vanilla: this.mob.getNavigation().stop()
         mob.get_mob_entity().steered().navigator().stop();
-        self.last_target_position = None;
     }
 
     fn tick(&mut self, mob: &dyn Mob) {
@@ -183,24 +179,29 @@ impl Goal for MeleeAttackGoal {
             }) || mob.get_random().random::<f32>() < 0.05);
 
         if should_update_nav {
-            let mob_pos = mob.get_entity().pos.load();
-            let dist_sq = mob_pos.squared_distance_to_vec(&current_target_pos);
-            let steered = mob.get_mob_entity().steered();
-            let mut navigator = steered.navigator();
-            navigator.set_progress(NavigatorGoal {
-                current_progress: mob_pos,
-                destination: current_target_pos,
-                speed: self.speed,
-                reach_range: 0,
-            });
             self.last_target_position = Some(current_target_pos);
             self.update_countdown_ticks = 4 + mob.get_random().random_range(0..7);
+            let dist_sq = mob
+                .get_entity()
+                .pos
+                .load()
+                .squared_distance_to_vec(&current_target_pos);
             if dist_sq > 1024.0 {
                 self.update_countdown_ticks += 10;
             } else if dist_sq > 256.0 {
                 self.update_countdown_ticks += 5;
             }
-            // TODO: add 15 more ticks when the path request fails.
+            // Vanilla `moveTo(target, 0, speed)`: the path ends in the target's own block.
+            let moved = {
+                let steered = mob.get_mob_entity().steered();
+                let living = &steered.mob_entity().living_entity;
+                let mut navigator = steered.navigator();
+                let path = navigator.create_path(living, current_target_pos, 0);
+                navigator.move_to_path(path, self.speed, living)
+            };
+            if !moved {
+                self.update_countdown_ticks += 15;
+            }
             self.update_countdown_ticks = self.get_tick_count(self.update_countdown_ticks);
         }
 

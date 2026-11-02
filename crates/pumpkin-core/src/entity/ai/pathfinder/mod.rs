@@ -555,12 +555,22 @@ impl PathNavigation {
 
     fn install_path(&mut self, mut path: Path, entity: &LivingEntity) {
         let world = entity.entity.world.load();
-        path.world_change = Some((
+        let world_change = Some((
             world.uuid,
             world.navigation_change_sequence.load(Ordering::Acquire),
         ));
         self.target_pos = Some(path.get_target());
-        self.path = Some(path);
+        // Vanilla moveTo(Path): an equivalent route keeps the installed path and its progress.
+        if let Some(installed) = self
+            .path
+            .as_mut()
+            .filter(|installed| path.same_as_path(installed))
+        {
+            installed.world_change = world_change;
+        } else {
+            path.world_change = world_change;
+            self.path = Some(path);
+        }
     }
 
     fn ground_target(&self, entity: &LivingEntity) -> Option<NavigationTarget> {
