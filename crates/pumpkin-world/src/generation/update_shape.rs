@@ -2,8 +2,10 @@
 //! `StructureTemplate.updateShapeAtEdge`, for the blocks whose shape updates matter during
 //! generation.
 
+use pumpkin_data::HorizontalFacingExt;
 use pumpkin_data::block_properties::{
-    BlockProperties, OakLeavesLikeProperties, VineLikeProperties,
+    BlockProperties, OakFenceGateLikeProperties, OakFenceLikeProperties, OakLeavesLikeProperties,
+    StairsShape, VineLikeProperties, WhiteWoolStairsLikeProperties,
 };
 use pumpkin_data::fluid::Fluid;
 use pumpkin_data::tag::{self, Taggable};
@@ -307,10 +309,137 @@ pub fn update_shape<L: BlockPlacer + ?Sized>(
     if block.id == BlockId::VINE {
         return update_vine_shape(level, pos, state, dir_to_neighbor);
     }
+    if dir_to_neighbor.is_horizontal() {
+        if block.has_tag(&tag::Block::MINECRAFT_FENCES) {
+            let connects = fence_connects_to(block, neighbor_state, dir_to_neighbor.opposite());
+            return with_side(state, block, dir_to_neighbor, connects);
+        }
+        if is_iron_bars(block) {
+            let connects = bars_attach_to(neighbor_state, dir_to_neighbor.opposite());
+            return with_side(state, block, dir_to_neighbor, connects);
+        }
+        if block.has_tag(&tag::Block::MINECRAFT_STAIRS) {
+            let mut props = WhiteWoolStairsLikeProperties::from_state_id(state);
+            props.shape = stairs_shape(level, pos, props);
+            return props.to_state_id(block);
+        }
+    }
     if is_falling_block(block) {
         level.schedule_block_tick(&pos, block);
     }
     state
+}
+
+/// Vanilla `Block.isExceptionForConnection`.
+fn is_exception_for_connection(block: &Block) -> bool {
+    block.has_tag(&tag::Block::MINECRAFT_LEAVES)
+        || matches!(
+            block.id,
+            BlockId::BARRIER
+                | BlockId::CARVED_PUMPKIN
+                | BlockId::JACK_O_LANTERN
+                | BlockId::MELON
+                | BlockId::PUMPKIN
+        )
+        || block.has_tag(&tag::Block::MINECRAFT_SHULKER_BOXES)
+}
+
+/// Blocks of vanilla's `IronBarsBlock` class: bars and glass panes.
+fn is_iron_bars(block: &Block) -> bool {
+    block.has_tag(&tag::Block::MINECRAFT_BARS) || block.has_tag(&tag::Block::C_GLASS_PANES)
+}
+
+/// Vanilla `FenceBlock.connectsTo`, with `face` the neighbour's side facing the fence.
+fn fence_connects_to(fence: &Block, neighbor_state: BlockStateId, face: BlockDirection) -> bool {
+    let neighbor = neighbor_state.to_block();
+    let same_fence = neighbor.has_tag(&tag::Block::MINECRAFT_FENCES)
+        && neighbor.has_tag(&tag::Block::MINECRAFT_WOODEN_FENCES)
+            == fence.has_tag(&tag::Block::MINECRAFT_WOODEN_FENCES);
+    // `FenceGateBlock.connectsToDirection`
+    let gate = neighbor.has_tag(&tag::Block::MINECRAFT_FENCE_GATES)
+        && OakFenceGateLikeProperties::from_state_id(neighbor_state)
+            .facing
+            .to_block_direction()
+            .to_axis()
+            == face.rotate_clockwise().to_axis();
+    (!is_exception_for_connection(neighbor) && neighbor_state.is_side_solid(face))
+        || same_fence
+        || gate
+}
+
+/// Vanilla `IronBarsBlock.attachsTo`, with `face` the neighbour's side facing the bars.
+fn bars_attach_to(neighbor_state: BlockStateId, face: BlockDirection) -> bool {
+    let neighbor = neighbor_state.to_block();
+    (!is_exception_for_connection(neighbor) && neighbor_state.is_side_solid(face))
+        || is_iron_bars(neighbor)
+        || neighbor.has_tag(&tag::Block::MINECRAFT_WALLS)
+}
+
+/// Sets the side property of a fence, bars or pane towards `direction`.
+fn with_side(
+    state: BlockStateId,
+    block: &Block,
+    direction: BlockDirection,
+    connects: bool,
+) -> BlockStateId {
+    let mut props = OakFenceLikeProperties::from_state_id(state);
+    match direction {
+        BlockDirection::North => props.north = connects,
+        BlockDirection::South => props.south = connects,
+        BlockDirection::West => props.west = connects,
+        BlockDirection::East => props.east = connects,
+        BlockDirection::Up | BlockDirection::Down => return state,
+    }
+    props.to_state_id(block)
+}
+
+/// Vanilla `StairBlock.getStairsShape`.
+fn stairs_shape<L: BlockPlacer + ?Sized>(
+    level: &L,
+    pos: Vector3<i32>,
+    props: WhiteWoolStairsLikeProperties,
+) -> StairsShape {
+    let stairs_at = |direction: BlockDirection| {
+        let state = level.get_block_state(&(pos + direction.to_offset()));
+        state
+            .to_block()
+            .has_tag(&tag::Block::MINECRAFT_STAIRS)
+            .then(|| WhiteWoolStairsLikeProperties::from_state_id(state))
+    };
+    // `canTakeShape`
+    let can_take_shape = |direction: BlockDirection| {
+        stairs_at(direction)
+            .is_none_or(|other| other.facing != props.facing || other.half != props.half)
+    };
+    let facing = props.facing.to_block_direction();
+
+    if let Some(behind) = stairs_at(facing)
+        && behind.half == props.half
+    {
+        let behind_facing = behind.facing.to_block_direction();
+        if behind_facing.to_axis() != facing.to_axis() && can_take_shape(behind_facing.opposite()) {
+            return if behind_facing == facing.rotate_counter_clockwise() {
+                StairsShape::OuterLeft
+            } else {
+                StairsShape::OuterRight
+            };
+        }
+    }
+
+    if let Some(front) = stairs_at(facing.opposite())
+        && front.half == props.half
+    {
+        let front_facing = front.facing.to_block_direction();
+        if front_facing.to_axis() != facing.to_axis() && can_take_shape(front_facing) {
+            return if front_facing == facing.rotate_counter_clockwise() {
+                StairsShape::InnerLeft
+            } else {
+                StairsShape::InnerRight
+            };
+        }
+    }
+
+    StairsShape::Straight
 }
 
 /// Vanilla `LiquidBlock.updateShape`. The fluid tick lets water flow into air a structure or
