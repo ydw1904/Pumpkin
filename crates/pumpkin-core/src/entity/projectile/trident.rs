@@ -38,7 +38,7 @@ pub struct TridentEntity {
 impl TridentEntity {
     const BASE_DAMAGE: f64 = 8.0;
     const AIR_INERTIA: f64 = 0.99;
-    const WATER_INERTIA: f64 = 0.9;
+    const WATER_INERTIA: f64 = 0.99;
     const GRAVITY: f64 = 0.05;
     const DESPAWN_TIME: u32 = 1200;
 
