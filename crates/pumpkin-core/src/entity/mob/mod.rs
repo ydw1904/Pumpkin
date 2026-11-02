@@ -149,6 +149,7 @@ pub struct MobEntity {
     pub death_loot_table_seed: AtomicI64,
     pub ambient_sound_time: AtomicI32,
     pending_riders: std::sync::Mutex<Vec<Arc<dyn EntityBase>>>,
+    pending_vehicle: std::sync::Mutex<Option<spawn::PendingVehicle>>,
     mob_flags: AtomicU8,
 }
 impl MobEntity {
@@ -279,6 +280,7 @@ impl MobEntity {
             death_loot_table_seed: AtomicI64::new(0),
             ambient_sound_time: AtomicI32::new(0),
             pending_riders: std::sync::Mutex::new(Vec::new()),
+            pending_vehicle: std::sync::Mutex::new(None),
             mob_flags: AtomicU8::new(0),
         }
     }

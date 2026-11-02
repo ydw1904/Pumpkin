@@ -8,8 +8,12 @@ use crate::entity::ai::goal::zombie_attack::ZombieAttackGoal;
 use crate::entity::attributes::{Modifier, ModifierOperation};
 use crate::entity::mob::conversion_tracker::ConversionTracker;
 use crate::entity::mob::equipment::RegionalDifficulty;
-use crate::entity::mob::spawn::{RANDOM_SPAWN_BONUS_ID, SpawnGroupData, finalize_spawn};
+use crate::entity::mob::spawn::{
+    PendingVehicle, RANDOM_SPAWN_BONUS_ID, SpawnGroupData, finalize_spawn,
+};
+use crate::entity::passive::chicken::ChickenEntity;
 use crate::entity::passive::villager::VillagerEntity;
+use crate::entity::r#type::from_type;
 use crate::entity::{
     Entity, EntityBase,
     ai::behavior::hunting::{self, Hunt},
@@ -29,6 +33,7 @@ use pumpkin_util::Difficulty;
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
+use uuid::Uuid;
 
 pub mod drowned;
 pub mod husk;
@@ -46,6 +51,8 @@ const ZOMBIE_HUNTS: &[Hunt] = &[
 const SPEED_MODIFIER_BABY_ID: &str = "minecraft:baby";
 const LEADER_ZOMBIE_BONUS_ID: &str = "minecraft:leader_zombie_bonus";
 const ZOMBIE_RANDOM_SPAWN_BONUS_ID: &str = "minecraft:zombie_random_spawn_bonus";
+/// Vanilla compares `nextFloat()` against the double `0.05` for both chicken jockey rolls.
+const CHICKEN_JOCKEY_CHANCE: f64 = 0.05;
 
 pub struct ZombieEntityBase {
     pub mob_entity: MobEntity,
@@ -196,11 +203,19 @@ impl ZombieEntityBase {
         let group_data = group_data.or_else(|| {
             Some(SpawnGroupData::Zombie {
                 is_baby: game_random().random::<f32>() < 0.05,
+                can_spawn_jockey: true,
             })
         });
-        if let Some(SpawnGroupData::Zombie { is_baby }) = &group_data {
+        if let Some(SpawnGroupData::Zombie {
+            is_baby,
+            can_spawn_jockey,
+        }) = &group_data
+        {
             if *is_baby {
                 self.set_baby(true);
+                if *can_spawn_jockey {
+                    self.try_ride_chicken(world);
+                }
             }
             self.set_can_break_doors(
                 game_random().random::<f32>() < difficulty_modifier * 0.1,
@@ -209,6 +224,43 @@ impl ZombieEntityBase {
         }
         self.handle_attributes(mob, difficulty_modifier, false);
         group_data
+    }
+
+    /// The chicken jockey part of vanilla `Zombie.finalizeSpawn`: a baby rides a free chicken
+    /// nearby, or else sometimes one spawned for it.
+    #[expect(
+        clippy::same_functions_in_if_condition,
+        reason = "vanilla draws a second roll only when the first one fails"
+    )]
+    fn try_ride_chicken(&self, world: &Arc<World>) {
+        let entity = &self.mob_entity.living_entity.entity;
+        if f64::from(game_random().random::<f32>()) < CHICKEN_JOCKEY_CHANCE {
+            let area = entity.bounding_box.load().expand(5.0, 3.0, 5.0);
+            let chicken = world.get_entities_at_box(&area).into_iter().find(|other| {
+                let other = other.get_entity();
+                other.entity_type == &EntityType::CHICKEN
+                    && other.is_alive()
+                    && !other.has_passengers()
+                    && !other.has_vehicle()
+            });
+            if let Some(chicken) = chicken {
+                set_chicken_jockey(chicken.as_ref());
+                self.mob_entity
+                    .set_pending_vehicle(PendingVehicle::Existing(chicken));
+            }
+        } else if f64::from(game_random().random::<f32>()) < CHICKEN_JOCKEY_CHANCE {
+            let chicken = from_type(
+                &EntityType::CHICKEN,
+                entity.pos.load(),
+                world,
+                Uuid::new_v4(),
+            );
+            chicken.get_entity().set_rotation(entity.yaw.load(), 0.0);
+            finalize_spawn(&chicken, world, None);
+            set_chicken_jockey(chicken.as_ref());
+            self.mob_entity
+                .set_pending_vehicle(PendingVehicle::New(chicken));
+        }
     }
 
     /// Vanilla `Zombie.handleAttributes`. A converted zombie keeps its health.
@@ -354,7 +406,10 @@ impl ZombieEntityBase {
                 finalize_spawn(
                     zombie_villager,
                     &world,
-                    Some(SpawnGroupData::Zombie { is_baby: false }),
+                    Some(SpawnGroupData::Zombie {
+                        is_baby: false,
+                        can_spawn_jockey: true,
+                    }),
                 );
                 if !zombie_entity.is_silent() {
                     world.sync_world_event(
@@ -364,6 +419,12 @@ impl ZombieEntityBase {
                     );
                 }
             })
+    }
+}
+
+fn set_chicken_jockey(chicken: &dyn EntityBase) {
+    if let Some(chicken) = chicken.cast_any().downcast_ref::<ChickenEntity>() {
+        chicken.set_chicken_jockey(true);
     }
 }
 

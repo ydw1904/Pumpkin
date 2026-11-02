@@ -34,10 +34,20 @@ pub enum SpawnGroupData {
         variant: FoxVariant,
         size: u32,
     },
-    /// Vanilla `ZombieGroupData`: whether the group spawns as babies.
+    /// Vanilla `ZombieGroupData`: whether the group spawns as babies, and whether those may
+    /// ride a chicken.
     Zombie {
         is_baby: bool,
+        can_spawn_jockey: bool,
     },
+}
+
+/// A vehicle a mob being finalized starts riding once it enters the world.
+pub enum PendingVehicle {
+    /// Already in the world.
+    Existing(Arc<dyn EntityBase>),
+    /// Created for the mob; added to the world together with it.
+    New(Arc<dyn EntityBase>),
 }
 
 impl MobEntity {
@@ -92,6 +102,21 @@ impl MobEntity {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(rider);
+    }
+
+    /// Rides `vehicle` once this mob enters the world (vanilla `startRiding` in `finalizeSpawn`).
+    pub fn set_pending_vehicle(&self, vehicle: PendingVehicle) {
+        *self
+            .pending_vehicle
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(vehicle);
+    }
+
+    pub(crate) fn take_pending_vehicle(&self) -> Option<PendingVehicle> {
+        self.pending_vehicle
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
     }
 
     pub(crate) fn take_pending_riders(&self) -> Vec<Arc<dyn EntityBase>> {

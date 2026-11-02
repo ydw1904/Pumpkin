@@ -5296,6 +5296,21 @@ impl World {
             self.add_entity_silent(rider.clone());
             vehicle.get_entity().add_passenger(vehicle.clone(), rider);
         }
+        if let Some(pending) = mob.get_mob_entity().take_pending_vehicle() {
+            let rider = vehicle;
+            let vehicle = match pending {
+                crate::entity::mob::spawn::PendingVehicle::Existing(vehicle) => vehicle,
+                crate::entity::mob::spawn::PendingVehicle::New(vehicle) => {
+                    vehicle.init_data_tracker();
+                    self.add_entity_silent(vehicle.clone());
+                    vehicle
+                }
+            };
+            let vehicle_entity = vehicle.get_entity();
+            if !vehicle_entity.is_removed() && !vehicle_entity.has_passengers() {
+                vehicle_entity.add_passenger(vehicle.clone(), rider.clone());
+            }
+        }
     }
 
     /// Returns `false` when a plugin cancels the [`EntitySpawnEvent`].
