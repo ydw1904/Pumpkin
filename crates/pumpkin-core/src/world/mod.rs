@@ -6070,6 +6070,17 @@ impl World {
         self.environment_attributes().get_value_activity(baby, pos)
     }
 
+    /// Vanilla `StructureManager.getStructureWithPieceAt(pos, tag).isValid()`.
+    #[must_use]
+    pub fn is_in_structure_piece(
+        &self,
+        pos: &BlockPos,
+        structures: &pumpkin_data::tag::Tag,
+    ) -> bool {
+        self.level
+            .is_inside_structure_piece(pos, |structure| structures.0.contains(&structure.to_name()))
+    }
+
     pub fn get_raw_brightness(&self, pos: &BlockPos, sky_darken: u8) -> u8 {
         let sky_light = self.get_sky_light_level(pos).saturating_sub(sky_darken);
         let block_light = self.get_block_light_level(pos).unwrap_or(0);

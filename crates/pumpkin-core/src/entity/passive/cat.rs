@@ -28,13 +28,14 @@ use crate::entity::{
         follow_owner::FollowOwnerGoal, sit_when_ordered_to::SitWhenOrderedToGoal, swim::SwimGoal,
     },
     ai::target_match::TargetMatch,
-    mob::{Mob, MobEntity},
+    mob::{Mob, MobEntity, spawn::SpawnGroupData},
     passive::{
         animal::Animal,
         tamable::{TamableAnimal, TamableData, is_untamed},
     },
     player::Player,
 };
+use crate::world::World;
 
 const CAT_FLEES: &[Flee] = &[feline::flee_players(4, is_untamed)];
 
@@ -219,7 +220,49 @@ impl TamableAnimal for CatEntity {
     }
 }
 
+/// Vanilla `DimensionType.MOON_BRIGHTNESS_PER_PHASE`.
+const MOON_BRIGHTNESS_PER_PHASE: [f32; 8] = [1.0, 0.75, 0.5, 0.25, 0.0, 0.25, 0.5, 0.75];
+/// The `moon_brightness` minimum in `data/minecraft/cat_variant/all_black.json`.
+const ALL_BLACK_MIN_MOON_BRIGHTNESS: f32 = 0.9;
+
+impl CatEntity {
+    /// Vanilla `VariantUtils.selectVariantToSpawn` over the `cat_variant` spawn conditions: the
+    /// all-black cat wins inside `#cats_spawn_as_black` structures and joins the others under a
+    /// full moon; every other variant always matches at priority 0.
+    fn select_variant_to_spawn(&self, world: &World) -> CatVariant {
+        let pos = self.get_entity().block_pos.load();
+        if world.is_in_structure_piece(
+            &pos,
+            &pumpkin_data::tag::WorldgenStructure::MINECRAFT_CATS_SPAWN_AS_BLACK,
+        ) {
+            return CatVariant::AllBlack;
+        }
+        let moon_phase = world.environment_attributes().get_value_moon_phase(&pos);
+        let all_black_matches = MOON_BRIGHTNESS_PER_PHASE[usize::from(moon_phase.index())]
+            >= ALL_BLACK_MIN_MOON_BRIGHTNESS;
+        let candidates = CatVariant::all()
+            .iter()
+            .filter(|variant| all_black_matches || **variant != CatVariant::AllBlack)
+            .collect::<Vec<_>>();
+        *candidates[self.get_random().random_range(0..candidates.len())]
+    }
+}
+
 impl Mob for CatEntity {
+    fn finalize_spawn(
+        &self,
+        world: &Arc<World>,
+        group_data: Option<SpawnGroupData>,
+    ) -> Option<SpawnGroupData> {
+        let group_data = self.finalize_spawn_super(group_data);
+        self.set_variant(self.select_variant_to_spawn(world).id());
+        let sound_variants = CatSoundVariant::ALL;
+        self.set_sound_variant(
+            sound_variants[self.get_random().random_range(0..sound_variants.len())],
+        );
+        group_data
+    }
+
     fn as_custom_sound(&self) -> Option<&dyn CustomSound> {
         Some(self)
     }
