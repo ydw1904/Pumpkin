@@ -2529,12 +2529,30 @@ impl World {
         let scaffolding = (block == &Block::SCAFFOLDING).then(|| {
             crate::block::blocks::scaffolding::collision_shapes_for_entity(entity, state, pos)
         });
-        let plain = (block != &Block::POWDER_SNOW && block != &Block::SCAFFOLDING)
-            .then(|| state.get_block_collision_shapes_at(pos));
+        let lava = (block == &Block::LAVA)
+            .then(|| {
+                crate::entity::passive::strider::lava_collision_shape_for_entity(entity, state, pos)
+            })
+            .flatten();
+        let plain =
+            (block != &Block::POWDER_SNOW && block != &Block::SCAFFOLDING && block != &Block::LAVA)
+                .then(|| state.get_block_collision_shapes_at(pos));
         powder_snow
             .into_iter()
             .chain(scaffolding.into_iter().flatten())
+            .chain(lava)
             .chain(plain.into_iter().flatten())
+    }
+
+    /// Vanilla `EntityCollisionContext.isAbove`: the entity's feet are above a shape at `pos`
+    /// whose top is `shape_max_y`.
+    pub(crate) fn is_entity_above(
+        entity: &crate::entity::Entity,
+        pos: &BlockPos,
+        shape_max_y: f64,
+    ) -> bool {
+        // The tolerance is a Java float.
+        entity.pos.load().y > f64::from(pos.0.y) + shape_max_y - f64::from(1.0E-5f32)
     }
 
     // For adjusting movement

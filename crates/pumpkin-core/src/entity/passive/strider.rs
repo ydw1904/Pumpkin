@@ -2,13 +2,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 
 use pumpkin_data::BlockState;
+use pumpkin_data::block_properties::WaterLikeProperties;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::math::vector3::Vector3;
 
 use crate::entity::{
     Entity, EntityBase,
@@ -23,8 +26,31 @@ use crate::entity::{
     passive::animal::Animal,
     player::Player,
 };
+use crate::world::World;
 
 const TEMPT_ITEMS: &[&Item] = &[&Item::WARPED_FUNGUS, &Item::WARPED_FUNGUS_ON_A_STICK];
+/// Vanilla `Strider.getLiquidCollisionShape`, `Block.column(16.0, 0.0, 8.0)`.
+const LIQUID_COLLISION_SHAPE: BoundingBox =
+    BoundingBox::new_array([0.0, 0.0, 0.0], [1.0, 0.5, 1.0]);
+
+fn is_lava(world: &World, pos: &BlockPos) -> bool {
+    world.get_fluid(pos).has_tag(&tag::Fluid::MINECRAFT_LAVA)
+}
+
+/// Vanilla `LiquidBlock.getCollisionShape` for a strider, the only mob whose `canStandOnFluid`
+/// accepts lava: a lava source it stands above carries it unless more lava is on top.
+pub(crate) fn lava_collision_shape_for_entity(
+    entity: &dyn EntityBase,
+    state: &BlockState,
+    pos: &BlockPos,
+) -> Option<BoundingBox> {
+    let base = entity.get_entity();
+    (base.entity_type == &EntityType::STRIDER
+        && WaterLikeProperties::from_state_id(state.id).level == 0
+        && World::is_entity_above(base, pos, LIQUID_COLLISION_SHAPE.max.y)
+        && !is_lava(&base.world.load(), &pos.up()))
+    .then_some(LIQUID_COLLISION_SHAPE)
+}
 
 pub struct StriderEntity {
     pub mob_entity: MobEntity,
@@ -138,6 +164,33 @@ impl Mob for StriderEntity {
     }
 
     fn is_sensitive_to_water(&self) -> bool {
+        true
+    }
+
+    /// Vanilla `Strider.floatStrider`, run after the rest of the tick.
+    fn post_tick(&self) {
+        let entity = self.get_entity();
+        if !entity.touching_lava.load(Ordering::Relaxed) {
+            return;
+        }
+        let block_pos = entity.block_pos.load();
+        if World::is_entity_above(entity, &block_pos, LIQUID_COLLISION_SHAPE.max.y)
+            && !is_lava(&entity.world.load(), &block_pos.up())
+        {
+            entity.on_ground.store(true, Ordering::Relaxed);
+        } else {
+            entity
+                .velocity
+                .store(entity.velocity.load() * 0.5 + Vector3::new(0.0, 0.05, 0.0));
+        }
+    }
+
+    /// Vanilla `Strider.checkFallDamage`: lava resets the fall instead of landing on it.
+    fn should_check_fall_damage(&self) -> bool {
+        if self.get_entity().touching_lava.load(Ordering::Relaxed) {
+            self.mob_entity.living_entity.fall_distance.store(0.0);
+            return false;
+        }
         true
     }
 

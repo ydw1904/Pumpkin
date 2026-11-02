@@ -13,13 +13,12 @@ use crate::block::{
 };
 use crate::entity::EntityBase;
 use crate::entity::falling::FallingEntity;
+use crate::world::World;
 
 const TICK_DELAY: u32 = 1;
 pub const STABILITY_MAX_DISTANCE: u8 = 7;
 const SHAPE_UNSTABLE_BOTTOM: BoundingBox =
     BoundingBox::new_array([0.0, 0.0, 0.0], [1.0, 0.125, 1.0]);
-/// `EntityCollisionContext.isAbove` tolerance, a Java float.
-const ABOVE_EPSILON: f64 = 1.0E-5f32 as f64;
 
 /// Vanilla `ScaffoldingBlock.getCollisionShape` for an entity: solid from above unless it is
 /// descending, otherwise only the bottom plate of a hanging bottom block. The extracted
@@ -30,10 +29,8 @@ pub(crate) fn collision_shapes_for_entity<'a>(
     position: &BlockPos,
 ) -> impl Iterator<Item = BoundingBox> + use<'a> {
     let entity = entity.get_entity();
-    let entity_bottom = entity.pos.load().y;
-    let y = f64::from(position.0.y);
-    // `EntityCollisionContext.isAbove`, with the top of `Shapes.block()` and `SHAPE_BELOW_BLOCK`.
-    let is_above = |shape_max_y: f64| entity_bottom > y + shape_max_y - ABOVE_EPSILON;
+    // With the top of `Shapes.block()` and `SHAPE_BELOW_BLOCK`.
+    let is_above = |shape_max_y: f64| World::is_entity_above(entity, position, shape_max_y);
     let stable = is_above(1.0) && !entity.is_sneaking();
     let props = ScaffoldingLikeProperties::from_state_id(state.id);
     let unstable_bottom = !stable && props.distance != 0 && props.bottom && is_above(0.0);

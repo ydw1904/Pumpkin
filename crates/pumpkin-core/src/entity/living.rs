@@ -1781,12 +1781,19 @@ impl LivingEntity {
             .get_mob()
             .is_none_or(|mob| !mob.get_mob_entity().is_no_ai());
 
-        // Strider is the only entity that has canWalkOnFluid = false
+        // Vanilla `shouldTravelInFluid`: a strider stands on the lava at its block position.
+        let stands_on_fluid = self.entity.entity_type == &EntityType::STRIDER
+            && self
+                .entity
+                .world
+                .load()
+                .get_fluid(&self.entity.block_pos.load())
+                .has_tag(&tag::Fluid::MINECRAFT_LAVA);
 
         if !effective_ai || caller.get_mob().is_some_and(|mob| mob.travel(caller)) {
         } else if (touching_water || self.entity.touching_lava.load(SeqCst))
             && should_swim_in_fluids
-            && self.entity.entity_type != &EntityType::STRIDER
+            && !stands_on_fluid
         {
             self.travel_in_fluid(caller, touching_water);
         } else {
