@@ -479,6 +479,16 @@ impl PoiStorage {
         });
     }
 
+    /// The saved free tickets of the POI of `poi_type` at `pos`, if there is one.
+    pub fn get_free_tickets(&mut self, pos: BlockPos, poi_type: &str) -> Option<i32> {
+        let (rx, rz) = Self::region_coords(&pos);
+        self.get_or_load_region(rx, rz)
+            .entries
+            .get(&PoiRegion::pos_key(&pos))
+            .filter(|entry| entry.poi_type == poi_type)
+            .map(|entry| entry.free_tickets)
+    }
+
     pub fn add_portal(&mut self, pos: BlockPos) {
         self.add(pos, POI_TYPE_NETHER_PORTAL);
     }

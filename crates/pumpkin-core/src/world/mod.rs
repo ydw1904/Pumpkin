@@ -679,6 +679,7 @@ impl World {
         }
 
         // Save portal POI to disk
+        self.save_village_poi_tickets();
         let save_result = self
             .portal_poi
             .lock()
@@ -7646,6 +7647,7 @@ impl World {
             self.save_block_entities(chunk_pos);
         }
 
+        self.save_village_poi_tickets();
         if let Ok(mut portal_poi) = self.portal_poi.try_lock() {
             let _ = portal_poi.save_all();
         }

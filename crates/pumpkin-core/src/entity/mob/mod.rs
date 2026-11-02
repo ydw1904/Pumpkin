@@ -1715,6 +1715,9 @@ pub trait Mob: EntityBase + Send + Sync {
         None
     }
 
+    /// The species part of vanilla `LivingEntity.die`, run before the shared death flow.
+    fn on_die(&self) {}
+
     /// Vanilla `Entity.killedEntity`: this mob dealt the killing blow to `victim`. Returns whether
     /// the victim perished and should still drop its loot and experience.
     fn killed_entity(&self, _victim: &dyn EntityBase) -> bool {

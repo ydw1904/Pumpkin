@@ -1,10 +1,8 @@
 use std::collections::HashMap;
-use std::sync::Weak;
 
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::random::gameplay::GameRandom;
 
-use crate::entity::EntityBase;
 use crate::entity::mob::MobEntity;
 use crate::world::World;
 use crate::world::villager_poi::{Occupancy, VillagePoiType};
@@ -73,7 +71,6 @@ impl AcquirePoi {
         &mut self,
         world: &World,
         mob: &MobEntity,
-        owner: Weak<dyn EntityBase>,
         poi_type: impl Fn(VillagePoiType) -> bool + Copy,
         valid_poi: impl Fn(&World, BlockPos) -> bool,
         random: GameRandom,
@@ -143,7 +140,7 @@ impl AcquirePoi {
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             // Vanilla sets the memory even when `take` finds no free ticket.
             if villager_poi.get_type(target).is_some() {
-                villager_poi.claim(target, owner, poi_type);
+                villager_poi.take(target, poi_type);
                 self.batch_cache.clear();
                 return Some(target);
             }

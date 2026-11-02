@@ -421,8 +421,6 @@ pub struct VillagerEntity {
     sleep_next_ok_start: AtomicI64,
     /// Vanilla `LivingEntity.getSleepingPos`.
     sleeping_pos: std::sync::Mutex<Option<BlockPos>>,
-    /// Whether the home and meeting point read from NBT got their tickets back.
-    poi_tickets_restored: AtomicBool,
     pub self_weak: std::sync::Mutex<Option<Weak<Self>>>,
 }
 
@@ -504,7 +502,6 @@ impl VillagerEntity {
             last_woken: std::sync::Mutex::new(None),
             sleep_next_ok_start: AtomicI64::new(0),
             sleeping_pos: std::sync::Mutex::new(None),
-            poi_tickets_restored: AtomicBool::new(false),
             self_weak: std::sync::Mutex::new(None),
         };
         let mob_arc = Arc::new(villager);
@@ -580,16 +577,6 @@ impl VillagerEntity {
             }
         }
         total
-    }
-
-    fn poi_owner(&self) -> Option<Weak<dyn EntityBase>> {
-        let owner = self
-            .self_weak
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()?;
-        let owner: Weak<dyn EntityBase> = owner;
-        Some(owner)
     }
 
     pub fn eat_until_full(&self) {
@@ -1150,7 +1137,7 @@ impl VillagerEntity {
                     .villager_poi
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .release(site, self.get_entity().entity_uuid);
+                    .release(site);
                 *self
                     .job_site
                     .lock()
@@ -1160,10 +1147,6 @@ impl VillagerEntity {
             return;
         }
 
-        let Some(owner) = self.poi_owner() else {
-            return;
-        };
-
         if let Some(current_site) = self.get_job_site()
             && current_site
                 .to_centered_f64()
@@ -1171,12 +1154,13 @@ impl VillagerEntity {
                 < 16.0f64.powi(2)
         {
             let expected = (profession != VillagerProfession::None).then_some(profession);
+            // Vanilla `ValidateNearbyPoi`: only a POI that is gone invalidates the memory.
             let valid = world
                 .villager_poi
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .claim(current_site, owner.clone(), job_site_accepts(expected))
-                .is_some();
+                .get_type(current_site)
+                .is_some_and(job_site_accepts(expected));
 
             if !valid {
                 *self
@@ -1274,7 +1258,7 @@ impl VillagerEntity {
                     .villager_poi
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .claim(position, owner.clone(), job_site_accepts(expected))
+                    .take(position, job_site_accepts(expected))
                     .is_some()
                 {
                     claimed = Some(position);
@@ -1390,13 +1374,6 @@ impl VillagerEntity {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(poi_pos);
             new_owner.job_site_pending.store(true, Ordering::Relaxed);
-        }
-        if let Some(owner) = new_owner.poi_owner() {
-            world
-                .villager_poi
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .transfer(poi_pos, entity.entity_uuid, owner);
         }
     }
 
@@ -1532,7 +1509,7 @@ impl VillagerEntity {
                     .villager_poi
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .release(pos, self.get_entity().entity_uuid);
+                    .release(pos);
             }
         }
     }
@@ -1584,52 +1561,56 @@ impl VillagerEntity {
         }
     }
 
-    /// Re-takes the tickets of the home and meeting point a loaded villager remembers, which
-    /// vanilla keeps in the saved POI data instead.
-    /// Returns false while a remembered POI's chunk has not registered its POIs yet.
-    fn restore_poi_tickets(&self, world: &World) -> bool {
-        let Some(owner) = self.poi_owner() else {
-            return true;
-        };
-        let mut villager_poi = world
-            .villager_poi
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut restored = true;
-        for (pos, poi_type) in [
-            (self.get_home(), VillagePoiType::Home),
-            (self.get_meeting_point(), VillagePoiType::Meeting),
-        ] {
-            if let Some(pos) = pos {
-                if villager_poi.get_type(pos).is_none() {
-                    restored = false;
-                } else {
-                    villager_poi.claim(pos, owner.clone(), |found| found == poi_type);
-                }
-            }
-        }
-        restored
-    }
-
     /// Vanilla `Villager.releasePoi` followed by erasing the memory.
     fn forget_remembered_poi(&self, home: bool) {
-        let memory = if home {
-            &self.home_pos
+        let (memory, poi_type) = if home {
+            (&self.home_pos, VillagePoiType::Home)
         } else {
-            &self.meeting_point
+            (&self.meeting_point, VillagePoiType::Meeting)
         };
         let pos = memory
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         if let Some(pos) = pos {
-            self.get_entity()
-                .world
-                .load()
-                .villager_poi
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .release(pos, self.get_entity().entity_uuid);
+            Self::release_poi(&self.get_entity().world.load(), pos, |found| {
+                found == poi_type
+            });
+        }
+    }
+
+    /// Vanilla `Villager.releasePoi`: frees the ticket of a remembered POI if it is still of
+    /// the type the memory holds.
+    fn release_poi(world: &World, pos: BlockPos, poi_type: impl Fn(VillagePoiType) -> bool) {
+        let mut villager_poi = world
+            .villager_poi
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if villager_poi.get_type(pos).is_some_and(poi_type) {
+            villager_poi.release(pos);
+        }
+    }
+
+    /// Vanilla `Villager.releaseAllPois`.
+    fn release_all_pois(&self) {
+        let world = self.get_entity().world.load();
+        let profession = self
+            .villager_data
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .profession_enum();
+        if let Some(home) = self.get_home() {
+            Self::release_poi(&world, home, |found| found == VillagePoiType::Home);
+        }
+        if let Some(site) = self.get_job_site() {
+            // A pending job site is vanilla's `POTENTIAL_JOB_SITE`, which takes any job site.
+            let expected = (!self.job_site_pending.load(Ordering::Relaxed)).then_some(profession);
+            Self::release_poi(&world, site, job_site_accepts(expected));
+        }
+        if let Some(meeting_point) = self.get_meeting_point() {
+            Self::release_poi(&world, meeting_point, |found| {
+                found == VillagePoiType::Meeting
+            });
         }
     }
 
@@ -1645,10 +1626,6 @@ impl VillagerEntity {
     /// `MEETING_POINT`, in brain priority order.
     fn tick_poi_memories(&self, world: &Arc<World>, game_time: i64) {
         let entity = self.get_entity();
-        if !self.poi_tickets_restored.load(Ordering::Relaxed) && self.restore_poi_tickets(world) {
-            self.poi_tickets_restored.store(true, Ordering::Relaxed);
-        }
-
         // Vanilla `LivingEntity.tick`: a sleeper whose bed is gone wakes up.
         if self.is_sleeping() {
             let bed_pos = *self
@@ -1679,9 +1656,6 @@ impl VillagerEntity {
             self.validate_nearby_poi(world, &self.meeting_point, VillagePoiType::Meeting);
         }
 
-        let Some(owner) = self.poi_owner() else {
-            return;
-        };
         let random = self.get_random();
         if self.get_home().is_none()
             && let Some(home) = self
@@ -1691,7 +1665,6 @@ impl VillagerEntity {
                 .tick(
                     world,
                     &self.mob_entity,
-                    owner.clone(),
                     |poi_type| poi_type == VillagePoiType::Home,
                     is_vacant_villager_bed,
                     random,
@@ -1716,7 +1689,6 @@ impl VillagerEntity {
                 .tick(
                     world,
                     &self.mob_entity,
-                    owner,
                     |poi_type| poi_type == VillagePoiType::Meeting,
                     |_, _| true,
                     random,
@@ -2399,7 +2371,6 @@ impl Mob for VillagerEntity {
             (Some(x), Some(y), Some(z)) => Some(BlockPos::new(x, y, z)),
             _ => None,
         };
-        self.poi_tickets_restored.store(false, Ordering::Relaxed);
 
         // Vanilla `LivingEntity.readAdditionalSaveData`: a saved sleeper stays in its bed.
         let sleeping_pos = match nbt.get("sleeping_pos") {
@@ -2564,7 +2535,7 @@ impl Mob for VillagerEntity {
             .villager_poi
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .release(position, self.get_entity().entity_uuid);
+            .release(position);
         if self.get_job_site() == Some(position) {
             *self
                 .job_site
@@ -2651,6 +2622,11 @@ impl Mob for VillagerEntity {
 
     fn mob_tick(&self, _caller: &dyn EntityBase) {
         self.villager_mob_tick();
+    }
+
+    /// Vanilla `Villager.die`.
+    fn on_die(&self) {
+        self.release_all_pois();
     }
 
     fn mob_interact(&self, player: &Arc<Player>, _item_stack: &mut ItemStack) -> bool {

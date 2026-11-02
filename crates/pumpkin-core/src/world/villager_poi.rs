@@ -1,11 +1,10 @@
-use std::{collections::HashMap, sync::Weak};
+use std::collections::{HashMap, HashSet};
 
 use pumpkin_data::block_properties::{BedPart, WhiteBedLikeProperties};
 use pumpkin_data::tag::Taggable;
 use pumpkin_data::{Block, BlockStateId, villager::VillagerProfession};
 use pumpkin_util::math::{position::BlockPos, vector2::Vector2, vector3::Vector3};
 
-use crate::entity::EntityBase;
 use crate::world::World;
 
 /// Vanilla `PoiTypes.MEETING`, used to place wandering traders near a village bell.
@@ -91,60 +90,49 @@ pub enum Occupancy {
     Any,
 }
 
-/// Vanilla `PoiRecord`. Instead of a free ticket counter it keeps the entities holding a
-/// ticket, so a ticket frees itself once its holder dies or is removed.
+/// Vanilla `PoiRecord`.
 struct PoiRecord {
     poi_type: VillagePoiType,
-    owners: Vec<Weak<dyn EntityBase>>,
+    free_tickets: i32,
 }
 
 impl PoiRecord {
     const fn new(poi_type: VillagePoiType) -> Self {
         Self {
             poi_type,
-            owners: Vec::new(),
+            free_tickets: poi_type.max_tickets() as i32,
         }
     }
 
-    fn live_owner(owner: &Weak<dyn EntityBase>) -> Option<std::sync::Arc<dyn EntityBase>> {
-        owner.upgrade().filter(|entity| {
-            !entity.get_entity().is_removed()
-                && entity
-                    .get_living_entity()
-                    .is_none_or(|living| living.health.load() > 0.0)
-        })
+    /// Vanilla `PoiRecord.acquireTicket`.
+    const fn acquire_ticket(&mut self) -> bool {
+        if self.free_tickets <= 0 {
+            return false;
+        }
+        self.free_tickets -= 1;
+        true
     }
 
-    fn occupants(&self) -> usize {
-        self.owners
-            .iter()
-            .filter(|owner| Self::live_owner(owner).is_some())
-            .count()
-    }
-
-    fn is_held_by(&self, owner: uuid::Uuid) -> bool {
-        self.owners.iter().any(|current| {
-            Self::live_owner(current).is_some_and(|entity| entity.get_entity().entity_uuid == owner)
-        })
-    }
-
-    fn drop_owner(&mut self, owner: uuid::Uuid) {
-        self.owners.retain(|current| {
-            Self::live_owner(current).is_some_and(|entity| entity.get_entity().entity_uuid != owner)
-        });
+    /// Vanilla `PoiRecord.releaseTicket`.
+    const fn release_ticket(&mut self) -> bool {
+        if self.free_tickets >= self.poi_type.max_tickets() as i32 {
+            return false;
+        }
+        self.free_tickets += 1;
+        true
     }
 
     /// Vanilla `PoiRecord.hasSpace`.
-    fn has_space(&self) -> bool {
-        self.occupants() < self.poi_type.max_tickets()
+    const fn has_space(&self) -> bool {
+        self.free_tickets > 0
     }
 
     /// Vanilla `PoiRecord.isOccupied`.
-    fn is_occupied(&self) -> bool {
-        self.occupants() > 0
+    const fn is_occupied(&self) -> bool {
+        self.free_tickets != self.poi_type.max_tickets() as i32
     }
 
-    fn matches(&self, occupancy: Occupancy) -> bool {
+    const fn matches(&self, occupancy: Occupancy) -> bool {
         match occupancy {
             Occupancy::HasSpace => self.has_space(),
             Occupancy::IsOccupied => self.is_occupied(),
@@ -153,9 +141,13 @@ impl PoiRecord {
     }
 }
 
+/// The village part of vanilla's `PoiManager`. Free tickets are saved with the other POI data,
+/// so claims outlive restarts like in vanilla.
 #[derive(Default)]
 pub struct VillagerPoiStorage {
     records: HashMap<BlockPos, PoiRecord>,
+    /// Records whose free tickets changed since the last save.
+    dirty_tickets: HashSet<BlockPos>,
 }
 
 impl VillagerPoiStorage {
@@ -175,63 +167,65 @@ impl VillagerPoiStorage {
         }
     }
 
+    /// Registers a POI of a loaded chunk with the free tickets saved for it. A record still in
+    /// memory keeps its own tickets.
+    fn load_record(&mut self, position: BlockPos, poi_type: VillagePoiType, free_tickets: i32) {
+        if self
+            .records
+            .get(&position)
+            .is_some_and(|record| record.poi_type == poi_type)
+        {
+            return;
+        }
+        let mut record = PoiRecord::new(poi_type);
+        record.free_tickets = free_tickets.clamp(0, poi_type.max_tickets() as i32);
+        self.records.insert(position, record);
+    }
+
     /// Vanilla `PoiManager.getType`.
     #[must_use]
     pub fn get_type(&self, position: BlockPos) -> Option<VillagePoiType> {
         self.records.get(&position).map(|record| record.poi_type)
     }
 
-    /// Vanilla `PoiRecord.acquireTicket` for the record at `position`, if its type is accepted.
-    /// Holding a ticket already counts as success.
-    pub fn claim(
+    /// Vanilla `PoiManager.take` limited to the record at `position`: takes a ticket if the
+    /// record's type is accepted and one is free.
+    pub fn take(
         &mut self,
         position: BlockPos,
-        owner: Weak<dyn EntityBase>,
         accepts: impl Fn(VillagePoiType) -> bool,
     ) -> Option<VillagePoiType> {
         let record = self.records.get_mut(&position)?;
-        if !accepts(record.poi_type) {
+        if !accepts(record.poi_type) || !record.acquire_ticket() {
             return None;
         }
-        let owner_uuid = PoiRecord::live_owner(&owner)?.get_entity().entity_uuid;
-        if record.is_held_by(owner_uuid) {
-            return Some(record.poi_type);
-        }
-        record
-            .owners
-            .retain(|current| PoiRecord::live_owner(current).is_some());
-        if !record.has_space() {
-            return None;
-        }
-        record.owners.push(owner);
+        self.dirty_tickets.insert(position);
         Some(record.poi_type)
     }
 
-    /// Vanilla `PoiRecord.releaseTicket` for the ticket `owner` holds.
-    pub fn release(&mut self, position: BlockPos, owner: uuid::Uuid) {
-        if let Some(record) = self.records.get_mut(&position) {
-            record.drop_owner(owner);
-        }
-    }
-
-    /// Hands the ticket `from` holds to `to`. Vanilla `YieldJobSite` leaves the acquired ticket
-    /// in place while another villager takes over the memory.
-    pub fn transfer(&mut self, position: BlockPos, from: uuid::Uuid, to: Weak<dyn EntityBase>) {
+    /// Vanilla `PoiManager.release`.
+    pub fn release(&mut self, position: BlockPos) -> bool {
         let Some(record) = self.records.get_mut(&position) else {
-            return;
+            return false;
         };
-        let Some(to_uuid) =
-            PoiRecord::live_owner(&to).map(|entity| entity.get_entity().entity_uuid)
-        else {
-            return;
-        };
-        let held = record.is_held_by(from);
-        record.drop_owner(from);
-        if held && !record.is_held_by(to_uuid) {
-            record.owners.push(to);
+        let released = record.release_ticket();
+        if released {
+            self.dirty_tickets.insert(position);
         }
+        released
     }
 
+    /// The records whose tickets changed since the last call, with their free tickets.
+    fn take_dirty_tickets(&mut self) -> Vec<(BlockPos, VillagePoiType, i32)> {
+        let dirty = std::mem::take(&mut self.dirty_tickets);
+        dirty
+            .into_iter()
+            .filter_map(|position| {
+                let record = self.records.get(&position)?;
+                Some((position, record.poi_type, record.free_tickets))
+            })
+            .collect()
+    }
     /// Vanilla `PoiManager.getInRange` in its stream order: chunks row by row (z outer, x
     /// inner), then sections bottom to top.
     fn in_range(
@@ -424,7 +418,7 @@ impl World {
                                     base_y + y as i32,
                                     chunk_pos.y * 16 + z as i32,
                                 );
-                                found.push((pos, state_id, poi_type));
+                                found.push((pos, poi_type));
                             }
                         }
                     }
@@ -438,24 +432,52 @@ impl World {
             return;
         }
 
-        {
-            let mut villager_poi = self
-                .villager_poi
+        let found = {
+            let mut saved = self
+                .portal_poi
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            for (pos, state_id, _) in &found {
-                villager_poi.update_block(*pos, *state_id);
-            }
+            found
+                .into_iter()
+                .map(|(pos, poi_type)| {
+                    // Vanilla keeps the free tickets saved with the POI section.
+                    let free_tickets =
+                        saved
+                            .get_free_tickets(pos, poi_type.key())
+                            .unwrap_or_else(|| {
+                                let free_tickets = poi_type.max_tickets() as i32;
+                                saved.add_with_free_tickets(pos, poi_type.key(), free_tickets);
+                                free_tickets
+                            });
+                    (pos, poi_type, free_tickets)
+                })
+                .collect::<Vec<_>>()
+        };
+        let mut villager_poi = self
+            .villager_poi
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for (pos, poi_type, free_tickets) in found {
+            villager_poi.load_record(pos, poi_type, free_tickets);
+        }
+    }
+
+    /// Writes the free tickets that changed into the saved POI data, before it is saved.
+    pub(crate) fn save_village_poi_tickets(&self) {
+        let dirty = self
+            .villager_poi
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take_dirty_tickets();
+        if dirty.is_empty() {
+            return;
         }
         let mut saved = self
             .portal_poi
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        for (pos, _, poi_type) in found {
-            // Keep the tickets of POIs saved with the chunk.
-            if saved.get_in_square(pos, 0, Some(poi_type.key())).is_empty() {
-                saved.add_with_free_tickets(pos, poi_type.key(), poi_type.max_tickets() as i32);
-            }
+        for (pos, poi_type, free_tickets) in dirty {
+            saved.add_with_free_tickets(pos, poi_type.key(), free_tickets);
         }
     }
 }
@@ -546,23 +568,8 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn tickets_follow_vanilla_counts_and_free_up_when_the_holder_is_gone() {
-        use crate::entity::Entity;
-        use crate::entity::passive::villager::VillagerEntity;
-        use pumpkin_data::entity::EntityType;
-        use std::sync::Arc;
-
-        let folder = tempfile::tempdir().unwrap();
-        let world = crate::entity::ai::test_support::world(&folder);
-        let villager = || -> std::sync::Arc<dyn EntityBase> {
-            VillagerEntity::new(Entity::new(
-                world.clone(),
-                Vector3::new(0.5, 64.0, 0.5),
-                &EntityType::VILLAGER,
-            ))
-        };
-        let (first, second) = (villager(), villager());
+    #[test]
+    fn taken_tickets_survive_a_save_and_reload() {
         let bed = BlockPos::new(1, 64, 0);
         let bell = BlockPos::new(2, 64, 0);
         let mut bed_props = WhiteBedLikeProperties::default(&Block::RED_BED);
@@ -572,23 +579,34 @@ mod tests {
         storage.update_block(bell, Block::BELL.default_state.id);
         let any = |_| true;
 
-        assert!(storage.claim(bed, Arc::downgrade(&first), any).is_some());
-        assert!(storage.claim(bed, Arc::downgrade(&second), any).is_none());
-        assert!(storage.claim(bell, Arc::downgrade(&first), any).is_some());
-        assert!(storage.claim(bell, Arc::downgrade(&second), any).is_some());
-        assert_eq!(
-            storage.count_in_range(bed, 4, any, Occupancy::IsOccupied),
-            2
-        );
+        assert!(storage.take(bed, any).is_some());
+        assert!(storage.take(bed, any).is_none());
+        assert!(storage.take(bell, any).is_some());
+        assert!(storage.take(bell, any).is_some());
 
-        first.get_living_entity().unwrap().health.store(0.0);
-        assert!(storage.claim(bed, Arc::downgrade(&second), any).is_some());
-        storage.release(bed, second.get_entity().entity_uuid);
+        let folder = tempfile::tempdir().unwrap();
+        let mut saved = pumpkin_world::poi::PoiStorage::new(folder.path().join("poi"));
+        for (pos, poi_type, free_tickets) in storage.take_dirty_tickets() {
+            saved.add_with_free_tickets(pos, poi_type.key(), free_tickets);
+        }
+        saved.save_all().unwrap();
+
+        let mut saved = pumpkin_world::poi::PoiStorage::new(folder.path().join("poi"));
+        let mut reloaded = VillagerPoiStorage::default();
+        for (pos, poi_type) in [(bed, VillagePoiType::Home), (bell, VillagePoiType::Meeting)] {
+            let free_tickets = saved.get_free_tickets(pos, poi_type.key()).unwrap();
+            reloaded.load_record(pos, poi_type, free_tickets);
+        }
+        assert!(reloaded.take(bed, any).is_none());
         assert_eq!(
-            storage.count_in_range(bed, 0, |t| t == VillagePoiType::Home, Occupancy::HasSpace),
+            reloaded.count_in_range(bell, 0, any, Occupancy::IsOccupied),
             1
         );
-        world.level.shutdown().await;
+        assert!(reloaded.release(bed));
+        assert!(!reloaded.release(bed));
+        // A chunk loading again must not reset the tickets of a record still in memory.
+        reloaded.load_record(bed, VillagePoiType::Home, 0);
+        assert!(reloaded.take(bed, any).is_some());
     }
 
     #[test]
