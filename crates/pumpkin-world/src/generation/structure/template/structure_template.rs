@@ -277,6 +277,23 @@ impl PaletteEntry {
         }
     }
 
+    /// Reads a block state written by vanilla's `BlockState.CODEC`. Unknown blocks give `None`.
+    #[must_use]
+    pub fn state_from_nbt(tag: &NbtTag) -> Option<BlockStateId> {
+        let entry = match tag {
+            NbtTag::String(name) => Self::new(name.to_string()),
+            NbtTag::Compound(compound) => Self::from_nbt_compound(compound).ok()?,
+            _ => return None,
+        };
+        let block = Block::from_name(&entry.name)?;
+        let default = block.default_state.id;
+        // `from_properties` panics for blocks without properties, so only ask when the block has some.
+        if entry.properties.is_empty() || block.properties(default).is_none() {
+            return Some(default);
+        }
+        Some(block.from_properties(&entry.properties).to_state_id(block))
+    }
+
     /// Parses a block state string (e.g. "`minecraft:oak_log`[axis=x]") into a palette entry.
     #[must_use]
     pub fn from_string(s: &str) -> Self {

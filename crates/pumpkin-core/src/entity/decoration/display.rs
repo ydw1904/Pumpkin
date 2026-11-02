@@ -3,7 +3,7 @@ use std::sync::{
     atomic::{AtomicI8, AtomicI32, AtomicU8, Ordering},
 };
 
-use pumpkin_data::{Block, BlockStateId, damage::DamageType, item_stack::ItemStack};
+use pumpkin_data::{BlockStateId, damage::DamageType, item_stack::ItemStack};
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_protocol::{
     codec::{item_stack_seralizer::ItemStackSerializer, var_int::VarInt},
@@ -663,36 +663,6 @@ impl DisplayEntity {
     }
 }
 
-/// Writes a block state the way vanilla's `BlockState.CODEC` does: `{id:..,properties:{..}}`.
-fn block_state_to_nbt(state: i32) -> NbtCompound {
-    let id = BlockStateId::new_or_air(u16::try_from(state).unwrap_or(0));
-    let block = Block::from_state_id(id);
-    let properties = block
-        .properties(id)
-        .map(|p| p.to_props())
-        .unwrap_or_default();
-    PaletteEntry::with_properties(format!("minecraft:{}", block.name), properties).to_nbt_compound()
-}
-
-/// Reads a block state written by `BlockState.CODEC`. Unknown blocks fall back to air like vanilla.
-fn block_state_from_nbt(nbt: &NbtCompound) -> u16 {
-    let Ok(entry) = PaletteEntry::from_nbt_compound(nbt) else {
-        return 0;
-    };
-    let Some(block) = Block::from_name(&entry.name) else {
-        return 0;
-    };
-    let default = block.default_state.id;
-    // `from_properties` panics for blocks without properties, so only ask when the block has some.
-    if entry.properties.is_empty() || block.properties(default).is_none() {
-        return default.as_u16();
-    }
-    block
-        .from_properties(&entry.properties)
-        .to_state_id(block)
-        .as_u16()
-}
-
 pub struct BlockDisplayEntity {
     pub display: DisplayEntity,
     pub block_state: AtomicI32,
@@ -722,19 +692,22 @@ impl BlockDisplayEntity {
 impl EntityBase for BlockDisplayEntity {
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
         self.display.write_display_nbt(nbt);
-        nbt.put_compound(
+        let state = u16::try_from(self.block_state.load(Ordering::Relaxed)).unwrap_or(0);
+        nbt.put(
             "block_state",
-            block_state_to_nbt(self.block_state.load(Ordering::Relaxed)),
+            PaletteEntry::state_to_nbt(BlockStateId::new_or_air(state)),
         );
     }
 
     fn read_custom_nbt(&self, nbt: &NbtCompound) {
         self.display.read_display_nbt(nbt);
-        // Older Pumpkin saves stored the raw state id.
+        // Older Pumpkin saves stored the raw state id. Unknown blocks fall back to air like vanilla.
         let state = match nbt.get("block_state") {
             Some(NbtTag::Int(id)) => Some(*id),
-            Some(NbtTag::Compound(c)) => Some(i32::from(block_state_from_nbt(c))),
-            _ => None,
+            Some(tag) => Some(i32::from(
+                PaletteEntry::state_from_nbt(tag).map_or(0, BlockStateId::as_u16),
+            )),
+            None => None,
         };
         if let Some(state) = state {
             self.block_state.store(state, Ordering::Relaxed);
@@ -840,6 +813,16 @@ impl ItemDisplayEntity {
 impl EntityBase for ItemDisplayEntity {
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
         self.display.write_display_nbt(nbt);
+        let item = self
+            .item_stack
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !item.is_empty() {
+            let mut item_compound = NbtCompound::new();
+            item.write_item_stack(&mut item_compound);
+            nbt.put_compound("item", item_compound);
+        }
+        drop(item);
         let display_mode_str = match self.item_display.load(Ordering::Relaxed) {
             1 => "thirdperson_lefthand",
             2 => "thirdperson_righthand",
@@ -856,6 +839,15 @@ impl EntityBase for ItemDisplayEntity {
 
     fn read_custom_nbt(&self, nbt: &NbtCompound) {
         self.display.read_display_nbt(nbt);
+        if let Some(item) = nbt
+            .get_compound("item")
+            .and_then(ItemStack::read_item_stack)
+        {
+            *self
+                .item_stack
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = item;
+        }
         if let Some(mode_str) = nbt.get_string("item_display") {
             let mode = match mode_str {
                 "thirdperson_lefthand" => 1,
@@ -1089,15 +1081,14 @@ impl TextDisplayEntity {
 impl EntityBase for TextDisplayEntity {
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
         self.display.write_display_nbt(nbt);
-        let text_json_res = pumpkin_util::serde_json::to_string(
-            &*self
-                .text
+        nbt.put(
+            "text",
+            self.text
                 .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .0
+                .to_nbt_tag(),
         );
-        if let Ok(text_json) = text_json_res {
-            nbt.put_string("text", text_json);
-        }
         nbt.put_int("line_width", self.line_width.load(Ordering::Relaxed));
         nbt.put_int("background", self.background.load(Ordering::Relaxed));
         nbt.put_byte("text_opacity", self.text_opacity.load(Ordering::Relaxed));
@@ -1118,13 +1109,17 @@ impl EntityBase for TextDisplayEntity {
 
     fn read_custom_nbt(&self, nbt: &NbtCompound) {
         self.display.read_display_nbt(nbt);
-        if let Some(text_json) = nbt.get_string("text")
-            && let Ok(component) = pumpkin_util::serde_json::from_str(text_json)
-        {
+        if let Some(text) = nbt.get("text") {
+            // Older Pumpkin saves stored the component as a JSON string.
+            let legacy_json = text
+                .extract_string()
+                .filter(|s| s.starts_with('{'))
+                .and_then(|s| pumpkin_util::serde_json::from_str(s).ok());
             *self
                 .text
                 .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = component;
+                .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                legacy_json.unwrap_or_else(|| TextComponent::from_nbt(text));
         }
         if let Some(lw) = nbt.get_int("line_width") {
             self.line_width.store(lw, Ordering::Relaxed);
