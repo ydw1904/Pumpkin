@@ -1948,10 +1948,13 @@ impl World {
             .insert(position, block_state_id);
     }
 
-    /// Queues block state changes for broadcast to nearby players.
+    /// Queues block state changes for broadcast to nearby players. Bulk writers like `/fill`
+    /// and structure placement bypass [`set_block_state`](Self::set_block_state), so this also
+    /// registers their POIs, as vanilla does for every block change.
     ///
     /// Call [`flush_block_updates`](Self::flush_block_updates) afterward to send the packets.
     pub fn queue_block_updates(&self, changes: &[(BlockPos, BlockStateId)]) {
+        self.update_village_pois(changes.iter().copied());
         let mut guard = self
             .unsent_block_changes
             .lock()
@@ -5868,29 +5871,7 @@ impl World {
                 );
             }
 
-            self.villager_poi
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .update_block(*position, block_state_id);
-
-            let old_poi = villager_poi::VillagePoiType::for_state(replaced_block_state_id);
-            let new_poi = villager_poi::VillagePoiType::for_state(block_state_id);
-            if old_poi != new_poi {
-                let mut poi = self
-                    .portal_poi
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if old_poi.is_some() {
-                    poi.remove(position);
-                }
-                if let Some(poi_type) = new_poi {
-                    poi.add_with_free_tickets(
-                        *position,
-                        poi_type.key(),
-                        poi_type.max_tickets() as i32,
-                    );
-                }
-            }
+            self.update_village_pois([(*position, block_state_id)]);
         }
 
         let old_state = replaced_block_state_id.to_state();

@@ -597,6 +597,42 @@ impl World {
         }
     }
 
+    /// Vanilla `ServerLevel.onBlockStateChange` for village POIs: registers, replaces or
+    /// removes the POI at each changed position, and keeps the saved POI data in step.
+    pub(crate) fn update_village_pois(
+        &self,
+        changes: impl IntoIterator<Item = (BlockPos, BlockStateId)>,
+    ) {
+        let mut villager_poi = self
+            .villager_poi
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut saved = None;
+        for (position, state_id) in changes {
+            let old_poi = villager_poi.get_type(position);
+            villager_poi.update_block(position, state_id);
+            let new_poi = VillagePoiType::for_state(state_id);
+            if old_poi == new_poi {
+                continue;
+            }
+            let saved = saved.get_or_insert_with(|| {
+                self.portal_poi
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+            });
+            if old_poi.is_some() {
+                saved.remove(&position);
+            }
+            if let Some(poi_type) = new_poi {
+                saved.add_with_free_tickets(
+                    position,
+                    poi_type.key(),
+                    poi_type.max_tickets() as i32,
+                );
+            }
+        }
+    }
+
     /// Writes the free tickets that changed into the saved POI data, before it is saved.
     pub(crate) fn save_village_poi_tickets(&self) {
         let dirty = self
