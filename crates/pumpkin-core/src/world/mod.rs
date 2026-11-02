@@ -332,6 +332,9 @@ pub struct World {
     pub custom_data: std::sync::Mutex<NbtCompound>,
     /// Persistent custom data for block entities at specific positions
     pub custom_block_entity_data: DashMap<BlockPos, NbtCompound>,
+    /// Saved tags of loaded block entities that they do not write back themselves. Saving
+    /// puts them back unchanged so a world can go back to vanilla without losing them.
+    unmodelled_block_entity_nbt: DashMap<BlockPos, NbtCompound>,
     /// Entity tracker responsible for tracking entity visibility and sending delta/status packets to watchers.
     pub entity_tracker: entity_tracker::EntityTracker,
 }
@@ -502,6 +505,7 @@ impl World {
             pending_block_entity_migrations: crossbeam::queue::SegQueue::new(),
             custom_data: std::sync::Mutex::new(custom_data),
             custom_block_entity_data: DashMap::new(),
+            unmodelled_block_entity_nbt: DashMap::new(),
             entity_tracker: entity_tracker::EntityTracker::new(),
         }
     }
@@ -771,12 +775,18 @@ impl World {
     /// `save_block_entities` gets to it.
     fn saved_block_entity_nbt(&self, block_entity: &dyn BlockEntity) -> NbtCompound {
         let mut nbt = block_entity_nbt(block_entity);
-        if let Some(custom_data) = self
-            .custom_block_entity_data
-            .get(&block_entity.get_position())
+        let position = block_entity.get_position();
+        if let Some(custom_data) = self.custom_block_entity_data.get(&position)
             && !custom_data.is_empty()
         {
             nbt.put_compound("PumpkinCustomData", custom_data.clone());
+        }
+        if let Some(unmodelled) = self.unmodelled_block_entity_nbt.get(&position) {
+            for (name, tag) in &unmodelled.child_tags {
+                if !nbt.has(name) {
+                    nbt.put(name, tag.clone());
+                }
+            }
         }
         nbt
     }
@@ -5676,7 +5686,11 @@ impl World {
 
         for chunk_pos in &chunks_set {
             self.save_block_entities(*chunk_pos);
-            self.block_entities.remove(chunk_pos);
+            if let Some((_, entities)) = self.block_entities.remove(chunk_pos) {
+                for position in entities.keys() {
+                    self.unmodelled_block_entity_nbt.remove(position);
+                }
+            }
         }
     }
 
@@ -6926,6 +6940,19 @@ impl World {
                 .insert(*block_pos, custom_data.clone());
         }
         let entity = block_entity_from_nbt(&nbt)?;
+        let written = block_entity_nbt(entity.as_ref());
+        let mut unmodelled = NbtCompound::new();
+        for (name, tag) in &nbt.child_tags {
+            if !written.has(name) && !matches!(&**name, "PumpkinCustomData" | "BukkitValues") {
+                unmodelled.put(name, tag.clone());
+            }
+        }
+        if unmodelled.is_empty() {
+            self.unmodelled_block_entity_nbt.remove(block_pos);
+        } else {
+            self.unmodelled_block_entity_nbt
+                .insert(*block_pos, unmodelled);
+        }
         self.block_entities
             .entry(chunk_pos)
             .or_default()
@@ -6994,6 +7021,15 @@ impl World {
     pub fn add_block_entity(&self, block_entity: Arc<dyn BlockEntity>) {
         let block_pos = block_entity.get_position();
         let chunk_pos = block_pos.chunk_position();
+        // A different kind of block entity does not inherit what the last one left behind.
+        let replaces_same_kind = self.block_entities.get(&chunk_pos).is_some_and(|entities| {
+            entities
+                .get(&block_pos)
+                .is_some_and(|old| old.resource_location() == block_entity.resource_location())
+        });
+        if !replaces_same_kind {
+            self.unmodelled_block_entity_nbt.remove(&block_pos);
+        }
         let saved_nbt = self.saved_block_entity_nbt(block_entity.as_ref());
 
         if let Some(nbt) = block_entity.update_packet_nbt() {
@@ -7070,6 +7106,7 @@ impl World {
                     chunk_block_entities.remove(block_pos).is_some()
                 });
         self.custom_block_entity_data.remove(block_pos);
+        self.unmodelled_block_entity_nbt.remove(block_pos);
         if removed || removed_pending {
             // Drop the chunk's map once its last block entity is gone.
             self.block_entities
@@ -8437,6 +8474,47 @@ mod tests {
             saved.get_string("LootTable"),
             Some("minecraft:chests/simple_dungeon")
         );
+        world.level.shutdown().await;
+    }
+
+    /// Tags a loaded block entity does not write itself, like a container's `CustomName`,
+    /// are saved again unchanged.
+    #[tokio::test]
+    async fn loaded_block_entity_keeps_tags_it_does_not_model() {
+        let folder = tempfile::tempdir().unwrap();
+        let world = crate::entity::ai::test_support::world(&folder);
+        let chunk_pos = pumpkin_util::math::vector2::Vector2::new(0, 0);
+        let chunk = ChunkData::empty_sync(0, 0);
+        let position = BlockPos::new(1, 64, 1);
+        chunk
+            .section
+            .set_block_absolute_y(1, 64, 1, Block::CHEST.default_state.id);
+        let mut nbt = block_entity_nbt("minecraft:chest", position);
+        nbt.put_string("CustomName", "Treasure".to_string());
+        chunk
+            .pending_block_entities
+            .lock()
+            .unwrap()
+            .insert(position, nbt);
+        world.level.loaded_chunks.insert(chunk_pos, chunk);
+
+        let chest = world.get_block_entity(&position).unwrap();
+        world.update_block_entity(&chest);
+
+        let saved = world
+            .level
+            .loaded_chunks
+            .get(&chunk_pos)
+            .and_then(|chunk| {
+                chunk
+                    .pending_block_entities
+                    .lock()
+                    .unwrap()
+                    .get(&position)
+                    .cloned()
+            })
+            .unwrap();
+        assert_eq!(saved.get_string("CustomName"), Some("Treasure"));
         world.level.shutdown().await;
     }
 
