@@ -100,6 +100,29 @@ pub fn set_broadcast_console_to_ops(value: bool) {
     BROADCAST_CONSOLE_TO_OPS.store(value, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// Formats a double the way Java's `Double.toString` does, which is how vanilla renders a
+/// numeric command feedback argument: `35.0`, `0.1`, `1.0E-5`, `1.2345678E7`.
+#[must_use]
+pub fn java_double_string(value: f64) -> String {
+    if value.is_nan() {
+        return "NaN".to_string();
+    }
+    if value.is_infinite() {
+        return if value > 0.0 { "Infinity" } else { "-Infinity" }.to_string();
+    }
+    let magnitude = value.abs();
+    if magnitude == 0.0 || (1.0e-3..1.0e7).contains(&magnitude) {
+        return format!("{value:?}");
+    }
+    let scientific = format!("{value:e}");
+    let (mantissa, exponent) = scientific.split_once('e').unwrap_or((&scientific, "0"));
+    if mantissa.contains('.') {
+        format!("{mantissa}E{exponent}")
+    } else {
+        format!("{mantissa}.0E{exponent}")
+    }
+}
+
 /// Represents the source of a command execution.
 ///
 /// Different senders have different permissions, output targets, and
@@ -426,3 +449,30 @@ const fn command_block_y_rot(facing: Facing) -> f32 {
 pub use context::command_context::CommandContext;
 pub use node::dispatcher::CommandDispatcher;
 pub use node::{Command, CommandExecutor, CommandExecutorResult};
+
+#[cfg(test)]
+mod tests {
+    use super::java_double_string;
+
+    #[test]
+    fn java_double_string_matches_java() {
+        // Expected strings are what `Double.toString` prints on Java 21.
+        for (value, java) in [
+            (35.0, "35.0"),
+            (0.1, "0.1"),
+            (f64::from(0.3f32), "0.30000001192092896"),
+            (0.001, "0.001"),
+            (9_999_999.0, "9999999.0"),
+            (1.0e7, "1.0E7"),
+            (1.234_567_8e7, "1.2345678E7"),
+            (1.0e-5, "1.0E-5"),
+            (-2.5e-4, "-2.5E-4"),
+            (0.0, "0.0"),
+            (-0.0, "-0.0"),
+            (f64::INFINITY, "Infinity"),
+            (f64::NAN, "NaN"),
+        ] {
+            assert_eq!(java_double_string(value), java, "{value:?}");
+        }
+    }
+}

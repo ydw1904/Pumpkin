@@ -5,6 +5,7 @@ use crate::command::argument_types::core::double::DoubleArgumentType;
 use crate::command::argument_types::entity::EntityArgumentType;
 use crate::command::context::command_context::CommandContext;
 use crate::command::errors::error_types::CommandErrorType;
+use crate::command::java_double_string;
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
 use crate::entity::attributes::ModifierOperation;
@@ -94,7 +95,7 @@ impl CommandExecutor for GetExecutor {
                     [
                         TextComponent::translate(attribute_translation_key(&attribute), []),
                         target.get_name(),
-                        TextComponent::text(base_value.to_string()),
+                        TextComponent::text(java_double_string(base_value)),
                     ],
                 ),
                 false,
@@ -112,7 +113,7 @@ impl CommandExecutor for GetExecutor {
                     [
                         TextComponent::translate(attribute_translation_key(&attribute), []),
                         target.get_name(),
-                        TextComponent::text(value.to_string()),
+                        TextComponent::text(java_double_string(value)),
                     ],
                 ),
                 false,
@@ -160,7 +161,7 @@ impl CommandExecutor for BaseSetExecutor {
                 [
                     TextComponent::translate(attribute_translation_key(&attribute), []),
                     target.get_name(),
-                    TextComponent::text(value.to_string()),
+                    TextComponent::text(java_double_string(value)),
                 ],
             ),
             true,
@@ -207,7 +208,7 @@ impl CommandExecutor for BaseResetExecutor {
                 [
                     TextComponent::translate(attribute_translation_key(&attribute), []),
                     target.get_name(),
-                    TextComponent::text(default_val.to_string()),
+                    TextComponent::text(java_double_string(default_val)),
                 ],
             ),
             true,
@@ -395,7 +396,7 @@ impl CommandExecutor for ModifierGetExecutor {
                     TextComponent::text(modifier_id),
                     TextComponent::translate(attribute_translation_key(&attribute), []),
                     target.get_name(),
-                    TextComponent::text(val.to_string()),
+                    TextComponent::text(java_double_string(val)),
                 ],
             ),
             false,
