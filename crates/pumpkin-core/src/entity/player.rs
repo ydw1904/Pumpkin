@@ -7215,35 +7215,17 @@ impl NBTStorage for PlayerInventory {
                 if !stack.is_empty() {
                     let mut item_compound = NbtCompound::new();
                     stack.write_item_stack(&mut item_compound);
-                    let vanilla_slot = match slot {
-                        EquipmentSlot::Feet(_) => {
-                            equipment_compound.put_compound("feet", item_compound.clone());
-                            Some(100i8)
-                        }
-                        EquipmentSlot::Legs(_) => {
-                            equipment_compound.put_compound("legs", item_compound.clone());
-                            Some(101i8)
-                        }
-                        EquipmentSlot::Chest(_) => {
-                            equipment_compound.put_compound("chest", item_compound.clone());
-                            Some(102i8)
-                        }
-                        EquipmentSlot::Head(_) => {
-                            equipment_compound.put_compound("head", item_compound.clone());
-                            Some(103i8)
-                        }
-                        EquipmentSlot::OffHand(_) => {
-                            equipment_compound.put_compound("offhand", item_compound.clone());
-                            Some(-106i8)
-                        }
-                        _ => None,
+                    // Vanilla's `Inventory.save` only lists the main slots; armor and the
+                    // offhand are saved in `equipment` alone.
+                    let key = match slot {
+                        EquipmentSlot::Feet(_) => "feet",
+                        EquipmentSlot::Legs(_) => "legs",
+                        EquipmentSlot::Chest(_) => "chest",
+                        EquipmentSlot::Head(_) => "head",
+                        EquipmentSlot::OffHand(_) => "offhand",
+                        _ => continue,
                     };
-                    if let Some(slot_byte) = vanilla_slot {
-                        let mut inv_item_compound = NbtCompound::new();
-                        inv_item_compound.put_byte("Slot", slot_byte);
-                        stack.write_item_stack(&mut inv_item_compound);
-                        items.push(NbtTag::Compound(inv_item_compound));
-                    }
+                    equipment_compound.put_compound(key, item_compound);
                 }
             }
         }
