@@ -148,6 +148,7 @@ pub struct VillagerPoiStorage {
     records: HashMap<BlockPos, PoiRecord>,
     /// Records whose free tickets changed since the last save.
     dirty_tickets: HashSet<BlockPos>,
+    distance_tracker: DistanceTracker,
 }
 
 impl VillagerPoiStorage {
@@ -155,15 +156,22 @@ impl VillagerPoiStorage {
     /// changes, so tickets survive state changes like a bed becoming occupied.
     pub fn update_block(&mut self, position: BlockPos, state_id: BlockStateId) {
         let Some(poi_type) = VillagePoiType::for_state(state_id) else {
-            self.records.remove(&position);
+            if let Some(old) = self.records.remove(&position) {
+                self.distance_tracker
+                    .occupancy_changed(position, old.is_occupied(), false);
+            }
             return;
         };
-        let record = self
+        if self
             .records
-            .entry(position)
-            .or_insert_with(|| PoiRecord::new(poi_type));
-        if record.poi_type != poi_type {
-            *record = PoiRecord::new(poi_type);
+            .get(&position)
+            .is_some_and(|record| record.poi_type == poi_type)
+        {
+            return;
+        }
+        if let Some(old) = self.records.insert(position, PoiRecord::new(poi_type)) {
+            self.distance_tracker
+                .occupancy_changed(position, old.is_occupied(), false);
         }
     }
 
@@ -179,7 +187,13 @@ impl VillagerPoiStorage {
         }
         let mut record = PoiRecord::new(poi_type);
         record.free_tickets = free_tickets.clamp(0, poi_type.max_tickets() as i32);
-        self.records.insert(position, record);
+        let occupied = record.is_occupied();
+        let was_occupied = self
+            .records
+            .insert(position, record)
+            .is_some_and(|old| old.is_occupied());
+        self.distance_tracker
+            .occupancy_changed(position, was_occupied, occupied);
     }
 
     /// Vanilla `PoiManager.getType`.
@@ -196,11 +210,15 @@ impl VillagerPoiStorage {
         accepts: impl Fn(VillagePoiType) -> bool,
     ) -> Option<VillagePoiType> {
         let record = self.records.get_mut(&position)?;
+        let was_occupied = record.is_occupied();
         if !accepts(record.poi_type) || !record.acquire_ticket() {
             return None;
         }
+        let poi_type = record.poi_type;
         self.dirty_tickets.insert(position);
-        Some(record.poi_type)
+        self.distance_tracker
+            .occupancy_changed(position, was_occupied, true);
+        Some(poi_type)
     }
 
     /// Vanilla `PoiManager.release`.
@@ -210,7 +228,10 @@ impl VillagerPoiStorage {
         };
         let released = record.release_ticket();
         if released {
+            let occupied = record.is_occupied();
             self.dirty_tickets.insert(position);
+            self.distance_tracker
+                .occupancy_changed(position, true, occupied);
         }
         released
     }
@@ -226,6 +247,7 @@ impl VillagerPoiStorage {
             })
             .collect()
     }
+
     /// Vanilla `PoiManager.getInRange` in its stream order: chunks row by row (z outer, x
     /// inner), then sections bottom to top.
     fn in_range(
@@ -335,19 +357,7 @@ impl VillagerPoiStorage {
     /// section with an occupied village POI, capped at 7.
     #[must_use]
     pub fn sections_to_village(&self, pos: BlockPos) -> i32 {
-        let section = Vector3::new(pos.0.x >> 4, pos.0.y >> 4, pos.0.z >> 4);
-        self.records
-            .iter()
-            .filter(|(_, record)| record.is_occupied())
-            .map(|(site_pos, _)| {
-                let delta =
-                    Vector3::new(site_pos.0.x >> 4, site_pos.0.y >> 4, site_pos.0.z >> 4) - section;
-                delta.x.abs().max(delta.y.abs()).max(delta.z.abs())
-            })
-            .min()
-            .map_or(MAX_SECTIONS_TO_VILLAGE, |distance| {
-                distance.min(MAX_SECTIONS_TO_VILLAGE)
-            })
+        self.distance_tracker.level(section_of(pos))
     }
 
     #[must_use]
@@ -367,6 +377,101 @@ impl VillagerPoiStorage {
             }
         }
         closest
+    }
+}
+
+/// Vanilla `SectionPos.of`.
+const fn section_of(pos: BlockPos) -> Vector3<i32> {
+    Vector3::new(pos.0.x >> 4, pos.0.y >> 4, pos.0.z >> 4)
+}
+
+fn chebyshev(delta: Vector3<i32>) -> i32 {
+    delta.x.abs().max(delta.y.abs()).max(delta.z.abs())
+}
+
+/// Vanilla `PoiManager.DistanceTracker`: the level of each section within 6 of a village
+/// center, a section holding an occupied village POI. Vanilla propagates levels through
+/// neighbouring sections, which settles on the chebyshev distance to the nearest center, so
+/// that distance is kept directly and updated when a section starts or stops being a center.
+#[derive(Default)]
+struct DistanceTracker {
+    /// The occupied village POIs in each village center.
+    occupied: HashMap<Vector3<i32>, u32>,
+    /// Levels below `MAX_SECTIONS_TO_VILLAGE`; every other section has that level.
+    levels: HashMap<Vector3<i32>, i32>,
+}
+
+impl DistanceTracker {
+    const RANGE: i32 = MAX_SECTIONS_TO_VILLAGE - 1;
+
+    fn level(&self, section: Vector3<i32>) -> i32 {
+        self.levels
+            .get(&section)
+            .copied()
+            .unwrap_or(MAX_SECTIONS_TO_VILLAGE)
+    }
+
+    fn occupancy_changed(&mut self, pos: BlockPos, was_occupied: bool, occupied: bool) {
+        if was_occupied == occupied {
+            return;
+        }
+        let section = section_of(pos);
+        if occupied {
+            let count = self.occupied.entry(section).or_default();
+            *count += 1;
+            if *count == 1 {
+                self.add_center(section);
+            }
+        } else if let Some(count) = self.occupied.get_mut(&section) {
+            *count -= 1;
+            if *count == 0 {
+                self.occupied.remove(&section);
+                self.remove_center(section);
+            }
+        }
+    }
+
+    fn cube(center: Vector3<i32>) -> impl Iterator<Item = (Vector3<i32>, i32)> {
+        (-Self::RANGE..=Self::RANGE).flat_map(move |x| {
+            (-Self::RANGE..=Self::RANGE).flat_map(move |y| {
+                (-Self::RANGE..=Self::RANGE).map(move |z| {
+                    let offset = Vector3::new(x, y, z);
+                    (center + offset, chebyshev(offset))
+                })
+            })
+        })
+    }
+
+    fn add_center(&mut self, center: Vector3<i32>) {
+        for (section, distance) in Self::cube(center) {
+            self.levels
+                .entry(section)
+                .and_modify(|level| *level = (*level).min(distance))
+                .or_insert(distance);
+        }
+    }
+
+    /// Clears the levels the center reached and recomputes them from the centers nearby.
+    fn remove_center(&mut self, center: Vector3<i32>) {
+        for (section, _) in Self::cube(center) {
+            self.levels.remove(&section);
+        }
+        let nearby = self
+            .occupied
+            .keys()
+            .copied()
+            .filter(|other| chebyshev(*other - center) <= 2 * Self::RANGE)
+            .collect::<Vec<_>>();
+        for other in nearby {
+            for (section, distance) in Self::cube(other) {
+                if chebyshev(section - center) <= Self::RANGE {
+                    self.levels
+                        .entry(section)
+                        .and_modify(|level| *level = (*level).min(distance))
+                        .or_insert(distance);
+                }
+            }
+        }
     }
 }
 
@@ -607,6 +712,58 @@ mod tests {
         // A chunk loading again must not reset the tickets of a record still in memory.
         reloaded.load_record(bed, VillagePoiType::Home, 0);
         assert!(reloaded.take(bed, any).is_some());
+    }
+
+    #[test]
+    fn sections_to_village_follows_tickets_taken_and_released() {
+        let mut storage = VillagerPoiStorage::default();
+        let bells = [
+            BlockPos::new(0, 64, 0),
+            BlockPos::new(5, 64, 3),
+            BlockPos::new(70, 64, 0),
+            BlockPos::new(150, 64, 40),
+            BlockPos::new(40, 120, -30),
+        ];
+        for bell in bells {
+            storage.update_block(bell, Block::BELL.default_state.id);
+        }
+        let probes = (-4..=14)
+            .flat_map(|x| (2..=9).flat_map(move |y| (-6..=6).map(move |z| (x, y, z))))
+            .map(|(x, y, z)| BlockPos::new(x * 16 + 3, y * 16, z * 16 + 7))
+            .collect::<Vec<_>>();
+        let expected = |occupied: &[BlockPos], probe: BlockPos| {
+            occupied
+                .iter()
+                .map(|bell| chebyshev(section_of(*bell) - section_of(probe)))
+                .min()
+                .map_or(MAX_SECTIONS_TO_VILLAGE, |distance| {
+                    distance.min(MAX_SECTIONS_TO_VILLAGE)
+                })
+        };
+        let check = |storage: &VillagerPoiStorage, occupied: &[BlockPos]| {
+            for probe in &probes {
+                assert_eq!(
+                    storage.sections_to_village(*probe),
+                    expected(occupied, *probe),
+                    "{probe:?} with {occupied:?}"
+                );
+            }
+        };
+
+        check(&storage, &[]);
+        for bell in bells {
+            storage.take(bell, |_| true);
+        }
+        storage.take(bells[0], |_| true);
+        check(&storage, &bells);
+        // Two tickets in the first section: one release keeps it a village center.
+        storage.release(bells[0]);
+        storage.release(bells[1]);
+        check(&storage, &bells);
+        storage.release(bells[0]);
+        check(&storage, &bells[2..]);
+        storage.update_block(bells[2], Block::AIR.default_state.id);
+        check(&storage, &bells[3..]);
     }
 
     #[test]
