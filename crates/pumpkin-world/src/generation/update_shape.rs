@@ -4,12 +4,14 @@
 
 use pumpkin_data::HorizontalFacingExt;
 use pumpkin_data::block_properties::{
-    BlockProperties, OakFenceGateLikeProperties, OakFenceLikeProperties, OakLeavesLikeProperties,
-    StairsShape, VineLikeProperties, WhiteWoolStairsLikeProperties,
+    BlockProperties, EastWall, NorthWall, OakFenceGateLikeProperties, OakFenceLikeProperties,
+    OakLeavesLikeProperties, ResinBrickWallLikeProperties, SouthWall, StairsShape,
+    VineLikeProperties, WestWall, WhiteWoolStairsLikeProperties,
 };
 use pumpkin_data::fluid::Fluid;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::{Block, BlockDirection, BlockId, BlockState, BlockStateId};
+use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 
 use crate::generation::proto_chunk::GenerationCache;
@@ -313,6 +315,21 @@ pub fn update_shape<L: BlockPlacer + ?Sized>(
     if block.id == BlockId::VINE {
         return update_vine_shape(level, pos, state, dir_to_neighbor);
     }
+    if block.has_tag(&tag::Block::MINECRAFT_WALLS) {
+        let above_pos = pos + BlockDirection::Up.to_offset();
+        let above_state = if dir_to_neighbor == BlockDirection::Up {
+            neighbor_state
+        } else {
+            level.get_block_state(&above_pos)
+        };
+        return update_wall_shape(
+            state,
+            dir_to_neighbor,
+            neighbor_state,
+            above_pos,
+            above_state,
+        );
+    }
     if dir_to_neighbor.is_horizontal() {
         if block.has_tag(&tag::Block::MINECRAFT_FENCES) {
             let connects = fence_connects_to(block, neighbor_state, dir_to_neighbor.opposite());
@@ -361,16 +378,22 @@ fn fence_connects_to(fence: &Block, neighbor_state: BlockStateId, face: BlockDir
     let same_fence = neighbor.has_tag(&tag::Block::MINECRAFT_FENCES)
         && neighbor.has_tag(&tag::Block::MINECRAFT_WOODEN_FENCES)
             == fence.has_tag(&tag::Block::MINECRAFT_WOODEN_FENCES);
-    // `FenceGateBlock.connectsToDirection`
-    let gate = neighbor.has_tag(&tag::Block::MINECRAFT_FENCE_GATES)
+    (!is_exception_for_connection(neighbor) && neighbor_state.is_side_solid(face))
+        || same_fence
+        || gate_connects_to(neighbor_state, face)
+}
+
+/// Whether the neighbour is a fence gate that vanilla `FenceGateBlock.connectsToDirection`
+/// connects towards its side `face`.
+fn gate_connects_to(neighbor_state: BlockStateId, face: BlockDirection) -> bool {
+    neighbor_state
+        .to_block()
+        .has_tag(&tag::Block::MINECRAFT_FENCE_GATES)
         && OakFenceGateLikeProperties::from_state_id(neighbor_state)
             .facing
             .to_block_direction()
             .to_axis()
-            == face.rotate_clockwise().to_axis();
-    (!is_exception_for_connection(neighbor) && neighbor_state.is_side_solid(face))
-        || same_fence
-        || gate
+            == face.rotate_clockwise().to_axis()
 }
 
 /// Vanilla `IronBarsBlock.attachsTo`, with `face` the neighbour's side facing the bars.
@@ -379,6 +402,152 @@ fn bars_attach_to(neighbor_state: BlockStateId, face: BlockDirection) -> bool {
     (!is_exception_for_connection(neighbor) && neighbor_state.is_side_solid(face))
         || is_iron_bars(neighbor)
         || neighbor.has_tag(&tag::Block::MINECRAFT_WALLS)
+}
+
+/// Vanilla `WallBlock.connectsTo`, with `face` the neighbour's side facing the wall.
+#[must_use]
+pub fn wall_connects_to(neighbor_state: BlockStateId, face: BlockDirection) -> bool {
+    let neighbor = neighbor_state.to_block();
+    neighbor.has_tag(&tag::Block::MINECRAFT_WALLS)
+        || (!is_exception_for_connection(neighbor) && neighbor_state.is_side_solid(face))
+        || is_iron_bars(neighbor)
+        || gate_connects_to(neighbor_state, face)
+}
+
+/// Vanilla `WallBlock.updateShape` for a neighbour that changed towards `direction`.
+/// `above_state` at `above_pos` is the block on top of the wall, the neighbour itself for
+/// [`BlockDirection::Up`].
+#[must_use]
+pub fn update_wall_shape(
+    state: BlockStateId,
+    direction: BlockDirection,
+    neighbor_state: BlockStateId,
+    above_pos: Vector3<i32>,
+    above_state: BlockStateId,
+) -> BlockStateId {
+    if direction == BlockDirection::Down {
+        return state;
+    }
+    let props = ResinBrickWallLikeProperties::from_state_id(state);
+    // `isConnected`, or `connectsTo` for the side that changed (`sideUpdate`).
+    let connects = |side: BlockDirection, connected: bool| {
+        if side == direction {
+            wall_connects_to(neighbor_state, side.opposite())
+        } else {
+            connected
+        }
+    };
+    wall_shape(
+        state,
+        above_pos,
+        above_state,
+        [
+            connects(BlockDirection::North, props.north != NorthWall::None),
+            connects(BlockDirection::East, props.east != EastWall::None),
+            connects(BlockDirection::South, props.south != SouthWall::None),
+            connects(BlockDirection::West, props.west != WestWall::None),
+        ],
+    )
+}
+
+/// An area of a block's bottom face, in sixteenths: `[min_x, min_z, max_x, max_z]`.
+type FaceArea = [f64; 4];
+
+/// Vanilla `WallBlock.TEST_SHAPE_POST`.
+const TEST_SHAPE_POST: FaceArea = [7.0, 7.0, 9.0, 9.0];
+/// Vanilla `WallBlock.TEST_SHAPES_WALL`: north, east, south, west.
+const TEST_SHAPES_WALL: [FaceArea; 4] = [
+    [7.0, 0.0, 9.0, 9.0],
+    [7.0, 7.0, 16.0, 9.0],
+    [7.0, 7.0, 9.0, 16.0],
+    [0.0, 7.0, 9.0, 9.0],
+];
+
+/// Vanilla `WallSide`, in the order of the generated wall side enums.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WallSide {
+    None,
+    Low,
+    Tall,
+}
+
+/// Vanilla `WallBlock.updateShape(level, state, topPos, topNeighbour, north, east, south, west)`:
+/// the wall's sides and post for its connections towards north, east, south and west.
+#[must_use]
+pub fn wall_shape(
+    state: BlockStateId,
+    above_pos: Vector3<i32>,
+    above_state: BlockStateId,
+    connections: [bool; 4],
+) -> BlockStateId {
+    // `topNeighbour.getCollisionShape(level, topPos).getFaceShape(Direction.DOWN)`
+    let above_shape: Vec<FaceArea> = above_state
+        .to_state()
+        .get_block_collision_shapes_at(&BlockPos(above_pos))
+        .filter(|shape| shape.min.y <= 1.0E-7 && shape.max.y > 1.0E-7)
+        .map(|shape| [shape.min.x, shape.min.z, shape.max.x, shape.max.z].map(|c| c * 16.0))
+        .collect();
+    // `makeWallState`
+    let [north, east, south, west] = std::array::from_fn(|i| {
+        if !connections[i] {
+            WallSide::None
+        } else if is_covered(&above_shape, TEST_SHAPES_WALL[i]) {
+            WallSide::Tall
+        } else {
+            WallSide::Low
+        }
+    });
+
+    let mut props = ResinBrickWallLikeProperties::from_state_id(state);
+    props.north = [NorthWall::None, NorthWall::Low, NorthWall::Tall][north as usize];
+    props.east = [EastWall::None, EastWall::Low, EastWall::Tall][east as usize];
+    props.south = [SouthWall::None, SouthWall::Low, SouthWall::Tall][south as usize];
+    props.west = [WestWall::None, WestWall::Low, WestWall::Tall][west as usize];
+
+    // `shouldRaisePost`
+    let above = above_state.to_block();
+    props.up = if above.has_tag(&tag::Block::MINECRAFT_WALLS)
+        && ResinBrickWallLikeProperties::from_state_id(above_state).up
+    {
+        true
+    } else {
+        let none = |side: WallSide| side == WallSide::None;
+        let has_corner = (none(north) && none(south) && none(west) && none(east))
+            || none(north) != none(south)
+            || none(west) != none(east);
+        let has_high_wall = (north == WallSide::Tall && south == WallSide::Tall)
+            || (east == WallSide::Tall && west == WallSide::Tall);
+        has_corner
+            || (!has_high_wall
+                && (above.has_tag(&tag::Block::MINECRAFT_WALL_POST_OVERRIDE)
+                    || is_covered(&above_shape, TEST_SHAPE_POST)))
+    };
+    props.to_state_id(state.to_block())
+}
+
+/// Vanilla `WallBlock.isCovered`: whether the face areas cover all of `test`.
+fn is_covered(face: &[FaceArea], test: FaceArea) -> bool {
+    // Split `test` along every area edge inside it; each cell is then inside an area or outside
+    // all of them.
+    let edges = |min: usize, max: usize| {
+        let mut edges: Vec<f64> = face
+            .iter()
+            .flat_map(|area| [area[min], area[max]])
+            .filter(|&edge| edge > test[min] && edge < test[max])
+            .chain([test[min], test[max]])
+            .collect();
+        edges.sort_by(f64::total_cmp);
+        edges.dedup();
+        edges
+    };
+    let (xs, zs) = (edges(0, 2), edges(1, 3));
+    xs.windows(2).all(|x| {
+        zs.windows(2).all(|z| {
+            let (cx, cz) = (f64::midpoint(x[0], x[1]), f64::midpoint(z[0], z[1]));
+            face.iter()
+                .any(|area| area[0] < cx && cx < area[2] && area[1] < cz && cz < area[3])
+        })
+    })
 }
 
 /// Sets the side property of a fence, bars or pane towards `direction`.
