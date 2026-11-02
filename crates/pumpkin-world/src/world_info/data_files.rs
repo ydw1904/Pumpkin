@@ -616,6 +616,77 @@ pub fn write_wandering_trader(
         .map_err(|e| WorldInfoError::SerializationError(e.to_string()))
 }
 
+/// Vanilla `WorldBorder.Settings`, saved for each dimension in `world_border.dat`.
+#[derive(Clone, PartialEq, Debug)]
+pub struct WorldBorderData {
+    pub center_x: f64,
+    pub center_z: f64,
+    pub damage_per_block: f64,
+    pub safe_zone: f64,
+    pub warning_blocks: i32,
+    pub warning_time: i32,
+    pub size: f64,
+    /// Milliseconds left of a size change in progress.
+    pub lerp_time: i64,
+    pub lerp_target: f64,
+}
+
+/// Reads a dimension's `world_border.dat`, or `None` when it has none or it doesn't parse.
+#[must_use]
+pub fn read_world_border(data_dir: &Path) -> Option<WorldBorderData> {
+    let path = data_dir.join("world_border.dat");
+    let compound = match File::open(&path) {
+        Ok(f) => match read_gzip_compound_tag(f) {
+            Ok(compound) => compound,
+            Err(e) => {
+                warn!("Failed to deserialize {}: {e}", path.display());
+                return None;
+            }
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => {
+            warn!("Failed to open {}: {e}", path.display());
+            return None;
+        }
+    };
+    let c = compound.get_compound("data")?;
+    Some(WorldBorderData {
+        center_x: c.get_double("center_x")?,
+        center_z: c.get_double("center_z")?,
+        damage_per_block: c.get_double("damage_per_block")?,
+        safe_zone: c.get_double("safe_zone")?,
+        warning_blocks: c.get_int("warning_blocks")?,
+        warning_time: c.get_int("warning_time")?,
+        size: c.get_double("size")?,
+        lerp_time: c.get_long("lerp_time")?,
+        lerp_target: c.get_double("lerp_target")?,
+    })
+}
+
+pub fn write_world_border(
+    data_dir: &Path,
+    data: &WorldBorderData,
+    data_version: i32,
+) -> Result<(), WorldInfoError> {
+    fs::create_dir_all(data_dir)?;
+    let file = File::create(data_dir.join("world_border.dat"))?;
+    let mut c = NbtCompound::new();
+    c.put_double("center_x", data.center_x);
+    c.put_double("center_z", data.center_z);
+    c.put_double("damage_per_block", data.damage_per_block);
+    c.put_double("safe_zone", data.safe_zone);
+    c.put_int("warning_blocks", data.warning_blocks);
+    c.put_int("warning_time", data.warning_time);
+    c.put_double("size", data.size);
+    c.put_long("lerp_time", data.lerp_time);
+    c.put_double("lerp_target", data.lerp_target);
+    let mut root = NbtCompound::new();
+    root.put_compound("data", c);
+    root.put_int("DataVersion", data_version);
+    pumpkin_nbt::nbt_compress::write_gzip_compound_tag(root, BufWriter::new(file))
+        .map_err(|e| WorldInfoError::SerializationError(e.to_string()))
+}
+
 pub fn write_custom_boss_events_stub(
     level_folder: &Path,
     data_version: i32,

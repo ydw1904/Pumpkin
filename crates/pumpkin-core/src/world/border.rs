@@ -3,9 +3,16 @@ use pumpkin_protocol::java::client::play::{
     CSetBorderWarningDelay, CSetBorderWarningDistance,
 };
 
+use pumpkin_world::world_info::data_files::WorldBorderData;
+
 use crate::net::java::JavaClient;
 
 use super::World;
+
+/// Vanilla `WorldBorder.damagePerBlock` default.
+const DEFAULT_DAMAGE_PER_BLOCK: f32 = 0.2;
+/// Vanilla `WorldBorder.safeZone` default.
+const DEFAULT_SAFE_ZONE: f32 = 5.0;
 
 pub struct Worldborder {
     pub center_x: f64,
@@ -21,6 +28,42 @@ pub struct Worldborder {
 }
 
 impl Worldborder {
+    /// The border a dimension's `world_border.dat` describes.
+    #[must_use]
+    pub const fn from_saved(data: &WorldBorderData) -> Self {
+        let mut border = Self::new(
+            data.center_x,
+            data.center_z,
+            data.size,
+            data.lerp_time,
+            data.warning_blocks,
+            data.warning_time,
+        );
+        if data.lerp_time > 0 {
+            border.new_diameter = data.lerp_target;
+        }
+        border.damage_per_block = data.damage_per_block as f32;
+        border.buffer = data.safe_zone as f32;
+        border
+    }
+
+    /// The border as `world_border.dat` stores it. A size change in progress is saved as
+    /// finished, since this server does not track how far it has got.
+    #[must_use]
+    pub fn to_saved(&self) -> WorldBorderData {
+        WorldBorderData {
+            center_x: self.center_x,
+            center_z: self.center_z,
+            damage_per_block: f64::from(self.damage_per_block),
+            safe_zone: f64::from(self.buffer),
+            warning_blocks: self.warning_blocks,
+            warning_time: self.warning_time,
+            size: self.new_diameter,
+            lerp_time: 0,
+            lerp_target: self.new_diameter,
+        }
+    }
+
     #[must_use]
     pub const fn new(
         x: f64,
@@ -39,8 +82,8 @@ impl Worldborder {
             portal_teleport_boundary: 29_999_984,
             warning_blocks,
             warning_time,
-            damage_per_block: 0.0,
-            buffer: 0.0,
+            damage_per_block: DEFAULT_DAMAGE_PER_BLOCK,
+            buffer: DEFAULT_SAFE_ZONE,
         }
     }
 
@@ -117,8 +160,8 @@ impl Worldborder {
         self.portal_teleport_boundary = 29_999_984;
         self.warning_blocks = 5;
         self.warning_time = 15;
-        self.damage_per_block = 0.2;
-        self.buffer = 5.0;
+        self.damage_per_block = DEFAULT_DAMAGE_PER_BLOCK;
+        self.buffer = DEFAULT_SAFE_ZONE;
 
         world.broadcast_packet_all(&CInitializeWorldBorder::new(
             self.center_x,
@@ -168,6 +211,37 @@ mod tests {
 
     fn centered_border(diameter: f64) -> Worldborder {
         Worldborder::new(0.0, 0.0, diameter, 0, 5, 300)
+    }
+
+    /// A border set in vanilla has to come back, and go out again, unchanged.
+    #[test]
+    fn vanilla_world_border_file_round_trips() {
+        use pumpkin_nbt::compound::NbtCompound;
+        use pumpkin_world::world_info::data_files::read_world_border;
+
+        let dir = tempfile::tempdir().unwrap();
+        // The layout a 26.3 server writes after `/worldborder center 10.5 20.5` and `set 5000`.
+        let mut data = NbtCompound::new();
+        data.put_double("center_x", 10.5);
+        data.put_double("center_z", 20.5);
+        data.put_double("damage_per_block", 0.5);
+        data.put_double("safe_zone", 7.0);
+        data.put_int("warning_blocks", 12);
+        data.put_int("warning_time", 30);
+        data.put_double("size", 5000.0);
+        data.put_long("lerp_time", 0);
+        data.put_double("lerp_target", 5000.0);
+        let mut root = NbtCompound::new();
+        root.put_compound("data", data);
+        root.put_int("DataVersion", 5023);
+        let file = std::fs::File::create(dir.path().join("world_border.dat")).unwrap();
+        pumpkin_nbt::nbt_compress::write_gzip_compound_tag(root, file).unwrap();
+
+        let saved = read_world_border(dir.path()).unwrap();
+        let border = Worldborder::from_saved(&saved);
+
+        assert!(border.contains(2510.0, 20.5) && !border.contains(2511.0, 20.5));
+        assert_eq!(border.to_saved(), saved);
     }
 
     /// `find_safe_location` only falls through to the `clamp_block` fallback

@@ -452,12 +452,17 @@ impl World {
             let _ = level.rt_handle.set(server_arc.runtime.clone());
         }
 
-        let wandering_trader_spawner =
-            std::sync::Mutex::new(wandering_trader_spawner::WanderingTraderSpawner::new(
-                pumpkin_world::world_info::data_files::minecraft_data_dir(
-                    &level.level_folder.dim_folder,
-                ),
-            ));
+        let data_dir = pumpkin_world::world_info::data_files::minecraft_data_dir(
+            &level.level_folder.dim_folder,
+        );
+        let wandering_trader_spawner = std::sync::Mutex::new(
+            wandering_trader_spawner::WanderingTraderSpawner::new(data_dir.clone()),
+        );
+        let worldborder = pumpkin_world::world_info::data_files::read_world_border(&data_dir)
+            .map_or_else(
+                || Worldborder::new(0.0, 0.0, 5.999_996_8E7, 0, 5, 300),
+                |saved| Worldborder::from_saved(&saved),
+            );
 
         Self {
             uuid: Uuid::new_v4(),
@@ -469,14 +474,7 @@ impl World {
             island_schedule: std::sync::Mutex::default(),
             lookup_only_entities: ArcSwap::new(Arc::new(Vec::new())),
             scoreboard: std::sync::Mutex::new(Scoreboard::default()),
-            worldborder: std::sync::Mutex::new(Worldborder::new(
-                0.0,
-                0.0,
-                5.999_996_8E7,
-                0,
-                5,
-                300,
-            )),
+            worldborder: std::sync::Mutex::new(worldborder),
             level_time: std::sync::Mutex::new(level_time),
             dimension,
             weather: std::sync::Mutex::new(Weather::new()),
@@ -687,6 +685,7 @@ impl World {
         for chunk_pos in chunks {
             self.save_block_entities(chunk_pos);
         }
+        self.save_world_border();
 
         // Save portal POI to disk
         self.save_village_poi_tickets();
@@ -767,6 +766,25 @@ impl World {
         for block_entity in block_entities {
             let nbt = self.saved_block_entity_nbt(block_entity.as_ref());
             self.add_block_entity_nbt(block_entity.get_position(), &nbt);
+        }
+    }
+
+    /// Vanilla saves each dimension's border in its own `world_border.dat`.
+    fn save_world_border(&self) {
+        let saved = self
+            .worldborder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .to_saved();
+        let data_dir = pumpkin_world::world_info::data_files::minecraft_data_dir(
+            &self.level.level_folder.dim_folder,
+        );
+        if let Err(e) = pumpkin_world::world_info::data_files::write_world_border(
+            &data_dir,
+            &saved,
+            pumpkin_world::world_info::MAXIMUM_SUPPORTED_WORLD_DATA_VERSION,
+        ) {
+            error!("Failed to save the world border: {e}");
         }
     }
 
@@ -7764,6 +7782,7 @@ impl World {
         for chunk_pos in chunks {
             self.save_block_entities(chunk_pos);
         }
+        self.save_world_border();
 
         self.save_poi();
 
