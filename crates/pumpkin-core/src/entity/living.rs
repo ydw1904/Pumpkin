@@ -4020,8 +4020,11 @@ impl EntityBase for LivingEntity {
                 caller.damage(caller, 1.0, DamageType::IN_WALL);
             }
 
-            // Players push other entities like any living entity.
-            self.push_entities(caller);
+            // Vanilla `ServerPlayer.pushEntities`: players still tick while the game is frozen,
+            // but only push others on ticks that run game elements.
+            if server.tick_rate_manager.runs_normally() {
+                self.push_entities(caller);
+            }
 
             self.entity.tick_frozen(caller);
         }
