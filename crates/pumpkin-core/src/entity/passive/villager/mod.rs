@@ -1586,22 +1586,29 @@ impl VillagerEntity {
 
     /// Re-takes the tickets of the home and meeting point a loaded villager remembers, which
     /// vanilla keeps in the saved POI data instead.
-    fn restore_poi_tickets(&self, world: &World) {
+    /// Returns false while a remembered POI's chunk has not registered its POIs yet.
+    fn restore_poi_tickets(&self, world: &World) -> bool {
         let Some(owner) = self.poi_owner() else {
-            return;
+            return true;
         };
         let mut villager_poi = world
             .villager_poi
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut restored = true;
         for (pos, poi_type) in [
             (self.get_home(), VillagePoiType::Home),
             (self.get_meeting_point(), VillagePoiType::Meeting),
         ] {
             if let Some(pos) = pos {
-                villager_poi.claim(pos, owner.clone(), |found| found == poi_type);
+                if villager_poi.get_type(pos).is_none() {
+                    restored = false;
+                } else {
+                    villager_poi.claim(pos, owner.clone(), |found| found == poi_type);
+                }
             }
         }
+        restored
     }
 
     /// Vanilla `Villager.releasePoi` followed by erasing the memory.
@@ -1638,8 +1645,8 @@ impl VillagerEntity {
     /// `MEETING_POINT`, in brain priority order.
     fn tick_poi_memories(&self, world: &Arc<World>, game_time: i64) {
         let entity = self.get_entity();
-        if !self.poi_tickets_restored.swap(true, Ordering::Relaxed) {
-            self.restore_poi_tickets(world);
+        if !self.poi_tickets_restored.load(Ordering::Relaxed) && self.restore_poi_tickets(world) {
+            self.poi_tickets_restored.store(true, Ordering::Relaxed);
         }
 
         // Vanilla `LivingEntity.tick`: a sleeper whose bed is gone wakes up.
@@ -2226,6 +2233,18 @@ impl Mob for VillagerEntity {
             nbt.put_int("MeetingPointZ", pos.0.z);
         }
 
+        // Vanilla `LivingEntity.addAdditionalSaveData`.
+        if let Some(pos) = *self
+            .sleeping_pos
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        {
+            nbt.put(
+                "sleeping_pos",
+                NbtTag::IntArray(vec![pos.0.x, pos.0.y, pos.0.z]),
+            );
+        }
+
         let offers = self
             .offers
             .lock()
@@ -2381,6 +2400,26 @@ impl Mob for VillagerEntity {
             _ => None,
         };
         self.poi_tickets_restored.store(false, Ordering::Relaxed);
+
+        // Vanilla `LivingEntity.readAdditionalSaveData`: a saved sleeper stays in its bed.
+        let sleeping_pos = match nbt.get("sleeping_pos") {
+            Some(NbtTag::IntArray(pos)) if pos.len() == 3 => {
+                Some(BlockPos::new(pos[0], pos[1], pos[2]))
+            }
+            _ => None,
+        };
+        *self
+            .sleeping_pos
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = sleeping_pos;
+        if let Some(pos) = sleeping_pos {
+            let entity = self.get_entity();
+            entity.set_pose(EntityPose::Sleeping);
+            entity.set_synced_data(
+                pumpkin_data::tracked_data::villager::SLEEPING_POS_ID,
+                Some(pos),
+            );
+        }
 
         if let Some(offers_compound) = nbt.get_compound("Offers")
             && let Some(recipes) = offers_compound.get_list("Recipes")
