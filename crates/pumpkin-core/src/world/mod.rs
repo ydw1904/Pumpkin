@@ -561,9 +561,11 @@ impl World {
                 migrations.push(pos);
             }
         }
+        let mut newly_loaded = Vec::new();
         for change in self.level.loaded_chunk_changes() {
             match change {
                 pumpkin_world::level::LoadedChunkChange::Loaded(pos) => {
+                    newly_loaded.push(pos);
                     if active_chunks.contains(&pos)
                         && self.level.is_chunk_loaded(&pos)
                         && tracker.loaded_active_chunks.insert(pos)
@@ -593,6 +595,9 @@ impl World {
         for pos in migrations {
             self.post_process_generation(pos);
             self.migrate_pending_block_entities(pos);
+        }
+        for pos in newly_loaded {
+            self.register_chunk_pois(pos);
         }
 
         self.spawn_state.store(Arc::new(SpawnState::new(

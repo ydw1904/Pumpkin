@@ -1,9 +1,10 @@
 use std::{collections::HashMap, sync::Weak};
 
 use pumpkin_data::{Block, villager::VillagerProfession};
-use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::math::{position::BlockPos, vector2::Vector2};
 
 use crate::entity::EntityBase;
+use crate::world::World;
 
 /// Vanilla `PoiTypes.MEETING`, used to place wandering traders near a village bell.
 pub const POI_TYPE_MEETING: &str = "minecraft:meeting";
@@ -122,6 +123,68 @@ impl VillagerPoiStorage {
             }
         }
         closest
+    }
+}
+
+impl World {
+    /// Registers the village POI blocks of a freshly loaded chunk, as vanilla's
+    /// `PoiManager.checkConsistencyWithBlocks` does for chunks without saved POI data.
+    pub(crate) fn register_chunk_pois(&self, chunk_pos: Vector2<i32>) {
+        let Some(found) = self.level.read_chunk_sync(&chunk_pos, |chunk| {
+            let sections = chunk
+                .section
+                .block_sections
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut found = Vec::new();
+            for (index, section) in sections.iter().enumerate() {
+                if !section.contains_matching(|id| poi_type_for_block(id.to_block()).is_some()) {
+                    continue;
+                }
+                let base_y = chunk.section.min_y + index as i32 * 16;
+                for y in 0..16 {
+                    for z in 0..16 {
+                        for x in 0..16 {
+                            let block = section.get(x, y, z).to_block();
+                            if let Some(poi_type) = poi_type_for_block(block) {
+                                let pos = BlockPos::new(
+                                    chunk_pos.x * 16 + x as i32,
+                                    base_y + y as i32,
+                                    chunk_pos.y * 16 + z as i32,
+                                );
+                                found.push((pos, block, poi_type));
+                            }
+                        }
+                    }
+                }
+            }
+            found
+        }) else {
+            return;
+        };
+        if found.is_empty() {
+            return;
+        }
+
+        {
+            let mut villager_poi = self
+                .villager_poi
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            for (pos, block, _) in &found {
+                villager_poi.update_block(*pos, block);
+            }
+        }
+        let mut saved = self
+            .portal_poi
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for (pos, _, poi_type) in found {
+            // Keep the tickets of POIs saved with the chunk.
+            if saved.get_in_square(pos, 0, Some(poi_type)).is_empty() {
+                saved.add_with_free_tickets(pos, poi_type, 1);
+            }
+        }
     }
 }
 
