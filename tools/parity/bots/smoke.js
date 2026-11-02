@@ -65,6 +65,9 @@ bot.once('spawn', async () => {
   result('creative_applied', await waitFor(() => bot.game.gameMode === 'creative', 5000))
 
   // Build a platform high above the terrain so walking and falling don't depend on worldgen.
+  // Hover while it's built: the bot's own chunk can arrive before the fill, and a creative fall
+  // keeps its fall distance through /gamemode survival and /tp, so landing could kill the bot.
+  bot.creative.startFlying()
   bot.chat(`/tp ${bot.username} 0.5 ${PLATFORM_Y + 1} 0.5`)
   await waitFor(() => bot.entity.position.distanceTo(new Vec3(0.5, PLATFORM_Y + 1, 0.5)) < 1, 5000)
   const tpStart = Date.now()
@@ -76,6 +79,7 @@ bot.once('spawn', async () => {
   result('setblock_visible', await waitFor(() => blockName(0, PLATFORM_Y + 3, 0) === 'gold_block', 5000))
   bot.chat(`/setblock 0 ${PLATFORM_Y + 3} 0 minecraft:air`)
   await ticks(5)
+  bot.creative.stopFlying()
 
   bot.chat('/gamemode survival')
   result('survival_applied', await waitFor(() => bot.game.gameMode === 'survival', 5000))
