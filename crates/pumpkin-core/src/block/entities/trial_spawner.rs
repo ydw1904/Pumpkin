@@ -753,6 +753,21 @@ impl TrialSpawnerStateData {
         data
     }
 
+    /// Vanilla `TrialSpawnerStateData.getUpdateTag`: only what the client renders.
+    #[must_use]
+    pub fn update_tag(&self, state: TrialSpawnerState) -> NbtCompound {
+        let mut nbt = NbtCompound::new();
+        if state == TrialSpawnerState::Active {
+            nbt.put_long("next_mob_spawns_at", self.next_mob_spawns_at);
+        }
+        if let Some(spawn_data) = &self.next_spawn_data {
+            let mut spawn_cmp = NbtCompound::new();
+            spawn_data.write_nbt(&mut spawn_cmp);
+            nbt.put_compound("spawn_data", spawn_cmp);
+        }
+        nbt
+    }
+
     pub fn write_nbt(&self, nbt: &mut NbtCompound) {
         let write_uuid_list = |set: &FxHashSet<Uuid>| -> Vec<NbtTag> {
             set.iter()
@@ -1503,12 +1518,12 @@ impl BlockEntity for TrialSpawnerBlockEntity {
         }
     }
 
-    fn chunk_data_nbt(&self) -> Option<NbtCompound> {
-        self.trial_spawner.try_lock().ok().map(|spawner| {
-            let mut nbt = NbtCompound::new();
-            spawner.store(&mut nbt);
-            nbt
-        })
+    fn update_tag(&self, state_id: pumpkin_data::BlockStateId) -> Option<NbtCompound> {
+        let state = TrialSpawnerLikeProperties::from_state_id(state_id).trial_spawner_state;
+        self.trial_spawner
+            .try_lock()
+            .ok()
+            .map(|spawner| spawner.data.update_tag(state))
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

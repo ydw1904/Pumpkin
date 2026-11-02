@@ -2080,7 +2080,7 @@ impl World {
                     &pumpkin_protocol::bedrock::client::CUpdateBlock::new(block_pos, be_block_id),
                 );
                 if let Some(block_entity) = self.get_block_entity(&block_pos)
-                    && let Some(nbt) = block_entity.update_packet_nbt()
+                    && let Some(nbt) = block_entity.update_packet_nbt(block_state_id)
                 {
                     let bytes = pumpkin_nbt::Nbt::from(nbt).write_unnamed();
                     self.broadcast_to_chunk(
@@ -2151,9 +2151,9 @@ impl World {
                     recipients_by_version,
                 );
 
-                for (block_pos, _) in &updates {
+                for (block_pos, block_state_id) in &updates {
                     if let Some(block_entity) = self.get_block_entity(block_pos)
-                        && let Some(nbt) = block_entity.update_packet_nbt()
+                        && let Some(nbt) = block_entity.update_packet_nbt(*block_state_id)
                     {
                         let bytes = pumpkin_nbt::Nbt::from(nbt).write_unnamed();
                         self.broadcast_to_chunk(
@@ -7156,8 +7156,9 @@ impl World {
             self.unmodelled_block_entity_nbt.remove(&block_pos);
         }
         let saved_nbt = self.saved_block_entity_nbt(block_entity.as_ref());
+        let state = self.get_block_state(&block_pos);
 
-        if let Some(nbt) = block_entity.update_packet_nbt() {
+        if let Some(nbt) = block_entity.update_packet_nbt(state.id) {
             let bytes = pumpkin_nbt::Nbt::from(nbt).write_unnamed();
             self.broadcast_to_chunk(
                 chunk_pos,
@@ -7169,7 +7170,6 @@ impl World {
             );
         }
 
-        let state = self.get_block_state(&block_pos);
         if let Some(data) = bedrock_chest_block_actor(state.id, block_pos)
             .or_else(|| block_entity.bedrock_block_actor_data(state.id))
         {
@@ -7318,8 +7318,9 @@ impl World {
     pub fn update_block_entity(&self, block_entity: &Arc<dyn BlockEntity>) {
         let block_pos = block_entity.get_position();
         let chunk_pos = block_pos.chunk_position();
+        let state = self.get_block_state(&block_pos);
 
-        if let Some(nbt) = block_entity.update_packet_nbt() {
+        if let Some(nbt) = block_entity.update_packet_nbt(state.id) {
             let bytes = pumpkin_nbt::Nbt::from(nbt).write_unnamed();
             self.broadcast_to_chunk(
                 chunk_pos,
@@ -7335,7 +7336,6 @@ impl World {
             &self.saved_block_entity_nbt(block_entity.as_ref()),
         );
 
-        let state = self.get_block_state(&block_pos);
         if let Some(data) = bedrock_chest_block_actor(state.id, block_pos)
             .or_else(|| block_entity.bedrock_block_actor_data(state.id))
         {

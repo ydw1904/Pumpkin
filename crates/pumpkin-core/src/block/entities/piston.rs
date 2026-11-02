@@ -305,7 +305,7 @@ impl BlockEntity for PistonBlockEntity {
     }
 
     // The client animates moving blocks itself from the piston block event.
-    fn update_packet_nbt(&self) -> Option<NbtCompound> {
+    fn update_packet_nbt(&self, _state_id: pumpkin_data::BlockStateId) -> Option<NbtCompound> {
         None
     }
 

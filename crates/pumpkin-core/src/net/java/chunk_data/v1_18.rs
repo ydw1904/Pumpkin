@@ -207,8 +207,16 @@ pub fn write_chunk_data(
 
         // Vanilla `BlockEntityInfo.create` sends the block entity's update tag, never its
         // saved data, so clients can't read chest contents and the like.
+        let state_id = chunk
+            .section
+            .get_block_absolute_y(
+                get_local_cord(pos.0.x) as usize,
+                pos.0.y,
+                get_local_cord(pos.0.z) as usize,
+            )
+            .unwrap_or_default();
         let update_tag = block_entity_from_nbt(nbt)
-            .and_then(|block_entity| block_entity.chunk_data_nbt())
+            .and_then(|block_entity| block_entity.update_tag(state_id))
             .filter(|tag| !tag.is_empty());
         write.write_compound_nbt_with_version(update_tag.as_ref(), version)?;
     }
