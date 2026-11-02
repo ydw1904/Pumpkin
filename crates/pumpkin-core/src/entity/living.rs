@@ -2769,6 +2769,8 @@ impl LivingEntity {
             }
 
             if show_death_messages && let Some(server) = world.server.upgrade() {
+                // Vanilla's `PlayerList.broadcastSystemMessage` also logs it to the console.
+                tracing::info!("{}", final_death_message.clone().to_pretty_console());
                 for player in server.get_all_players() {
                     player.send_system_message(&final_death_message);
                 }
