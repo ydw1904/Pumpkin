@@ -30,6 +30,8 @@ pub struct TridentEntity {
     pub life: AtomicU32,
     pub shake_time: AtomicU8,
     pub has_hit: AtomicBool,
+    /// Vanilla `dealtDamage`: a trident hurts at most one entity.
+    pub dealt_damage: AtomicBool,
     pub last_block_pos: Arc<std::sync::RwLock<Option<BlockPos>>>,
 }
 
@@ -51,6 +53,7 @@ impl TridentEntity {
             life: AtomicU32::new(0),
             shake_time: AtomicU8::new(0),
             has_hit: AtomicBool::new(false),
+            dealt_damage: AtomicBool::new(false),
             last_block_pos: Arc::new(std::sync::RwLock::new(None)),
         }
     }
@@ -76,6 +79,7 @@ impl TridentEntity {
             life: AtomicU32::new(0),
             shake_time: AtomicU8::new(0),
             has_hit: AtomicBool::new(false),
+            dealt_damage: AtomicBool::new(false),
             last_block_pos: Arc::new(std::sync::RwLock::new(None)),
         }
     }
@@ -264,7 +268,11 @@ impl EntityBase for TridentEntity {
         }
 
         // Entity collisions, players included
-        let candidates = world.get_all_at_box(&search_box);
+        let candidates = if self.dealt_damage.load(Ordering::Relaxed) {
+            Vec::new()
+        } else {
+            world.get_all_at_box(&search_box)
+        };
         for cand in candidates {
             if self.should_skip_collision(entity, &cand) {
                 continue;
@@ -365,6 +373,7 @@ impl EntityBase for TridentEntity {
                     }
                 }
 
+                self.dealt_damage.store(true, Ordering::Relaxed);
                 let owner = self.owner.get(&world);
                 target.damage_with_context(
                     target.as_ref(),
