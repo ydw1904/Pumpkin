@@ -36,6 +36,8 @@ const BLOCK_UPDATE_REACH: f64 = SIGNAL_MAX as f64 + 2.0;
 /// Grid cell size for large boxes.
 const CELL_SIZE: f64 = 16.0;
 const SMALL_CELL_SIZE: f64 = 4.0;
+/// Wider boxes, like the reach of unaudited mobs, use cells of this size.
+const LARGE_CELL_SIZE: f64 = 64.0;
 const MIN_COLUMN_DENSITY: usize = 32;
 
 /// Largest speed one `Entity.push` adds.
@@ -958,6 +960,10 @@ pub fn check_reached(entity_id: i32) {
     let _ = entity_id;
 }
 
+fn is_large(area: &BoundingBox) -> bool {
+    area.max.x - area.min.x > LARGE_CELL_SIZE || area.max.z - area.min.z > LARGE_CELL_SIZE
+}
+
 /// Touching faces count as overlapping.
 fn overlaps(a: &BoundingBox, b: &BoundingBox) -> bool {
     a.min.x <= b.max.x
@@ -993,6 +999,7 @@ struct Grid {
     refined: bool,
     small_cells: FxHashMap<(i32, i32), Cell>,
     cells: FxHashMap<(i32, i32), Cell>,
+    large_cells: FxHashMap<(i32, i32), Cell>,
     boxes: Vec<BoundingBox>,
 }
 
@@ -1014,7 +1021,9 @@ impl Grid {
             self.refined = true;
             self.cells.clear();
             for slot in 0..self.boxes.len() {
-                self.insert_cells(slot, self.boxes[slot], budget)?;
+                if !is_large(&self.boxes[slot]) {
+                    self.insert_cells(slot, self.boxes[slot], budget)?;
+                }
             }
         }
         Some(())
@@ -1026,7 +1035,9 @@ impl Grid {
         area: BoundingBox,
         budget: &mut PlanningBudget,
     ) -> Option<()> {
-        let (cells, size) = if self.refined
+        let (cells, size) = if is_large(&area) {
+            (&mut self.large_cells, LARGE_CELL_SIZE)
+        } else if self.refined
             && area.max.x - area.min.x <= SMALL_CELL_SIZE
             && area.max.z - area.min.z <= SMALL_CELL_SIZE
         {
@@ -1062,6 +1073,7 @@ impl Grid {
         for (cells, size) in [
             (&self.small_cells, SMALL_CELL_SIZE),
             (&self.cells, CELL_SIZE),
+            (&self.large_cells, LARGE_CELL_SIZE),
         ] {
             if cells.is_empty() {
                 continue;
@@ -1095,6 +1107,7 @@ impl Grid {
         for (cells, size) in [
             (&mut self.small_cells, SMALL_CELL_SIZE),
             (&mut self.cells, CELL_SIZE),
+            (&mut self.large_cells, LARGE_CELL_SIZE),
         ] {
             if cells.is_empty() {
                 continue;
@@ -1685,7 +1698,7 @@ mod tests {
             .living_entity
             .set_attribute_base(&Attributes::FOLLOW_RANGE, 1000.0);
         let config = EntityIslandsConfig::default();
-        let reports = (0..16)
+        let reports = (0..256)
             .map(|_| EntityReach::of(zombie.as_ref(), &config))
             .collect();
         assert!(resolve(reports, &config).is_none());
