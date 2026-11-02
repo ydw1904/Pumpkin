@@ -6,6 +6,7 @@ use pumpkin_util::math::vector2::Vector2;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
+use pumpkin_world::lighting::LightEngine;
 use pumpkin_world::world::BlockFlags;
 
 use crate::command::argument_builder::{
@@ -225,6 +226,18 @@ fn fill_blocks(
     if count == 0 {
         return Err(ERROR_FAILED.create_without_context());
     }
+
+    let light_checks = changed_positions
+        .iter()
+        .filter(|&&(_, old_id, new_id)| {
+            LightEngine::has_different_light_properties(old_id.to_state(), new_id.to_state())
+        })
+        .map(|&(pos, _, _)| pos)
+        .collect::<Vec<_>>();
+    world
+        .level
+        .light_engine
+        .update_lighting(&world.level, &light_checks);
 
     // Queued before the callbacks so blocks they change, such as a golem clearing its
     // pattern, reach clients in their final state.

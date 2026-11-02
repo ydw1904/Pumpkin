@@ -130,18 +130,23 @@ impl DynamicLightEngine {
     /// Updates block and sky light after the block at `pos` changed, like vanilla
     /// `LevelLightEngine.checkBlock` followed by `runLightUpdates`.
     pub fn update_lighting_at(&self, level: &Arc<Level>, pos: BlockPos) {
-        match level.lighting_config {
-            LightingEngineConfig::Full => {
-                self.set_block_light_level(level, &pos, 15).ok();
-                self.set_sky_light_level(level, &pos, 15).ok();
-                return;
+        self.update_lighting(level, &[pos]);
+    }
+
+    /// Updates light after several blocks changed, checking all of them before propagating like
+    /// vanilla does for the block checks queued between two light updates.
+    pub fn update_lighting(&self, level: &Arc<Level>, positions: &[BlockPos]) {
+        let fixed_level = match level.lighting_config {
+            LightingEngineConfig::Full => Some(15),
+            LightingEngineConfig::Dark => Some(0),
+            LightingEngineConfig::Default => None,
+        };
+        if let Some(value) = fixed_level {
+            for pos in positions {
+                self.set_block_light_level(level, pos, value).ok();
+                self.set_sky_light_level(level, pos, value).ok();
             }
-            LightingEngineConfig::Dark => {
-                self.set_block_light_level(level, &pos, 0).ok();
-                self.set_sky_light_level(level, &pos, 0).ok();
-                return;
-            }
-            LightingEngineConfig::Default => {}
+            return;
         }
 
         let mut storage = LevelLightStorage {
@@ -151,12 +156,16 @@ impl DynamicLightEngine {
         };
 
         let mut block_light = LayerLightEngine::new(LightLayer::Block);
-        block_light.check_node(&mut storage, pos);
+        for &pos in positions {
+            block_light.check_node(&mut storage, pos);
+        }
         block_light.run_updates(&mut storage);
 
         if level.world_gen.load().dimension().has_skylight {
             let mut sky_light = LayerLightEngine::new(LightLayer::Sky);
-            sky_light.check_node(&mut storage, pos);
+            for &pos in positions {
+                sky_light.check_node(&mut storage, pos);
+            }
             sky_light.run_updates(&mut storage);
         }
     }
