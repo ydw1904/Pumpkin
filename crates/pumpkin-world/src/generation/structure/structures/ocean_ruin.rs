@@ -430,7 +430,11 @@ impl OceanRuinPiece {
         }
     }
 
-    fn calculate_height(pos: Vector3<i32>, corner: Vector3<i32>, chunk: &ProtoChunk) -> i32 {
+    fn calculate_height(
+        pos: Vector3<i32>,
+        corner: Vector3<i32>,
+        chunk: &dyn GenerationCache,
+    ) -> i32 {
         let mut new_y = pos.y;
         let mut min_y = 512;
         let top_y = new_y - 1;
@@ -497,8 +501,7 @@ impl StructurePieceBase for OceanRuinPiece {
         _seed: i64,
         chunk_box: &BlockBox,
     ) {
-        let chunk = region.get_center_chunk_mut();
-        let height = chunk.get_top_y(
+        let height = region.get_top_y(
             &HeightMap::OceanFloorWg,
             self.template_position.x,
             self.template_position.z,
@@ -512,7 +515,7 @@ impl StructurePieceBase for OceanRuinPiece {
             Vector3::new(0, 0, 0),
         ) + pos;
 
-        pos.y = Self::calculate_height(pos, corner, chunk);
+        pos.y = Self::calculate_height(pos, corner, region);
         self.template_position = pos;
         let place_settings = StructurePlaceSettings::new()
             .set_rotation(self.rotation)
@@ -522,6 +525,7 @@ impl StructurePieceBase for OceanRuinPiece {
             .get_bounding_box(&place_settings, self.template_position);
         let box_limit = self.piece.bounding_box;
 
+        let chunk = region.get_center_chunk_mut();
         let mut suspicious_count = 0;
         let mut placement = TemplateBlockPlacement::new(true, false);
         let mut data_markers = Vec::new();

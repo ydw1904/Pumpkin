@@ -350,7 +350,6 @@ impl StructurePieceBase for IglooPiece {
         _seed: i64,
         chunk_box: &BlockBox,
     ) {
-        let chunk = region.get_center_chunk_mut();
         let settings = make_settings(self.place_settings.get_rotation(), &self.template_name);
         let offset = get_offset(&self.template_name);
         let entrance_rel = StructureTemplate::calculate_relative_position(
@@ -358,7 +357,7 @@ impl StructurePieceBase for IglooPiece {
             Vector3::new(3 - offset.x, 0, -offset.z),
         );
         let entrance_pos = self.template_position + entrance_rel;
-        let height = chunk.get_top_y(
+        let height = region.get_top_y(
             &pumpkin_util::HeightMap::WorldSurfaceWg,
             entrance_pos.x,
             entrance_pos.z,

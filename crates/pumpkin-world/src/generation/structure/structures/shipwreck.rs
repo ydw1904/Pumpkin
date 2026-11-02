@@ -281,7 +281,6 @@ impl StructurePieceBase for ShipwreckPiece {
         _seed: i64,
         chunk_box: &BlockBox,
     ) {
-        let chunk = region.get_center_chunk_mut();
         if !self.height_adjusted && !self.is_too_big_to_fit_in_world_gen_region() {
             let heightmap_type = if self.is_beached {
                 HeightMap::WorldSurfaceWg
@@ -293,7 +292,7 @@ impl StructurePieceBase for ShipwreckPiece {
             let base_size = template_size.x * template_size.z;
 
             let (mean, min_y) = if base_size == 0 {
-                let h = chunk.get_top_y(
+                let h = region.get_top_y(
                     &heightmap_type,
                     self.template_position.x,
                     self.template_position.z,
@@ -304,7 +303,7 @@ impl StructurePieceBase for ShipwreckPiece {
                 let mut total = 0;
                 for x in self.template_position.x..self.template_position.x + template_size.x {
                     for z in self.template_position.z..self.template_position.z + template_size.z {
-                        let h = chunk.get_top_y(&heightmap_type, x, z);
+                        let h = region.get_top_y(&heightmap_type, x, z);
                         total += h;
                         min_y = min_y.min(h);
                     }
@@ -322,6 +321,7 @@ impl StructurePieceBase for ShipwreckPiece {
         }
 
         // Place non-marker blocks
+        let chunk = region.get_center_chunk_mut();
         let box_limit = self.piece.bounding_box;
         let mut placement = TemplateBlockPlacement::new(true, false);
         for block in &self.template.blocks {
