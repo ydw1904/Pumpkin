@@ -21,6 +21,27 @@ pub struct SignBlockEntity {
 
 pub type Text = SignText;
 
+/// A sign line is kept as its plain text, or as the component's JSON when it is styled.
+fn message_from_nbt(tag: &NbtTag) -> Box<str> {
+    match tag {
+        NbtTag::String(text) => text.clone(),
+        styled => serde_json::to_string(&TextComponent::from_nbt(styled).0)
+            .map(Box::from)
+            .unwrap_or_default(),
+    }
+}
+
+/// Saves a sign line as the text component vanilla's `ComponentSerialization.CODEC` reads.
+fn message_to_nbt(message: &str) -> NbtTag {
+    if message.starts_with('{')
+        && let Ok(component) = serde_json::from_str::<TextComponent>(message)
+    {
+        component.0.to_nbt_tag()
+    } else {
+        NbtTag::String(message.into())
+    }
+}
+
 pub struct SignText {
     pub has_glowing_text: AtomicBool,
     color: AtomicI8,
@@ -66,7 +87,7 @@ impl From<SignText> for NbtTag {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         nbt.put_list(
             "messages",
-            messages.iter().map(|s| Self::String(s.clone())).collect(),
+            messages.iter().map(|s| message_to_nbt(s)).collect(),
         );
 
         let filtered_messages = value
@@ -78,7 +99,7 @@ impl From<SignText> for NbtTag {
                 "filtered_messages",
                 filtered_messages
                     .iter()
-                    .map(|s| Self::String(s.clone()))
+                    .map(|s| message_to_nbt(s))
                     .collect(),
             );
         }
@@ -94,11 +115,9 @@ impl From<NbtTag> for SignText {
         };
         let has_glowing_text = nbt.get_bool("has_glowing_text").unwrap_or(false);
         let color = nbt.get_string("color").unwrap_or("black");
-        let messages: Vec<Box<str>> = nbt.get_list("messages").map_or_else(Vec::new, |list| {
-            list.iter()
-                .filter_map(|tag| tag.extract_string().map(Box::from))
-                .collect()
-        });
+        let messages: Vec<Box<str>> = nbt
+            .get_list("messages")
+            .map_or_else(Vec::new, |list| list.iter().map(message_from_nbt).collect());
         let get_message =
             |i: usize| -> Box<str> { messages.get(i).cloned().unwrap_or_else(|| Box::from("")) };
 
@@ -109,12 +128,9 @@ impl From<NbtTag> for SignText {
             get_message(3),
         ];
 
-        let filtered_messages: Option<Vec<Box<str>>> =
-            nbt.get_list("filtered_messages").map(|list| {
-                list.iter()
-                    .filter_map(|tag| tag.extract_string().map(Box::from))
-                    .collect()
-            });
+        let filtered_messages: Option<Vec<Box<str>>> = nbt
+            .get_list("filtered_messages")
+            .map(|list| list.iter().map(message_from_nbt).collect());
 
         let parsed_filtered = filtered_messages.map_or_else(
             || parsed_messages.clone(),
@@ -497,5 +513,35 @@ impl<'a> SignEntityRef<'a> {
             Self::Sign(s) => &s.currently_editing_player,
             Self::Hanging(s) => &s.currently_editing_player,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Vanilla saves a styled line as a component compound; skipping it shifted the lines up.
+    #[test]
+    fn styled_sign_lines_survive_a_save() {
+        let mut styled = NbtCompound::new();
+        styled.put_string("text", "front two".to_string());
+        styled.put_string("color", "blue".to_string());
+        let lines = vec![
+            NbtTag::String("front one".into()),
+            NbtTag::Compound(styled),
+            NbtTag::String("".into()),
+            NbtTag::String("".into()),
+        ];
+        let mut text = NbtCompound::new();
+        text.put("messages", NbtTag::List(lines.clone()));
+
+        let saved: NbtTag = SignText::from(NbtTag::Compound(text)).into();
+
+        assert_eq!(
+            saved
+                .extract_compound()
+                .and_then(|c| c.get_list("messages")),
+            Some(lines.as_slice())
+        );
     }
 }
