@@ -1,21 +1,27 @@
+use std::sync::MutexGuard;
+
 use crate::command::argument_builder::{
     ArgumentBuilder, LiteralArgumentBuilder, argument, command, literal,
 };
 use crate::command::argument_types::component::ComponentArgumentType;
 use crate::command::argument_types::core::bool::BoolArgumentType;
 use crate::command::argument_types::core::string::StringArgumentType;
-use crate::command::argument_types::score_holder::ScoreHolderArgumentType;
+use crate::command::argument_types::score_holder::{ResolvedScoreHolder, ScoreHolderArgumentType};
 use crate::command::argument_types::team::TeamArgumentType;
 use crate::command::argument_types::team_color::TeamColorArgumentType;
 use crate::command::context::command_context::CommandContext;
+use crate::command::context::command_source::REQUIRES_ENTITY;
+use crate::command::errors::command_syntax_error::CommandSyntaxError;
 use crate::command::errors::error_types::CommandErrorType;
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
-use crate::world::scoreboard::{CollisionRule, NameTagVisibility, Team};
+use crate::world::World;
+use crate::world::scoreboard::{CollisionRule, NameTagVisibility, Scoreboard, Team};
 use pumpkin_data::translation;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
+use pumpkin_util::text::color::NamedColor;
 
 const DESCRIPTION: &str = "Manages teams.";
 const PERMISSION: &str = "minecraft:command.team";
@@ -39,7 +45,7 @@ const TEAM_NOT_FOUND_ERROR: CommandErrorType<1> = CommandErrorType::new(
     translation::java::TEAM_NOTFOUND,
 );
 
-const EMPTY_UNCHANGED_ERROR: CommandErrorType<1> = CommandErrorType::new(
+const EMPTY_UNCHANGED_ERROR: CommandErrorType<0> = CommandErrorType::new(
     translation::java::COMMANDS_TEAM_EMPTY_UNCHANGED,
     translation::java::COMMANDS_TEAM_EMPTY_UNCHANGED,
 );
@@ -89,35 +95,65 @@ const SEE_FRIENDLY_INVISIBLES_ALREADY_DISABLED_ERROR: CommandErrorType<0> = Comm
     translation::java::COMMANDS_TEAM_OPTION_SEEFRIENDLYINVISIBLES_ALREADYDISABLED,
 );
 
+fn lock_scoreboard(world: &World) -> MutexGuard<'_, Scoreboard> {
+    world
+        .scoreboard
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn translated<const N: usize>(key: &'static str, args: [TextComponent; N]) -> TextComponent {
+    TextComponent::translate_cross(key, key, args)
+}
+
+/// Vanilla `TeamArgument.getTeam`.
+fn team_or_error(scoreboard: &Scoreboard, name: &str) -> Result<Team, CommandSyntaxError> {
+    scoreboard.get_team(name).cloned().ok_or_else(|| {
+        TEAM_NOT_FOUND_ERROR.create_without_context(TextComponent::text(name.to_string()))
+    })
+}
+
+/// The feedback of vanilla's `CommandResponseTracker` for holders whose membership changed:
+/// the holder's name when only one changed, the count otherwise.
+fn changed_holders_feedback<const N: usize>(
+    changed: &[&ResolvedScoreHolder],
+    single_key: &'static str,
+    multiple_key: &'static str,
+    args: impl FnOnce(TextComponent) -> [TextComponent; N],
+) -> TextComponent {
+    if let [holder] = changed {
+        translated(single_key, args(holder.display_name.clone()))
+    } else {
+        translated(
+            multiple_key,
+            args(TextComponent::text(changed.len().to_string())),
+        )
+    }
+}
+
 struct TeamAddExecutor {
     has_display_name: bool,
 }
 
 impl CommandExecutor for TeamAddExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
-        let team_name = StringArgumentType::get(context, ARG_TEAM_NAME)?;
+        let team_name = StringArgumentType::get(context, ARG_TEAM_NAME)?.to_string();
         let display_name = if self.has_display_name {
             ComponentArgumentType::get(context, ARG_DISPLAY_NAME)?
         } else {
-            TextComponent::text(team_name.to_string())
+            TextComponent::text(team_name.clone())
         };
 
         let world = context.world().clone();
-        let team_name_owned = team_name.to_string();
-        let display_name_clone = display_name;
+        let mut scoreboard = lock_scoreboard(&world);
 
-        let mut scoreboard = world
-            .scoreboard
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        if scoreboard.get_teams().contains_key(&team_name_owned) {
+        if scoreboard.get_teams().contains_key(&team_name) {
             return Err(DUPLICATE_TEAM_ERROR.create_without_context());
         }
 
         let new_team = Team {
-            name: team_name_owned,
-            display_name: display_name_clone.clone(),
+            name: team_name,
+            display_name,
             options: Team::ALLOW_FRIENDLY_FIRE | Team::SEE_FRIENDLY_INVISIBLES,
             nametag_visibility: NameTagVisibility::Always,
             death_message_visibility: NameTagVisibility::Always,
@@ -127,19 +163,17 @@ impl CommandExecutor for TeamAddExecutor {
             player_suffix: TextComponent::empty(),
             players: vec![],
         };
-
-        scoreboard.add_team(&world, new_team);
-
-        context.source.send_feedback(
-            TextComponent::translate_cross(
-                translation::java::COMMANDS_TEAM_ADD_SUCCESS,
-                translation::java::COMMANDS_TEAM_ADD_SUCCESS,
-                [display_name_clone],
-            ),
-            true,
+        let feedback = translated(
+            translation::java::COMMANDS_TEAM_ADD_SUCCESS,
+            [new_team.formatted_display_name()],
         );
 
-        Ok(1)
+        scoreboard.add_team(&world, new_team);
+        let count = scoreboard.get_teams().len();
+        drop(scoreboard);
+
+        context.source.send_feedback(feedback, true);
+        Ok(count as i32)
     }
 }
 
@@ -148,35 +182,22 @@ struct TeamRemoveExecutor;
 impl CommandExecutor for TeamRemoveExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
         let team_name = TeamArgumentType::get(context, ARG_TEAM)?;
-
         let world = context.world().clone();
-        let team_name_owned = team_name.to_string();
+        let mut scoreboard = lock_scoreboard(&world);
+        let team = team_or_error(&scoreboard, team_name)?;
 
-        let mut scoreboard = world
-            .scoreboard
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        let Some(team) = scoreboard.get_teams().get(&team_name_owned) else {
-            return Err(
-                TEAM_NOT_FOUND_ERROR.create_without_context(TextComponent::text(team_name_owned))
-            );
-        };
-
-        let team_display_name = team.display_name.clone();
-
-        scoreboard.remove_team(&world, &team_name_owned);
+        scoreboard.remove_team(&world, team_name);
+        let count = scoreboard.get_teams().len();
+        drop(scoreboard);
 
         context.source.send_feedback(
-            TextComponent::translate_cross(
+            translated(
                 translation::java::COMMANDS_TEAM_REMOVE_SUCCESS,
-                translation::java::COMMANDS_TEAM_REMOVE_SUCCESS,
-                [team_display_name],
+                [team.formatted_display_name()],
             ),
             true,
         );
-
-        Ok(1)
+        Ok(count as i32)
     }
 }
 
@@ -185,46 +206,46 @@ struct TeamEmptyExecutor;
 impl CommandExecutor for TeamEmptyExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
         let team_name = TeamArgumentType::get(context, ARG_TEAM)?;
-
         let world = context.world().clone();
-        let team_name_owned = team_name.to_string();
+        let mut scoreboard = lock_scoreboard(&world);
+        let team = team_or_error(&scoreboard, team_name)?;
 
-        let mut scoreboard = world
-            .scoreboard
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        let Some(team) = scoreboard.get_teams().get(&team_name_owned) else {
-            return Err(
-                TEAM_NOT_FOUND_ERROR.create_without_context(TextComponent::text(team_name_owned))
-            );
-        };
-
-        let team_display_name = team.display_name.clone();
-        let players_to_remove = team.players.clone();
-
-        if players_to_remove.is_empty() {
-            return Err(EMPTY_UNCHANGED_ERROR.create_without_context(team_display_name));
+        if team.players.is_empty() {
+            return Err(EMPTY_UNCHANGED_ERROR.create_without_context());
         }
-
-        for player in &players_to_remove {
-            scoreboard.remove_player_from_team(&world, &team_name_owned, player);
+        for player in &team.players {
+            scoreboard.remove_player_from_team(&world, team_name, player);
         }
+        drop(scoreboard);
 
         context.source.send_feedback(
-            TextComponent::translate_cross(
-                translation::java::COMMANDS_TEAM_EMPTY_SUCCESS,
+            translated(
                 translation::java::COMMANDS_TEAM_EMPTY_SUCCESS,
                 [
-                    TextComponent::text(players_to_remove.len().to_string()),
-                    team_display_name,
+                    TextComponent::text(team.players.len().to_string()),
+                    team.formatted_display_name(),
                 ],
             ),
             true,
         );
-
-        Ok(1)
+        Ok(team.players.len() as i32)
     }
+}
+
+/// The holders `team join`/`leave` act on; without `members`, the executing entity.
+fn members(
+    context: &CommandContext,
+    has_members: bool,
+) -> Result<Vec<ResolvedScoreHolder>, CommandSyntaxError> {
+    if has_members {
+        return ScoreHolderArgumentType::get_score_holders(context, ARG_MEMBERS);
+    }
+    let entity = context
+        .source
+        .entity
+        .as_ref()
+        .ok_or_else(|| REQUIRES_ENTITY.create_without_context())?;
+    Ok(vec![ResolvedScoreHolder::entity(entity.as_ref())])
 }
 
 struct TeamJoinExecutor {
@@ -234,117 +255,63 @@ struct TeamJoinExecutor {
 impl CommandExecutor for TeamJoinExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
         let team_name = TeamArgumentType::get(context, ARG_TEAM)?;
-
-        let entity_names = if self.has_members {
-            ScoreHolderArgumentType::get_score_holders(context, ARG_MEMBERS)?
-                .into_iter()
-                .map(|holder| holder.name)
-                .collect::<Vec<_>>()
-        } else {
-            let sender_name = context.source.name.clone();
-            vec![sender_name]
-        };
+        let holders = members(context, self.has_members)?;
 
         let world = context.world().clone();
-        let team_name_owned = team_name.to_string();
-        let count = entity_names.len();
+        let mut scoreboard = lock_scoreboard(&world);
+        let team = team_or_error(&scoreboard, team_name)?;
 
-        let mut scoreboard = world
-            .scoreboard
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let joined: Vec<&ResolvedScoreHolder> = holders
+            .iter()
+            .filter(|holder| scoreboard.add_player_to_team(&world, team_name, holder.name.clone()))
+            .collect();
+        drop(scoreboard);
 
-        let Some(team) = scoreboard.get_teams().get(&team_name_owned) else {
-            return Err(
-                TEAM_NOT_FOUND_ERROR.create_without_context(TextComponent::text(team_name_owned))
-            );
-        };
-
-        let team_display_name = team.display_name.clone();
-
-        for name in &entity_names {
-            scoreboard.add_player_to_team(&world, &team_name_owned, name.clone());
-        }
-
-        let msg = if count == 1 {
-            TextComponent::translate_cross(
+        context.source.send_feedback(
+            changed_holders_feedback(
+                &joined,
                 translation::java::COMMANDS_TEAM_JOIN_SUCCESS_SINGLE,
-                translation::java::COMMANDS_TEAM_JOIN_SUCCESS_SINGLE,
-                [
-                    TextComponent::text(entity_names[0].clone()),
-                    team_display_name,
-                ],
-            )
-        } else {
-            TextComponent::translate_cross(
                 translation::java::COMMANDS_TEAM_JOIN_SUCCESS_MULTIPLE,
-                translation::java::COMMANDS_TEAM_JOIN_SUCCESS_MULTIPLE,
-                [TextComponent::text(count.to_string()), team_display_name],
-            )
-        };
-
-        context.source.send_feedback(msg, true);
-
-        Ok(count as i32)
+                |holder| [holder, team.formatted_display_name()],
+            ),
+            true,
+        );
+        Ok(joined.len() as i32)
     }
 }
 
-struct TeamLeaveExecutor {
-    has_members: bool,
-}
+struct TeamLeaveExecutor;
 
 impl CommandExecutor for TeamLeaveExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
-        let entity_names = if self.has_members {
-            ScoreHolderArgumentType::get_score_holders(context, ARG_MEMBERS)?
-                .into_iter()
-                .map(|holder| holder.name)
-                .collect::<Vec<_>>()
-        } else {
-            let sender_name = context.source.name.clone();
-            vec![sender_name]
-        };
-
-        let count = entity_names.len() as i32;
+        let holders = members(context, true)?;
         let world = context.world().clone();
+        let mut scoreboard = lock_scoreboard(&world);
 
-        let mut scoreboard = world
-            .scoreboard
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let left: Vec<&ResolvedScoreHolder> = holders
+            .iter()
+            .filter(|holder| {
+                let Some(team_name) = scoreboard
+                    .get_entity_team(&holder.name)
+                    .map(|team| team.name.clone())
+                else {
+                    return false;
+                };
+                scoreboard.remove_player_from_team(&world, &team_name, &holder.name)
+            })
+            .collect();
+        drop(scoreboard);
 
-        let mut removed_count = 0;
-        for name in &entity_names {
-            let mut found_team = None;
-            for team in scoreboard.get_teams().values() {
-                if team.players.contains(name) {
-                    found_team = Some(team.name.clone());
-                    break;
-                }
-            }
-            if let Some(team_name) = found_team {
-                scoreboard.remove_player_from_team(&world, &team_name, name);
-                removed_count += 1;
-            }
-        }
-
-        let msg = if entity_names.len() == 1 {
-            TextComponent::translate_cross(
+        context.source.send_feedback(
+            changed_holders_feedback(
+                &left,
                 translation::java::COMMANDS_TEAM_LEAVE_SUCCESS_SINGLE,
-                translation::java::COMMANDS_TEAM_LEAVE_SUCCESS_SINGLE,
-                [TextComponent::text(entity_names[0].clone())],
-            )
-        } else {
-            TextComponent::translate_cross(
                 translation::java::COMMANDS_TEAM_LEAVE_SUCCESS_MULTIPLE,
-                translation::java::COMMANDS_TEAM_LEAVE_SUCCESS_MULTIPLE,
-                [TextComponent::text(removed_count.to_string())],
-            )
-        };
-
-        context.source.send_feedback(msg, true);
-
-        Ok(count)
+                |holder| [holder],
+            ),
+            true,
+        );
+        Ok(left.len() as i32)
     }
 }
 
@@ -355,579 +322,279 @@ struct TeamListExecutor {
 impl CommandExecutor for TeamListExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
         let world = context.world().clone();
-        let has_team = self.has_team;
-        let team_name = if has_team {
-            Some(TeamArgumentType::get(context, ARG_TEAM)?.to_string())
-        } else {
-            None
-        };
+        let scoreboard = lock_scoreboard(&world);
 
-        let scoreboard = world
-            .scoreboard
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        if let Some(team_name) = team_name {
-            let Some(team) = scoreboard.get_teams().get(&team_name) else {
-                return Err(
-                    TEAM_NOT_FOUND_ERROR.create_without_context(TextComponent::text(team_name))
-                );
-            };
-
+        let (feedback, count) = if self.has_team {
+            let team = team_or_error(&scoreboard, TeamArgumentType::get(context, ARG_TEAM)?)?;
             if team.players.is_empty() {
-                context.source.send_feedback(
-                    TextComponent::translate_cross(
+                (
+                    translated(
                         translation::java::COMMANDS_TEAM_LIST_MEMBERS_EMPTY,
-                        translation::java::COMMANDS_TEAM_LIST_MEMBERS_EMPTY,
-                        [team.display_name.clone()],
+                        [team.formatted_display_name()],
                     ),
-                    false,
-                );
+                    0,
+                )
             } else {
-                let mut list_comp = TextComponent::empty();
-                for (i, player) in team.players.iter().enumerate() {
-                    if i > 0 {
-                        list_comp = list_comp.add_child(TextComponent::text(", "));
-                    }
-                    list_comp = list_comp.add_child(TextComponent::text(player.clone()));
-                }
-
-                context.source.send_feedback(
-                    TextComponent::translate_cross(
-                        translation::java::COMMANDS_TEAM_LIST_MEMBERS_SUCCESS,
+                // Vanilla `ComponentUtils.formatList(Collection<String>)` sorts the names and
+                // shows them in green.
+                let mut members = team.players.clone();
+                members.sort();
+                (
+                    translated(
                         translation::java::COMMANDS_TEAM_LIST_MEMBERS_SUCCESS,
                         [
-                            team.display_name.clone(),
-                            TextComponent::text(team.players.len().to_string()),
-                            list_comp,
+                            team.formatted_display_name(),
+                            TextComponent::text(members.len().to_string()),
+                            TextComponent::join_with_comma(
+                                members
+                                    .into_iter()
+                                    .map(|name| {
+                                        TextComponent::text(name).color_named(NamedColor::Green)
+                                    })
+                                    .collect(),
+                            ),
                         ],
                     ),
-                    false,
-                );
+                    team.players.len(),
+                )
             }
         } else {
             let teams = scoreboard.get_teams();
             if teams.is_empty() {
-                context.source.send_feedback(
-                    TextComponent::translate_cross(
-                        translation::java::COMMANDS_TEAM_LIST_TEAMS_EMPTY,
-                        translation::java::COMMANDS_TEAM_LIST_TEAMS_EMPTY,
-                        [],
-                    ),
-                    false,
-                );
+                (
+                    translated(translation::java::COMMANDS_TEAM_LIST_TEAMS_EMPTY, []),
+                    0,
+                )
             } else {
-                let mut list_comp = TextComponent::empty();
-                for (i, team) in teams.values().enumerate() {
-                    if i > 0 {
-                        list_comp = list_comp.add_child(TextComponent::text(", "));
-                    }
-                    list_comp = list_comp.add_child(team.display_name.clone());
-                }
+                (
+                    translated(
+                        translation::java::COMMANDS_TEAM_LIST_TEAMS_SUCCESS,
+                        [
+                            TextComponent::text(teams.len().to_string()),
+                            TextComponent::join_with_comma(
+                                teams.values().map(Team::formatted_display_name).collect(),
+                            ),
+                        ],
+                    ),
+                    teams.len(),
+                )
+            }
+        };
+        drop(scoreboard);
 
-                context.source.send_feedback(
-                    TextComponent::translate_cross(
-                        translation::java::COMMANDS_TEAM_LIST_TEAMS_SUCCESS,
-                        translation::java::COMMANDS_TEAM_LIST_TEAMS_SUCCESS,
-                        [TextComponent::text(teams.len().to_string()), list_comp],
+        context.source.send_feedback(feedback, false);
+        Ok(count as i32)
+    }
+}
+
+/// The `team modify` option an executor changes.
+#[derive(Clone, Copy)]
+enum TeamOption {
+    ColorReset,
+    Color,
+    DisplayName,
+    Prefix,
+    Suffix,
+    FriendlyFire,
+    SeeFriendlyInvisibles,
+    NametagVisibility(NameTagVisibility),
+    DeathMessageVisibility(NameTagVisibility),
+    CollisionRule(CollisionRule),
+}
+
+struct TeamModifyExecutor(TeamOption);
+
+impl TeamModifyExecutor {
+    /// Applies the option to `team` and returns the feedback, whether it is broadcast to
+    /// operators, and the command result, like vanilla `TeamCommand`'s setters.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one arm per vanilla `team modify` option"
+    )]
+    fn apply(
+        option: TeamOption,
+        context: &CommandContext,
+        team: &mut Team,
+    ) -> Result<(TextComponent, bool, i32), CommandSyntaxError> {
+        let (feedback, broadcast, result) = match option {
+            TeamOption::ColorReset => {
+                if team.color.is_none() {
+                    return Err(COLOR_UNCHANGED_ERROR.create_without_context());
+                }
+                team.color = None;
+                (
+                    translated(
+                        translation::java::COMMANDS_TEAM_OPTION_COLOR_CLEAR_SUCCESS,
+                        [team.formatted_display_name()],
+                    ),
+                    true,
+                    0,
+                )
+            }
+            TeamOption::Color => {
+                let color = TeamColorArgumentType::get(context, ARG_VALUE)?;
+                if team.color == Some(color) {
+                    return Err(COLOR_UNCHANGED_ERROR.create_without_context());
+                }
+                team.color = Some(color);
+                (
+                    translated(
+                        translation::java::COMMANDS_TEAM_OPTION_COLOR_SUCCESS,
+                        [
+                            team.formatted_display_name(),
+                            TextComponent::text(color.name()),
+                        ],
+                    ),
+                    true,
+                    0,
+                )
+            }
+            TeamOption::DisplayName => {
+                let display_name = ComponentArgumentType::get(context, ARG_DISPLAY_NAME)?;
+                if team.display_name == display_name {
+                    return Err(NAME_UNCHANGED_ERROR.create_without_context());
+                }
+                team.display_name = display_name;
+                (
+                    translated(
+                        translation::java::COMMANDS_TEAM_OPTION_NAME_SUCCESS,
+                        [team.formatted_display_name()],
+                    ),
+                    true,
+                    0,
+                )
+            }
+            // Vanilla doesn't broadcast prefix and suffix changes and returns 1 for them.
+            TeamOption::Prefix => {
+                let prefix = ComponentArgumentType::get(context, ARG_PREFIX)?;
+                team.player_prefix = prefix.clone();
+                (
+                    translated(
+                        translation::java::COMMANDS_TEAM_OPTION_PREFIX_SUCCESS,
+                        [prefix],
                     ),
                     false,
-                );
-            }
-        }
-
-        Ok(1)
-    }
-}
-
-struct TeamModifyColorResetExecutor;
-
-impl CommandExecutor for TeamModifyColorResetExecutor {
-    fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
-        let team_name = TeamArgumentType::get(context, ARG_TEAM)?;
-
-        let world = context.world().clone();
-        let team_name_owned = team_name.to_string();
-
-        let mut scoreboard = world
-            .scoreboard
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        let Some(team) = scoreboard.get_teams().get(&team_name_owned) else {
-            return Err(
-                TEAM_NOT_FOUND_ERROR.create_without_context(TextComponent::text(team_name_owned))
-            );
-        };
-
-        let mut team = team.clone();
-        if team.color.is_none() {
-            return Err(COLOR_UNCHANGED_ERROR.create_without_context());
-        }
-
-        team.color = None;
-        let team_display_name = team.display_name.clone();
-        scoreboard.update_team(&world, team);
-
-        context.source.send_feedback(
-            TextComponent::translate_cross(
-                translation::java::COMMANDS_TEAM_OPTION_COLOR_CLEAR_SUCCESS,
-                translation::java::COMMANDS_TEAM_OPTION_COLOR_CLEAR_SUCCESS,
-                [team_display_name],
-            ),
-            true,
-        );
-
-        Ok(1)
-    }
-}
-
-struct TeamModifyColorExecutor;
-
-impl CommandExecutor for TeamModifyColorExecutor {
-    fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
-        let team_name = TeamArgumentType::get(context, ARG_TEAM)?;
-        let new_color = TeamColorArgumentType::get(context, ARG_VALUE)?;
-
-        let world = context.world().clone();
-        let team_name_owned = team_name.to_string();
-
-        let mut scoreboard = world
-            .scoreboard
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        let Some(team) = scoreboard.get_teams().get(&team_name_owned) else {
-            return Err(
-                TEAM_NOT_FOUND_ERROR.create_without_context(TextComponent::text(team_name_owned))
-            );
-        };
-
-        let mut team = team.clone();
-        if team.color == Some(new_color) {
-            return Err(COLOR_UNCHANGED_ERROR.create_without_context());
-        }
-
-        team.color = Some(new_color);
-        let team_display_name = team.display_name.clone();
-        scoreboard.update_team(&world, team);
-
-        context.source.send_feedback(
-            TextComponent::translate_cross(
-                translation::java::COMMANDS_TEAM_OPTION_COLOR_SUCCESS,
-                translation::java::COMMANDS_TEAM_OPTION_COLOR_SUCCESS,
-                [team_display_name, TextComponent::text(new_color.name())],
-            ),
-            true,
-        );
-
-        Ok(1)
-    }
-}
-
-struct TeamModifyDisplayNameExecutor;
-
-impl CommandExecutor for TeamModifyDisplayNameExecutor {
-    fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
-        let team_name = TeamArgumentType::get(context, ARG_TEAM)?;
-        let new_display_name = ComponentArgumentType::get(context, ARG_DISPLAY_NAME)?;
-
-        let world = context.world().clone();
-        let team_name_owned = team_name.to_string();
-
-        let mut scoreboard = world
-            .scoreboard
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        let Some(team) = scoreboard.get_teams().get(&team_name_owned) else {
-            return Err(
-                TEAM_NOT_FOUND_ERROR.create_without_context(TextComponent::text(team_name_owned))
-            );
-        };
-
-        let mut team = team.clone();
-        if team.display_name == new_display_name {
-            return Err(NAME_UNCHANGED_ERROR.create_without_context());
-        }
-
-        team.display_name = new_display_name.clone();
-        let team_display_name = team.display_name.clone();
-        scoreboard.update_team(&world, team);
-
-        context.source.send_feedback(
-            TextComponent::translate_cross(
-                translation::java::COMMANDS_TEAM_OPTION_NAME_SUCCESS,
-                translation::java::COMMANDS_TEAM_OPTION_NAME_SUCCESS,
-                [team_display_name, new_display_name],
-            ),
-            true,
-        );
-
-        Ok(1)
-    }
-}
-
-struct TeamModifyPrefixExecutor;
-
-impl CommandExecutor for TeamModifyPrefixExecutor {
-    fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
-        let team_name = TeamArgumentType::get(context, ARG_TEAM)?;
-        let new_prefix = ComponentArgumentType::get(context, ARG_PREFIX)?;
-
-        let world = context.world().clone();
-        let team_name_owned = team_name.to_string();
-
-        let mut scoreboard = world
-            .scoreboard
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        let Some(team) = scoreboard.get_teams().get(&team_name_owned) else {
-            return Err(
-                TEAM_NOT_FOUND_ERROR.create_without_context(TextComponent::text(team_name_owned))
-            );
-        };
-
-        let mut team = team.clone();
-        team.player_prefix = new_prefix.clone();
-        let team_display_name = team.display_name.clone();
-        scoreboard.update_team(&world, team);
-
-        context.source.send_feedback(
-            TextComponent::translate_cross(
-                translation::java::COMMANDS_TEAM_OPTION_PREFIX_SUCCESS,
-                translation::java::COMMANDS_TEAM_OPTION_PREFIX_SUCCESS,
-                [team_display_name, new_prefix],
-            ),
-            true,
-        );
-
-        Ok(1)
-    }
-}
-
-struct TeamModifySuffixExecutor;
-
-impl CommandExecutor for TeamModifySuffixExecutor {
-    fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
-        let team_name = TeamArgumentType::get(context, ARG_TEAM)?;
-        let new_suffix = ComponentArgumentType::get(context, ARG_SUFFIX)?;
-
-        let world = context.world().clone();
-        let team_name_owned = team_name.to_string();
-
-        let mut scoreboard = world
-            .scoreboard
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        let Some(team) = scoreboard.get_teams().get(&team_name_owned) else {
-            return Err(
-                TEAM_NOT_FOUND_ERROR.create_without_context(TextComponent::text(team_name_owned))
-            );
-        };
-
-        let mut team = team.clone();
-        team.player_suffix = new_suffix.clone();
-        let team_display_name = team.display_name.clone();
-        scoreboard.update_team(&world, team);
-
-        context.source.send_feedback(
-            TextComponent::translate_cross(
-                translation::java::COMMANDS_TEAM_OPTION_SUFFIX_SUCCESS,
-                translation::java::COMMANDS_TEAM_OPTION_SUFFIX_SUCCESS,
-                [team_display_name, new_suffix],
-            ),
-            true,
-        );
-
-        Ok(1)
-    }
-}
-
-struct TeamModifyFriendlyFireExecutor;
-
-impl CommandExecutor for TeamModifyFriendlyFireExecutor {
-    fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
-        let team_name = TeamArgumentType::get(context, ARG_TEAM)?;
-        let value = BoolArgumentType::get(context, ARG_ALLOWED)?;
-
-        let world = context.world().clone();
-        let team_name_owned = team_name.to_string();
-
-        let mut scoreboard = world
-            .scoreboard
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        let Some(team) = scoreboard.get_teams().get(&team_name_owned) else {
-            return Err(
-                TEAM_NOT_FOUND_ERROR.create_without_context(TextComponent::text(team_name_owned))
-            );
-        };
-
-        let mut team = team.clone();
-        let is_enabled = team.is_allow_friendly_fire();
-        if value == is_enabled {
-            if value {
-                return Err(FRIENDLY_FIRE_ALREADY_ENABLED_ERROR.create_without_context());
-            }
-            return Err(FRIENDLY_FIRE_ALREADY_DISABLED_ERROR.create_without_context());
-        }
-
-        if value {
-            team.options |= Team::ALLOW_FRIENDLY_FIRE;
-        } else {
-            team.options &= !Team::ALLOW_FRIENDLY_FIRE;
-        }
-
-        let team_display_name = team.display_name.clone();
-        scoreboard.update_team(&world, team);
-
-        let key = if value {
-            translation::java::COMMANDS_TEAM_OPTION_FRIENDLYFIRE_ENABLED
-        } else {
-            translation::java::COMMANDS_TEAM_OPTION_FRIENDLYFIRE_DISABLED
-        };
-
-        context.source.send_feedback(
-            TextComponent::translate_cross(key, key, [team_display_name]),
-            true,
-        );
-
-        Ok(1)
-    }
-}
-
-struct TeamModifySeeFriendlyInvisiblesExecutor;
-
-impl CommandExecutor for TeamModifySeeFriendlyInvisiblesExecutor {
-    fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
-        let team_name = TeamArgumentType::get(context, ARG_TEAM)?;
-        let value = BoolArgumentType::get(context, ARG_ALLOWED)?;
-
-        let world = context.world().clone();
-        let team_name_owned = team_name.to_string();
-
-        let mut scoreboard = world
-            .scoreboard
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        let Some(team) = scoreboard.get_teams().get(&team_name_owned) else {
-            return Err(
-                TEAM_NOT_FOUND_ERROR.create_without_context(TextComponent::text(team_name_owned))
-            );
-        };
-
-        let mut team = team.clone();
-        let is_enabled = (team.options & Team::SEE_FRIENDLY_INVISIBLES) != 0;
-        if value == is_enabled {
-            if value {
-                return Err(SEE_FRIENDLY_INVISIBLES_ALREADY_ENABLED_ERROR.create_without_context());
-            }
-            return Err(SEE_FRIENDLY_INVISIBLES_ALREADY_DISABLED_ERROR.create_without_context());
-        }
-
-        if value {
-            team.options |= Team::SEE_FRIENDLY_INVISIBLES;
-        } else {
-            team.options &= !Team::SEE_FRIENDLY_INVISIBLES;
-        }
-
-        let team_display_name = team.display_name.clone();
-        scoreboard.update_team(&world, team);
-
-        let key = if value {
-            translation::java::COMMANDS_TEAM_OPTION_SEEFRIENDLYINVISIBLES_ENABLED
-        } else {
-            translation::java::COMMANDS_TEAM_OPTION_SEEFRIENDLYINVISIBLES_DISABLED
-        };
-
-        context.source.send_feedback(
-            TextComponent::translate_cross(key, key, [team_display_name]),
-            true,
-        );
-
-        Ok(1)
-    }
-}
-
-struct TeamModifyNametagVisibilityExecutor {
-    value: NameTagVisibility,
-}
-
-impl CommandExecutor for TeamModifyNametagVisibilityExecutor {
-    fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
-        let team_name = TeamArgumentType::get(context, ARG_TEAM)?;
-        let value = self.value;
-
-        let world = context.world().clone();
-        let team_name_owned = team_name.to_string();
-
-        let mut scoreboard = world
-            .scoreboard
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        let Some(team) = scoreboard.get_teams().get(&team_name_owned) else {
-            return Err(
-                TEAM_NOT_FOUND_ERROR.create_without_context(TextComponent::text(team_name_owned))
-            );
-        };
-
-        let mut team = team.clone();
-        let is_unchanged = matches!(
-            (&team.nametag_visibility, &value),
-            (NameTagVisibility::Always, NameTagVisibility::Always)
-                | (NameTagVisibility::Never, NameTagVisibility::Never)
-                | (
-                    NameTagVisibility::HideForOtherTeams,
-                    NameTagVisibility::HideForOtherTeams
+                    1,
                 )
-                | (
-                    NameTagVisibility::HideForOwnTeam,
-                    NameTagVisibility::HideForOwnTeam
+            }
+            TeamOption::Suffix => {
+                let suffix = ComponentArgumentType::get(context, ARG_SUFFIX)?;
+                team.player_suffix = suffix.clone();
+                (
+                    translated(
+                        translation::java::COMMANDS_TEAM_OPTION_SUFFIX_SUCCESS,
+                        [suffix],
+                    ),
+                    false,
+                    1,
                 )
-        );
-
-        if is_unchanged {
-            return Err(NAMETAG_VISIBILITY_UNCHANGED_ERROR.create_without_context());
-        }
-
-        team.nametag_visibility = match value {
-            NameTagVisibility::Always => NameTagVisibility::Always,
-            NameTagVisibility::Never => NameTagVisibility::Never,
-            NameTagVisibility::HideForOtherTeams => NameTagVisibility::HideForOtherTeams,
-            NameTagVisibility::HideForOwnTeam => NameTagVisibility::HideForOwnTeam,
+            }
+            TeamOption::FriendlyFire => {
+                let allowed = BoolArgumentType::get(context, ARG_ALLOWED)?;
+                if team.is_allow_friendly_fire() == allowed {
+                    return Err(if allowed {
+                        FRIENDLY_FIRE_ALREADY_ENABLED_ERROR.create_without_context()
+                    } else {
+                        FRIENDLY_FIRE_ALREADY_DISABLED_ERROR.create_without_context()
+                    });
+                }
+                team.options ^= Team::ALLOW_FRIENDLY_FIRE;
+                (
+                    translated(
+                        if allowed {
+                            translation::java::COMMANDS_TEAM_OPTION_FRIENDLYFIRE_ENABLED
+                        } else {
+                            translation::java::COMMANDS_TEAM_OPTION_FRIENDLYFIRE_DISABLED
+                        },
+                        [team.formatted_display_name()],
+                    ),
+                    true,
+                    0,
+                )
+            }
+            TeamOption::SeeFriendlyInvisibles => {
+                let allowed = BoolArgumentType::get(context, ARG_ALLOWED)?;
+                if (team.options & Team::SEE_FRIENDLY_INVISIBLES != 0) == allowed {
+                    return Err(if allowed {
+                        SEE_FRIENDLY_INVISIBLES_ALREADY_ENABLED_ERROR.create_without_context()
+                    } else {
+                        SEE_FRIENDLY_INVISIBLES_ALREADY_DISABLED_ERROR.create_without_context()
+                    });
+                }
+                team.options ^= Team::SEE_FRIENDLY_INVISIBLES;
+                (
+                    translated(
+                        if allowed {
+                            translation::java::COMMANDS_TEAM_OPTION_SEEFRIENDLYINVISIBLES_ENABLED
+                        } else {
+                            translation::java::COMMANDS_TEAM_OPTION_SEEFRIENDLYINVISIBLES_DISABLED
+                        },
+                        [team.formatted_display_name()],
+                    ),
+                    true,
+                    0,
+                )
+            }
+            TeamOption::NametagVisibility(visibility) => {
+                if team.nametag_visibility == visibility {
+                    return Err(NAMETAG_VISIBILITY_UNCHANGED_ERROR.create_without_context());
+                }
+                team.nametag_visibility = visibility;
+                (
+                    translated(
+                        translation::java::COMMANDS_TEAM_OPTION_NAMETAGVISIBILITY_SUCCESS,
+                        [team.formatted_display_name(), visibility.display_name()],
+                    ),
+                    true,
+                    0,
+                )
+            }
+            TeamOption::DeathMessageVisibility(visibility) => {
+                if team.death_message_visibility == visibility {
+                    return Err(DEATH_MESSAGE_VISIBILITY_UNCHANGED_ERROR.create_without_context());
+                }
+                team.death_message_visibility = visibility;
+                (
+                    translated(
+                        translation::java::COMMANDS_TEAM_OPTION_DEATHMESSAGEVISIBILITY_SUCCESS,
+                        [team.formatted_display_name(), visibility.display_name()],
+                    ),
+                    true,
+                    0,
+                )
+            }
+            TeamOption::CollisionRule(rule) => {
+                if team.collision_rule == rule {
+                    return Err(COLLISION_RULE_UNCHANGED_ERROR.create_without_context());
+                }
+                team.collision_rule = rule;
+                (
+                    translated(
+                        translation::java::COMMANDS_TEAM_OPTION_COLLISIONRULE_SUCCESS,
+                        [team.formatted_display_name(), rule.display_name()],
+                    ),
+                    true,
+                    0,
+                )
+            }
         };
-
-        let team_display_name = team.display_name.clone();
-        scoreboard.update_team(&world, team);
-
-        context.source.send_feedback(
-            TextComponent::translate_cross(
-                translation::java::COMMANDS_TEAM_OPTION_NAMETAGVISIBILITY_SUCCESS,
-                translation::java::COMMANDS_TEAM_OPTION_NAMETAGVISIBILITY_SUCCESS,
-                [
-                    team_display_name,
-                    TextComponent::text(value.to_str().to_string()),
-                ],
-            ),
-            true,
-        );
-
-        Ok(1)
+        Ok((feedback, broadcast, result))
     }
 }
 
-struct TeamModifyDeathMessageVisibilityExecutor {
-    value: NameTagVisibility,
-}
-
-impl CommandExecutor for TeamModifyDeathMessageVisibilityExecutor {
+impl CommandExecutor for TeamModifyExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
         let team_name = TeamArgumentType::get(context, ARG_TEAM)?;
         let world = context.world().clone();
-        let team_name_owned = team_name.to_string();
-        let value = self.value;
+        let mut scoreboard = lock_scoreboard(&world);
+        let mut team = team_or_error(&scoreboard, team_name)?;
 
-        let mut scoreboard = world
-            .scoreboard
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        let Some(team) = scoreboard.get_teams().get(&team_name_owned) else {
-            return Err(
-                TEAM_NOT_FOUND_ERROR.create_without_context(TextComponent::text(team_name_owned))
-            );
-        };
-
-        if team.death_message_visibility == value {
-            return Err(DEATH_MESSAGE_VISIBILITY_UNCHANGED_ERROR.create_without_context());
-        }
-
-        let mut team = team.clone();
-        team.death_message_visibility = value;
-        let team_display_name = team.display_name.clone();
+        let (feedback, broadcast, result) = Self::apply(self.0, context, &mut team)?;
         scoreboard.update_team(&world, team);
+        drop(scoreboard);
 
-        context.source.send_feedback(
-            TextComponent::translate_cross(
-                translation::java::COMMANDS_TEAM_OPTION_DEATHMESSAGEVISIBILITY_SUCCESS,
-                translation::java::COMMANDS_TEAM_OPTION_DEATHMESSAGEVISIBILITY_SUCCESS,
-                [
-                    team_display_name,
-                    TextComponent::text(value.to_str().to_string()),
-                ],
-            ),
-            true,
-        );
-
-        Ok(1)
-    }
-}
-
-struct TeamModifyCollisionRuleExecutor {
-    value: CollisionRule,
-}
-
-impl CommandExecutor for TeamModifyCollisionRuleExecutor {
-    fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
-        let team_name = TeamArgumentType::get(context, ARG_TEAM)?;
-        let value = self.value;
-
-        let world = context.world().clone();
-        let team_name_owned = team_name.to_string();
-
-        let mut scoreboard = world
-            .scoreboard
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        let Some(team) = scoreboard.get_teams().get(&team_name_owned) else {
-            return Err(
-                TEAM_NOT_FOUND_ERROR.create_without_context(TextComponent::text(team_name_owned))
-            );
-        };
-
-        let mut team = team.clone();
-        let is_unchanged = matches!(
-            (&team.collision_rule, &value),
-            (CollisionRule::Always, CollisionRule::Always)
-                | (CollisionRule::Never, CollisionRule::Never)
-                | (CollisionRule::PushOtherTeams, CollisionRule::PushOtherTeams)
-                | (CollisionRule::PushOwnTeam, CollisionRule::PushOwnTeam)
-        );
-
-        if is_unchanged {
-            return Err(COLLISION_RULE_UNCHANGED_ERROR.create_without_context());
-        }
-
-        team.collision_rule = match value {
-            CollisionRule::Always => CollisionRule::Always,
-            CollisionRule::Never => CollisionRule::Never,
-            CollisionRule::PushOtherTeams => CollisionRule::PushOtherTeams,
-            CollisionRule::PushOwnTeam => CollisionRule::PushOwnTeam,
-        };
-
-        let team_display_name = team.display_name.clone();
-        scoreboard.update_team(&world, team);
-
-        context.source.send_feedback(
-            TextComponent::translate_cross(
-                translation::java::COMMANDS_TEAM_OPTION_COLLISIONRULE_SUCCESS,
-                translation::java::COMMANDS_TEAM_OPTION_COLLISIONRULE_SUCCESS,
-                [
-                    team_display_name,
-                    TextComponent::text(value.to_str().to_string()),
-                ],
-            ),
-            true,
-        );
-
-        Ok(1)
+        context.source.send_feedback(feedback, broadcast);
+        Ok(result)
     }
 }
 
@@ -965,10 +632,8 @@ fn join_branch() -> LiteralArgumentBuilder {
 }
 
 fn leave_branch() -> LiteralArgumentBuilder {
-    literal("leave").then(
-        argument(ARG_MEMBERS, ScoreHolderArgumentType::Multiple)
-            .executes(TeamLeaveExecutor { has_members: true }),
-    )
+    literal("leave")
+        .then(argument(ARG_MEMBERS, ScoreHolderArgumentType::Multiple).executes(TeamLeaveExecutor))
 }
 
 fn list_branch() -> LiteralArgumentBuilder {
@@ -977,102 +642,90 @@ fn list_branch() -> LiteralArgumentBuilder {
         .then(argument(ARG_TEAM, TeamArgumentType).executes(TeamListExecutor { has_team: true }))
 }
 
+fn visibility_branch(
+    name: &'static str,
+    option: fn(NameTagVisibility) -> TeamOption,
+) -> LiteralArgumentBuilder {
+    literal(name)
+        .then(literal("never").executes(TeamModifyExecutor(option(NameTagVisibility::Never))))
+        .then(
+            literal("hideForOtherTeams").executes(TeamModifyExecutor(option(
+                NameTagVisibility::HideForOtherTeams,
+            ))),
+        )
+        .then(
+            literal("hideForOwnTeam").executes(TeamModifyExecutor(option(
+                NameTagVisibility::HideForOwnTeam,
+            ))),
+        )
+        .then(literal("always").executes(TeamModifyExecutor(option(NameTagVisibility::Always))))
+}
+
 fn modify_branch() -> LiteralArgumentBuilder {
     literal("modify").then(
         argument(ARG_TEAM, TeamArgumentType)
             .then(
+                literal("displayName").then(
+                    argument(ARG_DISPLAY_NAME, ComponentArgumentType)
+                        .executes(TeamModifyExecutor(TeamOption::DisplayName)),
+                ),
+            )
+            .then(
                 literal("color")
-                    .then(literal("reset").executes(TeamModifyColorResetExecutor))
+                    .then(literal("reset").executes(TeamModifyExecutor(TeamOption::ColorReset)))
                     .then(
                         argument(ARG_VALUE, TeamColorArgumentType)
-                            .executes(TeamModifyColorExecutor),
+                            .executes(TeamModifyExecutor(TeamOption::Color)),
                     ),
             )
             .then(
-                literal("displayName").then(
-                    argument(ARG_DISPLAY_NAME, ComponentArgumentType)
-                        .executes(TeamModifyDisplayNameExecutor),
+                literal("friendlyFire").then(
+                    argument(ARG_ALLOWED, BoolArgumentType)
+                        .executes(TeamModifyExecutor(TeamOption::FriendlyFire)),
                 ),
             )
-            .then(literal("prefix").then(
-                argument(ARG_PREFIX, ComponentArgumentType).executes(TeamModifyPrefixExecutor),
-            ))
-            .then(literal("suffix").then(
-                argument(ARG_SUFFIX, ComponentArgumentType).executes(TeamModifySuffixExecutor),
-            ))
-            .then(literal("friendlyFire").then(
-                argument(ARG_ALLOWED, BoolArgumentType).executes(TeamModifyFriendlyFireExecutor),
-            ))
             .then(
                 literal("seeFriendlyInvisibles").then(
                     argument(ARG_ALLOWED, BoolArgumentType)
-                        .executes(TeamModifySeeFriendlyInvisiblesExecutor),
+                        .executes(TeamModifyExecutor(TeamOption::SeeFriendlyInvisibles)),
+                ),
+            )
+            .then(visibility_branch(
+                "nametagVisibility",
+                TeamOption::NametagVisibility,
+            ))
+            .then(visibility_branch(
+                "deathMessageVisibility",
+                TeamOption::DeathMessageVisibility,
+            ))
+            .then(
+                literal("collisionRule")
+                    .then(
+                        literal("never").executes(TeamModifyExecutor(TeamOption::CollisionRule(
+                            CollisionRule::Never,
+                        ))),
+                    )
+                    .then(literal("pushOwnTeam").executes(TeamModifyExecutor(
+                        TeamOption::CollisionRule(CollisionRule::PushOwnTeam),
+                    )))
+                    .then(literal("pushOtherTeams").executes(TeamModifyExecutor(
+                        TeamOption::CollisionRule(CollisionRule::PushOtherTeams),
+                    )))
+                    .then(literal("always").executes(TeamModifyExecutor(
+                        TeamOption::CollisionRule(CollisionRule::Always),
+                    ))),
+            )
+            .then(
+                literal("prefix").then(
+                    argument(ARG_PREFIX, ComponentArgumentType)
+                        .executes(TeamModifyExecutor(TeamOption::Prefix)),
                 ),
             )
             .then(
-                literal("nametagVisibility")
-                    .then(
-                        literal("always").executes(TeamModifyNametagVisibilityExecutor {
-                            value: NameTagVisibility::Always,
-                        }),
-                    )
-                    .then(
-                        literal("never").executes(TeamModifyNametagVisibilityExecutor {
-                            value: NameTagVisibility::Never,
-                        }),
-                    )
-                    .then(literal("hideForOtherTeams").executes(
-                        TeamModifyNametagVisibilityExecutor {
-                            value: NameTagVisibility::HideForOtherTeams,
-                        },
-                    ))
-                    .then(literal("hideForOwnTeam").executes(
-                        TeamModifyNametagVisibilityExecutor {
-                            value: NameTagVisibility::HideForOwnTeam,
-                        },
-                    )),
-            )
-            .then(
-                literal("deathMessageVisibility")
-                    .then(
-                        literal("always").executes(TeamModifyDeathMessageVisibilityExecutor {
-                            value: NameTagVisibility::Always,
-                        }),
-                    )
-                    .then(
-                        literal("never").executes(TeamModifyDeathMessageVisibilityExecutor {
-                            value: NameTagVisibility::Never,
-                        }),
-                    )
-                    .then(literal("hideForOtherTeams").executes(
-                        TeamModifyDeathMessageVisibilityExecutor {
-                            value: NameTagVisibility::HideForOtherTeams,
-                        },
-                    ))
-                    .then(literal("hideForOwnTeam").executes(
-                        TeamModifyDeathMessageVisibilityExecutor {
-                            value: NameTagVisibility::HideForOwnTeam,
-                        },
-                    )),
-            )
-            .then(
-                literal("collisionRule")
-                    .then(literal("always").executes(TeamModifyCollisionRuleExecutor {
-                        value: CollisionRule::Always,
-                    }))
-                    .then(literal("never").executes(TeamModifyCollisionRuleExecutor {
-                        value: CollisionRule::Never,
-                    }))
-                    .then(
-                        literal("pushOtherTeams").executes(TeamModifyCollisionRuleExecutor {
-                            value: CollisionRule::PushOtherTeams,
-                        }),
-                    )
-                    .then(
-                        literal("pushOwnTeam").executes(TeamModifyCollisionRuleExecutor {
-                            value: CollisionRule::PushOwnTeam,
-                        }),
-                    ),
+                literal("suffix").then(
+                    argument(ARG_SUFFIX, ComponentArgumentType)
+                        .executes(TeamModifyExecutor(TeamOption::Suffix)),
+                ),
             ),
     )
 }
@@ -1087,12 +740,12 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
     dispatcher.register(
         command("team", DESCRIPTION)
             .requires(PERMISSION)
+            .then(list_branch())
             .then(add_branch())
             .then(remove_branch())
             .then(empty_branch())
             .then(join_branch())
             .then(leave_branch())
-            .then(list_branch())
             .then(modify_branch()),
     );
 }

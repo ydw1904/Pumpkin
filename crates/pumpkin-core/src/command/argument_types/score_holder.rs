@@ -49,7 +49,7 @@ impl ResolvedScoreHolder {
         }
     }
 
-    fn entity(entity: &dyn EntityBase) -> Self {
+    pub(crate) fn entity(entity: &dyn EntityBase) -> Self {
         let name = entity.get_scoreboard_name();
         let display_name = entity.get_display_name();
         Self {

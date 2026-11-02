@@ -1,6 +1,7 @@
 use rustc_hash::FxHashMap;
 
 use pumpkin_data::scoreboard::ScoreboardDisplaySlot;
+use pumpkin_data::translation;
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_protocol::{
     BClientPacket, ClientPacket, NumberFormat,
@@ -627,22 +628,34 @@ impl Scoreboard {
         self.teams.remove(name);
     }
 
+    /// Vanilla `ServerScoreboard.addPlayerToTeam`: the player leaves its old team first.
+    /// Returns whether the player joined, which is false when it already was a member.
     pub fn add_player_to_team(
         &mut self,
         target: &impl ScoreboardTarget,
         team_name: &str,
         player: String,
-    ) {
-        let Some(team) = self.teams.get_mut(team_name) else {
+    ) -> bool {
+        if !self.teams.contains_key(team_name) {
             warn!(
                 "Tried to add player to Team which does not exist, {}",
                 team_name
             );
-            return;
+            return false;
+        }
+        if let Some(old_team) = self
+            .get_entity_team(&player)
+            .map(|team| team.name.clone())
+            .filter(|old_team| old_team != team_name)
+        {
+            self.remove_player_from_team(target, &old_team, &player);
+        }
+        let Some(team) = self.teams.get_mut(team_name) else {
+            return false;
         };
 
         if team.players.contains(&player) {
-            return;
+            return false;
         }
 
         target.send_je(&CSetPlayerTeam {
@@ -653,24 +666,26 @@ impl Scoreboard {
         });
 
         team.players.push(player);
+        true
     }
 
+    /// Returns whether the player was a member.
     pub fn remove_player_from_team(
         &mut self,
         target: &impl ScoreboardTarget,
         team_name: &str,
         player: &str,
-    ) {
+    ) -> bool {
         let Some(team) = self.teams.get_mut(team_name) else {
             warn!(
                 "Tried to remove player from Team which does not exist, {}",
                 team_name
             );
-            return;
+            return false;
         };
 
-        if !team.players.contains(&player.to_string()) {
-            return;
+        if !team.players.iter().any(|p| p == player) {
+            return false;
         }
 
         target.send_je(&CSetPlayerTeam {
@@ -681,6 +696,7 @@ impl Scoreboard {
         });
 
         team.players.retain(|p| p != player);
+        true
     }
 
     pub fn clear_team_players(&mut self, target: &impl ScoreboardTarget, team_name: &str) {
@@ -852,6 +868,20 @@ impl NameTagVisibility {
         }
     }
 
+    /// Vanilla `Team.Visibility.getDisplayName`.
+    #[must_use]
+    pub fn display_name(&self) -> TextComponent {
+        TextComponent::translate(
+            match self {
+                Self::Always => translation::java::TEAM_VISIBILITY_ALWAYS,
+                Self::Never => translation::java::TEAM_VISIBILITY_NEVER,
+                Self::HideForOtherTeams => translation::java::TEAM_VISIBILITY_HIDEFOROTHERTEAMS,
+                Self::HideForOwnTeam => translation::java::TEAM_VISIBILITY_HIDEFOROWNTEAM,
+            },
+            [],
+        )
+    }
+
     #[must_use]
     pub fn from_name(name: &str) -> Option<Self> {
         [
@@ -882,6 +912,20 @@ impl CollisionRule {
             Self::PushOtherTeams => "pushOtherTeams",
             Self::PushOwnTeam => "pushOwnTeam",
         }
+    }
+
+    /// Vanilla `Team.CollisionRule.getDisplayName`.
+    #[must_use]
+    pub fn display_name(&self) -> TextComponent {
+        TextComponent::translate(
+            match self {
+                Self::Always => translation::java::TEAM_COLLISION_ALWAYS,
+                Self::Never => translation::java::TEAM_COLLISION_NEVER,
+                Self::PushOtherTeams => translation::java::TEAM_COLLISION_PUSHOTHERTEAMS,
+                Self::PushOwnTeam => translation::java::TEAM_COLLISION_PUSHOWNTEAM,
+            },
+            [],
+        )
     }
 
     #[must_use]
@@ -919,6 +963,23 @@ impl Team {
     #[must_use]
     pub const fn is_allow_friendly_fire(&self) -> bool {
         self.options & Self::ALLOW_FRIENDLY_FIRE != 0
+    }
+
+    /// Vanilla `PlayerTeam.getFormattedDisplayName`.
+    #[must_use]
+    pub fn formatted_display_name(&self) -> TextComponent {
+        let name = self
+            .display_name
+            .clone()
+            .insertion(self.name.clone())
+            .hover_event(HoverEvent::show_text(TextComponent::text(
+                self.name.clone(),
+            )))
+            .wrap_in_square_brackets();
+        match self.color {
+            Some(color) => name.color_named(color),
+            None => name,
+        }
     }
 
     const fn parameters(&self) -> TeamParameters<'_> {
@@ -1800,6 +1861,31 @@ mod tests {
                 .get_display_objective(ScoreboardDisplaySlot::Sidebar)
                 .is_none()
         );
+    }
+
+    /// Vanilla `Scoreboard.addPlayerToTeam` moves a player out of its old team.
+    #[test]
+    fn joining_a_team_leaves_the_old_one() {
+        let team = |name: &str| Team {
+            name: name.to_string(),
+            display_name: TextComponent::text(name.to_string()),
+            options: 0,
+            nametag_visibility: NameTagVisibility::Always,
+            death_message_visibility: NameTagVisibility::Always,
+            collision_rule: CollisionRule::Always,
+            color: None,
+            player_prefix: TextComponent::empty(),
+            player_suffix: TextComponent::empty(),
+            players: vec![],
+        };
+        let mut scoreboard = Scoreboard::new();
+        scoreboard.add_team(&NoTarget, team("red"));
+        scoreboard.add_team(&NoTarget, team("blue"));
+        assert!(scoreboard.add_player_to_team(&NoTarget, "red", "Steve".to_string()));
+        assert!(!scoreboard.add_player_to_team(&NoTarget, "red", "Steve".to_string()));
+        assert!(scoreboard.add_player_to_team(&NoTarget, "blue", "Steve".to_string()));
+        assert!(scoreboard.get_team("red").unwrap().players.is_empty());
+        assert_eq!(scoreboard.get_entity_team("Steve").unwrap().name, "blue");
     }
 
     #[test]
