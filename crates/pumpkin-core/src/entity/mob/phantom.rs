@@ -8,6 +8,7 @@ use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tracked_data;
 use pumpkin_data::world::WorldEvent;
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_util::math::boundingbox::EntityDimensions;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::math::{
@@ -117,7 +118,14 @@ impl PhantomEntity {
         living
             .entity
             .set_synced_data(tracked_data::phantom::ID_SIZE, size);
-        // TODO: vanilla also scales the hitbox by `1 + 0.15 * size`.
+        // Vanilla `getDefaultDimensions` scales the type's size by `1 + 0.15 * size`.
+        let entity = &living.entity;
+        let scale = 0.15f32.mul_add(size as f32, 1.0);
+        entity.set_default_dimensions(EntityDimensions::new(
+            entity.entity_type.dimension[0] * scale,
+            entity.entity_type.dimension[1] * scale,
+            entity.entity_type.eye_height * scale,
+        ));
         living.set_attribute_base(
             &Attributes::ATTACK_DAMAGE,
             BASE_ATTACK_DAMAGE + f64::from(size),
