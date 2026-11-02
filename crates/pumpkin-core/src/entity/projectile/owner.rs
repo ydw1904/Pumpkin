@@ -128,6 +128,12 @@ impl ProjectileOwner {
         }
     }
 
+    /// Vanilla `Projectile.ownedBy`.
+    #[must_use]
+    pub fn owned_by(&self, entity: &Entity) -> bool {
+        self.owner.matches(entity)
+    }
+
     /// Vanilla `checkLeftOwner`, once per tick before moving.
     pub fn check_left_owner(&self, projectile: &Entity) {
         if self.left_owner.load(Relaxed) {
