@@ -541,12 +541,7 @@ impl RuinedPortalPiece {
         placement.finish(&mut level);
     }
 
-    fn spread_netherrack(
-        &self,
-        random: &mut RandomGenerator,
-        chunk: &mut dyn GenerationCache,
-        chunk_box: &BlockBox,
-    ) {
+    fn spread_netherrack(&self, random: &mut RandomGenerator, chunk: &mut dyn GenerationCache) {
         let follow_ground_surface = self.vertical_placement == VerticalPlacement::OnLandSurface
             || self.vertical_placement == VerticalPlacement::OnOceanFloor;
         let bb = self.piece.bounding_box;
@@ -577,7 +572,6 @@ impl RuinedPortalPiece {
                         };
                         let pos = Vector3::new(x, y, z);
                         if (y - bb.min.y).abs() <= 3
-                            && chunk_box.contains_pos(&pos)
                             && self.can_block_be_replaced_by_netherrack_or_magma(chunk, pos)
                         {
                             self.place_netherrack_or_magma(random, chunk, pos);
@@ -588,7 +582,6 @@ impl RuinedPortalPiece {
                                 random,
                                 chunk,
                                 pos + Vector3::new(0, -1, 0),
-                                chunk_box,
                             );
                         }
                     }
@@ -606,7 +599,7 @@ impl RuinedPortalPiece {
         let block_id = state.to_block_id();
         block_id != Block::AIR.id
             && block_id != Block::OBSIDIAN.id
-            && block_id != Block::BEDROCK.id
+            && !block_id.has_tag(pumpkin_data::tag::Block::MINECRAFT_FEATURES_CANNOT_REPLACE)
             && (self.vertical_placement == VerticalPlacement::InNether
                 || block_id != Block::LAVA.id)
     }
@@ -617,6 +610,9 @@ impl RuinedPortalPiece {
         chunk: &mut dyn GenerationCache,
         pos: Vector3<i32>,
     ) {
+        if !self.can_block_be_replaced_by_netherrack_or_magma(chunk, pos) {
+            return;
+        }
         if !self.properties.cold && random.next_f32() < 0.07 {
             GenerationCache::set_block_state(chunk, &pos, Block::MAGMA_BLOCK.default_state);
         } else {
@@ -628,7 +624,6 @@ impl RuinedPortalPiece {
         &self,
         random: &mut RandomGenerator,
         chunk: &mut dyn GenerationCache,
-        chunk_box: &BlockBox,
     ) {
         let bb = self.piece.bounding_box;
         for x in (bb.min.x + 1)..bb.max.x {
@@ -641,7 +636,6 @@ impl RuinedPortalPiece {
                         random,
                         chunk,
                         Vector3::new(x, bb.min.y - 1, z),
-                        chunk_box,
                     );
                 }
             }
@@ -653,19 +647,14 @@ impl RuinedPortalPiece {
         random: &mut RandomGenerator,
         chunk: &mut dyn GenerationCache,
         start_pos: Vector3<i32>,
-        chunk_box: &BlockBox,
     ) {
         let mut cur = start_pos;
-        if chunk_box.contains_pos(&cur) {
-            self.place_netherrack_or_magma(random, chunk, cur);
-        }
+        self.place_netherrack_or_magma(random, chunk, cur);
         let mut remaining = 8;
         while remaining > 0 && random.next_f32() < 0.5 {
             cur.y -= 1;
             remaining -= 1;
-            if chunk_box.contains_pos(&cur) {
-                self.place_netherrack_or_magma(random, chunk, cur);
-            }
+            self.place_netherrack_or_magma(random, chunk, cur);
         }
     }
 
@@ -767,8 +756,8 @@ impl StructurePieceBase for RuinedPortalPiece {
 
             self.place_blocks(region, &enlarged_box);
             let chunk = region;
-            self.spread_netherrack(random, chunk, &enlarged_box);
-            self.add_netherrack_drip_columns_below_portal(random, chunk, &enlarged_box);
+            self.spread_netherrack(random, chunk);
+            self.add_netherrack_drip_columns_below_portal(random, chunk);
 
             if self.properties.vines || self.properties.overgrown {
                 for x in self.piece.bounding_box.min.x..=self.piece.bounding_box.max.x {
