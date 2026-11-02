@@ -30,6 +30,7 @@ use pumpkin_util::GameMode;
 use pumpkin_util::math::vector2::Vector2;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::math::{get_section_cord, pack_degrees};
+use rayon::prelude::*;
 use rustc_hash::FxHashSet;
 use uuid::Uuid;
 
@@ -1012,13 +1013,18 @@ impl EntityTracker {
             }
         }
 
-        for entry in &self.entity_map {
-            let tracked = entry.value();
+        // Each entity's updates are independent, like vanilla's unordered tracked entity map.
+        let tracked: Vec<_> = self
+            .entity_map
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect();
+        tracked.par_iter().for_each(|tracked| {
             if tracked.entity.get_player().is_none() {
                 tracked.send_changes(world);
             } else if tracked.entity.get_entity().synched_data.is_dirty() {
                 tracked.entity.get_entity().send_dirty_entity_data();
             }
-        }
+        });
     }
 }
