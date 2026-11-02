@@ -7,6 +7,7 @@ use pumpkin_data::world::WorldEvent;
 use pumpkin_data::{Block, BlockStateId};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::var_int::VarInt;
+use pumpkin_util::math::boundingbox::{BoundingBox, EntityDimensions};
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::math::{cos, sin, wrap_degrees};
@@ -37,6 +38,21 @@ pub const NODE_COUNT: usize = 24;
 pub const NODE_Y: i32 = 105;
 const DEATH_TIME_MAX: i32 = 200;
 const SITTING_ALLOWED_DAMAGE_PERCENTAGE: f32 = 0.25;
+const WING_DAMAGE: f32 = 5.0;
+const HEAD_DAMAGE: f32 = 10.0;
+/// Vanilla `LivingEntity.hurtDuration`.
+const HURT_DURATION: i32 = 10;
+/// Width and height of the head, neck, body, three tail segments and two wings.
+const PART_SIZES: [(f32, f32); 8] = [
+    (1.0, 1.0),
+    (3.0, 3.0),
+    (5.0, 3.0),
+    (2.0, 2.0),
+    (2.0, 2.0),
+    (2.0, 2.0),
+    (4.0, 2.0),
+    (4.0, 2.0),
+];
 
 const NODE_ADJACENCY: [u32; NODE_COUNT] = [
     6146, 8197, 8202, 16404, 32808, 32848, 65696, 131392, 131712, 263424, 526848, 525313, 1581057,
@@ -204,6 +220,8 @@ impl EnderDragonEntity {
                 entity.pos.load(),
                 &EntityType::ENDER_DRAGON,
             );
+            let (width, height) = PART_SIZES[i as usize - 1];
+            part_entity.set_default_dimensions(EntityDimensions::new(width, height, height * 0.85));
             // Parts 1 and 2 are the head and the neck.
             let part = Arc::new(EnderDragonPart::new(part_entity, dragon_uuid, i <= 2));
             world.add_entity_lookup_only(part.clone() as Arc<dyn EntityBase>);
@@ -599,36 +617,75 @@ impl EnderDragonEntity {
             .store(Vector3::new(vel.x * slide, vel.y * 0.91, vel.z * slide));
     }
 
-    fn handle_player_collisions(&self) {
-        let world = self.mob_entity.living_entity.entity.world.load();
+    /// Living entities in `bounding_box` other than creative and spectator players, vanilla
+    /// `getEntities(this, box, NO_CREATIVE_OR_SPECTATOR)` filtered to living ones.
+    fn living_entities_in(&self, bounding_box: &BoundingBox) -> Vec<Arc<dyn EntityBase>> {
+        let world = self.get_entity().world.load();
+        let mut entities: Vec<Arc<dyn EntityBase>> = world
+            .get_players_at_box(bounding_box)
+            .into_iter()
+            .filter(|player| !player.is_spectator() && !player.is_creative())
+            .map(|player| player as Arc<dyn EntityBase>)
+            .collect();
+        entities.extend(
+            world
+                .get_entities_at_box(bounding_box)
+                .into_iter()
+                .filter(|entity| {
+                    entity.get_living_entity().is_some()
+                        && entity.get_entity().entity_id != self.get_entity().entity_id
+                }),
+        );
+        entities
+    }
 
-        let dragon_bbox = self.mob_entity.living_entity.entity.bounding_box.load();
-        let xm = f64::midpoint(dragon_bbox.min.x, dragon_bbox.max.x);
-        let zm = f64::midpoint(dragon_bbox.min.z, dragon_bbox.max.z);
-
-        for player in world.players.load().iter() {
-            if player
-                .living_entity
-                .entity
-                .bounding_box
-                .load()
-                .intersects(&dragon_bbox)
+    /// Vanilla `EnderDragon.knockBack`: the wings push entities away and hurt them unless the
+    /// dragon is sitting.
+    fn knock_back(&self, bounding_box: &BoundingBox) {
+        let body = self.parts[2].entity.bounding_box.load();
+        let xm = f64::midpoint(body.min.x, body.max.x);
+        let zm = f64::midpoint(body.min.z, body.max.z);
+        let sitting = self.is_sitting();
+        for target in self.living_entities_in(bounding_box) {
+            let target_entity = target.get_entity();
+            let pos = target_entity.pos.load();
+            let xd = pos.x - xm;
+            let zd = pos.z - zm;
+            let dd = (xd * xd + zd * zd).max(0.1);
+            target_entity.add_velocity(Vector3::new(
+                xd / dd * 4.0,
+                f64::from(0.2f32),
+                zd / dd * 4.0,
+            ));
+            if !sitting
+                && target.get_living_entity().is_some_and(|living| {
+                    living.get_last_hurt_by_mob_timestamp()
+                        < target_entity.tick_count.load(Ordering::Relaxed) - 2
+                })
             {
-                let player_pos = player.get_entity().pos.load();
-                let xd = player_pos.x - xm;
-                let zd = player_pos.z - zm;
-                let dd = (xd * xd + zd * zd).max(0.1);
-
-                player
-                    .living_entity
-                    .entity
-                    .apply_knockback(4.0, xd / dd, zd / dd);
-                player.get_entity().send_velocity();
-
-                if !self.is_sitting() {
-                    player.damage(self, 5.0, DamageType::MOB_ATTACK);
-                }
+                target.damage_with_context(
+                    target.as_ref(),
+                    WING_DAMAGE,
+                    DamageType::MOB_ATTACK,
+                    None,
+                    Some(self),
+                    Some(self),
+                );
             }
+        }
+    }
+
+    /// Vanilla `EnderDragon.hurt(ServerLevel, List<Entity>)`: the head and neck bite.
+    fn hurt_entities(&self, bounding_box: &BoundingBox) {
+        for target in self.living_entities_in(bounding_box) {
+            target.damage_with_context(
+                target.as_ref(),
+                HEAD_DAMAGE,
+                DamageType::MOB_ATTACK,
+                None,
+                Some(self),
+                Some(self),
+            );
         }
     }
 
@@ -782,6 +839,30 @@ impl EnderDragonEntity {
             pos.z - ss1 * 4.5,
         ));
 
+        // Vanilla `wasHurtRecently`: `hurtTime`, which runs for the first half of the
+        // invulnerability time.
+        if self
+            .mob_entity
+            .living_entity
+            .hurt_cooldown
+            .load(Ordering::Relaxed)
+            <= HURT_DURATION
+        {
+            for wing in &self.parts[6..8] {
+                self.knock_back(
+                    &wing
+                        .entity
+                        .bounding_box
+                        .load()
+                        .expand(4.0, 2.0, 4.0)
+                        .shift(Vector3::new(0.0, -2.0, 0.0)),
+                );
+            }
+            for head_or_neck in &self.parts[0..2] {
+                self.hurt_entities(&head_or_neck.entity.bounding_box.load().expand_all(1.0));
+            }
+        }
+
         let head_y_offset = if self.is_sitting() { -1.0 } else { p5.y - p0.y };
 
         let y_rot_a = *self
@@ -911,7 +992,6 @@ impl EnderDragonEntity {
         entity.body_yaw.store(entity.yaw.load());
 
         if !self.is_sitting() {
-            self.handle_player_collisions();
             self.tick_block_breaking();
         }
         self.tick_parts();
