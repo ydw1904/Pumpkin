@@ -265,6 +265,18 @@ impl PaletteEntry {
         }
     }
 
+    /// Writes a block state the way vanilla's `BlockState.CODEC` does: the bare block id for a
+    /// block's default state, otherwise `{id, properties}`.
+    #[must_use]
+    pub fn state_to_nbt(state_id: BlockStateId) -> NbtTag {
+        let block = Block::from_state_id(state_id);
+        if block.default_state.id == state_id {
+            NbtTag::String(format!("minecraft:{}", block.name).into())
+        } else {
+            NbtTag::Compound(Self::from_state_id(state_id).to_nbt_compound())
+        }
+    }
+
     /// Parses a block state string (e.g. "`minecraft:oak_log`[axis=x]") into a palette entry.
     #[must_use]
     pub fn from_string(s: &str) -> Self {

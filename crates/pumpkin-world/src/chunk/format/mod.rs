@@ -670,27 +670,7 @@ impl ChunkData {
             let palette_tags: Vec<NbtTag> = block_states_nbt
                 .palette
                 .iter()
-                .map(|&id| {
-                    let block = Block::from_state_id(id);
-                    let mut comp = NbtCompound::new();
-                    let name = if block.name.starts_with("minecraft:") {
-                        block.name.to_string()
-                    } else {
-                        format!("minecraft:{}", block.name)
-                    };
-                    comp.put_string("Name", name);
-                    if let Some(props) = block.properties(id) {
-                        let prop_vec = props.to_props();
-                        if !prop_vec.is_empty() {
-                            let mut props_comp = NbtCompound::new();
-                            for p in prop_vec {
-                                props_comp.put_string(p.key_str(), p.value_str().to_string());
-                            }
-                            comp.put_compound("Properties", props_comp);
-                        }
-                    }
-                    NbtTag::Compound(comp)
-                })
+                .map(|&id| crate::generation::structure::template::PaletteEntry::state_to_nbt(id))
                 .collect();
             bs_comp.put_list("palette", palette_tags);
             section_comp.put_compound("block_states", bs_comp);
@@ -2070,5 +2050,55 @@ mod tests {
             reloaded.root_tag.get_int("DataVersion"),
             Some(WORLD_DATA_VERSION)
         );
+    }
+
+    /// 26.3 reads palette entries with `BlockState.CODEC`, which rejects the old
+    /// `{Name, Properties}` layout and replaces those blocks with air.
+    #[test]
+    fn block_palette_is_written_like_vanilla() {
+        use crate::chunk::ChunkData;
+        use pumpkin_util::math::vector2::Vector2;
+
+        let mut log = NbtCompound::new();
+        log.put_string("id", "minecraft:oak_log".to_string());
+        let mut props = NbtCompound::new();
+        props.put_string("axis", "x".to_string());
+        log.put_compound("properties", props);
+        let mut block_states = NbtCompound::new();
+        let palette = vec![
+            NbtTag::String("minecraft:stone".into()),
+            NbtTag::Compound(log),
+        ];
+        block_states.put("palette", NbtTag::List(palette.clone()));
+        // Alternates palette entries 1 and 0 in 4-bit cells.
+        block_states.put("data", NbtTag::LongArray(vec![0x0101_0101_0101_0101; 256]));
+        let mut section = NbtCompound::new();
+        section.put_int("Y", -4);
+        section.put("block_states", NbtTag::Compound(block_states));
+
+        let mut nbt = test_chunk(vec![section]);
+        nbt.root_tag.put_int("yPos", -4);
+        let chunk = ChunkData::from_bytes(&nbt.write(), Vector2::new(0, 0)).expect("chunk parses");
+        let saved = chunk.to_bytes().expect("chunk serializes");
+        let mut cursor = std::io::Cursor::new(saved.as_ref());
+        let mut reader = pumpkin_nbt::deserializer::NbtReadHelperJava::new(&mut cursor);
+        let reloaded = pumpkin_nbt::Nbt::read(&mut reader).expect("saved chunk parses");
+
+        let sections = reloaded.root_tag.get_list("sections").expect("sections");
+        let section = sections
+            .iter()
+            .filter_map(NbtTag::extract_compound)
+            .find(|s| s.get_byte("Y") == Some(-4))
+            .expect("section -4");
+        let saved_palette = section
+            .get_compound("block_states")
+            .and_then(|b| b.get_list("palette"))
+            .expect("palette");
+        for entry in &palette {
+            assert!(
+                saved_palette.contains(entry),
+                "{entry:?} missing from {saved_palette:?}"
+            );
+        }
     }
 }
