@@ -190,6 +190,21 @@ impl RuinedPortalSetup {
     }
 }
 
+/// Vanilla `RuinedPortalStructure.isCold`: the biome at `pos` is cold enough to snow.
+fn is_cold(
+    sampler: Option<&mut (dyn HeightSampler + '_)>,
+    pos: Vector3<i32>,
+    sea_level: i32,
+) -> bool {
+    sampler
+        .and_then(|sampler| sampler.sample_biome(pos.x, pos.y, pos.z))
+        .is_some_and(|biome| {
+            !biome
+                .weather
+                .warm_enough_to_rain(pos.x, pos.y, pos.z, sea_level)
+        })
+}
+
 fn sample(random: &mut RandomGenerator, limit: f32) -> bool {
     if limit == 0.0 {
         false
@@ -375,7 +390,12 @@ impl StructureGenerator for RuinedPortalGenerator {
 
         let origin = Vector3::new(base_position.x, projected_y, base_position.z);
         let properties = RuinedPortalProperties {
-            cold: chosen_setup.can_be_cold,
+            cold: chosen_setup.can_be_cold
+                && is_cold(
+                    context.height_sampler.as_deref_mut(),
+                    origin,
+                    context.sea_level,
+                ),
             mossiness: chosen_setup.mossiness,
             air_pocket,
             overgrown: chosen_setup.overgrown,

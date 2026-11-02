@@ -915,6 +915,16 @@ pub trait HeightSampler {
     ) -> Option<&'static pumpkin_data::BlockState> {
         None
     }
+
+    /// The noise biome at a block position, like vanilla `context.biomeResolver().getNoiseBiome`.
+    fn sample_biome(
+        &mut self,
+        _block_x: i32,
+        _block_y: i32,
+        _block_z: i32,
+    ) -> Option<&'static pumpkin_data::chunk::Biome> {
+        None
+    }
 }
 
 impl HeightSampler

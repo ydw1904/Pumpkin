@@ -18,10 +18,15 @@ use crate::generation::{
 };
 
 use super::structures::HeightSampler;
+use crate::biome::BiomeSupplier;
+use crate::generation::biome_coords;
+use crate::generation::noise::router::multi_noise_sampler::MultiNoiseSampler;
+use pumpkin_data::chunk::Biome;
 
 pub struct NoiseHeightSampler<'a> {
     generator: &'a VanillaGenerator,
     preliminary: SurfaceHeightEstimateSampler<'a>,
+    multi_noise: Option<MultiNoiseSampler<'a>>,
     heights: FxHashMap<(i32, i32), i32>,
     ocean_floor_heights: FxHashMap<(i32, i32), i32>,
     columns: FxHashMap<(i32, i32), (i32, Vec<&'static BlockState>)>,
@@ -41,6 +46,7 @@ impl<'a> NoiseHeightSampler<'a> {
         Self {
             generator,
             preliminary,
+            multi_noise: None,
             heights: FxHashMap::default(),
             ocean_floor_heights: FxHashMap::default(),
             columns: FxHashMap::default(),
@@ -161,5 +167,18 @@ impl HeightSampler for NoiseHeightSampler<'_> {
         } else {
             Some(Block::AIR.default_state)
         }
+    }
+
+    fn sample_biome(&mut self, block_x: i32, block_y: i32, block_z: i32) -> Option<&'static Biome> {
+        let generator = self.generator;
+        let sampler = self
+            .multi_noise
+            .get_or_insert_with(|| MultiNoiseSampler::generate(&generator.base_router.multi_noise));
+        Some(generator.biome_supplier.biome(
+            biome_coords::from_block(block_x),
+            biome_coords::from_block(block_y),
+            biome_coords::from_block(block_z),
+            sampler,
+        ))
     }
 }
