@@ -159,7 +159,7 @@ impl NetherFossilPiece {
     }
 
     fn place_blocks(&self, region: &mut dyn GenerationCache, chunk_box: &BlockBox) {
-        let chunk = region.get_center_chunk_mut();
+        let mut level = GenerationRegion(region);
         let rotation = self.place_settings.get_rotation();
         let mirror = self.place_settings.get_mirror();
         let pivot = self.place_settings.get_rotation_pivot();
@@ -204,7 +204,7 @@ impl NetherFossilPiece {
                     break;
                 };
                 processed_state = processor.process_with_context(
-                    chunk,
+                    &level,
                     world_pos,
                     current_state,
                     &mut block_entity_nbt,
@@ -218,9 +218,9 @@ impl NetherFossilPiece {
                 continue;
             };
 
-            placement.set_block(chunk, world_pos, final_state);
+            placement.set_block(&mut level, world_pos, final_state);
         }
-        placement.finish(&mut GenerationRegion(region));
+        placement.finish(&mut level);
     }
 
     fn place_dried_ghast(
