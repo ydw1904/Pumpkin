@@ -855,7 +855,8 @@ impl ItemStack {
         // Try to get item by registry key
         let item = Item::from_registry_key(registry_key)?;
 
-        let count = compound.get_int("count")? as u8;
+        // `ItemStackTemplate`, used for items nested in components, leaves out a count of 1.
+        let count = compound.get_int("count").unwrap_or(1) as u8;
 
         // Create the item stack
         let mut item_stack = Self::new(count, item);
@@ -991,6 +992,54 @@ mod tests {
             .expect("jukebox_playable is written back");
 
         assert_eq!(written.get_string("song"), Some("minecraft:pigstep"));
+    }
+
+    /// Components as a 26.3 server saves them must come back unchanged, and a
+    /// component Pumpkin fails to read drops the whole stack.
+    #[test]
+    fn vanilla_item_components_survive_nbt_roundtrip() {
+        let mut name = NbtCompound::new();
+        name.put_string("text", "Excalibur".to_string());
+        name.put_string("color", "gold".to_string());
+        name.put_bool("italic", false);
+        let mut red_line = NbtCompound::new();
+        red_line.put_string("text", "line two".to_string());
+        red_line.put_string("color", "red".to_string());
+        let lore = NbtTag::List(vec![
+            NbtTag::String("line one".into()),
+            NbtTag::Compound(red_line),
+        ]);
+        // Items nested in components leave out a count of 1.
+        let mut nested = NbtCompound::new();
+        nested.put_string("id", "minecraft:diamond_sword".to_string());
+        let mut slot = NbtCompound::new();
+        slot.put_int("slot", 3);
+        slot.put_compound("item", nested);
+
+        let mut components = NbtCompound::new();
+        components.put("minecraft:custom_name", NbtTag::Compound(name));
+        components.put("minecraft:lore", lore);
+        components.put(
+            "minecraft:container",
+            NbtTag::List(vec![NbtTag::Compound(slot)]),
+        );
+        let mut item = NbtCompound::new();
+        item.put_string("id", "minecraft:shulker_box".to_string());
+        item.put_int("count", 1);
+        item.put_compound("components", components.clone());
+
+        let stack = ItemStack::read_item_stack(&item).expect("vanilla item reads");
+        let mut written = NbtCompound::new();
+        stack.write_item_stack(&mut written);
+        let written = written.get_compound("components").expect("components");
+
+        for key in ["minecraft:custom_name", "minecraft:lore"] {
+            assert_eq!(written.get(key), components.get(key), "{key} changed");
+        }
+        let container = written
+            .get_list("minecraft:container")
+            .expect("container written");
+        assert_eq!(container.len(), 1, "nested item was dropped");
     }
 
     /// Helper: creates a fresh Iron Sword (max_damage 250, damage 0).

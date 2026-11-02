@@ -103,6 +103,13 @@ impl TextComponentBase {
         self.to_nbt_compound_for_version(&JavaMinecraftVersion::V_26_3)
     }
 
+    /// Converts this component to an NBT tag for the latest Minecraft version, the way
+    /// vanilla's `ComponentSerialization.CODEC` saves it.
+    #[must_use]
+    pub fn to_nbt_tag(&self) -> pumpkin_nbt::tag::NbtTag {
+        self.to_nbt_tag_for_version(&JavaMinecraftVersion::V_26_3)
+    }
+
     /// Converts this component to an NBT compound tag for a specific Minecraft version.
     #[expect(clippy::too_many_lines)]
     #[must_use]
@@ -1355,7 +1362,24 @@ impl TextComponent {
     /// Parses a text component from its NBT representation
     #[must_use]
     pub fn from_nbt(tag: &pumpkin_nbt::tag::NbtTag) -> Self {
-        serde_json::from_value(nbt_tag_to_json(tag)).unwrap_or_else(|_| Self::empty())
+        // NBT has no boolean type: vanilla stores style flags such as `bold` as bytes.
+        fn to_json(tag: &pumpkin_nbt::tag::NbtTag) -> serde_json::Value {
+            match tag {
+                pumpkin_nbt::tag::NbtTag::Byte(b) => serde_json::Value::Bool(*b != 0),
+                pumpkin_nbt::tag::NbtTag::List(list) => {
+                    serde_json::Value::Array(list.iter().map(to_json).collect())
+                }
+                pumpkin_nbt::tag::NbtTag::Compound(compound) => serde_json::Value::Object(
+                    compound
+                        .child_tags
+                        .iter()
+                        .map(|(k, v)| (k.to_string(), to_json(v)))
+                        .collect(),
+                ),
+                other => nbt_tag_to_json(other),
+            }
+        }
+        serde_json::from_value(to_json(tag)).unwrap_or_else(|_| Self::empty())
     }
 
     /// Creates a new text component with plain text content.

@@ -112,14 +112,14 @@ pub struct CustomNameImpl {
 }
 impl CustomNameImpl {
     pub fn read_data(data: &NbtTag) -> Option<Self> {
-        data.extract_string().map(|name| Self {
-            name: TextComponent::text(name.to_string()),
+        Some(Self {
+            name: TextComponent::from_nbt(data),
         })
     }
 }
 impl DataComponentImpl for CustomNameImpl {
     fn write_data(&self) -> NbtTag {
-        NbtTag::String(self.name.clone().get_text().into())
+        self.name.0.to_nbt_tag()
     }
     fn get_hash(&self) -> i32 {
         get_str_hash(self.name.clone().get_text().as_str()) as i32
@@ -190,22 +190,13 @@ impl LoreImpl {
         };
 
         Some(Self {
-            lines: lines
-                .iter()
-                .filter_map(NbtTag::extract_string)
-                .map(|line| TextComponent::text(line.to_owned()))
-                .collect(),
+            lines: lines.iter().map(TextComponent::from_nbt).collect(),
         })
     }
 }
 impl DataComponentImpl for LoreImpl {
     fn write_data(&self) -> NbtTag {
-        NbtTag::List(
-            self.lines
-                .iter()
-                .map(|line| NbtTag::String(line.clone().get_text().into_boxed_str()))
-                .collect(),
-        )
+        NbtTag::List(self.lines.iter().map(|line| line.0.to_nbt_tag()).collect())
     }
     default_impl!(Lore);
 }
