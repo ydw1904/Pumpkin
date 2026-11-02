@@ -505,6 +505,7 @@ impl World {
         }
     }
 
+    #[expect(clippy::too_many_lines)]
     pub fn update_active_chunks(self: &Arc<Self>) {
         let sim_dist = self.server.upgrade().map_or(10, |s| {
             s.advanced_config.networking.java.simulation_distance.get()
@@ -602,6 +603,7 @@ impl World {
             self.migrate_pending_block_entities(pos);
         }
         for pos in newly_loaded {
+            self.level.light_engine.check_pending(&self.level, pos);
             self.register_chunk_pois(pos);
         }
 

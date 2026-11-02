@@ -8,12 +8,18 @@ use pumpkin_config::lighting::LightingEngineConfig;
 use pumpkin_data::{BlockState, BlockStateId};
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector2::Vector2;
-use std::sync::Arc;
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::cell::RefCell;
+use std::sync::{Arc, Mutex};
 
 /// Light updates for block changes in loaded chunks.
 pub struct DynamicLightEngine {
     min_y: i32,
     max_y: i32,
+    /// Positions in chunks that weren't loaded yet when light tried to reach them, checked again
+    /// once the chunk is loaded. Vanilla's light engine already reaches lit chunks that aren't
+    /// full, but Pumpkin's runtime light only sees loaded chunks.
+    pending_checks: Mutex<FxHashMap<Vector2<i32>, FxHashSet<BlockPos>>>,
 }
 
 /// Light access through the level's loaded chunks.
@@ -21,6 +27,8 @@ struct LevelLightStorage<'a> {
     level: &'a Level,
     min_y: i32,
     max_y: i32,
+    /// Positions light couldn't reach because their chunk isn't loaded.
+    unloaded: RefCell<Vec<BlockPos>>,
 }
 
 impl LightStorage for LevelLightStorage<'_> {
@@ -47,6 +55,10 @@ impl LightStorage for LevelLightStorage<'_> {
                         relative.z as usize,
                     )
                 })
+            })
+            .or_else(|| {
+                self.unloaded.borrow_mut().push(pos);
+                None
             })
             .flatten()
     }
@@ -123,8 +135,25 @@ impl LightStorage for LevelLightStorage<'_> {
 
 impl DynamicLightEngine {
     #[must_use]
-    pub const fn new(min_y: i32, max_y: i32) -> Self {
-        Self { min_y, max_y }
+    pub fn new(min_y: i32, max_y: i32) -> Self {
+        Self {
+            min_y,
+            max_y,
+            pending_checks: Mutex::default(),
+        }
+    }
+
+    /// Checks the light that couldn't reach `chunk` before it was loaded, like vanilla would
+    /// have when the change happened.
+    pub fn check_pending(&self, level: &Arc<Level>, chunk: Vector2<i32>) {
+        let positions = self
+            .pending_checks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&chunk);
+        if let Some(positions) = positions {
+            self.update_lighting(level, &positions.into_iter().collect::<Vec<_>>());
+        }
     }
 
     /// Updates block and sky light after the block at `pos` changed, like vanilla
@@ -153,6 +182,7 @@ impl DynamicLightEngine {
             level,
             min_y: self.min_y,
             max_y: self.max_y,
+            unloaded: RefCell::default(),
         };
 
         let mut block_light = LayerLightEngine::new(LightLayer::Block);
@@ -167,6 +197,29 @@ impl DynamicLightEngine {
                 sky_light.check_node(&mut storage, pos);
             }
             sky_light.run_updates(&mut storage);
+        }
+
+        let unloaded = storage.unloaded.into_inner();
+        if unloaded.is_empty() {
+            return;
+        }
+        let mut chunks = FxHashSet::default();
+        {
+            let mut pending = self
+                .pending_checks
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            for pos in unloaded {
+                let chunk = pos.chunk_and_chunk_relative_position().0;
+                pending.entry(chunk).or_default().insert(pos);
+                chunks.insert(chunk);
+            }
+        }
+        // A chunk that got loaded meanwhile won't be announced again.
+        for chunk in chunks {
+            if level.is_chunk_loaded(&chunk) {
+                self.check_pending(level, chunk);
+            }
         }
     }
 
@@ -328,5 +381,65 @@ impl DynamicLightEngine {
             Ok(())
         });
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chunk::format::LightContainer;
+    use crate::chunk::{ChunkData, ChunkLight};
+    use crate::level::SyncChunk;
+    use pumpkin_config::world::LevelConfig;
+    use pumpkin_data::Block;
+    use pumpkin_data::dimension::Dimension;
+    use tempfile::TempDir;
+
+    fn lit_chunk(x: i32, z: i32) -> SyncChunk {
+        let mut chunk = ChunkData::empty(x, z);
+        let sections = chunk.section.count;
+        chunk.light_engine = Mutex::new(ChunkLight {
+            sky_light: (0..sections)
+                .map(|_| LightContainer::new_empty(15))
+                .collect(),
+            block_light: (0..sections)
+                .map(|_| LightContainer::new_empty(0))
+                .collect(),
+        });
+        Arc::new(chunk)
+    }
+
+    #[tokio::test]
+    async fn light_reaches_chunks_loaded_after_the_change() {
+        let temp_dir = TempDir::new().unwrap();
+        let level = Level::from_root_folder(
+            &LevelConfig::default(),
+            temp_dir.path().to_path_buf(),
+            0,
+            Dimension::OVERWORLD,
+        );
+        let origin = Vector2::new(0, 0);
+        let neighbor = Vector2::new(1, 0);
+        let chunk = lit_chunk(origin.x, origin.y);
+        chunk.set_block_absolute_y(15, 64, 8, Block::GLOWSTONE.default_state.id);
+        level.loaded_chunks.insert(origin, chunk);
+        level
+            .light_engine
+            .update_lighting_at(&level, BlockPos::new(15, 64, 8));
+
+        let across = BlockPos::new(16, 64, 8);
+        level
+            .loaded_chunks
+            .insert(neighbor, lit_chunk(neighbor.x, neighbor.y));
+        assert_eq!(
+            level.light_engine.get_block_light_level(&level, &across),
+            Some(0)
+        );
+        level.light_engine.check_pending(&level, neighbor);
+        assert_eq!(
+            level.light_engine.get_block_light_level(&level, &across),
+            Some(14)
+        );
+        level.shutdown().await;
     }
 }
