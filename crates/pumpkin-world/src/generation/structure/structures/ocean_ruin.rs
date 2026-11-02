@@ -577,7 +577,10 @@ impl StructurePieceBase for OceanRuinPiece {
                 continue;
             }
 
-            if self.integrity < 0.999 && random.next_f32() > self.integrity {
+            // `BlockRotProcessor` draws from a random seeded by the block position.
+            let mut rot_random =
+                LegacyRand::from_seed(hash_block_pos(world_pos.x, world_pos.y, world_pos.z) as u64);
+            if rot_random.next_f32() > self.integrity {
                 continue;
             }
 
