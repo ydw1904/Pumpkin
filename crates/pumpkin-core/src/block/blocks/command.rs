@@ -16,7 +16,10 @@ use crate::{
 use pumpkin_data::block_properties::{CommandBlockLikeProperties, Facing};
 use pumpkin_data::{Block, BlockId, BlockState, BlockStateId, FacingExt, Rotation};
 
-use pumpkin_util::{GameMode, PermissionLvl, math::position::BlockPos};
+use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_protocol::codec::var_int::VarInt;
+use pumpkin_protocol::java::client::play::CBlockEntityData;
+use pumpkin_util::{GameMode, math::position::BlockPos};
 use pumpkin_world::tick::TickPriority;
 use tracing::warn;
 
@@ -216,16 +219,25 @@ impl BlockBehaviour for CommandBlock {
     }
 
     fn normal_use(&self, args: NormalUseArgs<'_>) -> BlockActionResult {
+        let Some(block_entity) = args.world.get_block_entity(args.position) else {
+            return BlockActionResult::Pass;
+        };
+        if block_entity.resource_location() != CommandBlockEntity::ID
+            || !args.player.can_use_game_master_blocks()
         {
-            if args.player.permission_lvl.load() < PermissionLvl::Two {
-                return BlockActionResult::Pass;
-            }
-            let Some(block_entity) = args.world.get_block_entity(args.position) else {
-                return BlockActionResult::Pass;
-            };
-            args.world.update_block_entity(&block_entity);
-            BlockActionResult::SuccessServer
+            return BlockActionResult::Pass;
         }
+        // Vanilla `ServerPlayer.openCommandBlock` sends the block's saved fields to the player
+        // opening the screen and nobody else.
+        let mut nbt = NbtCompound::new();
+        block_entity.write_nbt(&mut nbt);
+        let bytes = pumpkin_nbt::Nbt::from(nbt).write_unnamed();
+        args.player.try_send_client_packet(&CBlockEntityData::new(
+            *args.position,
+            VarInt(block_entity.get_id() as i32),
+            bytes.as_ref().into(),
+        ));
+        BlockActionResult::Success
     }
 
     fn on_neighbor_update(&self, args: OnNeighborUpdateArgs<'_>) {
