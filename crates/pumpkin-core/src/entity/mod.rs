@@ -5183,7 +5183,7 @@ impl Entity {
         }
     }
 
-    fn join_team(&self, team_name: &str) {
+    pub(crate) fn join_team(&self, team_name: &str) {
         if self.entity_type == &EntityType::PLAYER {
             return;
         }

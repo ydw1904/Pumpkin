@@ -501,6 +501,10 @@ impl MobEntity {
     /// Vanilla `Mob.convertTo` with `ConversionParams.single(mob, true, true)`: replaces this mob
     /// with a new one of `converts_to` that keeps its position, equipment and most state.
     /// `after_conversion` runs before the new mob is added to the world.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "mirrors ConversionType.SINGLE and convertCommon step by step"
+    )]
     pub fn convert_to(
         &self,
         converts_to: &'static EntityType,
@@ -596,9 +600,60 @@ impl MobEntity {
         to_entity.set_invulnerable(from_entity.invulnerable.load(Ordering::Relaxed));
         to_entity.set_has_no_gravity(from_entity.has_no_gravity());
         to_entity.set_silent(from_entity.is_silent());
+        to_entity
+            .scoreboard_tags
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .extend(
+                from_entity
+                    .scoreboard_tags
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .iter()
+                    .cloned(),
+            );
+
+        let from_name = from_entity.entity_uuid.to_string();
+        let team = world
+            .scoreboard
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_entity_team(&from_name)
+            .map(|team| team.name.clone());
+        if let Some(team) = &team {
+            to_entity.join_team(team);
+            world
+                .scoreboard
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .remove_player_from_team(&*world, team, &from_name);
+        }
 
         after_conversion(&converted);
-        world.spawn_entity(converted.clone());
+        if world.spawn_entity(converted.clone()) {
+            // ConversionType.SINGLE: the new mob takes over the old one's vehicle and rider. A
+            // riding player is left to the dismount of the removed mob.
+            if let Some(vehicle) = from_entity.get_vehicle() {
+                let vehicle_entity = vehicle.get_entity();
+                vehicle_entity.remove_passenger_before_teleport(from_entity.entity_id);
+                vehicle_entity.add_passenger(vehicle.clone(), converted.clone());
+            }
+            let rider = from_entity
+                .passengers
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .first()
+                .cloned()
+                .filter(|rider| rider.get_player().is_none());
+            if let Some(rider) = rider {
+                from_entity.remove_passenger_before_teleport(rider.get_entity().entity_id);
+                rider
+                    .get_entity()
+                    .riding_cooldown
+                    .store(0, Ordering::Relaxed);
+                to_entity.add_passenger(converted.clone(), rider);
+            }
+        }
         from_entity.remove();
         true
     }
