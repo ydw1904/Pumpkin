@@ -1323,10 +1323,36 @@ fn generate_condition_tokens(trigger: &str, val: &serde_json::Value) -> TokenStr
                 .map_or_else(Vec::new, |arr| {
                     arr.iter().map(generate_item_condition_tokens).collect()
                 });
+            let slots_tok = val.get("slots").map_or_else(
+                || quote! { None },
+                |slots| {
+                    let bound = |key: &str, end: &str| {
+                        opt_i64_tokens(slots.get(key).and_then(|range| match range {
+                            serde_json::Value::Number(n) => n.as_i64(),
+                            serde_json::Value::Object(m) => m.get(end).and_then(|v| v.as_i64()),
+                            _ => None,
+                        }))
+                    };
+                    let (empty_min, empty_max) = (bound("empty", "min"), bound("empty", "max"));
+                    let (full_min, full_max) = (bound("full", "min"), bound("full", "max"));
+                    let (occupied_min, occupied_max) =
+                        (bound("occupied", "min"), bound("occupied", "max"));
+                    quote! {
+                        Some(InventorySlotsCondition {
+                            empty_min: #empty_min,
+                            empty_max: #empty_max,
+                            full_min: #full_min,
+                            full_max: #full_max,
+                            occupied_min: #occupied_min,
+                            occupied_max: #occupied_max,
+                        })
+                    }
+                },
+            );
             quote! {
                 AdvancementCondition::InventoryChanged(&InventoryChangedCondition {
                     items: &[#(#items_toks),*],
-                    slots: None,
+                    slots: #slots_tok,
                 })
             }
         }

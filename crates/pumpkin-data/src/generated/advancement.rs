@@ -43172,7 +43172,14 @@ impl Advancement {
                 trigger: "minecraft:inventory_changed",
                 conditions: AdvancementCondition::InventoryChanged(&InventoryChangedCondition {
                     items: &[],
-                    slots: None,
+                    slots: Some(InventorySlotsCondition {
+                        empty_min: None,
+                        empty_max: None,
+                        full_min: None,
+                        full_max: None,
+                        occupied_min: Some(10i64),
+                        occupied_max: None,
+                    }),
                 }),
             },
             AdvancementCriterion {
