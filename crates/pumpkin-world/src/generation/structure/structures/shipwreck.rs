@@ -311,8 +311,20 @@ impl StructurePieceBase for ShipwreckPiece {
         let chunk = region.get_center_chunk_mut();
         let box_limit = self.piece.bounding_box;
         let mut placement = TemplateBlockPlacement::new(true, false);
-        for block in &self.template.blocks {
-            let palette_entry = &self.template.palette[block.state as usize];
+        // `StructurePlaceSettings.getRandomPalette`: shipwrecks have one palette per wood type,
+        // picked with a random seeded from the template position.
+        let Some(palette) = self.template.palettes.get(
+            LegacyRand::from_seed(hash_block_pos(
+                self.template_position.x,
+                self.template_position.y,
+                self.template_position.z,
+            ) as u64)
+            .next_bounded_i32(self.template.palettes.len() as i32) as usize,
+        ) else {
+            return;
+        };
+        for block in palette.blocks() {
+            let palette_entry = &block.state;
 
             if palette_entry.name == "minecraft:structure_block"
                 || palette_entry.name == "minecraft:air"
