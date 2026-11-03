@@ -1,5 +1,6 @@
 use crate::block::entities::BlockEntity;
 use crate::entity::item::ItemEntity;
+use crate::entity::vehicle::minecart::MinecartEntity;
 use crate::world::World;
 use pumpkin_data::block_properties::{FacingHopper, HopperLikeProperties};
 use pumpkin_data::item_stack::ItemStack;
@@ -12,6 +13,7 @@ use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::gameplay::game_random;
 use std::any::Any;
 use std::array::from_fn;
 use std::sync::Arc;
@@ -53,6 +55,35 @@ const fn facing_direction(facing: FacingHopper) -> BlockDirection {
         FacingHopper::West => BlockDirection::West,
         FacingHopper::East => BlockDirection::East,
     }
+}
+
+/// `HopperBlockEntity.getContainerAt`: the block's container, or else a random container
+/// minecart inside the block.
+fn container_at(world: &Arc<World>, pos: BlockPos) -> Option<Arc<dyn Inventory>> {
+    if let Some(container) = world
+        .get_block_entity(&pos)
+        .and_then(super::BlockEntity::get_inventory)
+    {
+        return Some(container);
+    }
+    let min = pos.0.to_f64();
+    let block = BoundingBox::new(min, min + Vector3::new(1.0, 1.0, 1.0));
+    let mut containers: Vec<_> = world
+        .get_entities_at_box(&block)
+        .into_iter()
+        .filter(|entity| entity.get_entity().is_alive())
+        .filter_map(|entity| {
+            entity
+                .cast_any()
+                .downcast_ref::<MinecartEntity>()
+                .and_then(MinecartEntity::container_inventory)
+        })
+        .collect();
+    if containers.is_empty() {
+        return None;
+    }
+    let index = game_random().random_range(0..containers.len());
+    Some(containers.swap_remove(index))
 }
 
 /// `HopperBlockEntity.getSlots`: the slots a container exposes on `side`.
@@ -231,7 +262,6 @@ impl HopperBlockEntity {
 
     #[allow(clippy::too_many_lines)]
     fn suck_in_items(&self, world: &Arc<World>) -> bool {
-        // TODO getEntityContainer
         let pos_up = &self.position.up();
         let mut search_event = crate::plugin::api::events::inventory::hopper_inventory_search::HopperInventorySearchEvent::new(
             self.position,
@@ -246,9 +276,7 @@ impl HopperBlockEntity {
             return false;
         }
 
-        if let Some(entity) = world.get_block_entity(pos_up)
-            && let Some(container) = entity.clone().get_inventory()
-        {
+        if let Some(container) = container_at(world, *pos_up) {
             for i in slots_for(container.as_ref(), BlockDirection::Down) {
                 let mut item = container.get_stack(i);
                 if !item.is_empty()
@@ -372,10 +400,7 @@ impl HopperBlockEntity {
     }
 
     fn eject_items(&self, world: &Arc<World>) -> bool {
-        // TODO getEntityContainer
-
-        if let Some(entity) = world.get_block_entity(&self.position.offset(to_offset(&self.facing)))
-            && let Some(container) = entity.get_inventory()
+        if let Some(container) = container_at(world, self.position.offset(to_offset(&self.facing)))
         {
             // The hopper reaches the target through the face opposite its facing.
             let side = facing_direction(self.facing).opposite();
