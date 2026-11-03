@@ -2899,7 +2899,7 @@ impl World {
             is_thundering,
         );
         for entity in entities {
-            self.spawn_entity_non_save(entity);
+            self.spawn_counted_entity(entity);
         }
     }
 
@@ -5521,12 +5521,17 @@ impl World {
         removed_player
     }
 
-    #[expect(clippy::needless_pass_by_value)]
     pub fn spawn_entity_non_save(&self, entity: Arc<dyn EntityBase>) {
-        let _base_entity = entity.get_entity();
+        self.spawn_state.load().add_entity(self, entity.as_ref());
+        self.spawn_counted_entity(entity);
+    }
+
+    /// [`Self::spawn_entity_non_save`] for a natural spawn, which `SpawnState::after_spawn`
+    /// already counted.
+    #[expect(clippy::needless_pass_by_value)]
+    fn spawn_counted_entity(&self, entity: Arc<dyn EntityBase>) {
         gameplay::register_entity(entity.get_entity().entity_id, || entity.rng_owner_base());
         self.entity_tracker.add_entity(&entity, self);
-        self.spawn_state.load().add_entity(self, entity.as_ref());
 
         self.entities.rcu(|current_entities| {
             let mut new_entities = (**current_entities).clone();
