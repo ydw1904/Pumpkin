@@ -7,6 +7,9 @@ use pumpkin_util::text::TextContent::Translate;
 use quote::{format_ident, quote};
 use serde::Deserialize;
 
+use crate::loot_table::LootConditionGenerator;
+use pumpkin_util::loot_table::parser::parse_condition;
+
 /// Raw deserialization shape for a single enchantment entry from `enchantment/*.json`.
 #[derive(Deserialize)]
 pub struct Enchantment {
@@ -338,8 +341,25 @@ fn parse_entity_effect(val: &serde_json::Value) -> TokenStream {
                 }
             }
             "minecraft:play_sound" => {
-                let sound = obj.get("sound").and_then(|s| s.as_str()).unwrap_or("");
-                quote! { EnchantmentEntityEffect::PlaySound { sound: #sound } }
+                // One sound, or one per enchantment level.
+                let sounds: Vec<&str> = match obj.get("sound") {
+                    Some(serde_json::Value::Array(sounds)) => {
+                        sounds.iter().filter_map(|s| s.as_str()).collect()
+                    }
+                    Some(sound) => sound.as_str().into_iter().collect(),
+                    None => Vec::new(),
+                };
+                let volume =
+                    parse_float_provider(obj.get("volume").unwrap_or(&serde_json::Value::Null));
+                let pitch =
+                    parse_float_provider(obj.get("pitch").unwrap_or(&serde_json::Value::Null));
+                quote! {
+                    EnchantmentEntityEffect::PlaySound {
+                        sounds: &[#(#sounds),*],
+                        volume: #volume,
+                        pitch: #pitch,
+                    }
+                }
             }
             "minecraft:replace_block" => {
                 let offset_x = obj
@@ -749,7 +769,26 @@ fn parse_value_effect(val: &serde_json::Value) -> TokenStream {
     }
 }
 
-fn parse_conditional_entity_effects(val: Option<&serde_json::Value>) -> TokenStream {
+/// An effect's `requirements` as a loot condition; one Pumpkin can't parse always passes.
+fn requirements_tokens(
+    item: &serde_json::Value,
+    conditions: &mut LootConditionGenerator,
+) -> TokenStream {
+    let Some(requirements) = item.get("requirements") else {
+        return quote! { LootCondition::None };
+    };
+    if let Some(condition) = parse_condition(requirements) {
+        conditions.condition(&condition)
+    } else {
+        println!("Unsupported enchantment effect requirements: {requirements}");
+        quote! { LootCondition::None }
+    }
+}
+
+fn parse_conditional_entity_effects(
+    val: Option<&serde_json::Value>,
+    conditions: &mut LootConditionGenerator,
+) -> TokenStream {
     let effects: Vec<TokenStream> = val
         .and_then(|v| v.as_array())
         .map(|arr| {
@@ -757,7 +796,8 @@ fn parse_conditional_entity_effects(val: Option<&serde_json::Value>) -> TokenStr
                 .map(|item| {
                     let eff = item.get("effect").unwrap_or(item);
                     let eff_tokens = parse_entity_effect(eff);
-                    quote! { ConditionalEffect { effect: #eff_tokens } }
+                    let requirements = requirements_tokens(item, conditions);
+                    quote! { ConditionalEffect { requirements: #requirements, effect: #eff_tokens } }
                 })
                 .collect()
         })
@@ -765,7 +805,10 @@ fn parse_conditional_entity_effects(val: Option<&serde_json::Value>) -> TokenStr
     quote! { &[#(#effects),*] }
 }
 
-fn parse_targeted_conditional_entity_effects(val: Option<&serde_json::Value>) -> TokenStream {
+fn parse_targeted_conditional_entity_effects(
+    val: Option<&serde_json::Value>,
+    conditions: &mut LootConditionGenerator,
+) -> TokenStream {
     let effects: Vec<TokenStream> = val
         .and_then(|v| v.as_array())
         .map(|arr| {
@@ -789,10 +832,12 @@ fn parse_targeted_conditional_entity_effects(val: Option<&serde_json::Value>) ->
                         Some("victim") => quote! { Some(EnchantmentTarget::Victim) },
                         _ => quote! { None },
                     };
+                    let requirements = requirements_tokens(item, conditions);
                     quote! {
                         TargetedConditionalEffect {
                             enchanted: #enchanted,
                             affected: #affected,
+                            requirements: #requirements,
                             effect: #eff_tokens,
                         }
                     }
@@ -803,7 +848,10 @@ fn parse_targeted_conditional_entity_effects(val: Option<&serde_json::Value>) ->
     quote! { &[#(#effects),*] }
 }
 
-fn parse_conditional_value_effects(val: Option<&serde_json::Value>) -> TokenStream {
+fn parse_conditional_value_effects(
+    val: Option<&serde_json::Value>,
+    conditions: &mut LootConditionGenerator,
+) -> TokenStream {
     let effects: Vec<TokenStream> = val
         .and_then(|v| v.as_array())
         .map(|arr| {
@@ -811,7 +859,8 @@ fn parse_conditional_value_effects(val: Option<&serde_json::Value>) -> TokenStre
                 .map(|item| {
                     let eff = item.get("effect").unwrap_or(item);
                     let eff_tokens = parse_value_effect(eff);
-                    quote! { ConditionalEffect { effect: #eff_tokens } }
+                    let requirements = requirements_tokens(item, conditions);
+                    quote! { ConditionalEffect { requirements: #requirements, effect: #eff_tokens } }
                 })
                 .collect()
         })
@@ -819,7 +868,10 @@ fn parse_conditional_value_effects(val: Option<&serde_json::Value>) -> TokenStre
     quote! { &[#(#effects),*] }
 }
 
-fn parse_targeted_conditional_value_effects(val: Option<&serde_json::Value>) -> TokenStream {
+fn parse_targeted_conditional_value_effects(
+    val: Option<&serde_json::Value>,
+    conditions: &mut LootConditionGenerator,
+) -> TokenStream {
     let effects: Vec<TokenStream> = val
         .and_then(|v| v.as_array())
         .map(|arr| {
@@ -843,10 +895,12 @@ fn parse_targeted_conditional_value_effects(val: Option<&serde_json::Value>) -> 
                         Some("victim") => quote! { Some(EnchantmentTarget::Victim) },
                         _ => quote! { None },
                     };
+                    let requirements = requirements_tokens(item, conditions);
                     quote! {
                         TargetedConditionalEffect {
                             enchanted: #enchanted,
                             affected: #affected,
+                            requirements: #requirements,
                             effect: #eff_tokens,
                         }
                     }
@@ -1019,6 +1073,7 @@ pub fn build() -> TokenStream {
         .collect();
     entries.sort_by_key(|e| e.path());
 
+    let mut conditions = LootConditionGenerator::default();
     for (i, entry) in entries.iter().enumerate() {
         let stem = entry
             .path()
@@ -1074,49 +1129,90 @@ pub fn build() -> TokenStream {
         let translate = translate.to_string();
 
         let effects_map = enchantment.effects;
-        let projectile_spawned =
-            parse_conditional_entity_effects(effects_map.get("minecraft:projectile_spawned"));
-        let post_attack =
-            parse_targeted_conditional_entity_effects(effects_map.get("minecraft:post_attack"));
-        let projectile_count =
-            parse_conditional_value_effects(effects_map.get("minecraft:projectile_count"));
-        let projectile_spread =
-            parse_conditional_value_effects(effects_map.get("minecraft:projectile_spread"));
-        let projectile_piercing =
-            parse_conditional_value_effects(effects_map.get("minecraft:projectile_piercing"));
-        let ammo_use = parse_conditional_value_effects(effects_map.get("minecraft:ammo_use"));
-        let damage = parse_conditional_value_effects(effects_map.get("minecraft:damage"));
-        let knockback = parse_conditional_value_effects(effects_map.get("minecraft:knockback"));
-        let armor_effectiveness =
-            parse_conditional_value_effects(effects_map.get("minecraft:armor_effectiveness"));
-        let damage_protection =
-            parse_conditional_value_effects(effects_map.get("minecraft:damage_protection"));
-        let hit_block = parse_conditional_entity_effects(effects_map.get("minecraft:hit_block"));
-        let item_damage = parse_conditional_value_effects(effects_map.get("minecraft:item_damage"));
-        let equipment_drops =
-            parse_targeted_conditional_value_effects(effects_map.get("minecraft:equipment_drops"));
-        let fishing_time_reduction =
-            parse_conditional_value_effects(effects_map.get("minecraft:fishing_time_reduction"));
-        let fishing_luck_bonus =
-            parse_conditional_value_effects(effects_map.get("minecraft:fishing_luck_bonus"));
-        let block_experience =
-            parse_conditional_value_effects(effects_map.get("minecraft:block_experience"));
-        let mob_experience =
-            parse_conditional_value_effects(effects_map.get("minecraft:mob_experience"));
-        let repair_with_xp =
-            parse_conditional_value_effects(effects_map.get("minecraft:repair_with_xp"));
+        let projectile_spawned = parse_conditional_entity_effects(
+            effects_map.get("minecraft:projectile_spawned"),
+            &mut conditions,
+        );
+        let post_attack = parse_targeted_conditional_entity_effects(
+            effects_map.get("minecraft:post_attack"),
+            &mut conditions,
+        );
+        let projectile_count = parse_conditional_value_effects(
+            effects_map.get("minecraft:projectile_count"),
+            &mut conditions,
+        );
+        let projectile_spread = parse_conditional_value_effects(
+            effects_map.get("minecraft:projectile_spread"),
+            &mut conditions,
+        );
+        let projectile_piercing = parse_conditional_value_effects(
+            effects_map.get("minecraft:projectile_piercing"),
+            &mut conditions,
+        );
+        let ammo_use =
+            parse_conditional_value_effects(effects_map.get("minecraft:ammo_use"), &mut conditions);
+        let damage =
+            parse_conditional_value_effects(effects_map.get("minecraft:damage"), &mut conditions);
+        let knockback = parse_conditional_value_effects(
+            effects_map.get("minecraft:knockback"),
+            &mut conditions,
+        );
+        let armor_effectiveness = parse_conditional_value_effects(
+            effects_map.get("minecraft:armor_effectiveness"),
+            &mut conditions,
+        );
+        let damage_protection = parse_conditional_value_effects(
+            effects_map.get("minecraft:damage_protection"),
+            &mut conditions,
+        );
+        let hit_block = parse_conditional_entity_effects(
+            effects_map.get("minecraft:hit_block"),
+            &mut conditions,
+        );
+        let item_damage = parse_conditional_value_effects(
+            effects_map.get("minecraft:item_damage"),
+            &mut conditions,
+        );
+        let equipment_drops = parse_targeted_conditional_value_effects(
+            effects_map.get("minecraft:equipment_drops"),
+            &mut conditions,
+        );
+        let fishing_time_reduction = parse_conditional_value_effects(
+            effects_map.get("minecraft:fishing_time_reduction"),
+            &mut conditions,
+        );
+        let fishing_luck_bonus = parse_conditional_value_effects(
+            effects_map.get("minecraft:fishing_luck_bonus"),
+            &mut conditions,
+        );
+        let block_experience = parse_conditional_value_effects(
+            effects_map.get("minecraft:block_experience"),
+            &mut conditions,
+        );
+        let mob_experience = parse_conditional_value_effects(
+            effects_map.get("minecraft:mob_experience"),
+            &mut conditions,
+        );
+        let repair_with_xp = parse_conditional_value_effects(
+            effects_map.get("minecraft:repair_with_xp"),
+            &mut conditions,
+        );
         let smash_damage_per_fallen_block = parse_conditional_value_effects(
             effects_map.get("minecraft:smash_damage_per_fallen_block"),
+            &mut conditions,
         );
         let trident_return_acceleration = parse_conditional_value_effects(
             effects_map.get("minecraft:trident_return_acceleration"),
+            &mut conditions,
         );
         let trident_spin_attack_strength =
             parse_optional_value_effect(effects_map.get("minecraft:trident_spin_attack_strength"));
         let crossbow_charge_time =
             parse_optional_value_effect(effects_map.get("minecraft:crossbow_charge_time"));
-        let location_changed =
-            parse_conditional_entity_effects(effects_map.get("minecraft:location_changed"));
+        let location_changed = parse_conditional_entity_effects(
+            effects_map.get("minecraft:location_changed"),
+            &mut conditions,
+        );
         let prevent_armor_change = effects_map.contains_key("minecraft:prevent_armor_change");
         let prevent_equipment_drop = effects_map.contains_key("minecraft:prevent_equipment_drop");
 
@@ -1228,8 +1324,11 @@ pub fn build() -> TokenStream {
         id_to_type.extend(quote! { #id => Some(&Self::#format_name), });
     }
 
+    let predicates = conditions.predicates;
     quote! {
         use crate::item::Item;
+        use pumpkin_util::loot_table::{LootCondition, LootEntityTarget, LootNumberProvider, LootPredicateValue};
+        #predicates
         use crate::tag::Enchantment as EnchantmentTag;
         use crate::tag::Item as ItemTag;
         use crate::tag::DamageType as DamageTypeTag;
@@ -1306,15 +1405,17 @@ pub fn build() -> TokenStream {
             Victim,
         }
 
-        #[derive(Clone, Debug, PartialEq, Eq)]
+        #[derive(Clone, Debug)]
         pub struct TargetedConditionalEffect<T> {
             pub enchanted: Option<EnchantmentTarget>,
             pub affected: Option<EnchantmentTarget>,
+            pub requirements: LootCondition,
             pub effect: T,
         }
 
-        #[derive(Clone, Debug, PartialEq, Eq)]
+        #[derive(Clone, Debug)]
         pub struct ConditionalEffect<T> {
+            pub requirements: LootCondition,
             pub effect: T,
         }
 
@@ -1350,7 +1451,9 @@ pub fn build() -> TokenStream {
                 amount: LevelBasedValue,
             },
             PlaySound {
-                sound: &'static str,
+                sounds: &'static [&'static str],
+                volume: pumpkin_util::math::float_provider::FloatProvider,
+                pitch: pumpkin_util::math::float_provider::FloatProvider,
             },
             ReplaceBlock {
                 offset_x: i32,

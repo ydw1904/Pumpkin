@@ -463,6 +463,14 @@ pub fn evaluate_predicate(predicate_name: &str, params: &LootContextParameters<'
         .is_some_and(|val| evaluate_predicate_value(val, params))
 }
 
+/// Vanilla `LootItemCondition.test` for a generated condition, such as an enchantment effect's
+/// requirements.
+#[must_use]
+pub fn test_condition(condition: LootCondition, params: &LootContextParameters<'_>) -> bool {
+    let mut rng = RandomGenerator::Gameplay(game_random());
+    check_condition(condition, false, false, params, &mut rng)
+}
+
 #[must_use]
 pub fn evaluate_predicate_value(
     value: &serde_json::Value,

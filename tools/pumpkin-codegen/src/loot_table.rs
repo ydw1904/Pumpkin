@@ -28,9 +28,11 @@ where
     })
 }
 
+/// Turns parsed loot conditions into `LootCondition` tokens, collecting the JSON predicates
+/// they refer to as statics.
 #[derive(Default)]
-struct Generator {
-    predicates: TokenStream,
+pub struct LootConditionGenerator {
+    pub predicates: TokenStream,
     predicate_count: usize,
 }
 
@@ -97,7 +99,7 @@ fn bonus_tokens(formula: LootBonusFormula) -> TokenStream {
     }
 }
 
-impl Generator {
+impl LootConditionGenerator {
     fn predicate(&mut self, predicate: &Value) -> TokenStream {
         let name = format_ident!("LOOT_PREDICATE_{}", self.predicate_count);
         self.predicate_count += 1;
@@ -106,7 +108,7 @@ impl Generator {
         quote! { &#name }
     }
 
-    fn condition(&mut self, condition: &DynamicLootCondition) -> TokenStream {
+    pub fn condition(&mut self, condition: &DynamicLootCondition) -> TokenStream {
         match condition {
             DynamicLootCondition::None => quote! { LootCondition::None },
             DynamicLootCondition::Never => quote! { LootCondition::Never },
@@ -342,7 +344,7 @@ pub fn build() -> TokenStream {
     let mut tables = Vec::new();
     collect_tables(base, base, &mut tables);
     tables.sort_by(|a, b| a.0.cmp(&b.0));
-    let mut generator = Generator::default();
+    let mut generator = LootConditionGenerator::default();
     let mut declarations = TokenStream::new();
     let mut lookup = Vec::new();
     for (key, table) in &tables {

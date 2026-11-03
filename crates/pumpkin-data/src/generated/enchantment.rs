@@ -1,6 +1,262 @@
 /* This file is generated. Do not edit manually. */
-use crate::data_component_impl::EnchantmentsImpl;
 use crate::item::Item;
+use pumpkin_util::loot_table::{
+    LootCondition, LootEntityTarget, LootNumberProvider, LootPredicateValue,
+};
+static LOOT_PREDICATE_0: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
+    LootPredicateValue::Object(
+        [(
+            "minecraft:entity_type".to_owned(),
+            LootPredicateValue::String("#minecraft:sensitive_to_bane_of_arthropods".to_owned()),
+        )]
+        .into_iter()
+        .collect(),
+    )
+});
+static LOOT_PREDICATE_1: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
+    LootPredicateValue::Object(
+        [(
+            "minecraft:entity_type".to_owned(),
+            LootPredicateValue::String("#minecraft:sensitive_to_bane_of_arthropods".to_owned()),
+        )]
+        .into_iter()
+        .collect(),
+    )
+});
+static LOOT_PREDICATE_2: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
+    LootPredicateValue::Object(
+        [(
+            "minecraft:location".to_owned(),
+            LootPredicateValue::Object(
+                [("can_see_sky".to_owned(), LootPredicateValue::Bool(true))]
+                    .into_iter()
+                    .collect(),
+            ),
+        )]
+        .into_iter()
+        .collect(),
+    )
+});
+static LOOT_PREDICATE_3: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
+    LootPredicateValue::Object(
+        [(
+            "minecraft:entity_type".to_owned(),
+            LootPredicateValue::String("minecraft:trident".to_owned()),
+        )]
+        .into_iter()
+        .collect(),
+    )
+});
+static LOOT_PREDICATE_4: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
+    LootPredicateValue::Object(
+        [(
+            "minecraft:entity_type".to_owned(),
+            LootPredicateValue::String("minecraft:trident".to_owned()),
+        )]
+        .into_iter()
+        .collect(),
+    )
+});
+static LOOT_PREDICATE_5: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
+    LootPredicateValue::Object(
+        [
+            (
+                "block".to_owned(),
+                LootPredicateValue::Object(
+                    [(
+                        "blocks".to_owned(),
+                        LootPredicateValue::String("#minecraft:lightning_rods".to_owned()),
+                    )]
+                    .into_iter()
+                    .collect(),
+                ),
+            ),
+            ("can_see_sky".to_owned(), LootPredicateValue::Bool(true)),
+        ]
+        .into_iter()
+        .collect(),
+    )
+});
+static LOOT_PREDICATE_6: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
+    LootPredicateValue::Object(
+        [(
+            "minecraft:flags".to_owned(),
+            LootPredicateValue::Object(
+                [("is_on_ground".to_owned(), LootPredicateValue::Bool(true))]
+                    .into_iter()
+                    .collect(),
+            ),
+        )]
+        .into_iter()
+        .collect(),
+    )
+});
+static LOOT_PREDICATE_7: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
+    LootPredicateValue::Object(
+        [(
+            "minecraft:vehicle".to_owned(),
+            LootPredicateValue::Object([].into_iter().collect()),
+        )]
+        .into_iter()
+        .collect(),
+    )
+});
+static LOOT_PREDICATE_8: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
+    LootPredicateValue::Object(
+        [(
+            "minecraft:entity_type".to_owned(),
+            LootPredicateValue::String("#minecraft:sensitive_to_impaling".to_owned()),
+        )]
+        .into_iter()
+        .collect(),
+    )
+});
+static LOOT_PREDICATE_9: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
+    LootPredicateValue::Object(
+        [(
+            "items".to_owned(),
+            LootPredicateValue::String("minecraft:arrow".to_owned()),
+        )]
+        .into_iter()
+        .collect(),
+    )
+});
+static LOOT_PREDICATE_10: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [(
+                "minecraft:entity_type".to_owned(),
+                LootPredicateValue::String("minecraft:player".to_owned()),
+            )]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_11: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [(
+                "minecraft:entity_type".to_owned(),
+                LootPredicateValue::String("#minecraft:arrows".to_owned()),
+            )]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_12: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [(
+                "minecraft:entity_type".to_owned(),
+                LootPredicateValue::String("#minecraft:arrows".to_owned()),
+            )]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_13: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [(
+                "minecraft:entity_type".to_owned(),
+                LootPredicateValue::String("#minecraft:sensitive_to_smite".to_owned()),
+            )]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_14: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [
+                (
+                    "minecraft:flags".to_owned(),
+                    LootPredicateValue::Object(
+                        [("is_on_ground".to_owned(), LootPredicateValue::Bool(true))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+                (
+                    "minecraft:movement_affected_by".to_owned(),
+                    LootPredicateValue::Object(
+                        [(
+                            "block".to_owned(),
+                            LootPredicateValue::Object(
+                                [(
+                                    "blocks".to_owned(),
+                                    LootPredicateValue::String(
+                                        "#minecraft:soul_speed_blocks".to_owned(),
+                                    ),
+                                )]
+                                .into_iter()
+                                .collect(),
+                            ),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_15: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [(
+                "items".to_owned(),
+                LootPredicateValue::String("#minecraft:enchantable/armor".to_owned()),
+            )]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_16: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [(
+                "items".to_owned(),
+                LootPredicateValue::String("#minecraft:enchantable/armor".to_owned()),
+            )]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_17: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [
+                (
+                    "minecraft:flags".to_owned(),
+                    LootPredicateValue::Object(
+                        [("is_flying".to_owned(), LootPredicateValue::Bool(false))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+                (
+                    "minecraft:movement".to_owned(),
+                    LootPredicateValue::Object(
+                        [(
+                            "fall_distance".to_owned(),
+                            LootPredicateValue::Object(
+                                [("min".to_owned(), LootPredicateValue::from(1.5f64))]
+                                    .into_iter()
+                                    .collect(),
+                            ),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    });
+use crate::data_component_impl::EnchantmentsImpl;
 use crate::tag::DamageType as DamageTypeTag;
 use crate::tag::Enchantment as EnchantmentTag;
 use crate::tag::EntityType as EntityTypeTag;
@@ -72,14 +328,16 @@ pub enum EnchantmentTarget {
     DamagingEntity,
     Victim,
 }
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct TargetedConditionalEffect<T> {
     pub enchanted: Option<EnchantmentTarget>,
     pub affected: Option<EnchantmentTarget>,
+    pub requirements: LootCondition,
     pub effect: T,
 }
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct ConditionalEffect<T> {
+    pub requirements: LootCondition,
     pub effect: T,
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -113,7 +371,9 @@ pub enum EnchantmentEntityEffect {
         amount: LevelBasedValue,
     },
     PlaySound {
-        sound: &'static str,
+        sounds: &'static [&'static str],
+        volume: pumpkin_util::math::float_provider::FloatProvider,
+        pitch: pumpkin_util::math::float_provider::FloatProvider,
     },
     ReplaceBlock {
         offset_x: i32,
@@ -536,6 +796,13 @@ impl Enchantment {
             post_attack: &[TargetedConditionalEffect {
                 enchanted: Some(EnchantmentTarget::Attacker),
                 affected: Some(EnchantmentTarget::Victim),
+                requirements: LootCondition::AllOf(&[
+                    LootCondition::EntityProperties {
+                        target: LootEntityTarget::This,
+                        predicate: &LOOT_PREDICATE_0,
+                    },
+                    LootCondition::None,
+                ]),
                 effect: EnchantmentEntityEffect::ApplyMobEffect {
                     to_apply: &[&crate::effect::StatusEffect::SLOWNESS],
                     min_duration: LevelBasedValue::Constant(1.5f32),
@@ -552,6 +819,10 @@ impl Enchantment {
             projectile_piercing: &[],
             ammo_use: &[],
             damage: &[ConditionalEffect {
+                requirements: LootCondition::EntityProperties {
+                    target: LootEntityTarget::This,
+                    predicate: &LOOT_PREDICATE_1,
+                },
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: 2.5f32,
                     per_level_above_first: 2.5f32,
@@ -656,6 +927,16 @@ impl Enchantment {
             knockback: &[],
             armor_effectiveness: &[],
             damage_protection: &[ConditionalEffect {
+                requirements: LootCondition::AllOf(&[
+                    LootCondition::DamageSourceTag {
+                        tag: "minecraft:is_explosion",
+                        expected: true,
+                    },
+                    LootCondition::DamageSourceTag {
+                        tag: "minecraft:bypasses_invulnerability",
+                        expected: false,
+                    },
+                ]),
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: 2f32,
                     per_level_above_first: 2f32,
@@ -708,6 +989,7 @@ impl Enchantment {
             damage: &[],
             knockback: &[],
             armor_effectiveness: &[ConditionalEffect {
+                requirements: LootCondition::None,
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: -0.15f32,
                     per_level_above_first: -0.15f32,
@@ -756,13 +1038,29 @@ impl Enchantment {
             post_attack: &[TargetedConditionalEffect {
                 enchanted: Some(EnchantmentTarget::Attacker),
                 affected: Some(EnchantmentTarget::Victim),
+                requirements: LootCondition::AllOf(&[
+                    LootCondition::WeatherCheck {
+                        raining: None,
+                        thundering: Some(true),
+                    },
+                    LootCondition::EntityProperties {
+                        target: LootEntityTarget::This,
+                        predicate: &LOOT_PREDICATE_2,
+                    },
+                    LootCondition::EntityProperties {
+                        target: LootEntityTarget::DirectAttacker,
+                        predicate: &LOOT_PREDICATE_3,
+                    },
+                ]),
                 effect: EnchantmentEntityEffect::AllOf(&[
                     EnchantmentEntityEffect::SummonEntity {
                         entity_types: &[&crate::entity::EntityType::LIGHTNING_BOLT],
                         join_team: false,
                     },
                     EnchantmentEntityEffect::PlaySound {
-                        sound: "minecraft:item.trident.thunder",
+                        sounds: &["minecraft:item.trident.thunder"],
+                        volume: pumpkin_util::math::float_provider::FloatProvider::Constant(5f32),
+                        pitch: pumpkin_util::math::float_provider::FloatProvider::Constant(1f32),
                     },
                 ]),
             }],
@@ -775,13 +1073,29 @@ impl Enchantment {
             armor_effectiveness: &[],
             damage_protection: &[],
             hit_block: &[ConditionalEffect {
+                requirements: LootCondition::AllOf(&[
+                    LootCondition::WeatherCheck {
+                        raining: None,
+                        thundering: Some(true),
+                    },
+                    LootCondition::EntityProperties {
+                        target: LootEntityTarget::This,
+                        predicate: &LOOT_PREDICATE_4,
+                    },
+                    LootCondition::LocationCheck {
+                        offset: [0i32, 0i32, 0i32],
+                        predicate: &LOOT_PREDICATE_5,
+                    },
+                ]),
                 effect: EnchantmentEntityEffect::AllOf(&[
                     EnchantmentEntityEffect::SummonEntity {
                         entity_types: &[&crate::entity::EntityType::LIGHTNING_BOLT],
                         join_team: false,
                     },
                     EnchantmentEntityEffect::PlaySound {
-                        sound: "minecraft:item.trident.thunder",
+                        sounds: &["minecraft:item.trident.thunder"],
+                        volume: pumpkin_util::math::float_provider::FloatProvider::Constant(5f32),
+                        pitch: pumpkin_util::math::float_provider::FloatProvider::Constant(1f32),
                     },
                 ]),
             }],
@@ -841,6 +1155,7 @@ impl Enchantment {
             mob_experience: &[],
             repair_with_xp: &[],
             smash_damage_per_fallen_block: &[ConditionalEffect {
+                requirements: LootCondition::None,
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: 0.5f32,
                     per_level_above_first: 0.5f32,
@@ -981,6 +1296,16 @@ impl Enchantment {
             knockback: &[],
             armor_effectiveness: &[],
             damage_protection: &[ConditionalEffect {
+                requirements: LootCondition::AllOf(&[
+                    LootCondition::DamageSourceTag {
+                        tag: "minecraft:is_fall",
+                        expected: true,
+                    },
+                    LootCondition::DamageSourceTag {
+                        tag: "minecraft:bypasses_invulnerability",
+                        expected: false,
+                    },
+                ]),
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: 3f32,
                     per_level_above_first: 3f32,
@@ -1028,6 +1353,7 @@ impl Enchantment {
             post_attack: &[TargetedConditionalEffect {
                 enchanted: Some(EnchantmentTarget::Attacker),
                 affected: Some(EnchantmentTarget::Victim),
+                requirements: LootCondition::None,
                 effect: EnchantmentEntityEffect::Ignite {
                     duration: LevelBasedValue::Linear {
                         base: 4f32,
@@ -1091,6 +1417,16 @@ impl Enchantment {
             knockback: &[],
             armor_effectiveness: &[],
             damage_protection: &[ConditionalEffect {
+                requirements: LootCondition::AllOf(&[
+                    LootCondition::DamageSourceTag {
+                        tag: "minecraft:is_fire",
+                        expected: true,
+                    },
+                    LootCondition::DamageSourceTag {
+                        tag: "minecraft:bypasses_invulnerability",
+                        expected: false,
+                    },
+                ]),
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: 2f32,
                     per_level_above_first: 2f32,
@@ -1135,6 +1471,7 @@ impl Enchantment {
         },
         effects: EnchantmentEffects {
             projectile_spawned: &[ConditionalEffect {
+                requirements: LootCondition::None,
                 effect: EnchantmentEntityEffect::Ignite {
                     duration: LevelBasedValue::Constant(100f32),
                 },
@@ -1257,6 +1594,16 @@ impl Enchantment {
             trident_spin_attack_strength: None,
             crossbow_charge_time: None,
             location_changed: &[ConditionalEffect {
+                requirements: LootCondition::AllOf(&[
+                    LootCondition::EntityProperties {
+                        target: LootEntityTarget::This,
+                        predicate: &LOOT_PREDICATE_6,
+                    },
+                    LootCondition::Inverted(&LootCondition::EntityProperties {
+                        target: LootEntityTarget::This,
+                        predicate: &LOOT_PREDICATE_7,
+                    }),
+                ]),
                 effect: EnchantmentEntityEffect::ReplaceDisk {
                     radius: LevelBasedValue::Clamped {
                         value: &LevelBasedValue::Linear {
@@ -1321,6 +1668,10 @@ impl Enchantment {
             projectile_piercing: &[],
             ammo_use: &[],
             damage: &[ConditionalEffect {
+                requirements: LootCondition::EntityProperties {
+                    target: LootEntityTarget::This,
+                    predicate: &LOOT_PREDICATE_8,
+                },
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: 2.5f32,
                     per_level_above_first: 2.5f32,
@@ -1373,6 +1724,7 @@ impl Enchantment {
             projectile_spread: &[],
             projectile_piercing: &[],
             ammo_use: &[ConditionalEffect {
+                requirements: LootCondition::MatchTool(&LOOT_PREDICATE_9),
                 effect: EnchantmentValueEffect::Set(LevelBasedValue::Constant(0f32)),
             }],
             damage: &[],
@@ -1425,6 +1777,7 @@ impl Enchantment {
             ammo_use: &[],
             damage: &[],
             knockback: &[ConditionalEffect {
+                requirements: LootCondition::None,
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: 1f32,
                     per_level_above_first: 1f32,
@@ -1485,6 +1838,10 @@ impl Enchantment {
             equipment_drops: &[TargetedConditionalEffect {
                 enchanted: Some(EnchantmentTarget::Attacker),
                 affected: None,
+                requirements: LootCondition::EntityProperties {
+                    target: LootEntityTarget::Attacker,
+                    predicate: &LOOT_PREDICATE_10,
+                },
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: 0.01f32,
                     per_level_above_first: 0.01f32,
@@ -1545,6 +1902,7 @@ impl Enchantment {
             repair_with_xp: &[],
             smash_damage_per_fallen_block: &[],
             trident_return_acceleration: &[ConditionalEffect {
+                requirements: LootCondition::None,
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: 1f32,
                     per_level_above_first: 1f32,
@@ -1593,6 +1951,7 @@ impl Enchantment {
             equipment_drops: &[],
             fishing_time_reduction: &[],
             fishing_luck_bonus: &[ConditionalEffect {
+                requirements: LootCondition::None,
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: 1f32,
                     per_level_above_first: 1f32,
@@ -1693,6 +2052,7 @@ impl Enchantment {
             item_damage: &[],
             equipment_drops: &[],
             fishing_time_reduction: &[ConditionalEffect {
+                requirements: LootCondition::None,
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: 5f32,
                     per_level_above_first: 5f32,
@@ -1750,6 +2110,7 @@ impl Enchantment {
             block_experience: &[],
             mob_experience: &[],
             repair_with_xp: &[ConditionalEffect {
+                requirements: LootCondition::None,
                 effect: EnchantmentValueEffect::Multiply(LevelBasedValue::Constant(2f32)),
             }],
             smash_damage_per_fallen_block: &[],
@@ -1785,12 +2146,14 @@ impl Enchantment {
             projectile_spawned: &[],
             post_attack: &[],
             projectile_count: &[ConditionalEffect {
+                requirements: LootCondition::None,
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: 2f32,
                     per_level_above_first: 2f32,
                 }),
             }],
             projectile_spread: &[ConditionalEffect {
+                requirements: LootCondition::None,
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: 10f32,
                     per_level_above_first: 10f32,
@@ -1845,6 +2208,7 @@ impl Enchantment {
             projectile_count: &[],
             projectile_spread: &[],
             projectile_piercing: &[ConditionalEffect {
+                requirements: LootCondition::None,
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: 1f32,
                     per_level_above_first: 1f32,
@@ -1900,6 +2264,10 @@ impl Enchantment {
             projectile_piercing: &[],
             ammo_use: &[],
             damage: &[ConditionalEffect {
+                requirements: LootCondition::EntityProperties {
+                    target: LootEntityTarget::DirectAttacker,
+                    predicate: &LOOT_PREDICATE_11,
+                },
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: 1f32,
                     per_level_above_first: 0.5f32,
@@ -1956,6 +2324,16 @@ impl Enchantment {
             knockback: &[],
             armor_effectiveness: &[],
             damage_protection: &[ConditionalEffect {
+                requirements: LootCondition::AllOf(&[
+                    LootCondition::DamageSourceTag {
+                        tag: "minecraft:is_projectile",
+                        expected: true,
+                    },
+                    LootCondition::DamageSourceTag {
+                        tag: "minecraft:bypasses_invulnerability",
+                        expected: false,
+                    },
+                ]),
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: 2f32,
                     per_level_above_first: 2f32,
@@ -2009,6 +2387,10 @@ impl Enchantment {
             knockback: &[],
             armor_effectiveness: &[],
             damage_protection: &[ConditionalEffect {
+                requirements: LootCondition::DamageSourceTag {
+                    tag: "minecraft:bypasses_invulnerability",
+                    expected: false,
+                },
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: 1f32,
                     per_level_above_first: 1f32,
@@ -2060,6 +2442,10 @@ impl Enchantment {
             ammo_use: &[],
             damage: &[],
             knockback: &[ConditionalEffect {
+                requirements: LootCondition::EntityProperties {
+                    target: LootEntityTarget::DirectAttacker,
+                    predicate: &LOOT_PREDICATE_12,
+                },
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: 1f32,
                     per_level_above_first: 1f32,
@@ -2267,6 +2653,7 @@ impl Enchantment {
             projectile_piercing: &[],
             ammo_use: &[],
             damage: &[ConditionalEffect {
+                requirements: LootCondition::None,
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: 1f32,
                     per_level_above_first: 0.5f32,
@@ -2329,6 +2716,7 @@ impl Enchantment {
             fishing_time_reduction: &[],
             fishing_luck_bonus: &[],
             block_experience: &[ConditionalEffect {
+                requirements: LootCondition::None,
                 effect: EnchantmentValueEffect::Set(LevelBasedValue::Constant(0f32)),
             }],
             mob_experience: &[],
@@ -2370,6 +2758,10 @@ impl Enchantment {
             projectile_piercing: &[],
             ammo_use: &[],
             damage: &[ConditionalEffect {
+                requirements: LootCondition::EntityProperties {
+                    target: LootEntityTarget::This,
+                    predicate: &LOOT_PREDICATE_13,
+                },
                 effect: EnchantmentValueEffect::Add(LevelBasedValue::Linear {
                     base: 2.5f32,
                     per_level_above_first: 2.5f32,
@@ -2440,12 +2832,20 @@ impl Enchantment {
             crossbow_charge_time: None,
             location_changed: &[
                 ConditionalEffect {
+                    requirements: LootCondition::None,
                     effect: EnchantmentEntityEffect::AllOf(&[
                         EnchantmentEntityEffect::Other,
                         EnchantmentEntityEffect::Other,
                     ]),
                 },
                 ConditionalEffect {
+                    requirements: LootCondition::AllOf(&[
+                        LootCondition::RandomChance { chance: 0f32 },
+                        LootCondition::EntityProperties {
+                            target: LootEntityTarget::This,
+                            predicate: &LOOT_PREDICATE_14,
+                        },
+                    ]),
                     effect: EnchantmentEntityEffect::ChangeItemDamage {
                         amount: LevelBasedValue::Constant(1f32),
                     },
@@ -2576,6 +2976,7 @@ impl Enchantment {
             post_attack: &[TargetedConditionalEffect {
                 enchanted: Some(EnchantmentTarget::Victim),
                 affected: Some(EnchantmentTarget::Attacker),
+                requirements: LootCondition::RandomChance { chance: 0f32 },
                 effect: EnchantmentEntityEffect::AllOf(&[
                     EnchantmentEntityEffect::DamageEntity {
                         min_damage: LevelBasedValue::Constant(1f32),
@@ -2646,6 +3047,7 @@ impl Enchantment {
             hit_block: &[],
             item_damage: &[
                 ConditionalEffect {
+                    requirements: LootCondition::MatchTool(&LOOT_PREDICATE_15),
                     effect: EnchantmentValueEffect::RemoveBinomial(LevelBasedValue::Fraction {
                         numerator: &LevelBasedValue::Linear {
                             base: 2f32,
@@ -2658,6 +3060,9 @@ impl Enchantment {
                     }),
                 },
                 ConditionalEffect {
+                    requirements: LootCondition::Inverted(&LootCondition::MatchTool(
+                        &LOOT_PREDICATE_16,
+                    )),
                     effect: EnchantmentValueEffect::RemoveBinomial(LevelBasedValue::Fraction {
                         numerator: &LevelBasedValue::Linear {
                             base: 1f32,
@@ -2758,6 +3163,10 @@ impl Enchantment {
             post_attack: &[TargetedConditionalEffect {
                 enchanted: Some(EnchantmentTarget::Attacker),
                 affected: Some(EnchantmentTarget::Attacker),
+                requirements: LootCondition::EntityProperties {
+                    target: LootEntityTarget::DirectAttacker,
+                    predicate: &LOOT_PREDICATE_17,
+                },
                 effect: EnchantmentEntityEffect::Explode {
                     attribute_to_user: false,
                     damage_type: None,

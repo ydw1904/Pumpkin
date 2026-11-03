@@ -1,6 +1,8 @@
 use crate::enchantment::effects::EnchantmentEntityEffectExt;
-use crate::entity::Entity;
 use crate::entity::projectile::arrow::ArrowEntity;
+use crate::entity::{Entity, EntityBase};
+use crate::world::loot::{LootContextParameters, test_condition};
+use pumpkin_data::damage::DamageType;
 use pumpkin_data::data_component_impl::EnchantmentsImpl;
 use pumpkin_data::enchantment::{Enchantment, EnchantmentEntityEffect, EnchantmentTarget};
 use pumpkin_data::item::Item;
@@ -97,20 +99,53 @@ impl EnchantmentHelper {
         });
     }
 
-    /// Applies post-attack enchantment effects (e.g. Fire Aspect ignites victim).
-    pub fn on_post_attack(attacker: &Entity, victim: &Entity, weapon: &ItemStack) {
+    /// The weapon half of vanilla `EnchantmentHelper.doPostAttackEffectsWithItemSource`: runs
+    /// the weapon's post-attack effects enchanted on the attacker whose requirements hold
+    /// (`Enchantment.doPostAttack`), such as Channeling's lightning.
+    pub fn do_post_attack_effects_with_item_source(
+        victim: &dyn EntityBase,
+        damage_type: DamageType,
+        attacker: Option<&dyn EntityBase>,
+        direct_attacker: Option<&dyn EntityBase>,
+        weapon: &ItemStack,
+    ) {
+        let world = victim.get_entity().world.load_full();
+        let owner = attacker
+            .and_then(EntityBase::get_player)
+            .and_then(|player| world.get_player_by_uuid(player.gameprofile.id));
         Self::run_iteration_on_item(weapon, |enchantment, level| {
-            for targeted_effect in enchantment.effects.post_attack {
-                let target = match targeted_effect.affected {
-                    Some(EnchantmentTarget::Attacker | EnchantmentTarget::DamagingEntity) => {
-                        attacker
-                    }
-                    Some(EnchantmentTarget::Victim) | None => victim,
+            for effect in enchantment.effects.post_attack {
+                if effect.enchanted != Some(EnchantmentTarget::Attacker) {
+                    continue;
+                }
+                // Vanilla `Enchantment.damageContext`.
+                let params = LootContextParameters {
+                    world: Some(&world),
+                    this_entity: Some(victim),
+                    killer_entity: attacker,
+                    direct_killer_entity: direct_attacker,
+                    position: Some(victim.get_entity().pos.load()),
+                    damage_type: Some(damage_type),
+                    ..Default::default()
                 };
-                let world = target.world.load_full();
-                targeted_effect
-                    .effect
-                    .apply(&world, level, None, Some(target), target.pos.load());
+                if !test_condition(effect.requirements, &params) {
+                    continue;
+                }
+                let affected = match effect.affected {
+                    Some(EnchantmentTarget::Attacker) => attacker,
+                    Some(EnchantmentTarget::DamagingEntity) => direct_attacker,
+                    Some(EnchantmentTarget::Victim) | None => Some(victim),
+                };
+                if let Some(affected) = affected {
+                    let affected = affected.get_entity();
+                    effect.effect.apply(
+                        &world,
+                        level,
+                        owner.as_ref(),
+                        Some(affected),
+                        affected.pos.load(),
+                    );
+                }
             }
         });
     }
@@ -360,22 +395,38 @@ impl EnchantmentHelper {
         });
     }
 
-    /// Applies hit-block enchantment effects.
+    /// Vanilla `EnchantmentHelper.onHitBlock`: runs the weapon's hit-block effects whose
+    /// requirements hold, such as Channeling on a lightning rod.
     pub fn on_hit_block(
         weapon: &ItemStack,
-        projectile_entity: &Entity,
+        owner: Option<&dyn EntityBase>,
+        projectile: &dyn EntityBase,
         position: pumpkin_util::math::vector3::Vector3<f64>,
+        block_state: &'static pumpkin_data::BlockState,
     ) {
-        let world = projectile_entity.world.load_full();
+        let world = projectile.get_entity().world.load_full();
+        let owner = owner
+            .and_then(EntityBase::get_player)
+            .and_then(|player| world.get_player_by_uuid(player.gameprofile.id));
         Self::run_iteration_on_item(weapon, |enchantment, level| {
-            for conditional_effect in enchantment.effects.hit_block {
-                conditional_effect.effect.apply(
-                    &world,
-                    level,
-                    None,
-                    Some(projectile_entity),
-                    position,
-                );
+            for effect in enchantment.effects.hit_block {
+                // Vanilla `Enchantment.blockHitContext`.
+                let params = LootContextParameters {
+                    world: Some(&world),
+                    this_entity: Some(projectile),
+                    position: Some(position),
+                    block_state: Some(block_state),
+                    ..Default::default()
+                };
+                if test_condition(effect.requirements, &params) {
+                    effect.effect.apply(
+                        &world,
+                        level,
+                        owner.as_ref(),
+                        Some(projectile.get_entity()),
+                        position,
+                    );
+                }
             }
         });
     }

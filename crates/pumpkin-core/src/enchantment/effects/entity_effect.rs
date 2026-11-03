@@ -70,9 +70,13 @@ impl EnchantmentEntityEffectExt for EnchantmentEntityEffect {
                     position,
                 );
             }
-            Self::PlaySound { sound } => {
+            Self::PlaySound {
+                sounds,
+                volume,
+                pitch,
+            } => {
                 EnchantmentEntityEffectExt::apply(
-                    &PlaySound::new(sound),
+                    &PlaySound::new(sounds, volume.clone(), pitch.clone()),
                     world,
                     enchantment_level,
                     owner,

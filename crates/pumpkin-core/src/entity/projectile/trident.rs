@@ -1,3 +1,4 @@
+use crate::enchantment::helper::EnchantmentHelper;
 use crate::entity::projectile::owner::ProjectileOwner;
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::data_component_impl::{EnchantmentGlintOverrideImpl, EnchantmentsImpl};
@@ -97,6 +98,14 @@ impl TridentEntity {
             return_ticks: AtomicU32::new(0),
             last_block_pos: Arc::new(std::sync::RwLock::new(None)),
         }
+    }
+
+    /// Vanilla `ThrownTrident.getWeaponItem`: the trident item it was thrown as.
+    fn weapon_item(&self) -> ItemStack {
+        self.item_stack
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 
     /// Vanilla `getLoyaltyFromItem`: the item's `trident_return_acceleration`, kept in 0..=127.
@@ -530,6 +539,15 @@ impl EntityBase for TridentEntity {
                         .block_registry
                         .on_projectile_hit(block, &world, self, &pos, state, &hit_pos, &server);
                 }
+                // Vanilla `ThrownTrident.hitBlockEnchantmentEffects`.
+                let owner = self.owner.get(&world);
+                EnchantmentHelper::on_hit_block(
+                    &self.weapon_item(),
+                    owner.as_deref(),
+                    self,
+                    pos.clamp_location_within(hit_pos),
+                    state,
+                );
 
                 // Stop the trident
                 entity.velocity.store(Vector3::new(0.0, 0.0, 0.0));
@@ -574,15 +592,25 @@ impl EntityBase for TridentEntity {
 
                 self.dealt_damage.store(true, Ordering::Relaxed);
                 let owner = self.owner.get(&world);
-                target.damage_with_context(
+                // Like vanilla, an ownerless trident is its own cause.
+                let cause = owner.as_deref().unwrap_or(self);
+                let was_hurt = target.damage_with_context(
                     target.as_ref(),
                     damage as f32,
                     DamageType::TRIDENT,
                     Some(hit_pos),
                     Some(self),
-                    // Like vanilla, an ownerless trident is its own cause.
-                    Some(owner.as_deref().unwrap_or(self)),
+                    Some(cause),
                 );
+                if was_hurt {
+                    EnchantmentHelper::do_post_attack_effects_with_item_source(
+                        target.as_ref(),
+                        DamageType::TRIDENT,
+                        Some(cause),
+                        Some(self),
+                        &self.weapon_item(),
+                    );
+                }
 
                 // Play hit sound
                 let sound_packet = CSoundEffect::new(

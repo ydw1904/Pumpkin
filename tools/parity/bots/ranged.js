@@ -121,6 +121,24 @@ h.start(async () => {
     h.result(`throw.${t}`, `damage=${dmg} back=${!!h.inv().trident} durability=${bot.inventory.items()[0] ? bot.inventory.items()[0].durabilityUsed : '-'}`)
   }
 
+  // Channeling calls lightning onto the mob it hits, but only in a thunderstorm.
+  let bolts = 0
+  bot.on('entitySpawn', (e) => { if (String(e.name).includes('lightning')) bolts++ })
+  for (const weather of ['clear', 'thunder']) {
+    await clearMobs()
+    h.cmd(`weather ${weather}`)
+    // The thunder level ramps up over about 100 ticks before the world counts as thundering.
+    await h.ticks(weather === 'thunder' ? 140 : 5)
+    await give(['trident[enchantments={channeling:1}]'])
+    const golem = await spawn('iron_golem', 4)
+    bolts = 0
+    await shoot(golem, 12)
+    await h.waitFor(() => health(golem, 100) < 100, 3000)
+    await h.ticks(10)
+    h.result(`channeling.${weather}`, `bolts=${bolts} hit=${health(golem, 100) < 100}`)
+  }
+  h.cmd('weather clear')
+
   // Crossbow charge time and the arrows a shot spawns.
   for (const c of ['crossbow', 'crossbow[enchantments={quick_charge:3}]', 'crossbow[enchantments={multishot:1}]']) {
     await clearMobs()

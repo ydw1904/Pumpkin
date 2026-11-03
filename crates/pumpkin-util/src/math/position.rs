@@ -504,6 +504,23 @@ impl BlockPos {
         )
     }
 
+    /// Vanilla `BlockPos.clampLocationWithin`: `location` moved just inside this block.
+    #[must_use]
+    pub fn clamp_location_within(&self, location: Vector3<f64>) -> Vector3<f64> {
+        const MARGIN: f32 = 1.0E-5;
+        let clamp = |value: f64, block: i32| {
+            value.clamp(
+                f64::from(block as f32 + MARGIN),
+                f64::from(block) + 1.0 - f64::from(MARGIN),
+            )
+        };
+        Vector3::new(
+            clamp(location.x, self.0.x),
+            clamp(location.y, self.0.y),
+            clamp(location.z, self.0.z),
+        )
+    }
+
     /// Adds a vector offset to this block position.
     ///
     /// # Arguments
