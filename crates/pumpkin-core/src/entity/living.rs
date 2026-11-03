@@ -2899,6 +2899,23 @@ impl LivingEntity {
         }
     }
 
+    /// Vanilla `playSecondaryHurtSound`: the Thorns hit sound.
+    fn play_secondary_hurt_sound(&self, caller: &dyn EntityBase, damage_type: DamageType) {
+        if damage_type != DamageType::THORNS {
+            return;
+        }
+        let category = if caller.get_player().is_some() {
+            SoundCategory::Players
+        } else {
+            SoundCategory::Hostile
+        };
+        self.entity.world.load().play_sound(
+            Sound::EnchantThornsHit,
+            category,
+            &self.entity.pos.load(),
+        );
+    }
+
     /// Marks the entity as dead exactly once and runs the server-side death
     /// flow: stop movement input, attribute the kill, drop loot, broadcast the
     /// `Death` (3) entity event, and hand out XP. Safe to call on every lethal
@@ -4271,14 +4288,8 @@ impl LivingEntity {
             }
             self.make_voice_sound(caller, self.hurt_sound(caller));
         }
-        // Vanilla `playSecondaryHurtSound`, after the hurt or death sound of a full hit.
-        if full_hit && damage_type == DamageType::THORNS {
-            let category = if caller.get_player().is_some() {
-                SoundCategory::Players
-            } else {
-                SoundCategory::Hostile
-            };
-            world.play_sound(Sound::EnchantThornsHit, category, &self.entity.pos.load());
+        if play_sound {
+            self.play_secondary_hurt_sound(caller, damage_type);
         }
         // Vanilla `dealDefaultKnockback`: along a projectile's flight, else away from the direct
         // source or the source position; with neither, `knockback` picks a random direction.
@@ -4399,6 +4410,10 @@ impl LivingEntity {
                     .fire_blocking(&server, &mut death_event);
             }
             self.on_death(damage_type, source, cause);
+            // After the death sound; a totem save plays neither.
+            if full_hit {
+                self.play_secondary_hurt_sound(caller, damage_type);
+            }
         }
 
         success
