@@ -1120,20 +1120,12 @@ impl VillagerEntity {
             .store(game_time, Ordering::Relaxed);
     }
 
-    fn notify_trading_player_offers_updated(&self) {
-        if self
-            .trading_player
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .is_some()
-            && let Some(villager) = self
-                .self_weak
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .as_ref()
-                .and_then(Weak::upgrade)
-        {
-            villager.resend_offers_to_trading_player();
+    /// The end of vanilla `restock` and `catchUpDemand`: `updateSpecialPrices` for the trading
+    /// player, which also resends the offers.
+    fn update_trading_player_prices(&self) {
+        if let Some(player) = self.get_trading_player() {
+            self.update_special_prices(&player);
+            self.resend_offers_to_trading_player();
         }
     }
 
@@ -1174,7 +1166,7 @@ impl VillagerEntity {
             }
             self.last_restock_time.store(game_time, Ordering::Relaxed);
             self.restocks_today.store(0, Ordering::Relaxed);
-            self.notify_trading_player_offers_updated();
+            self.update_trading_player_prices();
         }
 
         let restocks_today = self.restocks_today.load(Ordering::Relaxed);
@@ -1203,7 +1195,7 @@ impl VillagerEntity {
         }
         self.last_restock_time.store(game_time, Ordering::Relaxed);
         self.restocks_today.fetch_add(1, Ordering::Relaxed);
-        self.notify_trading_player_offers_updated();
+        self.update_trading_player_prices();
     }
 
     fn get_potential_job_site(&self) -> Option<BlockPos> {
