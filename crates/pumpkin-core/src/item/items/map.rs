@@ -51,12 +51,15 @@ impl ItemBehaviour for MapItem {
         );
 
         let map_id = server.next_map_id();
+        // MapItem.create: the map is centered on the scale 0 grid cell the player stands in.
+        let (center_x, center_z) =
+            crate::world::map::fresh_map_center(pos.x.floor() as i32, pos.z.floor() as i32, 0);
         let _ = server.map_manager.create_map(
             map_id,
             player.world().dimension.clone(),
-            pos.x.floor() as i32,
-            pos.z.floor() as i32,
-            0, // Default scale
+            center_x,
+            center_z,
+            0,
         );
 
         let mut filled_map = ItemStack::new(1, &Item::FILLED_MAP);
