@@ -5,6 +5,7 @@ use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::potion::Effect;
 use pumpkin_data::sound::Sound;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::math::vector3::Vector3;
 
 use crate::entity::{
     Entity, EntityBase,
@@ -13,7 +14,7 @@ use crate::entity::{
         spawn::SpawnGroupData,
         spider::{
             initialize_spider_navigation, register_spider_goals, spider_metadata,
-            update_spider_climbing,
+            spider_vehicle_attachment_point, update_spider_climbing,
         },
     },
 };
@@ -38,6 +39,10 @@ impl CaveSpiderEntity {
 }
 
 impl Mob for CaveSpiderEntity {
+    fn mob_vehicle_attachment_point(&self, vehicle: &dyn EntityBase) -> Vector3<f64> {
+        spider_vehicle_attachment_point(&self.mob_entity, vehicle, 0.21875)
+    }
+
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
         self.play_entity_sound(Sound::EntitySpiderStep, 0.15, 1.0);
     }

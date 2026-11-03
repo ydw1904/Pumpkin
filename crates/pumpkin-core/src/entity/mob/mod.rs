@@ -1784,6 +1784,14 @@ pub trait Mob: EntityBase + Send + Sync {
         self.get_mob_entity().living_entity.is_dead_or_dying()
     }
 
+    /// Vanilla `getVehicleAttachmentPoint` for mobs that override it.
+    fn mob_vehicle_attachment_point(&self, _vehicle: &dyn EntityBase) -> Vector3<f64> {
+        self.get_mob_entity()
+            .living_entity
+            .entity
+            .default_vehicle_attachment_point()
+    }
+
     fn mob_controlling_passenger(&self) -> Option<Arc<dyn EntityBase>> {
         let first = self.get_mob_entity().first_passenger()?;
         self.mob_rider_controller(first)
@@ -3152,6 +3160,10 @@ impl<T: Mob + Send + 'static> EntityBase for T {
 
     fn get_controlling_passenger(&self) -> Option<Arc<dyn EntityBase>> {
         self.mob_controlling_passenger()
+    }
+
+    fn get_vehicle_attachment_point(&self, vehicle: &dyn EntityBase) -> Vector3<f64> {
+        self.mob_vehicle_attachment_point(vehicle)
     }
 
     fn get_experience_reward(&self, _killer: Option<&dyn EntityBase>) -> u32 {

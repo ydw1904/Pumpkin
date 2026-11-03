@@ -1954,16 +1954,12 @@ impl World {
             order::set_entity_order(None);
         }
         self.order_tick_spawns();
-        // Vanilla `rideTick`: the vehicle's `positionRider` moves a riding player after the
-        // vehicle ticked. Pumpkin has no passenger attachment points, so the player sits at
-        // the vehicle's position like `handle_move_vehicle` puts it.
-        for player in self.players.load().iter() {
-            if let Some(vehicle) = player.get_entity().get_vehicle() {
-                let vehicle_pos = vehicle.get_entity().pos.load();
-                if player.get_entity().pos.load() != vehicle_pos {
-                    player.get_entity().set_pos(vehicle_pos);
-                    chunker::update_position(player);
-                }
+        // Vanilla `tickPassenger`: after a root vehicle ticked, `rideTick` has each vehicle's
+        // `positionRider` move its passengers onto it, outermost vehicle first.
+        for (entity, _) in &tickable {
+            let base = entity.get_entity();
+            if base.get_vehicle().is_none() && base.has_passengers() {
+                self.position_passengers(entity.as_ref());
             }
         }
         let entity_elapsed = t_entities.elapsed();
@@ -6061,6 +6057,25 @@ impl World {
             );
         } else {
             self.broadcast_to_chunk_except(chunk_pos, &[from.entity_uuid], &je_packet);
+        }
+    }
+
+    /// Puts every passenger of `vehicle`, and theirs in turn, onto its vehicle's attachment.
+    fn position_passengers(&self, vehicle: &dyn EntityBase) {
+        let passengers = vehicle
+            .get_entity()
+            .passengers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        for passenger in passengers {
+            crate::entity::position_rider(vehicle, passenger.as_ref());
+            if passenger.get_player().is_some()
+                && let Some(player) = self.get_player_by_id(passenger.get_entity().entity_id)
+            {
+                chunker::update_position(&player);
+            }
+            self.position_passengers(passenger.as_ref());
         }
     }
 

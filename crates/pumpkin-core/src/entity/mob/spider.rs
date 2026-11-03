@@ -9,6 +9,7 @@ use pumpkin_data::potion::Effect;
 use pumpkin_data::sound::Sound;
 use pumpkin_util::difficulty::Difficulty;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::math::vector3::Vector3;
 use uuid::Uuid;
 
 use crate::entity::ai::behavior::fleeing::{self, Flee};
@@ -168,7 +169,27 @@ pub fn finalize_spider_spawn(
     Some(group_data)
 }
 
+/// Vanilla `Spider.getVehicleAttachmentPoint` and `CaveSpider.getVehicleAttachmentPoint`: a
+/// spider sits `height` (times its scale) above a vehicle no wider than itself.
+pub fn spider_vehicle_attachment_point(
+    mob_entity: &MobEntity,
+    vehicle: &dyn EntityBase,
+    height: f64,
+) -> Vector3<f64> {
+    let entity = &mob_entity.living_entity.entity;
+    let width = |entity: &Entity| entity.get_dimensions(entity.pose.load()).width;
+    if width(vehicle.get_entity()) <= width(entity) {
+        Vector3::new(0.0, height * entity.attachment_scale(), 0.0)
+    } else {
+        entity.default_vehicle_attachment_point()
+    }
+}
+
 impl Mob for SpiderEntity {
+    fn mob_vehicle_attachment_point(&self, vehicle: &dyn EntityBase) -> Vector3<f64> {
+        spider_vehicle_attachment_point(&self.mob_entity, vehicle, 0.3125)
+    }
+
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
         self.play_entity_sound(Sound::EntitySpiderStep, 0.15, 1.0);
     }

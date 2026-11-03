@@ -626,6 +626,19 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         None
     }
 
+    /// Vanilla `Entity.getPassengerAttachmentPoint`: where `passenger` sits relative to this
+    /// vehicle's position, already turned by the vehicle's yaw.
+    fn get_passenger_attachment_point(&self, passenger: &dyn EntityBase) -> Vector3<f64> {
+        self.get_entity()
+            .default_passenger_attachment_point(passenger)
+    }
+
+    /// Vanilla `Entity.getVehicleAttachmentPoint`: the point on this entity that sits on the
+    /// vehicle's passenger attachment.
+    fn get_vehicle_attachment_point(&self, _vehicle: &dyn EntityBase) -> Vector3<f64> {
+        self.get_entity().default_vehicle_attachment_point()
+    }
+
     fn can_control_vehicle(&self) -> bool {
         !self
             .get_entity()
@@ -1303,6 +1316,14 @@ fn y_rot(vector: Vector3<f64>, angle: f32) -> Vector3<f64> {
     )
 }
 
+/// Vanilla `Entity.positionRider`: moves `passenger` onto `vehicle`'s passenger attachment.
+pub fn position_rider(vehicle: &dyn EntityBase, passenger: &dyn EntityBase) {
+    let position =
+        vehicle.get_entity().pos.load() + vehicle.get_passenger_attachment_point(passenger);
+    let offset = passenger.get_vehicle_attachment_point(vehicle);
+    passenger.get_entity().set_pos(position - offset);
+}
+
 /// The movement the server knows about: a player's last reported step, otherwise velocity.
 fn known_movement(entity: &dyn EntityBase) -> Vector3<f64> {
     let base = entity.get_entity();
@@ -1904,6 +1925,59 @@ impl Entity {
             height: entity_type.dimension[1],
             eye_height: entity_type.eye_height,
         }
+    }
+
+    /// Index of the passenger with `entity_id` in this vehicle's passenger list.
+    pub fn passenger_index(&self, entity_id: i32) -> Option<usize> {
+        self.passengers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .position(|passenger| passenger.get_entity().entity_id == entity_id)
+    }
+
+    /// Vanilla `Entity.getDefaultPassengerAttachmentPoint`: the type's passenger attachment for
+    /// the passenger's slot, clamped to the last one.
+    pub fn default_passenger_attachment_point(&self, passenger: &dyn EntityBase) -> Vector3<f64> {
+        let points = self.entity_type.passenger_attachments;
+        let index = self
+            .passenger_index(passenger.get_entity().entity_id)
+            .unwrap_or(0)
+            .min(points.len().saturating_sub(1));
+        let [x, y, z] = points.get(index).copied().unwrap_or_default();
+        self.attachment_point(Vector3::new(x, y, z) * self.attachment_scale())
+    }
+
+    /// The type's vehicle attachment, turned by this entity's yaw.
+    #[must_use]
+    pub fn default_vehicle_attachment_point(&self) -> Vector3<f64> {
+        let [x, y, z] = self.entity_type.vehicle_attachment;
+        self.attachment_point(Vector3::new(x, y, z) * self.attachment_scale())
+    }
+
+    /// How much this entity's attachment points are scaled. Vanilla scales them with the
+    /// dimensions (`EntityDimensions.scale` by scale and age scale), so this is the height of
+    /// the scaled default dimensions (babies, slime sizes) over the type's.
+    #[must_use]
+    pub fn attachment_scale(&self) -> f64 {
+        let type_height = self.entity_type.dimension[1];
+        match self.default_dimensions.load() {
+            Some(dimensions) if type_height > 0.0 => f64::from(dimensions.height / type_height),
+            _ => 1.0,
+        }
+    }
+
+    /// Vanilla `EntityAttachments.transformPoint`: turns an attachment point by this entity's yaw.
+    #[must_use]
+    pub fn attachment_point(&self, point: Vector3<f64>) -> Vector3<f64> {
+        let angle = -self.yaw.load() * (std::f32::consts::PI / 180.0);
+        let cos = f64::from(pumpkin_util::math::cos(angle));
+        let sin = f64::from(pumpkin_util::math::sin(angle));
+        Vector3::new(
+            point.x * cos + point.z * sin,
+            point.y,
+            point.z * cos - point.x * sin,
+        )
     }
 
     /// Sets the entity's growth age. Negative values indicate that the entity is a baby.
@@ -5084,6 +5158,7 @@ impl Entity {
             .clone()
     }
 
+    #[expect(clippy::too_many_lines)]
     pub fn add_passenger(&self, vehicle: Arc<dyn EntityBase>, passenger: Arc<dyn EntityBase>) {
         let mut mount_event =
             crate::plugin::api::events::entity::entity_mount::EntityMountEvent::new(
@@ -5158,6 +5233,7 @@ impl Entity {
         );
         passenger_entity.send_bedrock_actor_data(&rider_meta);
 
+        let player_rider = passenger.get_player().is_some().then(|| passenger.clone());
         passengers.push(passenger);
         let link_type = if passengers.len() == 1 { 1 } else { 2 };
 
@@ -5166,6 +5242,15 @@ impl Entity {
             .map(|p| VarInt(p.get_entity().entity_id))
             .collect();
         drop(passengers);
+        // Vanilla `ServerPlayer.startRiding` puts the player on the vehicle right away.
+        if let Some(rider) = player_rider
+            && let Some(vehicle) = rider.get_entity().get_vehicle()
+        {
+            position_rider(vehicle.as_ref(), rider.as_ref());
+            if let Some(player) = self.world.load().get_player_by_id(passenger_entity_id) {
+                crate::world::chunker::update_position(&player);
+            }
+        }
 
         let be_link = pumpkin_protocol::bedrock::client::CSetActorLink {
             link: pumpkin_protocol::bedrock::client::common::ActorLink {

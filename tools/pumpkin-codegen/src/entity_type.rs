@@ -62,6 +62,10 @@ pub struct EntityType {
     pub eye_height: f32,
     /// Scale factor for spawn dimensions (e.g. slimes/magma cubes).
     pub spawn_dimensions_scale: f32,
+    /// Where passengers sit, relative to the entity's feet, one point per passenger slot.
+    pub passenger_attachments: Vec<[f64; 3]>,
+    /// The point on this entity that sits on its vehicle's passenger attachment.
+    pub vehicle_attachment: [f64; 3],
     /// Spawn location restrictions for natural spawning.
     pub spawn_restriction: SpawnRestriction,
 }
@@ -237,6 +241,11 @@ impl ToTokens for NamedEntityType<'_> {
         let dimension0 = entity.dimension[0];
         let dimension1 = entity.dimension[1];
         let spawn_dimensions_scale = entity.spawn_dimensions_scale;
+        let passenger_attachments = entity
+            .passenger_attachments
+            .iter()
+            .map(|[x, y, z]| quote! { [#x, #y, #z] });
+        let [vehicle_x, vehicle_y, vehicle_z] = entity.vehicle_attachment;
         let experience_reward = entity.experience_reward.unwrap_or(0);
         let client_tracking_range = entity.client_tracking_range;
         let update_interval = entity.update_interval;
@@ -271,6 +280,8 @@ impl ToTokens for NamedEntityType<'_> {
                 dimension: [#dimension0, #dimension1], // Correctly construct the array
                 eye_height: #eye_height,
                 spawn_dimensions_scale: #spawn_dimensions_scale,
+                passenger_attachments: &[#(#passenger_attachments),*],
+                vehicle_attachment: [#vehicle_x, #vehicle_y, #vehicle_z],
                 spawn_restriction: #spawn_restriction,
                 resource_name: #name,
             }
@@ -363,6 +374,10 @@ pub fn build() -> TokenStream {
             pub dimension: [f32; 2],
             pub eye_height: f32,
             pub spawn_dimensions_scale: f32,
+            /// Vanilla `EntityAttachment.PASSENGER` points of the default dimensions.
+            pub passenger_attachments: &'static [[f64; 3]],
+            /// Vanilla `EntityAttachment.VEHICLE` point of the default dimensions.
+            pub vehicle_attachment: [f64; 3],
             pub spawn_restriction: SpawnRestriction,
             pub resource_name: &'static str,
         }
