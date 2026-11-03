@@ -12,18 +12,29 @@ use pumpkin_util::text::TextComponent;
 use pumpkin_world::generation::proto_chunk::ProtoChunk;
 use pumpkin_world::world::{BlockAccessor, WorldPortalExt};
 
-use crate::command::argument_builder::{ArgumentBuilder, argument, command, literal};
+use crate::command::argument_builder::{
+    ArgumentBuilder, LiteralArgumentBuilder, argument, command, literal,
+};
 use crate::command::argument_types::argument_type::JavaClientArgumentType;
 use crate::command::argument_types::coordinates::block_pos::BlockPosArgumentType;
+use crate::command::argument_types::core::float::FloatArgumentType;
 use crate::command::argument_types::core::integer::IntegerArgumentType;
 use crate::command::argument_types::identifier::IdentifierArgumentType;
 use crate::command::argument_types::registry_id::RegistryIdArgumentType;
 use crate::command::argument_types::template::TemplateNameArgumentType;
+use crate::command::argument_types::template_transform::{
+    TemplateMirrorArgumentType, TemplateRotationArgumentType,
+};
 use crate::command::context::command_context::CommandContext;
 use crate::command::errors::error_types::CommandErrorType;
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
+use crate::world::World;
 use crate::world::block_placer::WorldBlockPlacer;
+use pumpkin_command::argument_types::coordinates::block_pos::NOT_LOADED_ERROR_TYPE;
+use pumpkin_command::errors::command_syntax_error::CommandSyntaxError;
+use pumpkin_util::math::vector2::Vector2;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::generation::feature::configured_features::CONFIGURED_FEATURES;
 use pumpkin_world::generation::feature::placed_features::{Feature, PLACED_FEATURES};
 use pumpkin_world::generation::structure::structures::jigsaw::{
@@ -36,6 +47,9 @@ use pumpkin_world::generation::structure::structures::{
     StructureGeneratorContext, start_reference_pos,
 };
 use pumpkin_world::generation::structure::template::BlockPlacer;
+use pumpkin_world::generation::structure::template::{StructurePlaceSettings, StructureProcessor};
+use rustc_hash::FxHashSet;
+use std::sync::Arc;
 
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
@@ -48,6 +62,10 @@ const PERMISSION: &str = "minecraft:command.place";
 static TEMPLATE_NOT_FOUND: CommandErrorType<1> = CommandErrorType::new(
     translation::java::COMMANDS_PLACE_TEMPLATE_INVALID,
     "commands.place.template.invalid",
+);
+static TEMPLATE_FAILED: CommandErrorType<0> = CommandErrorType::new(
+    translation::java::COMMANDS_PLACE_TEMPLATE_FAILED,
+    "commands.place.template.failed",
 );
 static JIGSAW_FAILED: CommandErrorType<1> = CommandErrorType::new(
     translation::java::COMMANDS_PLACE_JIGSAW_FAILED,
@@ -136,16 +154,41 @@ impl WorldPortalExt for CommandBlockRegistry {
     }
 }
 
-struct PlaceTemplateExecutor;
+/// `/place template`. `args` counts the optional arguments after the template name that the
+/// command was given: pos, rotation, mirror, integrity and seed, in that order.
+struct PlaceTemplateExecutor {
+    args: u8,
+    strict: bool,
+}
 
 impl CommandExecutor for PlaceTemplateExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
         let template_name = context.get_argument::<String>("template")?.clone();
-
-        let block_pos = BlockPosArgumentType::get_block_pos(context, "pos").unwrap_or_else(|_| {
-            let p = context.source.position;
-            BlockPos::new(p.x as i32, p.y as i32, p.z as i32)
-        });
+        let block_pos = if self.args >= 1 {
+            BlockPosArgumentType::get_loaded_block_pos(context, "pos")?
+        } else {
+            BlockPos::floored_v(context.source.position)
+        };
+        let rotation = if self.args >= 2 {
+            TemplateRotationArgumentType::get(context, "rotation")?
+        } else {
+            Rotation::None
+        };
+        let mirror = if self.args >= 3 {
+            TemplateMirrorArgumentType::get(context, "mirror")?
+        } else {
+            Mirror::None
+        };
+        let integrity = if self.args >= 4 {
+            FloatArgumentType::get(context, "integrity")?
+        } else {
+            1.0
+        };
+        let seed = if self.args >= 5 {
+            IntegerArgumentType::get(context, "seed")?
+        } else {
+            0
+        };
 
         let template_name = template_name
             .strip_prefix("minecraft:")
@@ -158,44 +201,59 @@ impl CommandExecutor for PlaceTemplateExecutor {
                 TEMPLATE_NOT_FOUND.create_without_context(TextComponent::text(template_name))
             );
         };
+        let world = context.world();
+        // Vanilla checks up to the position offset by the unrotated size.
+        check_loaded(
+            world,
+            block_pos.chunk_position(),
+            BlockPos(block_pos.0 + template.size).chunk_position(),
+        )?;
 
-        let mut placer = WorldBlockPlacer::new(context.world());
-        pumpkin_world::generation::structure::template::place_template(
+        let mut settings = StructurePlaceSettings::new()
+            .set_mirror(mirror)
+            .set_rotation(rotation)
+            .set_known_shape(self.strict);
+        if integrity < 1.0 {
+            settings = settings.add_processor(StructureProcessor::BlockRot {
+                integrity,
+                rottable_blocks: None,
+            });
+        }
+        let mut settings_random = (integrity < 1.0).then(|| structure_block_random(seed));
+
+        let mut placer = WorldBlockPlacer::new(world);
+        let mut entities = Vec::new();
+        let placed = pumpkin_world::generation::structure::template::place_in_world(
             &mut placer,
             &template,
             block_pos.0,
-            (0, 0),
-            Rotation::None,
-            false,
-            false,
-            &[],
-            None,
-            context.world().level.seed.0 as i64,
-        );
-        // Vanilla `StructureTemplate.placeInWorld` places the template's entities without
-        // finalizing them.
-        let mut entities = Vec::new();
-        pumpkin_world::generation::structure::template::place_template_entities(
+            &settings,
+            settings_random.as_mut(),
+            &mut structure_block_random(seed),
             |entity| entities.push(entity),
-            &template,
-            block_pos.0,
-            Rotation::None,
-            None,
-            false,
         );
-
+        if !placed {
+            return Err(TEMPLATE_FAILED.create_without_context());
+        }
         placer.finalize();
-        context
-            .world()
-            .queue_block_updates(&placer.changed_positions);
-        context.world().flush_block_updates();
-        context.world().spawn_structure_entities(entities);
+        world.queue_block_updates(&placer.changed_positions);
+        if !self.strict {
+            // `updateNeighborsAt` for every placed block, which strict placement skips.
+            let mut updated = FxHashSet::default();
+            for (pos, _) in &placer.changed_positions {
+                if updated.insert(*pos) {
+                    world.update_neighbors_at(pos, world.get_block(pos), None);
+                }
+            }
+        }
+        world.flush_block_updates();
+        world.spawn_structure_entities(entities);
 
         context.source.send_feedback(
             pumpkin_macros::translate_cross!(
                 translation::java::COMMANDS_PLACE_TEMPLATE_SUCCESS,
                 translation::bedrock::COMMANDS_PLACE_SUCCESS,
-                TextComponent::text(template_name),
+                TextComponent::text(format!("minecraft:{template_name}")),
                 TextComponent::text(block_pos.0.x.to_string()),
                 TextComponent::text(block_pos.0.y.to_string()),
                 TextComponent::text(block_pos.0.z.to_string())
@@ -205,6 +263,36 @@ impl CommandExecutor for PlaceTemplateExecutor {
 
         Ok(1)
     }
+}
+
+/// Vanilla `StructureBlockEntity.createRandom`: a seed of 0 means a random one.
+fn structure_block_random(seed: i32) -> LegacyRand {
+    let seed = if seed == 0 {
+        game_random().next_i64()
+    } else {
+        i64::from(seed)
+    };
+    LegacyRand::from_seed(seed as u64)
+}
+
+/// Vanilla `PlaceCommand.checkLoaded`.
+fn check_loaded(
+    world: &Arc<World>,
+    chunk_min: Vector2<i32>,
+    chunk_max: Vector2<i32>,
+) -> Result<(), CommandSyntaxError> {
+    for x in chunk_min.x..=chunk_max.x {
+        for z in chunk_min.y..=chunk_max.y {
+            if world
+                .level
+                .read_chunk_sync(&Vector2::new(x, z), |_| ())
+                .is_none()
+            {
+                return Err(NOT_LOADED_ERROR_TYPE.create_without_context());
+            }
+        }
+    }
+    Ok(())
 }
 
 struct PlaceJigsawExecutor;
@@ -757,6 +845,58 @@ fn apply_delta(
     }
 }
 
+/// The `/place template` subcommand.
+fn template_command() -> LiteralArgumentBuilder {
+    literal("template").then(
+        argument("template", TemplateNameArgumentType)
+            .executes(PlaceTemplateExecutor {
+                args: 0,
+                strict: false,
+            })
+            .then(
+                argument("pos", BlockPosArgumentType)
+                    .executes(PlaceTemplateExecutor {
+                        args: 1,
+                        strict: false,
+                    })
+                    .then(
+                        argument("rotation", TemplateRotationArgumentType)
+                            .executes(PlaceTemplateExecutor {
+                                args: 2,
+                                strict: false,
+                            })
+                            .then(
+                                argument("mirror", TemplateMirrorArgumentType)
+                                    .executes(PlaceTemplateExecutor {
+                                        args: 3,
+                                        strict: false,
+                                    })
+                                    .then(
+                                        argument("integrity", FloatArgumentType::new(0.0, 1.0))
+                                            .executes(PlaceTemplateExecutor {
+                                                args: 4,
+                                                strict: false,
+                                            })
+                                            .then(
+                                                argument("seed", IntegerArgumentType::any())
+                                                    .executes(PlaceTemplateExecutor {
+                                                        args: 5,
+                                                        strict: false,
+                                                    })
+                                                    .then(literal("strict").executes(
+                                                        PlaceTemplateExecutor {
+                                                            args: 5,
+                                                            strict: true,
+                                                        },
+                                                    )),
+                                            ),
+                                    ),
+                            ),
+                    ),
+            ),
+    )
+}
+
 pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistry) {
     registry.register_permission_or_panic(Permission::new(
         PERMISSION,
@@ -767,15 +907,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
     dispatcher.register(
         command("place", DESCRIPTION)
             .requires(PERMISSION)
-            .then(
-                literal("template").then(
-                    argument("template", TemplateNameArgumentType)
-                        .executes(PlaceTemplateExecutor)
-                        .then(
-                            argument("pos", BlockPosArgumentType).executes(PlaceTemplateExecutor),
-                        ),
-                ),
-            )
+            .then(template_command())
             .then(
                 literal("jigsaw").then(
                     argument(

@@ -453,6 +453,192 @@ pub fn place_template_entities(
     }
 }
 
+/// Vanilla `StructureTemplate.placeInWorld` with the template position as the reference position.
+///
+/// `/place template` and structure blocks place like this. `settings_random` is the random
+/// set on the place settings (`StructurePlaceSettings.setRandom`); without one, the palette and
+/// each processor seed their own from the position. `random` seeds the loot of containers.
+/// Returns false when the template has nothing to place, like vanilla.
+pub fn place_in_world(
+    placer: &mut impl BlockPlacer,
+    template: &StructureTemplate,
+    position: Vector3<i32>,
+    settings: &StructurePlaceSettings,
+    mut settings_random: Option<&mut LegacyRand>,
+    random: &mut LegacyRand,
+    add_entity: impl FnMut(StructureEntity),
+) -> bool {
+    if template.palettes.is_empty() {
+        return false;
+    }
+    let palette_count = template.palettes.len() as i32;
+    let palette_index = settings_random.as_deref_mut().map_or_else(
+        || {
+            LegacyRand::from_seed(hash_block_pos(position.x, position.y, position.z) as u64)
+                .next_bounded_i32(palette_count)
+        },
+        |random| random.next_bounded_i32(palette_count),
+    );
+    let blocks = template.palettes[palette_index as usize].blocks();
+    if (blocks.is_empty()
+        && (settings.is_ignore_entities() || template.entity_info_list.is_empty()))
+        || template.size.x < 1
+        || template.size.y < 1
+        || template.size.z < 1
+    {
+        return false;
+    }
+    let mirror = settings.get_mirror();
+    let rotation = settings.get_rotation();
+    let pivot = settings.get_rotation_pivot();
+    let bounding_box = settings.get_bounding_box();
+
+    // `processBlockInfos`
+    let mut context = processor::ProcessorContext::new(position);
+    let mut processed = Vec::with_capacity(blocks.len());
+    'blocks: for info in blocks {
+        let pos =
+            StructureTemplate::transform_block_pos(info.pos, mirror, rotation, pivot) + position;
+        if bounding_box.is_some_and(|bbox| !bbox.contains_pos(&pos)) {
+            continue;
+        }
+        let Some(mut state) = BlockStateResolver::resolve_simple(&info.state) else {
+            continue;
+        };
+        let mut nbt = info.nbt.clone();
+        for processor in settings.get_processors() {
+            let processed_state = match settings_random.as_deref_mut() {
+                Some(random) => processor.process_with_context(
+                    placer,
+                    pos,
+                    state,
+                    &mut nbt,
+                    &mut context,
+                    random,
+                ),
+                None => processor.process_with_context(
+                    placer,
+                    pos,
+                    state,
+                    &mut nbt,
+                    &mut context,
+                    &mut LegacyRand::from_seed(hash_block_pos(pos.x, pos.y, pos.z) as u64),
+                ),
+            };
+            let Some(processed_state) = processed_state else {
+                continue 'blocks;
+            };
+            state = processed_state;
+        }
+        processed.push(ProcessedBlock { pos, state, nbt });
+    }
+
+    let mut placement = TemplateBlockPlacement::new(
+        settings.should_apply_waterlogging(),
+        settings.get_known_shape(),
+    );
+    for ProcessedBlock { pos, state, nbt } in processed {
+        let state = state.mirror(mirror).rotate(rotation);
+        placement.set_block(placer, pos, state);
+
+        let final_block = pumpkin_data::Block::from_id(state.id.to_block_id());
+        let block_entity_id = get_block_entity_id(final_block.name);
+        if nbt.is_none() && block_entity_id.is_none() {
+            continue;
+        }
+        let mut placed_nbt = NbtCompound::new();
+        placed_nbt.put_string(
+            "id",
+            block_entity_id.unwrap_or(final_block.name).to_string(),
+        );
+        placed_nbt.put_int("x", pos.x);
+        placed_nbt.put_int("y", pos.y);
+        placed_nbt.put_int("z", pos.z);
+        if let Some(template_nbt) = &nbt {
+            for (key, value) in &template_nbt.child_tags {
+                if !matches!(key.as_ref(), "x" | "y" | "z" | "id") {
+                    placed_nbt.child_tags.insert(key.clone(), value.clone());
+                }
+            }
+            if is_randomizable_container(state) {
+                placed_nbt.put_long("LootTableSeed", random.next_i64());
+            }
+        }
+        placer.add_block_entity(&pos, placed_nbt);
+    }
+    placement.finish(placer);
+
+    if !settings.is_ignore_entities() {
+        place_entities(template, position, settings, add_entity);
+    }
+    true
+}
+
+/// Vanilla `StructureTemplate.placeEntities` with the transforms of `settings`.
+fn place_entities(
+    template: &StructureTemplate,
+    position: Vector3<i32>,
+    settings: &StructurePlaceSettings,
+    mut add_entity: impl FnMut(StructureEntity),
+) {
+    let mirror = settings.get_mirror();
+    let rotation = settings.get_rotation();
+    let pivot = settings.get_rotation_pivot();
+    let bounding_box = settings.get_bounding_box();
+    for entity in &template.entity_info_list {
+        let block_pos =
+            StructureTemplate::transform_block_pos(entity.block_pos, mirror, rotation, pivot)
+                + position;
+        if bounding_box.is_some_and(|bbox| !bbox.contains_pos(&block_pos)) {
+            continue;
+        }
+        let relative = StructureTemplate::transform_vec3(entity.pos, mirror, rotation, pivot);
+        let pos = Vector3::new(
+            relative.x + f64::from(position.x),
+            relative.y + f64::from(position.y),
+            relative.z + f64::from(position.z),
+        );
+        let mut nbt = entity.nbt.clone();
+        nbt.put(
+            "Pos",
+            NbtTag::List(vec![pos.x.into(), pos.y.into(), pos.z.into()]),
+        );
+        nbt.child_tags.remove("UUID");
+        if nbt.child_tags.contains_key("block_pos") {
+            nbt.put(
+                "block_pos",
+                NbtTag::IntArray(vec![block_pos.x, block_pos.y, block_pos.z]),
+            );
+        }
+        if let Some(rotation_nbt) = nbt.get_list("Rotation")
+            && rotation_nbt.len() == 2
+        {
+            // `Entity.rotate` and `Entity.mirror`, both from the wrapped yaw.
+            let y_rot = rotation_nbt[0].extract_float().unwrap_or_default();
+            let pitch = rotation_nbt[1].extract_float().unwrap_or_default();
+            let angle = pumpkin_util::math::wrap_degrees(y_rot);
+            let rotated = angle
+                + match rotation {
+                    Rotation::None => 0.0,
+                    Rotation::Clockwise90 => 90.0,
+                    Rotation::Rotate180 => 180.0,
+                    Rotation::CounterClockwise90 => 270.0,
+                };
+            let mirrored = match mirror {
+                pumpkin_data::Mirror::None => angle,
+                pumpkin_data::Mirror::LeftRight => 180.0 - angle,
+                pumpkin_data::Mirror::FrontBack => -angle,
+            };
+            let yaw = rotated + mirrored - y_rot;
+            nbt.put("Rotation", NbtTag::List(vec![yaw.into(), pitch.into()]));
+        }
+        add_entity(StructureEntity {
+            nbt,
+            finalize: settings.should_finalize_entities(),
+        });
+    }
+}
+
 /// Block entity types implementing vanilla's `RandomizableContainer`, whose loot seed
 /// `StructureTemplate.placeInWorld` draws from the piece random.
 const RANDOMIZABLE_CONTAINERS: &[&str] = &[
