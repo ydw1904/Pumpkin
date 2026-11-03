@@ -4,6 +4,7 @@ use pumpkin_data::translation;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
+use pumpkin_util::text::color::NamedColor;
 use pumpkin_util::text::hover::HoverEvent;
 
 use crate::command::CommandSource;
@@ -124,11 +125,28 @@ fn parse_style(name: &str) -> Option<BossbarDivisions> {
     })
 }
 
-fn bossbar_prefix(title: TextComponent, namespace: String) -> TextComponent {
-    TextComponent::text("[")
-        .add_child(title)
-        .add_child(TextComponent::text("]"))
-        .hover_event(HoverEvent::show_text(TextComponent::text(namespace)))
+/// Vanilla `CustomBossEvent.getDisplayName`.
+fn bossbar_prefix(title: TextComponent, color: BossbarColor, namespace: String) -> TextComponent {
+    // Vanilla `BossBarColor.getFormatting`.
+    let formatting = match color {
+        BossbarColor::Pink => NamedColor::LightPurple,
+        BossbarColor::Blue => NamedColor::Blue,
+        BossbarColor::Red => NamedColor::Red,
+        BossbarColor::Green => NamedColor::Green,
+        BossbarColor::Yellow => NamedColor::Yellow,
+        BossbarColor::Purple => NamedColor::DarkBlue,
+        BossbarColor::White => NamedColor::White,
+    };
+    TextComponent::translate_cross(
+        translation::java::CHAT_SQUARE_BRACKETS,
+        translation::java::CHAT_SQUARE_BRACKETS,
+        [title],
+    )
+    .color_named(formatting)
+    .hover_event(HoverEvent::show_text(TextComponent::text(
+        namespace.clone(),
+    )))
+    .insertion(namespace)
 }
 
 fn handle_bossbar_error(error: BossbarUpdateError) -> CommandSyntaxError {
@@ -188,7 +206,7 @@ impl CommandExecutor for AddExecutor {
             TextComponent::translate_cross(
                 translation::java::COMMANDS_BOSSBAR_CREATE_SUCCESS,
                 translation::bedrock::COMMANDS_BOSSBAR_ADD_SUCCESS,
-                [bossbar_prefix(bossbar.title, namespace)],
+                [bossbar_prefix(bossbar.title, bossbar.color, namespace)],
             ),
             true,
         );
@@ -200,6 +218,7 @@ impl CommandExecutor for AddExecutor {
 struct GetExecutor(CommandValueGet);
 
 impl CommandExecutor for GetExecutor {
+    #[expect(clippy::too_many_lines, reason = "one arm per bossbar value")]
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
         let namespace = BossbarIdArgumentType::get(context, "id")?;
         let server = context.source.server();
@@ -217,7 +236,11 @@ impl CommandExecutor for GetExecutor {
                         translation::java::COMMANDS_BOSSBAR_GET_MAX,
                         translation::bedrock::COMMANDS_BOSSBAR_GET_MAX,
                         [
-                            bossbar_prefix(bossbar.bossbar_data.title.clone(), namespace),
+                            bossbar_prefix(
+                                bossbar.bossbar_data.title.clone(),
+                                bossbar.bossbar_data.color,
+                                namespace,
+                            ),
                             TextComponent::text(bossbar.max.to_string()),
                         ],
                     ),
@@ -239,7 +262,11 @@ impl CommandExecutor for GetExecutor {
                         TextComponent::translate_cross(
                             translation::java::COMMANDS_BOSSBAR_GET_PLAYERS_NONE,
                             translation::bedrock::COMMANDS_BOSSBAR_GET_PLAYERS_NONE,
-                            [bossbar_prefix(bossbar.bossbar_data.title, namespace)],
+                            [bossbar_prefix(
+                                bossbar.bossbar_data.title,
+                                bossbar.bossbar_data.color,
+                                namespace,
+                            )],
                         ),
                         true,
                     );
@@ -253,7 +280,11 @@ impl CommandExecutor for GetExecutor {
                                 translation::bedrock::COMMANDS_BOSSBAR_GET_PLAYERS
                             },
                             [
-                                bossbar_prefix(bossbar.bossbar_data.title, namespace),
+                                bossbar_prefix(
+                                    bossbar.bossbar_data.title,
+                                    bossbar.bossbar_data.color,
+                                    namespace,
+                                ),
                                 TextComponent::text(count.to_string()),
                                 TextComponent::text(online_players.join(", ")),
                             ],
@@ -269,7 +300,11 @@ impl CommandExecutor for GetExecutor {
                         translation::java::COMMANDS_BOSSBAR_GET_VALUE,
                         translation::bedrock::COMMANDS_BOSSBAR_GET_VALUE,
                         [
-                            bossbar_prefix(bossbar.bossbar_data.title.clone(), namespace),
+                            bossbar_prefix(
+                                bossbar.bossbar_data.title.clone(),
+                                bossbar.bossbar_data.color,
+                                namespace,
+                            ),
                             TextComponent::text(bossbar.value.to_string()),
                         ],
                     ),
@@ -295,6 +330,7 @@ impl CommandExecutor for GetExecutor {
                         bedrock_key,
                         [bossbar_prefix(
                             bossbar.bossbar_data.title.clone(),
+                            bossbar.bossbar_data.color,
                             namespace,
                         )],
                     ),
@@ -330,12 +366,14 @@ impl CommandExecutor for ListExecutor {
             if i == 0 {
                 bossbars_text = bossbars_text.add_child(bossbar_prefix(
                     bossbar.bossbar_data.title.clone(),
+                    bossbar.bossbar_data.color,
                     bossbar.namespace.clone(),
                 ));
             } else {
                 bossbars_text =
                     bossbars_text.add_child(TextComponent::text(", ").add_child(bossbar_prefix(
                         bossbar.bossbar_data.title.clone(),
+                        bossbar.bossbar_data.color,
                         bossbar.namespace.clone(),
                     )));
             }
@@ -376,6 +414,7 @@ impl CommandExecutor for RemoveExecutor {
                 translation::bedrock::COMMANDS_BOSSBAR_REMOVE,
                 [bossbar_prefix(
                     bossbar.bossbar_data.title,
+                    bossbar.bossbar_data.color,
                     namespace.clone(),
                 )],
             ),
@@ -421,7 +460,7 @@ impl CommandExecutor for SetExecutor {
                     TextComponent::translate_cross(
                         translation::java::COMMANDS_BOSSBAR_SET_COLOR_SUCCESS,
                         translation::java::COMMANDS_BOSSBAR_SET_COLOR_SUCCESS,
-                        [bossbar_prefix(bossbar.bossbar_data.title, namespace)],
+                        [bossbar_prefix(bossbar.bossbar_data.title, color, namespace)],
                     ),
                     true,
                 );
@@ -443,7 +482,11 @@ impl CommandExecutor for SetExecutor {
                         translation::java::COMMANDS_BOSSBAR_SET_MAX_SUCCESS,
                         translation::java::COMMANDS_BOSSBAR_SET_MAX_SUCCESS,
                         [
-                            bossbar_prefix(bossbar.bossbar_data.title, namespace),
+                            bossbar_prefix(
+                                bossbar.bossbar_data.title,
+                                bossbar.bossbar_data.color,
+                                namespace,
+                            ),
                             TextComponent::text(max_value.to_string()),
                         ],
                     ),
@@ -465,7 +508,7 @@ impl CommandExecutor for SetExecutor {
                     TextComponent::translate_cross(
                         translation::java::COMMANDS_BOSSBAR_SET_NAME_SUCCESS,
                         translation::java::COMMANDS_BOSSBAR_SET_NAME_SUCCESS,
-                        [bossbar_prefix(name, namespace)],
+                        [bossbar_prefix(name, bossbar.bossbar_data.color, namespace)],
                     ),
                     true,
                 );
@@ -485,7 +528,11 @@ impl CommandExecutor for SetExecutor {
                         TextComponent::translate_cross(
                             translation::java::COMMANDS_BOSSBAR_SET_PLAYERS_SUCCESS_NONE,
                             translation::java::COMMANDS_BOSSBAR_SET_PLAYERS_SUCCESS_NONE,
-                            [bossbar_prefix(bossbar.bossbar_data.title, namespace)],
+                            [bossbar_prefix(
+                                bossbar.bossbar_data.title,
+                                bossbar.bossbar_data.color,
+                                namespace,
+                            )],
                         ),
                         true,
                     );
@@ -516,7 +563,11 @@ impl CommandExecutor for SetExecutor {
                         translation::java::COMMANDS_BOSSBAR_SET_PLAYERS_SUCCESS_SOME,
                         translation::java::COMMANDS_BOSSBAR_SET_PLAYERS_SUCCESS_SOME,
                         [
-                            bossbar_prefix(bossbar.bossbar_data.title, namespace),
+                            bossbar_prefix(
+                                bossbar.bossbar_data.title,
+                                bossbar.bossbar_data.color,
+                                namespace,
+                            ),
                             TextComponent::text(count.to_string()),
                             TextComponent::text(player_names),
                         ],
@@ -538,7 +589,11 @@ impl CommandExecutor for SetExecutor {
                     TextComponent::translate_cross(
                         translation::java::COMMANDS_BOSSBAR_SET_STYLE_SUCCESS,
                         translation::java::COMMANDS_BOSSBAR_SET_STYLE_SUCCESS,
-                        [bossbar_prefix(bossbar.bossbar_data.title, namespace)],
+                        [bossbar_prefix(
+                            bossbar.bossbar_data.title,
+                            bossbar.bossbar_data.color,
+                            namespace,
+                        )],
                     ),
                     true,
                 );
@@ -559,7 +614,11 @@ impl CommandExecutor for SetExecutor {
                         translation::java::COMMANDS_BOSSBAR_SET_VALUE_SUCCESS,
                         translation::java::COMMANDS_BOSSBAR_SET_VALUE_SUCCESS,
                         [
-                            bossbar_prefix(bossbar.bossbar_data.title, namespace),
+                            bossbar_prefix(
+                                bossbar.bossbar_data.title,
+                                bossbar.bossbar_data.color,
+                                namespace,
+                            ),
                             TextComponent::text(value.to_string()),
                         ],
                     ),
@@ -588,7 +647,11 @@ impl CommandExecutor for SetExecutor {
                     TextComponent::translate_cross(
                         state,
                         state,
-                        [bossbar_prefix(bossbar.bossbar_data.title, namespace)],
+                        [bossbar_prefix(
+                            bossbar.bossbar_data.title,
+                            bossbar.bossbar_data.color,
+                            namespace,
+                        )],
                     ),
                     true,
                 );
