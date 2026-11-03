@@ -243,7 +243,13 @@ impl SpearItem {
             Ordering::Relaxed,
         );
         if was_hurt {
-            Self::apply_post_damage_effects(stack, target_entity);
+            crate::enchantment::EnchantmentHelper::do_post_attack_effects_with_item_source(
+                target.as_ref(),
+                DamageType::SPEAR,
+                Some(player),
+                Some(player),
+                Some(stack),
+            );
         }
         if target.get_living_entity().is_some()
             && let Some(weapon) = stack.get_data_component::<WeaponImpl>()
@@ -431,7 +437,12 @@ impl SpearItem {
         }
 
         if dealt_damage {
-            Self::apply_post_damage_effects(stack, target_entity);
+            crate::enchantment::EnchantmentHelper::do_post_attack_effects(
+                target.as_ref(),
+                DamageType::SPEAR,
+                Some(attacker),
+                Some(attacker),
+            );
         }
         if !affected {
             return false;
@@ -582,17 +593,6 @@ impl SpearItem {
                     .map(|(_, level)| u32::try_from(*level).unwrap_or(0))
             })
             .unwrap_or(0)
-    }
-
-    fn apply_post_damage_effects(stack: &ItemStack, target: &Entity) {
-        let Some(enchantments) = stack.get_data_component::<EnchantmentsImpl>() else {
-            return;
-        };
-        for (enchantment, level) in enchantments.enchantment.iter() {
-            if **enchantment == Enchantment::FIRE_ASPECT {
-                target.set_on_fire_for_ticks(u32::try_from(*level).unwrap_or(0) * 80);
-            }
-        }
     }
 
     fn targets_in_range(
