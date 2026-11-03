@@ -22,6 +22,7 @@ use tracing::warn;
 use super::World;
 use crate::entity::EntityBase;
 use crate::entity::player::Player;
+use crate::net::ClientPlatform;
 
 pub trait ScoreboardTarget: Send + Sync {
     fn send_editioned<J: ClientPacket + Sync, B: BClientPacket + Sync>(
@@ -30,6 +31,7 @@ pub trait ScoreboardTarget: Send + Sync {
         be_packet: &B,
     );
     fn send_je<J: ClientPacket + Sync>(&self, je_packet: &J);
+    fn send_be<B: BClientPacket + Sync>(&self, be_packet: &B);
 }
 
 /// The scoreboard is shared by all dimensions, so like vanilla's `ServerScoreboard`, a world
@@ -56,6 +58,29 @@ impl ScoreboardTarget for World {
             self.broadcast_packet_all(je_packet);
         }
     }
+
+    fn send_be<B: BClientPacket + Sync>(&self, be_packet: &B) {
+        let bedrock_clients = |world: &Self| {
+            Self::broadcast_bedrock_grouped(
+                be_packet,
+                world
+                    .players
+                    .load()
+                    .iter()
+                    .filter_map(|player| match player.client.as_ref() {
+                        ClientPlatform::Bedrock(bedrock) => Some(bedrock),
+                        ClientPlatform::Java(_) => None,
+                    }),
+            );
+        };
+        if let Some(server) = self.server.upgrade() {
+            for world in server.worlds.load().iter() {
+                bedrock_clients(world);
+            }
+        } else {
+            bedrock_clients(self);
+        }
+    }
 }
 
 impl<T: ScoreboardTarget + ?Sized> ScoreboardTarget for &T {
@@ -69,6 +94,10 @@ impl<T: ScoreboardTarget + ?Sized> ScoreboardTarget for &T {
 
     fn send_je<J: ClientPacket + Sync>(&self, je_packet: &J) {
         (*self).send_je(je_packet);
+    }
+
+    fn send_be<B: BClientPacket + Sync>(&self, be_packet: &B) {
+        (*self).send_be(be_packet);
     }
 }
 
@@ -84,6 +113,10 @@ impl ScoreboardTarget for std::sync::Arc<World> {
     fn send_je<J: ClientPacket + Sync>(&self, je_packet: &J) {
         (**self).send_je(je_packet);
     }
+
+    fn send_be<B: BClientPacket + Sync>(&self, be_packet: &B) {
+        (**self).send_be(be_packet);
+    }
 }
 
 impl ScoreboardTarget for Player {
@@ -97,6 +130,14 @@ impl ScoreboardTarget for Player {
 
     fn send_je<J: ClientPacket + Sync>(&self, je_packet: &J) {
         self.try_send_client_packet(je_packet);
+    }
+
+    fn send_be<B: BClientPacket + Sync>(&self, be_packet: &B) {
+        if let ClientPlatform::Bedrock(bedrock) = self.client.as_ref()
+            && let Ok(data) = bedrock.serialize_packet(be_packet)
+        {
+            bedrock.try_enqueue_packet(data);
+        }
     }
 }
 
@@ -112,6 +153,14 @@ impl ScoreboardTarget for std::sync::Arc<Player> {
     fn send_je<J: ClientPacket + Sync>(&self, je_packet: &J) {
         self.try_send_client_packet(je_packet);
     }
+
+    fn send_be<B: BClientPacket + Sync>(&self, be_packet: &B) {
+        if let ClientPlatform::Bedrock(bedrock) = self.client.as_ref()
+            && let Ok(data) = bedrock.serialize_packet(be_packet)
+        {
+            bedrock.try_enqueue_packet(data);
+        }
+    }
 }
 
 pub struct NoTarget;
@@ -125,6 +174,8 @@ impl ScoreboardTarget for NoTarget {
     }
 
     fn send_je<J: ClientPacket + Sync>(&self, _je_packet: &J) {}
+
+    fn send_be<B: BClientPacket + Sync>(&self, _be_packet: &B) {}
 }
 
 #[derive(Clone, Debug, Default)]
@@ -251,10 +302,37 @@ impl Scoreboard {
             );
             return;
         }
-        if self.is_tracked(&objective.name) {
+        let renamed = self
+            .objectives
+            .get(&objective.name)
+            .is_some_and(|old| old.display_name != objective.display_name);
+        let name = objective.name.clone();
+        let tracked = self.is_tracked(&name);
+        if tracked {
             target.send_je(&objective.packet(Mode::Update));
         }
-        self.objectives.insert(objective.name.clone(), objective);
+        self.objectives.insert(name.clone(), objective);
+        if tracked && renamed {
+            self.send_bedrock_objective_again(target, &name);
+        }
+    }
+
+    /// Bedrock has no packet that renames an objective, so its clients get the objective
+    /// removed and shown again under the new name, scores included.
+    fn send_bedrock_objective_again(&self, target: &impl ScoreboardTarget, objective_name: &str) {
+        target.send_be(&BRemoveObjective {
+            objective_name: objective_name.to_string(),
+        });
+        for slot in ALL_DISPLAY_SLOTS {
+            if self.get_display_objective(slot) == Some(objective_name) {
+                target.send_be(&self.display_packets(slot, Some(objective_name)).1);
+            }
+        }
+        if let Some(scores) = self.scores.get(objective_name) {
+            for score in scores.values() {
+                target.send_be(&score.packets().1);
+            }
+        }
     }
 
     /// Whether the objective is shown in a display slot, which is when vanilla's
@@ -1938,6 +2016,10 @@ mod tests {
 
         fn send_je<J: ClientPacket + Sync>(&self, _: &J) {
             self.record::<J>();
+        }
+
+        fn send_be<B: BClientPacket + Sync>(&self, _: &B) {
+            self.record::<B>();
         }
     }
 
