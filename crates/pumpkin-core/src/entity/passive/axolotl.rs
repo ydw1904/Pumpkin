@@ -21,19 +21,21 @@ use pumpkin_util::math::vector3::Vector3;
 use crate::entity::{
     Entity, EntityBase,
     ageable::{AgeableData, AgeableMob},
+    ai::brain::behavior::random_stroll,
     ai::control::{
         Control, LookControlTrait, MoveControlTrait,
         smooth_swimming_look_control::SmoothSwimmingLookControl,
         smooth_swimming_move_control::SmoothSwimmingMoveControl,
     },
     ai::goal::{
-        Controls, Goal, active_target::ActiveTargetGoal, breed::BreedGoal,
+        Controls, Goal, GoalReach, active_target::ActiveTargetGoal, breed::BreedGoal,
         follow_parent::FollowParentGoal, look_around::RandomLookAroundGoal,
         look_at_entity::LookAtEntityGoal, melee_attack::MeleeAttackGoal, tempt::TemptGoal,
-        try_find_water::TryFindWaterGoal, wander_around::WanderAroundGoal,
+        try_find_water::TryFindWaterGoal,
     },
-    ai::pathfinder::{Navigator, node::PathType},
+    ai::pathfinder::{Navigator, NavigatorGoal, node::PathType},
     ai::target_match::TargetMatch,
+    ai::util::land_random_pos,
     area_effect_cloud::INFINITE_DURATION,
     living::LivingEntity,
     mob::{Mob, MobEntity},
@@ -190,10 +192,7 @@ impl AxolotlEntity {
                     false,
                 )),
             );
-            goal_selector.add_goal(
-                6,
-                Box::new(WanderAroundGoal::new(SPEED_MULTIPLIER_WHEN_IDLING_IN_WATER)),
-            );
+            goal_selector.add_goal(6, Box::new(AxolotlStrollGoal::default()));
             goal_selector.add_goal(
                 7,
                 LookAtEntityGoal::with_default(mob_weak, &EntityType::PLAYER, 6.0),
@@ -462,6 +461,54 @@ impl Goal for PlayDeadGoal {
 
     fn controls(&self) -> Controls {
         Controls::MOVE | Controls::LOOK | Controls::JUMP
+    }
+}
+
+/// The strolls of vanilla `AxolotlAi`'s idle activity: `RandomStroll.swim` in water and
+/// `RandomStroll.stroll` without leaving water on land, tried whenever there is no walk target.
+#[derive(Default)]
+struct AxolotlStrollGoal {
+    target: Option<(Vector3<f64>, f64)>,
+}
+
+impl Goal for AxolotlStrollGoal {
+    fn tick_reach(&self, _mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        Some(GoalReach {
+            speed: SPEED_MULTIPLIER_WHEN_IDLING_IN_WATER,
+            ..GoalReach::default()
+        })
+    }
+
+    fn can_start(&mut self, mob: &dyn Mob) -> bool {
+        self.target = if mob.get_entity().is_in_water() {
+            random_stroll::get_target_swim_pos(mob)
+                .map(|pos| (pos, SPEED_MULTIPLIER_WHEN_IDLING_IN_WATER))
+        } else {
+            land_random_pos::get_pos(mob, 10, 7).map(|pos| (pos, SPEED_MULTIPLIER_ON_LAND))
+        };
+        self.target.is_some()
+    }
+
+    fn should_continue(&mut self, mob: &dyn Mob) -> bool {
+        !mob.is_navigator_idle()
+    }
+
+    fn start(&mut self, mob: &dyn Mob) {
+        if let Some((target, speed)) = self.target.take() {
+            let pos = mob.get_entity().pos.load();
+            mob.get_mob_entity()
+                .steered()
+                .navigator()
+                .set_progress(NavigatorGoal::new(pos, target, speed));
+        }
+    }
+
+    fn stop(&mut self, mob: &dyn Mob) {
+        mob.get_mob_entity().steered().navigator().stop();
+    }
+
+    fn controls(&self) -> Controls {
+        Controls::MOVE
     }
 }
 

@@ -4,9 +4,13 @@ use uuid::Uuid;
 
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item_stack::ItemStack;
+use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 
+use crate::entity::ai::pathfinder::node::PathComputationType;
+use crate::entity::ai::util::default_random_pos;
 use crate::entity::item::ItemEntity;
+use crate::entity::mob::Mob;
 use crate::entity::{Entity, EntityBase};
 use crate::world::World;
 
@@ -141,6 +145,34 @@ pub fn is_other_target_much_further_away_than_current_attack_target(
     let dist_to_current = pos.squared_distance_to_vec(&current.get_entity().pos.load());
     let dist_to_other = pos.squared_distance_to_vec(&other_target.get_entity().pos.load());
     dist_to_other > dist_to_current + how_much_further_away * how_much_further_away
+}
+
+/// Vanilla `BehaviorUtils.getRandomSwimmablePos`: a random position, retried up to 10 times
+/// until it is somewhere to swim.
+#[must_use]
+pub fn get_random_swimmable_pos(
+    mob: &dyn Mob,
+    max_horizontal_distance: i32,
+    max_vertical_distance: i32,
+) -> Option<Vector3<f64>> {
+    let world = mob.get_entity().world.load();
+    let mut target =
+        default_random_pos::get_pos(mob, max_horizontal_distance, max_vertical_distance);
+    let mut count = 0;
+    while let Some(pos) = target {
+        let pos = BlockPos::containing_vec(pos);
+        let (block, state) = world.get_block_and_state(&pos);
+        if world
+            .block_registry
+            .is_pathfindable(block, state, PathComputationType::Water)
+            || count >= 10
+        {
+            break;
+        }
+        count += 1;
+        target = default_random_pos::get_pos(mob, max_horizontal_distance, max_vertical_distance);
+    }
+    target
 }
 
 #[must_use]

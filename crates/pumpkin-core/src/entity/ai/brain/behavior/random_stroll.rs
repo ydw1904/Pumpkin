@@ -1,12 +1,16 @@
+use pumpkin_data::fluid::Fluid;
+use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 
 use super::super::memory::{MemoryStatus, types, walk_target::WalkTarget};
 use super::OneShot;
-use crate::entity::ai::util::air_and_water_random_pos;
+use super::utils::get_random_swimmable_pos;
+use crate::entity::ai::util::{air_and_water_random_pos, goal_utils};
 use crate::entity::mob::Mob;
 
 const MAX_XZ_DIST: i32 = 10;
 const MAX_Y_DIST: i32 = 7;
+const SWIM_XY_DISTANCE_TIERS: [(i32, i32); 6] = [(1, 1), (3, 3), (5, 5), (6, 5), (7, 7), (10, 7)];
 
 #[must_use]
 pub fn fly(speed_modifier: f32) -> OneShot {
@@ -41,4 +45,41 @@ fn get_target_fly_pos(
         wander_direction.z,
         f64::from(std::f32::consts::FRAC_PI_2),
     )
+}
+
+/// Vanilla `RandomStroll.getTargetSwimPos`: the farthest of ever wider swim targets that stays
+/// in fluid and inside the mob's restriction.
+#[must_use]
+pub fn get_target_swim_pos(mob: &dyn Mob) -> Option<Vector3<f64>> {
+    let entity = mob.get_entity();
+    let world = entity.world.load();
+    let pos = entity.pos.load();
+    let mut fallback: Option<Vector3<f64>> = None;
+    let mut target = None;
+    for (horizontal, vertical) in SWIM_XY_DISTANCE_TIERS {
+        target = fallback.map_or_else(
+            || get_random_swimmable_pos(mob, horizontal, vertical),
+            |fallback| {
+                Some(
+                    pos + (fallback - pos).normalize().multiply(
+                        f64::from(horizontal),
+                        f64::from(vertical),
+                        f64::from(horizontal),
+                    ),
+                )
+            },
+        );
+        let restrict = goal_utils::mob_restricted(mob, f64::from(horizontal));
+        let Some(candidate) = target else {
+            return fallback;
+        };
+        let block_pos = BlockPos::containing_vec(candidate);
+        if world.get_fluid(&block_pos).id == Fluid::EMPTY.id
+            || goal_utils::is_restricted(restrict, mob, &block_pos)
+        {
+            return fallback;
+        }
+        fallback = target;
+    }
+    target
 }
