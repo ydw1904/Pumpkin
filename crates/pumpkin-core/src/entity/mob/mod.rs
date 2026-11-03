@@ -502,13 +502,25 @@ impl MobEntity {
     /// Vanilla `Mob.convertTo` with `ConversionParams.single(mob, true, true)`: replaces this mob
     /// with a new one of `converts_to` that keeps its position, equipment and most state.
     /// `after_conversion` runs before the new mob is added to the world.
+    pub fn convert_to(
+        &self,
+        converts_to: &'static EntityType,
+        after_conversion: impl FnOnce(&Arc<dyn EntityBase>),
+    ) -> bool {
+        self.convert_to_with(converts_to, true, true, after_conversion)
+    }
+
+    /// Vanilla `Mob.convertTo` with `ConversionParams.single(mob, keep_equipment,
+    /// preserve_can_pick_up_loot)`.
     #[expect(
         clippy::too_many_lines,
         reason = "mirrors ConversionType.SINGLE and convertCommon step by step"
     )]
-    pub fn convert_to(
+    pub fn convert_to_with(
         &self,
         converts_to: &'static EntityType,
+        keep_equipment: bool,
+        preserve_can_pick_up_loot: bool,
         after_conversion: impl FnOnce(&Arc<dyn EntityBase>),
     ) -> bool {
         let from = self;
@@ -541,7 +553,7 @@ impl MobEntity {
         to.living_entity
             .fall_distance
             .store(from.living_entity.fall_distance.load());
-        {
+        if keep_equipment {
             let mut from_equipment = from
                 .living_entity
                 .entity_equipment
@@ -558,17 +570,19 @@ impl MobEntity {
                 }
             }
         }
-        to.living_entity
-            .equipment_drop_chances
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone_from(
-                &from
-                    .living_entity
-                    .equipment_drop_chances
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner),
-            );
+        if keep_equipment {
+            to.living_entity
+                .equipment_drop_chances
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone_from(
+                    &from
+                        .living_entity
+                        .equipment_drop_chances
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner),
+                );
+        }
 
         // ConversionType.convertCommon
         to.living_entity
@@ -584,7 +598,9 @@ impl MobEntity {
         for effect in effects {
             to.living_entity.add_effect(effect);
         }
-        to.set_can_pick_up_loot(from.can_pick_up_loot());
+        if preserve_can_pick_up_loot {
+            to.set_can_pick_up_loot(from.can_pick_up_loot());
+        }
         to.set_left_handed(from.is_left_handed());
         to.set_no_ai(from.is_no_ai());
         if from.persistence_required.load(Ordering::Relaxed) {

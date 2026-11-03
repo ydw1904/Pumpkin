@@ -185,6 +185,39 @@ impl Mob for PigEntity {
         true
     }
 
+    /// Vanilla `Pig.thunderHit`: outside peaceful the pig becomes a zombified piglin.
+    fn mob_on_lightning_strike(
+        &self,
+        caller: &dyn EntityBase,
+        lightning: &crate::entity::lightning::LightningBoltEntity,
+    ) {
+        let world = self.get_entity().world.load_full();
+        if world.level_info.load().difficulty != pumpkin_util::Difficulty::Peaceful
+            && self.mob_entity.convert_to_with(
+                &EntityType::ZOMBIFIED_PIGLIN,
+                false,
+                true,
+                |zombified| {
+                    if let Some(mob) = zombified.get_mob() {
+                        let difficulty = crate::entity::mob::equipment::RegionalDifficulty::at(
+                            &world,
+                            self.get_entity().pos.load(),
+                        );
+                        mob.populate_default_equipment_slots(&world, &difficulty);
+                        mob.get_mob_entity()
+                            .persistence_required
+                            .store(true, Ordering::Relaxed);
+                    }
+                },
+            )
+        {
+            return;
+        }
+        self.mob_entity
+            .living_entity
+            .on_lightning_strike(caller, lightning);
+    }
+
     fn as_ageable(&self) -> Option<&dyn AgeableMob> {
         Some(self)
     }

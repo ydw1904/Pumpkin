@@ -2327,6 +2327,38 @@ impl Mob for VillagerEntity {
         self.finalize_spawn_super(group_data)
     }
 
+    /// Vanilla `Villager.thunderHit`: outside peaceful the villager becomes a witch.
+    fn mob_on_lightning_strike(
+        &self,
+        caller: &dyn EntityBase,
+        lightning: &crate::entity::lightning::LightningBoltEntity,
+    ) {
+        let world = self.get_entity().world.load_full();
+        if world.level_info.load().difficulty != pumpkin_util::Difficulty::Peaceful {
+            tracing::info!(
+                "Villager {} was struck by lightning",
+                self.get_entity().entity_uuid
+            );
+            if self
+                .mob_entity
+                .convert_to_with(&EntityType::WITCH, false, false, |witch| {
+                    crate::entity::mob::spawn::finalize_spawn(witch, &world, None);
+                    if let Some(mob) = witch.get_mob() {
+                        mob.get_mob_entity()
+                            .persistence_required
+                            .store(true, Ordering::Relaxed);
+                    }
+                    self.release_all_pois();
+                })
+            {
+                return;
+            }
+        }
+        self.mob_entity
+            .living_entity
+            .on_lightning_strike(caller, lightning);
+    }
+
     /// Vanilla `applyImplicitComponent` for `villager/variant`.
     fn mob_set_variant_name(&self, name: &str) {
         if let Some(r#type) = VillagerType::from_name(name) {

@@ -244,6 +244,23 @@ impl Mob for MooshroomEntity {
         Some(self)
     }
 
+    /// Vanilla `MushroomCow.thunderHit`: each bolt swaps red and brown once, without harm.
+    fn mob_on_lightning_strike(
+        &self,
+        _caller: &dyn EntityBase,
+        lightning: &crate::entity::lightning::LightningBoltEntity,
+    ) {
+        let bolt = lightning.get_entity().entity_uuid;
+        if self.last_lightning_bolt_uuid.swap(Some(bolt)) != Some(bolt) {
+            self.set_variant(if self.get_variant() == MooshroomVariant::Red {
+                MooshroomVariant::Brown
+            } else {
+                MooshroomVariant::Red
+            });
+            self.play_entity_sound(Sound::EntityMooshroomConvert, 2.0, 1.0);
+        }
+    }
+
     fn as_animal(&self) -> Option<&dyn Animal> {
         Some(self)
     }

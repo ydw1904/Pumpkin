@@ -4,6 +4,7 @@ use std::sync::{
 };
 
 use pumpkin_data::BlockState;
+use pumpkin_data::damage::DamageType;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -135,6 +136,23 @@ impl Mob for TurtleEntity {
 
     fn mob_play_swim_sound(&self, volume: f32) {
         self.play_default_swim_sound(volume * 1.5);
+    }
+
+    /// Vanilla `Turtle.thunderHit`: lightning always kills a turtle, without setting it alight.
+    fn mob_on_lightning_strike(
+        &self,
+        caller: &dyn EntityBase,
+        lightning: &crate::entity::lightning::LightningBoltEntity,
+    ) {
+        let cause = lightning.get_cause();
+        caller.damage_with_context(
+            caller,
+            f32::MAX,
+            DamageType::LIGHTNING_BOLT,
+            None,
+            Some(lightning),
+            cause.as_deref().map(|p| p as &dyn EntityBase),
+        );
     }
 
     fn as_ageable(&self) -> Option<&dyn AgeableMob> {
