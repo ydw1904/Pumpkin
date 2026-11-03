@@ -167,6 +167,20 @@ h.start(async () => {
   h.result('store_player', await run(`execute store result entity ${bot.username} Health float 1 run scoreboard players set #y st 3`, 2))
   h.cmd('kill @e[tag=parity_st]')
   h.cmd('bossbar remove parity:b')
+  await h.ticks(10)
+
+  // /execute if|unless feedback and counts.
+  for (const [key, c] of [
+    ['if_data_count', 'execute if data storage parity:t b'],
+    ['unless_data_missing', 'execute unless data storage parity:t nope'],
+    ['unless_data_present', 'execute unless data storage parity:t b'],
+    ['if_blocks_too_big', `execute if blocks ${X} ${y} ${Z} ${X + 40} ${y + 40} ${Z + 40} ${X} ${y} ${Z} all`],
+    ['if_blocks_masked', `execute if blocks ${X} ${y + 5} ${Z} ${X + 2} ${y + 6} ${Z + 2} ${X} ${y + 5} ${Z} masked`],
+    ['if_blocks_chest', `execute if blocks ${X - 8} ${y} ${Z - 8} ${X - 8} ${y} ${Z - 8} ${X - 6} ${y} ${Z - 8} all`],
+    ['if_block_unloaded', 'execute if block 1000000 100 1000000 stone'],
+    ['if_predicate_unknown', 'execute if predicate parity:none'],
+    ['store_unless_data', 'execute store result score #u st unless data storage parity:t b']
+  ]) h.result(`cond_${key}`, await run(c, 2))
 
   // /time with the clock paused, so the values are the same on both servers.
   await run('time pause')
