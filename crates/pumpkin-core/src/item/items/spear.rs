@@ -15,7 +15,6 @@ use pumpkin_data::data_component_impl::{
     AttackRangeImpl, AttributeModifiersImpl, EnchantmentsImpl, EquipmentSlot, KineticConditionImpl,
     KineticWeaponImpl, Operation, PiercingWeaponImpl, WeaponImpl,
 };
-use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::{EntityStatus, EntityType};
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -490,19 +489,14 @@ impl SpearItem {
     }
 
     fn attack_damage(player: &Player, stack: &ItemStack) -> f64 {
-        let mut damage = Self::attribute_with_item_modifier(
+        // Strength and Weakness are already attack damage modifiers.
+        Self::attribute_with_item_modifier(
             player,
             stack,
             &Attributes::ATTACK_DAMAGE,
             "minecraft:base_attack_damage",
-        );
-        if let Some(strength) = player.living_entity.get_effect(&StatusEffect::STRENGTH) {
-            damage += 3.0 * (f64::from(strength.amplifier) + 1.0);
-        }
-        if let Some(weakness) = player.living_entity.get_effect(&StatusEffect::WEAKNESS) {
-            damage -= 4.0 * (f64::from(weakness.amplifier) + 1.0);
-        }
-        damage.max(0.0)
+        )
+        .max(0.0)
     }
 
     fn attack_speed(player: &Player, stack: &ItemStack) -> f64 {
