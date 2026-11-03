@@ -29,6 +29,7 @@ use crate::command::argument_types::core::double::DoubleArgumentType;
 use crate::command::argument_types::core::string::StringArgumentType;
 use crate::command::argument_types::entity::EntityArgumentType;
 use crate::command::argument_types::entity_anchor::{EntityAnchorArgumentType, EntityAnchorExt};
+use crate::command::argument_types::function::FunctionArgumentType;
 use crate::command::argument_types::identifier::IdentifierArgumentType;
 use crate::command::argument_types::nbt_path::{NbtPath, NbtPathArgumentType};
 use crate::command::argument_types::objective::ObjectiveArgumentType;
@@ -41,8 +42,13 @@ use crate::command::argument_types::resource_or_tag::{ResourceOrTag, ResourceOrT
 use crate::command::argument_types::score_holder::ScoreHolderArgumentType;
 use crate::command::commands::bossbar::{BossbarIdArgumentType, get_bossbar_or_error};
 use crate::command::commands::data::{TargetKind, make_target_arg};
+use crate::command::commands::function::{
+    FunctionSuggestionProvider, function_source, get_functions, instantiate_functions,
+};
 use crate::command::context::command_context::CommandContext;
-use crate::command::context::command_source::{ResultValueTaker, ReturnValue, ReturnValueCallback};
+use crate::command::context::command_source::{
+    Frame, ResultValueTaker, ReturnValue, ReturnValueCallback,
+};
 use crate::command::errors::command_syntax_error::CommandSyntaxError;
 use crate::command::errors::error_types::CommandErrorType;
 use crate::command::node::attached::{CommandNodeId, NodeId};
@@ -52,6 +58,7 @@ use crate::command::node::{
     CommandExecutor, CommandExecutorResult, RedirectModifier, RedirectModifierResult, Redirection,
 };
 use crate::command::string_reader::StringReader;
+use crate::data::datapack::run_function_lines;
 use crate::entity::EntityBase;
 use crate::entity::mob::spawn::finalize_spawn;
 use crate::entity::r#type::from_type;
@@ -67,7 +74,7 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector2::Vector2;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 const DESCRIPTION: &str = "Execute a command with a modified context.";
@@ -989,6 +996,72 @@ fn execute_unless_predicate_modifier(context: &CommandContext) -> RedirectModifi
     })
 }
 
+const ERROR_FUNCTION_CONDITION_INSTANTIATION_FAILURE: CommandErrorType<2> = CommandErrorType::new(
+    translation::java::COMMANDS_EXECUTE_FUNCTION_INSTANTIATIONFAILURE,
+    translation::java::COMMANDS_EXECUTE_FUNCTION_INSTANTIATIONFAILURE,
+);
+
+/// `if|unless function <name>`: vanilla `ExecuteIfFunctionCustomModifier`.
+fn function_conditional(expected: bool) -> LiteralArgumentBuilder {
+    literal("function").then(
+        argument("name", FunctionArgumentType)
+            .suggests(FunctionSuggestionProvider)
+            .fork(
+                Redirection::Root,
+                RedirectModifier::Custom(Arc::new(move |context: &CommandContext| {
+                    execute_if_function_modifier(context, expected)
+                })),
+            ),
+    )
+}
+
+/// Vanilla `ExecuteCommand.scheduleFunctionConditionsAndTest`: the functions run in an isolated
+/// frame, and the source passes when what they return (0 if they don't) is non-zero as expected.
+fn execute_if_function_modifier(
+    context: &CommandContext,
+    expected: bool,
+) -> RedirectModifierResult {
+    let server = context.server();
+    let name = FunctionArgumentType::get(context, "name")?;
+    let functions = instantiate_functions(
+        get_functions(server, name)?,
+        None,
+        &ERROR_FUNCTION_CONDITION_INSTANTIATION_FAILURE,
+    )?;
+    if functions.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let result = Arc::new(Mutex::new(0));
+    let result_slot = result.clone();
+    let frame = Frame::new(ResultValueTaker(vec![Arc::new(
+        move |value: ReturnValue| {
+            *result_slot
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = value.result_value();
+        },
+    )]));
+    let source = function_source(&context.source);
+    for (_, lines) in functions {
+        run_function_lines(server, &source, &lines, frame.clone());
+        if frame.discards() != 0 {
+            break;
+        }
+    }
+    if frame.discards() == 0 {
+        // Vanilla `FallthroughTask`.
+        frame.return_failure();
+    }
+    let value = *result
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Ok(if (value != 0) == expected {
+        vec![context.source.clone()]
+    } else {
+        vec![]
+    })
+}
+
 fn check_stopwatch_matches(context: &CommandContext) -> Result<bool, CommandSyntaxError> {
     let id = context.get_argument::<Identifier>("id")?;
     let range = FloatRangeArgumentType::get(context, "range")?;
@@ -1706,6 +1779,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                     argument("predicate", LootPredicateArgumentType),
                     execute_if_predicate_modifier,
                 )))
+                .then(function_conditional(true))
                 .then(
                     literal("stopwatch").then(
                         argument("id", IdentifierArgumentType).then(
@@ -1877,6 +1951,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                     argument("predicate", LootPredicateArgumentType),
                     execute_unless_predicate_modifier,
                 )))
+                .then(function_conditional(false))
                 .then(
                     literal("stopwatch").then(
                         argument("id", IdentifierArgumentType).then(
