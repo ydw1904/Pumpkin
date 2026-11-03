@@ -302,6 +302,9 @@ pub struct World {
     unsent_block_changes: std::sync::Mutex<HashMap<BlockPos, BlockStateId>>,
     /// Persisted vanilla POI storage for portal and villager lookups.
     pub portal_poi: std::sync::Mutex<portal::PortalPoiStorage>,
+    /// Held while a portal destination is searched for and built, so entities arriving at
+    /// once share one new portal, as vanilla's single-threaded `PortalForcer` makes them.
+    pub portal_forcer: tokio::sync::Mutex<()>,
     /// Villager job sites and their current owners.
     pub villager_poi: std::sync::Mutex<villager_poi::VillagerPoiStorage>,
     /// Active raids in this world.
@@ -503,6 +506,7 @@ impl World {
             synced_block_event_queue: std::sync::Mutex::new(Vec::new()),
             unsent_block_changes: std::sync::Mutex::new(HashMap::new()),
             portal_poi: std::sync::Mutex::new(portal_poi),
+            portal_forcer: tokio::sync::Mutex::new(()),
             villager_poi: std::sync::Mutex::new(villager_poi::VillagerPoiStorage::default()),
             raids: std::sync::Mutex::new(raid::Raids::default()),
             phantom_spawner: std::sync::Mutex::default(),

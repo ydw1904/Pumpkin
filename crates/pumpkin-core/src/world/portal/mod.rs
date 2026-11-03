@@ -242,6 +242,7 @@ impl PortalType {
                     BlockPos::new(clamped_x, pos.y.floor() as i32, clamped_z);
                 let source_portal_axis = source_portal.map_or(HorizontalAxis::X, |p| p.axis);
 
+                let forcer = dest_world.portal_forcer.lock().await;
                 let mut exit_portal =
                     NetherPortal::search_for_portal(&dest_world, approximate_exit_pos).await;
 
@@ -268,6 +269,8 @@ impl PortalType {
                         });
                     }
                 }
+
+                drop(forcer);
 
                 let (final_pos, yaw) = exit_portal.map_or_else(
                     || (approximate_exit_pos.0.to_f64(), None),
