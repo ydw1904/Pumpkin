@@ -6,57 +6,10 @@ use crate::entity::decoration::armor_stand::ArmorStandEntity;
 use crate::entity::living::LivingEntity;
 use pumpkin_data::tag::Taggable;
 use pumpkin_data::world::WorldEvent;
-use pumpkin_data::{
-    attributes::Attributes,
-    particle::Particle,
-    sound::{Sound, SoundCategory},
-};
+use pumpkin_data::{attributes::Attributes, particle::Particle};
 use pumpkin_util::math::vector3::Vector3;
 
-use crate::{
-    entity::{Entity, player::Player},
-    world::World,
-};
-
-use crate::net::ClientPlatform;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AttackType {
-    Knockback,
-    Critical,
-    Sweeping,
-    Strong,
-    Weak,
-}
-
-impl AttackType {
-    pub fn new(player: &Player, attack_cooldown_progress: f32) -> Self {
-        let entity = &player.get_entity();
-
-        let sprinting = entity.is_sprinting();
-        let on_ground = entity.on_ground.load(Ordering::Relaxed);
-        let fall_distance = player.living_entity.fall_distance.load();
-        let held_item = player.inventory().held_item();
-
-        let sword = held_item.is_sword();
-        let is_bedrock = matches!(player.client.as_ref(), ClientPlatform::Bedrock(_));
-
-        let is_strong = attack_cooldown_progress > 0.9;
-        if sprinting && is_strong {
-            return Self::Knockback;
-        }
-
-        if is_strong && !on_ground && fall_distance > 0.0 {
-            return Self::Critical;
-        }
-
-        if sword && is_strong && !is_bedrock {
-            return Self::Sweeping;
-        }
-
-        if is_strong { Self::Strong } else { Self::Weak }
-    }
-}
+use crate::{entity::Entity, world::World};
 
 /// Checks smash eligibility, rejecting stale fall distance after a ground-only packet.
 pub fn can_smash_attack(attacker: &LivingEntity) -> bool {
@@ -210,30 +163,6 @@ pub fn spawn_sweep_particle(attacker_entity: &Entity, world: &World, pos: &Vecto
         0,
         Particle::SweepAttack,
     );
-}
-
-pub fn player_attack_sound(pos: &Vector3<f64>, world: &World, attack_type: AttackType) {
-    match attack_type {
-        AttackType::Knockback => {
-            world.play_sound(
-                Sound::EntityPlayerAttackKnockback,
-                SoundCategory::Players,
-                pos,
-            );
-        }
-        AttackType::Critical => {
-            world.play_sound(Sound::EntityPlayerAttackCrit, SoundCategory::Players, pos);
-        }
-        AttackType::Sweeping => {
-            world.play_sound(Sound::EntityPlayerAttackSweep, SoundCategory::Players, pos);
-        }
-        AttackType::Strong => {
-            world.play_sound(Sound::EntityPlayerAttackStrong, SoundCategory::Players, pos);
-        }
-        AttackType::Weak => {
-            world.play_sound(Sound::EntityPlayerAttackWeak, SoundCategory::Players, pos);
-        }
-    }
 }
 
 /// Combat calculation rules mirroring vanilla `net.minecraft.world.damagesource.CombatRules`.

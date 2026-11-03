@@ -2233,22 +2233,9 @@ impl LivingEntity {
             return;
         }
 
-        // Vanilla `LivingEntity.onClimbable`. Players never get here (their movement is client
-        // authoritative) and no mob is a spectator.
+        // Players never get here (their movement is client authoritative).
         let pos = self.entity.block_pos.load();
-        let world = self.entity.world.load();
-        let (block, state) = world.get_block_and_state(&pos);
-        let climbable = if self.entity.is_fall_flying()
-            && block.has_tag(&tag::Block::MINECRAFT_CAN_GLIDE_THROUGH)
-        {
-            false
-        } else if block.has_tag(&tag::Block::MINECRAFT_CLIMBABLE) {
-            true
-        } else {
-            block.has_tag(&tag::Block::MINECRAFT_TRAPDOORS)
-                && Self::trapdoor_usable_as_ladder(&world, &pos, state)
-        };
-        if climbable {
+        if self.on_climbable() {
             self.climbing.store(true, Relaxed);
             self.climbing_pos.store(Some(pos));
             return;
@@ -2258,6 +2245,21 @@ impl LivingEntity {
 
         if self.entity.on_ground.load(SeqCst) {
             self.climbing_pos.store(None);
+        }
+    }
+
+    /// Vanilla `LivingEntity.onClimbable`, for an entity that isn't a spectator.
+    pub fn on_climbable(&self) -> bool {
+        let pos = self.entity.block_pos.load();
+        let world = self.entity.world.load();
+        let (block, state) = world.get_block_and_state(&pos);
+        if self.entity.is_fall_flying() && block.has_tag(&tag::Block::MINECRAFT_CAN_GLIDE_THROUGH) {
+            false
+        } else if block.has_tag(&tag::Block::MINECRAFT_CLIMBABLE) {
+            true
+        } else {
+            block.has_tag(&tag::Block::MINECRAFT_TRAPDOORS)
+                && Self::trapdoor_usable_as_ladder(&world, &pos, state)
         }
     }
 
