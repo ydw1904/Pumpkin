@@ -484,6 +484,8 @@ impl CommandExecutor for PlaceStructureExecutor {
                             let ground = surface_y as i16;
                             chunk.flat_surface_height_map = [ground; 256];
                             chunk.flat_ocean_floor_height_map = [ground; 256];
+                            chunk.flat_surface_wg_height_map = [ground; 256];
+                            chunk.flat_ocean_floor_wg_height_map = [ground; 256];
                             chunk.flat_motion_blocking_height_map = [ground; 256];
                             chunk.flat_motion_blocking_no_leaves_height_map = [ground; 256];
 
@@ -625,6 +627,8 @@ impl CommandExecutor for PlaceFeatureExecutor {
         let ground = surface_y as i16;
         chunk.flat_surface_height_map = [ground; 256];
         chunk.flat_ocean_floor_height_map = [ground; 256];
+        chunk.flat_surface_wg_height_map = [ground; 256];
+        chunk.flat_ocean_floor_wg_height_map = [ground; 256];
         chunk.flat_motion_blocking_height_map = [ground; 256];
         chunk.flat_motion_blocking_no_leaves_height_map = [ground; 256];
 
