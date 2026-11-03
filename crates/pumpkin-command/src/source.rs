@@ -134,6 +134,11 @@ pub trait CommandSource: Clone + Send + Sync + 'static {
 
     /// Vanilla `FallthroughTask`: a `return run` chain that ran nothing returns failure.
     fn fall_through(&self) {}
+
+    /// The most sources a chain may fork into (vanilla `ExecutionContext.forkLimit`).
+    fn fork_limit(&self) -> usize {
+        usize::MAX
+    }
 }
 
 #[derive(Clone, Default)]
@@ -228,5 +233,9 @@ impl<S: CommandSource> CommandSource for Arc<S> {
 
     fn fall_through(&self) {
         (**self).fall_through();
+    }
+
+    fn fork_limit(&self) -> usize {
+        (**self).fork_limit()
     }
 }

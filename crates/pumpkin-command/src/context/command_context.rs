@@ -1,15 +1,22 @@
 use crate::context::string_range::StringRange;
 use crate::errors::command_syntax_error::CommandSyntaxError;
-use crate::errors::error_types::DISPATCHER_PARSE_EXCEPTION;
+use crate::errors::error_types::{CommandErrorType, DISPATCHER_PARSE_EXCEPTION};
 use crate::node::attached::NodeId;
 use crate::node::dispatcher::{CommandDispatcher, EmptyResultConsumer, ResultConsumer};
 use crate::node::tree::Tree;
 use crate::node::{Command, RedirectModifier};
 use crate::source::{CommandSource, DummySource, ReturnValue};
+use pumpkin_data::translation;
 use pumpkin_util::text::TextComponent;
 use rustc_hash::FxHashMap;
 use std::any::Any;
 use std::sync::Arc;
+
+/// Vanilla `BuildContexts.ERROR_FORK_LIMIT_REACHED`.
+pub const ERROR_FORK_LIMIT_REACHED: CommandErrorType<1> = CommandErrorType::new(
+    translation::java::COMMAND_FORKLIMIT,
+    translation::java::COMMAND_FORKLIMIT,
+);
 
 /// Represents the current stage of the chain.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -292,8 +299,8 @@ impl<'a, S: CommandSource> ContextChain<'a, S> {
 
     /// Executes all contexts in the chain, returning the ultimate result.
     ///
-    /// Follows vanilla `BuildContexts.execute`: `return run` chains and frames discarded part
-    /// way through.
+    /// Follows vanilla `BuildContexts.execute`: the fork limit, `return run` chains and frames
+    /// discarded part way through.
     pub fn execute_all(
         &self,
         source: &Arc<S>,
@@ -302,6 +309,7 @@ impl<'a, S: CommandSource> ContextChain<'a, S> {
         let mut forked_mode = false;
         let mut returning = source.is_returning();
         let mut current_sources: Vec<Arc<S>> = vec![source.clone()];
+        let fork_limit = source.fork_limit();
 
         for modifier in &self.modifiers {
             forked_mode |= modifier.forks;
@@ -312,6 +320,14 @@ impl<'a, S: CommandSource> ContextChain<'a, S> {
                 // failing modifier never reaches a source's result callbacks.
                 let mut to_add =
                     Self::run_modifier(modifier, &source, &EmptyResultConsumer, forked_mode)?;
+                // Vanilla only counts stages with a redirect modifier.
+                if !matches!(modifier.modifier, RedirectModifier::KeepSource)
+                    && next_sources.len() + to_add.len() >= fork_limit
+                {
+                    let error = ERROR_FORK_LIMIT_REACHED
+                        .create_without_context(TextComponent::text(fork_limit.to_string()));
+                    return if forked_mode { Ok(0) } else { Err(error) };
+                }
                 next_sources.append(&mut to_add);
             }
             returning |= next_sources.iter().any(|source| S::is_returning(source));

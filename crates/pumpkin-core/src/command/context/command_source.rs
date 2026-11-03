@@ -514,6 +514,12 @@ impl pumpkin_command::source::CommandSource for CommandSource {
         self.frame.discard();
     }
 
+    fn fork_limit(&self) -> usize {
+        self.server.as_ref().map_or(usize::MAX, |server| {
+            usize::try_from(server.level_info.load().game_rules.max_command_forks).unwrap_or(0)
+        })
+    }
+
     fn anchor_position(&self, anchor: EntityAnchor) -> Vector3<f64> {
         let pos = self.position;
         self.entity
