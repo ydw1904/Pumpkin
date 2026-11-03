@@ -40,28 +40,18 @@ impl PortalSearchResult {
         }
     }
 
-    /// Calculates the yaw adjustment when teleporting between portals with different axes.
-    /// Returns the new yaw value for the entity.
+    /// Vanilla `NetherPortalBlock.createDimensionTransition`: an entity turns a quarter turn
+    /// clockwise when the exit portal runs along the other axis.
     #[must_use]
     pub fn calculate_teleport_yaw(
         &self,
         current_yaw: f32,
         source_axis: Option<HorizontalAxis>,
     ) -> f32 {
-        let Some(src_axis) = source_axis else {
-            return current_yaw;
-        };
-
-        if src_axis == self.axis {
-            return current_yaw;
-        }
-
-        // Axis changed, rotate yaw by 90 degrees
-        // X axis portal faces East/West, Z axis portal faces North/South
-        match (src_axis, self.axis) {
-            (HorizontalAxis::X, HorizontalAxis::Z) => current_yaw + 90.0,
-            (HorizontalAxis::Z, HorizontalAxis::X) => current_yaw - 90.0,
-            _ => current_yaw,
+        if source_axis.unwrap_or(HorizontalAxis::X) == self.axis {
+            current_yaw
+        } else {
+            current_yaw + 90.0
         }
     }
 
@@ -921,7 +911,7 @@ mod tests {
         );
         assert_eq!(
             x_portal.calculate_teleport_yaw(45.0, Some(HorizontalAxis::Z)),
-            -45.0
+            135.0
         );
     }
 }
