@@ -2088,6 +2088,14 @@ pub trait Mob: EntityBase + Send + Sync {
 
     fn on_attack(&self, _target: &dyn EntityBase) {}
 
+    /// Vanilla `LivingEntity.blockedByItem`: how this mob reacts when `defender` blocks its
+    /// attack with an item.
+    fn blocked_by_item(&self, defender: &dyn EntityBase, fully_blocked: bool) {
+        if !fully_blocked && let Some(defender) = defender.get_living_entity() {
+            defender.knockback_from_blocked_attack(self.get_entity());
+        }
+    }
+
     /// Vanilla `Mob.doHurtTarget`: a melee hit on `target`, `true` when it landed.
     fn do_hurt_target(&self, target: &dyn EntityBase) -> bool {
         let damaged = self.get_mob_entity().try_attack(self.get_entity(), target);

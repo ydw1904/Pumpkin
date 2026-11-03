@@ -246,6 +246,12 @@ impl Mob for HoglinEntity {
         }
         throw_target(&self.mob_entity.living_entity, target);
     }
+
+    fn blocked_by_item(&self, defender: &dyn EntityBase, _fully_blocked: bool) {
+        if !self.is_baby.load(Ordering::Relaxed) {
+            throw_target(&self.mob_entity.living_entity, defender);
+        }
+    }
 }
 
 /// Throw impulse of vanilla `HoglinBase.throwTarget`, or `None` if the target resists it fully.

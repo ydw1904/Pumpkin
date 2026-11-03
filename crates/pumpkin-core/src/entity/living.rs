@@ -1077,6 +1077,19 @@ impl LivingEntity {
         (damage_blocked, Some(blocks_attacks))
     }
 
+    /// Knockback of vanilla's default `LivingEntity.blockedByItem` when this entity only
+    /// partly blocks an attack from `attacker`.
+    pub fn knockback_from_blocked_attack(&self, attacker: &Entity) {
+        let attacker_pos = attacker.pos.load();
+        let pos = self.entity.pos.load();
+        let resistance = self.get_attribute_value(&Attributes::KNOCKBACK_RESISTANCE);
+        self.entity.apply_knockback(
+            knockback_after_resistance(0.5, resistance),
+            pos.x - attacker_pos.x,
+            pos.z - attacker_pos.z,
+        );
+    }
+
     /// Vanilla `BlocksAttacks.hurtBlockingItem`: only players wear down what they block with.
     fn hurt_blocking_item(
         &self,
@@ -1105,8 +1118,8 @@ impl LivingEntity {
         }
     }
 
-    /// Vanilla `blockUsingItem` with `blockedByItem`, and `Player`'s override that disables
-    /// the blocking item.
+    /// Vanilla `blockUsingItem`, which calls the attacker's `blockedByItem`, and `Player`'s
+    /// override that disables the blocking item.
     fn block_using_item(
         &self,
         caller: &dyn EntityBase,
@@ -1115,15 +1128,10 @@ impl LivingEntity {
         blocking_with: &ItemStack,
         fully_blocked: bool,
     ) {
-        if !fully_blocked {
-            let attacker_pos = attacker.get_entity().pos.load();
-            let pos = self.entity.pos.load();
-            let resistance = self.get_attribute_value(&Attributes::KNOCKBACK_RESISTANCE);
-            self.entity.apply_knockback(
-                knockback_after_resistance(0.5, resistance),
-                pos.x - attacker_pos.x,
-                pos.z - attacker_pos.z,
-            );
+        if let Some(mob) = attacker.get_mob() {
+            mob.blocked_by_item(caller, fully_blocked);
+        } else if !fully_blocked {
+            self.knockback_from_blocked_attack(attacker.get_entity());
         }
 
         let Some(player) = caller.get_player() else {

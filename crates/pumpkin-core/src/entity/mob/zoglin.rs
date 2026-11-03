@@ -179,4 +179,10 @@ impl Mob for ZoglinEntity {
         }
         throw_target(&self.mob_entity.living_entity, target);
     }
+
+    fn blocked_by_item(&self, defender: &dyn EntityBase, _fully_blocked: bool) {
+        if !self.is_baby() {
+            throw_target(&self.mob_entity.living_entity, defender);
+        }
+    }
 }

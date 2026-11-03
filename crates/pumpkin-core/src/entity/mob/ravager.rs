@@ -1,11 +1,19 @@
 use crate::entity::r#type::CreatureSpawnLevel;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Weak};
 
 use pumpkin_data::BlockState;
-use pumpkin_data::entity::EntityType;
+use pumpkin_data::attributes::Attributes;
+use pumpkin_data::damage::DamageType;
+use pumpkin_data::entity::{EntityStatus, EntityType};
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::sound::Sound;
+use pumpkin_data::tag::{self, Taggable};
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_protocol::bedrock::server::ActorEventID;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::gameplay::game_random;
 
 use crate::entity::ageable::AgeableMob;
 use crate::entity::ai::behavior::hunting::{self, Hunt};
@@ -32,6 +40,11 @@ const RAVAGER_HUNTS: &[Hunt] = &[
     Hunt::new(4, TargetMatch::Type(&EntityType::IRON_GOLEM), true),
 ];
 
+const BASE_MOVEMENT_SPEED: f64 = 0.3;
+const ATTACK_MOVEMENT_SPEED: f64 = 0.35;
+pub const ATTACK_DURATION: i32 = 10;
+pub const STUN_DURATION: i32 = 40;
+
 fn is_adult(mob: &dyn Mob) -> bool {
     !mob.as_ageable().is_some_and(AgeableMob::is_baby)
 }
@@ -39,6 +52,9 @@ fn is_adult(mob: &dyn Mob) -> bool {
 pub struct RavagerEntity {
     pub mob_entity: MobEntity,
     pub raider_data: RaiderData,
+    attack_tick: AtomicI32,
+    stunned_tick: AtomicI32,
+    roar_tick: AtomicI32,
 }
 
 impl RavagerEntity {
@@ -48,6 +64,9 @@ impl RavagerEntity {
         let ravager = Self {
             mob_entity,
             raider_data: RaiderData::default(),
+            attack_tick: AtomicI32::new(0),
+            stunned_tick: AtomicI32::new(0),
+            roar_tick: AtomicI32::new(0),
         };
         let mob_arc = Arc::new(ravager);
         let mob_weak: Weak<dyn Mob> = {
@@ -79,6 +98,60 @@ impl RavagerEntity {
 
         mob_arc
     }
+
+    /// Vanilla `Ravager.roar`: hurts and throws back the living entities around it.
+    fn roar(&self) {
+        let entity = self.get_entity();
+        if !entity.is_alive() {
+            return;
+        }
+        let world = entity.world.load();
+        let mob_griefing = world.level_info.load().game_rules.mob_griefing;
+        let area = entity.bounding_box.load().expand(4.0, 4.0, 4.0);
+        for target in world.get_entities_and_players_at_box(&area) {
+            let target_entity = target.get_entity();
+            if target_entity.entity_type == &EntityType::RAVAGER
+                || !target_entity.is_alive()
+                || target.get_living_entity().is_none()
+                || (!mob_griefing && target_entity.entity_type == &EntityType::ARMOR_STAND)
+            {
+                continue;
+            }
+            if !target_entity
+                .entity_type
+                .has_tag(&tag::EntityType::MINECRAFT_ILLAGER)
+            {
+                target.damage_with_context(
+                    target.as_ref(),
+                    6.0,
+                    DamageType::MOB_ATTACK,
+                    None,
+                    Some(self),
+                    Some(self),
+                );
+            }
+            // Clients knock themselves back on the roar entity event.
+            if target.get_player().is_none() {
+                self.strong_knockback(target_entity);
+            }
+        }
+        world.emit_game_event(GameEvent::EntityAction.name(), entity.pos.load());
+        world.send_entity_status(entity, EntityStatus::RavagerRoared, ActorEventID::None);
+    }
+
+    /// Vanilla `Ravager.strongKnockback`.
+    fn strong_knockback(&self, target: &Entity) {
+        let pos = self.get_entity().pos.load();
+        let target_pos = target.pos.load();
+        let dx = target_pos.x - pos.x;
+        let dz = target_pos.z - pos.z;
+        let distance_sq = dx.mul_add(dx, dz * dz).max(0.001);
+        target.add_velocity(Vector3::new(
+            dx / distance_sq * 4.0,
+            0.2,
+            dz / distance_sq * 4.0,
+        ));
+    }
 }
 
 impl Mob for RavagerEntity {
@@ -105,10 +178,119 @@ impl Mob for RavagerEntity {
 
     fn mob_write_nbt(&self, nbt: &mut NbtCompound) {
         self.write_raider_nbt(nbt);
+        nbt.put_int("AttackTick", self.attack_tick.load(Ordering::Relaxed));
+        nbt.put_int("StunTick", self.stunned_tick.load(Ordering::Relaxed));
+        nbt.put_int("RoarTick", self.roar_tick.load(Ordering::Relaxed));
     }
 
     fn mob_read_nbt(&self, nbt: &NbtCompound) {
         self.read_raider_nbt(nbt);
+        self.attack_tick
+            .store(nbt.get_int("AttackTick").unwrap_or(0), Ordering::Relaxed);
+        self.stunned_tick
+            .store(nbt.get_int("StunTick").unwrap_or(0), Ordering::Relaxed);
+        self.roar_tick
+            .store(nbt.get_int("RoarTick").unwrap_or(0), Ordering::Relaxed);
+    }
+
+    fn is_mob_immobile(&self) -> bool {
+        self.mob_entity.living_entity.is_dead_or_dying()
+            || self.attack_tick.load(Ordering::Relaxed) > 0
+            || self.stunned_tick.load(Ordering::Relaxed) > 0
+            || self.roar_tick.load(Ordering::Relaxed) > 0
+    }
+
+    fn has_line_of_sight(&self, target: &Entity) -> bool {
+        if self.stunned_tick.load(Ordering::Relaxed) > 0
+            || self.roar_tick.load(Ordering::Relaxed) > 0
+        {
+            return false;
+        }
+        let mob_entity = &self.mob_entity;
+        mob_entity
+            .sensing
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .has_line_of_sight(&mob_entity.living_entity, target)
+    }
+
+    /// Vanilla `Ravager.aiStep` after `super.aiStep()`.
+    fn mob_ai_step(&self) {
+        let living = &self.mob_entity.living_entity;
+        if !living.entity.is_alive() {
+            return;
+        }
+        let speed = living.get_attribute_base(&Attributes::MOVEMENT_SPEED);
+        let new_speed = if self.is_mob_immobile() {
+            0.0
+        } else {
+            let max_speed = if self.mob_entity.get_target().is_some() {
+                ATTACK_MOVEMENT_SPEED
+            } else {
+                BASE_MOVEMENT_SPEED
+            };
+            0.1f64.mul_add(max_speed - speed, speed)
+        };
+        if new_speed != speed {
+            living.set_attribute_base(&Attributes::MOVEMENT_SPEED, new_speed);
+        }
+
+        if self.roar_tick.load(Ordering::Relaxed) > 0
+            && self.roar_tick.fetch_sub(1, Ordering::Relaxed) - 1 == 10
+        {
+            self.roar();
+        }
+        if self.attack_tick.load(Ordering::Relaxed) > 0 {
+            self.attack_tick.fetch_sub(1, Ordering::Relaxed);
+        }
+        // `stunEffect` only adds particles on the client.
+        if self.stunned_tick.load(Ordering::Relaxed) > 0
+            && self.stunned_tick.fetch_sub(1, Ordering::Relaxed) - 1 == 0
+        {
+            self.play_entity_sound(Sound::EntityRavagerRoar, 1.0, 1.0);
+            self.roar_tick.store(20, Ordering::Relaxed);
+        }
+    }
+
+    fn do_hurt_target(&self, target: &dyn EntityBase) -> bool {
+        self.attack_tick.store(ATTACK_DURATION, Ordering::Relaxed);
+        let entity = self.get_entity();
+        entity.world.load().send_entity_status(
+            entity,
+            EntityStatus::StartAttacking,
+            ActorEventID::StartAttacking,
+        );
+        self.play_entity_sound(Sound::EntityRavagerAttack, 1.0, 1.0);
+        let damaged = self.mob_entity.try_attack(entity, target);
+        if damaged {
+            self.on_attack(target);
+        }
+        damaged
+    }
+
+    /// Vanilla `Ravager.blockedByItem`: half the time the ravager is stunned, otherwise it
+    /// throws the defender back.
+    fn blocked_by_item(&self, defender: &dyn EntityBase, _fully_blocked: bool) {
+        if self.roar_tick.load(Ordering::Relaxed) != 0 {
+            return;
+        }
+        if game_random().random::<f64>() < 0.5 {
+            self.stunned_tick.store(STUN_DURATION, Ordering::Relaxed);
+            self.play_entity_sound(Sound::EntityRavagerStunned, 1.0, 1.0);
+            let entity = self.get_entity();
+            entity.world.load().send_entity_status(
+                entity,
+                EntityStatus::RavagerStunned,
+                ActorEventID::None,
+            );
+            defender.push(self);
+        } else {
+            self.strong_knockback(defender.get_entity());
+        }
+        defender
+            .get_entity()
+            .velocity_dirty
+            .store(true, Ordering::SeqCst);
     }
 }
 
