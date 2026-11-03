@@ -37,6 +37,12 @@ enum Mode {
 
 struct SetBlockExecutor(Mode);
 
+/// Vanilla places with `UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS`, so a replaced container keeps its
+/// items to itself instead of dropping them.
+const REPLACE_FLAGS: BlockFlags = BlockFlags::NOTIFY_ALL
+    .union(BlockFlags::FORCE_STATE)
+    .union(BlockFlags::SKIP_BLOCK_ENTITY_REPLACED_CALLBACK);
+
 impl CommandExecutor for SetBlockExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
         let block_state_id = BlockStateArgumentType::get(context, "block")?;
@@ -56,21 +62,13 @@ impl CommandExecutor for SetBlockExecutor {
                 true
             }
             Mode::Replace => {
-                world.set_block_state(
-                    &pos,
-                    block_state_id,
-                    BlockFlags::NOTIFY_ALL | BlockFlags::FORCE_STATE,
-                );
+                world.set_block_state(&pos, block_state_id, REPLACE_FLAGS);
                 true
             }
             Mode::Keep => {
                 let old_state = world.get_block_state(&pos);
                 if old_state.is_air() {
-                    world.set_block_state(
-                        &pos,
-                        block_state_id,
-                        BlockFlags::NOTIFY_ALL | BlockFlags::FORCE_STATE,
-                    );
+                    world.set_block_state(&pos, block_state_id, REPLACE_FLAGS);
                     true
                 } else {
                     false
@@ -82,6 +80,7 @@ impl CommandExecutor for SetBlockExecutor {
                     block_state_id,
                     BlockFlags::NOTIFY_LISTENERS
                         | BlockFlags::SKIP_BLOCK_ADDED_CALLBACK
+                        | BlockFlags::SKIP_BLOCK_ENTITY_REPLACED_CALLBACK
                         | BlockFlags::FORCE_STATE,
                 );
                 true
