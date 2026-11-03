@@ -29,7 +29,7 @@ use crate::slot::{NormalSlot, Slot};
 
 use crate::inventory::Inventory;
 use pumpkin_data::data_component_impl::{PotDecorationsImpl, ProvidesPotteryPatternImpl};
-use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::item_stack::{ItemStack, crafting_remainder};
 use pumpkin_data::recipes::{CraftingRecipeTypes, RECIPES_CRAFTING};
 use pumpkin_data::screen::WindowType;
 use pumpkin_data::statistic::StatisticCategory;
@@ -483,8 +483,30 @@ impl Slot for ResultSlot {
             stack.item_count as i32,
         );
         player.on_recipe_crafted(stack);
+        // ResultSlot.onTake: each input loses one item and its crafting remainder goes back
+        // into the emptied slot, merges with what is left there, or goes to the player.
         for i in 0..self.inventory.size() {
+            let input = self.inventory.get_stack(i);
+            if input.is_empty() {
+                continue;
+            }
+            let remainder = crafting_remainder(input.item);
             self.inventory.remove_stack_specific(i, 1);
+            let Some(remainder) = remainder else {
+                continue;
+            };
+            let mut replacement = ItemStack::new(1, remainder);
+            let left = self.inventory.get_stack(i);
+            if left.is_empty() {
+                self.inventory.set_stack(i, replacement);
+            } else if left.are_items_and_components_equal(&replacement) {
+                replacement.increment(left.item_count);
+                self.inventory.set_stack(i, replacement);
+            } else {
+                player
+                    .get_inventory()
+                    .offer_or_drop_stack(replacement, player);
+            }
         }
         // Throw-all keeps taking until the slot's stack changes, so the result must
         // follow the inputs now rather than on the next content update.
