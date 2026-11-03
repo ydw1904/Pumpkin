@@ -2187,6 +2187,14 @@ impl LivingEntity {
         }
     }
 
+    /// Projectiles whose `calculateHorizontalHurtKnockbackDirection` pushes away from where they
+    /// are rather than along their flight.
+    fn knocks_back_from_position(projectile: &EntityType) -> bool {
+        projectile == &EntityType::FIREWORK_ROCKET
+            || projectile == &EntityType::SPLASH_POTION
+            || projectile == &EntityType::LINGERING_POTION
+    }
+
     /// Vanilla `LivingEntity.onClimbable`, for an entity that isn't a spectator.
     pub fn on_climbable(&self) -> bool {
         let pos = self.entity.block_pos.load();
@@ -3948,16 +3956,24 @@ impl LivingEntity {
             }
             self.make_voice_sound(caller, self.hurt_sound(caller));
         }
-        // Vanilla `dealDefaultKnockback`: away from the direct source, else from the source
-        // position; with neither, `knockback` picks a random direction.
+        // Vanilla `dealDefaultKnockback`: along a projectile's flight, else away from the direct
+        // source or the source position; with neither, `knockback` picks a random direction.
         if full_hit && !damage_type.has_tag(&tag::DamageType::MINECRAFT_NO_KNOCKBACK) {
             let target_pos = self.entity.pos.load();
-            let (dx, dz) = source
-                .map(|source| source.get_entity().pos.load())
-                .or(position)
-                .map_or((0.0, 0.0), |from| {
-                    (from.x - target_pos.x, from.z - target_pos.z)
-                });
+            let (dx, dz) = if let Some(source) = source
+                && source.get_projectile_owner().is_some()
+                && !Self::knocks_back_from_position(source.get_entity().entity_type)
+            {
+                let velocity = source.get_entity().velocity.load();
+                (-velocity.x, -velocity.z)
+            } else {
+                source
+                    .map(|source| source.get_entity().pos.load())
+                    .or(position)
+                    .map_or((0.0, 0.0), |from| {
+                        (from.x - target_pos.x, from.z - target_pos.z)
+                    })
+            };
             let resistance = self.get_attribute_value(&Attributes::KNOCKBACK_RESISTANCE);
             self.entity
                 .apply_knockback(knockback_after_resistance(0.4, resistance), dx, dz);
