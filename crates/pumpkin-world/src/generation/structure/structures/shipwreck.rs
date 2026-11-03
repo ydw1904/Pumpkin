@@ -4,14 +4,14 @@ use pumpkin_data::{Mirror, Rotation};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::{
     HeightMap,
-    math::{block_box::BlockBox, position::BlockPos, vector3::Vector3},
+    math::{block_box::BlockBox, vector3::Vector3},
     random::{RandomGenerator, RandomImpl, hash_block_pos, legacy_rand::LegacyRand},
 };
 
 use crate::{
     ProtoChunk,
     generation::{
-        positions::chunk_pos::{get_center_x, get_center_z, start_block_x, start_block_z},
+        positions::chunk_pos::{start_block_x, start_block_z},
         proto_chunk::GenerationCache,
         structure::{
             piece::StructurePieceType,
@@ -82,22 +82,12 @@ impl StructureGenerator for ShipwreckGenerator {
         &self,
         mut context: StructureGeneratorContext<'_>,
     ) -> Option<StructurePosition> {
-        let center_x = get_center_x(context.chunk_x);
-        let center_z = get_center_z(context.chunk_z);
-
-        let center_y = if self.is_beached {
-            context
-                .height_sampler
-                .as_deref_mut()
-                .map_or(64, |s| s.estimate_height(center_x, center_z))
+        let heightmap = if self.is_beached {
+            HeightMap::WorldSurfaceWg
         } else {
-            context
-                .height_sampler
-                .as_deref_mut()
-                .map_or(context.sea_level, |s| {
-                    s.estimate_ocean_floor_height(center_x, center_z)
-                })
+            HeightMap::OceanFloorWg
         };
+        let start_pos = context.on_top_of_chunk_center(heightmap);
 
         let rotation_idx = context.random.next_bounded_i32(4) as u8;
         let rotation = Rotation::from_index(rotation_idx);
@@ -119,23 +109,12 @@ impl StructureGenerator for ShipwreckGenerator {
 
         if piece.is_too_big_to_fit_in_world_gen_region() {
             let bb = piece.piece.bounding_box;
+            let (size_x, size_z) = (bb.get_block_count_x(), bb.get_block_count_z());
             let height = if self.is_beached {
-                let min_y = context.height_sampler.as_deref_mut().map_or(64, |sampler| {
-                    let c0 = sampler.estimate_height(bb.min.x, bb.min.z);
-                    let c1 = sampler.estimate_height(bb.min.x, bb.max.z);
-                    let c2 = sampler.estimate_height(bb.max.x, bb.min.z);
-                    let c3 = sampler.estimate_height(bb.max.x, bb.max.z);
-                    c0.min(c1).min(c2).min(c3)
-                });
+                let min_y = context.lowest_y_in(bb.min.x, bb.min.z, size_x, size_z);
                 piece.calculate_beached_position(min_y, &mut context.random)
-            } else if let Some(sampler) = context.height_sampler.as_deref_mut() {
-                let c0 = sampler.estimate_height(bb.min.x, bb.min.z);
-                let c1 = sampler.estimate_height(bb.min.x, bb.max.z);
-                let c2 = sampler.estimate_height(bb.max.x, bb.min.z);
-                let c3 = sampler.estimate_height(bb.max.x, bb.max.z);
-                (c0 + c1 + c2 + c3) / 4
             } else {
-                context.sea_level
+                context.mean_first_occupied_height(bb.min.x, size_x, bb.min.z, size_z)
             };
 
             piece.adjust_position_height(height);
@@ -145,7 +124,7 @@ impl StructureGenerator for ShipwreckGenerator {
         collector.add_piece(Box::new(piece));
 
         Some(StructurePosition {
-            start_pos: BlockPos::new(center_x, center_y, center_z),
+            start_pos,
             collector: Arc::new(collector.into()),
         })
     }
