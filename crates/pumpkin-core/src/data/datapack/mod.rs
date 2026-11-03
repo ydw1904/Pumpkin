@@ -1424,6 +1424,36 @@ impl DatapackManager {
         Ok(())
     }
 
+    /// Vanilla `ReloadCommand.discoverNewPacks`: packs added to `datapacks/` since they were last
+    /// looked at are enabled, unless the world lists them as disabled.
+    pub fn discover_new_packs(server: &Server) {
+        let new_packs: Vec<String> = {
+            let level_info = server.level_info.load();
+            Self::get_all_known_packs(server)
+                .into_iter()
+                .filter(|pack| {
+                    pack.starts_with("file/")
+                        && !level_info.data_packs.enabled.contains(pack)
+                        && !level_info.data_packs.disabled.contains(pack)
+                })
+                .collect()
+        };
+        if new_packs.is_empty() {
+            return;
+        }
+        server.level_info.rcu(|level_info| {
+            let mut new_info = (**level_info).clone();
+            new_info
+                .data_packs
+                .enabled
+                .extend(new_packs.iter().cloned());
+            new_info
+        });
+        if let Err(err) = server.save_world_info() {
+            tracing::error!("Failed to save world info: {err}");
+        }
+    }
+
     pub fn reload(server: &Arc<Server>) -> Result<(), String> {
         server.reload_datapacks(server);
         Ok(())

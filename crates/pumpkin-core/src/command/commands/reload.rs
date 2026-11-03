@@ -7,6 +7,7 @@ use crate::command::argument_builder::{ArgumentBuilder, command};
 use crate::command::context::command_context::CommandContext;
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
+use crate::data::datapack::DatapackManager;
 
 const DESCRIPTION: &str = "Reloads the server's datapacks.";
 const PERMISSION: &str = "minecraft:command.reload";
@@ -27,6 +28,7 @@ impl CommandExecutor for ReloadExecutor {
         );
 
         let server = context.server().clone();
+        DatapackManager::discover_new_packs(&server);
         server.reload_datapacks(&server);
 
         Ok(0)
