@@ -3,6 +3,7 @@ use crate::{
         ai::brain::memory::codec::{block_pos_from_tag, block_pos_to_tag},
         decoration::leash_knot::LeashKnotEntity,
         item::ItemEntity,
+        r#type::{load_entity, self_and_passengers},
     },
     net::{ClientPlatform, bedrock::BedrockClient, java::JavaClient},
     server::Server,
@@ -3113,6 +3114,20 @@ impl Entity {
                             let pitch = transition.pitch;
                             let teleport_pos = transition.position;
 
+                            if entity_arc.get_player().is_none()
+                                && !Arc::ptr_eq(&dest_world, &world_clone)
+                            {
+                                Self::teleport_cross_dimension(
+                                    &entity_arc,
+                                    &world_clone,
+                                    &dest_world,
+                                    teleport_pos,
+                                    yaw_val,
+                                    pitch,
+                                );
+                                return;
+                            }
+
                             // Teleport the main entity
                             entity_arc.teleport(teleport_pos, yaw_val, pitch, dest_world.clone());
 
@@ -3133,6 +3148,43 @@ impl Entity {
         }
         if should_remove {
             *manager_guard = None;
+        }
+    }
+
+    /// Vanilla `Entity.teleportCrossDimension` for anything but a player: a copy loaded from
+    /// the entity's saved data, its non-player passengers included, joins `to` and the
+    /// originals leave `from`. Riding players travel on their own.
+    fn teleport_cross_dimension(
+        entity: &Arc<dyn EntityBase>,
+        from: &Arc<World>,
+        to: &Arc<World>,
+        position: Vector3<f64>,
+        yaw: Option<f32>,
+        pitch: Option<f32>,
+    ) {
+        let base = entity.get_entity();
+        let travellers = self_and_passengers(entity);
+        let mut nbt = NbtCompound::new();
+        entity.write_nbt(&mut nbt);
+        let copy = load_entity(base.entity_type, position, &nbt, to);
+        copy.get_entity().set_pos(position);
+        copy.get_entity().set_rotation(
+            yaw.unwrap_or_else(|| base.yaw.load()),
+            pitch.unwrap_or_else(|| base.pitch.load()),
+        );
+        let mut players = Vec::new();
+        for traveller in travellers.iter().rev() {
+            if traveller.get_player().is_some() {
+                players.push(traveller.clone());
+            } else {
+                from.remove_entity_with_reason(traveller.as_ref(), RemovalReason::ChangedDimension);
+            }
+        }
+        for entity in self_and_passengers(&copy) {
+            to.spawn_entity(entity);
+        }
+        for player in players {
+            player.teleport(position, None, None, to.clone());
         }
     }
 

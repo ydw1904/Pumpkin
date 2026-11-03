@@ -5732,13 +5732,17 @@ impl World {
     }
 
     pub fn remove_entity(&self, entity: &dyn EntityBase) {
+        self.remove_entity_with_reason(entity, RemovalReason::Discarded);
+    }
+
+    pub fn remove_entity_with_reason(&self, entity: &dyn EntityBase, reason: RemovalReason) {
         // Entity::remove passes its base projection; retain the registered living owner.
         let registered = self.get_entity_by_id(entity.get_entity().entity_id);
         let entity = registered.as_deref().unwrap_or(entity);
         let base_entity = entity.get_entity();
         if base_entity
             .removal_reason
-            .compare_exchange(None, Some(RemovalReason::Discarded))
+            .compare_exchange(None, Some(reason))
             .is_err()
         {
             return;
