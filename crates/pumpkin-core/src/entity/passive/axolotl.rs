@@ -5,6 +5,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicI32, Ordering},
 };
 
+use pumpkin_data::Block;
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
@@ -16,6 +17,7 @@ use pumpkin_data::tag::{self, Taggable};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_protocol::codec::var_int::VarInt;
+use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 
 use crate::entity::{
@@ -31,7 +33,6 @@ use crate::entity::{
         Controls, Goal, GoalReach, active_target::ActiveTargetGoal, breed::BreedGoal,
         follow_parent::FollowParentGoal, look_around::RandomLookAroundGoal,
         look_at_entity::LookAtEntityGoal, melee_attack::MeleeAttackGoal, tempt::TemptGoal,
-        try_find_water::TryFindWaterGoal,
     },
     ai::pathfinder::{Navigator, NavigatorGoal, node::PathType},
     ai::target_match::TargetMatch,
@@ -164,12 +165,6 @@ impl AxolotlEntity {
 
             // Vanilla's `PLAY_DEAD` activity replaces every idle and fight behavior.
             goal_selector.add_goal(0, Box::new(PlayDeadGoal));
-            goal_selector.add_goal(
-                1,
-                Box::new(TryFindWaterGoal::with_fluid_tag(
-                    &tag::Fluid::MINECRAFT_AXOLOTL_TRIES_TO_FIND,
-                )),
-            );
             goal_selector.add_goal(2, BreedGoal::new(SPEED_MULTIPLIER_WHEN_MAKING_LOVE));
             goal_selector.add_goal(
                 3,
@@ -185,6 +180,7 @@ impl AxolotlEntity {
                     SPEED_MULTIPLIER_WHEN_FOLLOWING_ADULT_IN_WATER,
                 )),
             );
+            goal_selector.add_goal(5, Box::new(TryFindLiquidGoal::default()));
             goal_selector.add_goal(
                 5,
                 Box::new(MeleeAttackGoal::new(
@@ -461,6 +457,123 @@ impl Goal for PlayDeadGoal {
 
     fn controls(&self) -> Controls {
         Controls::MOVE | Controls::LOOK | Controls::JUMP
+    }
+}
+
+/// Vanilla `TryFindLiquid.create(6, 0.15F, FluidTags.AXOLOTL_TRIES_TO_FIND)`: on land, walk to
+/// the nearest water within 6 blocks, preferring water open to the air.
+#[derive(Default)]
+struct TryFindLiquidGoal {
+    next_ok_start_time: i64,
+    target: Option<BlockPos>,
+}
+
+impl TryFindLiquidGoal {
+    const RANGE: i32 = 6;
+
+    fn find_liquid(mob: &dyn Mob) -> Option<BlockPos> {
+        let entity = mob.get_entity();
+        let world = entity.world.load();
+        let body_pos = entity.block_pos.load();
+        let position = entity.pos.load();
+        let mut found = None;
+        for pos in BlockPos::within_box_by_manhattan_distance(
+            body_pos,
+            Self::RANGE,
+            Self::RANGE,
+            Self::RANGE,
+        ) {
+            if pos.0.x == body_pos.0.x && pos.0.z == body_pos.0.z {
+                continue;
+            }
+            let (block, state) = world.get_block_and_state(&pos);
+            if !(block == &Block::WATER || block == &Block::LAVA)
+                || !World::get_fluid_from_state_id(state.id)
+                    .has_tag(&tag::Fluid::MINECRAFT_AXOLOTL_TRIES_TO_FIND)
+            {
+                continue;
+            }
+            if world.get_block_state(&pos.up()).is_air() {
+                return Some(pos);
+            }
+            // Vanilla `closerToCenterThan(position, 1.5)`.
+            if found.is_none()
+                && pos.to_centered_f64().squared_distance_to_vec(&position) >= 1.5 * 1.5
+            {
+                found = Some(pos);
+            }
+        }
+        found
+    }
+}
+
+impl Goal for TryFindLiquidGoal {
+    fn can_start(&mut self, mob: &dyn Mob) -> bool {
+        let entity = mob.get_entity();
+        if mob.get_mob_entity().get_target().is_some()
+            || !mob.is_navigator_idle()
+            || entity
+                .world
+                .load()
+                .get_fluid(&entity.block_pos.load())
+                .has_tag(&tag::Fluid::MINECRAFT_AXOLOTL_TRIES_TO_FIND)
+        {
+            return false;
+        }
+        let now = entity
+            .world
+            .load()
+            .level_time
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .world_age;
+        if now < self.next_ok_start_time {
+            self.next_ok_start_time = now + 22;
+            return false;
+        }
+        self.target = Self::find_liquid(mob);
+        self.next_ok_start_time = now + 40;
+        self.target.is_some()
+    }
+
+    fn should_continue(&mut self, mob: &dyn Mob) -> bool {
+        !mob.is_navigator_idle()
+    }
+
+    fn start(&mut self, mob: &dyn Mob) {
+        if let Some(target) = self.target {
+            let mob_entity = mob.get_mob_entity();
+            let target = target.to_centered_f64();
+            mob_entity
+                .look_control
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .look_at_position(mob, target);
+            let pos = mob.get_entity().pos.load();
+            mob_entity
+                .steered()
+                .navigator()
+                .set_progress(NavigatorGoal::new(pos, target, SPEED_MULTIPLIER_ON_LAND));
+        }
+    }
+
+    fn tick(&mut self, mob: &dyn Mob) {
+        if let Some(target) = self.target {
+            mob.get_mob_entity()
+                .look_control
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .look_at_position(mob, target.to_centered_f64());
+        }
+    }
+
+    fn stop(&mut self, mob: &dyn Mob) {
+        self.target = None;
+        mob.get_mob_entity().steered().navigator().stop();
+    }
+
+    fn controls(&self) -> Controls {
+        Controls::MOVE | Controls::LOOK
     }
 }
 

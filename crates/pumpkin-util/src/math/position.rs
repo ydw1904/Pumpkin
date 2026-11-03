@@ -261,6 +261,50 @@ impl BlockPos {
         Self::iterate(start, end)
     }
 
+    /// Vanilla `BlockPos.withinBoxByManhattanDistance`: every position of the box around
+    /// `origin`, nearest by Manhattan distance first.
+    pub fn within_box_by_manhattan_distance(
+        origin: Self,
+        reach_x: i32,
+        reach_y: i32,
+        reach_z: i32,
+    ) -> impl Iterator<Item = Self> {
+        let max_depth = reach_x + reach_y + reach_z;
+        let (mut current_depth, mut max_x, mut max_y, mut x, mut y) = (0, 0, 0, 0, 0);
+        let mut z_mirror = false;
+        let mut cursor = origin;
+        std::iter::from_fn(move || {
+            if z_mirror {
+                z_mirror = false;
+                cursor.0.z = origin.0.z - (cursor.0.z - origin.0.z);
+                return Some(cursor);
+            }
+            loop {
+                if y > max_y {
+                    x += 1;
+                    if x > max_x {
+                        current_depth += 1;
+                        if current_depth > max_depth {
+                            return None;
+                        }
+                        max_x = reach_x.min(current_depth);
+                        x = -max_x;
+                    }
+                    max_y = reach_y.min(current_depth - x.abs());
+                    y = -max_y;
+                }
+                let (xx, yy) = (x, y);
+                y += 1;
+                let zz = current_depth - xx.abs() - yy.abs();
+                if zz <= reach_z {
+                    z_mirror = zz != 0;
+                    cursor = Self::new(origin.0.x + xx, origin.0.y + yy, origin.0.z + zz);
+                    return Some(cursor);
+                }
+            }
+        })
+    }
+
     #[must_use]
     pub fn between_closed_coords(
         min_x: i32,
@@ -920,5 +964,28 @@ mod test {
             BlockPos::iterate_outwards_ref(&center, 1, 1, 1).collect();
 
         assert_eq!(by_reference, by_value);
+    }
+
+    #[test]
+    fn within_box_by_manhattan_distance_follows_vanilla_order() {
+        let all: Vec<BlockPos> =
+            BlockPos::within_box_by_manhattan_distance(BlockPos::new(0, 0, 0), 1, 1, 1).collect();
+        // The first two depths, as vanilla's `manhattanOrdered` walks them.
+        let expected = [
+            (0, 0, 0),
+            (-1, 0, 0),
+            (0, -1, 0),
+            (0, 0, 1),
+            (0, 0, -1),
+            (0, 1, 0),
+            (1, 0, 0),
+        ]
+        .map(|(x, y, z)| BlockPos::new(x, y, z));
+        assert_eq!(all[..expected.len()], expected);
+        let mut unique = all.clone();
+        unique.sort_by_key(|pos| (pos.0.x, pos.0.y, pos.0.z));
+        unique.dedup();
+        assert_eq!(unique.len(), 27);
+        assert_eq!(all.len(), 27);
     }
 }
