@@ -5697,7 +5697,11 @@ impl Player {
             self.set_client_loaded(false);
         }
         self.send_combat_death(death_msg);
-        self.send_health();
+        // Java gets the health from the next `tick_health` like vanilla; a second packet would
+        // make clients request two respawns.
+        if matches!(self.client.as_ref(), ClientPlatform::Bedrock(_)) {
+            self.send_health();
+        }
         self.send_bedrock_respawn_state(RespawnState::SearchingForSpawn);
     }
 
