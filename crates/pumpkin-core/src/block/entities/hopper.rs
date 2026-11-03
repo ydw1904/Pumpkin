@@ -1,3 +1,4 @@
+use crate::block::blocks::chests::{chest_container, is_chest_block_entity};
 use crate::block::entities::BlockEntity;
 use crate::entity::item::ItemEntity;
 use crate::entity::vehicle::minecart::MinecartEntity;
@@ -57,13 +58,21 @@ const fn facing_direction(facing: FacingHopper) -> BlockDirection {
     }
 }
 
+/// `HopperBlockEntity.getBlockContainer`: the block entity's container, with both halves of a
+/// double chest combined whether or not they are blocked.
+pub fn block_container(world: &World, pos: &BlockPos) -> Option<Arc<dyn Inventory>> {
+    let entity = world.get_block_entity(pos)?;
+    if is_chest_block_entity(entity.as_ref()) {
+        chest_container(world, pos, true)
+    } else {
+        entity.get_inventory()
+    }
+}
+
 /// `HopperBlockEntity.getContainerAt`: the block's container, or else a random container
 /// minecart inside the block.
-fn container_at(world: &Arc<World>, pos: BlockPos) -> Option<Arc<dyn Inventory>> {
-    if let Some(container) = world
-        .get_block_entity(&pos)
-        .and_then(super::BlockEntity::get_inventory)
-    {
+pub fn container_at(world: &Arc<World>, pos: BlockPos) -> Option<Arc<dyn Inventory>> {
+    if let Some(container) = block_container(world, &pos) {
         return Some(container);
     }
     let min = pos.0.to_f64();

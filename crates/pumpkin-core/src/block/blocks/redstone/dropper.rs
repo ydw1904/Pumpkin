@@ -12,7 +12,7 @@ use crate::entity::item::ItemEntity;
 use crate::entity::{Entity, EntityBase};
 
 use crate::block::entities::dropper::DropperBlockEntity;
-use crate::block::entities::hopper::HopperBlockEntity;
+use crate::block::entities::hopper::{HopperBlockEntity, container_at};
 use pumpkin_data::BlockStateId;
 use pumpkin_data::block_properties::Facing;
 use pumpkin_data::entity::EntityType;
@@ -164,9 +164,7 @@ impl BlockBehaviour for DropperBlock {
                     .position
                     .offset(props.facing.to_block_direction().to_offset());
 
-                if let Some(entity) = args.world.get_block_entity(&target_pos)
-                    && let Some(container) = entity.get_inventory()
-                {
+                if let Some(container) = container_at(args.world, target_pos) {
                     let backup = item.clone();
                     let one_item = item.split(1);
 

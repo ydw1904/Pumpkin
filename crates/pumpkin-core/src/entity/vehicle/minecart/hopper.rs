@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::block::entities::hopper::{HopperBlockEntity, slots_for};
+use crate::block::entities::hopper::{HopperBlockEntity, block_container, slots_for};
 use crate::entity::{Entity, player::Player};
 use pumpkin_data::BlockDirection;
 use pumpkin_data::translation;
@@ -46,9 +46,7 @@ impl HopperMinecart {
         let inventory = &self.inventory;
         let cart_box = entity.bounding_box.load().expand(0.25, 0.0, 0.25);
 
-        if let Some(block_entity) = world.get_block_entity(&source_pos)
-            && let Some(source) = block_entity.get_inventory()
-        {
+        if let Some(source) = block_container(&world, &source_pos) {
             for slot in slots_for(source.as_ref(), BlockDirection::Down) {
                 let stack = source.get_stack(slot);
                 if stack.is_empty()

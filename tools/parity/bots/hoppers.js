@@ -1,6 +1,7 @@
 // Hoppers: transfer rate between chests, which furnace and brewing stand slots they fill from the
 // top and the side and pull from below, item entity pickup, redstone locking, shulker boxes refused
-// by shulker boxes, and hopper minecarts. Containers are filled with /item so the setup doesn't
+// by shulker boxes, hopper minecarts, and double chests read as one container by hoppers and
+// comparators. Containers are filled with /item so the setup doesn't
 // depend on block entity data in /setblock.
 const { make } = require('./survival-lib')
 const h = make('Hopper')
@@ -97,6 +98,45 @@ h.start(async () => {
   await h.tp(x + 0.5, Y + 1, z + 2.5)
   h.result('shulker.blocked_open', await bot.openBlock(h.block(x, y, z)).then((w) => { bot.closeWindow(w); return 'opened' }, () => 'refused'))
   await h.ticks(5)
+
+  // A hopper under the left half of a blocked double chest pulls from the right half first,
+  // since the right half is the first half of the combined container.
+  x = X - 8; z = Z + 5
+  await place(x, y + 2, z, 'chest[facing=north,type=left]')
+  await place(x + 1, y + 2, z, 'chest[facing=north,type=right]')
+  put(x, y + 2, z, ['dirt 1'])
+  put(x + 1, y + 2, z, ['stone 1'])
+  await place(x, y + 3, z, 'stone')
+  await place(x + 1, y + 3, z, 'stone')
+  await place(x, y + 1, z, 'hopper[facing=east]')
+  await h.ticks(40)
+  h.result('double_chest.pull', await contents(x, y + 1, z))
+
+  // A hopper pushing into a full left half fills the right half.
+  x = X - 4; z = Z + 5
+  await place(x, y, z, 'chest[facing=north,type=left]')
+  await place(x + 1, y, z, 'chest[facing=north,type=right]')
+  put(x, y, z, Array(27).fill('stone 64'))
+  await place(x, y + 1, z, 'hopper[facing=down]')
+  put(x, y + 1, z, ['dirt 3'])
+  await h.ticks(40)
+  const pushed = await contents(x + 1, y, z)
+  h.result('double_chest.push', `dirt=${count(pushed, 'dirt')} hopper=${await contents(x, y + 1, z)}`)
+
+  // A comparator reads both halves, and nothing while either half is blocked.
+  x = X + 1; z = Z + 5
+  await place(x, y, z, 'chest[facing=north,type=left]')
+  await place(x + 1, y, z, 'chest[facing=north,type=right]')
+  put(x, y, z, Array(27).fill('stone 64'))
+  await place(x + 1, y, z + 1, 'comparator[facing=north]')
+  await place(x + 1, y, z + 2, 'redstone_wire')
+  await h.ticks(10)
+  const open = h.block(x + 1, y, z + 2).getProperties().power
+  await place(x, y + 1, z, 'stone')
+  // Changing the contents makes the comparator read again.
+  put(x + 1, y, z, ['dirt 1'])
+  await h.ticks(10)
+  h.result('double_chest.comparator', `open=${open} blocked=${h.block(x + 1, y, z + 2).getProperties().power}`)
 
   // A hopper under a chest minecart empties the cart.
   x = X + 6; z = Z

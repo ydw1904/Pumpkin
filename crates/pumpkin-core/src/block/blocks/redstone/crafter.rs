@@ -4,7 +4,7 @@ use std::sync::Mutex;
 
 use crate::block::blocks::redstone::block_receives_redstone_power;
 use crate::block::entities::crafter::CrafterBlockEntity;
-use crate::block::entities::hopper::HopperBlockEntity;
+use crate::block::entities::hopper::{HopperBlockEntity, container_at};
 use crate::block::registry::BlockActionResult;
 use crate::block::{
     BlockBehaviour, GetComparatorOutputArgs, GetScreenHandlerFactoryArgs, NormalUseArgs,
@@ -210,9 +210,7 @@ impl CrafterBlock {
         let direction = orientation_to_front(orientation);
         let target_pos = pos.offset(direction.to_offset());
 
-        if let Some(target_entity) = world.get_block_entity(&target_pos)
-            && let Some(target_inv) = target_entity.get_inventory()
-        {
+        if let Some(target_inv) = container_at(world, target_pos) {
             while !stack.is_empty() {
                 let one_item = stack.split(1);
                 if !HopperBlockEntity::add_one_item(

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::block::entities::BlockEntity;
 use crate::block::entities::chest::ChestBlockEntity;
+use crate::block::entities::trapped_chest::TrappedChestBlockEntity;
 use pumpkin_data::BlockStateId;
 use pumpkin_data::block_properties::{ChestLikeProperties, ChestType, HorizontalFacing};
 use pumpkin_data::entity::EntityPose;
@@ -130,49 +131,74 @@ fn placed_chest_impl<E: BlockEntity + 'static>(
     }
 }
 
-/// Computes the comparator output for a chest, combining both halves for double chests.
-fn get_chest_comparator_output(args: &GetComparatorOutputArgs<'_>) -> Option<u8> {
-    let state = args.world.get_block_state_id(args.position);
-    let first_chest = args.world.get_block_entity(args.position);
-    let first_inventory = first_chest.and_then(BlockEntity::get_inventory)?;
+/// Vanilla `ChestBlock.getContainer`: the chest's own container, or a `CompoundContainer` of both
+/// halves (the `RIGHT` half first) when its neighbour is the matching other half.
+///
+/// Without `ignore_being_blocked`, a chest with a solid block on top yields no container at all.
+pub fn chest_container(
+    world: &World,
+    position: &BlockPos,
+    ignore_being_blocked: bool,
+) -> Option<Arc<dyn Inventory>> {
+    let inventory = world
+        .get_block_entity(position)
+        .filter(|entity| is_chest_block_entity(entity.as_ref()))
+        .and_then(BlockEntity::get_inventory)?;
+    if !ignore_being_blocked && is_chest_blocked(world, position) {
+        return None;
+    }
 
-    let chest_props = ChestLikeProperties::from_state_id(state);
+    let (block, state_id) = world.get_block_and_state_id(position);
+    let chest_props = ChestLikeProperties::from_state_id(state_id);
     let connected_towards = match chest_props.r#type {
-        ChestType::Single => None,
-        ChestType::Left => Some(chest_props.facing.rotate_clockwise()),
-        ChestType::Right => Some(chest_props.facing.rotate_counter_clockwise()),
+        ChestType::Single => return Some(inventory),
+        ChestType::Left => chest_props.facing.rotate_clockwise(),
+        ChestType::Right => chest_props.facing.rotate_counter_clockwise(),
     };
 
-    // Vanilla passes `ignoreBeingBlocked = false`, so a blocked half reads zero.
-    if is_chest_blocked(args.world, args.position) {
-        return Some(0);
+    let neighbor_pos = position.offset(connected_towards.to_offset());
+    let (neighbor_block, neighbor_state_id) = world.get_block_and_state_id(&neighbor_pos);
+    if neighbor_block.id != block.id {
+        return Some(inventory);
+    }
+    let neighbor_props = ChestLikeProperties::from_state_id(neighbor_state_id);
+    if neighbor_props.r#type == ChestType::Single
+        || neighbor_props.r#type == chest_props.r#type
+        || neighbor_props.facing != chest_props.facing
+    {
+        return Some(inventory);
+    }
+    if !ignore_being_blocked && is_chest_blocked(world, &neighbor_pos) {
+        return None;
     }
 
-    if let Some(direction) = connected_towards
-        && is_chest_blocked(args.world, &args.position.offset(direction.to_offset()))
-    {
-        return Some(0);
-    }
-
-    if let Some(direction) = connected_towards
-        && let Some(second_inventory) = args
-            .world
-            .get_block_entity(&args.position.offset(direction.to_offset()))
-            .and_then(BlockEntity::get_inventory)
-    {
-        let double_inventory = if matches!(chest_props.r#type, ChestType::Right) {
-            DoubleInventory::new(first_inventory, second_inventory)
-        } else {
-            DoubleInventory::new(second_inventory, first_inventory)
-        };
-        Some(crate::block::calculate_comparator_output(
-            double_inventory.as_ref(),
-        ))
+    let Some(neighbor_inventory) = world
+        .get_block_entity(&neighbor_pos)
+        .filter(|entity| is_chest_block_entity(entity.as_ref()))
+        .and_then(BlockEntity::get_inventory)
+    else {
+        return Some(inventory);
+    };
+    // `ChestBlock.getBlockType`: the RIGHT half is `FIRST`.
+    Some(if chest_props.r#type == ChestType::Right {
+        DoubleInventory::new(inventory, neighbor_inventory)
     } else {
-        Some(crate::block::calculate_comparator_output(
-            first_inventory.as_ref(),
-        ))
-    }
+        DoubleInventory::new(neighbor_inventory, inventory)
+    })
+}
+
+/// Whether the block entity is a `ChestBlockEntity` (trapped chests included).
+#[must_use]
+pub fn is_chest_block_entity(entity: &dyn BlockEntity) -> bool {
+    entity.as_any().is::<ChestBlockEntity>() || entity.as_any().is::<TrappedChestBlockEntity>()
+}
+
+/// Computes the comparator output for a chest, combining both halves for double chests.
+fn get_chest_comparator_output(args: &GetComparatorOutputArgs<'_>) -> u8 {
+    // Vanilla passes `ignoreBeingBlocked = false`, so a blocked chest reads zero.
+    chest_container(args.world, args.position, false).map_or(0, |container| {
+        crate::block::calculate_comparator_output(container.as_ref())
+    })
 }
 
 /// Returns a screen handler factory for opening a chest or double chest inventory.
@@ -368,7 +394,7 @@ impl BlockBehaviour for ChestBlock {
     }
 
     fn get_comparator_output(&self, args: GetComparatorOutputArgs<'_>) -> Option<u8> {
-        get_chest_comparator_output(&args)
+        Some(get_chest_comparator_output(&args))
     }
 
     fn is_pathfindable(&self, _state: &BlockState, _computation_type: PathComputationType) -> bool {
@@ -491,7 +517,7 @@ impl BlockBehaviour for CopperChestBlock {
     }
 
     fn get_comparator_output(&self, args: GetComparatorOutputArgs<'_>) -> Option<u8> {
-        get_chest_comparator_output(&args)
+        Some(get_chest_comparator_output(&args))
     }
 
     fn is_pathfindable(&self, _state: &BlockState, _computation_type: PathComputationType) -> bool {
@@ -564,7 +590,7 @@ impl BlockBehaviour for TrappedChestBlock {
     }
 
     fn get_comparator_output(&self, args: GetComparatorOutputArgs<'_>) -> Option<u8> {
-        get_chest_comparator_output(&args)
+        Some(get_chest_comparator_output(&args))
     }
 
     fn is_pathfindable(&self, _state: &BlockState, _computation_type: PathComputationType) -> bool {
