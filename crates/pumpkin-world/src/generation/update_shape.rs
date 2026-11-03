@@ -4,9 +4,10 @@
 
 use pumpkin_data::HorizontalFacingExt;
 use pumpkin_data::block_properties::{
-    BlockProperties, EastWall, NorthWall, OakFenceGateLikeProperties, OakFenceLikeProperties,
-    OakLeavesLikeProperties, ResinBrickWallLikeProperties, SouthWall, StairsShape,
-    VineLikeProperties, WestWall, WhiteWoolStairsLikeProperties,
+    BlockProperties, DoubleBlockHalf, EastWall, NorthWall, OakDoorLikeProperties,
+    OakFenceGateLikeProperties, OakFenceLikeProperties, OakLeavesLikeProperties,
+    ResinBrickWallLikeProperties, SouthWall, StairsShape, VineLikeProperties, WestWall,
+    WhiteWoolStairsLikeProperties,
 };
 use pumpkin_data::fluid::Fluid;
 use pumpkin_data::tag::{self, Taggable};
@@ -314,6 +315,30 @@ pub fn update_shape<L: BlockPlacer + ?Sized>(
     }
     if block.id == BlockId::VINE {
         return update_vine_shape(level, pos, state, dir_to_neighbor);
+    }
+    if block.has_tag(&tag::Block::MINECRAFT_DOORS) {
+        let half = OakDoorLikeProperties::from_state_id(state).half;
+        // `DoorBlock.updateShape`: a half takes the other half's state, or breaks without it.
+        if dir_to_neighbor == BlockDirection::Up && half == DoubleBlockHalf::Lower
+            || dir_to_neighbor == BlockDirection::Down && half == DoubleBlockHalf::Upper
+        {
+            let neighbor_block = neighbor_state.to_block();
+            if neighbor_block.has_tag(&tag::Block::MINECRAFT_DOORS) {
+                let mut props = OakDoorLikeProperties::from_state_id(neighbor_state);
+                if props.half != half {
+                    props.half = half;
+                    return props.to_state_id(neighbor_block);
+                }
+            }
+            return BlockStateId::AIR;
+        }
+        // `DoorBlock.canSurvive` for the lower half.
+        if dir_to_neighbor == BlockDirection::Down
+            && half == DoubleBlockHalf::Lower
+            && !neighbor_state.to_state().is_side_solid(BlockDirection::Up)
+        {
+            return BlockStateId::AIR;
+        }
     }
     if block.has_tag(&tag::Block::MINECRAFT_WALLS) {
         let above_pos = pos + BlockDirection::Up.to_offset();
