@@ -896,7 +896,12 @@ impl ItemStack {
         let item = Item::from_registry_key(registry_key)?;
 
         // `ItemStackTemplate`, used for items nested in components, leaves out a count of 1.
-        let count = compound.get_int("count").unwrap_or(1) as u8;
+        // The codec takes any numeric tag in `1..=99`.
+        let count = compound.get_numeric_int("count").unwrap_or(1);
+        if !(1..=99).contains(&count) {
+            return None;
+        }
+        let count = count as u8;
 
         // Create the item stack
         let mut item_stack = Self::new(count, item);
