@@ -132,6 +132,8 @@ use crate::entity::vehicle::minecart::MinecartEntity;
 use crate::entity::{Entity, EntityBase, mob};
 use crate::world::World;
 use pumpkin_data::Block;
+use pumpkin_data::chunk::Biome;
+use pumpkin_data::fluid::Fluid;
 use pumpkin_nbt::compound::NbtCompound;
 use std::sync::atomic::AtomicBool;
 use tracing::{debug, warn};
@@ -448,6 +450,119 @@ pub fn self_and_passengers(entity: &Arc<dyn EntityBase>) -> Vec<Arc<dyn EntityBa
     stack
 }
 
+/// The reads the creature spawn rules make.
+///
+/// Chunk generation runs the same rules on the region it generates (vanilla
+/// `spawnMobsForChunkGeneration` passes its `WorldGenRegion`), which isn't part of the world yet.
+pub trait CreatureSpawnLevel {
+    fn block(&self, pos: &BlockPos) -> &'static Block;
+    fn fluid(&self, pos: &BlockPos) -> &'static Fluid;
+    /// Vanilla `getRawBrightness(pos, 0)`: sky or block light, whichever is brighter, without the
+    /// time of day darkening the sky.
+    fn raw_brightness(&self, pos: &BlockPos) -> u8;
+    fn biome(&self, pos: &BlockPos) -> &'static Biome;
+    fn sea_level(&self) -> i32;
+}
+
+impl CreatureSpawnLevel for World {
+    fn block(&self, pos: &BlockPos) -> &'static Block {
+        self.get_block(pos)
+    }
+
+    fn fluid(&self, pos: &BlockPos) -> &'static Fluid {
+        self.get_fluid(pos)
+    }
+
+    fn raw_brightness(&self, pos: &BlockPos) -> u8 {
+        self.get_raw_brightness(pos, 0)
+    }
+
+    fn biome(&self, pos: &BlockPos) -> &'static Biome {
+        self.get_biome(pos)
+    }
+
+    fn sea_level(&self) -> i32 {
+        self.sea_level
+    }
+}
+
+/// Spawn rules of the animals biomes place, or `None` when `entity_type` follows other rules.
+pub fn check_creature_spawn_rules(
+    entity_type: &'static EntityType,
+    level: &impl CreatureSpawnLevel,
+    pos: &BlockPos,
+) -> Option<bool> {
+    let id = entity_type.id;
+    let below = || level.block(&pos.down());
+    let on_tag_and_bright =
+        |tag| below().has_tag(tag) && mob::MobEntity::is_bright_enough_to_spawn(level, pos);
+
+    let allowed = if [
+        &EntityType::CHICKEN,
+        &EntityType::COW,
+        &EntityType::DONKEY,
+        &EntityType::HAPPY_GHAST,
+        &EntityType::HORSE,
+        &EntityType::LLAMA,
+        &EntityType::MULE,
+        &EntityType::PIG,
+        &EntityType::SHEEP,
+        &EntityType::CAT,
+        &EntityType::PANDA,
+        &EntityType::TRADER_LLAMA,
+        &EntityType::SKELETON_HORSE,
+    ]
+    .iter()
+    .any(|animal| animal.id == id)
+    {
+        mob::MobEntity::check_animal_spawn_rules(level, pos)
+    } else if id == EntityType::ARMADILLO.id {
+        on_tag_and_bright(&pumpkin_data::tag::Block::MINECRAFT_ARMADILLO_SPAWNABLE_ON)
+    } else if id == EntityType::CAMEL.id {
+        on_tag_and_bright(&pumpkin_data::tag::Block::MINECRAFT_CAMELS_SPAWNABLE_ON)
+    } else if id == EntityType::FROG.id {
+        on_tag_and_bright(&pumpkin_data::tag::Block::MINECRAFT_FROGS_SPAWNABLE_ON)
+    } else if id == EntityType::GOAT.id {
+        on_tag_and_bright(&pumpkin_data::tag::Block::MINECRAFT_GOATS_SPAWNABLE_ON)
+    } else if id == EntityType::MOOSHROOM.id {
+        on_tag_and_bright(&pumpkin_data::tag::Block::MINECRAFT_MOOSHROOMS_SPAWNABLE_ON)
+    } else if id == EntityType::PARROT.id {
+        on_tag_and_bright(&pumpkin_data::tag::Block::MINECRAFT_PARROTS_SPAWNABLE_ON)
+    } else if id == EntityType::RABBIT.id {
+        on_tag_and_bright(&pumpkin_data::tag::Block::MINECRAFT_RABBITS_SPAWNABLE_ON)
+    } else if id == EntityType::WOLF.id {
+        on_tag_and_bright(&pumpkin_data::tag::Block::MINECRAFT_WOLVES_SPAWNABLE_ON)
+    } else if id == EntityType::FOX.id {
+        on_tag_and_bright(&pumpkin_data::tag::Block::MINECRAFT_FOXES_SPAWNABLE_ON)
+    } else if id == EntityType::POLAR_BEAR.id {
+        if level.biome(pos).has_tag(
+            &pumpkin_data::tag::WorldgenBiome::MINECRAFT_POLAR_BEARS_SPAWN_ON_ALTERNATE_BLOCKS,
+        ) {
+            on_tag_and_bright(
+                &pumpkin_data::tag::Block::MINECRAFT_POLAR_BEARS_SPAWNABLE_ON_ALTERNATE,
+            )
+        } else {
+            mob::MobEntity::check_animal_spawn_rules(level, pos)
+        }
+    } else if id == EntityType::TURTLE.id {
+        // `TurtleEggBlock.onSand`
+        pos.0.y < level.sea_level() + 4
+            && on_tag_and_bright(&pumpkin_data::tag::Block::MINECRAFT_SAND)
+    } else if id == EntityType::STRIDER.id {
+        let mut check_pos = pos.up();
+        while level
+            .fluid(&check_pos)
+            .has_tag(&pumpkin_data::tag::Fluid::MINECRAFT_LAVA)
+        {
+            check_pos = check_pos.up();
+        }
+        level.block(&check_pos).is_air()
+    } else {
+        return None;
+    };
+    Some(allowed)
+}
+
 #[expect(clippy::too_many_lines)]
 pub fn check_spawn_rules(
     entity_type: &'static EntityType,
@@ -571,16 +686,8 @@ pub fn check_spawn_rules(
         return mob::MobEntity::check_mob_spawn_rules(world, pos);
     }
 
-    // Strider
-    if id == EntityType::STRIDER.id {
-        let mut check_pos = *pos;
-        while world
-            .get_fluid(&check_pos)
-            .has_tag(&pumpkin_data::tag::Fluid::MINECRAFT_LAVA)
-        {
-            check_pos = check_pos.up();
-        }
-        return world.get_block(&check_pos).is_air();
+    if let Some(allowed) = check_creature_spawn_rules(entity_type, world, pos) {
+        return allowed;
     }
 
     // Bat
@@ -588,119 +695,12 @@ pub fn check_spawn_rules(
         return bat::BatEntity::check_bat_spawn_rules(world, pos);
     }
 
-    // Animals (General)
-    if id == EntityType::CHICKEN.id
-        || id == EntityType::COW.id
-        || id == EntityType::DONKEY.id
-        || id == EntityType::HAPPY_GHAST.id
-        || id == EntityType::HORSE.id
-        || id == EntityType::LLAMA.id
-        || id == EntityType::MULE.id
-        || id == EntityType::PIG.id
-        || id == EntityType::SHEEP.id
-        || id == EntityType::CAT.id
-        || id == EntityType::PANDA.id
-        || id == EntityType::TRADER_LLAMA.id
-    {
-        return mob::MobEntity::check_animal_spawn_rules(world, pos);
-    }
-
-    // Tagged Animals: Armadillo, Camel, Frog, Goat, Mooshroom, Parrot, Rabbit, Wolf, Fox
-    if id == EntityType::ARMADILLO.id {
-        let below = pos.down();
-        return world
-            .get_block(&below)
-            .has_tag(&pumpkin_data::tag::Block::MINECRAFT_ARMADILLO_SPAWNABLE_ON)
-            && mob::MobEntity::is_bright_enough_to_spawn(world, pos);
-    }
-    if id == EntityType::CAMEL.id {
-        let below = pos.down();
-        return world
-            .get_block(&below)
-            .has_tag(&pumpkin_data::tag::Block::MINECRAFT_CAMELS_SPAWNABLE_ON)
-            && mob::MobEntity::is_bright_enough_to_spawn(world, pos);
-    }
-    if id == EntityType::FROG.id {
-        let below = pos.down();
-        return world
-            .get_block(&below)
-            .has_tag(&pumpkin_data::tag::Block::MINECRAFT_FROGS_SPAWNABLE_ON)
-            && mob::MobEntity::is_bright_enough_to_spawn(world, pos);
-    }
-    if id == EntityType::GOAT.id {
-        let below = pos.down();
-        return world
-            .get_block(&below)
-            .has_tag(&pumpkin_data::tag::Block::MINECRAFT_GOATS_SPAWNABLE_ON)
-            && mob::MobEntity::is_bright_enough_to_spawn(world, pos);
-    }
-    if id == EntityType::MOOSHROOM.id {
-        let below = pos.down();
-        return world
-            .get_block(&below)
-            .has_tag(&pumpkin_data::tag::Block::MINECRAFT_MOOSHROOMS_SPAWNABLE_ON)
-            && mob::MobEntity::is_bright_enough_to_spawn(world, pos);
-    }
-    if id == EntityType::PARROT.id {
-        let below = pos.down();
-        return world
-            .get_block(&below)
-            .has_tag(&pumpkin_data::tag::Block::MINECRAFT_PARROTS_SPAWNABLE_ON)
-            && mob::MobEntity::is_bright_enough_to_spawn(world, pos);
-    }
-    if id == EntityType::RABBIT.id {
-        let below = pos.down();
-        return world
-            .get_block(&below)
-            .has_tag(&pumpkin_data::tag::Block::MINECRAFT_RABBITS_SPAWNABLE_ON)
-            && mob::MobEntity::is_bright_enough_to_spawn(world, pos);
-    }
-    if id == EntityType::WOLF.id {
-        let below = pos.down();
-        return world
-            .get_block(&below)
-            .has_tag(&pumpkin_data::tag::Block::MINECRAFT_WOLVES_SPAWNABLE_ON)
-            && mob::MobEntity::is_bright_enough_to_spawn(world, pos);
-    }
-    if id == EntityType::FOX.id {
-        let below = pos.down();
-        return world
-            .get_block(&below)
-            .has_tag(&pumpkin_data::tag::Block::MINECRAFT_FOXES_SPAWNABLE_ON)
-            && mob::MobEntity::is_bright_enough_to_spawn(world, pos);
-    }
     if id == EntityType::OCELOT.id {
         if game_random().random_range(0..3) == 0 {
             return false;
         }
         return mob::MobEntity::check_mob_spawn_rules(world, pos);
     }
-    if id == EntityType::POLAR_BEAR.id {
-        let below = pos.down();
-        let biome = world.get_biome(pos);
-        if biome.has_tag(
-            &pumpkin_data::tag::WorldgenBiome::MINECRAFT_POLAR_BEARS_SPAWN_ON_ALTERNATE_BLOCKS,
-        ) {
-            return mob::MobEntity::is_bright_enough_to_spawn(world, pos)
-                && world.get_block(&below).has_tag(
-                    &pumpkin_data::tag::Block::MINECRAFT_POLAR_BEARS_SPAWNABLE_ON_ALTERNATE,
-                );
-        }
-        return mob::MobEntity::check_animal_spawn_rules(world, pos);
-    }
-    if id == EntityType::TURTLE.id {
-        let sea_level = world.sea_level;
-        let below = pos.down();
-        return pos.0.y < sea_level + 4
-            && world
-                .get_block(&below)
-                .has_tag(&pumpkin_data::tag::Block::MINECRAFT_SAND)
-            && mob::MobEntity::is_bright_enough_to_spawn(world, pos);
-    }
-    if id == EntityType::SKELETON_HORSE.id {
-        return mob::MobEntity::check_animal_spawn_rules(world, pos);
-    }
-
     // Water Animals / Creatures
     if id == EntityType::COD.id || id == EntityType::PUFFERFISH.id || id == EntityType::SALMON.id {
         return mob::MobEntity::check_surface_water_animal_spawn_rules(world, pos);

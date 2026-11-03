@@ -2,7 +2,9 @@ use crate::block::PathComputationType;
 use crate::entity::EntityBase;
 use crate::entity::mob::spawn::finalize_spawn;
 use crate::entity::player::Player;
-use crate::entity::r#type::{check_spawn_rules, from_type};
+use crate::entity::r#type::{
+    CreatureSpawnLevel, check_creature_spawn_rules, check_spawn_rules, from_type,
+};
 use crate::world::World;
 use arc_swap::ArcSwap;
 use crossbeam::atomic::AtomicCell;
@@ -11,6 +13,7 @@ use pumpkin_data::biome::Spawner;
 use pumpkin_data::chunk::Biome;
 use pumpkin_data::dimension::Dimension;
 use pumpkin_data::entity::{EntityType, MobCategory, SpawnLocation};
+use pumpkin_data::fluid::Fluid;
 use pumpkin_data::structures::{BoundingBoxType, Structure, StructureKeys};
 use pumpkin_data::tag::Block::MINECRAFT_PREVENT_MOB_SPAWNING_INSIDE;
 use pumpkin_data::tag::Fluid::{MINECRAFT_LAVA, MINECRAFT_WATER};
@@ -18,6 +21,7 @@ use pumpkin_data::tag::Taggable;
 use pumpkin_data::tag::WorldgenBiome::MINECRAFT_REDUCE_WATER_AMBIENT_SPAWNS;
 use pumpkin_data::{Block, BlockDirection, BlockState, SpawnFloorPredicate};
 use pumpkin_util::GameMode;
+use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::get_section_cord;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector2::Vector2;
@@ -624,11 +628,13 @@ pub fn spawn_mobs_for_chunk_generation(
                     let spawn_pos_f64 = Vector3::new(fx, f64::from(pos.0.y), fz);
                     let check_pos = BlockPos::new(fx.floor() as i32, pos.0.y, fz.floor() as i32);
 
-                    if world.is_space_empty(entity_type.get_spawn_bounding_box(
+                    let level = GenerationSpawnLevel(cache);
+                    if level.is_space_empty(&entity_type.get_spawn_bounding_box(
                         fx,
                         f64::from(pos.0.y),
                         fz,
-                    )) && check_spawn_rules(entity_type, world, &check_pos, false)
+                    )) && check_creature_spawn_rules(entity_type, &level, &check_pos)
+                        .unwrap_or_else(|| check_spawn_rules(entity_type, world, &check_pos, false))
                     {
                         let entity = from_type(entity_type, spawn_pos_f64, world, Uuid::new_v4());
                         entity
@@ -650,6 +656,63 @@ pub fn spawn_mobs_for_chunk_generation(
                 }
             }
         }
+    }
+}
+
+/// The region chunk generation spawns animals in. Its chunks aren't part of the world yet, so
+/// the spawn rules read them through the generation cache.
+struct GenerationSpawnLevel<'a>(&'a dyn GenerationCache);
+
+impl GenerationSpawnLevel<'_> {
+    fn is_space_empty(&self, bounding_box: &BoundingBox) -> bool {
+        BlockPos::iterate(bounding_box.min_block_pos(), bounding_box.max_block_pos()).all(|pos| {
+            let state = GenerationCache::get_block_state(self.0, &pos.0).to_state();
+            !World::check_collision(bounding_box, pos, state, false, |_| ())
+        })
+    }
+}
+
+impl CreatureSpawnLevel for GenerationSpawnLevel<'_> {
+    fn block(&self, pos: &BlockPos) -> &'static Block {
+        Block::from_state_id(GenerationCache::get_block_state(self.0, &pos.0))
+    }
+
+    fn fluid(&self, pos: &BlockPos) -> &'static Fluid {
+        World::get_fluid_from_state_id(GenerationCache::get_block_state(self.0, &pos.0))
+    }
+
+    fn raw_brightness(&self, pos: &BlockPos) -> u8 {
+        let Some(chunk) = self.0.get_chunk(pos.0.x >> 4, pos.0.z >> 4) else {
+            return 0;
+        };
+        let Ok(section) = usize::try_from((pos.0.y - i32::from(chunk.bottom_y())) >> 4) else {
+            return 0;
+        };
+        let (x, y, z) = (
+            (pos.0.x & 15) as usize,
+            (pos.0.y & 15) as usize,
+            (pos.0.z & 15) as usize,
+        );
+        // Above the top section the sky is fully lit.
+        let sky = chunk
+            .light
+            .sky_light
+            .get(section)
+            .map_or(15, |light| light.get(x, y, z));
+        let block = chunk
+            .light
+            .block_light
+            .get(section)
+            .map_or(0, |light| light.get(x, y, z));
+        sky.max(block)
+    }
+
+    fn biome(&self, pos: &BlockPos) -> &'static Biome {
+        self.0.get_biome_for_terrain_gen(pos.0.x, pos.0.y, pos.0.z)
+    }
+
+    fn sea_level(&self) -> i32 {
+        self.0.get_sea_level()
     }
 }
 

@@ -14,6 +14,7 @@ use crate::entity::ai::sensing::Sensing;
 use crate::entity::player::Player;
 use crate::entity::predicate::EntityPredicate;
 use crate::entity::projectile::arrow::ArrowEntity;
+use crate::entity::r#type::CreatureSpawnLevel;
 use crate::entity::vehicle::boat::BoatEntity;
 use crate::plugin::api::events::entity::entity_target::{EntityTargetEvent, TargetReason};
 use crate::server::Server;
@@ -977,17 +978,16 @@ impl MobEntity {
         Self::check_monster_spawn_rules(world, pos, is_thundering) && world.can_see_sky(pos)
     }
 
-    pub fn check_animal_spawn_rules(world: &World, pos: &BlockPos) -> bool {
-        let below = pos.down();
-        world
-            .get_block(&below)
+    pub fn check_animal_spawn_rules(level: &impl CreatureSpawnLevel, pos: &BlockPos) -> bool {
+        level
+            .block(&pos.down())
             .has_tag(&tag::Block::MINECRAFT_ANIMALS_SPAWNABLE_ON)
-            && Self::is_bright_enough_to_spawn(world, pos)
+            && Self::is_bright_enough_to_spawn(level, pos)
     }
 
     /// Vanilla `Animal.isBrightEnoughToSpawn`: the time of day doesn't darken the sky light here.
-    pub fn is_bright_enough_to_spawn(world: &World, pos: &BlockPos) -> bool {
-        world.get_raw_brightness(pos, 0) > 8
+    pub fn is_bright_enough_to_spawn(level: &impl CreatureSpawnLevel, pos: &BlockPos) -> bool {
+        level.raw_brightness(pos) > 8
     }
 
     pub fn check_surface_water_animal_spawn_rules(world: &World, pos: &BlockPos) -> bool {
