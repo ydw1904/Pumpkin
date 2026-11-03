@@ -9405,7 +9405,7 @@ impl InventoryPlayer for Player {
                         world.set_block_state(
                             &pos,
                             new_state,
-                            pumpkin_world::world::BlockFlags::NOTIFY_ALL,
+                            pumpkin_world::world::BlockFlags::NOTIFY_LISTENERS,
                         );
                         world.sync_world_event(
                             pumpkin_data::world::WorldEvent::SoundAnvilUsed,
