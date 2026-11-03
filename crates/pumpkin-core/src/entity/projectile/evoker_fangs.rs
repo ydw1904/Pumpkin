@@ -6,7 +6,8 @@ use pumpkin_data::sound::Sound;
 use pumpkin_protocol::bedrock::server::ActorEventID;
 
 use crate::{
-    entity::{Entity, EntityBase, projectile::owner::EntityReference},
+    enchantment::EnchantmentHelper,
+    entity::{Entity, EntityBase, living::LivingEntity, projectile::owner::EntityReference},
     server::Server,
 };
 
@@ -28,6 +29,43 @@ impl EvokerFangsEntity {
             life_ticks: AtomicI32::new(22),
             owner: EntityReference::new(owner),
             sent_spike_event: AtomicBool::new(false),
+        }
+    }
+
+    /// Vanilla `EvokerFangs.dealDamageTo`.
+    fn deal_damage_to(
+        &self,
+        target: &dyn EntityBase,
+        living: &LivingEntity,
+        owner: Option<&dyn EntityBase>,
+    ) {
+        if !living.is_alive()
+            || living.entity.invulnerable.load(Ordering::Relaxed)
+            || owner.is_some_and(|owner| owner.get_entity().entity_id == living.entity.entity_id)
+        {
+            return;
+        }
+        let Some(owner) = owner else {
+            target.damage(target, 6.0, DamageType::MAGIC);
+            return;
+        };
+        if owner.is_allied_to(target) {
+            return;
+        }
+        if target.damage_with_context(
+            target,
+            6.0,
+            DamageType::INDIRECT_MAGIC,
+            None,
+            Some(self),
+            Some(owner),
+        ) {
+            EnchantmentHelper::do_post_attack_effects(
+                target,
+                DamageType::INDIRECT_MAGIC,
+                Some(owner),
+                Some(self),
+            );
         }
     }
 }
@@ -61,29 +99,18 @@ impl EntityBase for EvokerFangsEntity {
                 let bb = entity.bounding_box.load().expand(0.2, 0.0, 0.2);
                 let candidates = world.get_entities_and_players_at_box(&bb);
 
-                let owner = self.owner.get(&world);
+                // Vanilla `EvokerFangs.getOwner` only resolves living owners.
+                let owner = self
+                    .owner
+                    .get(&world)
+                    .filter(|owner| owner.get_living_entity().is_some());
 
                 for cand in candidates {
                     let cand_ent = cand.get_entity();
-                    if self.owner.matches(cand_ent) {
-                        continue;
-                    }
-
-                    if cand_ent.entity_id != entity.entity_id && cand.get_living_entity().is_some()
+                    if cand_ent.entity_id != entity.entity_id
+                        && let Some(living) = cand.get_living_entity()
                     {
-                        let damage_type = if owner.is_some() {
-                            DamageType::INDIRECT_MAGIC
-                        } else {
-                            DamageType::MAGIC
-                        };
-                        let _ = cand.damage_with_context(
-                            cand.as_ref(),
-                            6.0,
-                            damage_type,
-                            Some(entity.pos.load()),
-                            Some(entity),
-                            owner.as_deref(),
-                        );
+                        self.deal_damage_to(cand.as_ref(), living, owner.as_deref());
                     }
                 }
             }
