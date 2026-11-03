@@ -203,6 +203,22 @@ pub fn block_entity_from_generic<T: BlockEntity>(nbt: &NbtCompound) -> T {
     T::from_nbt(nbt, BlockPos::new(x, y, z))
 }
 
+/// Vanilla `BlockEntity.loadWithComponents` for a block entity already in the world: builds its
+/// replacement from `tag`, keeping the type and position, which loading never changes.
+#[must_use]
+pub fn reload_block_entity(
+    entity: &dyn BlockEntity,
+    tag: &NbtCompound,
+) -> Option<Arc<dyn BlockEntity>> {
+    let pos = entity.get_position();
+    let mut nbt = tag.clone();
+    nbt.put_string("id", entity.resource_location().to_string());
+    nbt.put_int("x", pos.0.x);
+    nbt.put_int("y", pos.0.y);
+    nbt.put_int("z", pos.0.z);
+    block_entity_from_nbt(&nbt)
+}
+
 #[must_use]
 #[allow(clippy::too_many_lines)]
 pub fn block_entity_from_nbt(nbt: &NbtCompound) -> Option<Arc<dyn BlockEntity>> {

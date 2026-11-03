@@ -22,6 +22,7 @@ use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry
 use pumpkin_util::text::TextComponent;
 use pumpkin_util::text::color::NamedColor;
 
+use crate::block::entities::reload_block_entity;
 use crate::command::argument_builder::{ArgumentBuilder, argument, command, literal};
 use crate::command::argument_types::coordinates::block_pos::BlockPosArgumentType;
 use crate::command::argument_types::core::double::DoubleArgumentType;
@@ -306,12 +307,15 @@ impl BlockDataAccessor {
 
 impl DataAccessor for BlockDataAccessor {
     fn set_data(&self, tag: &NbtCompound) -> Result<(), CommandSyntaxError> {
-        if self.world.get_block_entity(&self.pos).is_some() {
-            self.world.add_block_entity_nbt(self.pos, tag);
-            Ok(())
-        } else {
-            Err(ERROR_BLOCK_INVALID.create_without_context())
+        let Some(entity) = self.world.get_block_entity(&self.pos) else {
+            return Err(ERROR_BLOCK_INVALID.create_without_context());
+        };
+        // `add_block_entity` also sends the update tag, like vanilla `sendBlockUpdated`.
+        if let Some(loaded) = reload_block_entity(entity.as_ref(), tag) {
+            self.world.add_block_entity(loaded);
+            self.world.block_entity_set_changed(&self.pos);
         }
+        Ok(())
     }
 
     fn get_data(&self) -> Result<NbtCompound, CommandSyntaxError> {

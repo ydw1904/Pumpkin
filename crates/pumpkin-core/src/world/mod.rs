@@ -7180,6 +7180,15 @@ impl World {
         }
     }
 
+    /// Vanilla `BlockEntity.setChanged` after a block entity's data changed. The chunk is
+    /// already marked dirty by [`Self::add_block_entity`].
+    pub fn block_entity_set_changed(self: &Arc<Self>, pos: &BlockPos) {
+        let block = self.get_block(pos);
+        if !block.is_air() {
+            self.update_neighbour_for_output_signal(pos, block);
+        }
+    }
+
     pub fn update_neighbour_for_output_signal(
         self: &Arc<Self>,
         pos: &BlockPos,

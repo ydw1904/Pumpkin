@@ -8,7 +8,7 @@ use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry
 use pumpkin_util::text::TextComponent;
 use pumpkin_world::world::BlockFlags;
 
-use crate::block::entities::block_entity_from_nbt;
+use crate::block::entities::reload_block_entity;
 use crate::command::argument_builder::{ArgumentBuilder, argument, command, literal};
 use crate::command::argument_types::block_state::{BlockInput, BlockStateArgumentType};
 use crate::command::argument_types::coordinates::block_pos::BlockPosArgumentType;
@@ -88,12 +88,7 @@ pub fn load_block_entity_data(world: &Arc<World>, pos: &BlockPos, tag: &NbtCompo
     };
     let mut before = NbtCompound::new();
     entity.write_internal(&mut before);
-    let mut nbt = tag.clone();
-    nbt.put_string("id", entity.resource_location().to_string());
-    nbt.put_int("x", pos.0.x);
-    nbt.put_int("y", pos.0.y);
-    nbt.put_int("z", pos.0.z);
-    let Some(loaded) = block_entity_from_nbt(&nbt) else {
+    let Some(loaded) = reload_block_entity(entity.as_ref(), tag) else {
         return false;
     };
     let mut after = NbtCompound::new();
@@ -102,11 +97,7 @@ pub fn load_block_entity_data(world: &Arc<World>, pos: &BlockPos, tag: &NbtCompo
         return false;
     }
     world.add_block_entity(loaded);
-    // Vanilla `BlockEntity.setChanged`.
-    let block = world.get_block(pos);
-    if !block.is_air() {
-        world.update_neighbour_for_output_signal(pos, block);
-    }
+    world.block_entity_set_changed(pos);
     true
 }
 
