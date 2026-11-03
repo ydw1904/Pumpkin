@@ -223,18 +223,19 @@ impl ScreenHandler for GenericContainerScreenHandler {
         if slot.has_stack() {
             let mut slot_stack = slot.get_stack();
             stack_left = slot_stack.clone();
+            let container_slots = i32::from(self.rows * self.columns);
 
-            if slot_index < i32::from(self.rows * 9) {
+            if slot_index < container_slots {
                 // Move from inventory to player area (end)
                 if !self.insert_item(
                     &mut slot_stack,
-                    (self.rows * 9).into(),
+                    container_slots,
                     self.get_behaviour().slots.len() as i32,
                     true,
                 ) {
                     return ItemStack::EMPTY.clone();
                 }
-            } else if !self.insert_item(&mut slot_stack, 0, (self.rows * 9).into(), false) {
+            } else if !self.insert_item(&mut slot_stack, 0, container_slots, false) {
                 // Move from player area to inventory (start)
                 return ItemStack::EMPTY.clone();
             }
