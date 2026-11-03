@@ -629,21 +629,23 @@ pub fn spawn_mobs_for_chunk_generation(
                     let check_pos = BlockPos::new(fx.floor() as i32, pos.0.y, fz.floor() as i32);
 
                     let level = GenerationSpawnLevel(cache);
-                    if level.is_space_empty(&entity_type.get_spawn_bounding_box(
+                    if !level.is_space_empty(&entity_type.get_spawn_bounding_box(
                         fx,
                         f64::from(pos.0.y),
                         fz,
-                    )) && check_creature_spawn_rules(entity_type, &level, &check_pos)
+                    )) || !check_creature_spawn_rules(entity_type, &level, &check_pos)
                         .unwrap_or_else(|| check_spawn_rules(entity_type, world, &check_pos, false))
                     {
-                        let entity = from_type(entity_type, spawn_pos_f64, world, Uuid::new_v4());
-                        entity
-                            .get_entity()
-                            .set_rotation(game_random().random::<f32>() * 360.0, 0.0);
-                        group_data = finalize_spawn(&entity, world, group_data);
-                        world.spawn_entity_non_save(entity);
-                        success = true;
+                        // Vanilla `continue`s here, so the next attempt retries the same column.
+                        continue;
                     }
+                    let entity = from_type(entity_type, spawn_pos_f64, world, Uuid::new_v4());
+                    entity
+                        .get_entity()
+                        .set_rotation(game_random().random::<f32>() * 360.0, 0.0);
+                    group_data = finalize_spawn(&entity, world, group_data);
+                    world.spawn_entity_non_save(entity);
+                    success = true;
                 }
 
                 x += game_random().random_range(0..5) - game_random().random_range(0..5);
