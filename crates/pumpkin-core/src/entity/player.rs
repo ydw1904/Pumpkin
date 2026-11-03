@@ -545,6 +545,8 @@ pub struct Player {
     pub last_attacked_ticks: AtomicU32,
     /// Vanilla `Player.lastItemInMainHand`, compared every tick to catch held item changes.
     last_item_in_main_hand: std::sync::Mutex<ItemStack>,
+    /// The worn and off hand stacks whose attribute modifiers are applied, by slot.
+    last_equipment: std::sync::Mutex<HashMap<EquipmentSlot, ItemStack>>,
     /// The player's last known experience level.
     pub last_sent_xp: AtomicI32,
     pub last_sent_health: AtomicCell<f32>,
@@ -884,6 +886,7 @@ impl Player {
             ping: AtomicU32::new(0),
             last_attacked_ticks: AtomicU32::new(0),
             last_item_in_main_hand: std::sync::Mutex::new(ItemStack::EMPTY.clone()),
+            last_equipment: std::sync::Mutex::new(HashMap::new()),
             client_loaded: AtomicBool::new(initially_loaded),
             bedrock_spawned: AtomicBool::new(false),
             client_loaded_timeout: AtomicU32::new(if initially_loaded { 0 } else { 60 }),
@@ -1735,6 +1738,36 @@ impl Player {
                 held.clone(),
             )]);
         *last = held;
+    }
+
+    /// The rest of vanilla `LivingEntity.detectEquipmentUpdates`: armor and the off hand, which
+    /// `/clear` and similar paths change without `send_equipment_changes`.
+    fn detect_equipment_changes(&self) {
+        let mut changed = Vec::new();
+        {
+            let equipment = self
+                .living_entity
+                .entity_equipment
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut last = self
+                .last_equipment
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            for (slot, stack) in &equipment.equipment {
+                if *slot == EquipmentSlot::MAIN_HAND
+                    || last.get(slot).is_some_and(|last| last.are_equal(stack))
+                {
+                    continue;
+                }
+                last.insert(slot.clone(), stack.clone());
+                changed.push((slot.clone(), stack.clone()));
+            }
+        }
+        if !changed.is_empty() {
+            self.living_entity
+                .apply_and_send_equipment_attribute_modifiers(&changed);
+        }
     }
 
     /// Vanilla `Player.canCriticalAttack`.
@@ -3444,6 +3477,7 @@ impl Player {
         }
         self.last_attacked_ticks.fetch_add(1, Ordering::Relaxed);
         self.detect_main_hand_change();
+        self.detect_equipment_changes();
 
         self.living_entity.tick(self, server);
 
