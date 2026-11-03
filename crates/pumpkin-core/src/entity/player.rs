@@ -754,6 +754,8 @@ pub struct Player {
     pub client_loaded_timeout: AtomicU32,
     /// Counter for tracking chat and command spam. Decays each server tick.
     pub chat_spam_tick_count: AtomicU32,
+    /// Vanilla `dropSpamThrottler`: limits drops from the creative inventory. Decays each tick.
+    pub creative_drop_spam_count: AtomicU32,
     /// Item usage tracking for bows, crossbows, etc.
     pub using_item: AtomicBool,
     pub item_use_start_time: AtomicI32,
@@ -1088,6 +1090,7 @@ impl Player {
             bedrock_spawned: AtomicBool::new(false),
             client_loaded_timeout: AtomicU32::new(if initially_loaded { 0 } else { 60 }),
             chat_spam_tick_count: AtomicU32::new(0),
+            creative_drop_spam_count: AtomicU32::new(0),
             // Item usage tracking
             using_item: AtomicBool::new(false),
             item_use_start_time: AtomicI32::new(0),
@@ -3741,6 +3744,12 @@ impl Player {
         self.tick_criteria_scores();
         self.tick_raid_omen();
         self.tick_maps(server);
+
+        let _ = self.creative_drop_spam_count.fetch_update(
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+            |count| Some(count.saturating_sub(1)),
+        );
 
         // Anti-spam counter decay
         let anti_spam = &server.advanced_config.chat.anti_spam;

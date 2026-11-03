@@ -1,14 +1,20 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
+/// Vanilla `dropSpamThrottler`: every creative drop adds this much to a count that falls by one a
+/// tick, and drops stop while the count is at the threshold.
+const CREATIVE_DROP_SPAM_STEP: u32 = 20;
+const CREATIVE_DROP_SPAM_THRESHOLD: u32 = 1480;
+
 impl JavaClient {
     pub fn handle_set_creative_slot(
         &self,
         player: &Arc<Player>,
         packet: SSetCreativeSlot,
     ) -> Result<(), InventoryError> {
+        // Vanilla ignores the packet from players without infinite materials.
         if player.gamemode.load() != GameMode::Creative {
-            return Err(InventoryError::PermissionError);
+            return Ok(());
         }
         let is_negative = packet.slot < 0;
         let valid_slot = packet.slot >= 1 && packet.slot as usize <= 45;
@@ -75,8 +81,21 @@ impl JavaClient {
             player_screen_handler.send_content_updates();
             drop(player_screen_handler);
         } else if is_negative && is_legal {
-            // Item drop
-            player.drop_item(item_stack);
+            if player.creative_drop_spam_count.load(Ordering::Relaxed)
+                < CREATIVE_DROP_SPAM_THRESHOLD
+            {
+                player
+                    .creative_drop_spam_count
+                    .fetch_add(CREATIVE_DROP_SPAM_STEP, Ordering::Relaxed);
+                if !item_stack.is_empty() {
+                    player.drop_item(item_stack);
+                }
+            } else {
+                tracing::warn!(
+                    "Player {} was dropping items too fast in creative mode, ignoring.",
+                    player.gameprofile.name
+                );
+            }
         }
         Ok(())
     }
