@@ -2237,7 +2237,7 @@ impl World {
             // Auto-save logic
             if level_time.world_age % 100 == 0 {
                 self.level.should_unload.store(true, Relaxed);
-                let cleaned_chunks = self.level.clean_memory();
+                let cleaned_chunks = self.clean_memory();
                 if !cleaned_chunks.is_empty() {
                     let world_clone = self.clone();
                     if let Some(server) = self.server.upgrade() {
@@ -5864,6 +5864,23 @@ impl World {
         }
     }
 
+    /// [`Level::clean_memory`] plus the chunks of live entities that nothing uses any more.
+    ///
+    /// An entity can walk into a chunk whose entities were never loaded, so no entity chunk
+    /// there would ever unload it. Vanilla gives it a section in that chunk, which is saved and
+    /// unloaded with the chunk's other sections once the chunk is hidden.
+    pub fn clean_memory(&self) -> Vec<Vector2<i32>> {
+        let mut chunks = self.level.clean_memory();
+        let mut known: FxHashSet<_> = chunks.iter().copied().collect();
+        for entity in self.entities.load().iter() {
+            let pos = saved_chunk_pos(entity.as_ref());
+            if !self.level.is_entity_chunk_in_use(&pos) && known.insert(pos) {
+                chunks.push(pos);
+            }
+        }
+        chunks
+    }
+
     pub async fn remove_entities_in_chunks(
         &self,
         chunks: impl IntoIterator<Item = impl std::borrow::Borrow<Vector2<i32>>>,
@@ -9150,7 +9167,7 @@ mod tests {
 
         // The autosave loads the entity chunk; the next memory cleanup used to unload it.
         world.autosave_entities().await;
-        let cleaned = world.level.clean_memory();
+        let cleaned = world.clean_memory();
         world.remove_entities_in_chunks(&cleaned).await;
         world.level.clean_entity_chunks(&cleaned);
 
@@ -9158,6 +9175,54 @@ mod tests {
         let alive = !cow.get_entity().is_removed() && world.get_entity_by_id(cow_id).is_some();
         world.level.shutdown().await;
         assert!(alive);
+        Ok(())
+    }
+
+    // An entity that walked into a chunk whose entities were never loaded must still unload
+    // once nothing uses that chunk.
+    #[tokio::test]
+    async fn memory_cleanup_unloads_entities_of_chunks_without_entity_chunk()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use crate::entity::{
+            Entity, EntityBase, RemovalReason, ai::test_support::world, passive::cow::CowEntity,
+        };
+        use pumpkin_data::entity::EntityType;
+        use pumpkin_util::math::{vector2::Vector2, vector3::Vector3};
+        use std::sync::Arc;
+
+        let folder = tempfile::tempdir()?;
+        let world = world(&folder);
+        let cow = CowEntity::new(Entity::new(
+            world.clone(),
+            Vector3::new(40.5, 64.0, 40.5),
+            &EntityType::COW,
+        ));
+        world.entities.store(Arc::new(vec![cow.clone()]));
+
+        let cleaned = world.clean_memory();
+        world.remove_entities_in_chunks(&cleaned).await;
+        let saved = world
+            .level
+            .get_entity_chunk_sync(&Vector2::new(2, 2))
+            .map(|chunk| {
+                chunk
+                    .data
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .len()
+            });
+        world.level.clean_entity_chunks(&cleaned);
+        let unloaded = world
+            .level
+            .get_entity_chunk_sync(&Vector2::new(2, 2))
+            .is_none();
+
+        let removal = cow.get_entity().removal_reason.load();
+        world.level.shutdown().await;
+        assert!(unloaded);
+        assert_eq!(saved, Some(1));
+        assert!(removal == Some(RemovalReason::UnloadedToChunk));
+        assert!(world.get_entity_by_id(cow.get_entity().entity_id).is_none());
         Ok(())
     }
 
