@@ -7,6 +7,7 @@ use crate::entity::mob::{Mob, MobEntity};
 use crate::world::World;
 use pumpkin_data::BlockState;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::Sound;
 use pumpkin_data::world::WorldEvent;
 use pumpkin_nbt::compound::NbtCompound;
@@ -39,6 +40,18 @@ impl ZombieEntity {
 }
 
 impl Mob for ZombieEntity {
+    fn xp_reward(&self) -> u32 {
+        self.entity.xp_reward()
+    }
+
+    fn can_hold_item(&self, stack: &ItemStack) -> bool {
+        self.entity.can_hold_item(stack)
+    }
+
+    fn wants_to_pick_up(&self, stack: &ItemStack) -> bool {
+        super::wants_to_pick_up(self, stack)
+    }
+
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
         self.play_entity_sound(Sound::EntityZombieStep, 0.15, 1.0);
     }
@@ -50,6 +63,7 @@ impl Mob for ZombieEntity {
     fn finalize_spawn(
         &self,
         world: &Arc<World>,
+        _reason: crate::entity::mob::spawn::EntitySpawnReason,
         group_data: Option<SpawnGroupData>,
     ) -> Option<SpawnGroupData> {
         self.entity.finalize_zombie_spawn(self, world, group_data)
@@ -83,10 +97,6 @@ impl Mob for ZombieEntity {
 
     fn killed_entity(&self, victim: &dyn EntityBase) -> bool {
         self.entity.killed_entity(victim)
-    }
-
-    fn get_base_experience_reward(&self) -> u32 {
-        self.entity.base_experience_reward()
     }
 
     fn post_tick(&self) {

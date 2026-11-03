@@ -238,6 +238,11 @@ impl WanderingTraderEntity {
         mob_arc
     }
 
+    #[must_use]
+    pub fn get_despawn_delay(&self) -> i32 {
+        self.despawn_delay.load(Ordering::Relaxed)
+    }
+
     pub fn set_despawn_delay(&self, delay: i32) {
         self.despawn_delay.store(delay, Ordering::Relaxed);
     }
@@ -604,10 +609,6 @@ impl AgeableMob for WanderingTraderEntity {
 impl Mob for WanderingTraderEntity {
     fn get_mob_entity(&self) -> &MobEntity {
         &self.mob_entity
-    }
-
-    fn get_despawn_delay(&self) -> Option<i32> {
-        Some(self.despawn_delay.load(Ordering::Relaxed))
     }
 
     fn remove_when_far_away(&self, _distance_sq: f64) -> bool {

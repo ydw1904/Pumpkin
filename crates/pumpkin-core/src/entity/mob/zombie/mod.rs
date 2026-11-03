@@ -28,6 +28,7 @@ use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::tag::Taggable;
 use pumpkin_data::tracked_data;
 use pumpkin_data::world::WorldEvent;
 use pumpkin_nbt::compound::NbtCompound;
@@ -291,7 +292,12 @@ impl ZombieEntityBase {
                 Uuid::new_v4(),
             );
             chicken.get_entity().set_rotation(entity.yaw.load(), 0.0);
-            finalize_spawn(&chicken, world, None);
+            finalize_spawn(
+                &chicken,
+                world,
+                crate::entity::mob::spawn::EntitySpawnReason::Jockey,
+                None,
+            );
             set_chicken_jockey(chicken.as_ref());
             self.mob_entity
                 .set_pending_vehicle(PendingVehicle::New(chicken));
@@ -346,22 +352,6 @@ impl ZombieEntityBase {
                 living.set_health(living.get_max_health());
             }
             self.set_can_break_doors(true, mob);
-        }
-    }
-
-    /// Vanilla `Zombie.getBaseExperienceReward`: babies give two and a half times as much.
-    #[must_use]
-    pub fn base_experience_reward(&self) -> u32 {
-        let reward = self
-            .mob_entity
-            .living_entity
-            .entity
-            .entity_type
-            .experience_reward;
-        if self.is_baby() {
-            (f64::from(reward) * 2.5) as u32
-        } else {
-            reward
         }
     }
 
@@ -483,7 +473,31 @@ fn zombie_base(entity: &dyn EntityBase) -> Option<(&dyn Mob, &ZombieEntityBase)>
         .map(|drowned| (drowned as &dyn Mob, drowned.base()))
 }
 
+impl ZombieEntityBase {
+    #[must_use]
+    pub fn can_hold_item(&self, stack: &ItemStack) -> bool {
+        !(stack.item.has_tag(&pumpkin_data::tag::Item::MINECRAFT_EGGS)
+            && self.is_baby()
+            && self.mob_entity.living_entity.entity.has_vehicle())
+    }
+}
+
+pub fn wants_to_pick_up<M: Mob + ?Sized>(mob: &M, stack: &ItemStack) -> bool {
+    stack.item.id != Item::GLOW_INK_SAC.id && mob.can_hold_item(stack)
+}
+
 impl Mob for ZombieEntityBase {
+    fn xp_reward(&self) -> u32 {
+        zombie_xp_reward(
+            self.mob_entity
+                .living_entity
+                .entity
+                .entity_type
+                .experience_reward,
+            self.is_baby(),
+        )
+    }
+
     fn mob_metadata(&self) -> Option<MobMetadata> {
         self.is_baby().then(|| MobMetadata::new().baby(true))
     }
@@ -495,10 +509,6 @@ impl Mob for ZombieEntityBase {
     fn spawn_as_baby(&self) -> bool {
         self.set_baby(true);
         true
-    }
-
-    fn get_base_experience_reward(&self) -> u32 {
-        self.base_experience_reward()
     }
 
     fn populate_default_equipment_slots(
@@ -580,5 +590,15 @@ impl Mob for ZombieEntityBase {
         self.set_baby(nbt.get_bool("IsBaby").unwrap_or(false));
         self.set_can_break_doors(nbt.get_bool("CanBreakDoors").unwrap_or(false), self);
         self.drowning_tracker.read_nbt(&self.mob_entity, nbt);
+    }
+}
+
+/// Baby zombies are worth two and a half times the experience.
+#[must_use]
+pub fn zombie_xp_reward(xp_reward: u32, is_baby: bool) -> u32 {
+    if is_baby {
+        (f64::from(xp_reward) * 2.5) as u32
+    } else {
+        xp_reward
     }
 }

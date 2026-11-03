@@ -3,6 +3,7 @@ use crate::entity::{
     mob::{Mob, MobEntity, skeleton::SkeletonEntityBase},
 };
 use pumpkin_data::BlockState;
+use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::Sound;
 use pumpkin_util::math::position::BlockPos;
 use std::sync::Arc;
@@ -23,9 +24,14 @@ impl Mob for BoggedSkeletonEntity {
     fn finalize_spawn(
         &self,
         _world: &std::sync::Arc<crate::world::World>,
+        _reason: crate::entity::mob::spawn::EntitySpawnReason,
         group_data: Option<crate::entity::mob::spawn::SpawnGroupData>,
     ) -> Option<crate::entity::mob::spawn::SpawnGroupData> {
         self.entity.finalize_skeleton_spawn(self, group_data)
+    }
+
+    fn wants_to_pick_up(&self, stack: &ItemStack) -> bool {
+        super::wants_to_pick_up(self, stack)
     }
 
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {

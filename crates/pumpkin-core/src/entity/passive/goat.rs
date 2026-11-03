@@ -33,7 +33,7 @@ use crate::world::World;
 const TEMPT_ITEMS: &[&Item] = &[&Item::WHEAT];
 const ADULT_ATTACK_DAMAGE: f64 = 2.0;
 const BABY_ATTACK_DAMAGE: f64 = 1.0;
-const GOAT_FALL_DAMAGE_REDUCTION: f32 = 10.0;
+const GOAT_FALL_DAMAGE_REDUCTION: i32 = 10;
 const GOAT_SCREAMING_CHANCE: f64 = 0.02;
 const UNIHORN_CHANCE: f32 = 0.1;
 
@@ -210,6 +210,7 @@ impl Mob for GoatEntity {
     fn finalize_spawn(
         &self,
         _world: &Arc<World>,
+        _reason: crate::entity::mob::spawn::EntitySpawnReason,
         group_data: Option<SpawnGroupData>,
     ) -> Option<SpawnGroupData> {
         let random = self.get_random();
@@ -225,8 +226,11 @@ impl Mob for GoatEntity {
         self.finalize_ageable_spawn(group_data)
     }
 
-    fn calculate_fall_damage(&self, damage: f32) -> f32 {
-        damage - GOAT_FALL_DAMAGE_REDUCTION
+    fn calculate_fall_damage(&self, fall_distance: f64, damage_modifier: f32) -> i32 {
+        self.mob_entity
+            .living_entity
+            .base_fall_damage(fall_distance, damage_modifier)
+            - GOAT_FALL_DAMAGE_REDUCTION
     }
 
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {

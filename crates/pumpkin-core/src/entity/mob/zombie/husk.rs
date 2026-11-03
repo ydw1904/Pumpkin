@@ -2,6 +2,7 @@ use pumpkin_data::BlockState;
 use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::potion::Effect;
 use pumpkin_data::sound::Sound;
 use pumpkin_data::world::WorldEvent;
@@ -44,6 +45,18 @@ impl HuskEntity {
 }
 
 impl Mob for HuskEntity {
+    fn xp_reward(&self) -> u32 {
+        self.entity.xp_reward()
+    }
+
+    fn can_hold_item(&self, stack: &ItemStack) -> bool {
+        self.entity.can_hold_item(stack)
+    }
+
+    fn wants_to_pick_up(&self, stack: &ItemStack) -> bool {
+        super::wants_to_pick_up(self, stack)
+    }
+
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
         self.play_entity_sound(Sound::EntityHuskStep, 0.15, 1.0);
     }
@@ -55,6 +68,7 @@ impl Mob for HuskEntity {
     fn finalize_spawn(
         &self,
         world: &Arc<World>,
+        _reason: crate::entity::mob::spawn::EntitySpawnReason,
         group_data: Option<SpawnGroupData>,
     ) -> Option<SpawnGroupData> {
         self.entity.finalize_zombie_spawn(self, world, group_data)
@@ -74,10 +88,6 @@ impl Mob for HuskEntity {
 
     fn killed_entity(&self, victim: &dyn EntityBase) -> bool {
         self.entity.killed_entity(victim)
-    }
-
-    fn get_base_experience_reward(&self) -> u32 {
-        self.entity.base_experience_reward()
     }
 
     // Vanilla `Husk.doHurtTarget`: an empty-handed hit makes the target hungry.

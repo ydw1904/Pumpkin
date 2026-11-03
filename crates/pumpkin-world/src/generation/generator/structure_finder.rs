@@ -130,6 +130,35 @@ pub fn find_nearest_structure_start(
     })
 }
 
+/// Vanilla `ChunkGenerator.findNearestMapStructure` over several random-spread sets: each ring
+/// asks every set for its first start and keeps the nearest before moving outward.
+#[must_use]
+pub fn find_nearest_structure_start_in_sets(
+    origin: BlockPos,
+    searches: &[(&StructureSet, &[pumpkin_data::structures::StructureKeys])],
+    max_search_radius: i32,
+    generator: &WorldGenerator,
+) -> Option<(BlockPos, pumpkin_data::structures::StructureKeys)> {
+    (0..=max_search_radius).find_map(|radius| {
+        searches
+            .iter()
+            .filter_map(|&(structure_set, target_structures)| {
+                find_structure_start_in_ring(
+                    origin,
+                    structure_set,
+                    target_structures,
+                    radius,
+                    generator,
+                )
+            })
+            .min_by_key(|(pos, _)| {
+                let dx = i64::from(pos.0.x - origin.0.x);
+                let dz = i64::from(pos.0.z - origin.0.z);
+                dx * dx + dz * dz
+            })
+    })
+}
+
 /// One ring of vanilla `ChunkGenerator.getNearestGeneratedStructure` for a random-spread set.
 ///
 /// Returns the first candidate in vanilla's scan order whose chunk really starts one of

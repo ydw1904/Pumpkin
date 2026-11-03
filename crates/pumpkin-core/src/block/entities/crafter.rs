@@ -150,6 +150,28 @@ impl BlockEntity for CrafterBlockEntity {
         self.dirty.store(false, Ordering::Relaxed);
     }
 
+    fn bedrock_block_actor_data(
+        &self,
+        _state_id: pumpkin_data::BlockStateId,
+    ) -> Option<NbtCompound> {
+        let disabled = self.disabled_slots.try_read().ok()?;
+        let mut mask = 0u16;
+        for (i, &is_disabled) in disabled.iter().enumerate() {
+            if is_disabled {
+                mask |= 1 << i;
+            }
+        }
+        Some(
+            super::bedrock::BedrockBlockActorBuilder::new("Crafter", self.position)
+                .put_short("disabled_slots", mask as i16)
+                .put_int(
+                    "crafting_ticks_remaining",
+                    self.crafting_ticks_remaining.load(Ordering::Relaxed),
+                )
+                .finish(),
+        )
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }

@@ -131,7 +131,12 @@ impl CatSpawner {
     fn spawn_cat(world: &Arc<World>, spawn_pos: BlockPos, make_persistent: bool) {
         // Vanilla finalizes the new cat before `snapTo`, so its variant is picked at the origin.
         let cat = from_type(&EntityType::CAT, Vector3::default(), world, Uuid::new_v4());
-        finalize_spawn(&cat, world, None);
+        finalize_spawn(
+            &cat,
+            world,
+            crate::entity::mob::spawn::EntitySpawnReason::Natural,
+            None,
+        );
         if make_persistent && let Some(mob) = cat.get_mob() {
             mob.get_mob_entity()
                 .persistence_required

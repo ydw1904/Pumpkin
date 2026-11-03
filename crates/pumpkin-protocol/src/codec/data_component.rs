@@ -12,6 +12,8 @@ use pumpkin_data::data_component_impl::*;
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::sound::Sound;
+use pumpkin_data::trim_material::TrimMaterial;
+use pumpkin_data::trim_pattern::TrimPattern;
 use pumpkin_nbt::{serializer::NbtWriteHelperJava, tag::NbtTag};
 use pumpkin_util::version::JavaMinecraftVersion;
 
@@ -2623,32 +2625,42 @@ impl DataComponentCodec<Self> for WrittenBookContentImpl {
     }
 }
 
-// Vanilla `ArmorTrim.STREAM_CODEC`: two registry holders, each sent as its id + 1 (0 would
-// announce an inline definition, which the client then tries to read).
+fn read_holder_reference<T: Copy>(
+    seq: &mut impl NetworkReadExt,
+    entries: &[T],
+    kind: &str,
+) -> Result<T, ReadingError> {
+    // Not IdOr::read: it truncates to u16, so out-of-range ids would alias valid entries.
+    let id = seq.get_var_int()?.0;
+    if id == 0 {
+        return Err(ReadingError::Message(format!(
+            "Inline {kind} is not supported"
+        )));
+    }
+    usize::try_from(id)
+        .ok()
+        .and_then(|id| entries.get(id - 1))
+        .copied()
+        .ok_or_else(|| ReadingError::Message(format!("Unknown {kind} reference {id}")))
+}
+
 impl DataComponentCodec<Self> for TrimImpl {
+    // ArmorTrim.STREAM_CODEC: two ByteBufCodecs.holder values, written as registry id + 1.
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
-        let material = self
-            .material_enum()
-            .ok_or_else(|| WritingError::Message("trim has an unknown material".into()))?;
-        let pattern = self
-            .pattern_enum()
-            .ok_or_else(|| WritingError::Message("trim has an unknown pattern".into()))?;
+        let material = self.material_enum().ok_or_else(|| {
+            WritingError::Message(format!("Unknown trim material {:?}", self.material))
+        })?;
+        let pattern = self.pattern_enum().ok_or_else(|| {
+            WritingError::Message(format!("Unknown trim pattern {:?}", self.pattern))
+        })?;
         seq.write_var_int(&VarInt(material.id() as i32 + 1))?;
         seq.write_var_int(&VarInt(pattern.id() as i32 + 1))
     }
 
     fn deserialize(seq: &mut impl NetworkReadExt) -> Result<Self, ReadingError> {
-        let material_id = seq.get_var_int()?.0;
-        let material = usize::try_from(material_id - 1)
-            .ok()
-            .and_then(|idx| pumpkin_data::trim_material::TrimMaterial::all().get(idx))
-            .ok_or_else(|| ReadingError::Message(format!("Unknown trim material {material_id}")))?;
-        let pattern_id = seq.get_var_int()?.0;
-        let pattern = usize::try_from(pattern_id - 1)
-            .ok()
-            .and_then(|idx| pumpkin_data::trim_pattern::TrimPattern::all().get(idx))
-            .ok_or_else(|| ReadingError::Message(format!("Unknown trim pattern {pattern_id}")))?;
-        Ok(Self::new(*material, *pattern))
+        let material = read_holder_reference(seq, TrimMaterial::all(), "trim material")?;
+        let pattern = read_holder_reference(seq, TrimPattern::all(), "trim pattern")?;
+        Ok(Self::new(material, pattern))
     }
 }
 
@@ -3874,5 +3886,19 @@ mod tests {
             CanBreakImpl::deserialize(&mut encoded.as_slice()),
             Err(ReadingError::TooLarge(_))
         ));
+    }
+
+    #[test]
+    fn trim_rejects_out_of_range_material_references() {
+        let past_end = TrimMaterial::all().len() as i32 + 1;
+        for material in [0, past_end, 65537, -65535, i32::MIN] {
+            let mut encoded = Vec::new();
+            encoded.write_var_int(&VarInt(material)).unwrap();
+            encoded.write_var_int(&VarInt(1)).unwrap();
+            assert!(
+                TrimImpl::deserialize(&mut encoded.as_slice()).is_err(),
+                "material reference {material} was accepted"
+            );
+        }
     }
 }

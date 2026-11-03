@@ -490,7 +490,12 @@ impl Raid {
             f64::from(pos.0.y) + 1.0,
             f64::from(pos.0.z) + 0.5,
         ));
-        finalize_spawn(raider_base, world, None);
+        finalize_spawn(
+            raider_base,
+            world,
+            crate::entity::mob::spawn::EntitySpawnReason::Event,
+            None,
+        );
         raider.apply_raid_buffs(wave, false);
         entity
             .on_ground

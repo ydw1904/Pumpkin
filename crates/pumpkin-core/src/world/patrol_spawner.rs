@@ -108,7 +108,12 @@ impl PatrolSpawner {
             let z = -500 + random.random_range(0..1000);
             patroller.set_patrol_target(BlockPos::new(x, 0, z));
         }
-        finalize_spawn(&pillager, world, None);
+        finalize_spawn(
+            &pillager,
+            world,
+            crate::entity::mob::spawn::EntitySpawnReason::Patrol,
+            None,
+        );
         patroller.finalize_patrol_spawn(true);
         world.spawn_entity(pillager as Arc<dyn EntityBase>);
         true

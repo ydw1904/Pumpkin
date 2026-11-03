@@ -46,22 +46,20 @@ impl JavaClient {
             }
             Action::LeaveBed => player.wake_up(),
 
-            Action::OpenVehicleInventory => {
-                let vehicle = player
-                    .living_entity
-                    .entity
-                    .vehicle
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .clone();
-                if let Some(vehicle) = vehicle
-                    && let Some(boat) = vehicle.cast_any().downcast_ref::<BoatEntity>()
-                {
-                    boat.open_inventory(player);
-                }
-            }
             Action::StartHorseJump | Action::StopHorseJump => {
                 debug!("todo");
+            }
+            // Vanilla opens any vehicle that is a `HasCustomInventoryScreen`.
+            Action::OpenVehicleInventory => {
+                let vehicle = player.get_entity().get_vehicle();
+                if let Some(boat) = vehicle
+                    .as_ref()
+                    .and_then(|vehicle| vehicle.cast_any().downcast_ref::<BoatEntity>())
+                {
+                    boat.open_inventory(player);
+                } else {
+                    player.open_vehicle_inventory();
+                }
             }
             Action::StartFlyingElytra => {
                 player.try_start_fall_flying(server);

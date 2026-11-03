@@ -16,7 +16,7 @@ use pumpkin_world::world_info::data_files::{
 use tracing::error;
 
 use crate::entity::mob::Mob;
-use crate::entity::mob::spawn::finalize_spawn;
+use crate::entity::mob::spawn::{EntitySpawnReason, finalize_spawn};
 use crate::entity::passive::trader_llama::TraderLlamaEntity;
 use crate::entity::passive::wandering_trader::WanderingTraderEntity;
 use crate::entity::{Entity, EntityBase};
@@ -167,7 +167,12 @@ impl WanderingTraderSpawner {
         trader
             .get_entity()
             .set_rotation(wrap_degrees(game_random().random::<f32>() * 360.0), 0.0);
-        finalize_spawn(&(trader.clone() as Arc<dyn EntityBase>), world, None);
+        finalize_spawn(
+            &(trader.clone() as Arc<dyn EntityBase>),
+            world,
+            EntitySpawnReason::Event,
+            None,
+        );
         if !world.spawn_entity(trader.clone() as Arc<dyn EntityBase>) {
             return false;
         }
@@ -203,7 +208,12 @@ impl WanderingTraderSpawner {
         llama
             .get_entity()
             .set_rotation(wrap_degrees(game_random().random::<f32>() * 360.0), 0.0);
-        finalize_spawn(&(llama.clone() as Arc<dyn EntityBase>), world, None);
+        finalize_spawn(
+            &(llama.clone() as Arc<dyn EntityBase>),
+            world,
+            EntitySpawnReason::Event,
+            None,
+        );
         if world.spawn_entity(llama.clone() as Arc<dyn EntityBase>) {
             llama
                 .get_entity()

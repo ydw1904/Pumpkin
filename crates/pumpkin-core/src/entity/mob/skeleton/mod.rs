@@ -1,3 +1,4 @@
+use pumpkin_data::tag::Taggable;
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::{Arc, Weak};
 
@@ -102,6 +103,13 @@ impl SkeletonEntityBase {
 
         mob_arc
     }
+}
+
+pub fn wants_to_pick_up<M: Mob + ?Sized>(mob: &M, stack: &ItemStack) -> bool {
+    !stack
+        .item
+        .has_tag(&pumpkin_data::tag::Item::MINECRAFT_SPEARS)
+        && mob.can_hold_item(stack)
 }
 
 impl Mob for SkeletonEntityBase {

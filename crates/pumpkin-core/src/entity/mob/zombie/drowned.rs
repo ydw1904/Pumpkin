@@ -6,6 +6,7 @@ use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::Sound;
 use pumpkin_data::tag;
+use pumpkin_data::tag::Taggable;
 use pumpkin_data::{Block, BlockDirection};
 use pumpkin_util::Hand;
 use pumpkin_util::math::position::BlockPos;
@@ -231,6 +232,21 @@ impl Mob for DrownedEntity {
         crate::entity::mob::is_unobstructed(self, level)
     }
 
+    fn xp_reward(&self) -> u32 {
+        self.entity.xp_reward()
+    }
+
+    fn can_hold_item(&self, stack: &ItemStack) -> bool {
+        self.entity.can_hold_item(stack)
+    }
+
+    fn wants_to_pick_up(&self, stack: &ItemStack) -> bool {
+        !stack
+            .item
+            .has_tag(&pumpkin_data::tag::Item::MINECRAFT_SPEARS)
+            && super::wants_to_pick_up(self, stack)
+    }
+
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
         self.play_entity_sound(Sound::EntityDrownedStep, 0.15, 1.0);
     }
@@ -246,6 +262,7 @@ impl Mob for DrownedEntity {
     fn finalize_spawn(
         &self,
         world: &Arc<World>,
+        _reason: crate::entity::mob::spawn::EntitySpawnReason,
         group_data: Option<SpawnGroupData>,
     ) -> Option<SpawnGroupData> {
         let group_data = self.entity.finalize_zombie_spawn(self, world, group_data);
@@ -323,10 +340,6 @@ impl Mob for DrownedEntity {
 
     fn killed_entity(&self, victim: &dyn EntityBase) -> bool {
         self.entity.killed_entity(victim)
-    }
-
-    fn get_base_experience_reward(&self) -> u32 {
-        self.entity.base_experience_reward()
     }
 }
 
