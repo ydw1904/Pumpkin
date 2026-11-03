@@ -27,7 +27,8 @@ use pumpkin_nbt::{NbtCompound, nbt_compress::read_gzip_compound_tag};
 use pumpkin_protocol::codec::recipe::DynamicRecipe;
 use pumpkin_util::loot_table::DynamicLootTable;
 
-use crate::command::context::command_source::{CommandSource, Frame, ResultValueTaker};
+use crate::command::context::command_source::{CommandSource, ResultValueTaker};
+use crate::command::execution::{Action, Entry, ExecutionContext};
 use crate::server::Server;
 use crate::server::recipe::RecipeManager;
 use crate::world::loot::LootTableHandle;
@@ -1036,8 +1037,8 @@ impl DatapackManager {
     }
 
     /// Runs a function or every function in a `#tag` from the game loop (vanilla
-    /// `ServerFunctionManager.execute`), each in its own frame and with output suppressed.
-    /// Returns how many commands ran.
+    /// `ServerFunctionManager.execute`), each in its own command queue and with output
+    /// suppressed. Returns how much of the command limit they used.
     pub fn execute_function(
         &self,
         server: &Arc<Server>,
@@ -1050,14 +1051,24 @@ impl DatapackManager {
             .with_command_result_taker(ResultValueTaker::new());
         let mut executed = 0;
         for (id, lines) in self.resolve_functions(name)? {
-            match function_loader::instantiate_function(&id, &lines, None) {
-                Ok(lines) => {
-                    executed += run_function_lines(server, &source, &lines, Frame::default());
-                }
+            let lines = match function_loader::instantiate_function(&id, &lines, None) {
+                Ok(lines) => lines,
                 Err(reason) => {
                     warn!("Failed to run function {id}: {}", reason.get_text());
+                    continue;
                 }
-            }
+            };
+            executed += ExecutionContext::execute_in_context(server, |context| {
+                context.queue_next(Entry {
+                    frame: context.top_frame(ResultValueTaker::new()),
+                    action: Action::CallFunction {
+                        source: Box::new(source.clone()),
+                        lines,
+                        callback: ResultValueTaker::new(),
+                        return_parent: false,
+                    },
+                });
+            });
         }
         Ok(executed)
     }
@@ -1434,32 +1445,6 @@ impl DatapackManager {
             .datapack_manager
             .execute_function(server, &source, name)
     }
-}
-
-/// Vanilla `CallFunction`: runs an instantiated function's commands in `frame`.
-///
-/// It stops once the frame is discarded (a `return`). Each command runs as a top-level command
-/// of `source`. Returns how many commands ran.
-pub fn run_function_lines(
-    server: &Arc<Server>,
-    source: &CommandSource,
-    lines: &[String],
-    frame: Frame,
-) -> usize {
-    let mut line_source = source.clone();
-    line_source.returning = false;
-    line_source.frame = frame;
-    let discards = line_source.frame.discards();
-    let dispatcher = server.command_dispatcher.load();
-    let mut executed = 0;
-    for line in lines {
-        dispatcher.handle_command(&line_source, line);
-        executed += 1;
-        if line_source.frame.discards() != discards {
-            break;
-        }
-    }
-    executed
 }
 
 fn parse_structure_resource_location(resource_location: &str) -> Result<(&str, &str), String> {

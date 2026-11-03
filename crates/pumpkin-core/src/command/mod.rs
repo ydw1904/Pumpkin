@@ -30,6 +30,7 @@ pub mod argument_types;
 pub mod client_suggestions;
 pub mod commands;
 pub mod context;
+pub mod execution;
 pub mod node;
 
 pub mod dispatcher {

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 
 use pumpkin_data::translation;
 use pumpkin_nbt::compound::NbtCompound;
@@ -173,9 +174,9 @@ fn stringify_macro_argument(tag: &NbtTag) -> String {
 /// Plain functions ignore `arguments`.
 pub fn instantiate_function(
     id: &str,
-    lines: &[String],
+    lines: &Arc<[String]>,
     arguments: Option<&NbtCompound>,
-) -> Result<Vec<String>, TextComponent> {
+) -> Result<Arc<[String]>, TextComponent> {
     let templates: Vec<Option<MacroTemplate>> = lines
         .iter()
         .map(|line| {
@@ -184,7 +185,7 @@ pub fn instantiate_function(
         })
         .collect();
     if templates.iter().all(Option::is_none) {
-        return Ok(lines.to_vec());
+        return Ok(lines.clone());
     }
     let Some(arguments) = arguments else {
         return Err(TextComponent::translate_cross(
@@ -279,6 +280,7 @@ mod tests {
     use super::{function_lines, instantiate_function};
     use pumpkin_nbt::compound::NbtCompound;
     use pumpkin_nbt::tag::NbtTag;
+    use std::sync::Arc;
 
     #[test]
     fn parse_mcfunction_content() {
@@ -299,6 +301,7 @@ mod tests {
     fn continues_lines_and_fills_in_macros() {
         let lines = function_lines("say a \\\n  b\n$say $(x) and $(y)!\n").expect("valid function");
         assert_eq!(lines, ["say a b", "$say $(x) and $(y)!"]);
+        let lines: Arc<[String]> = lines.into();
         assert!(function_lines("$say no variables").is_err());
         assert!(function_lines("say end \\").is_err());
 
@@ -306,7 +309,7 @@ mod tests {
         arguments.put("x", NbtTag::Float(0.5));
         arguments.put("y", NbtTag::String("hi".into()));
         assert_eq!(
-            instantiate_function("t:f", &lines, Some(&arguments)).expect("arguments given"),
+            *instantiate_function("t:f", &lines, Some(&arguments)).expect("arguments given"),
             ["say a b", "say .5 and hi!"]
         );
         assert!(instantiate_function("t:f", &lines, None).is_err());

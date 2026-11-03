@@ -1,6 +1,7 @@
 mod block_tuning_and_invert;
 mod commands_and_gamemode;
 mod embedded_stop;
+mod function_limit;
 mod login_and_movement;
 mod loot_tables;
 mod player_actions;
@@ -38,6 +39,8 @@ pub async fn run_bot_tests(
     world_interaction::run_world_interaction_tests(server, &mut bot1, summary_lines).await?;
 
     sheep_shearing::run_sheep_shearing_test(server, summary_lines)?;
+
+    function_limit::run_function_limit_test(server, summary_lines)?;
 
     polar_bear::run_polar_bear_defense_test(server, &bot1, summary_lines)?;
 

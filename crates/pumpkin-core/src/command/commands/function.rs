@@ -19,12 +19,13 @@ use crate::command::context::command_source::{
 };
 use crate::command::errors::command_syntax_error::CommandSyntaxError;
 use crate::command::errors::error_types::CommandErrorType;
+use crate::command::execution::{Action, Entry, ExecutionContext};
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
 use crate::command::suggestion::provider::{SuggestionProvider, SuggestionProviderResult};
 use crate::command::suggestion::suggestions::SuggestionsBuilder;
+use crate::data::datapack::FunctionBody;
 use crate::data::datapack::function_loader::instantiate_function;
-use crate::data::datapack::{FunctionBody, run_function_lines};
 use crate::server::Server;
 
 const DESCRIPTION: &str = "Runs commands found in the corresponding function files.";
@@ -68,7 +69,7 @@ impl SuggestionProvider for FunctionSuggestionProvider {
 }
 
 /// A function ready to run: its id and commands, with macro arguments filled in.
-pub type InstantiatedFunction = (String, Vec<String>);
+pub type InstantiatedFunction = (String, Arc<[String]>);
 
 /// Vanilla `FunctionArgument.getFunctions`: the functions a name or `#tag` stands for.
 pub fn get_functions(server: &Server, name: &str) -> Result<Vec<FunctionBody>, CommandSyntaxError> {
@@ -108,11 +109,23 @@ pub fn function_source(sender: &CommandSource) -> CommandSource {
 }
 
 /// The sender's own result callback (vanilla `CommandSourceStack.callback`).
-fn sender_callback(sender: &Arc<CommandSource>) -> ResultValueTaker {
-    let sender = sender.clone();
+fn sender_callback(sender: &CommandSource) -> ResultValueTaker {
+    // Like vanilla's `EMPTY`, so recursive calls don't build up a chain of callbacks.
+    if !has_callback(sender) {
+        return ResultValueTaker::new();
+    }
+    // Only the callbacks are needed; keeping the frame would keep every caller's frame alive.
+    let mut sender = sender.clone();
+    sender.frame = Frame::default();
     ResultValueTaker(vec![Arc::new(move |result: ReturnValue| {
-        pumpkin_command::source::CommandSource::call_result(sender.as_ref(), result);
+        pumpkin_command::source::CommandSource::call_result(&sender, result);
     })])
+}
+
+/// Whether the sender has a result callback (vanilla `callback() != CommandResultCallback.EMPTY`).
+fn has_callback(sender: &CommandSource) -> bool {
+    !sender.command_result_taker.0.is_empty()
+        || matches!(sender.output, CommandSender::CommandBlock(..))
 }
 
 /// Vanilla `FunctionCommand.decorateOutputIfNeeded`: a sender that isn't silent is told what
@@ -143,63 +156,78 @@ fn decorate_output(
     ResultValueTaker::merge(&ResultValueTaker(vec![signal]), &callback)
 }
 
-/// Vanilla `FunctionCommand.queueFunctions`.
+/// Vanilla `FunctionCommand.queueFunctions`: the functions run from the command queue once the
+/// running command is done.
 fn queue_functions(
-    server: &Arc<Server>,
+    server: &Server,
     sender: &Arc<CommandSource>,
     functions: Vec<InstantiatedFunction>,
 ) {
-    let source = function_source(sender);
-    if sender.returning {
-        // `queueFunctionsAsReturn`: a `return` in the function ends the caller's frame too.
-        let output = ResultValueTaker::merge(&sender_callback(sender), &sender.frame.return_value);
-        let discards = sender.frame.discards();
-        for (id, lines) in functions {
-            let frame = Frame {
-                return_value: decorate_output(sender, &id, output.clone()),
-                control: sender.frame.control.clone(),
-            };
-            run_function_lines(server, &source, &lines, frame);
-            if sender.frame.discards() != discards {
-                return;
+    ExecutionContext::execute_in_context(server, |context| {
+        let source = function_source(sender);
+        let call = |lines: Arc<[String]>, callback: ResultValueTaker, return_parent: bool| Entry {
+            frame: sender.frame.clone(),
+            action: Action::CallFunction {
+                source: Box::new(source.clone()),
+                lines,
+                callback,
+                return_parent,
+            },
+        };
+        if sender.returning {
+            // `queueFunctionsAsReturn`: a `return` in the function ends the caller's frame too.
+            let output =
+                ResultValueTaker::merge(&sender_callback(sender), &sender.frame.return_value);
+            for (id, lines) in functions {
+                context.queue_next(call(
+                    lines,
+                    decorate_output(sender, &id, output.clone()),
+                    true,
+                ));
             }
+            context.queue_next(Entry {
+                frame: sender.frame.clone(),
+                action: Action::Fallthrough,
+            });
+            return;
         }
-        pumpkin_command::source::CommandSource::fall_through(sender.as_ref());
-        return;
-    }
 
-    // `queueFunctionsNoReturn`.
-    let has_callback = !sender.command_result_taker.0.is_empty()
-        || matches!(sender.output, CommandSender::CommandBlock(..));
-    if functions.len() == 1 || !has_callback {
-        for (id, lines) in functions {
-            let frame = Frame::new(decorate_output(sender, &id, sender_callback(sender)));
-            run_function_lines(server, &source, &lines, frame);
+        // `queueFunctionsNoReturn`.
+        if functions.len() == 1 || !has_callback(sender) {
+            for (id, lines) in functions {
+                let callback = decorate_output(sender, &id, sender_callback(sender));
+                context.queue_next(call(lines, callback, false));
+            }
+            return;
         }
-        return;
-    }
-    // Several functions report the sum of their results, if any returned.
-    let sum = Arc::new(Mutex::new(None::<i32>));
-    for (id, lines) in functions {
-        let sum = sum.clone();
-        let partial = ResultValueTaker(vec![Arc::new(move |result: ReturnValue| {
-            let mut sum = sum
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            *sum = Some(sum.unwrap_or(0) + result.result_value());
-        })]);
-        let frame = Frame::new(decorate_output(sender, &id, partial));
-        run_function_lines(server, &source, &lines, frame);
-    }
-    let sum = *sum
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if let Some(sum) = sum {
-        pumpkin_command::source::CommandSource::call_result(
-            sender.as_ref(),
-            ReturnValue::Success(sum),
-        );
-    }
+        // Several functions report the sum of their results, if any returned.
+        let sum = Arc::new(Mutex::new(None::<i32>));
+        for (id, lines) in functions {
+            let sum = sum.clone();
+            let partial = ResultValueTaker(vec![Arc::new(move |result: ReturnValue| {
+                let mut sum = sum
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                *sum = Some(sum.unwrap_or(0) + result.result_value());
+            })]);
+            context.queue_next(call(lines, decorate_output(sender, &id, partial), false));
+        }
+        let sender = sender.clone();
+        context.queue_next(Entry {
+            frame: sender.frame.clone(),
+            action: Action::Task(Box::new(move || {
+                let sum = *sum
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if let Some(sum) = sum {
+                    pumpkin_command::source::CommandSource::call_result(
+                        sender.as_ref(),
+                        ReturnValue::Success(sum),
+                    );
+                }
+            })),
+        });
+    });
 }
 
 /// Where a `/function` gets its macro arguments from.

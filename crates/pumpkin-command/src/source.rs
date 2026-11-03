@@ -114,12 +114,6 @@ pub trait CommandSource: Clone + Send + Sync + 'static {
         EntityAnchor::Feet
     }
 
-    /// How many times this source's frame has been discarded (vanilla `Frame.discard`). A
-    /// chain stops running its remaining sources once this changes.
-    fn frame_discards(&self) -> u64 {
-        0
-    }
-
     /// Whether this source runs under `return run` (vanilla `ChainModifiers.isReturn`).
     fn is_returning(&self) -> bool {
         false
@@ -138,6 +132,21 @@ pub trait CommandSource: Clone + Send + Sync + 'static {
     /// The most sources a chain may fork into (vanilla `ExecutionContext.forkLimit`).
     fn fork_limit(&self) -> usize {
         usize::MAX
+    }
+
+    /// Runs a parsed command in this source's command queue, creating one for a top-level
+    /// command (vanilla `Commands.executeCommandInContext`).
+    fn execute_in_context(&self, run: &mut dyn FnMut()) {
+        run();
+    }
+
+    /// Counts one unit against the command queue's limit (vanilla
+    /// `ExecutionContext.incrementCost`).
+    fn increment_command_cost(&self) {}
+
+    /// Whether the command queue has used up its limit, so no further command runs.
+    fn command_quota_exhausted(&self) -> bool {
+        false
     }
 }
 
@@ -219,10 +228,6 @@ impl<S: CommandSource> CommandSource for Arc<S> {
         (**self).check_block_loaded(pos)
     }
 
-    fn frame_discards(&self) -> u64 {
-        (**self).frame_discards()
-    }
-
     fn is_returning(&self) -> bool {
         (**self).is_returning()
     }
@@ -237,5 +242,17 @@ impl<S: CommandSource> CommandSource for Arc<S> {
 
     fn fork_limit(&self) -> usize {
         (**self).fork_limit()
+    }
+
+    fn execute_in_context(&self, run: &mut dyn FnMut()) {
+        (**self).execute_in_context(run);
+    }
+
+    fn increment_command_cost(&self) {
+        (**self).increment_command_cost();
+    }
+
+    fn command_quota_exhausted(&self) -> bool {
+        (**self).command_quota_exhausted()
     }
 }

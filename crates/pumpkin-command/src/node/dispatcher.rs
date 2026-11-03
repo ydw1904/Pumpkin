@@ -395,7 +395,12 @@ impl<S: CommandSource> CommandDispatcher<S> {
                 Err(Self::unknown_command_error(&parsed.reader))
             }
             Some(flat_context) => {
-                flat_context.execute_all(&original_context.source, self.consumer.as_ref())
+                let source = &original_context.source;
+                let mut result = Ok(0);
+                source.execute_in_context(&mut || {
+                    result = flat_context.execute_all(source, self.consumer.as_ref());
+                });
+                result
             }
         }
     }

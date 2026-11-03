@@ -49,11 +49,10 @@ use crate::command::commands::function::{
     FunctionSuggestionProvider, function_source, get_functions, instantiate_functions,
 };
 use crate::command::context::command_context::CommandContext;
-use crate::command::context::command_source::{
-    Frame, ResultValueTaker, ReturnValue, ReturnValueCallback,
-};
+use crate::command::context::command_source::{ResultValueTaker, ReturnValue, ReturnValueCallback};
 use crate::command::errors::command_syntax_error::CommandSyntaxError;
 use crate::command::errors::error_types::CommandErrorType;
+use crate::command::execution::{Action, Entry, ExecutionContext};
 use crate::command::node::attached::{CommandNodeId, NodeId};
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::tree::Tree;
@@ -61,7 +60,6 @@ use crate::command::node::{
     CommandExecutor, CommandExecutorResult, RedirectModifier, RedirectModifierResult, Redirection,
 };
 use crate::command::string_reader::StringReader;
-use crate::data::datapack::run_function_lines;
 use crate::entity::EntityBase;
 use crate::entity::mob::spawn::finalize_spawn;
 use crate::entity::r#type::from_type;
@@ -81,7 +79,8 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector2::Vector2;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use uuid::Uuid;
 
 const DESCRIPTION: &str = "Execute a command with a modified context.";
@@ -1200,34 +1199,38 @@ fn execute_if_function_modifier(
         return Ok(vec![]);
     }
 
-    let result = Arc::new(Mutex::new(0));
-    let result_slot = result.clone();
-    let frame = Frame::new(ResultValueTaker(vec![Arc::new(
-        move |value: ReturnValue| {
-            *result_slot
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = value.result_value();
-        },
-    )]));
-    let source = function_source(&context.source);
-    for (_, lines) in functions {
-        run_function_lines(server, &source, &lines, frame.clone());
-        if frame.discards() != 0 {
-            break;
+    // The source passes once for every result that matches, like vanilla's callback.
+    let passes = Arc::new(AtomicUsize::new(0));
+    let counter = passes.clone();
+    let callback = ResultValueTaker(vec![Arc::new(move |value: ReturnValue| {
+        if (value.result_value() != 0) == expected {
+            counter.fetch_add(1, Ordering::Relaxed);
         }
-    }
-    if frame.discards() == 0 {
-        // Vanilla `FallthroughTask`.
-        frame.return_failure();
-    }
-    let value = *result
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    Ok(if (value != 0) == expected {
-        vec![context.source.clone()]
-    } else {
-        vec![]
-    })
+    })]);
+    let source = function_source(&context.source);
+    ExecutionContext::execute_in_context(server, |execution| {
+        execution.run_nested(
+            |execution, frame| {
+                for (_, lines) in functions {
+                    execution.queue_next(Entry {
+                        frame: frame.clone(),
+                        action: Action::CallFunction {
+                            source: Box::new(source.clone()),
+                            lines,
+                            callback: frame.return_value.clone(),
+                            return_parent: true,
+                        },
+                    });
+                }
+                execution.queue_next(Entry {
+                    frame,
+                    action: Action::Fallthrough,
+                });
+            },
+            callback,
+        );
+    });
+    Ok(vec![context.source.clone(); passes.load(Ordering::Relaxed)])
 }
 
 fn check_stopwatch_matches(context: &CommandContext) -> Result<bool, CommandSyntaxError> {

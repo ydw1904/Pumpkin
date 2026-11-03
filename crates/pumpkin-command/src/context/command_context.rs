@@ -313,6 +313,9 @@ impl<'a, S: CommandSource> ContextChain<'a, S> {
 
         for modifier in &self.modifiers {
             forked_mode |= modifier.forks;
+            if !matches!(modifier.modifier, RedirectModifier::KeepSource) {
+                source.increment_command_cost();
+            }
 
             let mut next_sources = Vec::new();
             for source in current_sources {
@@ -351,19 +354,22 @@ impl<'a, S: CommandSource> ContextChain<'a, S> {
             current_sources[0] = current_sources[0].with_frame_return_callback();
         }
 
-        // A source that discards the frame (`return`) stops the ones after it.
-        let discards = current_sources[0].frame_discards();
+        // Vanilla runs a custom executor for every source inside this step, and queues each
+        // other execution as its own `ExecuteCommand`, which costs one and stops at the limit.
         let mut result = 0;
         for execution_source in current_sources {
+            if !custom {
+                if execution_source.command_quota_exhausted() {
+                    break;
+                }
+                execution_source.increment_command_cost();
+            }
             result += Self::run_executable(
                 &self.execute,
                 &execution_source,
                 result_consumer,
                 forked_mode,
             )?;
-            if execution_source.frame_discards() != discards {
-                break;
-            }
         }
 
         Ok(result)

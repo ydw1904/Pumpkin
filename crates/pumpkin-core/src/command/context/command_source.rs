@@ -1,5 +1,6 @@
 use crate::command::CommandSender;
 use crate::command::argument_types::entity_anchor::{EntityAnchor, EntityAnchorExt};
+use crate::command::execution::ExecutionContext;
 use crate::entity::EntityBase;
 use crate::entity::player::Player;
 use crate::server::Server;
@@ -17,7 +18,6 @@ use pumpkin_util::math::wrap_degrees;
 use pumpkin_util::text::TextComponent;
 use pumpkin_util::text::color::{Color, NamedColor};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 pub const REQUIRES_PLAYER: CommandErrorType<0> = CommandErrorType::new(
     translation::java::PERMISSIONS_REQUIRES_PLAYER,
@@ -68,27 +68,25 @@ pub struct CommandSource {
 /// Vanilla `Frame`: where a `return` in a function, or in a top-level command, reports to.
 #[derive(Clone, Default)]
 pub struct Frame {
+    /// Vanilla `Frame.depth`: how many function calls deep the commands of this frame run.
+    pub depth: usize,
     /// Vanilla `Frame.returnValueConsumer`.
     pub return_value: ResultValueTaker,
     /// Vanilla `Frame.frameControl`, shared with the caller's frame under `return run`.
-    pub control: Arc<FrameControl>,
+    pub control: FrameControl,
 }
 
-/// Counts discards, so code running in a frame can tell one happened since it started.
-#[derive(Default)]
-pub struct FrameControl {
-    discards: AtomicU64,
+/// Vanilla `Frame.FrameControl`: what discarding a frame removes from the command queue.
+#[derive(Clone, Copy, Default)]
+pub enum FrameControl {
+    /// A top-level command's frame: the whole queue.
+    #[default]
+    ClearQueue,
+    /// Everything queued at this depth or deeper.
+    DiscardAtDepth(usize),
 }
 
 impl Frame {
-    #[must_use]
-    pub fn new(return_value: ResultValueTaker) -> Self {
-        Self {
-            return_value,
-            control: Arc::default(),
-        }
-    }
-
     /// Vanilla `Frame.returnSuccess`.
     pub fn return_success(&self, value: i32) {
         self.return_value.call(ReturnValue::Success(value));
@@ -101,12 +99,7 @@ impl Frame {
 
     /// Vanilla `Frame.discard`: nothing more runs in this frame.
     pub fn discard(&self) {
-        self.control.discards.fetch_add(1, Ordering::Relaxed);
-    }
-
-    #[must_use]
-    pub fn discards(&self) -> u64 {
-        self.control.discards.load(Ordering::Relaxed)
+        ExecutionContext::discard(self.control);
     }
 }
 
@@ -496,10 +489,6 @@ impl pumpkin_command::source::CommandSource for CommandSource {
         self.entity_anchor
     }
 
-    fn frame_discards(&self) -> u64 {
-        self.frame.discards()
-    }
-
     fn is_returning(&self) -> bool {
         self.returning
     }
@@ -518,6 +507,25 @@ impl pumpkin_command::source::CommandSource for CommandSource {
         self.server.as_ref().map_or(usize::MAX, |server| {
             usize::try_from(server.level_info.load().game_rules.max_command_forks).unwrap_or(0)
         })
+    }
+
+    fn execute_in_context(&self, run: &mut dyn FnMut()) {
+        match &self.server {
+            Some(server) => {
+                ExecutionContext::execute_in_context(server, |_| run());
+            }
+            None => run(),
+        }
+    }
+
+    fn increment_command_cost(&self) {
+        if let Some(context) = ExecutionContext::current() {
+            context.increment_cost();
+        }
+    }
+
+    fn command_quota_exhausted(&self) -> bool {
+        ExecutionContext::current().is_some_and(|context| context.quota_exhausted())
     }
 
     fn anchor_position(&self, anchor: EntityAnchor) -> Vector3<f64> {
