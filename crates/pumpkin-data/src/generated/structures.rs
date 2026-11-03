@@ -257,6 +257,7 @@ pub struct StructurePlacement {
     pub frequency: Option<f32>,
     pub salt: u32,
     pub exclusion_zone: Option<ExclusionZone>,
+    pub locate_offset: (i32, i32, i32),
     pub placement_type: StructurePlacementType,
 }
 #[derive(Clone, Copy)]
@@ -2041,6 +2042,7 @@ impl StructureSet {
             frequency: None,
             salt: 91231127u32,
             exclusion_zone: None,
+            locate_offset: (0i32, 0i32, 0i32),
             placement_type: StructurePlacementType::RandomSpread(RandomSpreadStructurePlacement {
                 spacing: 37i32,
                 separation: 8i32,
@@ -2128,6 +2130,7 @@ impl StructureSet {
             frequency: None,
             salt: 20083232u32,
             exclusion_zone: None,
+            locate_offset: (0i32, 0i32, 0i32),
             placement_type: StructurePlacementType::RandomSpread(RandomSpreadStructurePlacement {
                 spacing: 24i32,
                 separation: 8i32,
@@ -2145,6 +2148,7 @@ impl StructureSet {
             frequency: Some(0.01f32),
             salt: 0u32,
             exclusion_zone: None,
+            locate_offset: (9i32, 0i32, 9i32),
             placement_type: StructurePlacementType::RandomSpread(RandomSpreadStructurePlacement {
                 spacing: 1i32,
                 separation: 0i32,
@@ -2162,6 +2166,7 @@ impl StructureSet {
             frequency: None,
             salt: 14357617u32,
             exclusion_zone: None,
+            locate_offset: (0i32, 0i32, 0i32),
             placement_type: StructurePlacementType::RandomSpread(RandomSpreadStructurePlacement {
                 spacing: 32i32,
                 separation: 8i32,
@@ -2179,6 +2184,7 @@ impl StructureSet {
             frequency: None,
             salt: 10387313u32,
             exclusion_zone: None,
+            locate_offset: (0i32, 0i32, 0i32),
             placement_type: StructurePlacementType::RandomSpread(RandomSpreadStructurePlacement {
                 spacing: 20i32,
                 separation: 11i32,
@@ -2196,6 +2202,7 @@ impl StructureSet {
             frequency: None,
             salt: 14357618u32,
             exclusion_zone: None,
+            locate_offset: (0i32, 0i32, 0i32),
             placement_type: StructurePlacementType::RandomSpread(RandomSpreadStructurePlacement {
                 spacing: 32i32,
                 separation: 8i32,
@@ -2213,6 +2220,7 @@ impl StructureSet {
             frequency: None,
             salt: 14357619u32,
             exclusion_zone: None,
+            locate_offset: (0i32, 0i32, 0i32),
             placement_type: StructurePlacementType::RandomSpread(RandomSpreadStructurePlacement {
                 spacing: 32i32,
                 separation: 8i32,
@@ -2230,6 +2238,7 @@ impl StructureSet {
             frequency: Some(0.004f32),
             salt: 0u32,
             exclusion_zone: None,
+            locate_offset: (0i32, 0i32, 0i32),
             placement_type: StructurePlacementType::RandomSpread(RandomSpreadStructurePlacement {
                 spacing: 1i32,
                 separation: 0i32,
@@ -2253,6 +2262,7 @@ impl StructureSet {
             frequency: None,
             salt: 30084232u32,
             exclusion_zone: None,
+            locate_offset: (0i32, 0i32, 0i32),
             placement_type: StructurePlacementType::RandomSpread(RandomSpreadStructurePlacement {
                 spacing: 27i32,
                 separation: 4i32,
@@ -2276,6 +2286,7 @@ impl StructureSet {
             frequency: None,
             salt: 14357921u32,
             exclusion_zone: None,
+            locate_offset: (0i32, 0i32, 0i32),
             placement_type: StructurePlacementType::RandomSpread(RandomSpreadStructurePlacement {
                 spacing: 2i32,
                 separation: 1i32,
@@ -2293,6 +2304,7 @@ impl StructureSet {
             frequency: None,
             salt: 10387313u32,
             exclusion_zone: None,
+            locate_offset: (0i32, 0i32, 0i32),
             placement_type: StructurePlacementType::RandomSpread(RandomSpreadStructurePlacement {
                 spacing: 32i32,
                 separation: 5i32,
@@ -2310,6 +2322,7 @@ impl StructureSet {
             frequency: None,
             salt: 14357621u32,
             exclusion_zone: None,
+            locate_offset: (0i32, 0i32, 0i32),
             placement_type: StructurePlacementType::RandomSpread(RandomSpreadStructurePlacement {
                 spacing: 20i32,
                 separation: 8i32,
@@ -2336,6 +2349,7 @@ impl StructureSet {
                 other_set: "minecraft:villages",
                 chunk_count: 10i32,
             }),
+            locate_offset: (0i32, 0i32, 0i32),
             placement_type: StructurePlacementType::RandomSpread(RandomSpreadStructurePlacement {
                 spacing: 32i32,
                 separation: 8i32,
@@ -2353,6 +2367,7 @@ impl StructureSet {
             frequency: None,
             salt: 34222645u32,
             exclusion_zone: None,
+            locate_offset: (0i32, 0i32, 0i32),
             placement_type: StructurePlacementType::RandomSpread(RandomSpreadStructurePlacement {
                 spacing: 40i32,
                 separation: 15i32,
@@ -2396,6 +2411,7 @@ impl StructureSet {
             frequency: None,
             salt: 165745295u32,
             exclusion_zone: None,
+            locate_offset: (0i32, 0i32, 0i32),
             placement_type: StructurePlacementType::RandomSpread(RandomSpreadStructurePlacement {
                 spacing: 24i32,
                 separation: 4i32,
@@ -2419,6 +2435,7 @@ impl StructureSet {
             frequency: None,
             salt: 0u32,
             exclusion_zone: None,
+            locate_offset: (0i32, 0i32, 0i32),
             placement_type: StructurePlacementType::ConcentricRings(
                 ConcentricRingsStructurePlacement {
                     spread: 3i32,
@@ -2439,6 +2456,7 @@ impl StructureSet {
             frequency: None,
             salt: 14357620u32,
             exclusion_zone: None,
+            locate_offset: (0i32, 0i32, 0i32),
             placement_type: StructurePlacementType::RandomSpread(RandomSpreadStructurePlacement {
                 spacing: 32i32,
                 separation: 8i32,
@@ -2456,6 +2474,7 @@ impl StructureSet {
             frequency: None,
             salt: 83469867u32,
             exclusion_zone: None,
+            locate_offset: (0i32, 0i32, 0i32),
             placement_type: StructurePlacementType::RandomSpread(RandomSpreadStructurePlacement {
                 spacing: 34i32,
                 separation: 8i32,
@@ -2473,6 +2492,7 @@ impl StructureSet {
             frequency: None,
             salt: 94251327u32,
             exclusion_zone: None,
+            locate_offset: (0i32, 0i32, 0i32),
             placement_type: StructurePlacementType::RandomSpread(RandomSpreadStructurePlacement {
                 spacing: 34i32,
                 separation: 12i32,
@@ -2490,6 +2510,7 @@ impl StructureSet {
             frequency: None,
             salt: 10387312u32,
             exclusion_zone: None,
+            locate_offset: (0i32, 0i32, 0i32),
             placement_type: StructurePlacementType::RandomSpread(RandomSpreadStructurePlacement {
                 spacing: 34i32,
                 separation: 8i32,
@@ -2525,6 +2546,7 @@ impl StructureSet {
             frequency: None,
             salt: 10387319u32,
             exclusion_zone: None,
+            locate_offset: (0i32, 0i32, 0i32),
             placement_type: StructurePlacementType::RandomSpread(RandomSpreadStructurePlacement {
                 spacing: 80i32,
                 separation: 20i32,

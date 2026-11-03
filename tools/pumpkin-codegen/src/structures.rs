@@ -33,6 +33,9 @@ pub struct StructurePlacementStruct {
     pub salt: u32,
     /// Optional exclusion zone to prevent this structure from generating near others.
     pub exclusion_zone: Option<ExclusionZoneStruct>,
+    /// Block offset from the chunk corner that `/locate` and maps report.
+    #[serde(default)]
+    pub locate_offset: [i32; 3],
     /// The specific placement algorithm and its parameters.
     #[serde(flatten)]
     pub r#type: StructurePlacementTypeStruct,
@@ -211,6 +214,7 @@ impl ToTokens for StructurePlacementStruct {
         };
 
         let salt = self.salt;
+        let [offset_x, offset_y, offset_z] = self.locate_offset;
         let placement_type = &self.r#type;
 
         tokens.extend(quote!(
@@ -219,6 +223,7 @@ impl ToTokens for StructurePlacementStruct {
                 frequency: #frequency,
                 salt: #salt,
                 exclusion_zone: #exclusion_zone,
+                locate_offset: (#offset_x, #offset_y, #offset_z),
                 placement_type: #placement_type,
             }
         ));
@@ -886,6 +891,7 @@ pub fn build() -> TokenStream {
             pub frequency: Option<f32>,
             pub salt: u32,
             pub exclusion_zone: Option<ExclusionZone>,
+            pub locate_offset: (i32, i32, i32),
             pub placement_type: StructurePlacementType,
         }
 
