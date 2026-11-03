@@ -336,12 +336,7 @@ impl GrindstoneScreenHandler {
 
         if amount > 0 {
             let half_amount = ((f64::from(amount)) / 2.0).ceil() as i32;
-            let random_bonus = if half_amount > 0 {
-                (game_random().random::<u32>() as usize % half_amount as usize) as i32
-            } else {
-                0
-            };
-            half_amount + random_bonus
+            half_amount + game_random().random_range(0..half_amount)
         } else {
             0
         }
