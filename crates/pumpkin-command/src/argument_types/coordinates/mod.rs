@@ -359,3 +359,45 @@ fn convert_local_coordinates(
         forward_vector.z * forward + up_vector.z * up + left_vector.z * left,
     )
 }
+
+#[cfg(test)]
+mod test {
+    use super::{Coordinates, WorldCoordinate};
+    use crate::string_reader::StringReader;
+    use pumpkin_util::math::vector3::Vector3;
+
+    fn parse_world(input: &str, center_integers: bool) -> Option<Coordinates> {
+        Coordinates::parse_world(&mut StringReader::new(input), center_integers).ok()
+    }
+
+    /// Vanilla `WorldCoordinates.parseDouble`: integer x and z are centred on the block, y and
+    /// coordinates with a decimal point or `~` are not.
+    #[test]
+    fn centers_integer_x_and_z() {
+        use WorldCoordinate::{Absolute, Relative};
+        assert_eq!(
+            parse_world("3 64 -3", true),
+            Some(Coordinates::World(Vector3::new(
+                Absolute(3.5),
+                Absolute(64.0),
+                Absolute(-2.5)
+            )))
+        );
+        assert_eq!(
+            parse_world("3.0 64 ~1", true),
+            Some(Coordinates::World(Vector3::new(
+                Absolute(3.0),
+                Absolute(64.0),
+                Relative(1.0)
+            )))
+        );
+        assert_eq!(
+            parse_world("3 64 3", false),
+            Some(Coordinates::World(Vector3::new(
+                Absolute(3.0),
+                Absolute(64.0),
+                Absolute(3.0)
+            )))
+        );
+    }
+}
