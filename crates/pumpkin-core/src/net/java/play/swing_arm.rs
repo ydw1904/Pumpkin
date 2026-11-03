@@ -9,6 +9,9 @@ impl JavaClient {
         swing_arm: &SSwingArm,
     ) {
         player.update_last_action_time();
+        // Vanilla `handlePunch` (`handleAnimate` before 26.3): every swing, hit or not, starts
+        // the attack charge over.
+        player.last_attacked_ticks.store(0, Ordering::Relaxed);
         let Ok(hand) = Hand::from_packet_id(swing_arm.hand.0) else {
             self.try_kick(&TextComponent::text("Invalid hand"));
             return;

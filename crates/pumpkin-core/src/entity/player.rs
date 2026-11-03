@@ -1722,7 +1722,8 @@ impl Player {
     }
 
     /// Vanilla `LivingEntity.detectEquipmentUpdates` for the main hand, which commands and
-    /// inventory clicks change without going through `send_equipment_changes`.
+    /// inventory clicks change without going through `send_equipment_changes`, plus the attack
+    /// strength reset `Player.tick` does on the same comparison.
     fn detect_main_hand_change(&self) {
         let held = self.inventory.held_item();
         let mut last = self
@@ -1731,6 +1732,10 @@ impl Player {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if last.are_equal(&held) {
             return;
+        }
+        // Vanilla `Player.tick`: switching to another item starts the attack charge over.
+        if last.item != held.item {
+            self.last_attacked_ticks.store(0, Ordering::Relaxed);
         }
         self.living_entity
             .apply_and_send_equipment_attribute_modifiers(&[(
