@@ -2,6 +2,7 @@ use super::poi;
 use pumpkin_data::{
     Block, BlockDirection, BlockState,
     block_properties::{HorizontalAxis, NetherPortalLikeProperties},
+    fluid::Fluid,
     tag,
     tag::Taggable,
 };
@@ -15,6 +16,8 @@ use crate::world::World;
 
 const SEARCH_RADIUS_NETHER: i32 = 16;
 const SEARCH_RADIUS_OVERWORLD: i32 = 128;
+/// How far vanilla's `PortalForcer.createPortal` spirals out looking for room.
+const CREATE_RADIUS: i32 = 16;
 
 #[derive(Debug, Clone)]
 pub struct PortalSearchResult {
@@ -592,231 +595,121 @@ impl NetherPortal {
         best.map(|(result, _, _)| result)
     }
 
-    #[allow(clippy::too_many_lines)]
-    pub fn find_safe_location(
+    /// Vanilla `PortalForcer.createPortal`: builds a 2x3 portal along `axis` at the closest spot
+    /// within 16 columns of `origin` that has room for it, preferring spots with room on both
+    /// sides, or on an obsidian platform when there is none. Returns the portal's lower corner.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "mirrors PortalForcer.createPortal step by step"
+    )]
+    pub fn create_portal(
         world: &Arc<World>,
-        target_pos: BlockPos,
+        origin: BlockPos,
         axis: HorizontalAxis,
-    ) -> Option<(BlockPos, HorizontalAxis, bool)> {
-        tracing::debug!(
-            "Finding safe location for portal in {:?} around {:?}",
-            world.dimension.minecraft_name,
-            target_pos
-        );
+    ) -> Option<BlockPos> {
+        let direction = Self::positive_direction(axis);
+        let clockwise = direction.rotate_clockwise();
         let min_y = world.min_y;
         let max_y = min_y + world.dimension.height - 1;
-        let worldborder = world
-            .worldborder
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let max_placeable_y = max_y.min(min_y + world.dimension.logical_height - 1);
+        let step = direction.to_offset();
 
-        let top_y_limit = if world.dimension.has_ceiling {
-            (min_y + world.dimension.logical_height - 1).min(max_y)
-        } else {
-            max_y
-        };
-
-        let direction = if axis == HorizontalAxis::X {
-            BlockDirection::East
-        } else {
-            BlockDirection::South // Fixed: positive Z direction
-        };
-
-        let mut ideal_pos: Option<(BlockPos, HorizontalAxis, f64)> = None;
-        let mut acceptable_pos: Option<(BlockPos, HorizontalAxis, f64)> = None;
-
-        for offset_x in -32..=32 {
-            for offset_z in -32..=32 {
-                let check_x = target_pos.0.x + offset_x;
-                let check_z = target_pos.0.z + offset_z;
-
-                if !worldborder.contains_block(check_x, check_z) {
+        let mut closest_full: Option<(BlockPos, i64)> = None;
+        let mut closest_partial: Option<(BlockPos, i64)> = None;
+        {
+            let worldborder = world
+                .worldborder
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            for column in spiral_around(
+                origin,
+                CREATE_RADIUS,
+                BlockDirection::East,
+                BlockDirection::South,
+            ) {
+                let (x, z) = (column.0.x, column.0.z);
+                if !worldborder.contains(f64::from(x), f64::from(z))
+                    || !worldborder.contains(f64::from(x + step.x), f64::from(z + step.z))
+                {
                     continue;
                 }
-
-                let offset_pos = BlockPos(Vector3::new(check_x, 0, check_z))
-                    .offset_dir(direction.to_offset(), 1);
-                if !worldborder.contains_block(offset_pos.0.x, offset_pos.0.z) {
-                    continue;
-                }
-
-                let heightmap_y = world.get_heightmap_height(
-                    ChunkHeightmapType::MotionBlocking,
-                    check_x,
-                    check_z,
-                );
-                let start_y = heightmap_y.min(top_y_limit);
-
-                let mut y = start_y;
+                // Vanilla `getHeight` is one above the top block.
+                let height = max_placeable_y
+                    .min(world.get_heightmap_height(ChunkHeightmapType::MotionBlocking, x, z) + 1);
+                let mut y = height;
                 while y >= min_y {
-                    let pos = BlockPos(Vector3::new(check_x, y, check_z));
-                    let state = world.get_block_state(&pos);
-
-                    if Self::is_valid_portal_air(state) {
-                        let mut bottom_y = y;
-                        while bottom_y > min_y {
-                            let below = BlockPos(Vector3::new(check_x, bottom_y - 1, check_z));
-                            let below_state = world.get_block_state(&below);
-                            if !Self::is_valid_portal_air(below_state) {
-                                break;
-                            }
-                            bottom_y -= 1;
+                    if Self::can_portal_replace_block(world, &BlockPos::new(x, y, z)) {
+                        let first_empty_y = y;
+                        while y > min_y
+                            && Self::can_portal_replace_block(world, &BlockPos::new(x, y - 1, z))
+                        {
+                            y -= 1;
                         }
-
-                        let air_height = y - bottom_y;
-                        if air_height >= 3 && bottom_y + 4 <= top_y_limit {
-                            let floor_pos = BlockPos(Vector3::new(check_x, bottom_y, check_z));
-
-                            for check_axis in [HorizontalAxis::X, HorizontalAxis::Z] {
-                                if Self::is_valid_portal_pos(world, floor_pos, check_axis, 0) {
-                                    let dist = f64::from(target_pos.0.squared_distance_to(
-                                        floor_pos.0.x,
-                                        floor_pos.0.y,
-                                        floor_pos.0.z,
-                                    ));
-
-                                    let is_ideal =
-                                        Self::is_valid_portal_pos(world, floor_pos, check_axis, -1)
-                                            && Self::is_valid_portal_pos(
-                                                world, floor_pos, check_axis, 1,
-                                            );
-
-                                    if is_ideal {
-                                        if ideal_pos.as_ref().is_none_or(|p| dist < p.2) {
-                                            ideal_pos = Some((floor_pos, check_axis, dist));
-                                        }
-                                    } else if ideal_pos.is_none()
-                                        && acceptable_pos.as_ref().is_none_or(|p| dist < p.2)
-                                    {
-                                        acceptable_pos = Some((floor_pos, check_axis, dist));
-                                    }
+                        let delta_y = first_empty_y - y;
+                        if y + 4 <= max_placeable_y && (delta_y <= 0 || delta_y >= 3) {
+                            let floor = BlockPos::new(x, y, z);
+                            if Self::can_host_frame(world, floor, direction, clockwise, 0) {
+                                let distance = i64::from(origin.0.squared_distance_to(x, y, z));
+                                if Self::can_host_frame(world, floor, direction, clockwise, -1)
+                                    && Self::can_host_frame(world, floor, direction, clockwise, 1)
+                                    && closest_full.is_none_or(|(_, d)| d > distance)
+                                {
+                                    closest_full = Some((floor, distance));
+                                }
+                                if closest_full.is_none()
+                                    && closest_partial.is_none_or(|(_, d)| d > distance)
+                                {
+                                    closest_partial = Some((floor, distance));
                                 }
                             }
                         }
-                        y = bottom_y - 1;
-                    } else {
-                        y -= 1;
                     }
+                    y -= 1;
                 }
             }
         }
 
-        if let Some((pos, result_axis, _)) = ideal_pos {
-            return Some((pos, result_axis, false));
-        }
-        if let Some((pos, result_axis, _)) = acceptable_pos {
-            return Some((pos, result_axis, false));
-        }
-
-        // Vanilla: clamp between max(bottomY, 70) and topYLimit - 9
-        let fallback_y = target_pos.0.y.clamp(min_y.max(70), top_y_limit - 9);
-        let fallback_pos = BlockPos(Vector3::new(
-            target_pos.0.x - direction.to_offset().x,
-            fallback_y,
-            target_pos.0.z - direction.to_offset().z,
-        ));
-        let clamped_pos = worldborder.clamp_block(fallback_pos.0.x, fallback_pos.0.z);
-        Some((
-            BlockPos(Vector3::new(clamped_pos.0, fallback_y, clamped_pos.1)),
-            axis,
-            true,
-        ))
-    }
-
-    const fn is_valid_portal_air(state: &BlockState) -> bool {
-        state.replaceable() && !state.is_liquid()
-    }
-
-    fn is_valid_portal_pos(
-        world: &Arc<World>,
-        floor_pos: BlockPos,
-        axis: HorizontalAxis,
-        perpendicular_offset: i32,
-    ) -> bool {
-        let direction = if axis == HorizontalAxis::X {
-            BlockDirection::East
+        let obsidian = Block::OBSIDIAN.default_state.id;
+        let corner = if let Some((pos, _)) = closest_full.or(closest_partial) {
+            pos
         } else {
-            BlockDirection::South // Fixed: positive Z direction
-        };
-        let perpendicular = if axis == HorizontalAxis::X {
-            BlockDirection::South // Fixed: East.rotateYClockwise()
-        } else {
-            BlockDirection::West // Fixed: South.rotateYClockwise()
-        };
-
-        for portal_dir in -1..3 {
-            for height in -1..4 {
-                let pos = floor_pos
-                    .offset_dir(direction.to_offset(), portal_dir)
-                    .offset_dir(perpendicular.to_offset(), perpendicular_offset)
-                    .offset_dir(BlockDirection::Up.to_offset(), height);
-
-                let state = world.get_block_state(&pos);
-
-                if height < 0 {
-                    if !state.is_solid_block() {
-                        return false;
-                    }
-                } else if !Self::is_valid_portal_air(state) {
-                    return false;
-                }
+            let min_start_y = (min_y + 1).max(70);
+            let max_start_y = max_placeable_y - 9;
+            if max_start_y < min_start_y {
+                return None;
             }
-        }
-
-        true
-    }
-
-    pub fn build_portal_frame(
-        world: &Arc<World>,
-        lower_corner: BlockPos,
-        axis: HorizontalAxis,
-        is_fallback: bool,
-    ) {
-        let direction = if axis == HorizontalAxis::X {
-            BlockDirection::East
-        } else {
-            BlockDirection::South // Fixed: positive Z direction
-        };
-        let perpendicular = if axis == HorizontalAxis::X {
-            BlockDirection::South // Fixed: East.rotateYClockwise()
-        } else {
-            BlockDirection::West // Fixed: South.rotateYClockwise()
-        };
-
-        let obsidian_state = Block::OBSIDIAN.default_state.id;
-        let air_state = Block::AIR.default_state.id;
-
-        if is_fallback {
-            // Clear area around the portal matching vanilla exactly:
-            // perpendicular: -1, 0, 1 (3 blocks)
-            // portal_dir: 0, 1 (2 blocks - portal interior only)
-            // height: -1, 0, 1, 2 (4 blocks)
-            for perp in -1..2 {
-                for portal_dir in 0..2 {
+            let (x, z) = world
+                .worldborder
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clamp_block(origin.0.x - step.x, origin.0.z - step.z);
+            let corner = BlockPos::new(x, origin.0.y.clamp(min_start_y, max_start_y), z);
+            for side in -1..2 {
+                for width in 0..2 {
                     for height in -1..3 {
-                        let pos = lower_corner
-                            .offset_dir(direction.to_offset(), portal_dir)
-                            .offset_dir(perpendicular.to_offset(), perp)
+                        let pos = corner
+                            .offset_dir(step, width)
+                            .offset_dir(clockwise.to_offset(), side)
                             .offset_dir(BlockDirection::Up.to_offset(), height);
-
                         let state = if height < 0 {
-                            obsidian_state
+                            obsidian
                         } else {
-                            air_state
+                            Block::AIR.default_state.id
                         };
                         world.set_block_state(&pos, state, BlockFlags::NOTIFY_ALL);
                     }
                 }
             }
-        }
+            corner
+        };
 
-        for portal_dir in -1..3 {
+        for width in -1..3 {
             for height in -1..4 {
-                if portal_dir == -1 || portal_dir == 2 || height == -1 || height == 3 {
-                    let pos = lower_corner
-                        .offset_dir(direction.to_offset(), portal_dir)
+                if width == -1 || width == 2 || height == -1 || height == 3 {
+                    let pos = corner
+                        .offset_dir(step, width)
                         .offset_dir(BlockDirection::Up.to_offset(), height);
-                    world.set_block_state(&pos, obsidian_state, BlockFlags::NOTIFY_ALL);
+                    world.set_block_state(&pos, obsidian, BlockFlags::NOTIFY_ALL);
                 }
             }
         }
@@ -824,12 +717,11 @@ impl NetherPortal {
         let mut props = NetherPortalLikeProperties::default(&Block::NETHER_PORTAL);
         props.axis = axis;
         let portal_state = props.to_state_id(&Block::NETHER_PORTAL);
-
-        for x in 0..2 {
-            for y in 0..3 {
-                let pos = lower_corner
-                    .offset_dir(direction.to_offset(), x)
-                    .offset_dir(BlockDirection::Up.to_offset(), y);
+        for width in 0..2 {
+            for height in 0..3 {
+                let pos = corner
+                    .offset_dir(step, width)
+                    .offset_dir(BlockDirection::Up.to_offset(), height);
                 world.set_block_state(
                     &pos,
                     portal_state,
@@ -842,7 +734,76 @@ impl NetherPortal {
                     .add_portal(pos);
             }
         }
+        Some(corner)
     }
+
+    const fn positive_direction(axis: HorizontalAxis) -> BlockDirection {
+        match axis {
+            HorizontalAxis::X => BlockDirection::East,
+            HorizontalAxis::Z => BlockDirection::South,
+        }
+    }
+
+    /// Vanilla `PortalForcer.canPortalReplaceBlock`.
+    fn can_portal_replace_block(world: &World, pos: &BlockPos) -> bool {
+        world.get_block_state(pos).replaceable() && *world.get_fluid(pos) == Fluid::EMPTY
+    }
+
+    /// Vanilla `PortalForcer.canHostFrame`: solid ground under a 4 wide, 4 high open area,
+    /// `offset` blocks to the side of `origin`.
+    fn can_host_frame(
+        world: &World,
+        origin: BlockPos,
+        direction: BlockDirection,
+        clockwise: BlockDirection,
+        offset: i32,
+    ) -> bool {
+        for width in -1..3 {
+            for height in -1..4 {
+                let pos = origin
+                    .offset_dir(direction.to_offset(), width)
+                    .offset_dir(clockwise.to_offset(), offset)
+                    .offset_dir(BlockDirection::Up.to_offset(), height);
+                if height < 0 {
+                    if !world.get_block_state(&pos).is_solid() {
+                        return false;
+                    }
+                } else if !Self::can_portal_replace_block(world, &pos) {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+}
+
+/// Vanilla `BlockPos.spiralAround`: `center`, then rings of growing legs turning from `first`
+/// to `second`, out to `radius` blocks.
+fn spiral_around(
+    center: BlockPos,
+    radius: i32,
+    first: BlockDirection,
+    second: BlockDirection,
+) -> impl Iterator<Item = BlockPos> {
+    let directions = [first, second, first.opposite(), second.opposite()];
+    let legs = 4 * radius;
+    let mut last = center.offset(second.to_offset());
+    let mut leg = -1;
+    let mut leg_size = 0;
+    let mut leg_index = 0;
+    std::iter::from_fn(move || {
+        last = last.offset(directions[((leg + 4) % 4) as usize].to_offset());
+        if leg_index >= leg_size {
+            if leg >= legs {
+                return None;
+            }
+            leg += 1;
+            leg_index = 0;
+            leg_size = leg / 2 + 1;
+        }
+        leg_index += 1;
+        Some(last)
+    })
 }
 
 #[cfg(test)]

@@ -264,7 +264,7 @@ mod tests {
         assert_eq!(border.to_saved(), saved);
     }
 
-    /// `find_safe_location` only falls through to the `clamp_block` fallback
+    /// `create_portal` only falls through to the `clamp_block` fallback
     /// because a zero-width border rejects every candidate it scans: `contains`
     /// reduces to `x >= center && x < center`, which no coordinate satisfies.
     #[test]

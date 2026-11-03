@@ -255,15 +255,14 @@ impl PortalType {
                         }
                     }
 
-                    if let Some((build_pos, axis, is_fallback)) = NetherPortal::find_safe_location(
+                    if let Some(build_pos) = NetherPortal::create_portal(
                         &dest_world,
                         approximate_exit_pos,
                         source_portal_axis,
                     ) {
-                        NetherPortal::build_portal_frame(&dest_world, build_pos, axis, is_fallback);
                         exit_portal = Some(PortalSearchResult {
                             lower_corner: build_pos,
-                            axis,
+                            axis: source_portal_axis,
                             width: 2,
                             height: 3,
                         });
