@@ -40,7 +40,9 @@ use pumpkin_world::world_info::anvil::{
     AnvilLevelInfo, LEVEL_DAT_BACKUP_FILE_NAME, LEVEL_DAT_FILE_NAME,
 };
 use pumpkin_world::world_info::data_files::{read_saved_data, write_saved_data};
-use pumpkin_world::world_info::{LevelData, WorldInfoError, WorldInfoReader, WorldInfoWriter};
+use pumpkin_world::world_info::{
+    LevelData, OVERWORLD_CLOCK, WorldInfoError, WorldInfoReader, WorldInfoWriter,
+};
 use rayon::prelude::*;
 use rsa::RsaPublicKey;
 use rustc_hash::FxHashMap;
@@ -592,6 +594,20 @@ impl Server {
     /// Copies the overworld clock and weather into the level data so the saved world keeps
     /// the game time, time of day and weather across restarts, like vanilla.
     fn sync_level_time(&self) {
+        // The clocks other than the overworld's live in the world whose dimension uses them.
+        let other_clocks: HashMap<String, i64> = self
+            .worlds
+            .load()
+            .iter()
+            .filter_map(|world| {
+                let clock = world.dimension.default_clock?;
+                (clock != OVERWORLD_CLOCK
+                    && self
+                        .clock_world(world)
+                        .is_some_and(|owner| Arc::ptr_eq(&owner, world)))
+                .then(|| (clock.to_string(), world.get_time_of_day()))
+            })
+            .collect();
         let Some((day_time, game_time, weather)) = self
             .worlds
             .load()
@@ -615,6 +631,7 @@ impl Server {
         self.level_info.rcu(|info| {
             let mut info = (**info).clone();
             info.day_time = day_time;
+            info.other_clocks.extend(other_clocks.clone());
             info.game_time = game_time;
             info.clear_weather_time = weather.clear_weather_time;
             info.rain_time = weather.rain_time;
@@ -1490,6 +1507,7 @@ impl Server {
             self.tick_count.load(std::sync::atomic::Ordering::Relaxed) as u64,
         );
 
+        self.tick_clocks();
         self.sync_game_time();
 
         let worlds = self.worlds.load();
@@ -1531,6 +1549,52 @@ impl Server {
 
     /// Vanilla `tickChildren` "timeSync": every 20 ticks, also while frozen.
     /// Sync before `tickTime()`. `tick_count + 1` is this vanilla tick.
+    /// The world that keeps the clock `world` shows: the first world whose dimension has the
+    /// same default clock. Dimensions without a clock show the overworld clock, which vanilla
+    /// reads there for local difficulty and sends to their players.
+    pub fn clock_world(&self, world: &World) -> Option<Arc<World>> {
+        let clock = world.dimension.default_clock.unwrap_or(OVERWORLD_CLOCK);
+        self.worlds
+            .load()
+            .iter()
+            .find(|world| world.dimension.default_clock == Some(clock))
+            .cloned()
+    }
+
+    /// Vanilla `ServerClockManager.tick`: every clock advances once per tick, before the worlds
+    /// tick, and the worlds that show a clock take it over.
+    fn tick_clocks(&self) {
+        let advance_time = self.level_info.load().game_rules.advance_time;
+        let worlds = self.worlds.load();
+        let owners: Vec<_> = worlds.iter().map(|world| self.clock_world(world)).collect();
+        for (world, owner) in worlds.iter().zip(&owners) {
+            if owner
+                .as_ref()
+                .is_some_and(|owner| Arc::ptr_eq(owner, world))
+            {
+                world
+                    .level_time
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .tick_clock(advance_time);
+            }
+        }
+        for (world, owner) in worlds.iter().zip(owners) {
+            if let Some(owner) = owner.filter(|owner| !Arc::ptr_eq(owner, world)) {
+                let state = owner
+                    .level_time
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clone();
+                world
+                    .level_time
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .copy_clock_from(&state);
+            }
+        }
+    }
+
     fn sync_game_time(&self) {
         if self.tick_count.load(Ordering::Relaxed).wrapping_add(1) % 20 == 0
             && let Some(overworld) =

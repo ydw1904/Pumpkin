@@ -164,6 +164,7 @@ use pumpkin_util::{
     math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3},
 };
 use pumpkin_world::world::{GetBlockError, WorldPortalExt};
+use pumpkin_world::world_info::OVERWORLD_CLOCK;
 use pumpkin_world::{
     CURRENT_BEDROCK_MC_VERSION, biome,
     chunk::{io::Dirtiable, palette::bedrock_water_state, unpack_offset_coordinates},
@@ -429,7 +430,14 @@ impl World {
         let generation_settings = NoiseSettings::from_dimension(&dimension);
         let mut level_time = LevelTime::new();
         let info = level_info.load();
-        level_time.load_from(info.day_time, info.game_time);
+        // A world that keeps a clock of its own (the End) starts from that clock's saved time.
+        let day_time = match dimension.default_clock {
+            Some(clock) if clock != OVERWORLD_CLOCK => {
+                info.other_clocks.get(clock).copied().unwrap_or(0)
+            }
+            _ => info.day_time,
+        };
+        level_time.load_from(day_time, info.game_time);
         // Vanilla `ServerLevel.prepareWeather`, only for dimensions that have weather.
         let weather = if dimension.has_skylight && !dimension.has_ceiling {
             Weather::loaded(
@@ -1062,13 +1070,18 @@ impl World {
             _ => {}
         }
         self.level_info.store(Arc::new(new_info));
-        if *rule == GameRule::AdvanceTime {
-            let level_time = self
-                .level_time
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .clone();
-            level_time.send_time(self);
+        // Vanilla sends every clock to every player when the rule changes.
+        if *rule == GameRule::AdvanceTime
+            && let Some(server) = self.server.upgrade()
+        {
+            for world in server.worlds.load().iter() {
+                if server
+                    .clock_world(world)
+                    .is_some_and(|owner| Arc::ptr_eq(&owner, world))
+                {
+                    world.clock_changed();
+                }
+            }
         }
     }
 
@@ -2251,11 +2264,10 @@ impl World {
                 .level_time
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let advance_time = self.level_info.load().game_rules.advance_time;
             // Vanilla `ServerLevel.tickTime`. Periodic `CUpdateTime` is
             // `forceGameTimeSynchronization` in `Server::tick_worlds`, *before*
-            // this increment.
-            level_time.tick(advance_time);
+            // this increment. The clocks already ticked in `Server::tick_clocks`.
+            level_time.tick_game_time();
 
             // Auto-save logic
             if level_time.world_age % 100 == 0 {
@@ -2300,16 +2312,12 @@ impl World {
         };
 
         if self.should_skip_night() && is_night {
-            let level_time = {
-                let mut guard = self
-                    .level_time
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                let time = time_of_day + 24000;
-                guard.set_time(time - time % 24000);
-                guard.clone()
-            };
-            level_time.send_time(self);
+            let time = time_of_day + 24000;
+            self.level_time
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .set_time(time - time % 24000);
+            self.clock_changed();
 
             // Vanilla `wakeUpAllPlayers`.
             self.sleep_status
@@ -2946,7 +2954,7 @@ impl World {
     /// Vanilla `MinecraftServer.forceGameTimeSynchronization`.
     ///
     /// Broadcasts current overworld `getGameTime()` with an empty clock map.
-    /// Must run before [`crate::world::time::LevelTime::tick`]: the client
+    /// Must run before [`crate::world::time::LevelTime::tick_game_time`]: the client
     /// already advanced to this number in `ClientLevel.tickTime()`. Sending the
     /// post-increment value, or a clock snapshot, makes `getGameTime()` hold
     /// for two client ticks, so `Entity.limitPistonMovement` does not reset
@@ -2968,15 +2976,42 @@ impl World {
     }
 
     pub fn set_time_of_day(&self, time: i64) {
-        let level_time = {
-            let mut guard = self
-                .level_time
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            guard.set_time(time);
-            guard.clone()
+        self.level_time
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .set_time(time);
+        self.clock_changed();
+    }
+
+    /// Vanilla `ServerClockManager.modifyClock`: after the clock this world keeps changed, the
+    /// worlds that show it take it over and all their players are sent it.
+    pub fn clock_changed(&self) {
+        let state = self
+            .level_time
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        let Some(server) = self.server.upgrade() else {
+            state.send_time(self);
+            return;
         };
-        level_time.send_time(self);
+        for world in server.worlds.load().iter() {
+            let shows_this_clock = server
+                .clock_world(world)
+                .is_some_and(|owner| std::ptr::eq(owner.as_ref(), self));
+            if !shows_this_clock {
+                continue;
+            }
+            let level_time = {
+                let mut guard = world
+                    .level_time
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                guard.copy_clock_from(&state);
+                guard.clone()
+            };
+            level_time.send_time(world);
+        }
     }
 
     /// Vanilla `Level.isRaining`.

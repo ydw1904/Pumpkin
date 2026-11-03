@@ -125,8 +125,12 @@ impl LevelTime {
 
     /// Vanilla `ServerLevel.tickTime`. Callers that emit periodic `CUpdateTime`
     /// (`forceGameTimeSynchronization`) must do so before this increment.
-    pub fn tick(&mut self, advance_time: bool) {
+    pub const fn tick_game_time(&mut self) {
         self.world_age += 1;
+    }
+
+    /// Vanilla `ServerClockManager.ServerClockInstance.tick`, for the world that keeps a clock.
+    pub fn tick_clock(&mut self, advance_time: bool) {
         if advance_time && !self.paused {
             self.partial_tick += self.rate;
             let full_ticks = self.partial_tick.floor() as i32;
@@ -179,6 +183,14 @@ impl LevelTime {
                 player.client.try_enqueue_packet_editioned(&java, &bedrock);
             }
         }
+    }
+
+    /// Takes over the clock state of the world that keeps this world's clock.
+    pub const fn copy_clock_from(&mut self, owner: &Self) {
+        self.time_of_day = owner.time_of_day;
+        self.partial_tick = owner.partial_tick;
+        self.rate = owner.rate;
+        self.paused = owner.paused;
     }
 
     pub fn add_time(&mut self, time: i64) {

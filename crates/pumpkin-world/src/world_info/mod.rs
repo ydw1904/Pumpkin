@@ -27,6 +27,9 @@ pub trait WorldInfoWriter: Sync + Send {
     -> Result<(), WorldInfoError>;
 }
 
+/// Vanilla `WorldClocks.OVERWORLD`, the clock `LevelData::day_time` holds.
+pub const OVERWORLD_CLOCK: &str = "minecraft:overworld";
+
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct LevelData {
@@ -92,6 +95,11 @@ pub struct LevelData {
     /// Persisted to `data/minecraft/world_clocks.dat`.
     #[serde(skip_serializing, default)]
     pub day_time: i64,
+
+    /// Ticks of the other clocks (vanilla's `minecraft:the_end`), by clock id.
+    /// Persisted to `data/minecraft/world_clocks.dat`.
+    #[serde(skip_serializing, default)]
+    pub other_clocks: HashMap<String, i64>,
 
     /// Total ticks the world has run (vanilla `Time` in `level.dat`).
     /// Scheduled functions are keyed to it, so it must survive restarts.
@@ -576,6 +584,7 @@ impl LevelData {
             game_rules: GameRuleRegistry::default(),
             world_gen_settings: WorldGenSettings::new(seed),
             day_time: 0,
+            other_clocks: HashMap::new(),
             game_time: 0,
             clear_weather_time: -1,
             rain_time: 0,

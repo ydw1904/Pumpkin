@@ -26,7 +26,7 @@ use crate::world_info::{
     default_data_packs,
 };
 
-use super::{LevelData, WorldInfoError, WorldInfoReader, WorldInfoWriter};
+use super::{LevelData, OVERWORLD_CLOCK, WorldInfoError, WorldInfoReader, WorldInfoWriter};
 
 pub const LEVEL_DAT_FILE_NAME: &str = "level.dat";
 pub const LEVEL_DAT_BACKUP_FILE_NAME: &str = "level.dat_old";
@@ -419,8 +419,12 @@ impl WorldInfoReader for AnvilLevelInfo {
             .exists()
         {
             let clocks = read_world_clocks(level_folder);
-            if let Some(overworld) = clocks.clocks.get("minecraft:overworld") {
-                level_data.day_time = overworld.total_ticks;
+            for (clock, state) in clocks.clocks {
+                if clock == OVERWORLD_CLOCK {
+                    level_data.day_time = state.total_ticks;
+                } else {
+                    level_data.other_clocks.insert(clock, state.total_ticks);
+                }
             }
         }
 
@@ -492,16 +496,21 @@ impl WorldInfoWriter for AnvilLevelInfo {
             error!("Failed to write world_gen_settings.dat: {e}");
         }
 
-        // world_clocks.dat – persist the overworld day_time; preserve other
+        // world_clocks.dat – persist the clocks; preserve other
         let mut clocks = read_world_clocks(level_folder);
         clocks.data_version = data_version;
-        clocks
-            .clocks
-            .entry("minecraft:overworld".to_string())
-            .and_modify(|c| c.total_ticks = info.day_time)
-            .or_insert(crate::world_info::data_files::DimensionClock {
-                total_ticks: info.day_time,
-            });
+        for (clock, total_ticks) in info
+            .other_clocks
+            .iter()
+            .map(|(clock, ticks)| (clock.as_str(), *ticks))
+            .chain([(OVERWORLD_CLOCK, info.day_time)])
+        {
+            clocks
+                .clocks
+                .entry(clock.to_string())
+                .and_modify(|c| c.total_ticks = total_ticks)
+                .or_insert(crate::world_info::data_files::DimensionClock { total_ticks });
+        }
 
         if let Err(e) = write_world_clocks(level_folder, &clocks) {
             error!("Failed to write world_clocks.dat: {e}");
@@ -922,6 +931,7 @@ mod test {
             },
             data_version: 4189,
             day_time: 1727,
+            other_clocks: std::collections::HashMap::new(),
             game_time: 0,
             difficulty: Difficulty::Normal,
             difficulty_locked: false,

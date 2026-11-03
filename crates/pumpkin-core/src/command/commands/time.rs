@@ -304,18 +304,15 @@ impl CommandExecutor for ActionExecutor {
                         None if current != marker_ticks => Some(marker_ticks),
                         _ => None,
                     };
-                    target.map(|target| {
-                        guard.set_time(target);
-                        (guard.clone(), target)
-                    })
+                    target.inspect(|&target| guard.set_time(target))
                 };
-                let Some((level_time, total_ticks)) = moved else {
+                let Some(total_ticks) = moved else {
                     return Err(ERROR_ALREADY_AT_TIME_MARKER.create_without_context(
                         TextComponent::text(clock_name),
                         TextComponent::text(marker.name),
                     ));
                 };
-                level_time.send_time(world);
+                world.clock_changed();
                 context.source.send_feedback(
                     pumpkin_macros::translate_cross!(
                         translation::java::COMMANDS_TIME_SET_TIME_MARKER,
@@ -329,21 +326,19 @@ impl CommandExecutor for ActionExecutor {
             }
             Action::SetTicks => {
                 let time_count = TimeArgumentType::get(context, "time")?;
-                let level_time = {
-                    let mut guard = world
-                        .level_time
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    if guard.time_of_day == i64::from(time_count) {
-                        return Err(ERROR_ALREADY_AT_TIME.create_without_context(
-                            TextComponent::text(clock_name),
-                            TextComponent::text(time_count.to_string()),
-                        ));
-                    }
-                    guard.set_time(time_count.into());
-                    guard.clone()
-                };
-                level_time.send_time(world);
+                let mut guard = world
+                    .level_time
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if guard.time_of_day == i64::from(time_count) {
+                    return Err(ERROR_ALREADY_AT_TIME.create_without_context(
+                        TextComponent::text(clock_name),
+                        TextComponent::text(time_count.to_string()),
+                    ));
+                }
+                guard.set_time(time_count.into());
+                drop(guard);
+                world.clock_changed();
                 context.source.send_feedback(
                     pumpkin_macros::translate_cross!(
                         translation::java::COMMANDS_TIME_SET_ABSOLUTE,
@@ -357,16 +352,15 @@ impl CommandExecutor for ActionExecutor {
             }
             Action::Add => {
                 let time_count = TimeArgumentType::get(context, "time")?;
-                let (level_time, total_ticks) = {
+                let total_ticks = {
                     let mut guard = world
                         .level_time
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
                     guard.add_time(time_count.into());
-                    let total_ticks = guard.time_of_day;
-                    (guard.clone(), total_ticks)
+                    guard.time_of_day
                 };
-                level_time.send_time(world);
+                world.clock_changed();
                 context.source.send_feedback(
                     pumpkin_macros::translate_cross!(
                         translation::java::COMMANDS_TIME_SET_ABSOLUTE,
@@ -380,23 +374,21 @@ impl CommandExecutor for ActionExecutor {
             }
             Action::Pause | Action::Resume => {
                 let paused = matches!(self.action, Action::Pause);
-                let level_time = {
-                    let mut guard = world
-                        .level_time
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    if guard.paused == paused {
-                        let error = if paused {
-                            &ERROR_ALREADY_PAUSED
-                        } else {
-                            &ERROR_ALREADY_RUNNING
-                        };
-                        return Err(error.create_without_context(TextComponent::text(clock_name)));
-                    }
-                    guard.set_paused(paused);
-                    guard.clone()
-                };
-                level_time.send_time(world);
+                let mut guard = world
+                    .level_time
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if guard.paused == paused {
+                    let error = if paused {
+                        &ERROR_ALREADY_PAUSED
+                    } else {
+                        &ERROR_ALREADY_RUNNING
+                    };
+                    return Err(error.create_without_context(TextComponent::text(clock_name)));
+                }
+                guard.set_paused(paused);
+                drop(guard);
+                world.clock_changed();
                 context.source.send_feedback(
                     if paused {
                         pumpkin_macros::translate_cross!(
@@ -417,22 +409,20 @@ impl CommandExecutor for ActionExecutor {
             }
             Action::Rate => {
                 let rate = FloatArgumentType::get(context, "rate")?;
-                let level_time = {
-                    let mut guard = world
-                        .level_time
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    #[expect(clippy::float_cmp, reason = "vanilla compares the rates exactly")]
-                    if guard.rate == rate {
-                        return Err(ERROR_ALREADY_SAME_RATE.create_without_context(
-                            TextComponent::text(clock_name),
-                            TextComponent::text(rate.to_string()),
-                        ));
-                    }
-                    guard.set_rate(rate);
-                    guard.clone()
-                };
-                level_time.send_time(world);
+                let mut guard = world
+                    .level_time
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                #[expect(clippy::float_cmp, reason = "vanilla compares the rates exactly")]
+                if guard.rate == rate {
+                    return Err(ERROR_ALREADY_SAME_RATE.create_without_context(
+                        TextComponent::text(clock_name),
+                        TextComponent::text(rate.to_string()),
+                    ));
+                }
+                guard.set_rate(rate);
+                drop(guard);
+                world.clock_changed();
                 context.source.send_feedback(
                     pumpkin_macros::translate_cross!(
                         translation::java::COMMANDS_TIME_RATE,
