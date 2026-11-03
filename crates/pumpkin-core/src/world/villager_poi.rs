@@ -369,6 +369,21 @@ impl VillagerPoiStorage {
         found
     }
 
+    /// Vanilla `PoiManager.getInRange` for the `#minecraft:village` POI types, which are all the
+    /// types stored here.
+    #[must_use]
+    pub fn village_pois_in_range(
+        &self,
+        center: BlockPos,
+        radius: i32,
+        occupancy: Occupancy,
+    ) -> Vec<BlockPos> {
+        self.in_range(center, radius, |_| true, occupancy)
+            .into_iter()
+            .map(|(_, position)| position)
+            .collect()
+    }
+
     /// Vanilla `PoiManager.getCountInRange`.
     #[must_use]
     pub fn count_in_range(

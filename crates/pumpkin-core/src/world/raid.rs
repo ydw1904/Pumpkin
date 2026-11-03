@@ -16,9 +16,11 @@ use pumpkin_util::text::TextComponent;
 use crate::entity::EntityBase;
 use crate::entity::mob::raider::create_ominous_banner;
 use crate::entity::mob::spawn::finalize_spawn;
+use crate::entity::player::Player;
 use crate::entity::r#type::from_type;
 use crate::world::World;
 use crate::world::bossbar::{Bossbar, BossbarColor, BossbarDivisions};
+use crate::world::villager_poi::Occupancy;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RaidStatus {
@@ -125,7 +127,7 @@ impl Raid {
             active: true,
             started: false,
             ticks_active: 0,
-            raid_omen_level: 1,
+            raid_omen_level: 0,
             groups_spawned: 0,
             num_groups,
             raid_cooldown_ticks: 300,
@@ -261,8 +263,25 @@ impl Raid {
         self.players_in_raid.clear();
     }
 
-    pub fn absorb_raid_omen(&mut self) -> bool {
-        self.raid_omen_level = (self.raid_omen_level + 1).clamp(1, Self::MAX_RAID_OMEN_LEVEL);
+    #[must_use]
+    pub const fn has_first_wave_spawned(&self) -> bool {
+        self.groups_spawned > 0
+    }
+
+    /// Vanilla `Raid.absorbRaidOmen`: the player's Raid Omen raises the omen level.
+    pub fn absorb_raid_omen(&mut self, player: &Player) -> bool {
+        let Some(effect) = player.get_effect(&StatusEffect::RAID_OMEN) else {
+            return false;
+        };
+        self.raid_omen_level = (self.raid_omen_level + i32::from(effect.amplifier) + 1)
+            .clamp(0, Self::MAX_RAID_OMEN_LEVEL);
+        if !self.has_first_wave_spawned() {
+            player.increment_stat(
+                pumpkin_data::statistic::StatisticCategory::Custom,
+                pumpkin_data::statistic::CustomStatistic::RaidTrigger as i32,
+                1,
+            );
+        }
         true
     }
 
@@ -657,11 +676,20 @@ impl Raid {
     }
 }
 
-#[derive(Default)]
 pub struct Raids {
     pub raid_map: HashMap<i32, Raid>,
     pub next_id: i32,
     pub tick_counter: u64,
+}
+
+impl Default for Raids {
+    fn default() -> Self {
+        Self {
+            raid_map: HashMap::new(),
+            next_id: 1,
+            tick_counter: 0,
+        }
+    }
 }
 
 impl Raids {
@@ -674,69 +702,89 @@ impl Raids {
         self.raid_map.get_mut(&raid_id)
     }
 
+    /// Vanilla `ServerLevel.getRaidAt`.
     #[must_use]
     pub fn get_raid_at(&self, pos: &BlockPos) -> Option<&Raid> {
-        let pos_f64 = pos.to_f64();
-        self.raid_map.values().find(|r| {
-            r.is_active()
-                && r.center.to_f64().squared_distance_to_vec(&pos_f64)
-                    <= Raid::VALID_RAID_RADIUS_SQR
-        })
+        self.nearby_raid_id(pos, Raid::VALID_RAID_RADIUS_SQR)
+            .and_then(|id| self.raid_map.get(&id))
     }
 
     pub fn get_raid_at_mut(&mut self, pos: &BlockPos) -> Option<&mut Raid> {
-        let pos_f64 = pos.to_f64();
-        self.raid_map.values_mut().find(|r| {
-            r.is_active()
-                && r.center.to_f64().squared_distance_to_vec(&pos_f64)
-                    <= Raid::VALID_RAID_RADIUS_SQR
-        })
+        self.nearby_raid_id(pos, Raid::VALID_RAID_RADIUS_SQR)
+            .and_then(|id| self.raid_map.get_mut(&id))
     }
 
     #[must_use]
     pub fn get_nearby_raid(&self, pos: &BlockPos, max_dist_sqr: f64) -> Option<&Raid> {
+        self.nearby_raid_id(pos, max_dist_sqr)
+            .and_then(|id| self.raid_map.get(&id))
+    }
+
+    /// Vanilla `Raids.getNearbyRaid`: the closest active raid strictly within the distance.
+    fn nearby_raid_id(&self, pos: &BlockPos, max_dist_sqr: f64) -> Option<i32> {
         let pos_f64 = pos.to_f64();
         let mut closest = None;
         let mut closest_dist = max_dist_sqr;
-
-        for raid in self.raid_map.values() {
+        for (&id, raid) in &self.raid_map {
             let dist = raid.center.to_f64().squared_distance_to_vec(&pos_f64);
             if raid.is_active() && dist < closest_dist {
-                closest = Some(raid);
+                closest = Some(id);
                 closest_dist = dist;
             }
         }
         closest
     }
 
+    /// Vanilla `Raids.createOrExtendRaid`: the raid is centred on the occupied village POIs
+    /// around the Raid Omen position and absorbs the player's Raid Omen.
     pub fn create_or_extend_raid(
         &mut self,
+        player: &Player,
         raid_position: BlockPos,
         world: &Arc<World>,
     ) -> Option<i32> {
-        let raid_center_pos = raid_position;
-
-        let existing_id = self.raid_map.iter().find_map(|(&id, r)| {
-            let dist = r
-                .center
-                .to_f64()
-                .squared_distance_to_vec(&raid_center_pos.to_f64());
-            (r.is_active() && dist <= Raid::VALID_RAID_RADIUS_SQR).then_some(id)
-        });
-
-        if let Some(id) = existing_id {
-            if let Some(raid) = self.raid_map.get_mut(&id) {
-                raid.absorb_raid_omen();
+        if player.is_spectator()
+            || !world.level_info.load().game_rules.raids
+            || !world.dimension.can_start_raid
+        {
+            return None;
+        }
+        let pois = world
+            .villager_poi
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .village_pois_in_range(raid_position, 64, Occupancy::IsOccupied);
+        let raid_center = if pois.is_empty() {
+            raid_position
+        } else {
+            let mut total = Vector3::new(0.0, 0.0, 0.0);
+            for pos in &pois {
+                total = total.add(&pos.to_f64());
             }
-            Some(id)
+            BlockPos::floored_v(total.multiply(
+                1.0 / pois.len() as f64,
+                1.0 / pois.len() as f64,
+                1.0 / pois.len() as f64,
+            ))
+        };
+
+        let id = if let Some(id) = self.nearby_raid_id(&raid_center, Raid::VALID_RAID_RADIUS_SQR) {
+            id
         } else {
             self.next_id += 1;
             let id = self.next_id;
-            let mut raid = Raid::new(id, raid_center_pos, world.level_info.load().difficulty);
-            raid.absorb_raid_omen();
-            self.raid_map.insert(id, raid);
-            Some(id)
+            self.raid_map.insert(
+                id,
+                Raid::new(id, raid_center, world.level_info.load().difficulty),
+            );
+            id
+        };
+        if let Some(raid) = self.raid_map.get_mut(&id)
+            && (!raid.is_started() || raid.raid_omen_level < Raid::MAX_RAID_OMEN_LEVEL)
+        {
+            raid.absorb_raid_omen(player);
         }
+        Some(id)
     }
 
     pub fn tick(&mut self, world: &Arc<World>) {

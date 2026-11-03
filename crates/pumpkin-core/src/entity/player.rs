@@ -314,6 +314,7 @@ use crate::plugin::player::player_permission_check::PlayerPermissionCheckEvent;
 use crate::plugin::player::player_teleport::PlayerTeleportEvent;
 use crate::plugin::server::packet::PacketSentEvent;
 use crate::server::Server;
+use crate::world::raid::Raid;
 use crate::world::{BlockBreakingProgress, World};
 use bytes::Bytes;
 
@@ -5326,53 +5327,43 @@ impl Player {
         }
     }
 
+    /// Vanilla `BadOmenMobEffect.applyEffectTick`: in a village, Bad Omen turns into Raid Omen
+    /// and remembers where, unless the raid there is already at its highest omen level.
     pub fn tick_raid_omen(&self) {
-        if self.is_spectator() {
+        let Some(bad_omen) = self.get_effect(&StatusEffect::BAD_OMEN) else {
+            return;
+        };
+        let world = self.world();
+        let player_pos = self.living_entity.entity.block_pos.load();
+        if self.is_spectator()
+            || world.level_info.load().difficulty == Difficulty::Peaceful
+            || !world.is_village(&player_pos)
+        {
             return;
         }
-
-        if let Some(bad_omen) = self.get_effect(&StatusEffect::BAD_OMEN)
-            && !self.has_effect(&StatusEffect::RAID_OMEN)
-        {
-            let world = self.world();
-            if !world.dimension.can_start_raid {
-                return;
-            }
-            let player_pos = self.living_entity.entity.block_pos.load();
-            let pos_f64 = self.living_entity.entity.pos.load();
-
-            let village_pos = world
-                .villager_poi
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .get_nearest_job_site(player_pos, 64)
-                .or_else(|| {
-                    world.raids.try_lock().ok().and_then(|raids| {
-                        raids
-                            .get_nearby_raid(&player_pos, 64.0 * 64.0)
-                            .map(|r| r.center)
-                    })
-                });
-
-            if let Some(pos) = village_pos {
-                if let Some(p) = self.world().get_player_by_uuid(self.gameprofile.id) {
-                    let bad_omen_amplifier = bad_omen.amplifier;
-                    p.living_entity.remove_effect(&StatusEffect::BAD_OMEN);
-                    p.set_raid_omen_position(pos);
-                    let effect = Effect {
-                        effect_type: &StatusEffect::RAID_OMEN,
-                        duration: 600,
-                        amplifier: bad_omen_amplifier,
-                        ambient: false,
-                        show_particles: true,
-                        show_icon: true,
-                        blend: true,
-                    };
-                    p.add_effect(effect);
-                }
-                world.play_sound(Sound::BlockBellResonate, SoundCategory::Neutral, &pos_f64);
-            }
+        let raid_maxed = world
+            .raids
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_raid_at(&player_pos)
+            .is_some_and(|raid| raid.get_raid_omen_level() >= Raid::MAX_RAID_OMEN_LEVEL);
+        if raid_maxed {
+            return;
         }
+        let Some(player) = world.get_player_by_uuid(self.gameprofile.id) else {
+            return;
+        };
+        player.add_effect(Effect {
+            effect_type: &StatusEffect::RAID_OMEN,
+            duration: 600,
+            amplifier: bad_omen.amplifier,
+            ambient: false,
+            show_particles: true,
+            show_icon: true,
+            blend: true,
+        });
+        player.set_raid_omen_position(player_pos);
+        player.living_entity.remove_effect(&StatusEffect::BAD_OMEN);
     }
 
     pub fn set_health(&self, health: f32) {
