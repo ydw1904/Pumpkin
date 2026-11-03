@@ -118,6 +118,56 @@ h.start(async () => {
   h.result('fill_keep', await run(`fill ${X} ${y} ${Z + 2} ${X + 2} ${y + 1} ${Z + 4} dirt keep`))
   h.result('setblock_keep', await run(`setblock ${X} ${y} ${Z + 2} dirt keep`))
 
+  // /execute store: results and success flags, failures, forks, nested runs and every target.
+  await run('scoreboard objectives add st dummy')
+  const score = async (holder) => (await run(`scoreboard players get ${holder} st`, 2)).split('|')[0]
+  const stores = [
+    ['result', 'execute store result score #a st run scoreboard players set #x st 7', '#a'],
+    ['success', 'execute store success score #b st run scoreboard players set #x st 0', '#b'],
+    ['result_fail', 'execute store result score #c st run kill @e[tag=parity_none]', '#c'],
+    ['success_fail', 'execute store success score #d st run kill @e[tag=parity_none]', '#d'],
+    ['nested_outer', 'execute store result score #n1 st run execute store result score #n2 st run scoreboard players set #x st 9', '#n1'],
+    ['nested_inner', null, '#n2'],
+    ['if_entity_none', 'execute store result score #f st if entity @e[tag=parity_none]', '#f'],
+    ['unless_entity_none', 'execute store result score #g st unless entity @e[tag=parity_none]', '#g'],
+    ['if_data_missing', 'execute store success score #h st if data storage parity:t missing', '#h']
+  ]
+  for (const [key, c, holder] of stores) {
+    if (c) h.result(`store_${key}_msg`, await run(c, 2))
+    h.result(`store_${key}`, await score(holder))
+  }
+  for (let i = 0; i < 3; i++) h.cmd(`summon armor_stand ${X + 4 + i}.5 ${y} ${Z + 6}.5 {Tags:["parity_st"],NoGravity:1b}`)
+  await h.ticks(5)
+  h.result('store_if_entity', (await run('execute store result score #i st if entity @e[tag=parity_st]', 2)) + ' ' + await score('#i'))
+  await run('scoreboard players set #cnt st 0', 2)
+  h.result('store_fork_before_as', (await run('execute store result score #e st as @e[tag=parity_st] run scoreboard players add #cnt st 1', 2)) + ' ' + await score('#e'))
+  await run('execute as @e[tag=parity_st] store result score @s st run data get entity @s Pos[0] 10', 2)
+  h.result('store_fork_after_as', (await run(`scoreboard players get @e[tag=parity_st,limit=1,sort=nearest,x=${X + 4},y=${y},z=${Z + 6}] st`, 2)).split('|')[0])
+  await run('scoreboard players set #m st 5', 2)
+  h.result('store_modifier_error', (await run('execute store success score #m st if score #q parity_missing matches 1 run say x', 2)) + ' ' + await score('#m'))
+  h.result('store_storage', (await run('execute store result storage parity:t v int 2.5 run scoreboard players get #a st', 2)) + ' ' + await run('data get storage parity:t v', 2))
+  await run('execute store result storage parity:t b byte 1 run scoreboard players set #y st 300', 2)
+  await run('execute store result storage parity:t d double 0.1 run scoreboard players set #y st 3', 2)
+  await run('execute store success storage parity:t s short 3 run scoreboard players set #y st 3', 2)
+  for (const k of ['b', 'd', 's']) h.result(`store_storage_${k}`, await run(`data get storage parity:t ${k}`, 2))
+  await run('bossbar add parity:b "b"', 2)
+  await run('execute store result bossbar parity:b max run scoreboard players set #y st 50', 2)
+  await run('execute store result bossbar parity:b value run scoreboard players set #y st 20', 2)
+  h.result('store_bossbar', (await run('bossbar get parity:b max', 2)) + ' ' + await run('bossbar get parity:b value', 2))
+  h.result('store_bossbar_unknown', await run('execute store result bossbar parity:none value run say x', 2))
+  h.cmd(`setblock ${X + 4} ${y} ${Z + 8} barrel{Items:[{Slot:0b,id:"minecraft:apple",count:5}]}`)
+  await h.ticks(5)
+  await run(`execute store result block ${X + 4} ${y} ${Z + 8} Items[0].count byte 1 run scoreboard players set #y st 12`, 2)
+  h.result('store_block', await run(`data get block ${X + 4} ${y} ${Z + 8} Items[0].count`, 2))
+  await run(`data modify block ${X + 4} ${y} ${Z + 8} Items[0].count set value 7b`, 2)
+  h.result('modify_block', await run(`data get block ${X + 4} ${y} ${Z + 8} Items[0].count`, 2))
+  h.result('store_block_invalid', await run(`execute store result block ${X + 5} ${y} ${Z + 8} Items[0].count byte 1 run say x`, 2))
+  await run(`execute store result entity @e[tag=parity_st,limit=1,sort=nearest,x=${X + 4},y=${y},z=${Z + 6}] Rotation[0] float 0.5 run scoreboard players set #y st 90`, 2)
+  h.result('store_entity', await run(`data get entity @e[tag=parity_st,limit=1,sort=nearest,x=${X + 4},y=${y},z=${Z + 6}] Rotation[0]`, 2))
+  h.result('store_player', await run(`execute store result entity ${bot.username} Health float 1 run scoreboard players set #y st 3`, 2))
+  h.cmd('kill @e[tag=parity_st]')
+  h.cmd('bossbar remove parity:b')
+
   // /time with the clock paused, so the values are the same on both servers.
   await run('time pause')
   await run('time set 30000')

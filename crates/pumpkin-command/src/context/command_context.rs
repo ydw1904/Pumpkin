@@ -2,7 +2,7 @@ use crate::context::string_range::StringRange;
 use crate::errors::command_syntax_error::CommandSyntaxError;
 use crate::errors::error_types::DISPATCHER_PARSE_EXCEPTION;
 use crate::node::attached::NodeId;
-use crate::node::dispatcher::{CommandDispatcher, ResultConsumer};
+use crate::node::dispatcher::{CommandDispatcher, EmptyResultConsumer, ResultConsumer};
 use crate::node::tree::Tree;
 use crate::node::{Command, RedirectModifier};
 use crate::source::{CommandSource, DummySource, ReturnValue};
@@ -300,8 +300,10 @@ impl<'a, S: CommandSource> ContextChain<'a, S> {
 
             let mut next_sources = Vec::new();
             for source in current_sources {
+                // Vanilla `BuildContexts` runs modifiers with a no-op result consumer, so a
+                // failing modifier never reaches a source's result callbacks.
                 let mut to_add =
-                    Self::run_modifier(modifier, &source, result_consumer, forked_mode)?;
+                    Self::run_modifier(modifier, &source, &EmptyResultConsumer, forked_mode)?;
                 next_sources.append(&mut to_add);
             }
             if next_sources.is_empty() {

@@ -1038,11 +1038,16 @@ impl DatapackManager {
         source: &CommandSource,
         name: &str,
     ) -> Result<usize, String> {
+        // Vanilla `FunctionCommand.queueFunctions` runs the body with `clearCallbacks()`, so an
+        // `execute store` around `function` doesn't see each line's result.
+        let source = source.clone().with_command_result_taker(
+            crate::command::context::command_source::ResultValueTaker::new(),
+        );
         self.visit_function_lines(name, |line| {
             server
                 .command_dispatcher
                 .load()
-                .handle_command(source, line);
+                .handle_command(&source, line);
         })
     }
 

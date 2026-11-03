@@ -11,6 +11,12 @@ pub trait ReturnValueCallable: Send + Sync {
     fn call(&self, value: ReturnValue);
 }
 
+impl<F: Fn(ReturnValue) + Send + Sync> ReturnValueCallable for F {
+    fn call(&self, value: ReturnValue) {
+        self(value);
+    }
+}
+
 pub type ReturnValueCallback = Arc<dyn ReturnValueCallable>;
 
 #[derive(Clone, Default)]

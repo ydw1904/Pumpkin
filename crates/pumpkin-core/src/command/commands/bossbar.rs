@@ -71,6 +71,21 @@ impl BossbarIdArgumentType {
     }
 }
 
+/// Vanilla `BossBarCommands.getBossBar`: fails when no bar has this id.
+pub fn get_bossbar_or_error(
+    server: &crate::server::Server,
+    id: &str,
+) -> Result<crate::world::custom_bossbar::CustomBossbar, CommandSyntaxError> {
+    server
+        .bossbars
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get_bossbar(id)
+        .ok_or_else(|| {
+            ERROR_UNKNOWN_BOSSBAR.create_without_context(TextComponent::text(id.to_string()))
+        })
+}
+
 /// The colours `bossbar set <id> color` lists, as literals.
 const COLORS: [&str; 7] = ["blue", "green", "pink", "purple", "red", "white", "yellow"];
 
