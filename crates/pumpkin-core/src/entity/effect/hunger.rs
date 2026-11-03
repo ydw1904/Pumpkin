@@ -4,11 +4,9 @@ use crate::entity::living::LivingEntity;
 pub struct HungerMobEffect;
 
 impl MobEffect for HungerMobEffect {
-    fn should_apply_effect_tick(&self, duration: i32, _amplifier: u8) -> bool {
-        if duration <= 0 {
-            return false;
-        }
-        (duration as u32).is_multiple_of(20)
+    // Vanilla `HungerMobEffect`: a little exhaustion every tick, not a burst once a second.
+    fn should_apply_effect_tick(&self, _duration: i32, _amplifier: u8) -> bool {
+        true
     }
 
     fn apply_effect_tick(&self, living: &LivingEntity, amplifier: u8) {
@@ -16,8 +14,7 @@ impl MobEffect for HungerMobEffect {
         if let Some(entity) = world.get_entity_by_id(living.entity.entity_id)
             && let Some(player) = entity.get_player()
         {
-            let exhaustion = 0.1 * (f32::from(amplifier) + 1.0);
-            player.hunger_manager.add_exhaustion(exhaustion);
+            player.add_exhaustion(0.005 * (f32::from(amplifier) + 1.0));
         }
     }
 }
