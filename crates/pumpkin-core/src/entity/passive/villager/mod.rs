@@ -40,9 +40,8 @@ use crate::entity::player::Player;
 use crate::entity::{
     Entity, EntityBase,
     ai::goal::{
-        go_to_potential_job_site::GoToPotentialJobSiteGoal, look_around::RandomLookAroundGoal,
-        look_at_entity::LookAtEntityGoal, open_door::OpenDoorGoal, swim::SwimGoal,
-        trade_with_player::TradeWithPlayerGoal, wander_around::WanderAroundGoal,
+        go_to_potential_job_site::GoToPotentialJobSiteGoal, open_door::OpenDoorGoal,
+        swim::SwimGoal, trade_with_player::TradeWithPlayerGoal, wander_around::WanderAroundGoal,
     },
     experience_orb::ExperienceOrbEntity,
     mob::{Mob, MobEntity, spawn::SpawnGroupData},
@@ -451,6 +450,8 @@ pub struct VillagerEntity {
     look_target: std::sync::Mutex<Option<look_target::LookTarget>>,
     /// When the running core `LookAtTargetSink` times out.
     look_at_target_sink_end: std::sync::Mutex<Option<i64>>,
+    /// The last tick of the `DoNothing` the look `RunOne` is running.
+    look_do_nothing_until: std::sync::Mutex<i64>,
     /// Vanilla `StrollAroundPoi.nextOkStartTime` of the meet package.
     stroll_next_ok_start: AtomicI64,
     /// Vanilla `MemoryModuleType.LAST_WOKEN`.
@@ -565,6 +566,7 @@ impl VillagerEntity {
             cant_reach_walk_target_since: std::sync::Mutex::new(None),
             look_target: std::sync::Mutex::new(None),
             look_at_target_sink_end: std::sync::Mutex::new(None),
+            look_do_nothing_until: std::sync::Mutex::new(i64::MIN),
             stroll_next_ok_start: AtomicI64::new(0),
             last_woken: std::sync::Mutex::new(None),
             last_slept: std::sync::Mutex::new(None),
@@ -599,10 +601,6 @@ impl VillagerEntity {
             .self_weak
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::downgrade(&mob_arc));
-        let mob_weak: Weak<dyn Mob> = {
-            let mob_arc: Arc<dyn Mob> = mob_arc.clone();
-            Arc::downgrade(&mob_arc)
-        };
 
         {
             let goal_selector = &mob_arc.mob_entity.goals_selector;
@@ -622,15 +620,7 @@ impl VillagerEntity {
             );
             goal_selector.add_goal(3, Box::new(meet::MoveToWalkTargetGoal::default()));
             goal_selector.add_goal(4, Box::new(WanderAroundGoal::new(0.5)));
-            goal_selector.add_goal(
-                5,
-                LookAtEntityGoal::with_default(mob_weak.clone(), &EntityType::PLAYER, 8.0),
-            );
-            goal_selector.add_goal(
-                6,
-                LookAtEntityGoal::with_default(mob_weak, &EntityType::VILLAGER, 8.0),
-            );
-            goal_selector.add_goal(7, Box::new(RandomLookAroundGoal::default()));
+            // Vanilla villagers look around through `LOOK_TARGET`, see `tick_look_behavior`.
         };
 
         // Send initial metadata
@@ -2341,6 +2331,7 @@ impl VillagerEntity {
         self.tick_give_gift_to_hero(&world, game_time, activity);
         self.tick_work(&world, game_time, day, activity);
         self.tick_show_trades(&world, game_time, activity);
+        self.tick_look_behavior(&world, game_time, activity);
         self.reset_profession();
         self.tick_golem_spawning(&world, game_time);
         // Running behaviors tick after every behavior had its chance to start, and the core
