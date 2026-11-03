@@ -16,6 +16,7 @@ use pumpkin_world::{chunk::ChunkHeightmapType, world::BlockFlags};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
+use crate::enchantment::EnchantmentHelper;
 use crate::entity::ai::target_predicate::TargetPredicate;
 use crate::entity::experience_orb::ExperienceOrbEntity;
 use crate::entity::{
@@ -662,12 +663,20 @@ impl EnderDragonEntity {
                     living.get_last_hurt_by_mob_timestamp()
                         < target_entity.tick_count.load(Ordering::Relaxed) - 2
                 })
+                && (self as &dyn EntityBase).do_teams_allow_damage(target.as_ref())
             {
                 target.damage_with_context(
                     target.as_ref(),
                     WING_DAMAGE,
                     DamageType::MOB_ATTACK,
                     None,
+                    Some(self),
+                    Some(self),
+                );
+                // Vanilla runs these whether or not the hit landed.
+                EnchantmentHelper::do_post_attack_effects(
+                    target.as_ref(),
+                    DamageType::MOB_ATTACK,
                     Some(self),
                     Some(self),
                 );
@@ -678,11 +687,20 @@ impl EnderDragonEntity {
     /// Vanilla `EnderDragon.hurt(ServerLevel, List<Entity>)`: the head and neck bite.
     fn hurt_entities(&self, bounding_box: &BoundingBox) {
         for target in self.living_entities_in(bounding_box) {
+            if !(self as &dyn EntityBase).do_teams_allow_damage(target.as_ref()) {
+                continue;
+            }
             target.damage_with_context(
                 target.as_ref(),
                 HEAD_DAMAGE,
                 DamageType::MOB_ATTACK,
                 None,
+                Some(self),
+                Some(self),
+            );
+            EnchantmentHelper::do_post_attack_effects(
+                target.as_ref(),
+                DamageType::MOB_ATTACK,
                 Some(self),
                 Some(self),
             );
