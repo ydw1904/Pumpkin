@@ -899,10 +899,13 @@ pub fn spawn_category_for_position(
                         .get_entity()
                         .set_rotation(game_random().random::<f32>() * 360.0, 0.0);
 
+                    // Vanilla `isValidPositionForMob`; `Mob.checkSpawnRules` is a walk target check.
                     let is_valid_for_mob = entity.get_mob().is_none_or(|mob| {
                         let despawn_dist = f64::from(entity_type.category.despawn_distance);
                         !(player_distance_sq > despawn_dist * despawn_dist
                             && mob.remove_when_far_away(player_distance_sq))
+                            && mob.get_walk_target_value(&check_pos) >= 0.0
+                            && mob.check_spawn_obstruction(world)
                     });
 
                     if is_valid_for_mob {
