@@ -18,6 +18,7 @@ use std::any::Any;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
+use super::custom_recipes::{self, KeptInput};
 use super::recipe_provider::{GenericRecipe, RecipeProvider};
 use super::recipes::{RecipeFinderScreenHandler, RecipeInputInventory};
 use crate::crafting::crafting_inventory::CraftingInventory;
@@ -49,15 +50,32 @@ pub struct ResultSlot {
     pub recipe_provider: Option<Arc<dyn RecipeProvider>>,
 }
 
+#[derive(Default)]
 pub struct RecipeResult {
     pub item_id: String,
     pub count: u8,
     pub pot_decorations: Option<[u16; 4]>,
+    /// The finished result of recipes that build it from their inputs' components.
+    pub stack: Option<ItemStack>,
+    /// What the recipe leaves in the grid besides crafting remainders.
+    pub kept: KeptInput,
 }
 
 impl RecipeResult {
+    fn from_stack(stack: ItemStack) -> Self {
+        Self {
+            item_id: stack.item.registry_key.to_string(),
+            count: stack.item_count,
+            stack: Some(stack),
+            ..Default::default()
+        }
+    }
+
     #[must_use]
     pub fn to_item_stack(&self) -> ItemStack {
+        if let Some(stack) = &self.stack {
+            return stack.clone();
+        }
         let key = self
             .item_id
             .strip_prefix("minecraft:")
@@ -205,6 +223,7 @@ fn recipe_matches(
                 item_id: result.id.to_string(),
                 count: result.count,
                 pot_decorations: None,
+                ..Default::default()
             })
         }
         GenericRecipe::Vanilla(CraftingRecipeTypes::CraftingShapeless {
@@ -233,30 +252,29 @@ fn recipe_matches(
                 item_id: result.id.to_string(),
                 count: result.count,
                 pot_decorations: None,
+                ..Default::default()
             })
         }
         GenericRecipe::Vanilla(CraftingRecipeTypes::CraftingTransmute {
             input,
             material,
+            material_count,
+            add_material_count_to_result,
             result,
             ..
-        }) => {
-            if count != 2 {
-                return None;
-            }
-            'item_stack: for i in 0..inventory.size() {
-                let slot = inventory.get_stack(i);
-                if slot.is_empty() {
-                    continue 'item_stack;
-                }
-                if !material.match_item(slot.item) && !input.match_item(slot.item) {
-                    return None;
-                }
-            }
-            Some(RecipeResult {
-                item_id: result.id.to_string(),
-                count: result.count,
-                pot_decorations: None,
+        }) => custom_recipes::transmute(
+            inventory,
+            input,
+            material,
+            *material_count,
+            *add_material_count_to_result,
+            result,
+        )
+        .map(RecipeResult::from_stack),
+        GenericRecipe::Vanilla(CraftingRecipeTypes::CraftingCustom(recipe)) => {
+            custom_recipes::assemble(recipe, inventory).map(|(stack, kept)| RecipeResult {
+                kept,
+                ..RecipeResult::from_stack(stack)
             })
         }
         GenericRecipe::Vanilla(CraftingRecipeTypes::CraftingDecoratedPot { .. }) => {
@@ -282,6 +300,7 @@ fn recipe_matches(
                 item_id: "minecraft:decorated_pot".to_string(),
                 count: 1,
                 pot_decorations: Some(sherds),
+                ..Default::default()
             })
         }
         GenericRecipe::Dynamic(OwnedCraftingRecipe::Shaped {
@@ -334,6 +353,7 @@ fn recipe_matches(
                 item_id: result.item_id.clone(),
                 count: result.count,
                 pot_decorations: None,
+                ..Default::default()
             })
         }
         GenericRecipe::Dynamic(OwnedCraftingRecipe::Shapeless {
@@ -362,6 +382,7 @@ fn recipe_matches(
                 item_id: result.item_id.clone(),
                 count: result.count,
                 pot_decorations: None,
+                ..Default::default()
             })
         }
         _ => None,
@@ -485,17 +506,25 @@ impl Slot for ResultSlot {
         player.on_recipe_crafted(stack);
         // ResultSlot.onTake: each input loses one item and its crafting remainder goes back
         // into the emptied slot, merges with what is left there, or goes to the player.
+        let mut kept = self
+            .match_recipe()
+            .map_or(KeptInput::None, |matched| matched.kept);
         for i in 0..self.inventory.size() {
             let input = self.inventory.get_stack(i);
             if input.is_empty() {
                 continue;
             }
-            let remainder = crafting_remainder(input.item);
+            let remainder = crafting_remainder(input.item)
+                .map(|item| ItemStack::new(1, item))
+                .or_else(|| custom_recipes::kept_input(kept, &input));
             self.inventory.remove_stack_specific(i, 1);
-            let Some(remainder) = remainder else {
+            let Some(mut replacement) = remainder else {
                 continue;
             };
-            let mut replacement = ItemStack::new(1, remainder);
+            if kept == KeptInput::WrittenBook {
+                // BookCloningRecipe.getRemainingItems stops after the first book.
+                kept = KeptInput::None;
+            }
             let left = self.inventory.get_stack(i);
             if left.is_empty() {
                 self.inventory.set_stack(i, replacement);

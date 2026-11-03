@@ -153,6 +153,7 @@ impl CommandExecutor for RecipeTakeExecutor {
                     r,
                     CraftingRecipeTypes::CraftingSpecial
                         | CraftingRecipeTypes::CraftingDecoratedPot { .. }
+                        | CraftingRecipeTypes::CraftingCustom(_)
                 )
             })
             .count();
