@@ -31,3 +31,28 @@ impl ClientPacket for CPlaceGhostRecipe<'_> {
         Ok(())
     }
 }
+
+/// `ClientboundPlaceGhostRecipePacket` as vanilla writes it, with the full recipe display of a
+/// built-in recipe. Kept apart from [`CPlaceGhostRecipe`] so the plugin packet bindings stay as
+/// they are.
+pub struct CPlaceGhostRecipeDisplay {
+    pub window_id: u8,
+    pub recipe: crate::java::client::play::BuiltinRecipeDisplay,
+}
+
+impl crate::packet::MultiVersionJavaPacket for CPlaceGhostRecipeDisplay {
+    fn to_id(version: JavaMinecraftVersion) -> i32 {
+        PLACE_GHOST_RECIPE.to_id(version)
+    }
+}
+
+impl ClientPacket for CPlaceGhostRecipeDisplay {
+    fn write_packet_data(
+        &self,
+        mut write: impl std::io::Write,
+        version: &JavaMinecraftVersion,
+    ) -> Result<(), crate::ser::WritingError> {
+        write.write_container_id(&crate::VarInt(i32::from(self.window_id)), version)?;
+        self.recipe.write_display(&mut write, *version)
+    }
+}

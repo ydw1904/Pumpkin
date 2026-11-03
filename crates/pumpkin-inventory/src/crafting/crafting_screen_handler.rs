@@ -389,11 +389,10 @@ fn recipe_matches(
     }
 }
 
-#[must_use]
-pub fn match_crafting_recipe(
+/// The filled part of the grid: `(top_x, top_y, width, height, filled slots)`.
+fn input_bounds(
     inventory: &dyn RecipeInputInventory,
-    provider: Option<&dyn RecipeProvider>,
-) -> Option<RecipeResult> {
+) -> Option<(usize, usize, usize, usize, usize)> {
     let mut count: usize = 0;
     let inventory_width = inventory.get_width();
     let mut top_x = 9;
@@ -412,11 +411,43 @@ pub fn match_crafting_recipe(
             count += 1;
         }
     }
-    if count == 0 {
-        return None;
-    }
-    let input_width = bottom_x + 1 - top_x;
-    let input_height = bottom_y + 1 - top_y;
+    (count > 0).then(|| {
+        (
+            top_x,
+            top_y,
+            bottom_x + 1 - top_x,
+            bottom_y + 1 - top_y,
+            count,
+        )
+    })
+}
+
+/// `Recipe.matches` for one crafting recipe against the grid.
+#[must_use]
+pub fn crafting_recipe_matches(
+    recipe: GenericRecipe<'_>,
+    inventory: &dyn RecipeInputInventory,
+) -> bool {
+    input_bounds(inventory).is_some_and(|(top_x, top_y, input_width, input_height, count)| {
+        recipe_matches(
+            recipe,
+            input_height,
+            input_width,
+            top_x,
+            top_y,
+            count,
+            inventory,
+        )
+        .is_some()
+    })
+}
+
+#[must_use]
+pub fn match_crafting_recipe(
+    inventory: &dyn RecipeInputInventory,
+    provider: Option<&dyn RecipeProvider>,
+) -> Option<RecipeResult> {
+    let (top_x, top_y, input_width, input_height, count) = input_bounds(inventory)?;
 
     for recipe in RECIPES_CRAFTING {
         if let Some(result) = recipe_matches(

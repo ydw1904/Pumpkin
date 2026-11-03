@@ -286,8 +286,8 @@ impl PlayerInventory {
 
     /// Finds a slot with the same item type that has room for more items.
     ///
-    /// Checks selected slot, off-hand, then other slots.
-    fn get_occupied_slot_with_room_for_stack(&self, stack: &ItemStack) -> i16 {
+    /// Checks selected slot, off-hand, then other slots (vanilla `getSlotWithRemainingSpace`).
+    pub fn get_occupied_slot_with_room_for_stack(&self, stack: &ItemStack) -> i16 {
         let selected = self.get_selected_slot() as usize;
         let inv = self
             .main_inventory
