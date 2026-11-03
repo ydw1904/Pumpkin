@@ -2014,6 +2014,11 @@ pub trait Mob: EntityBase + Send + Sync {
     /// Runs after navigation and before the movement controls, where vanilla ticks a mob's brain.
     fn custom_server_ai_step(&self, _caller: &dyn EntityBase) {}
 
+    /// The species part of vanilla `canBeSeenAsEnemy`, e.g. an axolotl playing dead.
+    fn mob_can_be_seen_as_enemy(&self) -> bool {
+        true
+    }
+
     /// Builds this mob's brain from its saved memories; goal mobs keep the brain-dead default.
     fn make_brain(&self, _packed: &PackedMemories) -> Brain {
         Brain::default()
