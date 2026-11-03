@@ -6,7 +6,7 @@ use pumpkin_data::{
 };
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::{
-    BlockDirection,
+    BlockDirection, HeightMap,
     math::{block_box::BlockBox, position::BlockPos, vector3::Vector3},
     random::{
         RandomDeriverImpl, RandomGenerator, RandomImpl, hash_block_pos, legacy_rand::LegacyRand,
@@ -46,7 +46,7 @@ impl StructureGenerator for DesertPyramidGenerator {
         if context.lowest_y(WIDTH, DEPTH) < context.sea_level {
             return None;
         }
-        let start_pos = context.on_top_of_chunk_center();
+        let start_pos = context.on_top_of_chunk_center(HeightMap::WorldSurfaceWg);
 
         let facing = BlockDirection::get_random_horizontal_direction(&mut context.random);
 

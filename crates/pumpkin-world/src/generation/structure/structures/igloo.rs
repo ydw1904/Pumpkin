@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use pumpkin_data::{Block, BlockState, Mirror, Rotation};
 use pumpkin_util::{
+    HeightMap,
     math::{block_box::BlockBox, vector3::Vector3},
     random::{RandomGenerator, RandomImpl, hash_block_pos, legacy_rand::LegacyRand},
 };
@@ -123,7 +124,7 @@ impl StructureGenerator for IglooGenerator {
         &self,
         mut context: StructureGeneratorContext<'_>,
     ) -> Option<StructurePosition> {
-        let start_pos = context.on_top_of_chunk_center();
+        let start_pos = context.on_top_of_chunk_center(HeightMap::WorldSurfaceWg);
         let block_pos = Vector3::new(
             start_block_x(context.chunk_x),
             GENERATION_HEIGHT,
@@ -350,11 +351,7 @@ impl StructurePieceBase for IglooPiece {
             Vector3::new(3 - offset.x, 0, -offset.z),
         );
         let entrance_pos = self.template_position + entrance_rel;
-        let height = region.get_top_y(
-            &pumpkin_util::HeightMap::WorldSurfaceWg,
-            entrance_pos.x,
-            entrance_pos.z,
-        );
+        let height = region.get_top_y(&HeightMap::WorldSurfaceWg, entrance_pos.x, entrance_pos.z);
 
         let old_template_pos = self.template_position;
         self.template_position.y += height - GENERATION_HEIGHT - 1;

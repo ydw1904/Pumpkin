@@ -9,7 +9,7 @@ use pumpkin_data::{
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::{
     HeightMap,
-    math::{block_box::BlockBox, int_provider::IntProvider, position::BlockPos, vector3::Vector3},
+    math::{block_box::BlockBox, int_provider::IntProvider, vector3::Vector3},
     random::{RandomGenerator, RandomImpl, hash_block_pos, legacy_rand::LegacyRand},
 };
 
@@ -136,6 +136,7 @@ impl StructureGenerator for OceanRuinGenerator {
         &self,
         mut context: StructureGeneratorContext<'_>,
     ) -> Option<StructurePosition> {
+        let start_pos = context.on_top_of_chunk_center(HeightMap::OceanFloorWg);
         let start_x = context.chunk_x << 4;
         let start_z = context.chunk_z << 4;
         let position = Vector3::new(start_x, 90, start_z);
@@ -155,7 +156,7 @@ impl StructureGenerator for OceanRuinGenerator {
         );
 
         Some(StructurePosition {
-            start_pos: BlockPos::new(start_x + 8, 64, start_z + 8),
+            start_pos,
             collector: Arc::new(collector.into()),
         })
     }

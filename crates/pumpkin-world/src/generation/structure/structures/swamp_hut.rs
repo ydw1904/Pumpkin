@@ -6,7 +6,7 @@ use pumpkin_data::{
 };
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::{
-    BlockDirection,
+    BlockDirection, HeightMap,
     math::{block_box::BlockBox, vector3::Vector3},
     random::RandomGenerator,
 };
@@ -38,7 +38,7 @@ impl StructureGenerator for SwampHutGenerator {
     ) -> Option<StructurePosition> {
         let x = start_block_x(context.chunk_x);
         let z = start_block_z(context.chunk_z);
-        let start_pos = context.on_top_of_chunk_center();
+        let start_pos = context.on_top_of_chunk_center(HeightMap::WorldSurfaceWg);
 
         let facing = BlockDirection::get_random_horizontal_direction(&mut context.random);
         let mut shiftable_piece = ShiftableStructurePiece::new(

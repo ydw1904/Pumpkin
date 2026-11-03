@@ -4,7 +4,7 @@ use pumpkin_data::Block;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::{
     BlockDirection, HeightMap,
-    math::{block_box::BlockBox, position::BlockPos, vector3::Vector3},
+    math::{block_box::BlockBox, vector3::Vector3},
     random::{RandomGenerator, RandomImpl, hash_block_pos, legacy_rand::LegacyRand},
 };
 
@@ -24,8 +24,9 @@ pub struct BuriedTreasureGenerator;
 impl StructureGenerator for BuriedTreasureGenerator {
     fn get_structure_position(
         &self,
-        context: StructureGeneratorContext<'_>,
+        mut context: StructureGeneratorContext<'_>,
     ) -> Option<StructurePosition> {
+        let start_pos = context.on_top_of_chunk_center(HeightMap::OceanFloorWg);
         let x = (context.chunk_x << 4) + 9;
         let z = (context.chunk_z << 4) + 9;
 
@@ -37,7 +38,7 @@ impl StructureGenerator for BuriedTreasureGenerator {
         }));
 
         Some(StructurePosition {
-            start_pos: BlockPos::new(x, 90, z),
+            start_pos,
             collector: Arc::new(collector.into()),
         })
     }
