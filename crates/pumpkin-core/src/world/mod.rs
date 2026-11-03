@@ -1,5 +1,6 @@
 use crate::block::entities::{
     BlockEntity, block_entity_from_nbt, block_entity_name, block_owns_block_entity,
+    reload_block_entity,
 };
 use dashmap::DashMap;
 use pumpkin_data::chunk::Biome;
@@ -7482,6 +7483,47 @@ impl World {
         self.level.read_chunk_sync(&chunk_pos, |chunk| {
             chunk.mark_dirty(true);
         });
+    }
+
+    /// A block entity's full data as vanilla `saveWithFullMetadata` gives it, with the fields
+    /// Pumpkin keeps without modelling.
+    pub fn block_entity_data(&self, block_entity: &dyn BlockEntity) -> NbtCompound {
+        let mut nbt = NbtCompound::new();
+        block_entity.write_internal(&mut nbt);
+        if let Some(unmodelled) = self
+            .unmodelled_block_entity_nbt
+            .get(&block_entity.get_position())
+        {
+            for (name, tag) in &unmodelled.child_tags {
+                if !nbt.has(name) {
+                    nbt.put(name, tag.clone());
+                }
+            }
+        }
+        nbt
+    }
+
+    /// Replaces the block entity at its position with one loaded from `nbt` (vanilla
+    /// `loadWithComponents`), keeping the fields Pumpkin doesn't model as they are in `nbt`.
+    pub fn load_block_entity_data(&self, block_entity: &dyn BlockEntity, nbt: &NbtCompound) {
+        let Some(loaded) = reload_block_entity(block_entity, nbt) else {
+            return;
+        };
+        let written = block_entity_nbt(loaded.as_ref());
+        let mut unmodelled = NbtCompound::new();
+        for (name, tag) in &nbt.child_tags {
+            if !written.has(name) && !matches!(&**name, "PumpkinCustomData" | "BukkitValues") {
+                unmodelled.put(name, tag.clone());
+            }
+        }
+        // Before `add_block_entity`, which saves the chunk's copy with these fields.
+        let pos = loaded.get_position();
+        if unmodelled.is_empty() {
+            self.unmodelled_block_entity_nbt.remove(&pos);
+        } else {
+            self.unmodelled_block_entity_nbt.insert(pos, unmodelled);
+        }
+        self.add_block_entity(loaded);
     }
 
     pub fn add_block_entity_nbt(&self, block_pos: BlockPos, nbt: &NbtCompound) {

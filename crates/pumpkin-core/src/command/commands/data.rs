@@ -23,7 +23,6 @@ use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry
 use pumpkin_util::text::TextComponent;
 use pumpkin_util::text::color::NamedColor;
 
-use crate::block::entities::reload_block_entity;
 use crate::command::argument_builder::{ArgumentBuilder, argument, command, literal};
 use crate::command::argument_types::coordinates::block_pos::BlockPosArgumentType;
 use crate::command::argument_types::core::double::DoubleArgumentType;
@@ -453,18 +452,14 @@ impl DataAccessor for BlockDataAccessor {
             return Err(ERROR_BLOCK_INVALID.create_without_context());
         };
         // `add_block_entity` also sends the update tag, like vanilla `sendBlockUpdated`.
-        if let Some(loaded) = reload_block_entity(entity.as_ref(), tag) {
-            self.world.add_block_entity(loaded);
-            self.world.block_entity_set_changed(&self.pos);
-        }
+        self.world.load_block_entity_data(entity.as_ref(), tag);
+        self.world.block_entity_set_changed(&self.pos);
         Ok(())
     }
 
     fn get_data(&self) -> Result<NbtCompound, CommandSyntaxError> {
         if let Some(block_entity) = self.world.get_block_entity(&self.pos) {
-            let mut nbt = NbtCompound::new();
-            block_entity.write_internal(&mut nbt);
-            Ok(nbt)
+            Ok(self.world.block_entity_data(block_entity.as_ref()))
         } else {
             Err(ERROR_BLOCK_INVALID.create_without_context())
         }
