@@ -154,6 +154,15 @@ impl<'a, T: std::hash::Hash + Eq> ChunkTickScheduler<&'a T> {
 
     #[must_use]
     pub fn to_vec(&self) -> Vec<ScheduledTick<&'a T>> {
+        self.to_vec_with_order()
+            .into_iter()
+            .map(|(tick, _)| tick)
+            .collect()
+    }
+
+    /// Like [`Self::to_vec`], with each tick's sub-tick order.
+    #[must_use]
+    pub fn to_vec_with_order(&self) -> Vec<(ScheduledTick<&'a T>, u64)> {
         let offset = self.offset.load(Ordering::SeqCst);
         let inner_guard = self
             .inner
@@ -167,19 +176,25 @@ impl<'a, T: std::hash::Hash + Eq> ChunkTickScheduler<&'a T> {
 
         for i in 0..TICK_QUEUE_SIZE {
             let index = (offset + i) % TICK_QUEUE_SIZE;
-            res.extend(inner.tick_queue[index].iter().map(|x| ScheduledTick {
-                delay: i as u32,
-                priority: x.priority,
-                position: x.position,
-                value: x.value,
+            res.extend(inner.tick_queue[index].iter().map(|x| {
+                let tick = ScheduledTick {
+                    delay: i as u32,
+                    priority: x.priority,
+                    position: x.position,
+                    value: x.value,
+                };
+                (tick, x.sub_tick_order)
             }));
         }
         for (due_step, queue) in &inner.far_ticks {
-            res.extend(queue.iter().map(|x| ScheduledTick {
-                delay: (due_step - offset) as u32,
-                priority: x.priority,
-                position: x.position,
-                value: x.value,
+            res.extend(queue.iter().map(|x| {
+                let tick = ScheduledTick {
+                    delay: (due_step - offset) as u32,
+                    priority: x.priority,
+                    position: x.position,
+                    value: x.value,
+                };
+                (tick, x.sub_tick_order)
             }));
         }
         res

@@ -1133,6 +1133,19 @@ impl Level {
     ) {
         let tick_order = order::next_entity_order()
             .unwrap_or_else(|| self.schedule_tick_counts.fetch_add(1, Ordering::Relaxed));
+        self.schedule_block_tick_with_order(block, block_pos, delay, priority, tick_order);
+    }
+
+    /// `schedule_block_tick` with a given sub-tick order, which orders ticks due on the same
+    /// game tick with the same priority.
+    pub fn schedule_block_tick_with_order(
+        &self,
+        block: &Block,
+        block_pos: BlockPos,
+        delay: u32,
+        priority: TickPriority,
+        tick_order: u64,
+    ) {
         let scheduled_tick = ScheduledTick {
             delay,
             position: block_pos,

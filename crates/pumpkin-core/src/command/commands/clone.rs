@@ -412,7 +412,8 @@ fn update_light(world: &World, changed: &[(BlockPos, BlockStateId)]) {
 }
 
 /// Vanilla `LevelTicks.copyAreaFrom`: the block ticks scheduled inside `area` are scheduled
-/// again at the same delay, moved by `offset`.
+/// again at the same delay and priority, moved by `offset`. The copies keep their relative
+/// sub-tick order, placed after all the copied ticks.
 fn copy_block_ticks(from: &World, to: &World, area: &BlockBox, offset: Vector3<i32>) {
     let (min_chunk, max_chunk) = (
         BlockPos(area.min).chunk_position(),
@@ -421,24 +422,26 @@ fn copy_block_ticks(from: &World, to: &World, area: &BlockBox, offset: Vector3<i
     let mut ticks = Vec::new();
     for x in min_chunk.x..=max_chunk.x {
         for z in min_chunk.y..=max_chunk.y {
-            if let Some(chunk_ticks) = from
-                .level
-                .read_chunk_sync(&Vector2::new(x, z), |chunk| chunk.block_ticks.to_vec())
-            {
+            if let Some(chunk_ticks) = from.level.read_chunk_sync(&Vector2::new(x, z), |chunk| {
+                chunk.block_ticks.to_vec_with_order()
+            }) {
                 ticks.extend(
                     chunk_ticks
                         .into_iter()
-                        .filter(|tick| area.contains_pos(&tick.position.0)),
+                        .filter(|(tick, _)| area.contains_pos(&tick.position.0)),
                 );
             }
         }
     }
-    for tick in ticks {
-        to.schedule_block_tick(
+    let min_order = ticks.iter().map(|&(_, order)| order).min().unwrap_or(0);
+    let max_order = ticks.iter().map(|&(_, order)| order).max().unwrap_or(0);
+    for (tick, order) in ticks {
+        to.schedule_block_tick_with_order(
             tick.value,
             BlockPos(tick.position.0 + offset),
             tick.delay,
             tick.priority,
+            order - min_order + max_order + 1,
         );
     }
 }

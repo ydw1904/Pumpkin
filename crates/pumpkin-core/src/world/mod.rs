@@ -6685,6 +6685,18 @@ impl World {
             .schedule_block_tick(block, block_pos, delay, priority);
     }
 
+    pub fn schedule_block_tick_with_order(
+        &self,
+        block: &Block,
+        block_pos: BlockPos,
+        delay: u32,
+        priority: TickPriority,
+        tick_order: u64,
+    ) {
+        self.level
+            .schedule_block_tick_with_order(block, block_pos, delay, priority, tick_order);
+    }
+
     pub fn schedule_fluid_tick(
         &self,
         fluid: &Fluid,
