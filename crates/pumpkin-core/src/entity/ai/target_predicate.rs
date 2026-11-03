@@ -1,7 +1,7 @@
 use pumpkin_util::Difficulty;
 
 use crate::entity::EntityBase;
-use crate::entity::living::LivingEntity;
+use crate::entity::living::{LivingEntity, MAX_VISIBILITY_PERCENT};
 use crate::world::World;
 use std::sync::Arc;
 
@@ -45,6 +45,20 @@ impl TargetPredicate {
     #[must_use]
     pub fn create_non_attackable() -> Self {
         Self::new(false)
+    }
+
+    /// Farthest distance a target can pass the range check from.
+    #[must_use]
+    pub fn max_distance(&self) -> f64 {
+        if self.base_max_distance <= 0.0 {
+            return f64::INFINITY;
+        }
+        let modifier = if self.use_distance_scaling_factor {
+            MAX_VISIBILITY_PERCENT
+        } else {
+            1.0
+        };
+        (self.base_max_distance * modifier).max(MIN_DISTANCE)
     }
 
     #[must_use]

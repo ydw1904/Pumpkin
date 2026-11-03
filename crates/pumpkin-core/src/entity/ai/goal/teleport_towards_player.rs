@@ -55,9 +55,10 @@ impl TeleportTowardsPlayerGoal {
         let pos = entity.pos.load();
 
         // A nearer player that is not anger-inducing must not hide a farther one that is.
-        // The conditions carry the follow range.
+        // Players beyond the conditions' range can't pass them.
         let enderman: &dyn EntityBase = self.enderman.as_ref();
-        world.get_nearest_player(pos, f64::INFINITY, |player| {
+        let range = self.target_predicate.max_distance();
+        world.get_nearest_player(pos, range, |player| {
             self.target_predicate
                 .test(&world, Some(enderman), player.as_ref())
                 && self.is_anger_inducing(player, &world)

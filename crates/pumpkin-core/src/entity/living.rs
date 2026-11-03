@@ -4721,9 +4721,12 @@ impl LivingEntity {
                 }
             }
         }
-        percent.clamp(0.0, 10.0)
+        percent.clamp(0.0, MAX_VISIBILITY_PERCENT)
     }
 }
+
+/// Upper clamp of `visibility_percent`.
+pub(crate) const MAX_VISIBILITY_PERCENT: f64 = 10.0;
 
 fn random_teleport_coordinate(center: f64, diameter: f32, random: f64) -> f64 {
     center + (random - 0.5) * f64::from(diameter)
