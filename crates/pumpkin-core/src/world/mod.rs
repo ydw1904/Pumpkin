@@ -1743,6 +1743,10 @@ impl World {
         let t_chunks = std::time::Instant::now();
         self.tick_chunks();
         let chunk_elapsed = t_chunks.elapsed();
+        // Vanilla `ServerChunkCache.tick` runs `ChunkMap.tick` after ticking chunks and before
+        // entities and players tick, so a change made by a packet is seen for a tick even if
+        // the player's tick undoes it.
+        self.entity_tracker.update_all(self);
 
         let players = self.players.load();
         let player_count = players.len();
@@ -1962,8 +1966,6 @@ impl World {
             }
         }
         let entity_elapsed = t_entities.elapsed();
-
-        self.entity_tracker.update_all(self);
 
         // Vanilla `LevelChunk.isTicking`: block entities tick in block ticking chunks.
         let block_ticking = &active_chunks.block_ticking;
