@@ -71,8 +71,49 @@ fn clear_player(target: &Player, item: &ItemPredicate, max: i32) -> i32 {
         }
     }
 
+    // Like vanilla's Inventory.clearOrCountMatchingItems, the 2x2 crafting grid and the carried
+    // stack are cleared too.
+    if !is_done {
+        let screen_handler = target
+            .player_screen_handler
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for index in CRAFT_GRID_SLOTS {
+            let slot = screen_handler.get_slot(index);
+            let mut stack = slot.get_cloned_stack();
+            let before = count;
+            test_and_clear(&mut count, &mut max, item, &mut stack, &mut is_done);
+            if count != before && max != MAX_NO_CLEAR_BUT_SIMULATE {
+                slot.set_stack(stack);
+            }
+            if is_done {
+                break;
+            }
+        }
+    }
+
+    if !is_done {
+        let current = target
+            .current_screen_handler
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        let current = current
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut carried = current
+            .get_behaviour()
+            .cursor_stack
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        test_and_clear(&mut count, &mut max, item, &mut carried, &mut is_done);
+    }
+
     count
 }
+
+/// Window slots of the player's 2x2 crafting grid.
+const CRAFT_GRID_SLOTS: std::ops::RangeInclusive<usize> = 1..=4;
 
 fn test_and_clear(
     count: &mut i32,
