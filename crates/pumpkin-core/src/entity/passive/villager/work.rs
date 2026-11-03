@@ -133,14 +133,6 @@ fn around(center: BlockPos) -> impl Iterator<Item = BlockPos> {
 }
 
 impl VillagerEntity {
-    pub(super) fn look_at_position(&self, target: Vector3<f64>) {
-        self.mob_entity
-            .look_control
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .look_at_position(self, target);
-    }
-
     fn set_walk_and_look_target(&self, pos: BlockPos, speed: f64, close_enough_dist: i32) {
         self.look_at_position(pos.to_centered_f64());
         self.set_walk_target(Some(WalkTarget {
@@ -318,7 +310,8 @@ impl VillagerEntity {
             WorkBehavior::StrollToPoi => self.stroll_to_poi(package, game_time),
             WorkBehavior::StrollToPoiList => self.stroll_to_poi_list(package, game_time),
             WorkBehavior::HarvestFarmland => {
-                if self.walk_target().is_some()
+                if self.look_target().is_some()
+                    || self.walk_target().is_some()
                     || self.secondary_job_sites().is_empty()
                     || !self.can_start_harvest(&mut package.harvest, world)
                 {
@@ -334,7 +327,8 @@ impl VillagerEntity {
                 true
             }
             WorkBehavior::UseBonemeal => {
-                if self.walk_target().is_some()
+                if self.look_target().is_some()
+                    || self.walk_target().is_some()
                     || !self.can_start_bonemeal(&mut package.bonemeal, world)
                 {
                     return false;

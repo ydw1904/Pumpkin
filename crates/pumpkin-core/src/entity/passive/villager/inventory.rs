@@ -205,7 +205,7 @@ impl VillagerEntity {
         {
             return;
         }
-        self.look_at_position(item.get_entity().pos.load());
+        self.look_at_entity(item.get_entity().entity_id);
         self.set_walk_target(Some(WalkTarget {
             destination: WalkDestination::Entity(item.get_entity().entity_id),
             speed: GO_TO_WANTED_ITEM_SPEED,

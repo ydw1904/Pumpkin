@@ -197,11 +197,7 @@ impl VillagerEntity {
     }
 
     fn look_at_player(&self, player: &Arc<dyn EntityBase>) {
-        self.mob_entity
-            .look_control
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .look_at_entity(self, player);
+        self.look_at_entity(player.get_entity().entity_id);
     }
 
     /// Vanilla `ShowTradesToPlayer.clearHeldItem`.

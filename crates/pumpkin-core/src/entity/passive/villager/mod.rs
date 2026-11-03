@@ -57,6 +57,7 @@ pub mod data;
 mod golem;
 mod idle;
 mod inventory;
+mod look_target;
 mod meet;
 mod show_trades;
 mod walk_to_poi;
@@ -437,6 +438,10 @@ pub struct VillagerEntity {
     walk_target: std::sync::Mutex<Option<meet::WalkTarget>>,
     /// Vanilla `MemoryModuleType.INTERACTION_TARGET`, by entity id.
     interaction_target: std::sync::Mutex<Option<i32>>,
+    /// Vanilla `MemoryModuleType.LOOK_TARGET`.
+    look_target: std::sync::Mutex<Option<look_target::LookTarget>>,
+    /// When the running core `LookAtTargetSink` times out.
+    look_at_target_sink_end: std::sync::Mutex<Option<i64>>,
     /// Vanilla `StrollAroundPoi.nextOkStartTime` of the meet package.
     stroll_next_ok_start: AtomicI64,
     /// Vanilla `MemoryModuleType.LAST_WOKEN`.
@@ -545,6 +550,8 @@ impl VillagerEntity {
             acquire_meeting_point: std::sync::Mutex::default(),
             walk_target: std::sync::Mutex::new(None),
             interaction_target: std::sync::Mutex::new(None),
+            look_target: std::sync::Mutex::new(None),
+            look_at_target_sink_end: std::sync::Mutex::new(None),
             stroll_next_ok_start: AtomicI64::new(0),
             last_woken: std::sync::Mutex::new(None),
             last_slept: std::sync::Mutex::new(None),
@@ -2304,6 +2311,7 @@ impl VillagerEntity {
         let age = self.get_entity().tick_count.load(Ordering::Relaxed);
         // Vanilla's nearest entity and item sensors refresh every 20 ticks.
         let sensed = age % 20 == 0;
+        self.start_look_at_target_sink(game_time);
         self.tick_secondary_poi_sensor(&world);
         self.tick_job_site_memories(&world, game_time, sensed);
         self.tick_poi_memories(&world, game_time);
@@ -2321,6 +2329,9 @@ impl VillagerEntity {
         self.tick_show_trades(&world, game_time, activity);
         self.reset_profession();
         self.tick_golem_spawning(&world, game_time);
+        // Running behaviors tick after every behavior had its chance to start, and the core
+        // sink comes first among them.
+        self.tick_look_at_target_sink(&world, game_time);
     }
 }
 

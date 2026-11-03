@@ -102,7 +102,7 @@ impl VillagerEntity {
         }) {
             let id = closest.get_entity().entity_id;
             self.set_interaction_target(Some(id));
-            self.look_at_position(closest.get_entity().get_eye_pos());
+            self.look_at_entity(id);
             self.set_walk_target(Some(WalkTarget {
                 destination: WalkDestination::Entity(id),
                 speed: INTERACT_SPEED_MODIFIER,
@@ -222,7 +222,7 @@ impl VillagerEntity {
                 return;
             }
             self.set_interaction_target(Some(hero.entity_id()));
-            self.look_at_position(hero.get_entity().get_eye_pos());
+            self.look_at_entity(hero.entity_id());
             let running = RunningGift {
                 start_time: game_time,
                 end_time: game_time + GIFT_TIMEOUT,
@@ -246,6 +246,7 @@ impl VillagerEntity {
                 idle.gift = None;
                 self.set_interaction_target(None);
                 self.set_walk_target(None);
+                self.erase_look_target();
             }
         }
     }
@@ -259,7 +260,7 @@ impl VillagerEntity {
         hero: &Arc<Player>,
     ) -> RunningGift {
         let hero_entity = hero.get_entity();
-        self.look_at_position(hero_entity.get_eye_pos());
+        self.look_at_entity(hero_entity.entity_id);
         let villager_pos = self.get_entity().block_pos.load();
         let hero_pos = hero_entity.block_pos.load();
         if villager_pos.0.squared_distance_to_vec(&hero_pos.0)

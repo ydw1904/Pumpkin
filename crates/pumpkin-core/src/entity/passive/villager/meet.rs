@@ -220,7 +220,7 @@ impl VillagerEntity {
     /// Vanilla `BehaviorUtils.lockGazeAndWalkToEachOther`.
     fn lock_gaze_and_walk_to_each_other(&self, other: &Self) {
         for (walker, other) in [(self, other), (other, self)] {
-            walker.look_at_position(other.get_entity().get_eye_pos());
+            walker.look_at_entity(other.get_entity().entity_id);
             walker.set_walk_target(Some(WalkTarget {
                 destination: WalkDestination::Entity(other.get_entity().entity_id),
                 speed: INTERACT_SPEED,
