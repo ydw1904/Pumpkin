@@ -947,6 +947,45 @@ pub struct StructureGeneratorContext<'a> {
     pub structure_key: Option<pumpkin_data::structures::StructureKeys>,
 }
 
+/// Height vanilla structures assume without a sampler, e.g. for `/place structure`.
+const DEFAULT_SURFACE_Y: i32 = 64;
+
+impl StructureGeneratorContext<'_> {
+    /// Vanilla `ChunkGenerator.getFirstOccupiedHeight` for `WORLD_SURFACE_WG`.
+    pub fn first_occupied_height_wg(&mut self, block_x: i32, block_z: i32) -> i32 {
+        self.height_sampler
+            .as_deref_mut()
+            .map_or(DEFAULT_SURFACE_Y, |sampler| {
+                sampler.estimate_height(block_x, block_z) - 1
+            })
+    }
+
+    /// The start position of vanilla `Structure.onTopOfChunkCenter` with `WORLD_SURFACE_WG`,
+    /// where the start biome is checked.
+    pub fn on_top_of_chunk_center(&mut self) -> BlockPos {
+        let x = crate::generation::positions::chunk_pos::get_center_x(self.chunk_x);
+        let z = crate::generation::positions::chunk_pos::get_center_z(self.chunk_z);
+        BlockPos::new(x, self.first_occupied_height_wg(x, z), z)
+    }
+
+    /// Vanilla `Structure.getLowestY`: the lowest of the corner heights of a box starting at the
+    /// chunk's minimum corner.
+    pub fn lowest_y(&mut self, size_x: i32, size_z: i32) -> i32 {
+        let min_x = start_block_x(self.chunk_x);
+        let min_z = start_block_z(self.chunk_z);
+        [
+            (min_x, min_z),
+            (min_x, min_z + size_z),
+            (min_x + size_x, min_z),
+            (min_x + size_x, min_z + size_z),
+        ]
+        .into_iter()
+        .map(|(x, z)| self.first_occupied_height_wg(x, z))
+        .min()
+        .unwrap_or(DEFAULT_SURFACE_Y)
+    }
+}
+
 #[must_use]
 pub fn create_chunk_random(seed: i64, chunk_x: i32, chunk_z: i32) -> RandomGenerator {
     let mut seeder = LegacyRand::from_seed(seed as u64);

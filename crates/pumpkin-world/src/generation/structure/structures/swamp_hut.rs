@@ -7,7 +7,7 @@ use pumpkin_data::{
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::{
     BlockDirection,
-    math::{block_box::BlockBox, position::BlockPos, vector3::Vector3},
+    math::{block_box::BlockBox, vector3::Vector3},
     random::RandomGenerator,
 };
 use serde::Deserialize;
@@ -38,6 +38,7 @@ impl StructureGenerator for SwampHutGenerator {
     ) -> Option<StructurePosition> {
         let x = start_block_x(context.chunk_x);
         let z = start_block_z(context.chunk_z);
+        let start_pos = context.on_top_of_chunk_center();
 
         let facing = BlockDirection::get_random_horizontal_direction(&mut context.random);
         let mut shiftable_piece = ShiftableStructurePiece::new(
@@ -60,7 +61,7 @@ impl StructureGenerator for SwampHutGenerator {
         }));
 
         Some(StructurePosition {
-            start_pos: BlockPos::new(x, 64, z),
+            start_pos,
             collector: Arc::new(collector.into()),
         })
     }
