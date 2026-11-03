@@ -1,6 +1,6 @@
 use crate::block::entities::{
     BlockEntity, block_entity_from_nbt, block_entity_name, block_owns_block_entity,
-    reload_block_entity,
+    reload_block_entity, vanilla_block_entity_fields,
 };
 use dashmap::DashMap;
 use pumpkin_data::chunk::Biome;
@@ -7424,13 +7424,7 @@ impl World {
                 .insert(*block_pos, custom_data.clone());
         }
         let entity = block_entity_from_nbt(&nbt)?;
-        let written = block_entity_nbt(entity.as_ref());
-        let mut unmodelled = NbtCompound::new();
-        for (name, tag) in &nbt.child_tags {
-            if !written.has(name) && !matches!(&**name, "PumpkinCustomData" | "BukkitValues") {
-                unmodelled.put(name, tag.clone());
-            }
-        }
+        let unmodelled = unmodelled_block_entity_fields(entity.as_ref(), &nbt);
         if unmodelled.is_empty() {
             self.unmodelled_block_entity_nbt.remove(block_pos);
         } else {
@@ -7583,12 +7577,7 @@ impl World {
         let before = block_entity_nbt(block_entity.as_ref());
         let written = block_entity_nbt(loaded.as_ref());
         let changed = before != written;
-        let mut unmodelled = NbtCompound::new();
-        for (name, tag) in &nbt.child_tags {
-            if !written.has(name) && !matches!(&**name, "PumpkinCustomData" | "BukkitValues") {
-                unmodelled.put(name, tag.clone());
-            }
-        }
+        let unmodelled = unmodelled_block_entity_fields(loaded.as_ref(), nbt);
         // Before `add_block_entity`, which saves the chunk's copy with these fields.
         let pos = loaded.get_position();
         if unmodelled.is_empty() {
@@ -8826,6 +8815,28 @@ fn block_entity_nbt(block_entity: &dyn BlockEntity) -> NbtCompound {
     let mut nbt = NbtCompound::new();
     block_entity.write_internal(&mut nbt);
     nbt
+}
+
+/// The fields of `nbt` that `block_entity`, loaded from it, doesn't write itself but vanilla's
+/// block entity keeps. Keys vanilla doesn't read are dropped, like vanilla does on load.
+fn unmodelled_block_entity_fields(
+    block_entity: &dyn BlockEntity,
+    nbt: &NbtCompound,
+) -> NbtCompound {
+    let written = block_entity_nbt(block_entity);
+    let vanilla_fields = vanilla_block_entity_fields(block_entity.resource_location());
+    let mut unmodelled = NbtCompound::new();
+    for (name, tag) in &nbt.child_tags {
+        let vanilla_reads = &**name == "components"
+            || vanilla_fields.is_none_or(|fields| fields.contains(&&**name));
+        if vanilla_reads
+            && !written.has(name)
+            && !matches!(&**name, "PumpkinCustomData" | "BukkitValues")
+        {
+            unmodelled.put(name, tag.clone());
+        }
+    }
+    unmodelled
 }
 
 /// Copies `loaded`'s items into the `live` container when they are all that differs between

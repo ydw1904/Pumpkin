@@ -195,6 +195,131 @@ pub trait BlockEntity: Any + Send + Sync {
     }
 }
 
+/// The fields vanilla's `loadAdditional` chain reads for block entity type `id`.
+///
+/// `components`, which every block entity keeps, isn't listed. Anything else in loaded data is
+/// dropped. `None` for types not listed here, which keep every field.
+#[must_use]
+#[expect(clippy::too_many_lines, reason = "one list of field names per type")]
+pub fn vanilla_block_entity_fields(id: &str) -> Option<&'static [&'static str]> {
+    // `BaseContainerBlockEntity` with `RandomizableContainer`'s loot table.
+    const CONTAINER: &[&str] = &["Items", "CustomName", "lock", "LootTable", "LootTableSeed"];
+    Some(match id {
+        "minecraft:barrel"
+        | "minecraft:chest"
+        | "minecraft:trapped_chest"
+        | "minecraft:dispenser"
+        | "minecraft:dropper"
+        | "minecraft:shulker_box" => CONTAINER,
+        "minecraft:hopper" => &[
+            "Items",
+            "CustomName",
+            "lock",
+            "LootTable",
+            "LootTableSeed",
+            "TransferCooldown",
+        ],
+        "minecraft:crafter" => &[
+            "Items",
+            "CustomName",
+            "lock",
+            "LootTable",
+            "LootTableSeed",
+            "crafting_ticks_remaining",
+            "disabled_slots",
+            "triggered",
+        ],
+        "minecraft:furnace" | "minecraft:blast_furnace" | "minecraft:smoker" => &[
+            "Items",
+            "CustomName",
+            "lock",
+            "RecipesUsed",
+            "cooking_time_spent",
+            "cooking_total_time",
+            "lit_time_remaining",
+            "lit_total_time",
+            "speed_multiplier",
+        ],
+        "minecraft:brewing_stand" => &[
+            "Items",
+            "CustomName",
+            "lock",
+            "BrewTime",
+            "Fuel",
+            "speed_multiplier",
+            "total_brew_time",
+            "total_fuel",
+        ],
+        "minecraft:chiseled_bookshelf" => &["Items", "last_interacted_slot"],
+        "minecraft:shelf" => &["Items", "align_items_to_bottom"],
+        "minecraft:campfire" => &["Items", "CookingTimes", "CookingTotalTimes"],
+        "minecraft:jukebox" => &["RecordItem", "ticks_since_song_started"],
+        "minecraft:lectern" => &["Book", "Page"],
+        "minecraft:banner" => &["CustomName", "patterns"],
+        "minecraft:beacon" => &[
+            "CustomName",
+            "lock",
+            "Levels",
+            "primary_effect",
+            "secondary_effect",
+        ],
+        "minecraft:enchanting_table" => &["CustomName"],
+        "minecraft:decorated_pot" => &["item", "sherds", "LootTable", "LootTableSeed"],
+        "minecraft:brushable_block" => &["item", "hit_direction", "LootTable", "LootTableSeed"],
+        "minecraft:comparator" => &["OutputSignal"],
+        "minecraft:conduit" => &["Target"],
+        "minecraft:creaking_heart" => &["creaking"],
+        "minecraft:potent_sulfur" => &["countdown"],
+        "minecraft:beehive" => &["bees", "flower_pos"],
+        "minecraft:end_gateway" => &["Age", "ExactTeleport", "exit_portal"],
+        "minecraft:sign" | "minecraft:hanging_sign" => {
+            &["allow_op_features", "back_text", "front_text", "is_waxed"]
+        }
+        "minecraft:skull" => &["custom_name", "note_block_sound", "profile"],
+        "minecraft:sculk_sensor" | "minecraft:calibrated_sculk_sensor" => {
+            &["last_vibration_frequency", "listener"]
+        }
+        "minecraft:sculk_shrieker" => &["listener", "warning_level"],
+        "minecraft:jigsaw" => &[
+            "final_state",
+            "joint",
+            "name",
+            "placement_priority",
+            "pool",
+            "selection_priority",
+            "target",
+        ],
+        "minecraft:structure_block" => &[
+            "author",
+            "ignoreEntities",
+            "integrity",
+            "metadata",
+            "mirror",
+            "mode",
+            "name",
+            "posX",
+            "posY",
+            "posZ",
+            "powered",
+            "rotation",
+            "seed",
+            "showair",
+            "showboundingbox",
+            "sizeX",
+            "sizeY",
+            "sizeZ",
+            "strict",
+        ],
+        "minecraft:test_block" => &["message", "mode", "powered"],
+        "minecraft:test_instance_block" => &["data", "errors"],
+        "minecraft:bell"
+        | "minecraft:daylight_detector"
+        | "minecraft:end_portal"
+        | "minecraft:ender_chest" => &[],
+        _ => return None,
+    })
+}
+
 #[must_use]
 pub fn block_entity_from_generic<T: BlockEntity>(nbt: &NbtCompound) -> T {
     let x = nbt.get_int("x").unwrap_or(0);
