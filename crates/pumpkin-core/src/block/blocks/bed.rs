@@ -230,8 +230,10 @@ impl BedBlock {
 
         // Explode if bed rule explodes (EnvironmentAttributes.BED_RULE)
         if world.dimension.bed_rule.explodes {
-            world.break_block(&bed_head_pos, None, BlockFlags::SKIP_DROPS);
-            world.break_block(&bed_foot_pos, None, BlockFlags::SKIP_DROPS);
+            world.remove_block(&bed_head_pos);
+            if world.get_block(&bed_foot_pos) == block {
+                world.remove_block(&bed_foot_pos);
+            }
 
             world.explode_with_fire_and_damage_type(
                 bed_head_pos.to_centered_f64(),

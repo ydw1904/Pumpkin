@@ -102,8 +102,7 @@ impl BlockBehaviour for DriedGhastBlock {
                     BlockFlags::NOTIFY_LISTENERS,
                 );
             } else {
-                args.world
-                    .break_block(args.position, None, BlockFlags::SKIP_DROPS);
+                args.world.remove_block(args.position);
                 let spawn_pos = Vector3::new(
                     f64::from(args.position.0.x) + 0.5,
                     f64::from(args.position.0.y),

@@ -29,7 +29,7 @@ pub struct RespawnAnchorBlock;
 impl RespawnAnchorBlock {
     /// Vanilla `RespawnAnchorBlock.explode`.
     fn explode(world: &Arc<World>, pos: BlockPos) {
-        world.break_block(&pos, None, BlockFlags::SKIP_DROPS);
+        world.remove_block(&pos);
         let any_water_neighbors = BlockDirection::horizontal()
             .iter()
             .any(|dir| is_water_that_would_flow(world, &pos.offset(dir.to_offset())));

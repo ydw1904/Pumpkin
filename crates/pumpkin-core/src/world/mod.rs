@@ -6079,6 +6079,17 @@ impl World {
         );
     }
 
+    /// Vanilla `Level.removeBlock`: leaves the block's water or air behind and updates
+    /// neighbours and clients, without drops or break particles.
+    pub fn remove_block(self: &Arc<Self>, position: &BlockPos) {
+        let state_id = if *self.get_fluid(position) == Fluid::WATER {
+            Block::WATER.default_state.id
+        } else {
+            Block::AIR.default_state.id
+        };
+        self.set_block_state(position, state_id, BlockFlags::NOTIFY_ALL);
+    }
+
     pub fn break_block(
         self: &Arc<Self>,
         position: &BlockPos,

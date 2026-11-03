@@ -1,6 +1,5 @@
 use pumpkin_data::{Block, BlockState, FacingExt};
 use pumpkin_macros::pumpkin_block;
-use pumpkin_world::world::BlockFlags;
 
 use crate::block::{BlockBehaviour, BrokenArgs, PathComputationType};
 
@@ -23,7 +22,7 @@ impl BlockBehaviour for PistonExtensionBlock {
                 let props = PistonProps::from_state_id(new_state);
                 if props.extended {
                     // TODO: use player
-                    args.world.break_block(&pos, None, BlockFlags::SKIP_DROPS);
+                    args.world.remove_block(&pos);
                 }
             }
         }

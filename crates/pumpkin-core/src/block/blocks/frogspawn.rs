@@ -87,12 +87,18 @@ impl BlockBehaviour for FrogspawnBlock {
 
     fn on_scheduled_tick(&self, args: OnScheduledTickArgs<'_>) {
         if !Self::may_place_on_world(args.world, args.position) {
-            args.world
-                .break_block(args.position, None, BlockFlags::SKIP_DROPS);
+            args.world.break_block(
+                args.position,
+                None,
+                BlockFlags::NOTIFY_ALL | BlockFlags::SKIP_DROPS,
+            );
             return;
         }
-        args.world
-            .break_block(args.position, None, BlockFlags::SKIP_DROPS);
+        args.world.break_block(
+            args.position,
+            None,
+            BlockFlags::NOTIFY_ALL | BlockFlags::SKIP_DROPS,
+        );
         args.world.play_sound(
             Sound::BlockFrogspawnHatch,
             SoundCategory::Blocks,
@@ -121,8 +127,11 @@ impl BlockBehaviour for FrogspawnBlock {
 
     fn on_entity_collision(&self, args: OnEntityCollisionArgs<'_>) {
         if args.entity.get_entity().entity_type == &EntityType::FALLING_BLOCK {
-            args.world
-                .break_block(args.position, None, BlockFlags::SKIP_DROPS);
+            args.world.break_block(
+                args.position,
+                None,
+                BlockFlags::NOTIFY_ALL | BlockFlags::SKIP_DROPS,
+            );
         }
     }
 }
