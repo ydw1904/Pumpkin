@@ -167,14 +167,22 @@ impl EntityBase for WindChargeEntity {
             let world = self.get_entity().world.load();
             let owner = self.thrown_item_entity.owner.get(&world);
 
-            let _ = entity.damage_with_context(
+            if entity.damage_with_context(
                 entity.as_ref(),
                 1.0,
                 DamageType::WIND_CHARGE,
                 Some(hit_pos),
                 Some(self.get_entity()),
                 owner.as_deref(),
-            );
+            ) && entity.get_living_entity().is_some()
+            {
+                crate::enchantment::EnchantmentHelper::do_post_attack_effects(
+                    entity.as_ref(),
+                    DamageType::WIND_CHARGE,
+                    owner.as_deref(),
+                    Some(self),
+                );
+            }
         }
         self.create_explosion(hit_pos);
     }

@@ -5,7 +5,7 @@ use pumpkin_util::math::vector3::Vector3;
 
 use super::{
     AllOf, ApplyEntityImpulse, ApplyExhaustion, ApplyMobEffect, ChangeItemDamage, DamageEntity,
-    ExplodeEffect, Ignite, PlaySound, ReplaceBlock, ReplaceDisk, RunFunction, SetBlockProperties,
+    Ignite, PlaySound, ReplaceBlock, ReplaceDisk, RunFunction, SetBlockProperties,
     SpawnParticlesEffect, SummonEntityEffect,
 };
 use crate::entity::Entity;
@@ -242,32 +242,11 @@ impl EnchantmentEntityEffectExt for EnchantmentEntityEffect {
                     position,
                 );
             }
-            Self::Explode {
-                offset_x,
-                offset_y,
-                offset_z,
-                radius,
-                create_fire,
-                ..
-            } => {
-                EnchantmentEntityEffectExt::apply(
-                    &ExplodeEffect::new(
-                        false,
-                        None,
-                        None,
-                        None,
-                        Vector3::new(*offset_x, *offset_y, *offset_z),
-                        radius.clone(),
-                        *create_fire,
-                        crate::world::ExplosionInteraction::None,
-                        None,
-                        None,
-                        None,
-                    ),
+            Self::Explode { .. } => {
+                crate::world::explosion::apply_explode_effect(
                     world,
+                    self,
                     enchantment_level,
-                    owner,
-                    entity,
                     position,
                 );
             }

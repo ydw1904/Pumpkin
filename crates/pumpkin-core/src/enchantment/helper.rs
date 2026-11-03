@@ -1,9 +1,13 @@
-use crate::enchantment::effects::EnchantmentEntityEffectExt;
+use std::sync::Arc;
+
+use crate::enchantment::effects::{DamageEntity, EnchantmentEntityEffectExt};
+use crate::entity::living::attribute_modifier_slot_matches;
 use crate::entity::projectile::arrow::ArrowEntity;
 use crate::entity::{Entity, EntityBase};
+use crate::world::World;
 use crate::world::loot::{LootContextParameters, test_condition};
 use pumpkin_data::damage::DamageType;
-use pumpkin_data::data_component_impl::EnchantmentsImpl;
+use pumpkin_data::data_component_impl::{EnchantmentsImpl, EquipmentSlot};
 use pumpkin_data::enchantment::{Enchantment, EnchantmentEntityEffect, EnchantmentTarget};
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -18,8 +22,6 @@ impl EnchantmentHelper {
         enchantment: &'static Enchantment,
         caller: &dyn crate::entity::EntityBase,
     ) -> i32 {
-        use crate::entity::living::attribute_modifier_slot_matches;
-        use pumpkin_data::data_component_impl::EquipmentSlot;
         use pumpkin_inventory::Inventory;
         let Some(living) = caller.get_living_entity() else {
             return 0;
@@ -99,55 +101,181 @@ impl EnchantmentHelper {
         });
     }
 
-    /// The weapon half of vanilla `EnchantmentHelper.doPostAttackEffectsWithItemSource`: runs
-    /// the weapon's post-attack effects enchanted on the attacker whose requirements hold
-    /// (`Enchantment.doPostAttack`), such as Channeling's lightning.
+    /// Vanilla `EnchantmentHelper.doPostAttackEffects`: post-attack effects with the attacker's
+    /// main hand item as the weapon.
+    pub fn do_post_attack_effects(
+        victim: &dyn EntityBase,
+        damage_type: DamageType,
+        attacker: Option<&dyn EntityBase>,
+        direct_attacker: Option<&dyn EntityBase>,
+    ) {
+        let weapon = attacker.and_then(|attacker| {
+            attacker
+                .get_living_entity()
+                .map(|living| living.held_item(attacker))
+        });
+        Self::do_post_attack_effects_with_item_source(
+            victim,
+            damage_type,
+            attacker,
+            direct_attacker,
+            weapon.as_ref(),
+        );
+    }
+
+    /// Vanilla `EnchantmentHelper.doPostAttackEffectsWithItemSource`: the effects enchanted on
+    /// the victim's equipment (such as Thorns), then those of `weapon` enchanted on the
+    /// attacker (such as Fire Aspect or Channeling), whose requirements hold.
     pub fn do_post_attack_effects_with_item_source(
         victim: &dyn EntityBase,
         damage_type: DamageType,
         attacker: Option<&dyn EntityBase>,
         direct_attacker: Option<&dyn EntityBase>,
-        weapon: &ItemStack,
+        weapon: Option<&ItemStack>,
     ) {
         let world = victim.get_entity().world.load_full();
-        let owner = attacker
-            .and_then(EntityBase::get_player)
-            .and_then(|player| world.get_player_by_uuid(player.gameprofile.id));
-        Self::run_iteration_on_item(weapon, |enchantment, level| {
-            for effect in enchantment.effects.post_attack {
-                if effect.enchanted != Some(EnchantmentTarget::Attacker) {
-                    continue;
+        let run = |stack: &ItemStack,
+                   slot: Option<&EquipmentSlot>,
+                   item_owner: Option<&dyn EntityBase>,
+                   enchanted: EnchantmentTarget| {
+            Self::run_iteration_on_item(stack, |enchantment, level| {
+                if slot.is_some_and(|slot| {
+                    !enchantment
+                        .slots
+                        .iter()
+                        .any(|group| attribute_modifier_slot_matches(group, slot))
+                }) {
+                    return;
                 }
-                // Vanilla `Enchantment.damageContext`.
-                let params = LootContextParameters {
-                    world: Some(&world),
-                    this_entity: Some(victim),
-                    killer_entity: attacker,
-                    direct_killer_entity: direct_attacker,
-                    position: Some(victim.get_entity().pos.load()),
-                    damage_type: Some(damage_type),
-                    ..Default::default()
-                };
-                if !test_condition(effect.requirements, &params) {
-                    continue;
+                for effect in enchantment.effects.post_attack {
+                    if effect.enchanted != Some(enchanted) {
+                        continue;
+                    }
+                    // Vanilla `Enchantment.damageContext`.
+                    let params = LootContextParameters {
+                        world: Some(&world),
+                        this_entity: Some(victim),
+                        killer_entity: attacker,
+                        direct_killer_entity: direct_attacker,
+                        position: Some(victim.get_entity().pos.load()),
+                        damage_type: Some(damage_type),
+                        enchantment_level: Some(level),
+                        ..Default::default()
+                    };
+                    if !test_condition(effect.requirements, &params) {
+                        continue;
+                    }
+                    let affected = match effect.affected {
+                        Some(EnchantmentTarget::Attacker) => attacker,
+                        Some(EnchantmentTarget::DamagingEntity) => direct_attacker,
+                        Some(EnchantmentTarget::Victim) | None => Some(victim),
+                    };
+                    if let Some(affected) = affected {
+                        Self::apply_post_attack_effect(
+                            &effect.effect,
+                            &world,
+                            level,
+                            slot,
+                            item_owner,
+                            affected,
+                        );
+                    }
                 }
-                let affected = match effect.affected {
-                    Some(EnchantmentTarget::Attacker) => attacker,
-                    Some(EnchantmentTarget::DamagingEntity) => direct_attacker,
-                    Some(EnchantmentTarget::Victim) | None => Some(victim),
-                };
-                if let Some(affected) = affected {
-                    let affected = affected.get_entity();
-                    effect.effect.apply(
-                        &world,
-                        level,
-                        owner.as_ref(),
-                        Some(affected),
-                        affected.pos.load(),
-                    );
+            });
+        };
+
+        if victim.get_living_entity().is_some() {
+            for (slot, stack) in Self::equipped_items(victim) {
+                run(&stack, Some(&slot), Some(victim), EnchantmentTarget::Victim);
+            }
+        }
+        if let Some(weapon) = weapon {
+            // A weapon without a living attacker, like an ownerless trident's, has no slot.
+            let attacker = attacker.filter(|attacker| attacker.get_living_entity().is_some());
+            let slot = attacker.map(|_| &EquipmentSlot::MAIN_HAND);
+            run(weapon, slot, attacker, EnchantmentTarget::Attacker);
+        }
+    }
+
+    /// Vanilla `EnchantmentEntityEffect.apply` with the `EnchantedItemInUse` that holds the
+    /// enchantment: Thorns' item damage goes to that item, and its damage comes from the item's
+    /// owner.
+    fn apply_post_attack_effect(
+        effect: &EnchantmentEntityEffect,
+        world: &Arc<World>,
+        level: i32,
+        slot: Option<&EquipmentSlot>,
+        item_owner: Option<&dyn EntityBase>,
+        target: &dyn EntityBase,
+    ) {
+        match effect {
+            EnchantmentEntityEffect::AllOf(effects) => {
+                for effect in *effects {
+                    Self::apply_post_attack_effect(effect, world, level, slot, item_owner, target);
                 }
             }
-        });
+            EnchantmentEntityEffect::DamageEntity {
+                min_damage,
+                max_damage,
+                damage_type,
+            } => DamageEntity::new(min_damage.clone(), max_damage.clone(), *damage_type)
+                .apply_to(level, target, item_owner),
+            // Only players' items take durability in Pumpkin so far.
+            EnchantmentEntityEffect::ChangeItemDamage { amount } => {
+                if let Some(player) = item_owner.and_then(EntityBase::get_player)
+                    && let Some(slot) = slot
+                {
+                    player.damage_item_in_slot(slot, amount.calculate(level) as i32);
+                }
+            }
+            effect => {
+                let owner = item_owner
+                    .and_then(EntityBase::get_player)
+                    .and_then(|player| world.get_player_by_uuid(player.gameprofile.id));
+                let target = target.get_entity();
+                effect.apply(
+                    world,
+                    level,
+                    owner.as_ref(),
+                    Some(target),
+                    target.pos.load(),
+                );
+            }
+        }
+    }
+
+    /// The items vanilla `runIterationOnEquipment` visits, in `EquipmentSlot` order.
+    fn equipped_items(caller: &dyn EntityBase) -> Vec<(EquipmentSlot, ItemStack)> {
+        const SLOTS: [EquipmentSlot; 8] = [
+            EquipmentSlot::MAIN_HAND,
+            EquipmentSlot::OFF_HAND,
+            EquipmentSlot::FEET,
+            EquipmentSlot::LEGS,
+            EquipmentSlot::CHEST,
+            EquipmentSlot::HEAD,
+            EquipmentSlot::BODY,
+            EquipmentSlot::SADDLE,
+        ];
+        let Some(living) = caller.get_living_entity() else {
+            return Vec::new();
+        };
+        let main_hand = living.held_item(caller);
+        let equipment = living
+            .entity_equipment
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        SLOTS
+            .into_iter()
+            .map(|slot| {
+                let stack = if slot == EquipmentSlot::MAIN_HAND {
+                    main_hand.clone()
+                } else {
+                    equipment.get(&slot)
+                };
+                (slot, stack)
+            })
+            .filter(|(_, stack)| !stack.is_empty())
+            .collect()
     }
 
     /// Computes projectile spread angle using data-driven projectile spread effects.

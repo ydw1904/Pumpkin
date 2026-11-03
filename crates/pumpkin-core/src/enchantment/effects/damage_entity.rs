@@ -7,8 +7,8 @@ use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::random::{RandomGenerator, RandomImpl};
 
 use super::EnchantmentEntityEffectExt;
-use crate::entity::Entity;
 use crate::entity::player::Player;
+use crate::entity::{Entity, EntityBase};
 use crate::world::World;
 
 /// Enchantment entity effect that damages an entity.
@@ -54,23 +54,31 @@ impl DamageEntity {
         let Some(entity) = entity else {
             return;
         };
+        let target_entity = world
+            .get_player_by_id(entity.entity_id)
+            .map(|p| p as Arc<dyn EntityBase>)
+            .or_else(|| world.get_entity_by_id(entity.entity_id));
+        if let Some(target) = target_entity {
+            self.apply_to(
+                enchantment_level,
+                target.as_ref(),
+                owner.map(|owner| owner.as_ref() as &dyn EntityBase),
+            );
+        }
+    }
 
+    /// Vanilla `DamageEntity.apply`: hurts `target` with a damage source caused directly by
+    /// the enchanted item's owner.
+    pub fn apply_to(
+        &self,
+        enchantment_level: i32,
+        target: &dyn EntityBase,
+        owner: Option<&dyn EntityBase>,
+    ) {
         let mut rng = RandomGenerator::Gameplay(game_random());
         let damage = self.calculate_damage(enchantment_level, &mut rng);
         let damage_type = self.damage_type.copied().unwrap_or(DamageType::GENERIC);
-
-        let target_entity = world
-            .get_player_by_id(entity.entity_id)
-            .map(|p| p as Arc<dyn crate::entity::EntityBase>)
-            .or_else(|| world.get_entity_by_id(entity.entity_id));
-
-        if let Some(target) = target_entity {
-            let caller = owner.map_or_else(
-                || target.as_ref(),
-                |o| o.as_ref() as &dyn crate::entity::EntityBase,
-            );
-            target.damage(caller, damage, damage_type);
-        }
+        target.damage_with_context(target, damage, damage_type, None, owner, owner);
     }
 }
 

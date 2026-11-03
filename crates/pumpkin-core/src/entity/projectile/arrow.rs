@@ -904,6 +904,16 @@ impl EntityBase for ArrowEntity {
                         );
                     }
 
+                    if damage_succeeded {
+                        crate::enchantment::EnchantmentHelper::do_post_attack_effects_with_item_source(
+                            target.as_ref(),
+                            DamageType::ARROW,
+                            Some(owner_entity.as_deref().unwrap_or(self)),
+                            Some(self),
+                            self.get_weapon_item().as_ref(),
+                        );
+                    }
+
                     // Play hit sound
                     let sound_pitch = 1.2 / (game_random().random::<f32>() * 0.2 + 0.9);
                     let sound_packet = CSoundEffect::new(

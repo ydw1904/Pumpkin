@@ -1751,16 +1751,17 @@ impl Player {
                 knockback_attack,
             );
 
+        let damage_type = if is_mace_smash {
+            DamageType::MACE_SMASH
+        } else {
+            item_stack
+                .get_data_component::<pumpkin_data::data_component_impl::DamageTypeImpl>()
+                .map_or(DamageType::PLAYER_ATTACK, |dt| dt.damage_type)
+        };
         if !victim.damage_with_context(
             victim.as_ref(),
             damage,
-            if is_mace_smash {
-                DamageType::MACE_SMASH
-            } else {
-                item_stack
-                    .get_data_component::<pumpkin_data::data_component_impl::DamageTypeImpl>()
-                    .map_or(DamageType::PLAYER_ATTACK, |dt| dt.damage_type)
-            },
+            damage_type,
             None,
             Some(self),
             Some(self),
@@ -1818,39 +1819,13 @@ impl Player {
             mace_smash_knockback(&world, self, victim.as_ref());
         }
 
-        // Vanilla `EnchantmentHelper.doPostAttackEffectsWithItemSource`
-        if let Some(enchantments) = item_stack.get_data_component::<EnchantmentsImpl>() {
-            for (enchantment, level) in enchantments.enchantment.iter() {
-                for post_effect in enchantment.get_post_attack_effects() {
-                    match &post_effect.effect {
-                        pumpkin_data::enchantment::EnchantmentEntityEffect::Ignite { duration }
-                            if post_effect.affected
-                                == Some(pumpkin_data::enchantment::EnchantmentTarget::Victim) =>
-                        {
-                            let duration_seconds = duration.calculate(*level);
-                            victim_entity.set_on_fire_for_ticks((duration_seconds * 20.0) as u32);
-                        }
-                        // Wind Burst's requirement isn't generated: the attacker fell at least
-                        // 1.5 blocks and isn't flying.
-                        effect @ pumpkin_data::enchantment::EnchantmentEntityEffect::Explode {
-                            ..
-                        } if post_effect.affected
-                            == Some(pumpkin_data::enchantment::EnchantmentTarget::Attacker)
-                            && self.living_entity.fall_distance.load() >= 1.5
-                            && !self.is_flying() =>
-                        {
-                            crate::world::explosion::apply_explode_effect(
-                                &world,
-                                effect,
-                                *level,
-                                self.living_entity.entity.pos.load(),
-                            );
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
+        crate::enchantment::EnchantmentHelper::do_post_attack_effects_with_item_source(
+            victim.as_ref(),
+            damage_type,
+            Some(self),
+            Some(self),
+            Some(&item_stack),
+        );
 
         // Vanilla `MaceItem.postHurtEnemy`
         if smashed_living {
@@ -2092,6 +2067,12 @@ impl Player {
                 if strength > 0.0 {
                     nearby_entity.knockback(strength, f64::from(yaw.sin()), f64::from(-yaw.cos()));
                 }
+                crate::enchantment::EnchantmentHelper::do_post_attack_effects(
+                    nearby.as_ref(),
+                    DamageType::PLAYER_ATTACK,
+                    Some(self),
+                    Some(self),
+                );
             }
         }
         combat::spawn_sweep_particle(attacker_entity, world, &attacker_pos);

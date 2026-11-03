@@ -1148,6 +1148,12 @@ impl MobEntity {
         );
 
         if damaged {
+            crate::enchantment::EnchantmentHelper::do_post_attack_effects(
+                target,
+                DamageType::MOB_ATTACK,
+                Some(caller),
+                Some(caller),
+            );
             self.living_entity
                 .last_attacking_id
                 .store(target.get_entity().entity_id, Relaxed);

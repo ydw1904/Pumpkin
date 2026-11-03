@@ -91,14 +91,21 @@ impl EntityBase for LlamaSpitEntity {
             let world = self.get_entity().world.load();
             let owner = self.thrown.owner.get(&world);
 
-            let _ = entity.damage_with_context(
+            if entity.damage_with_context(
                 entity.as_ref(),
                 1.0,
                 DamageType::SPIT,
                 Some(hit_pos),
                 Some(self.get_entity()),
                 owner.as_deref(),
-            );
+            ) {
+                crate::enchantment::EnchantmentHelper::do_post_attack_effects(
+                    entity.as_ref(),
+                    DamageType::SPIT,
+                    owner.as_deref(),
+                    Some(self),
+                );
+            }
         }
     }
 }

@@ -4270,6 +4270,15 @@ impl LivingEntity {
             }
             self.make_voice_sound(caller, self.hurt_sound(caller));
         }
+        // Vanilla `playSecondaryHurtSound`, after the hurt or death sound of a full hit.
+        if full_hit && damage_type == DamageType::THORNS {
+            let category = if caller.get_player().is_some() {
+                SoundCategory::Players
+            } else {
+                SoundCategory::Hostile
+            };
+            world.play_sound(Sound::EnchantThornsHit, category, &self.entity.pos.load());
+        }
         // Vanilla `dealDefaultKnockback`: along a projectile's flight, else away from the direct
         // source or the source position; with neither, `knockback` picks a random direction.
         let fully_blocked = blocked && amount <= 0.0;

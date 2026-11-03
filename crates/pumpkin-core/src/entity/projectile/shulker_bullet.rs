@@ -478,6 +478,14 @@ impl EntityBase for ShulkerBulletEntity {
                 Some(self),
                 owner.as_deref(),
             );
+            if damaged {
+                crate::enchantment::EnchantmentHelper::do_post_attack_effects(
+                    hit_entity.as_ref(),
+                    DamageType::MOB_PROJECTILE,
+                    owner.as_deref(),
+                    Some(self),
+                );
+            }
 
             if damaged && let Some(living) = hit_entity.get_living_entity() {
                 // Apply levitation for 200 ticks

@@ -608,7 +608,7 @@ impl EntityBase for TridentEntity {
                         DamageType::TRIDENT,
                         Some(cause),
                         Some(self),
-                        &self.weapon_item(),
+                        Some(&self.weapon_item()),
                     );
                 }
 
