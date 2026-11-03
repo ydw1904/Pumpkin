@@ -419,7 +419,7 @@ impl DataAccessor for EntityDataAccessor {
             [
                 TextComponent::text(path.as_str().to_string()),
                 self.entity.get_display_name(),
-                TextComponent::text(format!("{scale:.2}")),
+                TextComponent::text(format_scale(scale)),
                 TextComponent::text(value.to_string()),
             ],
         )
@@ -490,7 +490,7 @@ impl DataAccessor for BlockDataAccessor {
                 TextComponent::text(format!("{}", self.pos.0.x)),
                 TextComponent::text(format!("{}", self.pos.0.y)),
                 TextComponent::text(format!("{}", self.pos.0.z)),
-                TextComponent::text(format!("{scale:.2}")),
+                TextComponent::text(format_scale(scale)),
                 TextComponent::text(value.to_string()),
             ],
         )
@@ -555,7 +555,7 @@ impl DataAccessor for StorageDataAccessor {
             [
                 TextComponent::text(path.as_str().to_string()),
                 TextComponent::text(self.id.clone()),
-                TextComponent::text(format!("{scale:.2}")),
+                TextComponent::text(format_scale(scale)),
                 TextComponent::text(value.to_string()),
             ],
         )
@@ -575,6 +575,60 @@ pub fn get_single_tag(
         1 => Ok(tags.into_iter().next().unwrap()),
         _ => Err(ERROR_MULTIPLE_TAGS.create_without_context()),
     }
+}
+
+/// Java `String.format(Locale.ROOT, "%.2f", scale)`: the shortest decimal form of the value,
+/// rounded half up.
+fn format_scale(scale: f64) -> String {
+    const PRECISION: usize = 2;
+    if !scale.is_finite() {
+        return if scale.is_nan() {
+            "NaN"
+        } else if scale > 0.0 {
+            "Infinity"
+        } else {
+            "-Infinity"
+        }
+        .to_string();
+    }
+    let scientific = format!("{:e}", scale.abs());
+    let (mantissa, exponent) = scientific.split_once('e').unwrap_or((&scientific, "0"));
+    let exponent: i64 = exponent.parse().unwrap_or(0);
+    let digits: Vec<u8> = mantissa
+        .bytes()
+        .filter(u8::is_ascii_digit)
+        .map(|digit| digit - b'0')
+        .collect();
+    // The digits that stay: the integer part and `PRECISION` fraction digits.
+    let kept = usize::try_from(exponent + 1 + PRECISION as i64).unwrap_or(0);
+    let mut number: Vec<u8> = (0..kept)
+        .map(|i| digits.get(i).copied().unwrap_or(0))
+        .collect();
+    if digits.get(kept).is_some_and(|&digit| digit >= 5) {
+        let mut carry = true;
+        for digit in number.iter_mut().rev() {
+            if *digit == 9 {
+                *digit = 0;
+            } else {
+                *digit += 1;
+                carry = false;
+                break;
+            }
+        }
+        if carry {
+            number.insert(0, 1);
+        }
+    }
+    while number.len() <= PRECISION {
+        number.insert(0, 0);
+    }
+    let point = number.len() - PRECISION;
+    let text: String = number
+        .iter()
+        .map(|digit| char::from(b'0' + digit))
+        .collect();
+    let sign = if scale.is_sign_negative() { "-" } else { "" };
+    format!("{sign}{}.{}", &text[..point], &text[point..])
 }
 
 fn get_as_text(tag: &NbtTag) -> Result<String, CommandSyntaxError> {
@@ -1141,4 +1195,29 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
     data_cmd = data_cmd.then(modify_node);
 
     dispatcher.register(data_cmd);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_scale;
+
+    #[test]
+    fn scale_formats_like_java() {
+        // Output of `String.format(Locale.ROOT, "%.2f", value)` on Java 25.
+        for (value, java) in [
+            (0.125, "0.13"),
+            (2.675, "2.68"),
+            (1.005, "1.01"),
+            (0.005, "0.01"),
+            (-0.125, "-0.13"),
+            (-0.001, "-0.00"),
+            (1.0 / 3.0, "0.33"),
+            (123_456_789.125, "123456789.13"),
+            (1e-7, "0.00"),
+            (1e20, "100000000000000000000.00"),
+            (9.995, "10.00"),
+        ] {
+            assert_eq!(format_scale(value), java, "{value}");
+        }
+    }
 }
