@@ -89,6 +89,7 @@ fn fill_blocks(
     let hollow_core = BlockInput {
         state: BlockStateId::AIR,
         properties: Vec::new(),
+        nbt: None,
     };
     let mut count = 0;
     let mut placed = Vec::new();

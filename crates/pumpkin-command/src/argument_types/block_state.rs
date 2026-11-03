@@ -1,9 +1,12 @@
 use pumpkin_data::{Block, BlockStateId, Property, translation};
+use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::text::TextComponent;
 
 use crate::argument_types::argument_type::{ArgumentType, JavaClientArgumentType};
 use crate::argument_types::block::BlockArgumentType;
-use crate::argument_types::block_predicate::{ERROR_NO_VALUE, ERROR_UNCLOSED_PROPERTIES};
+use crate::argument_types::block_predicate::{
+    ERROR_NO_VALUE, ERROR_UNCLOSED_PROPERTIES, parse_nbt,
+};
 use crate::context::command_context::CommandContext;
 use crate::errors::command_syntax_error::CommandSyntaxError;
 use crate::errors::error_types::CommandErrorType;
@@ -31,9 +34,12 @@ pub struct BlockInput {
     pub state: BlockStateId,
     /// The properties written out in the argument, which placement keeps over shape updates.
     pub properties: Vec<&'static str>,
+    /// Block entity data from a trailing `{...}`.
+    pub nbt: Option<NbtCompound>,
 }
 
-/// A block with optional `[property=value,...]` state, like vanilla's `BlockStateArgument`.
+/// A block with optional `[property=value,...]` state and `{...}` block entity data, like
+/// vanilla's `BlockStateArgument`.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct BlockStateArgumentType;
 
@@ -48,7 +54,12 @@ impl<S: crate::source::CommandSource> ArgumentType<S> for BlockStateArgumentType
         } else {
             (block.default_state.id, Vec::new())
         };
-        Ok(BlockInput { state, properties })
+        let nbt = parse_nbt(reader)?;
+        Ok(BlockInput {
+            state,
+            properties,
+            nbt,
+        })
     }
 
     fn client_side_parser(&'_ self) -> JavaClientArgumentType {
@@ -206,6 +217,15 @@ mod test {
         let input = parse("birch_stairs[ half = top , facing=west ]");
         assert_eq!(input.state, BlockStateId::new(11591).unwrap());
         assert_eq!(input.properties, ["half", "facing"]);
+    }
+
+    #[test]
+    fn parse_block_entity_data() {
+        let input = parse(r#"chest[facing=south]{Items:[{Slot:0b,id:"minecraft:stone",count:1}]}"#);
+        let items = input.nbt.as_ref().and_then(|nbt| nbt.get_list("Items"));
+        assert_eq!(items.map(<[_]>::len), Some(1));
+        assert!(parse("barrel{}").nbt.is_some_and(|nbt| nbt.is_empty()));
+        assert_eq!(parse("barrel").nbt, None);
     }
 
     #[test]

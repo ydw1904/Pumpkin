@@ -1,12 +1,14 @@
 use std::sync::Arc;
 
 use pumpkin_data::{Block, BlockStateId, translation};
+use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
 use pumpkin_world::world::BlockFlags;
 
+use crate::block::entities::block_entity_from_nbt;
 use crate::command::argument_builder::{ArgumentBuilder, argument, command, literal};
 use crate::command::argument_types::block_state::{BlockInput, BlockStateArgumentType};
 use crate::command::argument_types::coordinates::block_pos::BlockPosArgumentType;
@@ -55,19 +57,55 @@ pub fn place_block_input(
     }
 
     // Vanilla `setBlock` changes nothing when the state is already there.
-    if !world.is_in_build_limit(*pos) || world.get_block_state_id(pos) == state {
+    let mut affected = world.is_in_build_limit(*pos) && world.get_block_state_id(pos) != state;
+    if affected {
+        let flags = command_place_flags(strict);
+        if update_light {
+            world.set_block_state(pos, state, flags);
+        } else {
+            world.set_block_state_without_light(pos, state, flags);
+        }
+        if strict {
+            // Vanilla creates block entities in `LevelChunk.setBlockState`, so strict placement
+            // gets one too; here that happens in the placed callback strict skips.
+            create_missing_block_entity(world, pos, state);
+        }
+    }
+
+    if let Some(tag) = &input.nbt
+        && load_block_entity_data(world, pos, tag)
+    {
+        affected = true;
+    }
+    affected
+}
+
+/// The `loadWithComponents` step of vanilla `BlockInput.place`: the block entity is loaded
+/// from the tag alone, so fields the tag leaves out are reset. Returns whether it changed.
+fn load_block_entity_data(world: &Arc<World>, pos: &BlockPos, tag: &NbtCompound) -> bool {
+    let Some(entity) = world.get_block_entity(pos) else {
+        return false;
+    };
+    let mut before = NbtCompound::new();
+    entity.write_internal(&mut before);
+    let mut nbt = tag.clone();
+    nbt.put_string("id", entity.resource_location().to_string());
+    nbt.put_int("x", pos.0.x);
+    nbt.put_int("y", pos.0.y);
+    nbt.put_int("z", pos.0.z);
+    let Some(loaded) = block_entity_from_nbt(&nbt) else {
+        return false;
+    };
+    let mut after = NbtCompound::new();
+    loaded.write_internal(&mut after);
+    if after == before {
         return false;
     }
-    let flags = command_place_flags(strict);
-    if update_light {
-        world.set_block_state(pos, state, flags);
-    } else {
-        world.set_block_state_without_light(pos, state, flags);
-    }
-    if strict {
-        // Vanilla creates block entities in `LevelChunk.setBlockState`, so strict placement
-        // gets one too; here that happens in the placed callback strict skips.
-        create_missing_block_entity(world, pos, state);
+    world.add_block_entity(loaded);
+    // Vanilla `BlockEntity.setChanged`.
+    let block = world.get_block(pos);
+    if !block.is_air() {
+        world.update_neighbour_for_output_signal(pos, block);
     }
     true
 }
