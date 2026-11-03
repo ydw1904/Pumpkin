@@ -7,7 +7,7 @@ use pumpkin_data::{
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::{
     BlockDirection,
-    math::{block_box::BlockBox, position::BlockPos},
+    math::{block_box::BlockBox, position::BlockPos, vector3::Vector3},
     random::RandomGenerator,
 };
 use serde::Deserialize;
@@ -16,6 +16,7 @@ use crate::{
     ProtoChunk,
     generation::{
         positions::chunk_pos::{start_block_x, start_block_z},
+        proto_chunk::GenerationCache,
         structure::{
             piece::StructurePieceType,
             shiftable_piece::ShiftableStructurePiece,
@@ -128,6 +129,31 @@ impl StructurePieceBase for SwampHutPiece {
         self
     }
 
+    fn place_in_region(
+        &mut self,
+        region: &mut dyn GenerationCache,
+        block_registry: &dyn WorldPortalExt,
+        random: &mut RandomGenerator,
+        seed: i64,
+        chunk_box: &BlockBox,
+        _reference_pos: Vector3<i32>,
+    ) {
+        if !self
+            .shiftable_structure_piece
+            .adjust_to_average_height(region, chunk_box, 0)
+        {
+            return;
+        }
+        self.place(
+            region.get_center_chunk_mut(),
+            block_registry,
+            random,
+            seed,
+            chunk_box,
+        );
+    }
+
+    /// Places the blocks once [`Self::place_in_region`] has settled the height.
     #[allow(clippy::too_many_lines)]
     fn place(
         &mut self,
@@ -137,13 +163,6 @@ impl StructurePieceBase for SwampHutPiece {
         _seed: i64,
         chunk_box: &BlockBox,
     ) {
-        if !self
-            .shiftable_structure_piece
-            .adjust_to_average_height(chunk)
-        {
-            return;
-        }
-
         let box_limit = *chunk_box;
         let p = &self.shiftable_structure_piece.piece;
 

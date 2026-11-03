@@ -10,8 +10,8 @@ use pumpkin_data::{
     },
 };
 use pumpkin_util::{
-    BlockDirection, HeightMap,
-    math::{block_box::BlockBox, position::BlockPos},
+    BlockDirection,
+    math::{block_box::BlockBox, position::BlockPos, vector3::Vector3},
     random::{RandomGenerator, RandomImpl},
 };
 
@@ -19,8 +19,10 @@ use crate::{
     ProtoChunk,
     generation::{
         positions::chunk_pos::{start_block_x, start_block_z},
+        proto_chunk::GenerationCache,
         structure::{
             piece::StructurePieceType,
+            shiftable_piece::{DEFAULT_H_POS, update_average_ground_height},
             structures::{
                 StructureGenerator, StructureGeneratorContext, StructurePiece, StructurePieceBase,
                 StructurePiecesCollector, StructurePosition, WorldPortalExt,
@@ -55,7 +57,7 @@ impl StructureGenerator for JungleTempleGenerator {
         let mut collector = StructurePiecesCollector::default();
         collector.add_piece(Box::new(JungleTemplePiece {
             piece,
-            height_adjusted: false,
+            height_position: DEFAULT_H_POS,
             placed_main_chest: false,
             placed_hidden_chest: false,
             placed_trap_1: false,
@@ -71,7 +73,7 @@ impl StructureGenerator for JungleTempleGenerator {
 pub struct JungleTemplePiece {
     // Composition: Rust uses a base struct to mimic the ScatteredFeaturePiece inheritance
     piece: StructurePiece,
-    height_adjusted: bool,
+    height_position: i32,
     placed_main_chest: bool,
     placed_hidden_chest: bool,
     placed_trap_1: bool,
@@ -89,6 +91,34 @@ impl StructurePieceBase for JungleTemplePiece {
         &mut self.piece
     }
 
+    fn place_in_region(
+        &mut self,
+        region: &mut dyn GenerationCache,
+        block_registry: &dyn WorldPortalExt,
+        random: &mut RandomGenerator,
+        seed: i64,
+        chunk_box: &BlockBox,
+        _reference_pos: Vector3<i32>,
+    ) {
+        if !update_average_ground_height(
+            &mut self.piece.bounding_box,
+            &mut self.height_position,
+            region,
+            chunk_box,
+            0,
+        ) {
+            return;
+        }
+        self.place(
+            region.get_center_chunk_mut(),
+            block_registry,
+            random,
+            seed,
+            chunk_box,
+        );
+    }
+
+    /// Places the blocks once [`Self::place_in_region`] has settled the height.
     #[expect(clippy::too_many_lines)]
     fn place(
         &mut self,
@@ -98,9 +128,6 @@ impl StructurePieceBase for JungleTemplePiece {
         _seed: i64,
         chunk_box: &BlockBox,
     ) {
-        if !self.adjust_height(chunk, random) {
-            return;
-        }
         let bb = chunk_box;
 
         self.piece.fill(
@@ -767,31 +794,6 @@ const fn set_side_dir(props: &mut RedstoneWireLikeProperties, facing: Horizontal
     }
 }
 impl JungleTemplePiece {
-    fn adjust_height(&mut self, chunk: &ProtoChunk, random: &mut RandomGenerator) -> bool {
-        if self.height_adjusted {
-            return true;
-        }
-
-        let ground_offset = -(random.next_bounded_i32(3));
-        let bb = self.piece.bounding_box;
-        let mut lowest = i32::MAX;
-
-        for z in bb.min.z..=bb.max.z {
-            for x in bb.min.x..=bb.max.x {
-                let y = chunk.get_top_y(&HeightMap::MotionBlockingNoLeaves, x, z);
-                lowest = lowest.min(y);
-            }
-        }
-
-        if lowest == i32::MAX {
-            return false;
-        }
-
-        let shift_y = lowest - self.piece.bounding_box.min.y + ground_offset;
-        self.piece.bounding_box.move_pos(0, shift_y, 0);
-        self.height_adjusted = true;
-        true
-    }
     // This allows you to call MossStoneSelector::next(random) SS is stoneselector
     const SS: MossStoneSelector = MossStoneSelector;
     fn cobblestone_stairs(facing: HorizontalFacing) -> &'static BlockState {

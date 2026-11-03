@@ -519,12 +519,13 @@ impl CommandExecutor for PlaceStructureExecutor {
 
                             for piece in &mut collector.pieces {
                                 if piece.bounding_box().intersects(&chunk_box) {
-                                    piece.place(
+                                    piece.place_in_region(
                                         &mut chunk,
                                         &reg,
                                         &mut rng,
                                         seed as i64,
                                         &chunk_box,
+                                        reference_pos,
                                     );
                                 }
                             }

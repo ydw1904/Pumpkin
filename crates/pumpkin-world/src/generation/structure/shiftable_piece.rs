@@ -1,11 +1,14 @@
 use pumpkin_util::{
     HeightMap,
-    math::{block_box::BlockBox, vector3::Axis},
+    math::{
+        block_box::BlockBox,
+        vector3::{Axis, Vector3},
+    },
 };
 
-use crate::{
-    ProtoChunk,
-    generation::structure::{piece::StructurePieceType, structures::StructurePiece},
+use crate::generation::{
+    proto_chunk::GenerationCache,
+    structure::{piece::StructurePieceType, structures::StructurePiece},
 };
 
 pub const DEFAULT_H_POS: i32 = -1;
@@ -42,75 +45,95 @@ impl ShiftableStructurePiece {
         }
     }
 
-    pub fn adjust_to_average_height(&mut self, chunk: &ProtoChunk) -> bool {
-        let bounding_box = self.piece.bounding_box;
-        if self.h_pos >= 0 {
-            return true;
-        }
+    /// Vanilla `ScatteredFeaturePiece.updateAverageGroundHeight`.
+    pub fn adjust_to_average_height(
+        &mut self,
+        region: &dyn GenerationCache,
+        chunk_box: &BlockBox,
+        offset: i32,
+    ) -> bool {
+        update_average_ground_height(
+            &mut self.piece.bounding_box,
+            &mut self.h_pos,
+            region,
+            chunk_box,
+            offset,
+        )
+    }
 
-        let mut sum_y = 0;
-        let mut count = 0;
+    /// Vanilla `ScatteredFeaturePiece.updateHeightPositionToLowestGroundHeight`.
+    pub fn adjust_to_min_height(&mut self, region: &dyn GenerationCache, offset: i32) -> bool {
+        update_height_position_to_lowest_ground_height(
+            &mut self.piece.bounding_box,
+            &mut self.h_pos,
+            region,
+            offset,
+        )
+    }
+}
 
-        for z in bounding_box.min.z..=bounding_box.max.z {
-            for x in bounding_box.min.x..=bounding_box.max.x {
-                let y = chunk.get_top_y(&HeightMap::OceanFloorWg, x, z);
-                sum_y += y;
+/// Vanilla `ScatteredFeaturePiece.updateAverageGroundHeight`.
+///
+/// Averages the ground height over the part of the piece inside `chunk_box`. Returns false when
+/// none of it is, so a later chunk decides the height. The first chunk to place the piece fixes
+/// `height_position` for all others.
+pub fn update_average_ground_height(
+    bounding_box: &mut BlockBox,
+    height_position: &mut i32,
+    region: &dyn GenerationCache,
+    chunk_box: &BlockBox,
+    offset: i32,
+) -> bool {
+    if *height_position >= 0 {
+        return true;
+    }
+
+    let mut total = 0;
+    let mut count = 0;
+    for z in bounding_box.min.z..=bounding_box.max.z {
+        for x in bounding_box.min.x..=bounding_box.max.x {
+            if chunk_box.contains_pos(&Vector3::new(x, 64, z)) {
+                total += region.get_top_y(&HeightMap::MotionBlockingNoLeaves, x, z);
                 count += 1;
             }
         }
-
-        if count == 0 {
-            return false;
-        }
-
-        self.h_pos = sum_y / count;
-
-        let current_min_y = bounding_box.min.y;
-        let offset = self.h_pos - current_min_y;
-
-        self.piece.bounding_box.min.y += offset;
-        self.piece.bounding_box.max.y += offset;
-
-        true
     }
 
-    pub fn adjust_to_min_height(&mut self, chunk: &ProtoChunk, y_offset: i32) -> bool {
-        let bounding_box = self.piece.bounding_box;
-
-        if self.h_pos >= 0 {
-            return true;
-        }
-
-        let mut min_y = i32::MAX;
-        let mut found_any = false;
-
-        // Iterate over the X/Z footprint of the bounding box
-        for z in bounding_box.min.z..=bounding_box.max.z {
-            for x in bounding_box.min.x..=bounding_box.max.x {
-                // Vanilla uses MOTION_BLOCKING_NO_LEAVES.
-                // In Pumpkin/Standard generation, OceanFloorWg is usually the closest equivalent for terrain height.
-                let y = chunk.get_top_y(&HeightMap::OceanFloorWg, x, z);
-
-                if y < min_y {
-                    min_y = y;
-                }
-                found_any = true;
-            }
-        }
-
-        // Should only return false if the bounding box has no area (width or depth is 0)
-        if !found_any {
-            return false;
-        }
-
-        self.h_pos = min_y;
-
-        // Calculate shift: (Target Height - Current Height) + Offset
-        let current_y = bounding_box.min.y;
-        let shift_y = (self.h_pos - current_y) + y_offset;
-
-        self.piece.bounding_box.min.y += shift_y;
-        self.piece.bounding_box.max.y += shift_y;
-        true
+    if count == 0 {
+        return false;
     }
+
+    *height_position = total / count;
+    bounding_box.move_pos(0, *height_position - bounding_box.min.y + offset, 0);
+    true
+}
+
+/// Vanilla `ScatteredFeaturePiece.updateHeightPositionToLowestGroundHeight`.
+///
+/// Moves the piece to the lowest ground height under its whole footprint, which vanilla reads
+/// from neighbouring chunks too.
+pub fn update_height_position_to_lowest_ground_height(
+    bounding_box: &mut BlockBox,
+    height_position: &mut i32,
+    region: &dyn GenerationCache,
+    offset: i32,
+) -> bool {
+    if *height_position >= 0 {
+        return true;
+    }
+
+    let mut lowest = i32::MAX;
+    for z in bounding_box.min.z..=bounding_box.max.z {
+        for x in bounding_box.min.x..=bounding_box.max.x {
+            lowest = lowest.min(region.get_top_y(&HeightMap::MotionBlockingNoLeaves, x, z));
+        }
+    }
+
+    if lowest == i32::MAX {
+        return false;
+    }
+
+    *height_position = lowest;
+    bounding_box.move_pos(0, *height_position - bounding_box.min.y + offset, 0);
+    true
 }
