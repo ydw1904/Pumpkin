@@ -925,11 +925,18 @@ impl EntityBase for ArrowEntity {
                             crate::item::potion::PotionContents::read_potion_effects(&item_stack),
                             scale,
                             crate::item::potion::PotionApplicationSource::Arrow,
-                            None,
+                            Some(crate::entity::living::EffectSource {
+                                direct: self,
+                                owner: owner_entity.as_deref(),
+                            }),
                         );
 
                         if is_spectral {
-                            living.add_effect(Self::spectral_glowing_effect());
+                            // Vanilla `Projectile.getEffectSource`: the owner, or the arrow.
+                            living.add_effect_with_source(
+                                Self::spectral_glowing_effect(),
+                                Some(owner_entity.as_deref().unwrap_or(self)),
+                            );
                         }
                     }
                 }
