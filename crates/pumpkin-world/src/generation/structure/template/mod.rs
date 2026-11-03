@@ -34,7 +34,9 @@ mod template_piece;
 use pumpkin_data::Block;
 use pumpkin_data::BlockStateId;
 use pumpkin_data::Rotation;
+use pumpkin_data::block_properties::Axis;
 use pumpkin_data::fluid::Fluid;
+use pumpkin_data::{BlockDirection, FacingExt};
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_util::HeightMap;
 use pumpkin_util::math::vector3::Vector3;
@@ -382,6 +384,111 @@ pub(crate) fn finalize_processing(
     }
 }
 
+/// Where a hanging entity keeps its facing: item frames use the 3D direction id, paintings
+/// the 2D one (`Direction.LEGACY_ID_CODEC` / `LEGACY_ID_CODEC_2D`).
+fn hanging_facing_key(nbt: &NbtCompound) -> Option<(&'static str, bool)> {
+    match nbt.get_string("id")? {
+        "minecraft:item_frame" | "minecraft:glow_item_frame" => Some(("Facing", false)),
+        "minecraft:painting" => Some(("facing", true)),
+        _ => None,
+    }
+}
+
+/// Vanilla `Direction.get2DDataValue` order.
+const DIRECTIONS_2D: [BlockDirection; 4] = [
+    BlockDirection::South,
+    BlockDirection::West,
+    BlockDirection::North,
+    BlockDirection::East,
+];
+
+fn direction_2d_index(direction: BlockDirection) -> Option<usize> {
+    DIRECTIONS_2D.iter().position(|&d| d == direction)
+}
+
+/// Vanilla `HangingEntity.setDirection`: the yaw a hanging entity takes from its facing.
+fn hanging_y_rot(direction: BlockDirection) -> f32 {
+    direction_2d_index(direction).map_or(0.0, |index| index as f32 * 90.0)
+}
+
+/// Vanilla `HangingEntity.rotate`: turns a horizontal facing, and returns the yaw with the
+/// quarter turns the other way round from `Entity.rotate`.
+fn rotate_hanging(direction: &mut BlockDirection, rotation: Rotation) -> f32 {
+    // The yaw comes from the facing before it turns (`setDirection` keeps them in step).
+    let y_rot = hanging_y_rot(*direction);
+    if direction.is_horizontal() {
+        *direction = rotation
+            .rotate_facing(direction.to_facing())
+            .to_block_direction();
+    }
+    pumpkin_util::math::wrap_degrees(y_rot)
+        + match rotation {
+            Rotation::None => 0.0,
+            Rotation::Rotate180 => 180.0,
+            Rotation::CounterClockwise90 => 90.0,
+            Rotation::Clockwise90 => 270.0,
+        }
+}
+
+/// The `entity.rotate(rotation)` and `entity.mirror(mirror)` part of vanilla
+/// `StructureTemplate.placeEntities`, on the saved data the entity is created from. Hanging
+/// entities turn their facing too (`HangingEntity.rotate` / `mirror`).
+fn transform_entity_rotation(
+    nbt: &mut NbtCompound,
+    rotation: Rotation,
+    mirror: pumpkin_data::Mirror,
+) {
+    let Some(rotation_nbt) = nbt.get_list("Rotation").filter(|list| list.len() == 2) else {
+        return;
+    };
+    let y_rot = rotation_nbt[0].extract_float().unwrap_or_default();
+    let pitch = rotation_nbt[1].extract_float().unwrap_or_default();
+
+    let yaw = if let Some((key, two_d)) = hanging_facing_key(nbt) {
+        let id = nbt.get_byte(key).unwrap_or_default() as u8;
+        let direction = if two_d {
+            DIRECTIONS_2D.get(usize::from(id & 3)).copied()
+        } else {
+            BlockDirection::from_index(id)
+        };
+        let Some(mut direction) = direction else {
+            return;
+        };
+        let rotated = rotate_hanging(&mut direction, rotation);
+        // `Mirror.getRotation` of the already turned facing.
+        let mirror_rotation = match (mirror, direction.to_axis()) {
+            (pumpkin_data::Mirror::LeftRight, Axis::Z)
+            | (pumpkin_data::Mirror::FrontBack, Axis::X) => Rotation::Rotate180,
+            _ => Rotation::None,
+        };
+        let mirrored = rotate_hanging(&mut direction, mirror_rotation);
+        let index = if two_d {
+            direction_2d_index(direction).unwrap_or_default() as u8
+        } else {
+            direction.to_index()
+        };
+        nbt.put_byte(key, index as i8);
+        rotated + mirrored - hanging_y_rot(direction)
+    } else {
+        // `Entity.rotate` and `Entity.mirror`, both from the wrapped yaw.
+        let angle = pumpkin_util::math::wrap_degrees(y_rot);
+        let rotated = angle
+            + match rotation {
+                Rotation::None => 0.0,
+                Rotation::Clockwise90 => 90.0,
+                Rotation::Rotate180 => 180.0,
+                Rotation::CounterClockwise90 => 270.0,
+            };
+        let mirrored = match mirror {
+            pumpkin_data::Mirror::None => angle,
+            pumpkin_data::Mirror::LeftRight => 180.0 - angle,
+            pumpkin_data::Mirror::FrontBack => -angle,
+        };
+        rotated + mirrored - y_rot
+    };
+    nbt.put("Rotation", NbtTag::List(vec![yaw.into(), pitch.into()]));
+}
+
 /// Vanilla `StructureTemplate.placeEntities`: hands each template entity inside `chunk_box` (all
 /// of them without one) to `add_entity` with the saved data it is created from.
 pub fn place_template_entities(
@@ -432,19 +539,7 @@ pub fn place_template_entities(
         );
         nbt.child_tags.remove("UUID");
 
-        if let Some(rotation_nbt) = nbt.get_list("Rotation")
-            && rotation_nbt.len() == 2
-        {
-            let yaw = rotation_nbt[0].extract_float().unwrap_or_default()
-                + match rotation {
-                    Rotation::None => 0.0,
-                    Rotation::Clockwise90 => 90.0,
-                    Rotation::Rotate180 => 180.0,
-                    Rotation::CounterClockwise90 => 270.0,
-                };
-            let pitch = rotation_nbt[1].extract_float().unwrap_or_default();
-            nbt.put("Rotation", NbtTag::List(vec![yaw.into(), pitch.into()]));
-        }
+        transform_entity_rotation(&mut nbt, rotation, pumpkin_data::Mirror::None);
 
         add_entity(StructureEntity {
             nbt,
@@ -610,28 +705,7 @@ fn place_entities(
                 NbtTag::IntArray(vec![block_pos.x, block_pos.y, block_pos.z]),
             );
         }
-        if let Some(rotation_nbt) = nbt.get_list("Rotation")
-            && rotation_nbt.len() == 2
-        {
-            // `Entity.rotate` and `Entity.mirror`, both from the wrapped yaw.
-            let y_rot = rotation_nbt[0].extract_float().unwrap_or_default();
-            let pitch = rotation_nbt[1].extract_float().unwrap_or_default();
-            let angle = pumpkin_util::math::wrap_degrees(y_rot);
-            let rotated = angle
-                + match rotation {
-                    Rotation::None => 0.0,
-                    Rotation::Clockwise90 => 90.0,
-                    Rotation::Rotate180 => 180.0,
-                    Rotation::CounterClockwise90 => 270.0,
-                };
-            let mirrored = match mirror {
-                pumpkin_data::Mirror::None => angle,
-                pumpkin_data::Mirror::LeftRight => 180.0 - angle,
-                pumpkin_data::Mirror::FrontBack => -angle,
-            };
-            let yaw = rotated + mirrored - y_rot;
-            nbt.put("Rotation", NbtTag::List(vec![yaw.into(), pitch.into()]));
-        }
+        transform_entity_rotation(&mut nbt, rotation, mirror);
         add_entity(StructureEntity {
             nbt,
             finalize: settings.should_finalize_entities(),
