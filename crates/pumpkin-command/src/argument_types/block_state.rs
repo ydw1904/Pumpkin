@@ -25,20 +25,30 @@ pub const ERROR_INVALID_VALUE: CommandErrorType<3> = CommandErrorType::new(
     translation::java::ARGUMENT_BLOCK_PROPERTY_INVALID,
 );
 
+/// A parsed block state argument, like vanilla's `BlockInput`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BlockInput {
+    pub state: BlockStateId,
+    /// The properties written out in the argument, which placement keeps over shape updates.
+    pub properties: Vec<&'static str>,
+}
+
 /// A block with optional `[property=value,...]` state, like vanilla's `BlockStateArgument`.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct BlockStateArgumentType;
 
 impl<S: crate::source::CommandSource> ArgumentType<S> for BlockStateArgumentType {
-    type Item = BlockStateId;
+    type Item = BlockInput;
 
     fn parse(&self, reader: &mut StringReader) -> Result<Self::Item, CommandSyntaxError> {
         let block: &'static Block =
             ArgumentType::<crate::source::DummySource>::parse(&BlockArgumentType, reader)?;
-        if reader.peek() != Some('[') {
-            return Ok(block.default_state.id);
-        }
-        read_properties(block, reader)
+        let (state, properties) = if reader.peek() == Some('[') {
+            read_properties(block, reader)?
+        } else {
+            (block.default_state.id, Vec::new())
+        };
+        Ok(BlockInput { state, properties })
     }
 
     fn client_side_parser(&'_ self) -> JavaClientArgumentType {
@@ -59,10 +69,11 @@ impl<S: crate::source::CommandSource> ArgumentType<S> for BlockStateArgumentType
 }
 
 /// Mirrors vanilla `BlockStateParser.readProperties`, applying each property to the default state.
+/// Also returns the names of the given properties.
 fn read_properties(
     block: &'static Block,
     reader: &mut StringReader,
-) -> Result<BlockStateId, CommandSyntaxError> {
+) -> Result<(BlockStateId, Vec<&'static str>), CommandSyntaxError> {
     let block_name = || TextComponent::text(format!("minecraft:{}", block.name));
     let valid_properties: Vec<Property> = block
         .states
@@ -147,45 +158,54 @@ fn read_properties(
         return Err(ERROR_UNCLOSED_PROPERTIES.create(reader));
     }
 
-    Ok(block.from_properties(&properties).to_state_id(block))
+    Ok((block.from_properties(&properties).to_state_id(block), seen))
 }
 
-impl_copy_get!(BlockStateArgumentType, BlockStateId);
+impl BlockStateArgumentType {
+    /// Returns a `CommandContext`'s parsed [`BlockInput`] argument.
+    pub fn get<'a, S: crate::source::CommandSource>(
+        context: &'a CommandContext<S>,
+        name: &str,
+    ) -> Result<&'a BlockInput, CommandSyntaxError> {
+        context.get_argument(name)
+    }
+}
 
 #[cfg(test)]
 mod test {
     use pumpkin_data::BlockStateId;
 
+    use crate::argument_types::argument_type::ArgumentType;
     use crate::argument_types::block_predicate::ERROR_UNCLOSED_PROPERTIES;
     use crate::argument_types::block_state::{
-        BlockStateArgumentType, ERROR_DUPLICATE_PROPERTY, ERROR_INVALID_VALUE,
+        BlockInput, BlockStateArgumentType, ERROR_DUPLICATE_PROPERTY, ERROR_INVALID_VALUE,
         ERROR_UNKNOWN_PROPERTY,
     };
     use crate::string_reader::StringReader;
 
+    fn parse(input: &str) -> BlockInput {
+        let mut reader = StringReader::new(input);
+        let parsed =
+            ArgumentType::<crate::source::DummySource>::parse(&BlockStateArgumentType, &mut reader)
+                .unwrap();
+        assert!(!reader.can_read_char(), "{input} was not read to the end");
+        parsed
+    }
+
     // State ids are taken from the extracted vanilla `assets/blocks.json`.
     #[test]
     fn parse_properties() {
-        let mut reader = StringReader::new("birch_stairs");
-        assert_parse_ok_reset!(
-            &mut reader,
-            BlockStateArgumentType,
-            BlockStateId::new(11561).unwrap()
-        );
+        let input = parse("birch_stairs");
+        assert_eq!(input.state, BlockStateId::new(11561).unwrap());
+        assert!(input.properties.is_empty());
 
-        let mut reader = StringReader::new("minecraft:birch_stairs[facing=west]");
-        assert_parse_ok_reset!(
-            &mut reader,
-            BlockStateArgumentType,
-            BlockStateId::new(11601).unwrap()
-        );
+        let input = parse("minecraft:birch_stairs[facing=west]");
+        assert_eq!(input.state, BlockStateId::new(11601).unwrap());
+        assert_eq!(input.properties, ["facing"]);
 
-        let mut reader = StringReader::new("birch_stairs[ half = top , facing=west ]");
-        assert_parse_ok_reset!(
-            &mut reader,
-            BlockStateArgumentType,
-            BlockStateId::new(11591).unwrap()
-        );
+        let input = parse("birch_stairs[ half = top , facing=west ]");
+        assert_eq!(input.state, BlockStateId::new(11591).unwrap());
+        assert_eq!(input.properties, ["half", "facing"]);
     }
 
     #[test]

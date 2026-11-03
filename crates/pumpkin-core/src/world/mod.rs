@@ -6019,7 +6019,56 @@ impl World {
         let replaced_block_state_id = self
             .write_block_state_if(position, block_state_id, |_| true)
             .unwrap_or(Block::AIR.default_state.id);
-        self.on_block_state_set(position, replaced_block_state_id, block_state_id, flags)
+        self.on_block_state_set(
+            position,
+            replaced_block_state_id,
+            block_state_id,
+            flags,
+            true,
+        )
+    }
+
+    /// `set_block_state` without the light update, for callers that change many blocks and
+    /// update the light for all of them afterwards with `LightEngine::update_lighting`.
+    pub fn set_block_state_without_light(
+        self: &Arc<Self>,
+        position: &BlockPos,
+        block_state_id: BlockStateId,
+        flags: BlockFlags,
+    ) -> BlockStateId {
+        if !self.is_in_build_limit(*position) {
+            return Block::AIR.default_state.id;
+        }
+        let replaced_block_state_id = self
+            .write_block_state_if(position, block_state_id, |_| true)
+            .unwrap_or(Block::AIR.default_state.id);
+        self.on_block_state_set(
+            position,
+            replaced_block_state_id,
+            block_state_id,
+            flags,
+            false,
+        )
+    }
+
+    /// Vanilla `ServerLevel.updateNeighboursOnBlockSet`: the neighbour updates commands run
+    /// themselves after placing blocks with flags that skip them.
+    pub fn update_neighbours_on_block_set(
+        self: &Arc<Self>,
+        position: &BlockPos,
+        old_state_id: BlockStateId,
+    ) {
+        let state_id = self.get_block_state_id(position);
+        let old_block = Block::from_state_id(old_state_id);
+        let new_block = Block::from_state_id(state_id);
+        if old_block != new_block {
+            self.block_registry
+                .on_state_replaced(self, old_block, position, old_state_id, false);
+        }
+        self.update_neighbors_at(position, new_block, None);
+        if state_id.has_analog_output_signal() {
+            self.update_neighbour_for_output_signal(position, new_block);
+        }
     }
 
     /// `set_block_state`, but only when `condition` accepts the current state. The check and
@@ -6037,7 +6086,13 @@ impl World {
         }
         let replaced_block_state_id =
             self.write_block_state_if(position, block_state_id, condition)?;
-        Some(self.on_block_state_set(position, replaced_block_state_id, block_state_id, flags))
+        Some(self.on_block_state_set(
+            position,
+            replaced_block_state_id,
+            block_state_id,
+            flags,
+            true,
+        ))
     }
 
     /// Writes the state into the loaded chunk
@@ -6067,13 +6122,14 @@ impl World {
     }
 
     /// Everything `set_block_state` does after the chunk write: callbacks, neighbour updates,
-    /// client sync, POI and lighting.
+    /// client sync, POI and lighting (when `update_light` is set).
     fn on_block_state_set(
         self: &Arc<Self>,
         position: &BlockPos,
         replaced_block_state_id: BlockStateId,
         block_state_id: BlockStateId,
         flags: BlockFlags,
+        update_light: bool,
     ) -> BlockStateId {
         if !flags.contains(BlockFlags::FORCE_STATE) && replaced_block_state_id == block_state_id {
             return block_state_id;
@@ -6156,9 +6212,11 @@ impl World {
 
         let old_state = replaced_block_state_id.to_state();
         let new_state = block_state_id.to_state();
-        if pumpkin_world::lighting::LightEngine::has_different_light_properties(
-            old_state, new_state,
-        ) {
+        if update_light
+            && pumpkin_world::lighting::LightEngine::has_different_light_properties(
+                old_state, new_state,
+            )
+        {
             self.level
                 .light_engine
                 .update_lighting_at(&self.level, *position);
