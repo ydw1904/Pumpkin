@@ -1,4 +1,5 @@
 use crate::entity::projectile::owner::ProjectileOwner;
+use crossbeam::atomic::AtomicCell;
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 use std::sync::RwLock;
@@ -56,7 +57,7 @@ pub struct ArrowEntity {
     pub owner: ProjectileOwner,
     pub item_stack: RwLock<ItemStack>,
     pub base_damage: AtomicU64,
-    pub pickup: ArrowPickup,
+    pub pickup: AtomicCell<ArrowPickup>,
     pub is_critical: AtomicBool,
     pub no_physics: AtomicBool,
     pub pierce_level: AtomicU8,
@@ -95,7 +96,7 @@ impl ArrowEntity {
             owner: ProjectileOwner::new(owner),
             item_stack: RwLock::new(item_stack.copy_with_count(1)),
             base_damage: AtomicU64::new(Self::ARROW_BASE_DAMAGE.to_bits()),
-            pickup,
+            pickup: AtomicCell::new(pickup),
             is_critical: AtomicBool::new(false),
             no_physics: AtomicBool::new(false),
             pierce_level: AtomicU8::new(0),
@@ -137,7 +138,7 @@ impl ArrowEntity {
             owner: ProjectileOwner::new(Some(shooter)),
             item_stack: RwLock::new(item_stack.copy_with_count(1)),
             base_damage: AtomicU64::new(Self::ARROW_BASE_DAMAGE.to_bits()),
-            pickup,
+            pickup: AtomicCell::new(pickup),
             is_critical: AtomicBool::new(false),
             no_physics: AtomicBool::new(false),
             pierce_level: AtomicU8::new(0),
@@ -426,7 +427,7 @@ impl EntityBase for ArrowEntity {
             "PierceLevel",
             self.pierce_level.load(Ordering::Relaxed) as i8,
         );
-        nbt.put_byte("pickup", self.pickup.to_byte() as i8);
+        nbt.put_byte("pickup", self.pickup.load().to_byte() as i8);
     }
 
     fn read_custom_nbt(&self, nbt: &pumpkin_nbt::compound::NbtCompound) {
@@ -457,6 +458,10 @@ impl EntityBase for ArrowEntity {
         if let Some(shake) = nbt.get_byte("shake") {
             self.shake_time.store(shake.max(0) as u8, Ordering::Relaxed);
         }
+        // Vanilla falls back to `DISALLOWED` when the tag is missing.
+        self.pickup.store(ArrowPickup::from_byte(
+            nbt.get_byte("pickup").unwrap_or(0) as u8
+        ));
         if let Some(pierce) = nbt.get_byte("PierceLevel") {
             self.pierce_level
                 .store(pierce.max(0) as u8, Ordering::Relaxed);
@@ -964,8 +969,8 @@ impl EntityBase for ArrowEntity {
     }
 
     fn on_player_collision(&self, player: &Arc<Player>) {
-        // Only allow picking up grounded arrows
-        if !self.in_ground.load(Ordering::Relaxed) {
+        // Vanilla `playerTouch`: only grounded arrows that stopped shaking.
+        if !self.in_ground.load(Ordering::Relaxed) || self.shake_time.load(Ordering::Relaxed) > 0 {
             return;
         }
 
@@ -974,7 +979,7 @@ impl EntityBase for ArrowEntity {
         }
 
         // Check pickup rules
-        match self.pickup {
+        match self.pickup.load() {
             ArrowPickup::Disallowed => return,
             ArrowPickup::CreativeOnly if !player.is_creative() => return,
             _ => {}
