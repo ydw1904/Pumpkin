@@ -190,19 +190,18 @@ impl VillagerEntity {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(bed);
     }
 
-    /// Vanilla `VillagerMakeLove.takeVacantBed`: takes the ticket of the first free bed it can
-    /// path to.
+    /// Vanilla `VillagerMakeLove.takeVacantBed`: takes the ticket of the first free bed, in
+    /// `PoiManager.getInRange` order rather than by distance, that it can path to.
     fn take_vacant_bed(&self, world: &World) -> Option<BlockPos> {
         let is_home = |poi_type| poi_type == VillagePoiType::Home;
         let beds = world
             .villager_poi
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .find_all_closest_first(
-                is_home,
-                |_| true,
+            .get_in_range(
                 self.get_entity().block_pos.load(),
                 BED_SEARCH_RADIUS,
+                is_home,
                 Occupancy::HasSpace,
             );
         let bed = beds.into_iter().find_map(|(poi_type, pos)| {

@@ -336,7 +336,8 @@ impl VillagerPoiStorage {
 
     /// Vanilla `PoiManager.getInRange` in its stream order: chunks row by row (z outer, x
     /// inner), then sections bottom to top.
-    fn in_range(
+    #[must_use]
+    pub fn get_in_range(
         &self,
         center: BlockPos,
         radius: i32,
@@ -378,7 +379,7 @@ impl VillagerPoiStorage {
         radius: i32,
         occupancy: Occupancy,
     ) -> Vec<BlockPos> {
-        self.in_range(center, radius, |_| true, occupancy)
+        self.get_in_range(center, radius, |_| true, occupancy)
             .into_iter()
             .map(|(_, position)| position)
             .collect()
@@ -393,7 +394,7 @@ impl VillagerPoiStorage {
         accepts: impl Fn(VillagePoiType) -> bool,
         occupancy: Occupancy,
     ) -> usize {
-        self.in_range(center, radius, accepts, occupancy).len()
+        self.get_in_range(center, radius, accepts, occupancy).len()
     }
 
     /// Vanilla `PoiManager.find`: the first match in stream order, not the closest.
@@ -405,7 +406,7 @@ impl VillagerPoiStorage {
         radius: i32,
         occupancy: Occupancy,
     ) -> Option<BlockPos> {
-        self.in_range(center, radius, accepts, occupancy)
+        self.get_in_range(center, radius, accepts, occupancy)
             .into_iter()
             .map(|(_, position)| position)
             .find(|position| filter(*position))
@@ -422,7 +423,7 @@ impl VillagerPoiStorage {
         occupancy: Occupancy,
     ) -> Vec<(VillagePoiType, BlockPos)> {
         let mut found = self
-            .in_range(center, radius, accepts, occupancy)
+            .get_in_range(center, radius, accepts, occupancy)
             .into_iter()
             .filter(|(_, position)| filter(*position))
             .collect::<Vec<_>>();
