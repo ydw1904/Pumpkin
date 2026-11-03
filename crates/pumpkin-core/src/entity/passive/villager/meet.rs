@@ -14,6 +14,7 @@ use super::VillagerEntity;
 use crate::entity::EntityBase;
 use crate::entity::ai::brain::behavior::utils::throw_item;
 use crate::entity::ai::goal::{Controls, Goal};
+use crate::entity::ai::pathfinder::path::Path;
 use crate::entity::ai::util::land_random_pos;
 use crate::entity::mob::Mob;
 use crate::world::World;
@@ -93,6 +94,38 @@ impl VillagerEntity {
             .walk_target
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    pub(super) fn cant_reach_walk_target_since(&self) -> Option<i64> {
+        *self
+            .cant_reach_walk_target_since
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    pub(super) fn set_cant_reach_walk_target_since(&self, since: Option<i64>) {
+        *self
+            .cant_reach_walk_target_since
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = since;
+    }
+
+    /// Vanilla `MoveToTargetSink.tryComputePath`'s bookkeeping: a reached or reachable walk
+    /// target clears `CANT_REACH_WALK_TARGET_SINCE`, an unreachable one starts it.
+    pub(super) fn update_walk_target_reachability(&self, reached: bool, can_reach: bool) {
+        if reached || can_reach {
+            self.set_cant_reach_walk_target_since(None);
+        } else if self.cant_reach_walk_target_since().is_none() {
+            let game_time = self
+                .get_entity()
+                .world
+                .load()
+                .level_time
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .world_age;
+            self.set_cant_reach_walk_target_since(Some(game_time));
+        }
     }
 
     pub(super) fn interaction_target(
@@ -435,10 +468,18 @@ impl MoveToWalkTargetGoal {
         };
         self.last_target_pos = Some(BlockPos::floored_v(pos));
         let living = &mob.get_mob_entity().living_entity;
-        let steered = mob.get_mob_entity().steered();
-        let mut navigator = steered.navigator();
-        let path = navigator.create_path(living, pos, target.close_enough_dist);
-        navigator.move_to_path(path, target.speed, living);
+        let can_reach = {
+            let steered = mob.get_mob_entity().steered();
+            let mut navigator = steered.navigator();
+            let path = navigator.create_path(living, pos, target.close_enough_dist);
+            let can_reach = path.as_ref().is_some_and(Path::can_reach);
+            navigator.move_to_path(path, target.speed, living);
+            can_reach
+        };
+        if let Some(villager) = mob.cast_any().downcast_ref::<VillagerEntity>() {
+            villager
+                .update_walk_target_reachability(Self::reached(villager, target, world), can_reach);
+        }
     }
 }
 
@@ -453,6 +494,7 @@ impl Goal for MoveToWalkTargetGoal {
         let world = mob.get_entity().world.load();
         if Self::reached(villager, &target, &world) {
             villager.set_walk_target(None);
+            villager.set_cant_reach_walk_target_since(None);
             return false;
         }
         self.target = Some(target);
@@ -496,10 +538,12 @@ impl Goal for MoveToWalkTargetGoal {
             && let Some(target) = self.target.take()
         {
             let world = mob.get_entity().world.load();
-            if villager.walk_target() == Some(target)
-                && (Self::reached(villager, &target, &world) || mob.is_navigator_idle())
-            {
+            let reached = Self::reached(villager, &target, &world);
+            if villager.walk_target() == Some(target) && (reached || mob.is_navigator_idle()) {
                 villager.set_walk_target(None);
+                if reached {
+                    villager.set_cant_reach_walk_target_since(None);
+                }
             }
         }
         mob.get_mob_entity().steered().navigator().stop();

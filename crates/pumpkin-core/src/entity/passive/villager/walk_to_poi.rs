@@ -4,6 +4,7 @@ use pumpkin_util::math::vector3::Vector3;
 
 use super::VillagerEntity;
 use crate::entity::ai::goal::{Controls, Goal};
+use crate::entity::ai::pathfinder::path::Path;
 use crate::entity::ai::util::default_random_pos;
 use crate::entity::mob::Mob;
 
@@ -24,6 +25,7 @@ pub struct WalkToRememberedPoiGoal {
     speed: f64,
     close_enough_dist: i32,
     too_far_distance: i32,
+    too_long_unreachable_duration: i64,
     target: Option<BlockPos>,
 }
 
@@ -37,6 +39,7 @@ impl WalkToRememberedPoiGoal {
             speed,
             close_enough_dist: 1,
             too_far_distance: 150,
+            too_long_unreachable_duration: 1200,
             target: None,
         }
     }
@@ -51,6 +54,7 @@ impl WalkToRememberedPoiGoal {
             speed,
             close_enough_dist: 6,
             too_far_distance: 100,
+            too_long_unreachable_duration: 200,
             target: None,
         }
     }
@@ -60,6 +64,16 @@ impl WalkToRememberedPoiGoal {
             RememberedPoi::Home => villager.get_home(),
             RememberedPoi::MeetingPoint => villager.get_meeting_point(),
         }
+    }
+
+    fn game_time(mob: &dyn Mob) -> i64 {
+        mob.get_entity()
+            .world
+            .load()
+            .level_time
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .world_age
     }
 
     fn is_active(&self, mob: &dyn Mob) -> bool {
@@ -86,6 +100,15 @@ impl Goal for WalkToRememberedPoiGoal {
             return false;
         };
         if villager.is_sleeping() || !self.is_active(mob) {
+            return false;
+        }
+        let game_time = Self::game_time(mob);
+        if villager
+            .cant_reach_walk_target_since()
+            .is_some_and(|since| game_time - since > self.too_long_unreachable_duration)
+        {
+            villager.forget_remembered_poi(matches!(self.memory, RememberedPoi::Home));
+            villager.set_cant_reach_walk_target_since(Some(game_time));
             return false;
         }
         let body = mob.get_entity().block_pos.load();
@@ -137,6 +160,7 @@ impl Goal for WalkToRememberedPoiGoal {
             let Some(towards) = towards else {
                 if let Some(villager) = mob.cast_any().downcast_ref::<VillagerEntity>() {
                     villager.forget_remembered_poi(matches!(self.memory, RememberedPoi::Home));
+                    villager.set_cant_reach_walk_target_since(Some(Self::game_time(mob)));
                 }
                 return;
             };
@@ -145,13 +169,27 @@ impl Goal for WalkToRememberedPoiGoal {
             bottom_center
         };
         let living = &mob.get_mob_entity().living_entity;
-        let steered = mob.get_mob_entity().steered();
-        let mut navigator = steered.navigator();
-        let path = navigator.create_path(living, destination, self.close_enough_dist);
-        navigator.move_to_path(path, self.speed, living);
+        let can_reach = {
+            let steered = mob.get_mob_entity().steered();
+            let mut navigator = steered.navigator();
+            let path = navigator.create_path(living, destination, self.close_enough_dist);
+            let can_reach = path.as_ref().is_some_and(Path::can_reach);
+            navigator.move_to_path(path, self.speed, living);
+            can_reach
+        };
+        if let Some(villager) = mob.cast_any().downcast_ref::<VillagerEntity>() {
+            villager.update_walk_target_reachability(false, can_reach);
+        }
     }
 
     fn stop(&mut self, mob: &dyn Mob) {
+        if let Some(villager) = mob.cast_any().downcast_ref::<VillagerEntity>()
+            && self.target.is_some_and(|target| {
+                manhattan(target, mob.get_entity().block_pos.load()) <= self.close_enough_dist
+            })
+        {
+            villager.set_cant_reach_walk_target_since(None);
+        }
         self.target = None;
         mob.get_mob_entity().steered().navigator().stop();
     }

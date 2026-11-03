@@ -438,6 +438,8 @@ pub struct VillagerEntity {
     walk_target: std::sync::Mutex<Option<meet::WalkTarget>>,
     /// Vanilla `MemoryModuleType.INTERACTION_TARGET`, by entity id.
     interaction_target: std::sync::Mutex<Option<i32>>,
+    /// Vanilla `MemoryModuleType.CANT_REACH_WALK_TARGET_SINCE`.
+    cant_reach_walk_target_since: std::sync::Mutex<Option<i64>>,
     /// Vanilla `MemoryModuleType.LOOK_TARGET`.
     look_target: std::sync::Mutex<Option<look_target::LookTarget>>,
     /// When the running core `LookAtTargetSink` times out.
@@ -550,6 +552,7 @@ impl VillagerEntity {
             acquire_meeting_point: std::sync::Mutex::default(),
             walk_target: std::sync::Mutex::new(None),
             interaction_target: std::sync::Mutex::new(None),
+            cant_reach_walk_target_since: std::sync::Mutex::new(None),
             look_target: std::sync::Mutex::new(None),
             look_at_target_sink_end: std::sync::Mutex::new(None),
             stroll_next_ok_start: AtomicI64::new(0),

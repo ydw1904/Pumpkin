@@ -54,6 +54,7 @@ const STROLL_TO_POI_LIST_COOLDOWN: i64 = 100;
 const JOB_SITE_CLOSE_ENOUGH_DIST: i32 = 9;
 const JOB_SITE_TOO_FAR_DISTANCE: i32 = 100;
 const SET_WALK_TARGET_MAX_TRIES: i32 = 1000;
+const JOB_SITE_TOO_LONG_UNREACHABLE_DURATION: i64 = 1200;
 /// Vanilla `HarvestFarmland.HARVEST_DURATION` and `SPEED_MODIFIER`.
 const HARVEST_DURATION: i32 = 200;
 const HARVEST_SPEED_MODIFIER: f64 = 0.5;
@@ -179,14 +180,39 @@ impl VillagerEntity {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = job_sites;
     }
 
+    /// `SetWalkTargetFromBlockMemory` giving up on the job site: releases it and starts
+    /// `CANT_REACH_WALK_TARGET_SINCE` over.
+    fn give_up_job_site(&self, game_time: i64) {
+        let pos = self
+            .job_site
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(pos) = pos {
+            Self::release_poi(
+                &self.get_entity().world.load(),
+                pos,
+                held_job_site(self.profession()),
+            );
+        }
+        self.set_cant_reach_walk_target_since(Some(game_time));
+    }
+
     /// The `SetWalkTargetFromBlockMemory` for `JOB_SITE` of the work package.
-    fn walk_to_job_site(&self) {
+    fn walk_to_job_site(&self, game_time: i64) {
         if self.walk_target().is_some() {
             return;
         }
         let Some(job_site) = self.get_job_site() else {
             return;
         };
+        if self
+            .cant_reach_walk_target_since()
+            .is_some_and(|since| game_time - since > JOB_SITE_TOO_LONG_UNREACHABLE_DURATION)
+        {
+            self.give_up_job_site(game_time);
+            return;
+        }
         let body = self.get_entity().block_pos.load();
         if manhattan(job_site, body) > JOB_SITE_TOO_FAR_DISTANCE {
             let bottom_center = Vector3::new(
@@ -207,18 +233,7 @@ impl VillagerEntity {
                 })
             });
             let Some(towards) = towards else {
-                let pos = self
-                    .job_site
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .take();
-                if let Some(pos) = pos {
-                    Self::release_poi(
-                        &self.get_entity().world.load(),
-                        pos,
-                        held_job_site(self.profession()),
-                    );
-                }
+                self.give_up_job_site(game_time);
                 return;
             };
             self.set_walk_target(Some(WalkTarget {
@@ -247,7 +262,7 @@ impl VillagerEntity {
         activity: Activity,
     ) {
         if activity == Activity::Work {
-            self.walk_to_job_site();
+            self.walk_to_job_site(game_time);
         }
         let mut package = self
             .work
