@@ -1,3 +1,5 @@
+use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::tag::Taggable;
 use std::sync::Arc;
 
 use pumpkin_data::BlockState;
@@ -32,9 +34,20 @@ impl Mob for WitherSkeletonEntity {
     fn finalize_spawn(
         &self,
         _world: &std::sync::Arc<crate::world::World>,
+        _reason: crate::entity::mob::spawn::EntitySpawnReason,
         group_data: Option<crate::entity::mob::spawn::SpawnGroupData>,
     ) -> Option<crate::entity::mob::spawn::SpawnGroupData> {
         self.entity.finalize_skeleton_spawn(self, group_data)
+    }
+
+    fn can_hold_item(&self, stack: &ItemStack) -> bool {
+        !stack
+            .item
+            .has_tag(&pumpkin_data::tag::Item::MINECRAFT_WITHER_SKELETON_DISLIKED_WEAPONS)
+    }
+
+    fn wants_to_pick_up(&self, stack: &ItemStack) -> bool {
+        super::wants_to_pick_up(self, stack)
     }
 
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {

@@ -130,7 +130,7 @@ impl AxolotlEntity {
 
             // Vanilla's `PLAY_DEAD` activity replaces every idle and fight behavior.
             goal_selector.add_goal(0, Box::new(PlayDeadGoal));
-            goal_selector.add_goal(1, Box::new(TryFindWaterGoal));
+            goal_selector.add_goal(1, Box::new(TryFindWaterGoal::new()));
             goal_selector.add_goal(1, Box::new(SwimGoal::default()));
             goal_selector.add_goal(2, BreedGoal::new(1.0));
             goal_selector.add_goal(3, Box::new(TemptGoal::new(1.25, TEMPT_ITEMS, false)));

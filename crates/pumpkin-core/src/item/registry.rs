@@ -1,6 +1,7 @@
 use crate::block::BlockPlaceContext;
 use crate::block::registry::BlockActionResult;
 use crate::entity::EntityBase;
+use crate::entity::mob::equipment::equip_on_target;
 use crate::entity::player::Player;
 use crate::server::Server;
 use crate::world::World;
@@ -139,6 +140,12 @@ impl ItemRegistry {
         player: &Player,
         entity: Arc<dyn EntityBase>,
     ) {
+        if let Some(mob) = entity.get_mob()
+            && equip_on_target(mob, player, stack)
+        {
+            return;
+        }
+
         let pumpkin_item = self.get_pumpkin_item(stack.item.id);
         if let Some(pumpkin_item) = pumpkin_item {
             pumpkin_item.use_on_entity(stack, player, entity);

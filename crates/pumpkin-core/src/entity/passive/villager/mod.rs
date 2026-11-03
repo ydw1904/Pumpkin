@@ -2312,15 +2312,22 @@ impl VillagerEntity {
         self.tick_show_trades(&world, game_time, activity);
         self.reset_profession();
         self.tick_golem_spawning(&world, game_time);
-        // Vanilla `Mob.aiStep` picks items up after the brain has ticked.
-        self.pick_up_items(&world);
     }
 }
 
 impl Mob for VillagerEntity {
+    fn wants_to_pick_up(&self, stack: &ItemStack) -> bool {
+        Self::wants_to_pick_up(self, stack)
+    }
+
+    fn pick_up_item(&self, item: &crate::entity::item::ItemEntity) {
+        self.pick_up_item_entity(item);
+    }
+
     fn finalize_spawn(
         &self,
         world: &Arc<World>,
+        _reason: crate::entity::mob::spawn::EntitySpawnReason,
         group_data: Option<SpawnGroupData>,
     ) -> Option<SpawnGroupData> {
         self.finalize_villager_type(world, &self.get_entity().block_pos.load());
@@ -2342,7 +2349,12 @@ impl Mob for VillagerEntity {
             if self
                 .mob_entity
                 .convert_to_with(&EntityType::WITCH, false, false, |witch| {
-                    crate::entity::mob::spawn::finalize_spawn(witch, &world, None);
+                    crate::entity::mob::spawn::finalize_spawn(
+                        witch,
+                        &world,
+                        crate::entity::mob::spawn::EntitySpawnReason::Conversion,
+                        None,
+                    );
                     if let Some(mob) = witch.get_mob() {
                         mob.get_mob_entity()
                             .persistence_required

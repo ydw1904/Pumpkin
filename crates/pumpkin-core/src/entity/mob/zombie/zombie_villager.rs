@@ -239,7 +239,11 @@ impl ZombieVillagerEntity {
             Ordering::Relaxed,
         );
         villager.set_villager_data(data);
-        villager.finalize_spawn(&world, None);
+        villager.finalize_spawn(
+            &world,
+            crate::entity::mob::spawn::EntitySpawnReason::Conversion,
+            None,
+        );
 
         if let Some(starter) = self.conversion_starter.load() {
             // Vanilla's `ZOMBIE_VILLAGER_CURED` reputation event.
@@ -285,6 +289,7 @@ impl Mob for ZombieVillagerEntity {
     fn finalize_spawn(
         &self,
         world: &Arc<World>,
+        _reason: crate::entity::mob::spawn::EntitySpawnReason,
         group_data: Option<SpawnGroupData>,
     ) -> Option<SpawnGroupData> {
         // Vanilla `ZombieVillager.finalizeSpawn`: the type, then `Zombie.finalizeSpawn`.
@@ -301,6 +306,18 @@ impl Mob for ZombieVillagerEntity {
         }
     }
 
+    fn xp_reward(&self) -> u32 {
+        self.mob_entity.xp_reward()
+    }
+
+    fn can_hold_item(&self, stack: &ItemStack) -> bool {
+        self.mob_entity.can_hold_item(stack)
+    }
+
+    fn wants_to_pick_up(&self, stack: &ItemStack) -> bool {
+        super::wants_to_pick_up(self, stack)
+    }
+
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
         self.play_entity_sound(Sound::EntityZombieVillagerStep, 0.15, 1.0);
     }
@@ -311,10 +328,6 @@ impl Mob for ZombieVillagerEntity {
 
     fn killed_entity(&self, victim: &dyn EntityBase) -> bool {
         self.mob_entity.killed_entity(victim)
-    }
-
-    fn get_base_experience_reward(&self) -> u32 {
-        self.mob_entity.base_experience_reward()
     }
 
     fn spawn_as_baby(&self) -> bool {

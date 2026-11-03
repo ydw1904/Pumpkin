@@ -644,7 +644,12 @@ pub fn spawn_mobs_for_chunk_generation(
                     entity
                         .get_entity()
                         .set_rotation(game_random().random::<f32>() * 360.0, 0.0);
-                    group_data = finalize_spawn(&entity, world, group_data);
+                    group_data = finalize_spawn(
+                        &entity,
+                        world,
+                        crate::entity::mob::spawn::EntitySpawnReason::ChunkGeneration,
+                        group_data,
+                    );
                     cache
                         .get_center_chunk_mut()
                         .add_entity(world_gen_entity_nbt(&entity));
@@ -940,7 +945,12 @@ pub fn spawn_category_for_position(
                     });
 
                     if is_valid_for_mob {
-                        group_data = finalize_spawn(&entity, world, group_data);
+                        group_data = finalize_spawn(
+                            &entity,
+                            world,
+                            crate::entity::mob::spawn::EntitySpawnReason::Natural,
+                            group_data,
+                        );
                         cluster_size += 1;
                         group_size += 1;
                         let max_group_size_reached = entity
@@ -1197,7 +1207,7 @@ pub fn is_spawn_position_ok(
                 return false;
             }
             let above_state = world.get_block_state(&block_pos.up());
-            world.get_fluid(block_pos).has_tag(&MINECRAFT_WATER) && !above_state.is_full_cube()
+            world.get_fluid(block_pos).has_tag(&MINECRAFT_WATER) && !above_state.is_solid_block()
         }
         SpawnLocation::OnGround => {
             if !within_bounds {
@@ -1238,7 +1248,7 @@ pub fn is_spawn_position_ok_cache(
 
             state.is_liquid()
                 && Block::from_state_id(state.id).has_tag(&MINECRAFT_WATER)
-                && !above_state.is_full_cube()
+                && !above_state.is_solid_block()
         }
         SpawnLocation::OnGround => {
             let down_pos = block_pos.down().0;

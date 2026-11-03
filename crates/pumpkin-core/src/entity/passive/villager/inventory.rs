@@ -15,8 +15,6 @@ use crate::entity::mob::Mob;
 use crate::entity::player::advancement::trigger::AdvancementTrigger;
 use crate::world::World;
 
-/// Vanilla `Mob.ITEM_PICKUP_REACH`.
-const ITEM_PICKUP_REACH: (f64, f64, f64) = (1.0, 0.0, 1.0);
 /// Vanilla `NearestItemSensor`'s search box and `MAX_DISTANCE_TO_WANTED_ITEM`.
 const NEAREST_ITEM_XZ_RANGE: f64 = 32.0;
 const NEAREST_ITEM_Y_RANGE: f64 = 16.0;
@@ -79,7 +77,7 @@ pub(super) fn remove_item_type(inventory: &mut [ItemStack], item: &Item, count: 
 
 impl VillagerEntity {
     /// Vanilla `Villager.wantsToPickUp`.
-    fn wants_to_pick_up(&self, stack: &ItemStack) -> bool {
+    pub(super) fn wants_to_pick_up(&self, stack: &ItemStack) -> bool {
         (stack.item.has_tag(&tag::Item::MINECRAFT_VILLAGER_PICKS_UP)
             || stack.get_data_component::<VillagerFoodImpl>().is_some()
             || self.profession().requested_items().contains(&stack.item))
@@ -92,73 +90,47 @@ impl VillagerEntity {
             )
     }
 
-    fn can_pick_up(&self, item: &ItemEntity) -> bool {
-        let stack = item
+    /// `Villager.pickUpItem` and `InventoryCarrier.pickUpItem`, run by the shared item pickup of
+    /// vanilla `Mob.aiStep`.
+    pub(super) fn pick_up_item_entity(&self, item: &ItemEntity) {
+        let living = &self.mob_entity.living_entity;
+        let entity = self.get_entity();
+        let world = entity.world.load();
+        let mut ground = item
             .get_item_stack()
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        !item.get_entity().is_removed()
-            && !stack.is_empty()
-            && item.get_pickup_delay() == 0
-            && self.wants_to_pick_up(&stack)
-    }
-
-    /// The item pickup of vanilla `Mob.aiStep`, with `Villager.pickUpItem` and
-    /// `InventoryCarrier.pickUpItem`.
-    pub(super) fn pick_up_items(&self, world: &World) {
-        let living = &self.mob_entity.living_entity;
-        if !self.mob_entity.can_pick_up_loot()
-            || living.is_dead_or_dying()
-            || !world.level_info.load().game_rules.mob_griefing
-        {
-            return;
-        }
-        let entity = self.get_entity();
-        let (x, y, z) = ITEM_PICKUP_REACH;
-        let area = entity.bounding_box.load().expand(x, y, z);
-        for other in world.get_entities_at_box(&area) {
-            let Some(item) = other.cast_any().downcast_ref::<ItemEntity>() else {
-                continue;
-            };
-            if !self.can_pick_up(item) {
-                continue;
-            }
-            let mut ground = item
-                .get_item_stack()
+        let count = ground.item_count;
+        let taken_stack = ground.clone();
+        let mut remainder = ground.clone();
+        add_item(
+            &mut self
+                .inventory
                 .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let count = ground.item_count;
-            let taken_stack = ground.clone();
-            let mut remainder = ground.clone();
-            add_item(
-                &mut self
-                    .inventory
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner),
-                &mut remainder,
-            );
-            let taken = count - remainder.item_count;
-            // Vanilla `LivingEntity.onItemPickup`.
-            if let Some(thrower) = item
-                .get_thrower()
-                .and_then(|uuid| world.get_player_by_uuid(uuid))
-            {
-                thrower.trigger_advancement(AdvancementTrigger::ThrownItemPickedUpByEntity {
-                    entity_type: "minecraft:villager".to_string(),
-                    item_id: taken_stack.item.registry_key.to_string(),
-                    is_baby: entity.age.load(Ordering::Relaxed) < 0,
-                    player_wearing_safe_armor: false,
-                });
-            }
-            living.pickup(item.get_entity(), u32::from(taken));
-            if remainder.is_empty() {
-                drop(ground);
-                item.get_entity().remove();
-            } else {
-                ground.set_count(remainder.item_count);
-                drop(ground);
-                item.init_data_tracker();
-            }
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            &mut remainder,
+        );
+        let taken = count - remainder.item_count;
+        // Vanilla `LivingEntity.onItemPickup`.
+        if let Some(thrower) = item
+            .get_thrower()
+            .and_then(|uuid| world.get_player_by_uuid(uuid))
+        {
+            thrower.trigger_advancement(AdvancementTrigger::ThrownItemPickedUpByEntity {
+                entity_type: "minecraft:villager".to_string(),
+                item_id: taken_stack.item.registry_key.to_string(),
+                is_baby: entity.age.load(Ordering::Relaxed) < 0,
+                player_wearing_safe_armor: false,
+            });
+        }
+        living.pickup(item.get_entity(), u32::from(taken));
+        if remainder.is_empty() {
+            drop(ground);
+            item.get_entity().remove();
+        } else {
+            ground.set_count(remainder.item_count);
+            drop(ground);
+            item.init_data_tracker();
         }
     }
 

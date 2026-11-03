@@ -1,3 +1,4 @@
+use pumpkin_data::tag::Taggable;
 use std::sync::{
     Arc, Mutex, Weak,
     atomic::{AtomicBool, Ordering},
@@ -141,6 +142,19 @@ impl Mob for PillagerEntity {
     /// Vanilla `Pillager.getWalkTargetValue`.
     fn get_walk_target_value(&self, _pos: &pumpkin_util::math::position::BlockPos) -> f32 {
         0.0
+    }
+
+    // Raid banners going into the inventory are not handled yet.
+    fn pick_up_item(&self, item: &crate::entity::item::ItemEntity) {
+        let is_banner = item
+            .get_item_stack()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .item
+            .has_tag(&pumpkin_data::tag::Item::MINECRAFT_BANNERS);
+        if is_banner {
+            crate::entity::mob::equipment::pick_up_item_as_equipment(self, item);
+        }
     }
 
     fn get_mob_entity(&self) -> &MobEntity {

@@ -126,6 +126,7 @@ pub fn spider_metadata(mob: &MobEntity) -> MobMetadata {
 pub fn finalize_spider_spawn(
     mob: &MobEntity,
     world: &Arc<World>,
+    reason: crate::entity::mob::spawn::EntitySpawnReason,
     group_data: Option<SpawnGroupData>,
 ) -> Option<SpawnGroupData> {
     mob.finalize_spawn_base();
@@ -136,7 +137,7 @@ pub fn finalize_spider_spawn(
     if rng.random_range(0..100) == 0 {
         let skeleton = from_type(&EntityType::SKELETON, pos, world, Uuid::new_v4());
         skeleton.get_entity().set_rotation(entity.yaw.load(), 0.0);
-        finalize_spawn(&skeleton, world, None);
+        finalize_spawn(&skeleton, world, reason, None);
         mob.add_pending_rider(skeleton);
     }
 
@@ -175,9 +176,10 @@ impl Mob for SpiderEntity {
     fn finalize_spawn(
         &self,
         world: &Arc<World>,
+        reason: crate::entity::mob::spawn::EntitySpawnReason,
         group_data: Option<SpawnGroupData>,
     ) -> Option<SpawnGroupData> {
-        finalize_spider_spawn(&self.mob_entity, world, group_data)
+        finalize_spider_spawn(&self.mob_entity, world, reason, group_data)
     }
 
     fn get_mob_entity(&self) -> &MobEntity {

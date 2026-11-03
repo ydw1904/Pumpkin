@@ -221,9 +221,10 @@ pub(crate) fn prepare_egg_mob(
     item: &ItemStack,
     mob: &Arc<dyn EntityBase>,
     world: &Arc<World>,
+    reason: crate::entity::mob::spawn::EntitySpawnReason,
     user: Option<&Player>,
 ) {
-    finalize_spawn(mob, world, None);
+    finalize_spawn(mob, world, reason, None);
     apply_entity_variant(item, mob.as_ref(), user);
 }
 
@@ -271,7 +272,13 @@ impl ItemBehaviour for SpawnEggItem {
             let mob = from_type(entity_type, pos, &world, Uuid::new_v4());
             mob.get_entity().set_rotation(spawn_yaw, 0.0);
 
-            prepare_egg_mob(&stack, &mob, &world, Some(player));
+            prepare_egg_mob(
+                &stack,
+                &mob,
+                &world,
+                crate::entity::mob::spawn::EntitySpawnReason::SpawnItemUse,
+                Some(player),
+            );
             if !world.spawn_creature(
                 mob,
                 CreatureSpawnReason::SpawnerEgg,
@@ -349,7 +356,13 @@ impl ItemBehaviour for SpawnEggItem {
 
             mob.get_entity().set_rotation(yaw, 0.0);
 
-            prepare_egg_mob(item, &mob, &world, Some(player));
+            prepare_egg_mob(
+                item,
+                &mob,
+                &world,
+                crate::entity::mob::spawn::EntitySpawnReason::SpawnItemUse,
+                Some(player),
+            );
 
             if world.spawn_creature(
                 mob,

@@ -357,7 +357,12 @@ impl Raid {
                     raider.set_wave(group_number);
                     raider.set_can_join_raid(true);
                     // Vanilla `Raid.joinRaid` finalizes the spawn before the raid buffs.
-                    finalize_spawn(&entity_base, world, None);
+                    finalize_spawn(
+                        &entity_base,
+                        world,
+                        crate::entity::mob::spawn::EntitySpawnReason::Event,
+                        None,
+                    );
                     raider.apply_raid_buffs(group_number, false);
                 }
 
@@ -385,7 +390,12 @@ impl Raid {
                         {
                             raider.set_wave(group_number);
                             raider.set_can_join_raid(true);
-                            finalize_spawn(&rider_base, world, None);
+                            finalize_spawn(
+                                &rider_base,
+                                world,
+                                crate::entity::mob::spawn::EntitySpawnReason::Event,
+                                None,
+                            );
                             raider.apply_raid_buffs(group_number, false);
                         }
                         self.join_raid(group_number, rider_uuid, &rider_base);
