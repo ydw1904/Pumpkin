@@ -303,6 +303,7 @@ use pumpkin_world::cylindrical_chunk_iterator::Cylindrical;
 
 use crate::block;
 use crate::block::blocks::straw_bed::StrawBedBlock;
+use crate::block::entities::BlockEntity;
 use crate::command::context::command_source::CommandSource;
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::{CommandSender, client_suggestions};
@@ -693,6 +694,8 @@ pub struct Player {
     pub open_container: AtomicCell<Option<u64>>,
     /// The block position of the currently open container screen (if any).
     pub open_container_pos: AtomicCell<Option<BlockPos>>,
+    /// The block entity the open container screen was opened on, which must stay in the world.
+    open_container_entity: Mutex<Option<Weak<dyn BlockEntity>>>,
     /// Sync id and Bedrock equipment slot of an open mount screen.
     bedrock_mount_screen: AtomicCell<Option<(u8, usize)>>,
     /// The village position where Raid Omen was triggered.
@@ -1056,6 +1059,7 @@ impl Player {
             enchantment_seed: AtomicI32::new(game_random().random()),
             open_container: AtomicCell::new(None),
             open_container_pos: AtomicCell::new(None),
+            open_container_entity: Mutex::new(None),
             bedrock_mount_screen: AtomicCell::new(None),
             raid_omen_position: AtomicCell::new(None),
             entered_lava_pos: AtomicCell::new(None),
@@ -5329,12 +5333,34 @@ impl Player {
         }) < d * d
     }
 
-    /// Vanilla's `stillValid` for block containers: the opened block must stay in reach.
+    /// Vanilla's `stillValid` for block containers: the opened block must stay in reach, and
+    /// its block entity must still be the one in the world (`Container.stillValidBlockEntity`).
     #[must_use]
     pub fn is_open_container_in_reach(&self) -> bool {
-        self.open_container_pos
-            .load()
-            .is_none_or(|pos| self.can_interact_with_block_at(&pos, 4.0))
+        let Some(pos) = self.open_container_pos.load() else {
+            return true;
+        };
+        let same_entity = self
+            .open_container_entity
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .is_none_or(|opened| {
+                self.world().get_block_entity(&pos).is_some_and(|current| {
+                    std::ptr::addr_eq(opened.as_ptr(), Arc::as_ptr(&current))
+                })
+            });
+        same_entity && self.can_interact_with_block_at(&pos, 4.0)
+    }
+
+    fn set_open_container_pos(&self, pos: Option<BlockPos>) {
+        *self
+            .open_container_entity
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = pos
+            .and_then(|pos| self.world().get_block_entity(&pos))
+            .map(|entity| Arc::downgrade(&entity));
+        self.open_container_pos.store(pos);
     }
 
     #[must_use]
@@ -6860,7 +6886,7 @@ impl Player {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) =
             self.player_screen_handler.clone();
-        self.open_container_pos.store(None);
+        self.set_open_container_pos(None);
         self.bedrock_mount_screen.store(None);
     }
 
@@ -6974,7 +7000,7 @@ impl Player {
                 .current_screen_handler
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = screen_handler;
-            self.open_container_pos.store(block_pos);
+            self.set_open_container_pos(block_pos);
             Some(self.screen_handler_sync_id.load(Ordering::Relaxed))
         } else {
             if self.is_spectator() {
@@ -7054,7 +7080,7 @@ impl Player {
             .current_screen_handler
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = screen_handler;
-        self.open_container_pos.store(None);
+        self.set_open_container_pos(None);
         true
     }
 
@@ -7110,7 +7136,7 @@ impl Player {
             .current_screen_handler
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = screen_handler;
-        self.open_container_pos.store(None);
+        self.set_open_container_pos(None);
     }
 
     #[allow(clippy::too_many_lines)]

@@ -7565,13 +7565,24 @@ impl World {
         nbt
     }
 
-    /// Replaces the block entity at its position with one loaded from `nbt` (vanilla
-    /// `loadWithComponents`), keeping the fields Pumpkin doesn't model as they are in `nbt`.
-    pub fn load_block_entity_data(&self, block_entity: &dyn BlockEntity, nbt: &NbtCompound) {
-        let Some(loaded) = reload_block_entity(block_entity, nbt) else {
-            return;
+    /// Loads `nbt` into the block entity at its position (vanilla `loadWithComponents`), keeping
+    /// the fields Pumpkin doesn't model as they are in `nbt`. Returns whether the modelled data
+    /// changed.
+    ///
+    /// Vanilla loads into the live object, so open menus show the new contents. A container
+    /// whose items are all that changed is updated the same way; anything else is replaced,
+    /// which closes its menus since the opened block entity is gone.
+    pub fn load_block_entity_data(
+        &self,
+        block_entity: &Arc<dyn BlockEntity>,
+        nbt: &NbtCompound,
+    ) -> bool {
+        let Some(loaded) = reload_block_entity(block_entity.as_ref(), nbt) else {
+            return false;
         };
+        let before = block_entity_nbt(block_entity.as_ref());
         let written = block_entity_nbt(loaded.as_ref());
+        let changed = before != written;
         let mut unmodelled = NbtCompound::new();
         for (name, tag) in &nbt.child_tags {
             if !written.has(name) && !matches!(&**name, "PumpkinCustomData" | "BukkitValues") {
@@ -7585,7 +7596,12 @@ impl World {
         } else {
             self.unmodelled_block_entity_nbt.insert(pos, unmodelled);
         }
-        self.add_block_entity(loaded);
+        if load_items_in_place(block_entity, &loaded, before, written) {
+            self.add_block_entity(block_entity.clone());
+        } else {
+            self.add_block_entity(loaded);
+        }
+        changed
     }
 
     pub fn add_block_entity_nbt(&self, block_pos: BlockPos, nbt: &NbtCompound) {
@@ -8810,6 +8826,30 @@ fn block_entity_nbt(block_entity: &dyn BlockEntity) -> NbtCompound {
     let mut nbt = NbtCompound::new();
     block_entity.write_internal(&mut nbt);
     nbt
+}
+
+/// Copies `loaded`'s items into the `live` container when they are all that differs between
+/// the two (`before` and `after` are their saved data). Returns whether it did.
+fn load_items_in_place(
+    live: &Arc<dyn BlockEntity>,
+    loaded: &Arc<dyn BlockEntity>,
+    mut before: NbtCompound,
+    mut after: NbtCompound,
+) -> bool {
+    let (Some(live_items), Some(loaded_items)) =
+        (live.clone().get_inventory(), loaded.clone().get_inventory())
+    else {
+        return false;
+    };
+    before.child_tags.remove("Items");
+    after.child_tags.remove("Items");
+    if live_items.size() != loaded_items.size() || before != after {
+        return false;
+    }
+    for slot in 0..live_items.size() {
+        live_items.set_stack(slot, loaded_items.get_stack(slot));
+    }
+    true
 }
 
 #[cfg(test)]

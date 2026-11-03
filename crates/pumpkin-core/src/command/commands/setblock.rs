@@ -8,7 +8,6 @@ use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry
 use pumpkin_util::text::TextComponent;
 use pumpkin_world::world::BlockFlags;
 
-use crate::block::entities::reload_block_entity;
 use crate::command::argument_builder::{ArgumentBuilder, argument, command, literal};
 use crate::command::argument_types::block_state::{BlockInput, BlockStateArgumentType};
 use crate::command::argument_types::coordinates::block_pos::BlockPosArgumentType;
@@ -86,17 +85,9 @@ pub fn load_block_entity_data(world: &Arc<World>, pos: &BlockPos, tag: &NbtCompo
     let Some(entity) = world.get_block_entity(pos) else {
         return false;
     };
-    let mut before = NbtCompound::new();
-    entity.write_internal(&mut before);
-    let Some(loaded) = reload_block_entity(entity.as_ref(), tag) else {
-        return false;
-    };
-    let mut after = NbtCompound::new();
-    loaded.write_internal(&mut after);
-    if after == before {
+    if !world.load_block_entity_data(&entity, tag) {
         return false;
     }
-    world.add_block_entity(loaded);
     world.block_entity_set_changed(pos);
     true
 }

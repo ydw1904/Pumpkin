@@ -452,7 +452,7 @@ impl DataAccessor for BlockDataAccessor {
             return Err(ERROR_BLOCK_INVALID.create_without_context());
         };
         // `add_block_entity` also sends the update tag, like vanilla `sendBlockUpdated`.
-        self.world.load_block_entity_data(entity.as_ref(), tag);
+        self.world.load_block_entity_data(&entity, tag);
         self.world.block_entity_set_changed(&self.pos);
         Ok(())
     }
