@@ -46,8 +46,6 @@ pub struct Biome {
     pub carvers: Vec<String>,
     /// Nested lists of feature resource-location strings applied during world generation.
     features: Vec<Vec<String>>,
-    /// Probability per chunk tick that a creature spawns, if not overridden per-biome.
-    creature_spawn_probability: Option<f32>,
     /// Spawn group data for each entity category in this biome.
     #[serde(default)]
     spawners: SpawnGroups,
@@ -387,7 +385,12 @@ pub fn build() -> TokenStream {
             })
             .collect();
 
-        let creature_spawn_probability = &biome.creature_spawn_probability.unwrap_or(0.1);
+        // The `gameplay/creature_world_gen_spawn_probability` attribute defaults to 0.1.
+        let creature_spawn_probability = biome
+            .attributes
+            .get("minecraft:gameplay/creature_world_gen_spawn_probability")
+            .and_then(Value::as_f64)
+            .map_or(0.1, |probability| probability as f32);
 
         let temperature_modifier = biome
             .temperature_modifier
