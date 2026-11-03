@@ -103,6 +103,22 @@ impl Animal for OcelotEntity {
 }
 
 impl Mob for OcelotEntity {
+    /// Vanilla `Ocelot.checkSpawnObstruction`: above sea level, on grass or leaves.
+    fn check_spawn_obstruction(&self, world: &crate::world::World) -> bool {
+        let entity = self.get_entity();
+        if !crate::entity::mob::is_unobstructed(self, world)
+            || world.contains_any_liquid(entity.bounding_box.load())
+        {
+            return false;
+        }
+        let pos = entity.block_pos.load();
+        if pos.0.y < world.sea_level {
+            return false;
+        }
+        let below = world.get_block(&pos.down());
+        below == &pumpkin_data::Block::GRASS_BLOCK || below.has_tag(&tag::Block::MINECRAFT_LEAVES)
+    }
+
     fn as_animal(&self) -> Option<&dyn Animal> {
         Some(self)
     }

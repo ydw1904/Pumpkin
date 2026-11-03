@@ -112,6 +112,11 @@ impl DolphinEntity {
 }
 
 impl Mob for DolphinEntity {
+    /// Vanilla `AgeableWaterCreature.checkSpawnObstruction`.
+    fn check_spawn_obstruction(&self, world: &crate::world::World) -> bool {
+        crate::entity::mob::is_unobstructed(self, world)
+    }
+
     fn travel_in_water(&self, caller: &dyn EntityBase, _gravity: f64, _falling: bool) {
         let living = &self.mob_entity.living_entity;
         let entity = &living.entity;

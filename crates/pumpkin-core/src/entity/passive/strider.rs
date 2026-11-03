@@ -226,6 +226,11 @@ impl Animal for StriderEntity {
 }
 
 impl Mob for StriderEntity {
+    /// Vanilla `Strider.checkSpawnObstruction`.
+    fn check_spawn_obstruction(&self, world: &crate::world::World) -> bool {
+        crate::entity::mob::is_unobstructed(self, world)
+    }
+
     /// Vanilla `Strider.getWalkTargetValue`.
     fn get_walk_target_value(&self, pos: &BlockPos) -> f32 {
         let entity = self.get_entity();

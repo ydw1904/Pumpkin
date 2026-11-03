@@ -225,6 +225,11 @@ impl DrownedEntity {
 }
 
 impl Mob for DrownedEntity {
+    /// Vanilla `Drowned.checkSpawnObstruction`.
+    fn check_spawn_obstruction(&self, world: &crate::world::World) -> bool {
+        crate::entity::mob::is_unobstructed(self, world)
+    }
+
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
         self.play_entity_sound(Sound::EntityDrownedStep, 0.15, 1.0);
     }

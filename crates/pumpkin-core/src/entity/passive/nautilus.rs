@@ -193,6 +193,11 @@ impl CustomSound for NautilusEntity {
 }
 
 impl Mob for NautilusEntity {
+    /// Vanilla `AbstractNautilus.checkSpawnObstruction`.
+    fn check_spawn_obstruction(&self, world: &crate::world::World) -> bool {
+        crate::entity::mob::is_unobstructed(self, world)
+    }
+
     /// Vanilla `AbstractNautilus.getWalkTargetValue`.
     fn get_walk_target_value(&self, _pos: &BlockPos) -> f32 {
         0.0

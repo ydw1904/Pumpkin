@@ -54,6 +54,11 @@ impl ElderGuardianEntity {
 }
 
 impl Mob for ElderGuardianEntity {
+    /// Vanilla `Guardian.checkSpawnObstruction`.
+    fn check_spawn_obstruction(&self, world: &crate::world::World) -> bool {
+        crate::entity::mob::is_unobstructed(self, world)
+    }
+
     fn get_mob_entity(&self) -> &MobEntity {
         &self.mob_entity
     }

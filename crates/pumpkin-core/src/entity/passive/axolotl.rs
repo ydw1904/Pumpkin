@@ -366,6 +366,11 @@ impl Animal for AxolotlEntity {
 }
 
 impl Mob for AxolotlEntity {
+    /// Vanilla `Axolotl.checkSpawnObstruction`.
+    fn check_spawn_obstruction(&self, world: &crate::world::World) -> bool {
+        crate::entity::mob::is_unobstructed(self, world)
+    }
+
     /// Vanilla `Axolotl.getWalkTargetValue`.
     fn get_walk_target_value(&self, _pos: &pumpkin_util::math::position::BlockPos) -> f32 {
         0.0
