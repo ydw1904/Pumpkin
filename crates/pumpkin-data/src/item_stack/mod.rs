@@ -880,8 +880,10 @@ impl ItemStack {
             }
         }
 
-        // Store custom data like enchantments, display name, etc. would go here
-        compound.put_compound("components", tag);
+        // Vanilla's codec leaves out an empty patch.
+        if !tag.is_empty() {
+            compound.put_compound("components", tag);
+        }
     }
 
     #[must_use]
@@ -1009,8 +1011,10 @@ mod tests {
         let mut item = NbtCompound::new();
         stack.write_item_stack(&mut item);
 
-        let components = item.get_compound("components").expect("components written");
-        assert_eq!(components.get("minecraft:jukebox_playable"), None);
+        assert!(
+            item.get_compound("components")
+                .is_none_or(|components| components.get("minecraft:jukebox_playable").is_none())
+        );
     }
 
     #[test]
