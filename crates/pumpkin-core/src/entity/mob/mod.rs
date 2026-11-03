@@ -35,12 +35,13 @@ use pumpkin_data::data_component_impl::{DamageTypeImpl, EquipmentSlot, Equippabl
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
-use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::item_stack::{DamageResult, ItemStack};
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::tracked_data;
 use pumpkin_data::{Block, BlockDirection, BlockId, BlockState};
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_protocol::bedrock::server::ActorEventID;
 use pumpkin_util::Difficulty;
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
@@ -578,6 +579,30 @@ impl MobEntity {
         self.living_entity
             .send_equipment_changes(&[(slot.clone(), stack)]);
         previous
+    }
+
+    /// Vanilla `ItemStack.hurtAndBreak(amount, owner, slot)` for the stack in a mob's `slot`.
+    pub fn hurt_and_break_item_in_slot(&self, slot: &EquipmentSlot, amount: i32) {
+        let mut stack = self
+            .living_entity
+            .entity_equipment
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(slot);
+        let result = stack.damage_item(amount);
+        if result == DamageResult::Untouched {
+            return;
+        }
+        self.set_item_slot(slot, stack);
+        if result == DamageResult::Broken {
+            // Vanilla `LivingEntity.onEquippedItemBroken`.
+            let entity = &self.living_entity.entity;
+            entity.world.load().send_entity_status(
+                entity,
+                super::equipment_break_status(slot),
+                ActorEventID::None,
+            );
+        }
     }
 
     /// Vanilla `Mob.convertTo` with `ConversionParams.single(mob, true, true)`: replaces this mob

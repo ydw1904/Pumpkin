@@ -221,12 +221,16 @@ impl EnchantmentHelper {
                 damage_type,
             } => DamageEntity::new(min_damage.clone(), max_damage.clone(), *damage_type)
                 .apply_to(level, target, item_owner),
-            // Only players' items take durability in Pumpkin so far.
             EnchantmentEntityEffect::ChangeItemDamage { amount } => {
-                if let Some(player) = item_owner.and_then(EntityBase::get_player)
-                    && let Some(slot) = slot
-                {
-                    player.damage_item_in_slot(slot, amount.calculate(level) as i32);
+                let (Some(owner), Some(slot)) = (item_owner, slot) else {
+                    return;
+                };
+                let amount = amount.calculate(level) as i32;
+                if let Some(player) = owner.get_player() {
+                    player.damage_item_in_slot(slot, amount);
+                } else if let Some(mob) = owner.get_mob() {
+                    mob.get_mob_entity()
+                        .hurt_and_break_item_in_slot(slot, amount);
                 }
             }
             effect => {
