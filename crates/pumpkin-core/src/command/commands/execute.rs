@@ -13,6 +13,7 @@
     clippy::struct_excessive_bools
 )]
 
+use crate::block::entities::BlockEntity;
 use crate::command::CommandSource;
 use crate::command::argument_builder::{
     ArgumentBuilder, LiteralArgumentBuilder, RequiredArgumentBuilder, argument, command, literal,
@@ -31,6 +32,7 @@ use crate::command::argument_types::entity::EntityArgumentType;
 use crate::command::argument_types::entity_anchor::{EntityAnchorArgumentType, EntityAnchorExt};
 use crate::command::argument_types::function::FunctionArgumentType;
 use crate::command::argument_types::identifier::IdentifierArgumentType;
+use crate::command::argument_types::item_predicate::ItemPredicateArgumentType;
 use crate::command::argument_types::nbt_path::{NbtPath, NbtPathArgumentType};
 use crate::command::argument_types::objective::ObjectiveArgumentType;
 use crate::command::argument_types::range::{FloatRangeArgumentType, IntRangeArgumentType};
@@ -40,6 +42,7 @@ use crate::command::argument_types::resource_key::{
 };
 use crate::command::argument_types::resource_or_tag::{ResourceOrTag, ResourceOrTagArgument};
 use crate::command::argument_types::score_holder::ScoreHolderArgumentType;
+use crate::command::argument_types::slot::SlotsArgumentType;
 use crate::command::commands::bossbar::{BossbarIdArgumentType, get_bossbar_or_error};
 use crate::command::commands::data::{TargetKind, make_target_arg};
 use crate::command::commands::function::{
@@ -65,7 +68,11 @@ use crate::entity::r#type::from_type;
 use crate::world::scoreboard::Scoreboard;
 use crate::world::stopwatches::Stopwatches;
 use pumpkin_data::Block;
+use pumpkin_data::data_component_impl::EquipmentSlot;
+use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::translation;
+use pumpkin_inventory::Inventory;
+use pumpkin_inventory::player::player_inventory::PlayerInventory;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::PermissionLvl;
@@ -996,6 +1003,167 @@ fn execute_unless_predicate_modifier(context: &CommandContext) -> RedirectModifi
     })
 }
 
+const ERROR_SOURCE_NOT_A_CONTAINER: CommandErrorType<3> = CommandErrorType::new(
+    translation::java::COMMANDS_ITEM_SOURCE_NOT_A_CONTAINER,
+    translation::java::COMMANDS_ITEM_SOURCE_NOT_A_CONTAINER,
+);
+
+/// Vanilla `Entity.getSlot` for the slots Pumpkin models: the items of the slots in `range` that
+/// the entity has.
+fn entity_slot_items(entity: &dyn EntityBase, range: &[usize]) -> Vec<ItemStack> {
+    let mut items = Vec::new();
+    for &slot in range {
+        if let Some(player) = entity.get_player() {
+            let inventory = player.inventory();
+            if slot < PlayerInventory::MAIN_SIZE {
+                items.push(inventory.get_slot(slot));
+                continue;
+            }
+            if let Some(ender_slot) = slot.checked_sub(200)
+                && ender_slot < player.ender_chest_inventory.size()
+            {
+                items.push(player.ender_chest_inventory.get_stack(ender_slot));
+                continue;
+            }
+            if slot == 98 {
+                items.push(inventory.held_item());
+                continue;
+            }
+        }
+        if let Some(living) = entity.get_living_entity() {
+            // Vanilla `LivingEntity.getEquipmentSlot`.
+            let equipment_slot = match slot {
+                98 => Some(EquipmentSlot::MAIN_HAND),
+                99 => Some(EquipmentSlot::OFF_HAND),
+                100 => Some(EquipmentSlot::FEET),
+                101 => Some(EquipmentSlot::LEGS),
+                102 => Some(EquipmentSlot::CHEST),
+                103 => Some(EquipmentSlot::HEAD),
+                105 => Some(EquipmentSlot::BODY),
+                106 => Some(EquipmentSlot::SADDLE),
+                _ => None,
+            };
+            if let Some(equipment_slot) = equipment_slot {
+                items.push(
+                    living
+                        .entity_equipment
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .get(&equipment_slot),
+                );
+                continue;
+            }
+        }
+        if slot == 0
+            && let Some(item_entity) = entity.get_item_entity()
+        {
+            items.push(
+                item_entity
+                    .get_item_stack()
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clone(),
+            );
+        }
+    }
+    items
+}
+
+/// Vanilla `ItemAccessor.getSlots` for `items|slots entity|block`: the items of every slot in
+/// the range.
+fn slot_items(
+    context: &CommandContext,
+    kind: ItemSource,
+) -> Result<Vec<ItemStack>, CommandSyntaxError> {
+    let range = SlotsArgumentType::get(context, "slots")?;
+    match kind {
+        ItemSource::Entity => {
+            let entities = EntityArgumentType::get_entities(context, "source")?;
+            Ok(entities
+                .iter()
+                .flat_map(|entity| entity_slot_items(entity.as_ref(), range))
+                .collect())
+        }
+        ItemSource::Block => {
+            let pos = BlockPosArgumentType::get_loaded_block_pos(context, "source")?;
+            let inventory = context
+                .world()
+                .get_block_entity(&pos)
+                .and_then(BlockEntity::get_inventory)
+                .ok_or_else(|| {
+                    ERROR_SOURCE_NOT_A_CONTAINER.create_without_context(
+                        TextComponent::text(pos.0.x.to_string()),
+                        TextComponent::text(pos.0.y.to_string()),
+                        TextComponent::text(pos.0.z.to_string()),
+                    )
+                })?;
+            Ok(range
+                .iter()
+                .filter(|&&slot| slot < inventory.size())
+                .map(|&slot| inventory.get_stack(slot))
+                .collect())
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ItemSource {
+    Entity,
+    Block,
+}
+
+/// Vanilla `ExecuteCommand.countItems`.
+fn count_items(context: &CommandContext, kind: ItemSource) -> Result<i32, CommandSyntaxError> {
+    let predicate = ItemPredicateArgumentType::get(context, "item_predicate")?;
+    Ok(slot_items(context, kind)?
+        .iter()
+        .filter(|stack| predicate.test(stack))
+        .map(|stack| i32::from(stack.item_count))
+        .sum())
+}
+
+/// Vanilla `ExecuteCommand.countSlots`.
+fn count_slots(context: &CommandContext, kind: ItemSource) -> Result<i32, CommandSyntaxError> {
+    Ok(slot_items(context, kind)?.len() as i32)
+}
+
+/// `if|unless items|slots entity|block ...`, from vanilla `ExecuteCommand.addConditionals`.
+fn item_conditional(slots_only: bool, expected: bool) -> LiteralArgumentBuilder {
+    let mut node = literal(if slots_only { "slots" } else { "items" });
+    for (kind, name) in [(ItemSource::Entity, "entity"), (ItemSource::Block, "block")] {
+        let source = match kind {
+            ItemSource::Entity => argument("source", EntityArgumentType::Entities),
+            ItemSource::Block => argument("source", BlockPosArgumentType),
+        };
+        let slots = argument(
+            "slots",
+            ClientParsed::new(SlotsArgumentType, JavaClientArgumentType::SlotSource),
+        );
+        let count: CountCondition = match (kind, slots_only) {
+            (ItemSource::Entity, false) => |c| positive(count_items(c, ItemSource::Entity)?),
+            (ItemSource::Block, false) => |c| positive(count_items(c, ItemSource::Block)?),
+            (ItemSource::Entity, true) => |c| positive(count_slots(c, ItemSource::Entity)?),
+            (ItemSource::Block, true) => |c| positive(count_slots(c, ItemSource::Block)?),
+        };
+        let slots = if slots_only {
+            add_numeric_conditional(slots, expected, count)
+        } else {
+            slots.then(add_numeric_conditional(
+                argument("item_predicate", ItemPredicateArgumentType),
+                expected,
+                count,
+            ))
+        };
+        node = node.then(literal(name).then(source.then(slots)));
+    }
+    node
+}
+
+/// A count as a [`CountCondition`] result: `None` when nothing matched.
+fn positive(count: i32) -> Result<Option<i32>, CommandSyntaxError> {
+    Ok((count > 0).then_some(count))
+}
+
 const ERROR_FUNCTION_CONDITION_INSTANTIATION_FAILURE: CommandErrorType<2> = CommandErrorType::new(
     translation::java::COMMANDS_EXECUTE_FUNCTION_INSTANTIATIONFAILURE,
     translation::java::COMMANDS_EXECUTE_FUNCTION_INSTANTIATIONFAILURE,
@@ -1780,6 +1948,8 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                     execute_if_predicate_modifier,
                 )))
                 .then(function_conditional(true))
+                .then(item_conditional(false, true))
+                .then(item_conditional(true, true))
                 .then(
                     literal("stopwatch").then(
                         argument("id", IdentifierArgumentType).then(
@@ -1952,6 +2122,8 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                     execute_unless_predicate_modifier,
                 )))
                 .then(function_conditional(false))
+                .then(item_conditional(false, false))
+                .then(item_conditional(true, false))
                 .then(
                     literal("stopwatch").then(
                         argument("id", IdentifierArgumentType).then(
