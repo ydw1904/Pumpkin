@@ -349,7 +349,7 @@ impl Server {
                     }),
             ),
             scoreboard: Arc::new(std::sync::Mutex::new(load_scoreboard(&world_path))),
-            map_manager: MapManager::new(),
+            map_manager: MapManager::new(world_path.clone()),
             defaultgamemode,
             player_data_storage,
             command_storage: std::sync::Mutex::new(load_command_storage(&world_path)),
@@ -690,6 +690,7 @@ impl Server {
                 error!("Failed to save maps/last_id.dat: {err}");
             }
         }
+        self.map_manager.save(data_version);
         // Vanilla `CommandStorage`: one `command_storage.dat` per namespace.
         let mut storage_by_namespace: FxHashMap<&str, NbtCompound> = FxHashMap::default();
         let command_storage = self
