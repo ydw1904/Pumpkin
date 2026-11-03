@@ -1,3 +1,4 @@
+use crate::entity::r#type::CreatureSpawnLevel;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Weak};
 
@@ -223,12 +224,15 @@ impl Goal for SilverfishWakeUpFriendsGoal {
 
 impl Mob for SilverfishEntity {
     /// Vanilla `Silverfish.getWalkTargetValue`.
-    fn get_walk_target_value(&self, pos: &pumpkin_util::math::position::BlockPos) -> f32 {
-        let world = self.get_entity().world.load();
-        if InfestedBlock::is_compatible_host_block(world.get_block_state(&pos.down())) {
+    fn get_walk_target_value(
+        &self,
+        level: &dyn CreatureSpawnLevel,
+        pos: &pumpkin_util::math::position::BlockPos,
+    ) -> f32 {
+        if InfestedBlock::is_compatible_host_block(level.block_state(&pos.down())) {
             10.0
         } else {
-            crate::entity::mob::monster_walk_target_value(&world, pos)
+            crate::entity::mob::monster_walk_target_value(level, pos)
         }
     }
 

@@ -108,6 +108,7 @@ use crate::entity::passive::villager::VillagerEntity;
 use crate::entity::passive::wandering_trader::WanderingTraderEntity;
 use crate::entity::passive::wolf::WolfEntity;
 use crate::entity::passive::zombie_horse::ZombieHorseEntity;
+use crate::entity::player::Player;
 use crate::entity::projectile::ThrownItemEntity;
 use crate::entity::projectile::arrow::ArrowEntity;
 use crate::entity::projectile::dragon_fireball::DragonFireballEntity;
@@ -131,10 +132,11 @@ use crate::entity::vehicle::boat::BoatEntity;
 use crate::entity::vehicle::minecart::MinecartEntity;
 use crate::entity::{Entity, EntityBase, mob};
 use crate::world::World;
-use pumpkin_data::Block;
 use pumpkin_data::chunk::Biome;
 use pumpkin_data::fluid::Fluid;
+use pumpkin_data::{Block, BlockState};
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_util::math::boundingbox::BoundingBox;
 use std::sync::atomic::AtomicBool;
 use tracing::{debug, warn};
 
@@ -450,27 +452,71 @@ pub fn self_and_passengers(entity: &Arc<dyn EntityBase>) -> Vec<Arc<dyn EntityBa
     stack
 }
 
-/// The reads the creature spawn rules make.
+/// The reads the spawn rules, walk target values and spawn obstruction checks make.
 ///
-/// Chunk generation runs the same rules on the region it generates (vanilla
+/// Chunk generation runs the same checks on the region it generates (vanilla
 /// `spawnMobsForChunkGeneration` passes its `WorldGenRegion`), which isn't part of the world yet.
 pub trait CreatureSpawnLevel {
+    fn block_state(&self, pos: &BlockPos) -> &'static BlockState;
     fn block(&self, pos: &BlockPos) -> &'static Block;
     fn fluid(&self, pos: &BlockPos) -> &'static Fluid;
     /// Vanilla `getRawBrightness(pos, 0)`: sky or block light, whichever is brighter, without the
     /// time of day darkening the sky.
     fn raw_brightness(&self, pos: &BlockPos) -> u8;
+    /// Vanilla `LevelReader.getPathfindingCostFromLightLevels`.
+    fn pathfinding_cost_from_light_levels(&self, pos: &BlockPos) -> f32;
     fn biome(&self, pos: &BlockPos) -> &'static Biome;
     fn sea_level(&self) -> i32;
+    /// Vanilla `CollisionGetter.noBlockCollision`.
+    fn is_space_empty(&self, bounding_box: BoundingBox) -> bool;
+    /// Vanilla `EntityGetter.getEntities(null, box)` without the players.
+    fn entities_at_box(&self, bounding_box: &BoundingBox) -> Vec<Arc<dyn EntityBase>>;
+    fn players_at_box(&self, bounding_box: &BoundingBox) -> Vec<Arc<Player>>;
+
+    /// Vanilla `BlockGetter.containsAnyLiquid`.
+    fn contains_any_liquid(&self, bounding_box: BoundingBox) -> bool {
+        let min_x = bounding_box.min.x.floor() as i32;
+        let max_x = bounding_box.max.x.ceil() as i32;
+        let min_y = bounding_box.min.y.floor() as i32;
+        let max_y = bounding_box.max.y.ceil() as i32;
+        let min_z = bounding_box.min.z.floor() as i32;
+        let max_z = bounding_box.max.z.ceil() as i32;
+
+        (min_x..max_x).any(|x| {
+            (min_y..max_y).any(|y| {
+                (min_z..max_z).any(|z| self.fluid(&BlockPos::new(x, y, z)).id != Fluid::EMPTY.id)
+            })
+        })
+    }
 }
 
 impl CreatureSpawnLevel for World {
+    fn block_state(&self, pos: &BlockPos) -> &'static BlockState {
+        self.get_block_state(pos)
+    }
+
     fn block(&self, pos: &BlockPos) -> &'static Block {
         self.get_block(pos)
     }
 
     fn fluid(&self, pos: &BlockPos) -> &'static Fluid {
         self.get_fluid(pos)
+    }
+
+    fn pathfinding_cost_from_light_levels(&self, pos: &BlockPos) -> f32 {
+        self.get_pathfinding_cost_from_light_levels(pos)
+    }
+
+    fn is_space_empty(&self, bounding_box: BoundingBox) -> bool {
+        Self::is_space_empty(self, bounding_box)
+    }
+
+    fn entities_at_box(&self, bounding_box: &BoundingBox) -> Vec<Arc<dyn EntityBase>> {
+        self.get_entities_at_box(bounding_box)
+    }
+
+    fn players_at_box(&self, bounding_box: &BoundingBox) -> Vec<Arc<Player>> {
+        self.get_players_at_box(bounding_box)
     }
 
     fn raw_brightness(&self, pos: &BlockPos) -> u8 {

@@ -1,3 +1,4 @@
+use crate::entity::r#type::CreatureSpawnLevel;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicBool, AtomicI32, Ordering},
@@ -113,8 +114,8 @@ impl DolphinEntity {
 
 impl Mob for DolphinEntity {
     /// Vanilla `AgeableWaterCreature.checkSpawnObstruction`.
-    fn check_spawn_obstruction(&self, world: &crate::world::World) -> bool {
-        crate::entity::mob::is_unobstructed(self, world)
+    fn check_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
+        crate::entity::mob::is_unobstructed(self, level)
     }
 
     fn travel_in_water(&self, caller: &dyn EntityBase, _gravity: f64, _falling: bool) {

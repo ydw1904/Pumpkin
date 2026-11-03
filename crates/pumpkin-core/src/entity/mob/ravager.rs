@@ -1,3 +1,4 @@
+use crate::entity::r#type::CreatureSpawnLevel;
 use std::sync::{Arc, Weak};
 
 use pumpkin_data::BlockState;
@@ -82,8 +83,8 @@ impl RavagerEntity {
 
 impl Mob for RavagerEntity {
     /// Vanilla `Ravager.checkSpawnObstruction`: only liquid gets in the way.
-    fn check_spawn_obstruction(&self, world: &crate::world::World) -> bool {
-        !world.contains_any_liquid(self.get_entity().bounding_box.load())
+    fn check_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
+        !level.contains_any_liquid(self.get_entity().bounding_box.load())
     }
 
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {

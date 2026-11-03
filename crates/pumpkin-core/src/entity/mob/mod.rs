@@ -1260,13 +1260,13 @@ fn is_monster(entity_type: &EntityType) -> bool {
 }
 
 /// Vanilla `Monster.getWalkTargetValue`: monsters prefer the dark.
-pub fn monster_walk_target_value(world: &World, pos: &BlockPos) -> f32 {
-    -world.get_pathfinding_cost_from_light_levels(pos)
+pub fn monster_walk_target_value(level: &dyn CreatureSpawnLevel, pos: &BlockPos) -> f32 {
+    -level.pathfinding_cost_from_light_levels(pos)
 }
 
 /// Vanilla `EntityGetter.isUnobstructed(entity)`: no living entity that blocks building, other
 /// than one riding with `mob`, overlaps its bounding box.
-pub fn is_unobstructed<M: Mob + ?Sized>(mob: &M, world: &World) -> bool {
+pub fn is_unobstructed<M: Mob + ?Sized>(mob: &M, level: &dyn CreatureSpawnLevel) -> bool {
     let entity = mob.get_entity();
     let bounds = entity.bounding_box.load();
     let root_vehicle = entity.root_vehicle_id();
@@ -1274,12 +1274,12 @@ pub fn is_unobstructed<M: Mob + ?Sized>(mob: &M, world: &World) -> bool {
         let other = other.get_entity();
         !other.is_alive() || !other.blocks_building || other.root_vehicle_id() == root_vehicle
     };
-    world
-        .get_entities_at_box(&bounds)
+    level
+        .entities_at_box(&bounds)
         .iter()
         .all(|other| unobstructed(other.as_ref()))
-        && world
-            .get_players_at_box(&bounds)
+        && level
+            .players_at_box(&bounds)
             .iter()
             .all(|player| player.is_spectator() || unobstructed(player.as_ref()))
 }
@@ -1629,9 +1629,9 @@ pub trait Mob: EntityBase + Send + Sync {
     fn set_saddled(&self, _saddled: bool) {}
 
     /// Vanilla `Mob.checkSpawnObstruction`.
-    fn check_spawn_obstruction(&self, world: &World) -> bool {
-        !world.contains_any_liquid(self.get_entity().bounding_box.load())
-            && is_unobstructed(self, world)
+    fn check_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
+        !level.contains_any_liquid(self.get_entity().bounding_box.load())
+            && is_unobstructed(self, level)
     }
 
     /// Per-mob tick hook called each tick before AI runs. Override for mob-specific logic.
@@ -1935,13 +1935,12 @@ pub trait Mob: EntityBase + Send + Sync {
     }
 
     /// How much this mob likes standing on `pos`, used to rank stroll candidates.
-    fn get_walk_target_value(&self, pos: &BlockPos) -> f32 {
+    fn get_walk_target_value(&self, level: &dyn CreatureSpawnLevel, pos: &BlockPos) -> f32 {
         if let Some(animal) = self.as_animal() {
-            return animal.animal_walk_target_value(pos);
+            return animal.animal_walk_target_value(level, pos);
         }
-        let entity = self.get_entity();
-        if is_monster(entity.entity_type) {
-            monster_walk_target_value(&entity.world.load(), pos)
+        if is_monster(self.get_entity().entity_type) {
+            monster_walk_target_value(level, pos)
         } else {
             0.0
         }

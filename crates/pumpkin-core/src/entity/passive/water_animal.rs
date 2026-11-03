@@ -1,3 +1,4 @@
+use crate::entity::r#type::CreatureSpawnLevel;
 use pumpkin_data::damage::DamageType;
 
 use crate::entity::{
@@ -9,8 +10,8 @@ use crate::entity::{
 pub const AMBIENT_SOUND_INTERVAL: i32 = 120;
 
 pub trait WaterAnimal: Mob {
-    fn water_animal_spawn_obstruction(&self, world: &crate::world::World) -> bool {
-        crate::entity::mob::is_unobstructed(self, world)
+    fn water_animal_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
+        crate::entity::mob::is_unobstructed(self, level)
     }
 
     fn handle_air_supply(&self, pre_tick_air_supply: i32, caller: &dyn EntityBase) {

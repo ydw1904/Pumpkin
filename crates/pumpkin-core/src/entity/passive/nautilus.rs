@@ -1,3 +1,4 @@
+use crate::entity::r#type::CreatureSpawnLevel;
 use crossbeam::atomic::AtomicCell;
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
@@ -194,12 +195,12 @@ impl CustomSound for NautilusEntity {
 
 impl Mob for NautilusEntity {
     /// Vanilla `AbstractNautilus.checkSpawnObstruction`.
-    fn check_spawn_obstruction(&self, world: &crate::world::World) -> bool {
-        crate::entity::mob::is_unobstructed(self, world)
+    fn check_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
+        crate::entity::mob::is_unobstructed(self, level)
     }
 
     /// Vanilla `AbstractNautilus.getWalkTargetValue`.
-    fn get_walk_target_value(&self, _pos: &BlockPos) -> f32 {
+    fn get_walk_target_value(&self, _level: &dyn CreatureSpawnLevel, _pos: &BlockPos) -> f32 {
         0.0
     }
 

@@ -1,3 +1,4 @@
+use crate::entity::r#type::CreatureSpawnLevel;
 use std::sync::Arc;
 
 use pumpkin_data::item_stack::ItemStack;
@@ -22,12 +23,15 @@ pub trait Animal: Mob {
     }
 
     /// Animals prefer grass, then bright spots.
-    fn animal_walk_target_value(&self, pos: &pumpkin_util::math::position::BlockPos) -> f32 {
-        let world = self.get_mob_entity().living_entity.entity.world.load();
-        if world.get_block(&pos.down()).id == pumpkin_data::Block::GRASS_BLOCK.id {
+    fn animal_walk_target_value(
+        &self,
+        level: &dyn CreatureSpawnLevel,
+        pos: &pumpkin_util::math::position::BlockPos,
+    ) -> f32 {
+        if level.block(&pos.down()).id == pumpkin_data::Block::GRASS_BLOCK.id {
             return 10.0;
         }
-        world.get_pathfinding_cost_from_light_levels(pos)
+        level.pathfinding_cost_from_light_levels(pos)
     }
 
     fn play_eating_sound(&self, sound: Sound) {

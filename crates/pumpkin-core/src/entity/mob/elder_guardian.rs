@@ -1,3 +1,4 @@
+use crate::entity::r#type::CreatureSpawnLevel;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 
@@ -54,13 +55,17 @@ impl ElderGuardianEntity {
 }
 
 impl Mob for ElderGuardianEntity {
-    fn get_walk_target_value(&self, pos: &pumpkin_util::math::position::BlockPos) -> f32 {
-        guardian_walk_target_value(&self.get_entity().world.load(), pos)
+    fn get_walk_target_value(
+        &self,
+        level: &dyn CreatureSpawnLevel,
+        pos: &pumpkin_util::math::position::BlockPos,
+    ) -> f32 {
+        guardian_walk_target_value(level, pos)
     }
 
     /// Vanilla `Guardian.checkSpawnObstruction`.
-    fn check_spawn_obstruction(&self, world: &crate::world::World) -> bool {
-        crate::entity::mob::is_unobstructed(self, world)
+    fn check_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
+        crate::entity::mob::is_unobstructed(self, level)
     }
 
     fn get_mob_entity(&self) -> &MobEntity {

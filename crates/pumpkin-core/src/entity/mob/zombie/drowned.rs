@@ -1,3 +1,4 @@
+use crate::entity::r#type::CreatureSpawnLevel;
 use pumpkin_data::BlockState;
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::data_component_impl::EquipmentSlot;
@@ -226,8 +227,8 @@ impl DrownedEntity {
 
 impl Mob for DrownedEntity {
     /// Vanilla `Drowned.checkSpawnObstruction`.
-    fn check_spawn_obstruction(&self, world: &crate::world::World) -> bool {
-        crate::entity::mob::is_unobstructed(self, world)
+    fn check_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
+        crate::entity::mob::is_unobstructed(self, level)
     }
 
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {

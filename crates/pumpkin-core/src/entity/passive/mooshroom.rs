@@ -1,3 +1,4 @@
+use crate::entity::r#type::CreatureSpawnLevel;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicI32, Ordering},
@@ -210,12 +211,11 @@ impl Animal for MooshroomEntity {
 
 impl Mob for MooshroomEntity {
     /// Vanilla `MushroomCow.getWalkTargetValue`.
-    fn get_walk_target_value(&self, pos: &BlockPos) -> f32 {
-        let world = self.get_entity().world.load();
-        if world.get_block(&pos.down()) == &pumpkin_data::Block::MYCELIUM {
+    fn get_walk_target_value(&self, level: &dyn CreatureSpawnLevel, pos: &BlockPos) -> f32 {
+        if level.block(&pos.down()) == &pumpkin_data::Block::MYCELIUM {
             10.0
         } else {
-            world.get_pathfinding_cost_from_light_levels(pos)
+            level.pathfinding_cost_from_light_levels(pos)
         }
     }
 

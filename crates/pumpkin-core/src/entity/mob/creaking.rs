@@ -1,3 +1,4 @@
+use crate::entity::r#type::CreatureSpawnLevel;
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Weak,
@@ -397,7 +398,11 @@ impl CreakingEntity {
 
 impl Mob for CreakingEntity {
     /// Vanilla `Creaking.getWalkTargetValue`.
-    fn get_walk_target_value(&self, _pos: &pumpkin_util::math::position::BlockPos) -> f32 {
+    fn get_walk_target_value(
+        &self,
+        _level: &dyn CreatureSpawnLevel,
+        _pos: &pumpkin_util::math::position::BlockPos,
+    ) -> f32 {
         0.0
     }
 

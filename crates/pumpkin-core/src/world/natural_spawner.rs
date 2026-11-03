@@ -629,8 +629,11 @@ pub fn spawn_mobs_for_chunk_generation(
                     let spawn_pos_f64 = Vector3::new(fx, f64::from(pos.0.y), fz);
                     let check_pos = BlockPos::new(fx.floor() as i32, pos.0.y, fz.floor() as i32);
 
-                    let level = GenerationSpawnLevel(cache);
-                    if !level.is_space_empty(&entity_type.get_spawn_bounding_box(
+                    let level = GenerationSpawnLevel {
+                        cache,
+                        ambient_light: world.dimension.ambient_light,
+                    };
+                    if !level.is_space_empty(entity_type.get_spawn_bounding_box(
                         fx,
                         f64::from(pos.0.y),
                         fz,
@@ -644,11 +647,17 @@ pub fn spawn_mobs_for_chunk_generation(
                     entity
                         .get_entity()
                         .set_rotation(game_random().random::<f32>() * 360.0, 0.0);
-                    group_data = finalize_spawn(&entity, world, group_data);
-                    cache
-                        .get_center_chunk_mut()
-                        .add_entity(world_gen_entity_nbt(&entity));
-                    success = true;
+                    // Vanilla `Mob.checkSpawnRules` is a walk target check.
+                    if entity.get_mob().is_some_and(|mob| {
+                        mob.get_walk_target_value(&level, &check_pos) >= 0.0
+                            && mob.check_spawn_obstruction(&level)
+                    }) {
+                        group_data = finalize_spawn(&entity, world, group_data);
+                        cache
+                            .get_center_chunk_mut()
+                            .add_entity(world_gen_entity_nbt(&entity));
+                        success = true;
+                    }
                 }
 
                 x += game_random().random_range(0..5) - game_random().random_range(0..5);
@@ -693,29 +702,47 @@ pub fn world_gen_entity_nbt(entity: &Arc<dyn EntityBase>) -> NbtCompound {
 }
 
 /// The region chunk generation spawns animals in. Its chunks aren't part of the world yet, so
-/// the spawn rules read them through the generation cache.
-struct GenerationSpawnLevel<'a>(&'a dyn GenerationCache);
-
-impl GenerationSpawnLevel<'_> {
-    fn is_space_empty(&self, bounding_box: &BoundingBox) -> bool {
-        BlockPos::iterate(bounding_box.min_block_pos(), bounding_box.max_block_pos()).all(|pos| {
-            let state = GenerationCache::get_block_state(self.0, &pos.0).to_state();
-            !World::check_collision(bounding_box, pos, state, false, |_| ())
-        })
-    }
+/// the spawn rules read them through the generation cache. Its entities are only kept as saved
+/// data, so none of them can be in the way.
+struct GenerationSpawnLevel<'a> {
+    cache: &'a dyn GenerationCache,
+    ambient_light: f32,
 }
 
 impl CreatureSpawnLevel for GenerationSpawnLevel<'_> {
+    fn block_state(&self, pos: &BlockPos) -> &'static BlockState {
+        GenerationCache::get_block_state(self.cache, &pos.0).to_state()
+    }
+
     fn block(&self, pos: &BlockPos) -> &'static Block {
-        Block::from_state_id(GenerationCache::get_block_state(self.0, &pos.0))
+        Block::from_state_id(GenerationCache::get_block_state(self.cache, &pos.0))
     }
 
     fn fluid(&self, pos: &BlockPos) -> &'static Fluid {
-        World::get_fluid_from_state_id(GenerationCache::get_block_state(self.0, &pos.0))
+        World::get_fluid_from_state_id(GenerationCache::get_block_state(self.cache, &pos.0))
+    }
+
+    fn pathfinding_cost_from_light_levels(&self, pos: &BlockPos) -> f32 {
+        // Vanilla `WorldGenRegion.getSkyDarken` is 0, so the local brightness is the raw one.
+        super::brightness::light_level_curve(self.raw_brightness(pos), self.ambient_light) - 0.5
+    }
+
+    fn is_space_empty(&self, bounding_box: BoundingBox) -> bool {
+        BlockPos::iterate(bounding_box.min_block_pos(), bounding_box.max_block_pos()).all(|pos| {
+            !World::check_collision(&bounding_box, pos, self.block_state(&pos), false, |_| ())
+        })
+    }
+
+    fn entities_at_box(&self, _bounding_box: &BoundingBox) -> Vec<Arc<dyn EntityBase>> {
+        Vec::new()
+    }
+
+    fn players_at_box(&self, _bounding_box: &BoundingBox) -> Vec<Arc<Player>> {
+        Vec::new()
     }
 
     fn raw_brightness(&self, pos: &BlockPos) -> u8 {
-        let Some(chunk) = self.0.get_chunk(pos.0.x >> 4, pos.0.z >> 4) else {
+        let Some(chunk) = self.cache.get_chunk(pos.0.x >> 4, pos.0.z >> 4) else {
             return 0;
         };
         let Ok(section) = usize::try_from((pos.0.y - i32::from(chunk.bottom_y())) >> 4) else {
@@ -741,11 +768,12 @@ impl CreatureSpawnLevel for GenerationSpawnLevel<'_> {
     }
 
     fn biome(&self, pos: &BlockPos) -> &'static Biome {
-        self.0.get_biome_for_terrain_gen(pos.0.x, pos.0.y, pos.0.z)
+        self.cache
+            .get_biome_for_terrain_gen(pos.0.x, pos.0.y, pos.0.z)
     }
 
     fn sea_level(&self) -> i32 {
-        self.0.get_sea_level()
+        self.cache.get_sea_level()
     }
 }
 
@@ -935,8 +963,8 @@ pub fn spawn_category_for_position(
                         let despawn_dist = f64::from(entity_type.category.despawn_distance);
                         !(player_distance_sq > despawn_dist * despawn_dist
                             && mob.remove_when_far_away(player_distance_sq))
-                            && mob.get_walk_target_value(&check_pos) >= 0.0
-                            && mob.check_spawn_obstruction(world)
+                            && mob.get_walk_target_value(world.as_ref(), &check_pos) >= 0.0
+                            && mob.check_spawn_obstruction(world.as_ref())
                     });
 
                     if is_valid_for_mob {
