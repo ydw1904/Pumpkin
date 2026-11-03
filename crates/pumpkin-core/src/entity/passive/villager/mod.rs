@@ -31,6 +31,7 @@ use pumpkin_protocol::java::client::play::CMerchantOffers;
 use pumpkin_util::math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3};
 use pumpkin_util::text::TextComponent;
 
+use crate::entity::ageable::{AgeableData, AgeableMob};
 use crate::entity::ai::behavior::fleeing::{self, Flee};
 use crate::entity::ai::brain::memory::codec::{global_pos_from_tag, global_pos_to_tag};
 use crate::entity::ai::brain::memory::{GlobalPos, MemoryModuleId, types as memory_types};
@@ -53,6 +54,7 @@ use pumpkin_data::dimension::Dimension;
 use pumpkin_data::environment_attribute::Activity;
 
 mod acquire_poi;
+mod breed;
 pub mod data;
 mod golem;
 mod idle;
@@ -438,6 +440,11 @@ pub struct VillagerEntity {
     walk_target: std::sync::Mutex<Option<meet::WalkTarget>>,
     /// Vanilla `MemoryModuleType.INTERACTION_TARGET`, by entity id.
     interaction_target: std::sync::Mutex<Option<i32>>,
+    /// Vanilla `MemoryModuleType.BREED_TARGET`, by entity id.
+    breed_target: std::sync::Mutex<Option<i32>>,
+    /// Vanilla `VillagerMakeLove`, while it runs.
+    make_love: std::sync::Mutex<Option<breed::MakeLove>>,
+    ageable_data: AgeableData,
     /// Vanilla `MemoryModuleType.CANT_REACH_WALK_TARGET_SINCE`.
     cant_reach_walk_target_since: std::sync::Mutex<Option<i64>>,
     /// Vanilla `MemoryModuleType.LOOK_TARGET`.
@@ -552,6 +559,9 @@ impl VillagerEntity {
             acquire_meeting_point: std::sync::Mutex::default(),
             walk_target: std::sync::Mutex::new(None),
             interaction_target: std::sync::Mutex::new(None),
+            breed_target: std::sync::Mutex::new(None),
+            make_love: std::sync::Mutex::new(None),
+            ageable_data: AgeableData::default(),
             cant_reach_walk_target_since: std::sync::Mutex::new(None),
             look_target: std::sync::Mutex::new(None),
             look_at_target_sink_end: std::sync::Mutex::new(None),
@@ -2326,6 +2336,7 @@ impl VillagerEntity {
             entity.age.load(Ordering::Relaxed) < 0,
         );
         self.tick_idle(&world, game_time, activity);
+        self.tick_make_love(&world, game_time, activity);
         self.tick_meet(&world, game_time, activity);
         self.tick_give_gift_to_hero(&world, game_time, activity);
         self.tick_work(&world, game_time, day, activity);
@@ -2338,7 +2349,17 @@ impl VillagerEntity {
     }
 }
 
+impl AgeableMob for VillagerEntity {
+    fn get_ageable_data(&self) -> &AgeableData {
+        &self.ageable_data
+    }
+}
+
 impl Mob for VillagerEntity {
+    fn as_ageable(&self) -> Option<&dyn AgeableMob> {
+        Some(self)
+    }
+
     fn wants_to_pick_up(&self, stack: &ItemStack) -> bool {
         Self::wants_to_pick_up(self, stack)
     }

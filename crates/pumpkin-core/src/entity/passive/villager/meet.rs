@@ -31,7 +31,7 @@ const STROLL_MAX_DISTANCE_FROM_POI: f64 = 40.0;
 /// Vanilla `SocializeAtBell.SPEED_MODIFIER`.
 const SOCIALIZE_SPEED: f64 = 0.3;
 /// Vanilla `VillagerGoalPackages.INTERACT_DIST_SQR`.
-const INTERACT_DIST_SQR: f64 = 5.0;
+pub(super) const INTERACT_DIST_SQR: f64 = 5.0;
 /// Vanilla `VillagerGoalPackages.INTERACT_WALKUP_DIST`.
 const INTERACT_WALKUP_DIST: i32 = 2;
 /// Vanilla `VillagerGoalPackages.INTERACT_SPEED_MODIFIER`.
@@ -251,7 +251,7 @@ impl VillagerEntity {
     }
 
     /// Vanilla `BehaviorUtils.lockGazeAndWalkToEachOther`.
-    fn lock_gaze_and_walk_to_each_other(&self, other: &Self) {
+    pub(super) fn lock_gaze_and_walk_to_each_other(&self, other: &Self) {
         for (walker, other) in [(self, other), (other, self)] {
             walker.look_at_entity(other.get_entity().entity_id);
             walker.set_walk_target(Some(WalkTarget {

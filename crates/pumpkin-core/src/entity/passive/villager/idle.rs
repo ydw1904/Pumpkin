@@ -8,6 +8,7 @@ use pumpkin_data::villager::VillagerProfession;
 use pumpkin_util::random::gameplay::game_random;
 
 use super::VillagerEntity;
+use super::breed::as_villager;
 use super::meet::{WalkDestination, WalkTarget};
 use crate::entity::EntityBase;
 use crate::entity::ai::brain::behavior::shuffling_list::ShufflingList;
@@ -85,6 +86,19 @@ impl VillagerEntity {
         entity_type: &EntityType,
         filter: impl Fn(&dyn EntityBase) -> bool,
     ) -> bool {
+        self.interact_with_as(world, entity_type, filter, |id| {
+            self.set_interaction_target(Some(id));
+        })
+    }
+
+    /// `InteractWith` with the memory it fills set by `set_target`.
+    fn interact_with_as(
+        &self,
+        world: &World,
+        entity_type: &EntityType,
+        filter: impl Fn(&dyn EntityBase) -> bool,
+        set_target: impl FnOnce(i32),
+    ) -> bool {
         if self.walk_target().is_some() {
             return false;
         }
@@ -101,7 +115,7 @@ impl VillagerEntity {
                 && is_valid(other)
         }) {
             let id = closest.get_entity().entity_id;
-            self.set_interaction_target(Some(id));
+            set_target(id);
             self.look_at_entity(id);
             self.set_walk_target(Some(WalkTarget {
                 destination: WalkDestination::Entity(id),
@@ -114,8 +128,7 @@ impl VillagerEntity {
 
     /// The IDLE activity's `RunOne` of vanilla `VillagerGoalPackages.getIdlePackage`. The
     /// villager's wander and look goals cover the strolls, the look target walk and jumping on
-    /// beds, so those count as run without doing anything here, and Pumpkin's villagers don't
-    /// breed through the brain.
+    /// beds, so those count as run without doing anything here.
     pub(super) fn tick_idle(&self, world: &World, game_time: i64, activity: Activity) {
         if activity != Activity::Idle {
             return;
@@ -141,7 +154,15 @@ impl VillagerEntity {
                 IdleBehavior::InteractWithVillager => {
                     self.interact_with(world, &EntityType::VILLAGER, |_| true)
                 }
-                IdleBehavior::InteractWithBreedableVillager => false,
+                IdleBehavior::InteractWithBreedableVillager => {
+                    self.can_breed()
+                        && self.interact_with_as(
+                            world,
+                            &EntityType::VILLAGER,
+                            |other| as_villager(other).is_some_and(Self::can_breed),
+                            |id| self.set_breed_target(Some(id)),
+                        )
+                }
                 IdleBehavior::InteractWithCat => {
                     self.interact_with(world, &EntityType::CAT, |_| true)
                 }
