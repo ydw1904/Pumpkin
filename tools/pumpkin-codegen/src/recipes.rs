@@ -59,7 +59,7 @@ pub enum RecipeTypes {
     #[serde(rename = "minecraft:crafting_special_shielddecoration")]
     CraftingSpecialShieldDecoration(ShieldDecorationStruct),
     #[serde(rename = "minecraft:crafting_dye")]
-    CraftingDye(TargetDyeStruct),
+    CraftingDye(DyeStruct),
     #[serde(rename = "minecraft:crafting_imbue")]
     CraftingImbue(ImbueStruct),
     /// Any other special crafting recipe type.
@@ -112,6 +112,16 @@ pub struct TargetDyeStruct {
     result: RecipeResultStruct,
 }
 
+/// `crafting_dye`: a target item plus dyes, shown in the recipe book.
+#[derive(Deserialize)]
+pub struct DyeStruct {
+    category: Option<RecipeCategoryTypes>,
+    group: Option<String>,
+    target: RecipeIngredientTypes,
+    dye: RecipeIngredientTypes,
+    result: RecipeResultStruct,
+}
+
 /// `crafting_special_shielddecoration`.
 #[derive(Deserialize)]
 pub struct ShieldDecorationStruct {
@@ -123,6 +133,8 @@ pub struct ShieldDecorationStruct {
 /// `crafting_imbue`: a source item surrounded by eight of a material.
 #[derive(Deserialize)]
 pub struct ImbueStruct {
+    category: Option<RecipeCategoryTypes>,
+    group: Option<String>,
     source: RecipeIngredientTypes,
     material: RecipeIngredientTypes,
     result: RecipeResultStruct,
@@ -144,6 +156,19 @@ impl IntBounds {
             Self::Between { min, max } => (min.unwrap_or(default_min), max.unwrap_or(default_max)),
         }
     }
+}
+
+/// `CraftingRecipe.CraftingBookInfo`: the category (misc when absent) and the optional group.
+fn book_info(
+    category: Option<&RecipeCategoryTypes>,
+    group: Option<&String>,
+) -> (TokenStream, TokenStream) {
+    let category = category.map_or_else(
+        || RecipeCategoryTypes::Misc.to_token_stream(),
+        ToTokens::to_token_stream,
+    );
+    let group = group.map_or_else(|| quote! { None }, |group| quote! { Some(#group) });
+    (category, group)
 }
 
 /// Emits a `CustomCraftingRecipe` wrapped in `CraftingRecipeTypes::CraftingCustom`.
@@ -197,7 +222,10 @@ fn custom_recipe(recipe: &RecipeTypes) -> Option<TokenStream> {
         }
         RecipeTypes::CraftingDye(r) => {
             let (target, dye, result) = (&r.target, &r.dye, &r.result);
-            quote! { Dye { target: #target, dye: #dye, result: #result } }
+            let (category, group) = book_info(r.category.as_ref(), r.group.as_ref());
+            quote! {
+                Dye { category: #category, group: #group, target: #target, dye: #dye, result: #result }
+            }
         }
         RecipeTypes::CraftingSpecialShieldDecoration(r) => {
             let (banner, target, result) = (&r.banner, &r.target, &r.result);
@@ -205,7 +233,16 @@ fn custom_recipe(recipe: &RecipeTypes) -> Option<TokenStream> {
         }
         RecipeTypes::CraftingImbue(r) => {
             let (source, material, result) = (&r.source, &r.material, &r.result);
-            quote! { Imbue { source: #source, material: #material, result: #result } }
+            let (category, group) = book_info(r.category.as_ref(), r.group.as_ref());
+            quote! {
+                Imbue {
+                    category: #category,
+                    group: #group,
+                    source: #source,
+                    material: #material,
+                    result: #result,
+                }
+            }
         }
         RecipeTypes::CraftingSpecialRepairItem => quote! { RepairItem },
         _ => return None,
@@ -842,6 +879,8 @@ pub fn build() -> TokenStream {
                 result: RecipeResultStruct,
             },
             Dye {
+                category: RecipeCategoryTypes,
+                group: Option<&'static str>,
                 target: RecipeIngredientTypes,
                 dye: RecipeIngredientTypes,
                 result: RecipeResultStruct,
@@ -867,6 +906,8 @@ pub fn build() -> TokenStream {
                 result: RecipeResultStruct,
             },
             Imbue {
+                category: RecipeCategoryTypes,
+                group: Option<&'static str>,
                 source: RecipeIngredientTypes,
                 material: RecipeIngredientTypes,
                 result: RecipeResultStruct,

@@ -50,6 +50,8 @@ pub enum CustomCraftingRecipe {
         result: RecipeResultStruct,
     },
     Dye {
+        category: RecipeCategoryTypes,
+        group: Option<&'static str>,
         target: RecipeIngredientTypes,
         dye: RecipeIngredientTypes,
         result: RecipeResultStruct,
@@ -75,6 +77,8 @@ pub enum CustomCraftingRecipe {
         result: RecipeResultStruct,
     },
     Imbue {
+        category: RecipeCategoryTypes,
+        group: Option<&'static str>,
         source: RecipeIngredientTypes,
         material: RecipeIngredientTypes,
         result: RecipeResultStruct,
@@ -9679,6 +9683,8 @@ pub static RECIPES_CRAFTING: &[CraftingRecipeTypes] = &[
         },
     },
     CraftingRecipeTypes::CraftingCustom(CustomCraftingRecipe::Dye {
+        category: RecipeCategoryTypes::Misc,
+        group: Some("dyed_armor"),
         target: RecipeIngredientTypes::Simple("minecraft:leather_boots"),
         dye: RecipeIngredientTypes::Tagged("#minecraft:dyes"),
         result: RecipeResultStruct {
@@ -9698,6 +9704,8 @@ pub static RECIPES_CRAFTING: &[CraftingRecipeTypes] = &[
         },
     },
     CraftingRecipeTypes::CraftingCustom(CustomCraftingRecipe::Dye {
+        category: RecipeCategoryTypes::Misc,
+        group: Some("dyed_armor"),
         target: RecipeIngredientTypes::Simple("minecraft:leather_chestplate"),
         dye: RecipeIngredientTypes::Tagged("#minecraft:dyes"),
         result: RecipeResultStruct {
@@ -9717,6 +9725,8 @@ pub static RECIPES_CRAFTING: &[CraftingRecipeTypes] = &[
         },
     },
     CraftingRecipeTypes::CraftingCustom(CustomCraftingRecipe::Dye {
+        category: RecipeCategoryTypes::Misc,
+        group: Some("dyed_armor"),
         target: RecipeIngredientTypes::Simple("minecraft:leather_helmet"),
         dye: RecipeIngredientTypes::Tagged("#minecraft:dyes"),
         result: RecipeResultStruct {
@@ -9736,6 +9746,8 @@ pub static RECIPES_CRAFTING: &[CraftingRecipeTypes] = &[
         },
     },
     CraftingRecipeTypes::CraftingCustom(CustomCraftingRecipe::Dye {
+        category: RecipeCategoryTypes::Misc,
+        group: Some("dyed_armor"),
         target: RecipeIngredientTypes::Simple("minecraft:leather_horse_armor"),
         dye: RecipeIngredientTypes::Tagged("#minecraft:dyes"),
         result: RecipeResultStruct {
@@ -9755,6 +9767,8 @@ pub static RECIPES_CRAFTING: &[CraftingRecipeTypes] = &[
         },
     },
     CraftingRecipeTypes::CraftingCustom(CustomCraftingRecipe::Dye {
+        category: RecipeCategoryTypes::Misc,
+        group: Some("dyed_armor"),
         target: RecipeIngredientTypes::Simple("minecraft:leather_leggings"),
         dye: RecipeIngredientTypes::Tagged("#minecraft:dyes"),
         result: RecipeResultStruct {
@@ -16297,6 +16311,8 @@ pub static RECIPES_CRAFTING: &[CraftingRecipeTypes] = &[
         },
     },
     CraftingRecipeTypes::CraftingCustom(CustomCraftingRecipe::Imbue {
+        category: RecipeCategoryTypes::Misc,
+        group: None,
         source: RecipeIngredientTypes::Simple("minecraft:lingering_potion"),
         material: RecipeIngredientTypes::Simple("minecraft:arrow"),
         result: RecipeResultStruct {
@@ -18204,6 +18220,8 @@ pub static RECIPES_CRAFTING: &[CraftingRecipeTypes] = &[
         },
     },
     CraftingRecipeTypes::CraftingCustom(CustomCraftingRecipe::Dye {
+        category: RecipeCategoryTypes::Misc,
+        group: Some("dyed_armor"),
         target: RecipeIngredientTypes::Simple("minecraft:wolf_armor"),
         dye: RecipeIngredientTypes::Tagged("#minecraft:dyes"),
         result: RecipeResultStruct {

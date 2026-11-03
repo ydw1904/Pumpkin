@@ -1,9 +1,10 @@
+use pumpkin_data::data_component::DataComponent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::packet::clientbound::play::RECIPE_BOOK_ADD;
 use pumpkin_data::recipes::{
-    CookingRecipeType, CraftingRecipeTypes, RECIPES_COOKING, RECIPES_CRAFTING, RecipeCategoryTypes,
-    RecipeIngredientTypes, RecipeResultStruct,
+    CookingRecipeType, CraftingRecipeTypes, CustomCraftingRecipe, RECIPES_COOKING,
+    RECIPES_CRAFTING, RecipeCategoryTypes, RecipeIngredientTypes, RecipeResultStruct,
 };
 use pumpkin_macros::java_packet;
 use pumpkin_util::version::JavaMinecraftVersion;
@@ -21,8 +22,11 @@ const RECIPE_DISPLAY_FURNACE: i32 = 2;
 // Slot Display base type IDs (26.2)
 const SLOT_DISPLAY_EMPTY: u32 = 0;
 const SLOT_DISPLAY_ANY_FUEL: u32 = 1;
+const SLOT_DISPLAY_WITH_ANY_POTION: u32 = 2;
+const SLOT_DISPLAY_ONLY_WITH_COMPONENT: u32 = 3;
 const SLOT_DISPLAY_ITEM: u32 = 4;
 const SLOT_DISPLAY_ITEM_STACK: u32 = 5;
+const SLOT_DISPLAY_DYED: u32 = 7;
 const SLOT_DISPLAY_COMPOSITE: u32 = 10;
 
 const ENTRY_FLAG_NOTIFICATION: u8 = 0x01;
@@ -42,6 +46,39 @@ const CATEGORY_SMOKER_FOOD: i32 = 9;
 const CATEGORY_CAMPFIRE: i32 = 12;
 
 use crate::codec::recipe::DynamicRecipe;
+
+/// One recipe book display of a built-in crafting recipe.
+///
+/// `TransmuteRecipe.display` gives one display per material count (`material_count`); every
+/// other displayed recipe has a single one. Recipes without displays (`CustomRecipe`s other than
+/// dyeing and imbuing, the decorated pot) are never in the recipe book.
+#[derive(Clone, Copy)]
+pub struct CraftingDisplay {
+    pub recipe: &'static CraftingRecipeTypes,
+    pub material_count: u8,
+}
+
+/// The displays of the built-in crafting recipes, in the order their display ids are assigned.
+pub fn crafting_displays() -> impl Iterator<Item = CraftingDisplay> {
+    RECIPES_CRAFTING.iter().flat_map(|recipe| {
+        let material_counts = match recipe {
+            CraftingRecipeTypes::CraftingTransmute { material_count, .. } => {
+                material_count.0..=material_count.1
+            }
+            CraftingRecipeTypes::CraftingShaped { .. }
+            | CraftingRecipeTypes::CraftingShapeless { .. }
+            | CraftingRecipeTypes::CraftingCustom(
+                CustomCraftingRecipe::Dye { .. } | CustomCraftingRecipe::Imbue { .. },
+            ) => 0..=0,
+            #[expect(clippy::reversed_empty_ranges, reason = "no displays")]
+            _ => 1..=0,
+        };
+        material_counts.map(move |material_count| CraftingDisplay {
+            recipe,
+            material_count,
+        })
+    })
+}
 
 /// Clientbound packet that adds recipes to the client's recipe book.
 /// `replace = true` means the client replaces its current recipe list.
@@ -275,6 +312,52 @@ fn write_result_slot_display(
     Ok(())
 }
 
+/// `SlotDisplay.OnlyWithComponent` of the dye ingredient and the dye component.
+fn write_dye_with_component_display(
+    write: &mut impl Write,
+    dye: &RecipeIngredientTypes,
+    version: JavaMinecraftVersion,
+) -> Result<(), WritingError> {
+    write.write_var_int(&VarInt(SLOT_DISPLAY_ONLY_WITH_COMPONENT as i32))?;
+    write_ingredient_slot_display(write, dye, version)?;
+    write.write_var_int(&VarInt(i32::from(DataComponent::Dye.to_id())))
+}
+
+/// `TransmuteRecipe.resultDisplay`: the result stack, or one per input item when the result
+/// keeps the input's item.
+fn write_transmute_result_display(
+    write: &mut impl Write,
+    input: &RecipeIngredientTypes,
+    result: &RecipeResultStruct,
+    count: u8,
+    version: JavaMinecraftVersion,
+) -> Result<(), WritingError> {
+    let key = result.id.strip_prefix("minecraft:").unwrap_or(result.id);
+    if let Some(item) = Item::from_registry_key(key).filter(|item| item.id != Item::AIR.id) {
+        return write_item_stack_slot_display(write, item, count, version);
+    }
+    let items = ingredient_items(input, version);
+    write.write_var_int(&VarInt(SLOT_DISPLAY_COMPOSITE as i32))?;
+    write.write_var_int(&VarInt(items.len() as i32))?;
+    for item in items {
+        write_item_stack_slot_display(write, item, count, version)?;
+    }
+    Ok(())
+}
+
+/// The items an ingredient accepts.
+fn ingredient_items(
+    ingredient: &RecipeIngredientTypes,
+    version: JavaMinecraftVersion,
+) -> Vec<&'static Item> {
+    let from_key = |id: &str| Item::from_registry_key(id.strip_prefix("minecraft:").unwrap_or(id));
+    match ingredient {
+        RecipeIngredientTypes::Simple(id) => from_key(id).into_iter().collect(),
+        RecipeIngredientTypes::Tagged(tag) => resolve_item_tag(tag, version).unwrap_or_default(),
+        RecipeIngredientTypes::OneOf(ids) => ids.iter().filter_map(|id| from_key(id)).collect(),
+    }
+}
+
 fn write_optional_var_int(write: &mut impl Write, value: Option<i32>) -> Result<(), WritingError> {
     let encoded = value.map_or(Ok(0), |v| {
         v.checked_add(1)
@@ -318,10 +401,15 @@ fn write_entry(
     blast_furnace: &Item,
     smoker: &Item,
     campfire: &Item,
-    crafting_recipe: Option<&CraftingRecipeTypes>,
+    crafting_recipe: Option<CraftingDisplay>,
     cooking_recipe: Option<(&CookingRecipeType, i32)>,
+    display_only: bool,
 ) -> Result<bool, WritingError> {
-    if let Some(recipe) = crafting_recipe {
+    if let Some(CraftingDisplay {
+        recipe,
+        material_count,
+    }) = crafting_recipe
+    {
         match recipe {
             CraftingRecipeTypes::CraftingShaped {
                 category,
@@ -335,7 +423,9 @@ fn write_entry(
                 let width = pattern.first().map_or(0, |r| r.len()) as i32;
 
                 // RecipeDisplayId
-                write.write_var_int(&VarInt(display_id))?;
+                if !display_only {
+                    write.write_var_int(&VarInt(display_id))?;
+                }
                 // RecipeDisplay type = shaped (1)
                 write.write_var_int(&VarInt(RECIPE_DISPLAY_SHAPED))?;
                 // width, height
@@ -359,6 +449,9 @@ fn write_entry(
                 // craftingStation
                 write_item_slot_display(write, crafting_table, version)?;
                 // group: OptionalVarInt
+                if display_only {
+                    return Ok(true);
+                }
                 write_optional_var_int(write, group_id)?;
                 // category
                 write.write_var_int(&VarInt(crafting_category(category)))?;
@@ -386,7 +479,9 @@ fn write_entry(
                 ..
             } => {
                 // RecipeDisplayId
-                write.write_var_int(&VarInt(display_id))?;
+                if !display_only {
+                    write.write_var_int(&VarInt(display_id))?;
+                }
                 // RecipeDisplay type = shapeless (0)
                 write.write_var_int(&VarInt(RECIPE_DISPLAY_SHAPELESS))?;
                 // ingredients list
@@ -399,6 +494,9 @@ fn write_entry(
                 // craftingStation
                 write_item_slot_display(write, crafting_table, version)?;
                 // group: OptionalVarInt
+                if display_only {
+                    return Ok(true);
+                }
                 write_optional_var_int(write, group_id)?;
                 // category
                 write.write_var_int(&VarInt(crafting_category(category)))?;
@@ -413,25 +511,106 @@ fn write_entry(
                 category,
                 input,
                 material,
+                material_count: (_, max_material_count),
+                add_material_count_to_result,
                 result,
                 ..
             } => {
-                // Transmute shown as shapeless with 2 ingredients
-                write.write_var_int(&VarInt(display_id))?;
+                // TransmuteRecipe.display: the input and `material_count` materials.
+                if !display_only {
+                    write.write_var_int(&VarInt(display_id))?;
+                }
                 write.write_var_int(&VarInt(RECIPE_DISPLAY_SHAPELESS))?;
-                // 2 ingredients
-                write.write_var_int(&VarInt(2))?;
+                write.write_var_int(&VarInt(i32::from(material_count) + 1))?;
                 write_ingredient_slot_display(write, input, version)?;
-                write_ingredient_slot_display(write, material, version)?;
-                write_result_slot_display(write, result, version)?;
+                for _ in 0..material_count {
+                    write_ingredient_slot_display(write, material, version)?;
+                }
+                let result_count = if *add_material_count_to_result {
+                    material_count + result.count
+                } else {
+                    result.count
+                };
+                write_transmute_result_display(write, input, result, result_count, version)?;
                 write_item_slot_display(write, crafting_table, version)?;
+                if display_only {
+                    return Ok(true);
+                }
                 write_optional_var_int(write, group_id)?;
                 write.write_var_int(&VarInt(crafting_category(category)))?;
-                // craftingRequirements: input + material
-                write_crafting_requirements(write, &[input, material], version)?;
+                // The placement info holds the input and the most materials the recipe takes.
+                let mut requirements = vec![input];
+                requirements.extend(std::iter::repeat_n(
+                    material,
+                    usize::from(*max_material_count),
+                ));
+                write_crafting_requirements(write, &requirements, version)?;
                 write.write_u8(flags)?;
             }
-            // Skip special/decorated_pot recipes as they have no useful display
+            CraftingRecipeTypes::CraftingCustom(CustomCraftingRecipe::Dye {
+                category,
+                target,
+                dye,
+                ..
+            }) => {
+                // DyeRecipe.display: the target and any dye with a dye component.
+                if !display_only {
+                    write.write_var_int(&VarInt(display_id))?;
+                }
+                write.write_var_int(&VarInt(RECIPE_DISPLAY_SHAPELESS))?;
+                write.write_var_int(&VarInt(2))?;
+                write_ingredient_slot_display(write, target, version)?;
+                write_dye_with_component_display(write, dye, version)?;
+                write.write_var_int(&VarInt(SLOT_DISPLAY_DYED as i32))?;
+                write_dye_with_component_display(write, dye, version)?;
+                write_ingredient_slot_display(write, target, version)?;
+                write_item_slot_display(write, crafting_table, version)?;
+                if display_only {
+                    return Ok(true);
+                }
+                write_optional_var_int(write, group_id)?;
+                write.write_var_int(&VarInt(crafting_category(category)))?;
+                write_crafting_requirements(write, &[target, dye], version)?;
+                write.write_u8(flags)?;
+            }
+            CraftingRecipeTypes::CraftingCustom(CustomCraftingRecipe::Imbue {
+                category,
+                source,
+                material,
+                result,
+                ..
+            }) => {
+                // ImbueRecipe.display: a 3x3 of the material around a source with any potion.
+                if !display_only {
+                    write.write_var_int(&VarInt(display_id))?;
+                }
+                write.write_var_int(&VarInt(RECIPE_DISPLAY_SHAPED))?;
+                write.write_var_int(&VarInt(3))?;
+                write.write_var_int(&VarInt(3))?;
+                write.write_var_int(&VarInt(9))?;
+                for slot in 0..9 {
+                    if slot == 4 {
+                        write.write_var_int(&VarInt(SLOT_DISPLAY_WITH_ANY_POTION as i32))?;
+                        write_ingredient_slot_display(write, source, version)?;
+                    } else {
+                        write_ingredient_slot_display(write, material, version)?;
+                    }
+                }
+                write.write_var_int(&VarInt(SLOT_DISPLAY_WITH_ANY_POTION as i32))?;
+                write_result_slot_display(write, result, version)?;
+                write_item_slot_display(write, crafting_table, version)?;
+                if display_only {
+                    return Ok(true);
+                }
+                write_optional_var_int(write, group_id)?;
+                write.write_var_int(&VarInt(crafting_category(category)))?;
+                let requirements: Vec<&RecipeIngredientTypes> = (0..9)
+                    .map(|slot| if slot == 4 { source } else { material })
+                    .collect();
+                write_crafting_requirements(write, &requirements, version)?;
+                write.write_u8(flags)?;
+            }
+            // Other custom recipes and the decorated pot have no display.
             CraftingRecipeTypes::CraftingDecoratedPot { .. }
             | CraftingRecipeTypes::CraftingCustom(_)
             | CraftingRecipeTypes::CraftingSpecial => {
@@ -449,7 +628,9 @@ fn write_entry(
             CookingRecipeType::CampfireCooking(r) => (r, campfire),
         };
 
-        write.write_var_int(&VarInt(display_id))?;
+        if !display_only {
+            write.write_var_int(&VarInt(display_id))?;
+        }
         // RecipeDisplay type = furnace (2)
         write.write_var_int(&VarInt(RECIPE_DISPLAY_FURNACE))?;
         // ingredient
@@ -465,6 +646,9 @@ fn write_entry(
         // experience
         write.write_f32_be(cooking.experience)?;
         // group: OptionalVarInt
+        if display_only {
+            return Ok(true);
+        }
         write_optional_var_int(write, group_id)?;
         // category
         write.write_var_int(&VarInt(book_category))?;
@@ -477,6 +661,105 @@ fn write_entry(
     Ok(false)
 }
 
+/// The crafting station items recipe displays name.
+struct Stations {
+    crafting_table: &'static Item,
+    furnace: &'static Item,
+    blast_furnace: &'static Item,
+    smoker: &'static Item,
+    campfire: &'static Item,
+}
+
+impl Stations {
+    const fn new() -> Self {
+        Self {
+            crafting_table: &Item::CRAFTING_TABLE,
+            furnace: &Item::FURNACE,
+            blast_furnace: &Item::BLAST_FURNACE,
+            smoker: &Item::SMOKER,
+            campfire: &Item::CAMPFIRE,
+        }
+    }
+}
+
+/// The recipe book category and group of a cooking recipe.
+const fn cooking_book_info(recipe: &CookingRecipeType) -> (i32, Option<&'static str>) {
+    match recipe {
+        CookingRecipeType::Smelting(r) => (
+            match r.category {
+                RecipeCategoryTypes::Food => CATEGORY_FURNACE_FOOD,
+                RecipeCategoryTypes::Blocks => CATEGORY_FURNACE_BLOCKS,
+                _ => CATEGORY_FURNACE_MISC,
+            },
+            r.group,
+        ),
+        CookingRecipeType::Blasting(r) => (
+            match r.category {
+                RecipeCategoryTypes::Blocks => CATEGORY_BLAST_FURNACE_BLOCKS,
+                _ => CATEGORY_BLAST_FURNACE_MISC,
+            },
+            r.group,
+        ),
+        CookingRecipeType::Smoking(r) => (CATEGORY_SMOKER_FOOD, r.group),
+        CookingRecipeType::CampfireCooking(r) => (CATEGORY_CAMPFIRE, r.group),
+    }
+}
+
+/// The built-in recipe a display id of [`CRecipeBookAdd`] stands for. Ids past these belong to
+/// the dynamic recipes, in order.
+#[derive(Clone, Copy)]
+pub enum BuiltinRecipeDisplay {
+    Crafting(CraftingDisplay),
+    Cooking(&'static CookingRecipeType),
+}
+
+impl BuiltinRecipeDisplay {
+    /// The built-in recipe display with this id, or the index into the dynamic recipes.
+    pub fn from_display_id(display_id: usize) -> Result<Self, usize> {
+        let mut crafting_count = 0;
+        for display in crafting_displays() {
+            if crafting_count == display_id {
+                return Ok(Self::Crafting(display));
+            }
+            crafting_count += 1;
+        }
+        let cooking_index = display_id - crafting_count;
+        RECIPES_COOKING
+            .get(cooking_index)
+            .map(Self::Cooking)
+            .ok_or_else(|| cooking_index - RECIPES_COOKING.len())
+    }
+
+    /// Writes the `RecipeDisplay`, as `ClientboundPlaceGhostRecipePacket` carries it.
+    pub fn write_display(
+        self,
+        write: &mut impl Write,
+        version: JavaMinecraftVersion,
+    ) -> Result<(), WritingError> {
+        let stations = Stations::new();
+        let (crafting, cooking) = match self {
+            Self::Crafting(display) => (Some(display), None),
+            Self::Cooking(recipe) => (None, Some((recipe, cooking_book_info(recipe).0))),
+        };
+        write_entry(
+            write,
+            0,
+            version,
+            None,
+            0,
+            stations.crafting_table,
+            stations.furnace,
+            stations.blast_furnace,
+            stations.smoker,
+            stations.campfire,
+            crafting,
+            cooking,
+            true,
+        )?;
+        Ok(())
+    }
+}
+
 #[allow(clippy::too_many_lines)]
 impl ClientPacket for CRecipeBookAdd<'_> {
     fn write_packet_data(
@@ -486,30 +769,15 @@ impl ClientPacket for CRecipeBookAdd<'_> {
     ) -> Result<(), WritingError> {
         let mut write = write;
 
-        // Station items (these IDs are stable across all versions we support)
-        let crafting_table = Item::from_registry_key("crafting_table")
-            .ok_or_else(|| WritingError::Message("crafting_table item must exist".into()))?;
-        let furnace = Item::from_registry_key("furnace")
-            .ok_or_else(|| WritingError::Message("furnace item must exist".into()))?;
-        let blast_furnace = Item::from_registry_key("blast_furnace")
-            .ok_or_else(|| WritingError::Message("blast_furnace item must exist".into()))?;
-        let smoker = Item::from_registry_key("smoker")
-            .ok_or_else(|| WritingError::Message("smoker item must exist".into()))?;
-        let campfire = Item::from_registry_key("campfire")
-            .ok_or_else(|| WritingError::Message("campfire item must exist".into()))?;
+        let Stations {
+            crafting_table,
+            furnace,
+            blast_furnace,
+            smoker,
+            campfire,
+        } = Stations::new();
 
-        // First pass - count and skip CraftingSpecial and CraftingDecoratedPot entries.
-        let crafting_count: usize = RECIPES_CRAFTING
-            .iter()
-            .filter(|r| {
-                !matches!(
-                    r,
-                    CraftingRecipeTypes::CraftingSpecial
-                        | CraftingRecipeTypes::CraftingDecoratedPot { .. }
-                        | CraftingRecipeTypes::CraftingCustom(_)
-                )
-            })
-            .count();
+        let crafting_count = crafting_displays().count();
         let dynamic_count = self
             .dynamic_recipes
             .iter()
@@ -526,20 +794,20 @@ impl ClientPacket for CRecipeBookAdd<'_> {
         let highlight = !self.replace;
 
         // Write crafting recipes
-        for recipe in RECIPES_CRAFTING {
-            let (group, notification) = match recipe {
+        for display in crafting_displays() {
+            let (group, notification) = match display.recipe {
                 CraftingRecipeTypes::CraftingShaped {
                     group,
                     show_notification,
                     ..
                 } => (group.map(Cow::Borrowed), *show_notification),
                 CraftingRecipeTypes::CraftingShapeless { group, .. }
-                | CraftingRecipeTypes::CraftingTransmute { group, .. } => {
-                    (group.map(Cow::Borrowed), true)
-                }
-                CraftingRecipeTypes::CraftingDecoratedPot { .. }
-                | CraftingRecipeTypes::CraftingCustom(_)
-                | CraftingRecipeTypes::CraftingSpecial => (None, true),
+                | CraftingRecipeTypes::CraftingTransmute { group, .. }
+                | CraftingRecipeTypes::CraftingCustom(
+                    CustomCraftingRecipe::Dye { group, .. }
+                    | CustomCraftingRecipe::Imbue { group, .. },
+                ) => (group.map(Cow::Borrowed), true),
+                _ => (None, true),
             };
             let group_id = resolve_group_id_owned(&mut group_ids, &mut next_group_id, group);
             let flags = entry_flags(self.replace, notification, highlight);
@@ -554,8 +822,9 @@ impl ClientPacket for CRecipeBookAdd<'_> {
                 blast_furnace,
                 smoker,
                 campfire,
-                Some(recipe),
+                Some(display),
                 None,
+                false,
             )?;
             if written {
                 display_id += 1;
@@ -564,25 +833,7 @@ impl ClientPacket for CRecipeBookAdd<'_> {
 
         // Write cooking recipes
         for recipe in RECIPES_COOKING {
-            let (book_category, group) = match recipe {
-                CookingRecipeType::Smelting(r) => (
-                    match r.category {
-                        RecipeCategoryTypes::Food => CATEGORY_FURNACE_FOOD,
-                        RecipeCategoryTypes::Blocks => CATEGORY_FURNACE_BLOCKS,
-                        _ => CATEGORY_FURNACE_MISC,
-                    },
-                    r.group,
-                ),
-                CookingRecipeType::Blasting(r) => (
-                    match r.category {
-                        RecipeCategoryTypes::Blocks => CATEGORY_BLAST_FURNACE_BLOCKS,
-                        _ => CATEGORY_BLAST_FURNACE_MISC,
-                    },
-                    r.group,
-                ),
-                CookingRecipeType::Smoking(r) => (CATEGORY_SMOKER_FOOD, r.group),
-                CookingRecipeType::CampfireCooking(r) => (CATEGORY_CAMPFIRE, r.group),
-            };
+            let (book_category, group) = cooking_book_info(recipe);
             let group_id = resolve_group_id_owned(
                 &mut group_ids,
                 &mut next_group_id,
@@ -602,6 +853,7 @@ impl ClientPacket for CRecipeBookAdd<'_> {
                 campfire,
                 None,
                 Some((recipe, book_category)),
+                false,
             )?;
             display_id += 1;
         }

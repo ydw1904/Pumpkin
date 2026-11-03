@@ -138,6 +138,7 @@ pub fn assemble(
             target,
             dye,
             result,
+            ..
         } => dye_recipe(&stacks, target, dye, result).map(|s| (s, KeptInput::None)),
         CustomCraftingRecipe::RepairItem => repair_item(&stacks).map(|s| (s, KeptInput::None)),
         CustomCraftingRecipe::BannerDuplicate { banner, result } => {
@@ -179,6 +180,7 @@ pub fn assemble(
             source,
             material,
             result,
+            ..
         } => imbue(inventory, source, material, result).map(|s| (s, KeptInput::None)),
     }
 }
