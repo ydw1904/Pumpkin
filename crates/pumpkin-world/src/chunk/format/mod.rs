@@ -45,6 +45,8 @@ const HAS_STRUCTURES: u8 = 1 << 7;
 /// Root tag for the chunk's structure references. Vanilla's own `structures` tag holds full
 /// starts with every piece's own data, which this server does not model.
 const STRUCTURES_TAG: &str = "PumpkinStructures";
+/// Vanilla's root tag for the entities of a chunk that is not full yet.
+const ENTITIES_TAG: &str = "entities";
 
 const MODELLED_ROOT_TAGS: &[&str] = &[
     "DataVersion",
@@ -62,8 +64,31 @@ const MODELLED_ROOT_TAGS: &[&str] = &[
     "PumpkinCustomData",
     "BukkitValues",
     "PostProcessing",
+    ENTITIES_TAG,
     STRUCTURES_TAG,
 ];
+
+fn read_entities(root_tag: &NbtCompound) -> Vec<NbtCompound> {
+    root_tag
+        .get_list(ENTITIES_TAG)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|tag| tag.extract_compound().cloned())
+        .collect()
+}
+
+fn write_entities(root_tag: &mut NbtCompound, entities: &[NbtCompound]) {
+    if !entities.is_empty() {
+        root_tag.put_list(
+            ENTITIES_TAG,
+            entities
+                .iter()
+                .cloned()
+                .map(pumpkin_nbt::tag::NbtTag::Compound)
+                .collect(),
+        );
+    }
+}
 
 fn preserved_root_tags(root_tag: &NbtCompound) -> NbtCompound {
     let mut preserved = NbtCompound::new();
@@ -572,6 +597,7 @@ impl ChunkData {
             custom_data: std::sync::Mutex::new(custom_data),
             post_processing: std::sync::Mutex::new(post_processing),
             structures,
+            entities: std::sync::Mutex::new(read_entities(&root_tag)),
             preserved_tags: std::sync::Mutex::new(preserved_root_tags(&root_tag)),
         })
     }
@@ -809,6 +835,14 @@ impl ChunkData {
             );
         }
 
+        write_entities(
+            &mut root_compound,
+            &self
+                .entities
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
+
         let nbt = pumpkin_nbt::Nbt::from(root_compound);
         nbt.write()
     }
@@ -1007,14 +1041,23 @@ impl ChunkData {
             }
         }
 
-        // Tags this server does not model, such as vanilla's `structures`, trail the chunk.
-        // Files written before this have nothing after the structure references.
-        let preserved = self
+        // Tags this server does not model, such as vanilla's `structures`, trail the chunk
+        // together with the entities of a chunk that is not full yet. Files written before this
+        // have nothing after the structure references.
+        let mut trailer = self
             .preserved_tags
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if !preserved.is_empty() {
-            let bytes = pumpkin_nbt::Nbt::new(String::new(), preserved.clone()).write_unnamed();
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        write_entities(
+            &mut trailer,
+            &self
+                .entities
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
+        if !trailer.is_empty() {
+            let bytes = pumpkin_nbt::Nbt::new(String::new(), trailer).write_unnamed();
             out.put_u32(bytes.len() as u32);
             out.extend_from_slice(&bytes);
         }
@@ -1349,7 +1392,7 @@ impl ChunkData {
             }
         }
 
-        let preserved_tags = if buf.remaining() >= 4 {
+        let mut preserved_tags = if buf.remaining() >= 4 {
             let len = buf.get_u32() as usize;
             if buf.remaining() < len {
                 return Err(ChunkParsingError::ErrorDeserializingChunk(
@@ -1364,6 +1407,8 @@ impl ChunkData {
         } else {
             NbtCompound::new()
         };
+        let entities = read_entities(&preserved_tags);
+        preserved_tags.child_tags.remove(ENTITIES_TAG);
 
         Ok(Self {
             section,
@@ -1382,6 +1427,7 @@ impl ChunkData {
             custom_data: std::sync::Mutex::new(custom_data),
             post_processing: std::sync::Mutex::new(post_processing),
             structures: structures.into_boxed_slice(),
+            entities: std::sync::Mutex::new(entities),
             preserved_tags: std::sync::Mutex::new(preserved_tags),
         })
     }
@@ -1784,6 +1830,43 @@ mod tests {
         )
         .expect("pump chunk parses");
         assert_eq!(*pump.post_processing.lock().unwrap(), expected);
+    }
+
+    #[test]
+    fn proto_chunk_entities_survive_anvil_and_pump() {
+        use crate::chunk::ChunkData;
+        use pumpkin_util::math::vector2::Vector2;
+
+        let mut nbt = test_chunk(vec![test_section(-4, "minecraft:stone", true)]);
+        nbt.root_tag
+            .put_string("Status", "minecraft:spawn".to_string());
+        let mut pig = NbtCompound::new();
+        pig.put_string("id", "minecraft:pig".to_string());
+        nbt.root_tag
+            .put("entities", NbtTag::List(vec![NbtTag::Compound(pig)]));
+        let ids = |chunk: &ChunkData| {
+            chunk
+                .entities
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|entity| entity.get_string("id").unwrap().to_string())
+                .collect::<Vec<_>>()
+        };
+
+        let chunk = ChunkData::from_bytes(&nbt.write(), Vector2::new(0, 0)).expect("chunk parses");
+        assert_eq!(ids(&chunk), ["minecraft:pig"]);
+        assert!(!chunk.preserved_tags.lock().unwrap().has("entities"));
+        let anvil = ChunkData::from_bytes(&chunk.internal_to_bytes(), Vector2::new(0, 0))
+            .expect("Anvil chunk parses");
+        assert_eq!(ids(&anvil), ["minecraft:pig"]);
+        let pump = ChunkData::internal_from_pump_bytes(
+            &chunk.internal_to_pump_bytes(),
+            Vector2::new(0, 0),
+        )
+        .expect("pump chunk parses");
+        assert_eq!(ids(&pump), ["minecraft:pig"]);
+        assert!(!pump.preserved_tags.lock().unwrap().has("entities"));
     }
 
     #[test]

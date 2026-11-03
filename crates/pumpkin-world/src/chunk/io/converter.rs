@@ -489,6 +489,7 @@ mod tests {
             fluid_ticks: ChunkTickScheduler::default(),
             post_processing: Mutex::default(),
             structures: Box::default(),
+            entities: Mutex::default(),
             preserved_tags: Mutex::default(),
             pending_block_entities: Mutex::new(FxHashMap::default()),
             light_engine: Mutex::new(ChunkLight::default()),

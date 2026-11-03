@@ -291,6 +291,7 @@ impl Chunk {
                 custom_data: Mutex::new(NbtCompound::new()),
                 post_processing: Mutex::default(),
                 structures: Box::default(),
+                entities: Mutex::default(),
                 preserved_tags: Mutex::new(NbtCompound::new()),
             })),
         ) {
@@ -342,6 +343,7 @@ impl Chunk {
             custom_data: Mutex::new(NbtCompound::new()),
             post_processing: Mutex::new(proto_chunk.post_processing),
             structures,
+            entities: Mutex::new(proto_chunk.entities),
             preserved_tags: Mutex::new(NbtCompound::new()),
         };
 

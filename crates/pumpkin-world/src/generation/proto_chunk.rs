@@ -166,6 +166,8 @@ pub struct ProtoChunk {
     pub blending_data: Option<crate::generation::blender::blending_data::BlendingData>,
     pub pending_block_entities: Vec<NbtCompound>,
     pending_structure_entities: Vec<StructureEntity>,
+    /// Vanilla `ProtoChunk.entities`: the saved entities generation spawned in this chunk.
+    pub entities: Vec<NbtCompound>,
     pub block_ticks: Vec<ScheduledTick<&'static Block>>,
     pub fluid_ticks: Vec<ScheduledTick<&'static Fluid>>,
     pub(crate) surface_height_cache: FxHashMap<u64, i32>,
@@ -347,6 +349,7 @@ impl ProtoChunk {
             blending_data: None,
             pending_block_entities: Vec::new(),
             pending_structure_entities: Vec::new(),
+            entities: Vec::new(),
             block_ticks: Vec::new(),
             fluid_ticks: Vec::new(),
             post_processing: Vec::new(),
@@ -382,6 +385,12 @@ impl ProtoChunk {
             .values()
             .cloned()
             .collect();
+        proto_chunk.entities.clone_from(
+            &chunk_data
+                .entities
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
         proto_chunk.post_processing.clone_from(
             &chunk_data
                 .post_processing
@@ -531,6 +540,11 @@ impl ProtoChunk {
 
     pub fn take_pending_structure_entities(&mut self) -> Vec<StructureEntity> {
         std::mem::take(&mut self.pending_structure_entities)
+    }
+
+    /// Vanilla `ProtoChunk.addEntity`: keeps a spawned entity's saved data until the chunk is full.
+    pub fn add_entity(&mut self, nbt: NbtCompound) {
+        self.entities.push(nbt);
     }
 
     pub fn schedule_block_tick(&mut self, pos: BlockPos, block: &'static Block, delay: u32) {
@@ -1237,12 +1251,12 @@ impl ProtoChunk {
         let x = chunk.x;
         let z = chunk.z;
 
-        block_registry.spawn_mobs_for_chunk_generation(cache, biome, x, z);
+        // Vanilla adds structure entities while placing features, so they come before the animals.
+        let chunk = cache.get_center_chunk_mut();
+        let entities = chunk.take_pending_structure_entities();
+        block_registry.spawn_structure_entities(chunk, entities);
 
-        let entities = cache
-            .get_center_chunk_mut()
-            .take_pending_structure_entities();
-        block_registry.spawn_structure_entities(entities);
+        block_registry.spawn_mobs_for_chunk_generation(cache, biome, x, z);
 
         cache.get_center_chunk_mut().stage = StagedChunkEnum::Spawn;
     }

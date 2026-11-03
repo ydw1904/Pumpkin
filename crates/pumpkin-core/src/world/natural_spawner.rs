@@ -1,6 +1,6 @@
 use crate::block::PathComputationType;
 use crate::entity::EntityBase;
-use crate::entity::mob::spawn::finalize_spawn;
+use crate::entity::mob::spawn::{PendingVehicle, finalize_spawn};
 use crate::entity::player::Player;
 use crate::entity::r#type::{
     CreatureSpawnLevel, check_creature_spawn_rules, check_spawn_rules, from_type,
@@ -20,6 +20,7 @@ use pumpkin_data::tag::Fluid::{MINECRAFT_LAVA, MINECRAFT_WATER};
 use pumpkin_data::tag::Taggable;
 use pumpkin_data::tag::WorldgenBiome::MINECRAFT_REDUCE_WATER_AMBIENT_SPAWNS;
 use pumpkin_data::{Block, BlockDirection, BlockState, SpawnFloorPredicate};
+use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::GameMode;
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::get_section_cord;
@@ -644,7 +645,9 @@ pub fn spawn_mobs_for_chunk_generation(
                         .get_entity()
                         .set_rotation(game_random().random::<f32>() * 360.0, 0.0);
                     group_data = finalize_spawn(&entity, world, group_data);
-                    world.spawn_entity_non_save(entity);
+                    cache
+                        .get_center_chunk_mut()
+                        .add_entity(world_gen_entity_nbt(&entity));
                     success = true;
                 }
 
@@ -659,6 +662,34 @@ pub fn spawn_mobs_for_chunk_generation(
             }
         }
     }
+}
+
+/// The saved data a generated chunk keeps for an entity generation spawned.
+///
+/// Vanilla adds it with `addFreshEntityWithPassengers` to a `ProtoChunk`, which stores the root
+/// entity with its passengers, so the riders or new vehicle the spawn finalization made are
+/// mounted first.
+pub fn world_gen_entity_nbt(entity: &Arc<dyn EntityBase>) -> NbtCompound {
+    let mut root = entity.clone();
+    if let Some(mob) = entity.get_mob() {
+        let mob_entity = mob.get_mob_entity();
+        for rider in mob_entity.take_pending_riders() {
+            entity
+                .get_entity()
+                .add_passenger_silently(entity.clone(), rider);
+        }
+        // A vehicle already in the world can't be part of a generated chunk; vanilla's
+        // generation region has no entities to find one in.
+        if let Some(PendingVehicle::New(vehicle)) = mob_entity.take_pending_vehicle() {
+            vehicle
+                .get_entity()
+                .add_passenger_silently(vehicle.clone(), entity.clone());
+            root = vehicle;
+        }
+    }
+    let mut nbt = NbtCompound::new();
+    root.write_nbt(&mut nbt);
+    nbt
 }
 
 /// The region chunk generation spawns animals in. Its chunks aren't part of the world yet, so

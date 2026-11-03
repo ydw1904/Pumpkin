@@ -89,6 +89,9 @@ pub struct ChunkData {
     /// Vanilla `ChunkAccess.getAllReferences`: the structure starts whose bounding box
     /// overlaps this chunk, fixed once the chunk is generated.
     pub structures: Box<[structure::StructureReference]>,
+    /// Vanilla `ProtoChunk.entities`: entities generation spawned, saved with the chunk until it
+    /// becomes full and the world takes them into its entity storage.
+    pub entities: std::sync::Mutex<Vec<NbtCompound>>,
     /// Root tags this server does not model, kept verbatim so a save does not
     /// strip them. A vanilla chunk carries `structures`, `carving_mask` and
     /// others; writing the chunk back without them loses map data that nothing
@@ -681,6 +684,7 @@ impl ChunkData {
             custom_data: std::sync::Mutex::new(NbtCompound::new()),
             post_processing: std::sync::Mutex::default(),
             structures: Box::default(),
+            entities: std::sync::Mutex::default(),
             preserved_tags: std::sync::Mutex::new(NbtCompound::new()),
         }
     }

@@ -1,4 +1,4 @@
-use crate::generation::proto_chunk::{GenerationCache, StructureEntity};
+use crate::generation::proto_chunk::{GenerationCache, ProtoChunk, StructureEntity};
 use bitflags::bitflags;
 use pumpkin_data::{Block, BlockState, BlockStateId, Mirror, Rotation, chunk::Biome};
 use pumpkin_util::math::position::BlockPos;
@@ -73,6 +73,8 @@ pub trait WorldPortalExt: Send + Sync {
         rotation: Rotation,
     ) -> &'static BlockState;
 
+    /// Vanilla `NaturalSpawner.spawnMobsForChunkGeneration`. Spawned mobs go into the center
+    /// chunk's entities, which the world takes in once the chunk is full.
     fn spawn_mobs_for_chunk_generation(
         &self,
         cache: &mut dyn GenerationCache,
@@ -81,7 +83,8 @@ pub trait WorldPortalExt: Send + Sync {
         chunk_z: i32,
     );
 
-    fn spawn_structure_entities(&self, _entities: Vec<StructureEntity>) {}
+    /// Creates the entities structures placed in `chunk` and adds them to its entities.
+    fn spawn_structure_entities(&self, _chunk: &mut ProtoChunk, _entities: Vec<StructureEntity>) {}
 }
 
 pub trait BlockAccessor: Send + Sync {

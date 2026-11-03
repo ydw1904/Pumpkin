@@ -92,6 +92,7 @@ impl ToFromWasmEvent for ChunkLoad {
                     custom_data: std::sync::Mutex::new(pumpkin_nbt::compound::NbtCompound::new()),
                     post_processing: std::sync::Mutex::default(),
                     structures: Box::default(),
+                    entities: std::sync::Mutex::default(),
                     preserved_tags: std::sync::Mutex::new(pumpkin_nbt::compound::NbtCompound::new()),
                 };
                 Self {
@@ -148,6 +149,7 @@ impl ToFromWasmEvent for ChunkSave {
                     custom_data: std::sync::Mutex::new(pumpkin_nbt::compound::NbtCompound::new()),
                     post_processing: std::sync::Mutex::default(),
                     structures: Box::default(),
+                    entities: std::sync::Mutex::default(),
                     preserved_tags: std::sync::Mutex::new(pumpkin_nbt::compound::NbtCompound::new()),
                 };
                 Self {
@@ -200,6 +202,7 @@ impl ToFromWasmEvent for ChunkSend {
                     custom_data: std::sync::Mutex::new(pumpkin_nbt::compound::NbtCompound::new()),
                     post_processing: std::sync::Mutex::default(),
                     structures: Box::default(),
+                    entities: std::sync::Mutex::default(),
                     preserved_tags: std::sync::Mutex::new(pumpkin_nbt::compound::NbtCompound::new()),
                 };
                 Self {

@@ -202,6 +202,43 @@ fn block_entities_survive_chunk_data_resume() {
     assert_eq!(chunk_again.pending_block_entities.lock().unwrap().len(), 1);
 }
 
+// Entities generation spawned stay with the chunk until it is full, so a chunk saved before
+// then must keep them.
+#[test]
+fn generated_entities_survive_chunk_data_resume() {
+    use crate::chunk_system::chunk_state::Chunk;
+    use pumpkin_config::lighting::LightingEngineConfig;
+    use pumpkin_nbt::compound::NbtCompound;
+
+    let seed = Seed(4242);
+    let world_gen = get_world_gen(seed, Dimension::OVERWORLD, false, Vec::new(), String::new());
+
+    let mut proto = ProtoChunk::new(3, -2, &world_gen);
+    proto.stage = StagedChunkEnum::Spawn;
+    let mut pig = NbtCompound::new();
+    pig.put_string("id", "minecraft:pig".to_string());
+    proto.add_entity(pig);
+
+    let mut staged = Chunk::Proto(Box::new(proto));
+    staged.upgrade_to_level_chunk(&Dimension::OVERWORLD, &LightingEngineConfig::Default);
+    let Chunk::Level(chunk_data) = staged else {
+        unreachable!()
+    };
+
+    let mut resumed = ProtoChunk::from_chunk_data(&chunk_data, &world_gen);
+    assert_eq!(resumed.stage, StagedChunkEnum::Spawn);
+    assert_eq!(resumed.entities.len(), 1);
+    assert_eq!(resumed.entities[0].get_string("id"), Some("minecraft:pig"));
+
+    resumed.stage = StagedChunkEnum::Full;
+    let mut full = Chunk::Proto(Box::new(resumed));
+    full.upgrade_to_level_chunk(&Dimension::OVERWORLD, &LightingEngineConfig::Default);
+    let Chunk::Level(full) = full else {
+        unreachable!()
+    };
+    assert_eq!(full.entities.lock().unwrap().len(), 1);
+}
+
 // Regression test for transposed heightmaps during Noise-stage chunk resume.
 // Flat terrain cannot expose this bug, so use a sloped chunk.
 #[test]

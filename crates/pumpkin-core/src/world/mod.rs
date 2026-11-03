@@ -13,7 +13,7 @@ use pumpkin_protocol::bedrock::client::{
 };
 use pumpkin_protocol::bedrock::network_item::NetworkItemDescriptor;
 use pumpkin_protocol::codec::data_component::data_to_proto_sound;
-use pumpkin_world::generation::proto_chunk::{GenerationCache, StructureEntity};
+use pumpkin_world::generation::proto_chunk::{GenerationCache, ProtoChunk, StructureEntity};
 use rayon::prelude::*;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::{Arc, RwLock, Weak};
@@ -647,6 +647,7 @@ impl World {
         for pos in newly_loaded {
             self.level.light_engine.check_pending(&self.level, pos);
             self.register_chunk_pois(pos);
+            self.add_world_gen_chunk_entities(pos);
         }
 
         self.spawn_state.store(Arc::new(SpawnState::new(
@@ -4949,6 +4950,73 @@ impl World {
         }
     }
 
+    /// Vanilla `ServerLevel.addWorldGenChunkEntities`: once a generated chunk is full, the
+    /// entities generation kept in it join the chunk's entities.
+    fn add_world_gen_chunk_entities(self: &Arc<Self>, pos: Vector2<i32>) {
+        let Some(records) = self.level.read_chunk_sync(&pos, |chunk| {
+            let records = std::mem::take(
+                &mut *chunk
+                    .entities
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+            );
+            if !records.is_empty() {
+                // The saved chunk must not hand them out a second time.
+                chunk.mark_dirty(true);
+            }
+            records
+        }) else {
+            return;
+        };
+        if records.is_empty() {
+            return;
+        }
+        if let Some(entity_chunk) = self.level.get_entity_chunk_sync(&pos) {
+            self.add_entity_records(&entity_chunk, records);
+        } else {
+            let world = self.clone();
+            self.level.spawn_task(async move {
+                let entity_chunk = world.level.get_entity_chunk(pos).await;
+                world.add_entity_records(&entity_chunk, records);
+            });
+        }
+    }
+
+    /// Adds saved entities to an entity chunk: spawned right away when the chunk is live, kept
+    /// with its saved entities otherwise.
+    fn add_entity_records(
+        self: &Arc<Self>,
+        entity_chunk: &pumpkin_world::level::SyncEntityChunk,
+        records: Vec<NbtCompound>,
+    ) {
+        {
+            // Checked under the data lock: a chunk going live sets `live` before it takes the
+            // data, so records added here are either taken with it or spawned below.
+            let mut data = entity_chunk
+                .data
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if !entity_chunk.live.load(Relaxed) {
+                data.extend(records);
+                drop(data);
+                entity_chunk.mark_dirty(true);
+                return;
+            }
+        }
+        for record in &records {
+            let Some(root) = load_entity_from_nbt(record, Vector3::default(), self) else {
+                continue;
+            };
+            for entity in self_and_passengers(&root) {
+                match entity.get_mob() {
+                    Some(mob) => mob.mob_init_data_tracker(),
+                    None => entity.init_data_tracker(),
+                }
+                self.add_entity_silent(entity);
+            }
+        }
+    }
+
     /// Gives the full chunks around each forced chunk a watcher, so their entities load and
     /// stay loaded with no player nearby, like vanilla loads the entities of every full chunk.
     fn update_forced_entity_chunks(
@@ -5630,6 +5698,19 @@ impl World {
     ///
     /// [`EntitySpawnEvent`]: crate::plugin::api::events::entity::entity_spawn::EntitySpawnEvent
     pub fn spawn_entity(self: &Arc<Self>, entity: Arc<dyn EntityBase>) -> bool {
+        if !self.fire_entity_spawn_event(entity.as_ref()) {
+            return false;
+        }
+
+        entity.init_data_tracker();
+        self.add_entity_silent(entity);
+        true
+    }
+
+    /// Fires [`EntitySpawnEvent`]; `false` if a plugin cancels it.
+    ///
+    /// [`EntitySpawnEvent`]: crate::plugin::api::events::entity::entity_spawn::EntitySpawnEvent
+    pub fn fire_entity_spawn_event(self: &Arc<Self>, entity: &dyn EntityBase) -> bool {
         let mut event = crate::plugin::api::events::entity::entity_spawn::EntitySpawnEvent::new(
             entity.get_entity().entity_id,
             entity.get_entity().entity_type.id.to_string(),
@@ -5639,13 +5720,7 @@ impl World {
         if let Some(server) = self.server.upgrade() {
             server.plugin_manager.fire_blocking(&server, &mut event);
         }
-        if event.cancelled {
-            return false;
-        }
-
-        entity.init_data_tracker();
-        self.add_entity_silent(entity);
-        true
+        !event.cancelled
     }
 
     /// Fires [`CreatureSpawnEvent`], then spawns the entity; `false` if either event is cancelled.
@@ -8350,14 +8425,16 @@ impl WorldPortalExt for WorldPortal {
         natural_spawner::spawn_mobs_for_chunk_generation(&self.0, cache, biome, chunk_x, chunk_z);
     }
 
-    fn spawn_structure_entities(&self, entities: Vec<StructureEntity>) {
+    fn spawn_structure_entities(&self, chunk: &mut ProtoChunk, entities: Vec<StructureEntity>) {
         for StructureEntity { mut nbt, finalize } in entities {
             nbt.child_tags.remove("UUID");
             if let Some(entity) = load_static_entity_from_nbt(&nbt, Vector3::default(), &self.0) {
                 if finalize {
                     crate::entity::mob::spawn::finalize_spawn(&entity, &self.0, None);
                 }
-                self.0.spawn_entity(entity);
+                if self.0.fire_entity_spawn_event(entity.as_ref()) {
+                    chunk.add_entity(natural_spawner::world_gen_entity_nbt(&entity));
+                }
             }
         }
     }
