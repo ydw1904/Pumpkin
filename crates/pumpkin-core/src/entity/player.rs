@@ -6437,7 +6437,12 @@ impl Player {
                 if let Some(map_data_arc) = server.map_manager.get_map(map_id)
                     && let Ok(mut map_data) = map_data_arc.try_lock()
                 {
-                    map_data.update(self);
+                    let in_map_dimension =
+                        self.world().dimension.minecraft_name == map_data.dimension.minecraft_name;
+                    // `MapItem.inventoryTick` and `MapItem.update`.
+                    if !map_data.locked && in_map_dimension {
+                        map_data.update(self);
+                    }
 
                     let tick_count = self.tick_counter.load(Ordering::Relaxed);
                     if map_data.dirty || tick_count % 10 == 0 {
@@ -6464,13 +6469,17 @@ impl Player {
                             &pumpkin_data::map_decoration::MapDecorationType::PLAYER
                         };
 
-                        let mut icons = vec![MapIcon {
-                            icon_type: VarInt(decoration_type.id as i32),
-                            x: icon_x,
-                            z: icon_z,
-                            direction: icon_direction,
-                            display_name: None,
-                        }];
+                        let mut icons = Vec::new();
+                        // Vanilla only marks holders in the map's dimension on tracking maps.
+                        if map_data.tracking_position && in_map_dimension {
+                            icons.push(MapIcon {
+                                icon_type: VarInt(decoration_type.id as i32),
+                                x: icon_x,
+                                z: icon_z,
+                                direction: icon_direction,
+                                display_name: None,
+                            });
+                        }
                         icons.extend(map_data.decorations.iter().map(|decoration| {
                             MapIcon {
                                 icon_type: VarInt(decoration.icon_type),
@@ -6495,7 +6504,7 @@ impl Player {
                         self.try_send_client_packet(&CMapItemData {
                             map_id: VarInt(map_id),
                             scale: map_data.scale,
-                            tracking_position: true,
+                            tracking_position: map_data.tracking_position,
                             locked: map_data.locked,
                             icons: Some(&icons),
                             data,
