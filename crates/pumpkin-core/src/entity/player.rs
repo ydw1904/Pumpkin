@@ -439,6 +439,30 @@ pub enum SpamType {
     Command,
 }
 
+/// Vanilla `ServerPlayer`'s `lastRecorded*` fields: the values last written to the
+/// live-attribute scoreboard criteria.
+pub struct LastRecordedScores {
+    health: AtomicCell<f32>,
+    food: AtomicI32,
+    air: AtomicI32,
+    armor: AtomicI32,
+    level: AtomicI32,
+    experience: AtomicI32,
+}
+
+impl Default for LastRecordedScores {
+    fn default() -> Self {
+        Self {
+            health: AtomicCell::new(f32::MIN),
+            food: AtomicI32::new(i32::MIN),
+            air: AtomicI32::new(i32::MIN),
+            armor: AtomicI32::new(i32::MIN),
+            level: AtomicI32::new(i32::MIN),
+            experience: AtomicI32::new(i32::MIN),
+        }
+    }
+}
+
 /// Center chunk and levels of the view and simulation tickets a player holds.
 pub type HeldChunkTickets = (Vector2<i32>, Option<i8>, Option<i8>);
 
@@ -526,6 +550,7 @@ pub struct Player {
     pub last_sent_health: AtomicCell<f32>,
     pub last_sent_food: AtomicU8,
     pub last_food_saturation: AtomicBool,
+    pub last_recorded_scores: LastRecordedScores,
     /// The player's permission level.
     pub permission_lvl: AtomicCell<PermissionLvl>,
     pub subscribed_debug_sample: AtomicBool,
@@ -892,6 +917,7 @@ impl Player {
             last_sent_health: AtomicCell::new(LAST_SENT_HEALTH_UNSENT),
             last_sent_food: AtomicU8::new(0),
             last_food_saturation: AtomicBool::new(true),
+            last_recorded_scores: LastRecordedScores::default(),
             subscribed_debug_sample: AtomicBool::new(false),
             has_played_before: AtomicBool::new(false),
             root_vehicle_uuid: AtomicCell::new(None),
@@ -1298,6 +1324,11 @@ impl Player {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .increment_custom(statistics::CustomStatistic::LeaveGame, 1);
+        self.for_all_stat_objectives(
+            statistics::StatisticCategory::Custom,
+            statistics::CustomStatistic::LeaveGame as i32,
+            |v| v.wrapping_add(1),
+        );
         let world = self.world();
         world.remove_player(self, true).await;
 
@@ -2385,10 +2416,9 @@ impl Player {
 
         self.sleeping_since.store(Some(0));
         self.sleeping_bed_pos.store(Some(bed_head_pos));
-        self.set_stat(
+        self.reset_stat(
             statistics::StatisticCategory::Custom,
             statistics::CustomStatistic::TimeSinceRest as i32,
-            0,
         );
 
         // Vanilla `ServerPlayer.startSleepInBed`.
@@ -2655,10 +2685,9 @@ impl Player {
             None::<BlockPos>,
         );
 
-        self.set_stat(
+        self.reset_stat(
             statistics::StatisticCategory::Custom,
             statistics::CustomStatistic::TimeSinceRest as i32,
-            0,
         );
 
         let chunk_pos = self.living_entity.entity.chunk_pos.load();
@@ -3099,20 +3128,28 @@ impl Player {
         }
 
         // Statistics updates
+        let awarded = [
+            Some(statistics::CustomStatistic::PlayTime),
+            Some(statistics::CustomStatistic::TotalWorldTime),
+            (!self.living_entity.dead.load(Ordering::Relaxed)
+                && self.living_entity.health.load() > 0.0)
+                .then_some(statistics::CustomStatistic::TimeSinceDeath),
+            (!self.is_sleeping()).then_some(statistics::CustomStatistic::TimeSinceRest),
+            self.living_entity
+                .entity
+                .sneaking
+                .load(Ordering::Relaxed)
+                .then_some(statistics::CustomStatistic::SneakTime),
+        ];
         if let Ok(mut stats) = self.stats.try_lock() {
-            stats.increment_custom(statistics::CustomStatistic::PlayTime, 1);
-            stats.increment_custom(statistics::CustomStatistic::TotalWorldTime, 1);
-            if !self.living_entity.dead.load(Ordering::Relaxed)
-                && self.living_entity.health.load() > 0.0
-            {
-                stats.increment_custom(statistics::CustomStatistic::TimeSinceDeath, 1);
+            for &stat in awarded.iter().flatten() {
+                stats.increment_custom(stat, 1);
             }
-            if !self.is_sleeping() {
-                stats.increment_custom(statistics::CustomStatistic::TimeSinceRest, 1);
-            }
-            if self.living_entity.entity.sneaking.load(Ordering::Relaxed) {
-                stats.increment_custom(statistics::CustomStatistic::SneakTime, 1);
-            }
+        }
+        for &stat in awarded.iter().flatten() {
+            self.for_all_stat_objectives(statistics::StatisticCategory::Custom, stat as i32, |v| {
+                v.wrapping_add(1)
+            });
         }
 
         if let Ok(mut xp) = self.experience_pick_up_delay.try_lock()
@@ -3332,6 +3369,7 @@ impl Player {
         // experience handling
         self.tick_experience();
         self.tick_health();
+        self.tick_criteria_scores();
         self.tick_raid_omen();
         self.tick_maps(server);
 
@@ -3421,6 +3459,11 @@ impl Player {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .increment_custom(statistics::CustomStatistic::Jump, 1);
+        self.for_all_stat_objectives(
+            statistics::StatisticCategory::Custom,
+            statistics::CustomStatistic::Jump as i32,
+            |v| v.wrapping_add(1),
+        );
         if self.living_entity.entity.is_sprinting() {
             self.add_exhaustion(0.2);
         } else {
@@ -3763,11 +3806,85 @@ impl Player {
         if let Ok(mut stats) = self.stats.try_lock() {
             stats.increment(category, stat, final_amount);
         }
+        // Vanilla `ServerPlayer.awardStat`.
+        self.for_all_stat_objectives(category, stat, |v| v.wrapping_add(final_amount));
     }
 
     pub fn set_stat(&self, category: statistics::StatisticCategory, stat: i32, value: i32) {
         if let Ok(mut stats) = self.stats.try_lock() {
             stats.set(category, stat, value);
+        }
+    }
+
+    /// Vanilla `ServerPlayer.resetStat`.
+    pub fn reset_stat(&self, category: statistics::StatisticCategory, stat: i32) {
+        self.set_stat(category, stat, 0);
+        self.for_all_stat_objectives(category, stat, |_| 0);
+    }
+
+    fn for_all_stat_objectives(
+        &self,
+        category: statistics::StatisticCategory,
+        stat: i32,
+        op: impl Fn(i32) -> i32,
+    ) {
+        if !self
+            .world()
+            .scoreboard
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .has_stat_objectives()
+        {
+            return;
+        }
+        if let Some(criterion) = statistics::criterion_name(category, stat) {
+            crate::world::scoreboard::for_all_entity_objectives(self, &criterion, op);
+        }
+    }
+
+    /// Vanilla `ServerPlayer.updateScoreForCriteria`.
+    fn update_score_for_criteria(&self, criterion: &str, value: i32) {
+        crate::world::scoreboard::for_all_entity_objectives(self, criterion, |_| value);
+    }
+
+    /// The live-attribute criteria part of vanilla `ServerPlayer.doTick`.
+    fn tick_criteria_scores(&self) {
+        use crate::world::scoreboard::criteria;
+
+        let recorded = &self.last_recorded_scores;
+        let health = self.living_entity.health.load() + self.living_entity.get_absorption();
+        if health != recorded.health.swap(health) {
+            self.update_score_for_criteria(criteria::HEALTH, health.ceil() as i32);
+        }
+        let level = self.experience_level.load(Ordering::Relaxed);
+        for (criterion, last, value) in [
+            (
+                criteria::FOOD,
+                &recorded.food,
+                i32::from(self.hunger_manager.level.load()),
+            ),
+            (
+                criteria::AIR,
+                &recorded.air,
+                self.living_entity.entity.air_supply.load(Ordering::Relaxed),
+            ),
+            (
+                criteria::ARMOR,
+                &recorded.armor,
+                self.living_entity
+                    .get_attribute_value(&Attributes::ARMOR)
+                    .floor() as i32,
+            ),
+            (
+                criteria::EXPERIENCE,
+                &recorded.experience,
+                experience::points_to_level(level) + self.experience_points.load(Ordering::Relaxed),
+            ),
+            (criteria::LEVEL, &recorded.level, level),
+        ] {
+            if last.swap(value, Ordering::Relaxed) != value {
+                self.update_score_for_criteria(criterion, value);
+            }
         }
     }
 

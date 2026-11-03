@@ -39,7 +39,7 @@ use crate::item::items::spear::SpearItem;
 use crate::server::Server;
 use crate::world::World;
 use crate::world::loot::LootContextParameters;
-use crate::world::scoreboard::NameTagVisibility;
+use crate::world::scoreboard::{self, NameTagVisibility};
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::AttributeModifierSlot;
 use pumpkin_data::attributes::Attributes;
@@ -2896,16 +2896,19 @@ impl LivingEntity {
 
     fn update_death_stats(&self, dyn_self: &dyn EntityBase, cause: Option<&dyn EntityBase>) {
         if let Some(victim_player) = dyn_self.get_player() {
+            scoreboard::for_all_entity_objectives(
+                victim_player,
+                scoreboard::criteria::DEATH_COUNT,
+                |v| v.wrapping_add(1),
+            );
             victim_player.increment_custom_stat(CustomStatistic::Deaths, 1);
-            victim_player.set_stat(
+            victim_player.reset_stat(
                 StatisticCategory::Custom,
                 CustomStatistic::TimeSinceDeath as i32,
-                0,
             );
-            victim_player.set_stat(
+            victim_player.reset_stat(
                 StatisticCategory::Custom,
                 CustomStatistic::TimeSinceRest as i32,
-                0,
             );
             if let Some(killer_entity) = cause.map(EntityBase::get_entity) {
                 victim_player.increment_stat(
@@ -2922,6 +2925,31 @@ impl LivingEntity {
                 self.entity.entity_type.id as i32,
                 1,
             );
+            // Vanilla `ServerPlayer.awardKillScore`.
+            if killer_player.entity_id() != self.entity.entity_id {
+                scoreboard::for_all_entity_objectives(
+                    killer_player,
+                    scoreboard::criteria::KILL_COUNT_ALL,
+                    |v| v.wrapping_add(1),
+                );
+                if dyn_self.get_player().is_some() {
+                    scoreboard::for_all_entity_objectives(
+                        killer_player,
+                        scoreboard::criteria::KILL_COUNT_PLAYERS,
+                        |v| v.wrapping_add(1),
+                    );
+                }
+                scoreboard::handle_team_kill(
+                    killer_player,
+                    dyn_self,
+                    scoreboard::criteria::TEAM_KILL_PREFIX,
+                );
+                scoreboard::handle_team_kill(
+                    dyn_self,
+                    killer_player,
+                    scoreboard::criteria::KILLED_BY_TEAM_PREFIX,
+                );
+            }
             if dyn_self.get_player().is_some() {
                 killer_player.increment_stat(
                     StatisticCategory::Custom,

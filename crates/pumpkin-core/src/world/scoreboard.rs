@@ -20,6 +20,7 @@ use pumpkin_util::text::{TextComponent, color::NamedColor, hover::HoverEvent, st
 use tracing::warn;
 
 use super::World;
+use crate::entity::EntityBase;
 use crate::entity::player::Player;
 
 pub trait ScoreboardTarget: Send + Sync {
@@ -563,6 +564,37 @@ impl Scoreboard {
         }
     }
 
+    /// Vanilla `Scoreboard.forAllObjectives`: applies `op` to the holder's score in every
+    /// objective with the criterion, creating missing scores.
+    pub fn for_all_objectives(
+        &mut self,
+        target: &impl ScoreboardTarget,
+        criterion: &str,
+        holder: &str,
+        holder_display: Option<&TextComponent>,
+        op: impl Fn(i32) -> i32,
+    ) {
+        let objectives: Vec<String> = self
+            .objectives
+            .values()
+            .filter(|objective| objective.criterion == criterion)
+            .map(|objective| objective.name.clone())
+            .collect();
+        for objective in objectives {
+            let value = op(self.get_score_value(holder, &objective).unwrap_or(0));
+            self.set_holder_score(target, holder, holder_display, &objective, value);
+        }
+    }
+
+    /// Whether some objective uses a stat criterion like `minecraft.mined:minecraft.stone`,
+    /// so stat increments can skip building criterion names when none does.
+    #[must_use]
+    pub fn has_stat_objectives(&self) -> bool {
+        self.objectives
+            .values()
+            .any(|objective| objective.criterion.contains(':'))
+    }
+
     /// Vanilla `Scoreboard.getTrackedPlayers`: every holder with a score.
     #[must_use]
     pub fn tracked_holders(&self) -> Vec<&str> {
@@ -742,6 +774,69 @@ impl Scoreboard {
                 sent.push(name);
             }
         }
+    }
+}
+
+/// Names of vanilla's built-in `ObjectiveCriteria` that the server updates itself.
+pub mod criteria {
+    pub const TRIGGER: &str = "trigger";
+    pub const DEATH_COUNT: &str = "deathCount";
+    pub const KILL_COUNT_PLAYERS: &str = "playerKillCount";
+    pub const KILL_COUNT_ALL: &str = "totalKillCount";
+    pub const HEALTH: &str = "health";
+    pub const FOOD: &str = "food";
+    pub const AIR: &str = "air";
+    pub const ARMOR: &str = "armor";
+    pub const EXPERIENCE: &str = "xp";
+    pub const LEVEL: &str = "level";
+    pub const TEAM_KILL_PREFIX: &str = "teamkill.";
+    pub const KILLED_BY_TEAM_PREFIX: &str = "killedByTeam.";
+}
+
+/// Vanilla `Scoreboard.forAllObjectives` with an entity as the score holder.
+pub fn for_all_entity_objectives(
+    holder: &dyn EntityBase,
+    criterion: &str,
+    op: impl Fn(i32) -> i32,
+) {
+    let world = holder.get_entity().world.load_full();
+    let needs_display = {
+        let scoreboard = world
+            .scoreboard
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut matching = scoreboard
+            .objectives
+            .values()
+            .filter(|objective| objective.criterion == criterion)
+            .peekable();
+        if matching.peek().is_none() {
+            return;
+        }
+        matching.any(|objective| objective.display_auto_update)
+    };
+    // The display name reads the holder's team, so it is built without the scoreboard locked.
+    let display = needs_display.then(|| holder.get_display_name());
+    world
+        .scoreboard
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .for_all_objectives(
+            &*world,
+            criterion,
+            &holder.get_scoreboard_name(),
+            display.as_ref(),
+            op,
+        );
+}
+
+/// Vanilla `ServerPlayer.handleTeamKill`: `source` scores in the `<prefix><color>` objectives
+/// of `target`'s team color.
+pub fn handle_team_kill(source: &dyn EntityBase, target: &dyn EntityBase, prefix: &str) {
+    if let Some(color) = target.get_team().and_then(|team| team.color) {
+        for_all_entity_objectives(source, &format!("{prefix}{}", color.name()), |v| {
+            v.wrapping_add(1)
+        });
     }
 }
 

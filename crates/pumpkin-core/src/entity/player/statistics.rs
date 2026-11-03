@@ -31,6 +31,17 @@ fn stat_value_key(category: StatisticCategory, stat: i32) -> Option<String> {
     Some(format!("minecraft:{name}"))
 }
 
+/// Vanilla `Stat.buildName`, the scoreboard criterion of a stat like
+/// `minecraft.mined:minecraft.stone`.
+#[must_use]
+pub fn criterion_name(category: StatisticCategory, stat: i32) -> Option<String> {
+    Some(format!(
+        "{}:{}",
+        category.registry_key().replace(':', "."),
+        stat_value_key(category, stat)?.replace(':', ".")
+    ))
+}
+
 fn stat_value_id(category: StatisticCategory, key: &str) -> Option<i32> {
     Some(match category {
         StatisticCategory::Mined => i32::from(Block::from_name(key)?.id.as_u16()),
@@ -155,5 +166,22 @@ mod tests {
             5
         );
         assert_eq!(stats.to_json(5023), json);
+    }
+
+    /// Scoreboard criteria names as vanilla's `/scoreboard objectives add` accepts them.
+    #[test]
+    fn stat_criterion_names_match_vanilla() {
+        assert_eq!(
+            criterion_name(
+                StatisticCategory::Mined,
+                i32::from(Block::STONE.id.as_u16())
+            )
+            .as_deref(),
+            Some("minecraft.mined:minecraft.stone")
+        );
+        assert_eq!(
+            criterion_name(StatisticCategory::Custom, CustomStatistic::Jump as i32).as_deref(),
+            Some("minecraft.custom:minecraft.jump")
+        );
     }
 }
