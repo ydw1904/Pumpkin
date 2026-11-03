@@ -7,6 +7,7 @@ use crate::command::argument_types::entity_selector::parser::SELECTORS_NOT_ALLOW
 use crate::command::context::command_source::CommandSource;
 use crate::command::errors::command_syntax_error::CommandSyntaxError;
 use crate::entity::EntityBase;
+use crate::entity::living::LivingEntity;
 use crate::entity::player::Player;
 use crate::world::World;
 use pumpkin_data::Advancement;
@@ -478,7 +479,10 @@ impl EntitySelectorPredicate {
     #[allow(clippy::too_many_lines)]
     pub fn test(&self, entity: &dyn EntityBase) -> bool {
         match self {
-            Self::IsAlive => entity.get_entity().is_alive(),
+            // Vanilla `LivingEntity.isAlive` also needs health left, so dying mobs aren't selected.
+            Self::IsAlive => entity
+                .get_living_entity()
+                .map_or_else(|| entity.get_entity().is_alive(), LivingEntity::is_alive),
             Self::GameMode(mode, invert) => entity
                 .get_player()
                 .is_some_and(|p| (p.gamemode.load() == *mode) ^ invert),
