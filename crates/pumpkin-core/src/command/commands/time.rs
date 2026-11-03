@@ -16,14 +16,19 @@ use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
 use crate::command::suggestion::provider::{SuggestionProvider, SuggestionProviderResult};
 use crate::command::suggestion::suggestions::SuggestionsBuilder;
+use crate::world::World;
 use pumpkin_util::identifier::Identifier;
+use std::sync::Arc;
 
 const DESCRIPTION: &str = "Query or modify the world time and clocks.";
 const PERMISSION: &str = "minecraft:command.time";
 
-const DEFAULT_CLOCK: &str = "minecraft:overworld";
 const TIMELINE_REGISTRY: &str = "minecraft:timeline";
 
+static ERROR_NO_DEFAULT_CLOCK: CommandErrorType<1> = CommandErrorType::new(
+    translation::java::COMMANDS_TIME_NO_DEFAULT_CLOCK,
+    translation::java::COMMANDS_TIME_NO_DEFAULT_CLOCK,
+);
 static ERROR_UNKNOWN_TIMELINE: CommandErrorType<2> = CommandErrorType::new(
     translation::java::ARGUMENT_RESOURCE_NOT_FOUND,
     translation::java::ARGUMENT_RESOURCE_NOT_FOUND,
@@ -79,13 +84,32 @@ const fn wrap_time(ticks: i64) -> i32 {
     (ticks % 2_147_483_647) as i32
 }
 
-fn clock_name(context: &CommandContext, has_clock: bool) -> String {
+/// The `of <clock>` argument, or vanilla `TimeCommand.getDefaultClock` for the source's dimension.
+fn clock_name(context: &CommandContext, has_clock: bool) -> Result<String, CommandSyntaxError> {
     if has_clock {
-        IdentifierArgumentType::get(context, "clock")
-            .map_or_else(|_| DEFAULT_CLOCK.to_string(), |id| id.to_string())
-    } else {
-        DEFAULT_CLOCK.to_string()
+        return Ok(IdentifierArgumentType::get(context, "clock")?.to_string());
     }
+    let dimension = &context.source.world().dimension;
+    dimension.default_clock.map(str::to_string).ok_or_else(|| {
+        ERROR_NO_DEFAULT_CLOCK.create_without_context(TextComponent::text(dimension.minecraft_name))
+    })
+}
+
+/// The clock and the world that keeps its time: the one whose dimension uses it by default.
+fn resolve_clock(
+    context: &CommandContext,
+    has_clock: bool,
+) -> Result<(String, Arc<World>), CommandSyntaxError> {
+    let clock = clock_name(context, has_clock)?;
+    let world = context
+        .server()
+        .worlds
+        .load()
+        .iter()
+        .find(|world| world.dimension.default_clock == Some(clock.as_str()))
+        .cloned()
+        .unwrap_or_else(|| context.source.world().clone());
+    Ok((clock, world))
 }
 
 /// The `<timeline>` argument, which has to run on `clock`.
@@ -155,9 +179,12 @@ struct QueryExecutor {
 
 impl CommandExecutor for QueryExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
-        let clock_name = clock_name(context, self.has_clock);
-
-        let world = context.source.world();
+        // `query gametime` reads the source's world and needs no clock.
+        let (clock_name, world) = if matches!(self.mode, QueryMode::GameTime) {
+            (String::new(), context.source.world().clone())
+        } else {
+            resolve_clock(context, self.has_clock)?
+        };
         let level_time = world
             .level_time
             .lock()
@@ -239,9 +266,8 @@ struct ActionExecutor {
 impl CommandExecutor for ActionExecutor {
     #[allow(clippy::too_many_lines)]
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
-        let clock_name = clock_name(context, self.has_clock);
-
-        let world = context.source.world();
+        let (clock_name, world) = resolve_clock(context, self.has_clock)?;
+        let world = &world;
 
         match self.action {
             Action::SetTimeMarker => {
@@ -433,7 +459,9 @@ impl SuggestionProvider for TimeMarkerSuggestionProvider {
         context: &CommandContext,
         builder: SuggestionsBuilder,
     ) -> SuggestionProviderResult {
-        let clock = clock_name(context, self.has_clock);
+        let Ok(clock) = clock_name(context, self.has_clock) else {
+            return builder.build();
+        };
         let markers: Vec<&str> = clock_time_markers(&clock)
             .filter(|(marker, _)| marker.show_in_commands)
             .map(|(marker, _)| marker.name)

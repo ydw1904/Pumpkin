@@ -191,6 +191,11 @@ h.start(async () => {
   for (const q of ['query daytime', 'of minecraft:the_end query day', 'set -1', 'set foo', 'pause', 'resume', 'resume', 'rate 1', 'rate 2', 'query gametime']) {
     h.result(`time_${q.replace(/[ :]/g, '_')}`, (await run('time ' + q, 2)).replace(/\(.*/, ''))
   }
+  // Each dimension's default clock: none in the Nether, its own in the End.
+  h.result('time_nether_query', await run('execute in minecraft:the_nether run time query time', 2))
+  h.result('time_nether_gametime', (await run('execute in minecraft:the_nether run time query gametime', 2)).replace(/\(.*/, ''))
+  h.result('time_end_query', (await run('execute in minecraft:the_end run time query time', 2)).replace(/,\d+\)$/, ')'))
+  h.result('time_nether_of_overworld', (await run('execute in minecraft:the_nether run time of minecraft:overworld query time', 2)).replace(/,\d+\)$/, ')'))
   await run('time rate 1')
   await run('time set 6000')
 

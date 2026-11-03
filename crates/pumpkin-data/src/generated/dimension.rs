@@ -71,6 +71,7 @@ pub struct Dimension {
     pub nether_portal_spawns_piglin: bool,
     pub bed_rule: BedRule,
     pub timelines: Option<&'static str>,
+    pub default_clock: Option<&'static str>,
 }
 impl Dimension {
     pub const OVERWORLD: Self = Self {
@@ -116,6 +117,7 @@ impl Dimension {
             explodes: false,
         },
         timelines: Some("#minecraft:in_overworld"),
+        default_clock: Some("minecraft:overworld"),
     };
     pub const OVERWORLD_CAVES: Self = Self {
         id: 1u8,
@@ -160,6 +162,7 @@ impl Dimension {
             explodes: false,
         },
         timelines: Some("#minecraft:in_overworld"),
+        default_clock: Some("minecraft:overworld"),
     };
     pub const THE_END: Self = Self {
         id: 2u8,
@@ -199,6 +202,7 @@ impl Dimension {
             explodes: true,
         },
         timelines: Some("#minecraft:in_end"),
+        default_clock: Some("minecraft:the_end"),
     };
     pub const THE_NETHER: Self = Self {
         id: 3u8,
@@ -238,6 +242,7 @@ impl Dimension {
             explodes: true,
         },
         timelines: Some("#minecraft:in_nether"),
+        default_clock: None,
     };
     pub fn from_name(name: &str) -> Option<&'static Self> {
         match name {

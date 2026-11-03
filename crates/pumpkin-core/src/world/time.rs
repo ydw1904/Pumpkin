@@ -2,6 +2,23 @@ use pumpkin_protocol::{bedrock::client::set_time::CSetTime, java::client::play::
 
 use super::World;
 
+/// The network id of the clock a world's time drives: its dimension's default clock. Worlds
+/// without one keep the first clock, as before clocks were per dimension.
+#[must_use]
+pub fn clock_network_id(world: &World) -> i32 {
+    world
+        .dimension
+        .default_clock
+        .zip(world.server.upgrade())
+        .and_then(|(clock, server)| {
+            server
+                .datapack_manager
+                .get_dynamic_registry_raw_id("minecraft:world_clock", clock)
+        })
+        .and_then(|id| i32::try_from(id).ok())
+        .unwrap_or(0)
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClockInstance {
     pub total_ticks: i64,
@@ -127,7 +144,13 @@ impl LevelTime {
         let (total_ticks, partial_tick, rate) = self.pack_network_state(advance_time);
 
         world.broadcast_editioned(
-            &CUpdateTime::new_clock(self.world_age, 0, total_ticks, partial_tick, rate),
+            &CUpdateTime::new_clock(
+                self.world_age,
+                clock_network_id(world),
+                total_ticks,
+                partial_tick,
+                rate,
+            ),
             &CSetTime::new(self.time_of_day as _), // TODO do we need to tell bedrock that time is frozen?
         );
     }

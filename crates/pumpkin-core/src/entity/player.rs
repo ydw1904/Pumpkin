@@ -4457,6 +4457,7 @@ impl Player {
             lock.game_rules.advance_time
         };
 
+        let clock_id = crate::world::time::clock_network_id(world);
         let (clock_packet, time_packet) = {
             let l_world = world
                 .level_time
@@ -4473,7 +4474,7 @@ impl Player {
                 (
                     CUpdateTime::new_clock(
                         l_world.world_age,
-                        0,
+                        clock_id,
                         time_of_day,
                         l_world.partial_tick,
                         rate,
@@ -4483,7 +4484,13 @@ impl Player {
             } else {
                 let (total_ticks, partial_tick, rate) = l_world.pack_network_state(advance_time);
                 (
-                    CUpdateTime::new_clock(l_world.world_age, 0, total_ticks, partial_tick, rate),
+                    CUpdateTime::new_clock(
+                        l_world.world_age,
+                        clock_id,
+                        total_ticks,
+                        partial_tick,
+                        rate,
+                    ),
                     CSetTime::new(l_world.query_daytime() as _),
                 )
             }

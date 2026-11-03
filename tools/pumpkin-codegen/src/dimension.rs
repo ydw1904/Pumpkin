@@ -51,6 +51,9 @@ pub struct Dimension {
     /// Optional timeline resource key controlling day/night progression.
     #[serde(default)]
     pub timelines: Option<String>,
+    /// The world clock `/time` uses in this dimension by default.
+    #[serde(default)]
+    pub default_clock: Option<String>,
 }
 
 /// Generates the `TokenStream` for the `Dimension` struct, its constants, and `from_name` lookup.
@@ -288,6 +291,11 @@ pub fn build() -> TokenStream {
         } else {
             quote! { None }
         };
+        let default_clock_literal = if let Some(c) = dim.default_clock {
+            quote! { Some(#c) }
+        } else {
+            quote! { None }
+        };
 
         variants.extend(quote! {
             pub const #format_name: Self = Self {
@@ -328,6 +336,7 @@ pub fn build() -> TokenStream {
                     explodes: #explodes,
                 },
                 timelines: #timelines_literal,
+                default_clock: #default_clock_literal,
             };
         });
 
@@ -414,6 +423,7 @@ pub fn build() -> TokenStream {
             pub nether_portal_spawns_piglin: bool,
             pub bed_rule: BedRule,
             pub timelines: Option<&'static str>,
+            pub default_clock: Option<&'static str>,
         }
 
         impl Dimension {
