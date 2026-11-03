@@ -6,8 +6,8 @@ use pumpkin_data::{
 };
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::{
-    BlockDirection, HeightMap,
-    math::{block_box::BlockBox, position::BlockPos},
+    BlockDirection,
+    math::{block_box::BlockBox, position::BlockPos, vector3::Vector3},
     random::{
         RandomDeriverImpl, RandomGenerator, RandomImpl, hash_block_pos, legacy_rand::LegacyRand,
     },
@@ -17,8 +17,10 @@ use crate::{
     ProtoChunk,
     generation::{
         positions::chunk_pos::{start_block_x, start_block_z},
+        proto_chunk::GenerationCache,
         structure::{
             piece::StructurePieceType,
+            shiftable_piece::{DEFAULT_H_POS, update_height_position_to_lowest_ground_height},
             structures::{
                 StructureGenerator, StructureGeneratorContext, StructurePiece, StructurePieceBase,
                 StructurePiecesCollector, StructurePosition,
@@ -53,7 +55,7 @@ impl StructureGenerator for DesertPyramidGenerator {
         let mut collector = StructurePiecesCollector::default();
         collector.add_piece(Box::new(DesertPyramidPiece {
             piece,
-            height_adjusted: false,
+            height_position: DEFAULT_H_POS,
             has_placed_chest: [false; 4],
         }));
 
@@ -66,7 +68,7 @@ impl StructureGenerator for DesertPyramidGenerator {
 
 pub struct DesertPyramidPiece {
     piece: StructurePiece,
-    height_adjusted: bool,
+    height_position: i32,
     has_placed_chest: [bool; 4],
 }
 
@@ -75,32 +77,6 @@ impl DesertPyramidPiece {
         let mut props = WhiteWoolStairsLikeProperties::default(&Block::SANDSTONE_STAIRS);
         props.facing = facing;
         BlockState::from_id(props.to_state_id(&Block::SANDSTONE_STAIRS))
-    }
-
-    fn adjust_height(&mut self, chunk: &ProtoChunk, random: &mut RandomGenerator) -> bool {
-        if self.height_adjusted {
-            return true;
-        }
-
-        let ground_offset = -(random.next_bounded_i32(3));
-        let bb = self.piece.bounding_box;
-        let mut lowest = i32::MAX;
-
-        for z in bb.min.z..=bb.max.z {
-            for x in bb.min.x..=bb.max.x {
-                let y = chunk.get_top_y(&HeightMap::MotionBlockingNoLeaves, x, z);
-                lowest = lowest.min(y);
-            }
-        }
-
-        if lowest == i32::MAX {
-            return false;
-        }
-
-        let shift_y = lowest - self.piece.bounding_box.min.y + ground_offset;
-        self.piece.bounding_box.move_pos(0, shift_y, 0);
-        self.height_adjusted = true;
-        true
     }
 
     fn place_sand(
@@ -530,20 +506,45 @@ impl StructurePieceBase for DesertPyramidPiece {
         &mut self.piece
     }
 
+    fn place_in_region(
+        &mut self,
+        region: &mut dyn GenerationCache,
+        block_registry: &dyn crate::world::WorldPortalExt,
+        random: &mut RandomGenerator,
+        seed: i64,
+        chunk_box: &BlockBox,
+        _reference_pos: Vector3<i32>,
+    ) {
+        // Vanilla draws the offset on every call, even after the height is settled.
+        let offset = -random.next_bounded_i32(3);
+        if !update_height_position_to_lowest_ground_height(
+            &mut self.piece.bounding_box,
+            &mut self.height_position,
+            region,
+            offset,
+        ) {
+            return;
+        }
+        self.place(
+            region.get_center_chunk_mut(),
+            block_registry,
+            random,
+            seed,
+            chunk_box,
+        );
+    }
+
+    /// Places the blocks once [`Self::place_in_region`] has settled the height.
     #[expect(clippy::too_many_lines)]
     fn place(
         &mut self,
         chunk: &mut ProtoChunk,
         _block_registry: &dyn crate::world::WorldPortalExt,
-        random: &mut RandomGenerator,
+        _random: &mut RandomGenerator,
         seed: i64,
         chunk_box: &BlockBox,
     ) {
         use pumpkin_util::random::xoroshiro128::Xoroshiro;
-
-        if !self.adjust_height(chunk, random) {
-            return;
-        }
 
         let origin = self.piece.bounding_box.min;
         let mut level_random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(seed as u64));
