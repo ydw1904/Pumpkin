@@ -2491,13 +2491,23 @@ impl DataComponentCodec<Self> for DyeImpl {
     }
 }
 
+// `map_decorations` has no stream codec of its own, so it goes over the network as NBT.
 impl DataComponentCodec<Self> for MapDecorationsImpl {
-    fn serialize(&self, _seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
+    fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
+        let mut bytes = Vec::new();
+        self.write_data()
+            .serialize(&mut NbtWriteHelperJava::new(&mut bytes))
+            .map_err(|e| WritingError::Message(e.to_string()))?;
+        seq.write_slice(&bytes)?;
         Ok(())
     }
 
-    fn deserialize(_seq: &mut impl NetworkReadExt) -> Result<Self, ReadingError> {
-        Ok(Self)
+    fn deserialize(seq: &mut impl NetworkReadExt) -> Result<Self, ReadingError> {
+        let data = seq
+            .get_compound_nbt_with_version(&pumpkin_util::version::JavaMinecraftVersion::V_26_2)?
+            .unwrap_or_else(pumpkin_nbt::compound::NbtCompound::new);
+        Self::read_data(&NbtTag::Compound(data))
+            .ok_or_else(|| ReadingError::Message("Invalid map_decorations".into()))
     }
 }
 

@@ -6430,13 +6430,12 @@ impl Player {
     }
 
     pub fn tick_maps(&self, server: &Server) {
-        use pumpkin_data::data_component_impl::MapIdImpl;
-        use pumpkin_data::item::Item;
+        use pumpkin_data::data_component_impl::{MapDecorationsImpl, MapIdImpl};
 
         for hand in Hand::all() {
             let stack = self.inventory().get_stack_in_hand(hand);
 
-            if stack.item.id == Item::FILLED_MAP.id
+            if crate::world::map::is_map_item(stack.item)
                 && let Some(map_id_comp) = stack.get_data_component::<MapIdImpl>()
             {
                 let map_id = map_id_comp.id;
@@ -6445,6 +6444,15 @@ impl Player {
                 {
                     let in_map_dimension =
                         self.world().dimension.minecraft_name == map_data.dimension.minecraft_name;
+                    // `MapItemSavedData.tickCarriedBy`: markers the item carries join the map.
+                    if let Some(static_decorations) =
+                        stack.get_data_component::<MapDecorationsImpl>()
+                    {
+                        map_data.add_static_decorations(
+                            static_decorations,
+                            self.world().get_world_age(),
+                        );
+                    }
                     // `MapItem.inventoryTick` and `MapItem.update`.
                     if !map_data.locked && in_map_dimension {
                         map_data.update(self);

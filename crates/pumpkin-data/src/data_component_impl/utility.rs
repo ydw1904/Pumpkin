@@ -361,17 +361,62 @@ impl DataComponentImpl for MapIdImpl {
     default_impl!(MapId);
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct MapDecorationsImpl;
+/// `MapDecorations.Entry`: a decoration at world coordinates.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MapDecorationEntry {
+    pub decoration_type: String,
+    pub x: f64,
+    pub z: f64,
+    pub rotation: f32,
+}
+
+/// Vanilla `MapDecorations`: map markers that come with the item, keyed by id.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct MapDecorationsImpl {
+    pub decorations: Vec<(String, MapDecorationEntry)>,
+}
 impl MapDecorationsImpl {
-    pub const fn read_data(_data: &NbtTag) -> Option<Self> {
-        Some(Self)
+    pub fn read_data(data: &NbtTag) -> Option<Self> {
+        let compound = data.extract_compound()?;
+        let decorations = compound
+            .child_tags
+            .iter()
+            .filter_map(|(key, entry)| {
+                let entry = entry.extract_compound()?;
+                Some((
+                    key.to_string(),
+                    MapDecorationEntry {
+                        decoration_type: entry.get_string("type")?.to_string(),
+                        x: entry.get_double("x")?,
+                        z: entry.get_double("z")?,
+                        rotation: entry.get_float("rotation")?,
+                    },
+                ))
+            })
+            .collect();
+        Some(Self { decorations })
+    }
+
+    /// `MapDecorations.withDecoration`.
+    #[must_use]
+    pub fn with_decoration(mut self, key: &str, entry: MapDecorationEntry) -> Self {
+        self.decorations.retain(|(existing, _)| existing != key);
+        self.decorations.push((key.to_string(), entry));
+        self
     }
 }
 impl DataComponentImpl for MapDecorationsImpl {
-    // TAG_End would close the surrounding components compound and corrupt the chunk.
     fn write_data(&self) -> NbtTag {
-        NbtTag::Compound(NbtCompound::new())
+        let mut compound = NbtCompound::new();
+        for (key, entry) in &self.decorations {
+            let mut tag = NbtCompound::new();
+            tag.put_string("type", entry.decoration_type.clone());
+            tag.put("x", NbtTag::Double(entry.x));
+            tag.put("z", NbtTag::Double(entry.z));
+            tag.put("rotation", NbtTag::Float(entry.rotation));
+            compound.put_compound(key, tag);
+        }
+        NbtTag::Compound(compound)
     }
     default_impl!(MapDecorations);
 }

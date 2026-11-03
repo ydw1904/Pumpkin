@@ -128,6 +128,52 @@ fn find_in_noise_world(
     None
 }
 
+/// The biome the generator puts at each `(x, y, z)` block position.
+///
+/// It reads the biome source without generating chunks, like vanilla `getBiome` on chunks that
+/// aren't loaded. Plugin generators have no biome source to read, so they give `None`.
+#[must_use]
+pub fn sample_biomes(
+    world_gen: &WorldGenerator,
+    positions: &[(i32, i32, i32)],
+) -> Option<Vec<&'static Biome>> {
+    match world_gen {
+        WorldGenerator::Flat(flat) => {
+            let name = flat.biome.strip_prefix("minecraft:").unwrap_or(&flat.biome);
+            let biome = Biome::from_name(name).unwrap_or(&Biome::PLAINS);
+            Some(vec![biome; positions.len()])
+        }
+        WorldGenerator::Noise(generator) => {
+            let supplier: &dyn BiomeSupplier = if generator.dimension == Dimension::THE_END {
+                &TheEndBiomeSupplier
+            } else if generator.dimension == Dimension::THE_NETHER {
+                &MultiNoiseBiomeSupplier::NETHER
+            } else {
+                &MultiNoiseBiomeSupplier::OVERWORLD
+            };
+            let mut sampler = MultiNoiseSampler::generate(&generator.base_router.multi_noise);
+            Some(
+                positions
+                    .iter()
+                    .map(|&(x, y, z)| {
+                        // `BiomeManager.getBiome`: the fuzzy zoom from block to biome cells.
+                        let cell = crate::generation::biome::get_biome_blend(
+                            generator.settings.shape.min_y,
+                            generator.settings.shape.height,
+                            generator.biome_mixer_seed,
+                            x,
+                            y,
+                            z,
+                        );
+                        supplier.biome(cell.x, cell.y, cell.z, &mut sampler)
+                    })
+                    .collect(),
+            )
+        }
+        WorldGenerator::Custom(_) => None,
+    }
+}
+
 /// The ids of every biome the given dimension's biome source can produce.
 #[must_use]
 pub fn possible_biomes(dimension: &Dimension) -> FxHashSet<u8> {

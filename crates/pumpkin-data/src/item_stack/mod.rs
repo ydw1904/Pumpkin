@@ -1316,9 +1316,18 @@ mod tests {
     #[test]
     fn map_decorations_survives_item_stack_nbt_roundtrip() {
         let mut stack = ItemStack::new(1, &Item::FILLED_MAP);
+        let decorations = MapDecorationsImpl::default().with_decoration(
+            "+",
+            crate::data_component_impl::MapDecorationEntry {
+                decoration_type: "minecraft:mansion".to_string(),
+                x: 120.0,
+                z: -40.0,
+                rotation: 180.0,
+            },
+        );
         stack.patch.push((
             DataComponent::MapDecorations,
-            Some(MapDecorationsImpl.to_dyn()),
+            Some(decorations.clone().to_dyn()),
         ));
 
         let mut compound = NbtCompound::new();
@@ -1331,10 +1340,10 @@ mod tests {
             .get_compound("components")
             .expect("components compound should survive");
 
-        assert!(matches!(
-            components.get("minecraft:map_decorations"),
-            Some(NbtTag::Compound(_))
-        ));
+        let tag = components
+            .get("minecraft:map_decorations")
+            .expect("map decorations should be written");
+        assert_eq!(MapDecorationsImpl::read_data(tag), Some(decorations));
     }
 
     #[test]

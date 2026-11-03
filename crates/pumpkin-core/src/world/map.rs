@@ -1,6 +1,12 @@
 use crate::entity::player::Player;
 use dashmap::DashMap;
+use pumpkin_data::data_component::DataComponent;
+use pumpkin_data::data_component_impl::MapDecorationsImpl;
 use pumpkin_data::dimension::Dimension;
+use pumpkin_data::item::Item;
+use pumpkin_data::map_color::MapColor;
+use pumpkin_data::map_decoration::MapDecorationType;
+use pumpkin_data::tag::{Taggable, WorldgenBiome};
 use pumpkin_inventory::crafting::recipe_provider::MAX_MAP_SCALE;
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_util::math::{position::BlockPos, vector2::Vector2};
@@ -11,6 +17,34 @@ use tracing::error;
 
 /// `MapItemSavedData.MAP_SIZE`.
 const MAP_SIZE: usize = 128;
+// `MapColor.Brightness` ids.
+const LOW: u8 = 0;
+const NORMAL: u8 = 1;
+const HIGH: u8 = 2;
+const LOWEST: u8 = 3;
+
+/// `MapItemSavedData.isInsideMap`: how far from the center, in map pixels, a marker still shows.
+const HALF_MAP_INSIDE: f32 = 63.0;
+
+/// Whether the item is a `MapItem`: every map item, and only those, comes with
+/// `map_decorations`.
+#[must_use]
+pub fn is_map_item(item: &Item) -> bool {
+    item.components
+        .iter()
+        .any(|(component, _)| *component == DataComponent::MapDecorations)
+}
+
+/// `MapItemSavedData.clampMapCoordinate`.
+fn clamp_map_coordinate(delta: f32) -> i8 {
+    if delta <= -HALF_MAP_INSIDE {
+        -128
+    } else if delta >= HALF_MAP_INSIDE {
+        127
+    } else {
+        (delta * 2.0 + 0.5) as i32 as i8
+    }
+}
 
 /// How often, in ticks, the player icon picks a new random rotation in the Nether.
 const NETHER_SPIN_INTERVAL_TICKS: i64 = 10;
@@ -289,6 +323,147 @@ impl MapData {
         (adjusted_y_rot * 16.0 / 360.0) as i32 as i8
     }
 
+    /// `MapItemSavedData.addDecoration` for markers other than players, at world coordinates.
+    pub fn add_decoration(
+        &mut self,
+        key: &str,
+        decoration_type: &MapDecorationType,
+        x: f64,
+        z: f64,
+        rotation: f64,
+        game_time: i64,
+    ) {
+        let scaling = (1 << self.scale) as f32;
+        let dx = (x - f64::from(self.center_x)) as f32 / scaling;
+        let dz = (z - f64::from(self.center_z)) as f32 / scaling;
+        let inside = (-HALF_MAP_INSIDE..=HALF_MAP_INSIDE).contains(&dx)
+            && (-HALF_MAP_INSIDE..=HALF_MAP_INSIDE).contains(&dz);
+        let existing = self.decorations.iter().position(|d| d.key == key);
+        if !inside && !self.unlimited_tracking {
+            if let Some(index) = existing {
+                self.decorations.remove(index);
+                self.dirty = true;
+            }
+            return;
+        }
+        let decoration = MapDecoration {
+            key: key.to_string(),
+            icon_type: decoration_type.id as i32,
+            x: clamp_map_coordinate(dx),
+            z: clamp_map_coordinate(dz),
+            direction: self.calculate_rotation(game_time, rotation),
+            display_name: None,
+        };
+        match existing {
+            Some(index) if self.decorations[index] == decoration => return,
+            Some(index) => self.decorations[index] = decoration,
+            None => self.decorations.push(decoration),
+        }
+        self.dirty = true;
+    }
+
+    /// The part of `MapItemSavedData.tickCarriedBy` that adds the markers an item carries.
+    pub fn add_static_decorations(&mut self, decorations: &MapDecorationsImpl, game_time: i64) {
+        for (key, entry) in &decorations.decorations {
+            if self.decorations.iter().any(|d| &d.key == key) {
+                continue;
+            }
+            let name = entry
+                .decoration_type
+                .strip_prefix("minecraft:")
+                .unwrap_or(&entry.decoration_type);
+            if let Some(decoration_type) = MapDecorationType::from_name(name) {
+                self.add_decoration(
+                    key,
+                    decoration_type,
+                    entry.x,
+                    entry.z,
+                    f64::from(entry.rotation),
+                    game_time,
+                );
+            }
+        }
+    }
+
+    /// `MapItem.renderBiomePreviewMap`: outlines the water biomes of an exploration map.
+    pub fn render_biome_preview(&mut self, world: &crate::world::World) {
+        if world.dimension.minecraft_name != self.dimension.minecraft_name {
+            return;
+        }
+        let scale = 1 << self.scale;
+        let start_x = self.center_x / scale - MAP_SIZE as i32 / 2;
+        let start_z = self.center_z / scale - MAP_SIZE as i32 / 2;
+        let positions: Vec<(i32, i32, i32)> = (0..MAP_SIZE as i32)
+            .flat_map(|row| {
+                (0..MAP_SIZE as i32).map(move |column| {
+                    (
+                        (start_x + column) * scale,
+                        world.sea_level,
+                        (start_z + row) * scale,
+                    )
+                })
+            })
+            .collect();
+        let Some(biomes) = pumpkin_world::generation::generator::biome_finder::sample_biomes(
+            &world.level.world_gen(),
+            &positions,
+        ) else {
+            return;
+        };
+        let watery: Vec<bool> = biomes
+            .iter()
+            .map(|biome| biome.has_tag(&WorldgenBiome::MINECRAFT_WATER_ON_MAP_OUTLINES))
+            .collect();
+        // `isBiomeWatery`, indexed by column then row.
+        let is_watery = |x: usize, z: usize| watery[z * MAP_SIZE + x];
+        for mx in 1..MAP_SIZE - 1 {
+            for mz in 1..MAP_SIZE - 1 {
+                let mut water_count = 0;
+                for (dx, dz) in [
+                    (-1, -1),
+                    (-1, 0),
+                    (-1, 1),
+                    (0, -1),
+                    (0, 1),
+                    (1, -1),
+                    (1, 0),
+                    (1, 1),
+                ] {
+                    if is_watery(mx.wrapping_add_signed(dx), mz.wrapping_add_signed(dz)) {
+                        water_count += 1;
+                    }
+                }
+                let mut brightness = LOWEST;
+                let mut color = None;
+                if is_watery(mx, mz) {
+                    color = Some(MapColor::COLOR_ORANGE);
+                    if water_count > 7 && mz % 2 == 0 {
+                        let wave =
+                            (mx as i32 + (pumpkin_util::math::sin(mz as f32) * 7.0) as i32) / 8 % 5;
+                        brightness = match wave {
+                            0 | 4 => LOW,
+                            1 | 3 => NORMAL,
+                            2 => HIGH,
+                            _ => brightness,
+                        };
+                    } else if water_count > 7 {
+                        color = None;
+                    } else if water_count > 5 {
+                        brightness = NORMAL;
+                    } else if water_count > 1 {
+                        brightness = LOW;
+                    }
+                } else if water_count > 0 {
+                    color = Some(MapColor::COLOR_BROWN);
+                    brightness = if water_count > 3 { NORMAL } else { LOWEST };
+                }
+                if let Some(color) = color {
+                    self.set_color(mx, mz, color.id << 2 | brightness);
+                }
+            }
+        }
+    }
+
     pub fn update(&mut self, player: &Player) {
         let world = player.world();
         let scale = 1 << self.scale;
@@ -341,8 +516,10 @@ impl MapData {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct MapDecoration {
+    /// The key vanilla keeps the decoration under, like `+` for an exploration map's target.
+    pub key: String,
     pub icon_type: i32,
     pub x: i8,
     pub z: i8,
