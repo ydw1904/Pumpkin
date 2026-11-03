@@ -3007,9 +3007,14 @@ impl DataComponentCodec<Self> for NoteBlockSoundImpl {
 
 impl DataComponentCodec<Self> for BannerPatternsImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
+        // BannerPatternLayers.Layer: the pattern is a registry holder sent as id + 1.
         seq.write_var_int(&VarInt::from(self.layers.len() as i32))?;
         for layer in &self.layers {
-            seq.write_var_int(&VarInt(0))?;
+            let pattern = pumpkin_data::banner_pattern::BannerPattern::from_name(&layer.pattern)
+                .ok_or_else(|| {
+                    WritingError::Message(format!("Unknown banner pattern {}", layer.pattern))
+                })?;
+            seq.write_var_int(&VarInt(pattern.id() as i32 + 1))?;
             seq.write_var_int(&VarInt::from(layer.color.id() as i32))?;
         }
         Ok(())
@@ -3019,11 +3024,17 @@ impl DataComponentCodec<Self> for BannerPatternsImpl {
         let len = read_count(seq, usize::MAX)?;
         let mut layers = Vec::with_capacity(len.min(MAX_INITIAL_COLLECTION_SIZE));
         for _ in 0..len {
-            let _pattern = seq.get_var_int()?.0;
+            let pattern_id = seq.get_var_int()?.0;
+            let pattern = usize::try_from(pattern_id - 1)
+                .ok()
+                .and_then(|idx| pumpkin_data::banner_pattern::BannerPattern::all().get(idx))
+                .ok_or_else(|| {
+                    ReadingError::Message(format!("Unknown banner pattern {pattern_id}"))
+                })?;
             let color_id = seq.get_var_int()?.0 as u8;
             let color = pumpkin_data::dye_color::DyeColor::by_id(color_id).unwrap_or_default();
             layers.push(pumpkin_data::data_component_impl::BannerPatternLayer {
-                pattern: String::new(),
+                pattern: pattern.asset_id().to_string(),
                 color,
             });
         }
