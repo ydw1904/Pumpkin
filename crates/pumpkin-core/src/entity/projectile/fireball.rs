@@ -2,6 +2,7 @@ use crate::entity::projectile::owner::ProjectileOwner;
 use std::sync::RwLock;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
+use pumpkin_data::damage::DamageType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_nbt::compound::NbtCompound;
@@ -23,6 +24,17 @@ pub const DEFLECTION_SCALE: f64 = 0.5;
 pub const DEFAULT_EXPLOSION_POWER: f32 = 1.0;
 pub const AIR_INERTIA: f64 = 0.95;
 pub const WATER_INERTIA: f64 = 0.8;
+
+/// The damage type of vanilla `DamageSources.fireball`, which loses its attribution without an
+/// owner.
+#[must_use]
+pub fn fireball_damage_type(owner: Option<&dyn EntityBase>) -> DamageType {
+    if owner.is_some() {
+        DamageType::FIREBALL
+    } else {
+        DamageType::UNATTRIBUTED_FIREBALL
+    }
+}
 
 pub struct FireballEntity {
     pub thrown: ThrownItemEntity,
@@ -243,11 +255,23 @@ impl EntityBase for FireballEntity {
         let world = self.get_entity().world.load();
 
         if let ProjectileHit::Entity { ref entity, .. } = hit {
-            let _ = entity.damage(
+            let owner = self.thrown.owner.get(&world);
+            let damage_type = fireball_damage_type(owner.as_deref());
+            if entity.damage_with_context(
                 entity.as_ref(),
                 6.0,
-                pumpkin_data::damage::DamageType::FIREBALL,
-            );
+                damage_type,
+                None,
+                Some(self),
+                owner.as_deref(),
+            ) {
+                crate::enchantment::EnchantmentHelper::do_post_attack_effects(
+                    entity.as_ref(),
+                    damage_type,
+                    owner.as_deref(),
+                    Some(self),
+                );
+            }
         }
 
         let hit_pos = hit.hit_pos();
