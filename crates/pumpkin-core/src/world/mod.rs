@@ -5707,6 +5707,29 @@ impl World {
         true
     }
 
+    /// Vanilla `StructureTemplate.placeEntities`: creates an entity a structure placed, finalized
+    /// with reason `STRUCTURE` when the structure asks for it.
+    fn create_structure_entity(
+        self: &Arc<Self>,
+        StructureEntity { mut nbt, finalize }: StructureEntity,
+    ) -> Option<Arc<dyn EntityBase>> {
+        nbt.child_tags.remove("UUID");
+        let entity = load_static_entity_from_nbt(&nbt, Vector3::default(), self)?;
+        if finalize {
+            crate::entity::mob::spawn::finalize_spawn(&entity, self, None);
+        }
+        Some(entity)
+    }
+
+    /// Adds the entities a structure placed outside world generation to the world.
+    pub fn spawn_structure_entities(self: &Arc<Self>, entities: Vec<StructureEntity>) {
+        for entity in entities {
+            if let Some(entity) = self.create_structure_entity(entity) {
+                self.spawn_entity(entity);
+            }
+        }
+    }
+
     /// Fires [`EntitySpawnEvent`]; `false` if a plugin cancels it.
     ///
     /// [`EntitySpawnEvent`]: crate::plugin::api::events::entity::entity_spawn::EntitySpawnEvent
@@ -8443,15 +8466,11 @@ impl WorldPortalExt for WorldPortal {
     }
 
     fn spawn_structure_entities(&self, chunk: &mut ProtoChunk, entities: Vec<StructureEntity>) {
-        for StructureEntity { mut nbt, finalize } in entities {
-            nbt.child_tags.remove("UUID");
-            if let Some(entity) = load_static_entity_from_nbt(&nbt, Vector3::default(), &self.0) {
-                if finalize {
-                    crate::entity::mob::spawn::finalize_spawn(&entity, &self.0, None);
-                }
-                if self.0.fire_entity_spawn_event(entity.as_ref()) {
-                    chunk.add_entity(natural_spawner::world_gen_entity_nbt(&entity));
-                }
+        for entity in entities {
+            if let Some(entity) = self.0.create_structure_entity(entity)
+                && self.0.fire_entity_spawn_event(entity.as_ref())
+            {
+                chunk.add_entity(natural_spawner::world_gen_entity_nbt(&entity));
             }
         }
     }

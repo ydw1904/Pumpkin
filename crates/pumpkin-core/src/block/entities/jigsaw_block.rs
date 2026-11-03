@@ -146,6 +146,7 @@ impl JigsawBlockEntity {
                     // Vanilla `JigsawPlacement.generateJigsaw` places with the generation position.
                     position.0,
                     world.level.seed.0 as i64,
+                    None,
                 );
             }
         }
