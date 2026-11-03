@@ -25,6 +25,7 @@ use crate::entity::{
         look_at_entity::LookAtEntityGoal, melee_attack::MeleeAttackGoal, swim::SwimGoal,
         wander_around::WanderAroundGoal,
     },
+    ai::pathfinder::node::PathType,
     mob::{
         Mob, MobEntity,
         patrol::{LongDistancePatrolGoal, PatrolData, PatrollingMonster},
@@ -61,7 +62,12 @@ pub struct RavagerEntity {
 impl RavagerEntity {
     #[must_use]
     pub fn new(entity: Entity) -> Arc<Self> {
-        let mob_entity = MobEntity::new(entity);
+        let mut mob_entity = MobEntity::new(entity);
+        mob_entity
+            .navigator
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .set_pathfinding_malus(PathType::Leaves, 0.0);
         let ravager = Self {
             mob_entity,
             raider_data: RaiderData::default(),
