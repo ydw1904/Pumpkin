@@ -642,6 +642,16 @@ impl World {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut saved = None;
         for (position, state_id) in changes {
+            // Portal blocks however placed become portal POIs, so travelling links to them.
+            if state_id.to_block_id() == pumpkin_data::BlockId::NETHER_PORTAL {
+                saved
+                    .get_or_insert_with(|| {
+                        self.portal_poi
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    })
+                    .add_portal(position);
+            }
             let old_poi = villager_poi.get_type(position);
             villager_poi.update_block(position, state_id);
             let new_poi = VillagePoiType::for_state(state_id);

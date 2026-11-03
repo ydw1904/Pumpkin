@@ -287,11 +287,6 @@ impl NetherPortal {
                 state,
                 BlockFlags::NOTIFY_LISTENERS | BlockFlags::UPDATE_KNOWN_SHAPE,
             );
-            world
-                .portal_poi
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .add_portal(pos);
         }
     }
 
@@ -727,11 +722,6 @@ impl NetherPortal {
                     portal_state,
                     BlockFlags::NOTIFY_LISTENERS | BlockFlags::UPDATE_KNOWN_SHAPE,
                 );
-                world
-                    .portal_poi
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .add_portal(pos);
             }
         }
         Some(corner)
