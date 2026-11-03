@@ -165,7 +165,9 @@ impl ScreenHandler for StonecutterScreenHandler {
         player: &dyn InventoryPlayer,
     ) {
         self.internal_on_slot_click(slot_index, button, action_type, player);
-        if slot_index == 0 {
+        // Taking the result uses up an input, so the result is set up again like vanilla's
+        // result slot onTake does.
+        if slot_index == 0 || slot_index == 1 {
             self.update_output();
         }
     }
@@ -182,18 +184,24 @@ impl ScreenHandler for StonecutterScreenHandler {
             let mut slot_stack = slot.get_cloned_stack();
             if !slot_stack.is_empty() {
                 stack = slot_stack.clone();
-                if slot_index < 2 {
-                    // From Stonecutter to Player
-                    if !self.insert_item(&mut slot_stack, 2, 38, true) {
-                        return ItemStack::EMPTY.clone();
+                // StonecutterMenu.quickMoveStack
+                let moved = if slot_index == 1 {
+                    let moved = self.insert_item(&mut slot_stack, 2, 38, true);
+                    if moved {
+                        slot.on_quick_move_crafted(slot_stack.clone(), stack.clone());
                     }
-                    slot.on_quick_move_crafted(slot_stack.clone(), stack.clone());
+                    moved
+                } else if slot_index == 0 {
+                    self.insert_item(&mut slot_stack, 2, 38, false)
+                } else if !self.get_available_recipes(&slot_stack).is_empty() {
+                    self.insert_item(&mut slot_stack, 0, 1, false)
+                } else if slot_index < 29 {
+                    self.insert_item(&mut slot_stack, 29, 38, false)
                 } else {
-                    // From Player to Stonecutter
-                    // Try input slot (0)
-                    if !self.insert_item(&mut slot_stack, 0, 1, false) {
-                        return ItemStack::EMPTY.clone();
-                    }
+                    self.insert_item(&mut slot_stack, 2, 29, false)
+                };
+                if !moved {
+                    return ItemStack::EMPTY.clone();
                 }
 
                 if slot_stack.is_empty() {
@@ -207,6 +215,7 @@ impl ScreenHandler for StonecutterScreenHandler {
                     taken_stack.set_count(stack.item_count - slot_stack.item_count);
                     slot.on_take_item(player, &taken_stack);
                 }
+                self.update_output();
             }
         }
         stack
