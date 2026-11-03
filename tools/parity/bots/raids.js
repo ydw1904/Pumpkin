@@ -29,6 +29,12 @@ bot._client.on('boss_bar', (p) => {
   else if (p.action === 1) bar.push('remove')
   else if (p.action === 3 && bar[bar.length - 1] !== title) bar.push(title)
 })
+// Advancements the bot is told about, such as Voluntary Exile for killing a raid captain.
+const advancements = []
+bot._client.on('system_chat', (p) => {
+  const text = flat(plain(p.content))
+  if (text.startsWith('chat.type.advancement')) advancements.push(text)
+})
 const takeBar = () => { const s = bar.join('>') || 'none'; bar.length = 0; return s }
 const effectNames = () => Object.keys(bot.entity.effects || {}).map(id => (bot.registry.effects[id] || {}).name).filter(Boolean).map(n => n.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase()).sort().join(',') || 'none'
 const hasEffect = (name) => effectNames().split(',').includes(name)
@@ -90,9 +96,12 @@ h.start(async () => {
     h.result(`wave${wave}_leader_banner`, Boolean(leader))
     const near = raiders().map(e => Math.round(Math.hypot(e.position.x - X, e.position.z - Z)))
     h.result(`wave${wave}_within_16`, near.every(d => d <= 16))
-    // The player kills one raider, the rest are killed by command.
-    h.cmd(`damage @e[type=#minecraft:raiders,limit=1,sort=nearest,x=${X},y=${Y},z=${Z}] 1000 minecraft:player_attack by ${bot.username}`)
+    // The player kills one raider (the captain in the first wave), the rest are killed by command.
+    const captain = wave === 1 ? ',nbt={equipment:{head:{id:"minecraft:white_banner"}}}' : ''
+    advancements.length = 0
+    h.cmd(`damage @e[type=#minecraft:raiders,limit=1,sort=nearest,x=${X},y=${Y},z=${Z}${captain}] 1000 minecraft:player_attack by ${bot.username}`)
     await h.ticks(10)
+    if (wave === 1) h.result('wave1_captain_kill_advancements', advancements.join('|') || 'none')
     h.cmd(`kill @e[type=#minecraft:raiders,x=${X},y=${Y},z=${Z},distance=..200]`)
     await h.waitFor(() => raiders().length === 0, 10000)
     await h.ticks(60)

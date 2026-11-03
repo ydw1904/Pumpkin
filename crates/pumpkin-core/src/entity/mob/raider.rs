@@ -11,7 +11,6 @@ use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::tracked_data;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::vector3::Vector3;
-use pumpkin_util::text::TextComponent;
 
 use crate::entity::ai::behavior::fleeing::Flee;
 use crate::entity::ai::goal::revenge::RevengeGoal;
@@ -44,20 +43,66 @@ pub const fn flee_creaking(priority: u8, walk_speed: f64, sprint_speed: f64) -> 
     )
 }
 
+/// Vanilla `Raid.getOminousBannerInstance`.
 #[must_use]
 pub fn create_ominous_banner() -> ItemStack {
     use pumpkin_data::data_component::DataComponent;
-    use pumpkin_data::data_component_impl::{CustomNameImpl, DataComponentImpl};
+    use pumpkin_data::data_component_impl::{
+        BannerPatternLayer, BannerPatternsImpl, DataComponentImpl, ItemNameImpl, Rarity,
+        RarityImpl, TooltipDisplayImpl,
+    };
+    use pumpkin_data::dye_color::DyeColor;
+    let layers = [
+        ("minecraft:rhombus", DyeColor::Cyan),
+        ("minecraft:stripe_bottom", DyeColor::LightGray),
+        ("minecraft:stripe_center", DyeColor::Gray),
+        ("minecraft:border", DyeColor::LightGray),
+        ("minecraft:stripe_middle", DyeColor::Black),
+        ("minecraft:half_horizontal", DyeColor::LightGray),
+        ("minecraft:circle", DyeColor::LightGray),
+        ("minecraft:border", DyeColor::Black),
+    ]
+    .into_iter()
+    .map(|(pattern, color)| BannerPatternLayer {
+        pattern: pattern.to_string(),
+        color,
+    })
+    .collect();
     let mut stack = ItemStack::new(1, &Item::WHITE_BANNER);
-    stack.patch.push((
-        DataComponent::CustomName,
-        Some(
-            CustomNameImpl {
-                name: TextComponent::translate("block.minecraft.ominous_banner", []),
-            }
-            .to_dyn(),
+    stack.patch.extend([
+        (
+            DataComponent::BannerPatterns,
+            Some(BannerPatternsImpl { layers }.to_dyn()),
         ),
-    ));
+        (
+            DataComponent::TooltipDisplay,
+            Some(
+                TooltipDisplayImpl {
+                    hide_tooltip: false,
+                    hidden_components: vec![DataComponent::BannerPatterns],
+                }
+                .to_dyn(),
+            ),
+        ),
+        (
+            DataComponent::ItemName,
+            Some(
+                ItemNameImpl {
+                    name: "block.minecraft.ominous_banner".into(),
+                }
+                .to_dyn(),
+            ),
+        ),
+        (
+            DataComponent::Rarity,
+            Some(
+                RarityImpl {
+                    rarity: Rarity::Uncommon,
+                }
+                .to_dyn(),
+            ),
+        ),
+    ]);
     stack
 }
 
