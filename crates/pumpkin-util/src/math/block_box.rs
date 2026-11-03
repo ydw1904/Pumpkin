@@ -50,6 +50,19 @@ impl BlockBox {
         }
     }
 
+    /// Vanilla `BoundingBox.fromCorners`: the box spanning two corners in any order.
+    #[must_use]
+    pub fn from_corners(a: Vector3<i32>, b: Vector3<i32>) -> Self {
+        Self::new(
+            a.x.min(b.x),
+            a.y.min(b.y),
+            a.z.min(b.z),
+            a.x.max(b.x),
+            a.y.max(b.y),
+            a.z.max(b.z),
+        )
+    }
+
     /// Creates a box along an axis with specified dimensions.
     ///
     /// # Arguments

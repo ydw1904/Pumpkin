@@ -82,7 +82,7 @@ pub fn place_block_input(
 
 /// The `loadWithComponents` step of vanilla `BlockInput.place`: the block entity is loaded
 /// from the tag alone, so fields the tag leaves out are reset. Returns whether it changed.
-fn load_block_entity_data(world: &Arc<World>, pos: &BlockPos, tag: &NbtCompound) -> bool {
+pub fn load_block_entity_data(world: &Arc<World>, pos: &BlockPos, tag: &NbtCompound) -> bool {
     let Some(entity) = world.get_block_entity(pos) else {
         return false;
     };
@@ -110,7 +110,7 @@ fn load_block_entity_data(world: &Arc<World>, pos: &BlockPos, tag: &NbtCompound)
     true
 }
 
-fn create_missing_block_entity(world: &Arc<World>, pos: &BlockPos, state: BlockStateId) {
+pub fn create_missing_block_entity(world: &Arc<World>, pos: &BlockPos, state: BlockStateId) {
     if world.get_block_state_id(pos) == state
         && world.get_block_entity(pos).is_none()
         && let Some(entity) =
