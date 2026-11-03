@@ -476,8 +476,44 @@ impl ToTokens for ItemComponents {
             }), });
         }
 
-        if self.blocks_attacks.is_some() {
-            tokens.extend(quote! { (BlocksAttacks, &BlocksAttacksImpl { raw: None }), });
+        if let Some(blocks_attacks) = &self.blocks_attacks {
+            let block_delay_seconds = float_literal(blocks_attacks.block_delay_seconds);
+            let disable_cooldown_scale = float_literal(blocks_attacks.disable_cooldown_scale);
+            let damage_reductions = blocks_attacks.damage_reductions.iter().map(|reduction| {
+                let horizontal_blocking_angle = float_literal(reduction.horizontal_blocking_angle);
+                let damage_type = damage_type_set_tokens(reduction.r#type.as_ref());
+                let base = float_literal(reduction.base);
+                let factor = float_literal(reduction.factor);
+                quote! {
+                    DamageReduction {
+                        horizontal_blocking_angle: #horizontal_blocking_angle,
+                        damage_type: #damage_type,
+                        base: #base,
+                        factor: #factor,
+                    }
+                }
+            });
+            let threshold = float_literal(blocks_attacks.item_damage.threshold);
+            let item_damage_base = float_literal(blocks_attacks.item_damage.base);
+            let item_damage_factor = float_literal(blocks_attacks.item_damage.factor);
+            let bypassed_by = damage_type_set_tokens(blocks_attacks.bypassed_by.as_ref());
+            let block_sound = optional_sound_tokens(blocks_attacks.block_sound.as_deref());
+            let disable_sound = optional_sound_tokens(blocks_attacks.disabled_sound.as_deref());
+            tokens.extend(quote! {
+                (BlocksAttacks, &BlocksAttacksImpl {
+                    block_delay_seconds: #block_delay_seconds,
+                    disable_cooldown_scale: #disable_cooldown_scale,
+                    damage_reductions: Cow::Borrowed(&[#(#damage_reductions),*]),
+                    item_damage: ItemDamageFunction {
+                        threshold: #threshold,
+                        base: #item_damage_base,
+                        factor: #item_damage_factor,
+                    },
+                    bypassed_by: #bypassed_by,
+                    block_sound: #block_sound,
+                    disable_sound: #disable_sound,
+                }),
+            });
         }
 
         if let Some(death_protection) = &self.death_protection {
@@ -1473,9 +1509,88 @@ fn kinetic_condition_tokens(condition: Option<&KineticConditionComponent>) -> To
     )
 }
 
+/// Vanilla `BlocksAttacks.CODEC`, with its defaults.
 #[derive(Deserialize, Clone)]
 pub struct BlocksAttacks {
-    // TODO
+    #[serde(default)]
+    pub block_delay_seconds: f32,
+    #[serde(default = "return_1f32")]
+    pub disable_cooldown_scale: f32,
+    #[serde(default = "default_damage_reductions")]
+    pub damage_reductions: Vec<DamageReduction>,
+    #[serde(default)]
+    pub item_damage: ItemDamageFunction,
+    pub bypassed_by: Option<StringOrList>,
+    pub block_sound: Option<String>,
+    pub disabled_sound: Option<String>,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct DamageReduction {
+    #[serde(default = "default_horizontal_blocking_angle")]
+    pub horizontal_blocking_angle: f32,
+    pub r#type: Option<StringOrList>,
+    pub base: f32,
+    pub factor: f32,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct ItemDamageFunction {
+    pub threshold: f32,
+    pub base: f32,
+    pub factor: f32,
+}
+
+/// Vanilla `ItemDamageFunction.DEFAULT`.
+impl Default for ItemDamageFunction {
+    fn default() -> Self {
+        Self {
+            threshold: 1.0,
+            base: 0.0,
+            factor: 1.0,
+        }
+    }
+}
+
+const fn default_horizontal_blocking_angle() -> f32 {
+    90.0
+}
+
+fn default_damage_reductions() -> Vec<DamageReduction> {
+    vec![DamageReduction {
+        horizontal_blocking_angle: default_horizontal_blocking_angle(),
+        r#type: None,
+        base: 0.0,
+        factor: 1.0,
+    }]
+}
+
+/// A damage type `HolderSet`: one type, a list, or a `#tag`.
+fn damage_type_set_tokens(types: Option<&StringOrList>) -> TokenStream {
+    let damage_type = |name: &str| {
+        let ident = format_ident!(
+            "{}",
+            name.strip_prefix("minecraft:")
+                .unwrap_or(name)
+                .to_shouty_snake_case()
+        );
+        quote! { &crate::damage::DAMAGE_TYPES[crate::damage::DamageType::#ident.id as usize] }
+    };
+    match types {
+        None => quote! { None },
+        Some(StringOrList::String(tag)) if tag.starts_with('#') => {
+            let tag = &tag[1..];
+            quote! { Some(IDSet::Tag(Cow::Borrowed(#tag))) }
+        }
+        Some(StringOrList::String(name)) => {
+            let damage_type = damage_type(name);
+            quote! { Some(IDSet::IDs(Cow::Borrowed(&[#damage_type]))) }
+        }
+        Some(StringOrList::List(names)) => {
+            let damage_types = names.iter().map(|name| damage_type(name));
+            quote! { Some(IDSet::IDs(Cow::Borrowed(&[#(#damage_types),*]))) }
+        }
+    }
 }
 
 /// Deserialized damage-resistance component indicating which damage types the item resists.

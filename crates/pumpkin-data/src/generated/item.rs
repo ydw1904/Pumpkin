@@ -97118,7 +97118,27 @@ impl Item {
                     attribute_modifiers: Cow::Borrowed(&[]),
                 },
             ),
-            (BlocksAttacks, &BlocksAttacksImpl { raw: None }),
+            (
+                BlocksAttacks,
+                &BlocksAttacksImpl {
+                    block_delay_seconds: 0.25f32,
+                    disable_cooldown_scale: 1.0f32,
+                    damage_reductions: Cow::Borrowed(&[DamageReduction {
+                        horizontal_blocking_angle: 90.0f32,
+                        damage_type: None,
+                        base: 0.0f32,
+                        factor: 1.0f32,
+                    }]),
+                    item_damage: ItemDamageFunction {
+                        threshold: 3.0f32,
+                        base: 1.0f32,
+                        factor: 1.0f32,
+                    },
+                    bypassed_by: Some(IDSet::Tag(Cow::Borrowed("minecraft:bypasses_shield"))),
+                    block_sound: Some(IdOr::Id(Sound::ItemShieldBlock)),
+                    disable_sound: Some(IdOr::Id(Sound::ItemShieldBreak)),
+                },
+            ),
             (
                 Equippable,
                 &EquippableImpl {

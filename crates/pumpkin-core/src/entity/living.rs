@@ -48,13 +48,13 @@ use pumpkin_data::data_component_impl::Operation;
 use pumpkin_data::data_component_impl::food::{ConsumableImpl, ConsumeEffect};
 use pumpkin_data::data_component_impl::{
     AttributeModifiersImpl, BlocksAttacksImpl, DeathProtectionImpl, EnchantmentsImpl,
-    EquipmentSlot, EquippableImpl, FoodImpl, KineticWeaponImpl, UseRemainderImpl,
+    EquipmentSlot, EquippableImpl, FoodImpl, KineticWeaponImpl, UseRemainderImpl, WeaponImpl,
 };
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::{EntityPose, EntityStatus, EntityType};
 use pumpkin_data::fluid::Fluid;
 use pumpkin_data::game_rules::{GameRule, GameRuleValue};
-use pumpkin_data::item_stack::{DamageResult, ItemStack};
+use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::SoundCategory;
 use pumpkin_data::{Block, Enchantment};
 use pumpkin_data::{damage::DamageType, sound::Sound};
@@ -843,33 +843,208 @@ impl LivingEntity {
     }
 
     pub fn is_blocking(&self) -> bool {
-        let item_in_use = self
+        self.item_blocking_with().is_some()
+    }
+
+    /// Vanilla `getItemBlockingWith`: the used item once it has been raised for its block delay.
+    pub fn item_blocking_with(&self) -> Option<ItemStack> {
+        let item = self
             .item_in_use
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(item) = item_in_use.as_ref()
-            && item.get_data_component::<BlocksAttacksImpl>().is_some()
-        {
-            let use_time = self.item_use_time.load(Ordering::Relaxed);
-            let required_time = if let Some(dyn_self) = self
-                .entity
-                .world
-                .load()
-                .get_entity_by_id(self.entity.entity_id)
-                && let Some(player) = dyn_self
-                    .cast_any()
-                    .downcast_ref::<crate::entity::player::Player>()
-                && matches!(
-                    player.client.as_ref(),
-                    crate::net::ClientPlatform::Bedrock(_)
-                ) {
-                0
-            } else {
-                5
-            };
-            return item.get_max_use_time() - use_time >= required_time;
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()?;
+        let blocks_attacks = item.get_data_component::<BlocksAttacksImpl>()?;
+        let is_bedrock_player = self
+            .entity
+            .world
+            .load()
+            .get_entity_by_id(self.entity.entity_id)
+            .is_some_and(|dyn_self| {
+                dyn_self.get_player().is_some_and(|player| {
+                    matches!(
+                        player.client.as_ref(),
+                        crate::net::ClientPlatform::Bedrock(_)
+                    )
+                })
+            });
+        // Bedrock clients raise the shield without a delay.
+        let block_delay = if is_bedrock_player {
+            0
+        } else {
+            blocks_attacks.block_delay_ticks()
+        };
+        let elapsed = item.get_max_use_time() - self.item_use_time.load(Ordering::Relaxed);
+        (elapsed >= block_delay).then_some(item)
+    }
+
+    /// Vanilla `applyItemBlocking`: returns how much damage the used item blocks, and its
+    /// `blocks_attacks` component when it took part.
+    fn apply_item_blocking(
+        &self,
+        caller: &dyn EntityBase,
+        damage: f32,
+        damage_type: DamageType,
+        position: Option<Vector3<f64>>,
+        source: Option<&dyn EntityBase>,
+    ) -> (f32, Option<BlocksAttacksImpl>) {
+        if damage <= 0.0 {
+            return (0.0, None);
         }
-        false
+        let Some(blocking_with) = self.item_blocking_with() else {
+            return (0.0, None);
+        };
+        let Some(blocks_attacks) = blocking_with
+            .get_data_component::<BlocksAttacksImpl>()
+            .cloned()
+        else {
+            return (0.0, None);
+        };
+        if blocks_attacks.is_bypassed_by(&damage_type) {
+            return (0.0, None);
+        }
+        if source
+            .and_then(|source| {
+                source
+                    .cast_any()
+                    .downcast_ref::<crate::entity::projectile::arrow::ArrowEntity>()
+            })
+            .is_some_and(|arrow| arrow.pierce_level.load(Ordering::Relaxed) > 0)
+        {
+            return (0.0, None);
+        }
+
+        // Vanilla `DamageSource.getSourcePosition` falls back to the direct entity.
+        let angle = position
+            .or_else(|| source.map(|source| source.get_entity().pos.load()))
+            .map_or(f64::from(std::f32::consts::PI), |source_pos| {
+                let view = Vector3::rotation_vector(0.0, f64::from(self.entity.head_yaw.load()));
+                let mut to_source = source_pos - self.entity.pos.load();
+                to_source.y = 0.0;
+                to_source.normalize().dot(&view).acos()
+            });
+        let damage_blocked = blocks_attacks.resolve_blocked_damage(&damage_type, damage, angle);
+        self.hurt_blocking_item(caller, &blocks_attacks, &blocking_with, damage_blocked);
+        if damage_blocked > 0.0
+            && !damage_type.has_tag(&tag::DamageType::MINECRAFT_IS_PROJECTILE)
+            && let Some(attacker) = source
+            && attacker.get_living_entity().is_some()
+        {
+            self.block_using_item(
+                caller,
+                attacker,
+                &blocks_attacks,
+                &blocking_with,
+                damage_blocked >= damage,
+            );
+        }
+        (damage_blocked, Some(blocks_attacks))
+    }
+
+    /// Vanilla `BlocksAttacks.hurtBlockingItem`: only players wear down what they block with.
+    fn hurt_blocking_item(
+        &self,
+        caller: &dyn EntityBase,
+        blocks_attacks: &BlocksAttacksImpl,
+        blocking_with: &ItemStack,
+        damage: f32,
+    ) {
+        let Some(player) = caller.get_player() else {
+            return;
+        };
+        player.increment_stat(StatisticCategory::Used, i32::from(blocking_with.item.id), 1);
+        let item_damage = blocks_attacks.item_damage.apply(damage);
+        let Some(hand) = *self
+            .active_hand
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        else {
+            return;
+        };
+        if item_damage > 0
+            && player.damage_item_in_slot(&EquipmentSlot::from_hand(hand), item_damage)
+            && player.inventory.get_stack_in_hand(hand).is_empty()
+        {
+            self.clear_active_hand();
+        }
+    }
+
+    /// Vanilla `blockUsingItem` with `blockedByItem`, and `Player`'s override that disables
+    /// the blocking item.
+    fn block_using_item(
+        &self,
+        caller: &dyn EntityBase,
+        attacker: &dyn EntityBase,
+        blocks_attacks: &BlocksAttacksImpl,
+        blocking_with: &ItemStack,
+        fully_blocked: bool,
+    ) {
+        if !fully_blocked {
+            let attacker_pos = attacker.get_entity().pos.load();
+            let pos = self.entity.pos.load();
+            let resistance = self.get_attribute_value(&Attributes::KNOCKBACK_RESISTANCE);
+            self.entity.apply_knockback(
+                knockback_after_resistance(0.5, resistance),
+                pos.x - attacker_pos.x,
+                pos.z - attacker_pos.z,
+            );
+        }
+
+        let Some(player) = caller.get_player() else {
+            return;
+        };
+        // Vanilla `getSecondsToDisableBlocking`, which the warden overrides to 5 seconds.
+        let disable_seconds = if attacker.get_entity().entity_type == &EntityType::WARDEN {
+            5.0
+        } else if let Some(attacker_player) = attacker.get_player() {
+            attacker_player
+                .inventory()
+                .held_item()
+                .get_data_component::<WeaponImpl>()
+                .map_or(0.0, |weapon| weapon.disable_blocking_for_seconds)
+        } else if let Some(attacker_living) = attacker.get_living_entity() {
+            attacker_living
+                .entity_equipment
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .get(&EquipmentSlot::MAIN_HAND)
+                .get_data_component::<WeaponImpl>()
+                .map_or(0.0, |weapon| weapon.disable_blocking_for_seconds)
+        } else {
+            0.0
+        };
+        if disable_seconds <= 0.0 {
+            return;
+        }
+        // Vanilla `BlocksAttacks.disable`.
+        let cooldown_ticks = blocks_attacks.disable_blocking_for_ticks(disable_seconds);
+        if cooldown_ticks <= 0 {
+            return;
+        }
+        let group = blocking_with
+            .get_use_cooldown()
+            .and_then(|cooldown| cooldown.cooldown_group.clone())
+            .unwrap_or_else(|| blocking_with.item.registry_key.to_string());
+        player.start_cooldown(group, cooldown_ticks);
+        self.clear_active_hand();
+        if let Some(sound) = &blocks_attacks.disable_sound {
+            let pos = self.entity.pos.load();
+            let world = self.entity.world.load();
+            let pitch = 0.8 + game_random().random::<f32>() * 0.4;
+            world.play_sound_event_fine(sound, caller.sound_source(), &pos, 0.8, pitch);
+            world.play_bedrock_level_sound("item.shield.break", &pos, 0);
+        }
+    }
+
+    /// Vanilla `BlocksAttacks.onBlocked`.
+    fn on_blocked(caller: &dyn EntityBase, blocks_attacks: &BlocksAttacksImpl) {
+        if let Some(sound) = &blocks_attacks.block_sound {
+            let entity = caller.get_entity();
+            let pos = entity.pos.load();
+            let world = entity.world.load();
+            let pitch = 0.8 + game_random().random::<f32>() * 0.4;
+            world.play_sound_event_fine(sound, caller.sound_source(), &pos, 1.0, pitch);
+            world.play_bedrock_level_sound("item.shield.block", &pos, 0);
+        }
     }
 
     /// Like vanilla, the dead are not healed and a negative amount takes health.
@@ -3708,6 +3883,11 @@ impl LivingEntity {
             }
         }
 
+        let (damage_blocked, blocked_with) =
+            self.apply_item_blocking(caller, amount, damage_type, position, source);
+        amount -= damage_blocked;
+        let blocked = damage_blocked > 0.0;
+
         // Vanilla parity: entities in FREEZE_HURTS_EXTRA_TYPES take 5x freezing damage.
         if damage_type == DamageType::FREEZE
             && self
@@ -3716,133 +3896,6 @@ impl LivingEntity {
                 .has_tag(&tag::EntityType::MINECRAFT_FREEZE_HURTS_EXTRA_TYPES)
         {
             amount *= 5.0;
-        }
-
-        // Check for shield blocking before armor/magic/cooldown
-        if self.is_blocking()
-            && !damage_type.has_tag(&tag::DamageType::MINECRAFT_BYPASSES_SHIELD)
-            // Vanilla `DamageSource.getSourcePosition` falls back to the direct entity, so melee
-            // hits without an explicit position are still blocked.
-            && let Some(pos) = position.or_else(|| source.map(|s| s.get_entity().pos.load()))
-        {
-            let player_pos = self.entity.pos.load();
-            let look_vec = Vector3::rotation_vector(0.0, self.entity.yaw.load() as f64);
-            let mut source_to_player = (player_pos - pos).normalize();
-            source_to_player.y = 0.0;
-
-            if source_to_player.dot(&look_vec) < 0.0 {
-                world.play_sound(Sound::ItemShieldBlock, SoundCategory::Players, &player_pos);
-                world.play_bedrock_level_sound("item.shield.block", &player_pos, 0);
-
-                if let Some(player) = caller.get_player() {
-                    player.increment_stat(
-                        StatisticCategory::Custom,
-                        CustomStatistic::DamageBlockedByShield as i32,
-                        (amount * 10.0).round() as i32,
-                    );
-                }
-
-                let active_hand = *self
-                    .active_hand
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if let Some(hand) = active_hand {
-                    let slot = if hand == Hand::Left {
-                        EquipmentSlot::OFF_HAND
-                    } else {
-                        EquipmentSlot::MAIN_HAND
-                    };
-
-                    let mut blocking_item_key = None;
-                    let durability_damage = (amount / 1.0).floor().max(1.0) as i32;
-                    if let Some(player) = caller.get_player() {
-                        let hand_slot = if slot == EquipmentSlot::OFF_HAND {
-                            Hand::Left
-                        } else {
-                            Hand::Right
-                        };
-                        let stack_before = player.inventory.get_stack_in_hand(hand_slot);
-                        if !stack_before.is_empty() {
-                            blocking_item_key = Some(stack_before.item.registry_key.to_string());
-                        }
-                        let broke = player.damage_item_in_slot(&slot, durability_damage);
-                        let empty = player.inventory.get_stack_in_hand(hand_slot).is_empty();
-                        if broke && empty {
-                            self.clear_active_hand();
-                        }
-                    } else {
-                        let mut equipment_guard = self
-                            .entity_equipment
-                            .lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner);
-                        if let Some(stack) = equipment_guard.equipment.get_mut(&slot) {
-                            let break_sound = stack
-                                .get_data_component::<pumpkin_data::data_component_impl::BreakSoundImpl>()
-                                .and_then(|bs| match bs.sound {
-                                    pumpkin_data::data_component_impl::IdOr::Id(s) => Some(s),
-                                    pumpkin_data::data_component_impl::IdOr::Value(_) => None,
-                                });
-                            if stack.damage_item(durability_damage) == DamageResult::Broken {
-                                if let Some(sound) = break_sound {
-                                    world.play_sound(sound, SoundCategory::Neutral, &player_pos);
-                                }
-                                world.send_entity_status(
-                                    &self.entity,
-                                    crate::entity::equipment_break_status(&slot),
-                                    ActorEventID::None,
-                                );
-                                *stack = ItemStack::EMPTY.clone();
-                                let broken_stack = stack.clone();
-                                drop(equipment_guard);
-
-                                self.send_equipment_changes(&[(slot, broken_stack)]);
-                                self.clear_active_hand();
-                            }
-                        }
-                    }
-
-                    let disable_seconds = cause.or(source).map_or(0.0, |attacker| {
-                        if attacker.get_entity().entity_type == &EntityType::WARDEN {
-                            5.0
-                        } else if let Some(attacker_player) = attacker.get_player() {
-                            attacker_player
-                                .inventory()
-                                .held_item()
-                                .get_data_component::<pumpkin_data::data_component_impl::WeaponImpl>()
-                                .map_or(0.0, |w| w.disable_blocking_for_seconds)
-                        } else if let Some(attacker_living) = attacker.get_living_entity() {
-                            attacker_living
-                                .entity_equipment
-                                .lock()
-                                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                                .get(&EquipmentSlot::MAIN_HAND)
-                                .get_data_component::<pumpkin_data::data_component_impl::WeaponImpl>()
-                                .map_or(0.0, |w| w.disable_blocking_for_seconds)
-                        } else {
-                            0.0
-                        }
-                    });
-                    if disable_seconds > 0.0 {
-                        let cooldown_ticks = (disable_seconds * 20.0).round() as i32;
-                        if cooldown_ticks > 0 {
-                            if let Some(player) = caller.get_player()
-                                && let Some(blocking_key) = blocking_item_key
-                            {
-                                player.start_cooldown(blocking_key, cooldown_ticks);
-                            }
-                            self.clear_active_hand();
-                            world.play_sound(
-                                Sound::ItemShieldBreak,
-                                SoundCategory::Players,
-                                &player_pos,
-                            );
-                            world.play_bedrock_level_sound("item.shield.break", &player_pos, 0);
-                        }
-                    }
-                }
-
-                return false;
-            }
         }
 
         if damage_type.has_tag(&tag::DamageType::MINECRAFT_DAMAGES_HELMET)
@@ -3874,6 +3927,16 @@ impl LivingEntity {
             amount - last_damage
         };
 
+        if damage_blocked > 0.0
+            && let Some(player) = caller.get_player()
+        {
+            player.increment_stat(
+                StatisticCategory::Custom,
+                CustomStatistic::DamageBlockedByShield as i32,
+                (damage_blocked * 10.0).round() as i32,
+            );
+        }
+
         let damage_after_armor =
             self.get_damage_after_armor_absorb(armor_damage, &damage_type, cause.or(source));
 
@@ -3895,18 +3958,21 @@ impl LivingEntity {
         self.last_damage_taken.store(amount);
         let damage_amount = effective_amount.max(0.0);
 
-        // Record the source once the hit is confirmed.
-        *self
-            .last_damage_type
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(damage_type);
-        self.last_damage_attacker.store(
-            cause
-                .or(source)
-                .map_or(0, |attacker| attacker.get_entity().entity_id),
-            Relaxed,
-        );
-        self.last_damage_stamp.store(world.get_world_age(), Relaxed);
+        // Vanilla only counts a hit the shield didn't fully block.
+        let success = !blocked || amount > 0.0;
+        if success {
+            *self
+                .last_damage_type
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(damage_type);
+            self.last_damage_attacker.store(
+                cause
+                    .or(source)
+                    .map_or(0, |attacker| attacker.get_entity().entity_id),
+                Relaxed,
+            );
+            self.last_damage_stamp.store(world.get_world_age(), Relaxed);
+        }
 
         let Some(server) = world.server.upgrade() else {
             return false;
@@ -3926,7 +3992,7 @@ impl LivingEntity {
 
         // Vanilla only shows the hit and pushes the target when the hit wasn't partly absorbed
         // by the invulnerability window, even if it kills.
-        if config.hurt_animation && full_hit {
+        if config.hurt_animation && full_hit && !blocked {
             let entity_id = self.entity.entity_id;
             let hurt_yaw = source.map_or(0.0, |source| {
                 let src = source.get_entity().pos.load();
@@ -3948,13 +4014,17 @@ impl LivingEntity {
         }
 
         if full_hit {
-            world.broadcast_damage_event(
-                &self.entity,
-                i32::from(damage_type.id),
-                source.map(|e| e.get_entity().entity_id),
-                cause.map(|e| e.get_entity().entity_id),
-                position,
-            );
+            if let Some(blocks_attacks) = blocked_with.as_ref().filter(|_| blocked) {
+                Self::on_blocked(caller, blocks_attacks);
+            } else {
+                world.broadcast_damage_event(
+                    &self.entity,
+                    i32::from(damage_type.id),
+                    source.map(|e| e.get_entity().entity_id),
+                    cause.map(|e| e.get_entity().entity_id),
+                    position,
+                );
+            }
         }
 
         self.no_action_time.store(0, Relaxed);
@@ -3966,7 +4036,11 @@ impl LivingEntity {
         }
         // Vanilla `dealDefaultKnockback`: along a projectile's flight, else away from the direct
         // source or the source position; with neither, `knockback` picks a random direction.
-        if full_hit && !damage_type.has_tag(&tag::DamageType::MINECRAFT_NO_KNOCKBACK) {
+        let fully_blocked = blocked && amount <= 0.0;
+        if full_hit
+            && !fully_blocked
+            && !damage_type.has_tag(&tag::DamageType::MINECRAFT_NO_KNOCKBACK)
+        {
             let target_pos = self.entity.pos.load();
             let (dx, dz) = if let Some(source) = source
                 && source.get_projectile_owner().is_some()
@@ -4081,7 +4155,7 @@ impl LivingEntity {
             self.on_death(damage_type, source, cause);
         }
 
-        true
+        success
     }
 
     pub fn damage(&self, caller: &dyn EntityBase, amount: f32, damage_type: DamageType) -> bool {

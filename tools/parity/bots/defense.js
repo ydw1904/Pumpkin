@@ -122,6 +122,24 @@ h.start(async () => {
   h.result('shield.axe_zombie', `${r3(20 - bot.health)} cooldowns=${cooldowns.join(';') || 'none'}`)
   await lower()
 
+  // A custom blocks_attacks component: no block delay, partial blocking, its own durability
+  // cost and a longer disable cooldown. The client has to decode it from the server's packets.
+  // Shields share a cooldown group, so wait out the axe's 100 tick cooldown first.
+  await h.ticks(100)
+  const custom = 'shield[blocks_attacks={block_delay_seconds:0,disable_cooldown_scale:2,damage_reductions:[{base:1,factor:0.5}],item_damage:{threshold:0,base:0,factor:2},block_sound:"minecraft:item.shield.block"}]'
+  for (const [label, extra] of [['custom', ''], ['custom_axe', ',equipment:{mainhand:{id:"minecraft:iron_axe",count:1}}']]) {
+    await reset()
+    cooldowns.length = 0
+    h.cmd(`item replace entity ${bot.username} weapon.offhand with ${custom}`)
+    await h.waitFor(() => bot.inventory.slots[45], 5000)
+    await zombie(2, extra)
+    await raise(1)
+    h.cmd(`damage ${bot.username} 5 minecraft:mob_attack by @e[tag=z,limit=1]`)
+    await h.ticks(10)
+    h.result(`shield.${label}`, `${r3(20 - bot.health)} durability=${shieldUsed()} cooldowns=${cooldowns.join(';') || 'none'}`)
+    await lower()
+  }
+
   // Totem of undying in the off hand.
   await reset()
   h.cmd(`item replace entity ${bot.username} weapon.offhand with totem_of_undying`)

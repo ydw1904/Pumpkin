@@ -273,6 +273,25 @@ impl IDSetContent for crate::item::Item {
     }
 }
 
+impl IDSetContent for crate::damage::DamageType {
+    fn registry_id(&self) -> u16 {
+        u16::from(self.id)
+    }
+
+    fn from_id(id: u16) -> Option<&'static Self> {
+        crate::damage::DAMAGE_TYPES.get(usize::from(id))
+    }
+
+    fn from_str(name: &str) -> Option<&'static Self> {
+        let name = name.strip_prefix("minecraft:").unwrap_or(name);
+        crate::damage::DAMAGE_TYPES.get(usize::from(Self::from_name(name)?.id))
+    }
+
+    fn to_string(&self) -> String {
+        format!("minecraft:{}", self.to_name())
+    }
+}
+
 #[derive(Clone, Hash, PartialEq, Debug)]
 pub enum IDSet<T: IDSetContent + 'static> {
     Tag(Cow<'static, str>),
@@ -329,6 +348,17 @@ impl IDSet<EntityType> {
         match self {
             Self::Tag(tag) => entity_type.is_tagged_with(tag).unwrap_or(false),
             Self::IDs(types) => types.iter().any(|t| t.id == entity_type.id),
+        }
+    }
+}
+
+impl IDSet<crate::damage::DamageType> {
+    /// Membership by id or damage type tag.
+    #[must_use]
+    pub fn contains(&self, damage_type: &crate::damage::DamageType) -> bool {
+        match self {
+            Self::Tag(tag) => damage_type.is_tagged_with(tag).unwrap_or(false),
+            Self::IDs(types) => types.iter().any(|t| t.id == damage_type.id),
         }
     }
 }

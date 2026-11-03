@@ -2192,58 +2192,88 @@ impl DataComponentCodec<Self> for DeathProtectionImpl {
     }
 }
 
+fn serialize_optional_sound(
+    sound: Option<&IdOr<SoundEvent>>,
+    seq: &mut impl NetworkWriteExt,
+) -> Result<(), WritingError> {
+    seq.write_option(&sound, |seq, sound| {
+        crate::IdOr::<crate::SoundEvent>::write(&data_to_proto_sound(sound), seq, |w, e| {
+            w.write_string(&e.sound_name)?;
+            w.write_option(&e.range, |w2, r| w2.write_f32(*r))
+        })
+    })
+}
+
+fn deserialize_optional_sound(
+    seq: &mut impl NetworkReadExt,
+) -> Result<Option<IdOr<SoundEvent>>, ReadingError> {
+    if !seq.get_bool()? {
+        return Ok(None);
+    }
+    let proto = crate::IdOr::<crate::SoundEvent>::read(seq, |r| {
+        let sound_name = r.get_str()?.to_string();
+        let range = r.get_option(NetworkReadExt::get_f32)?;
+        Ok(crate::SoundEvent { sound_name, range })
+    })
+    .map_err(|e| ReadingError::Message(format!("No sound: {e}")))?;
+    Ok(proto_to_data_sound(&proto))
+}
+
+/// Vanilla `BlocksAttacks.STREAM_CODEC`.
 impl DataComponentCodec<Self> for BlocksAttacksImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
-        seq.write_f32(0.0)?;
-        seq.write_f32(1.0)?;
-        seq.write_var_int(&VarInt(0))?;
-        seq.write_var_int(&VarInt(0))?;
-        seq.write_bool(false)?;
-        seq.write_bool(false)?;
-        seq.write_bool(false)
+        seq.write_f32(self.block_delay_seconds)?;
+        seq.write_f32(self.disable_cooldown_scale)?;
+        seq.write_var_int(&VarInt(self.damage_reductions.len() as i32))?;
+        for reduction in self.damage_reductions.iter() {
+            seq.write_f32(reduction.horizontal_blocking_angle)?;
+            seq.write_option(&reduction.damage_type, |seq, types| {
+                serialize_idset(types, seq)
+            })?;
+            seq.write_f32(reduction.base)?;
+            seq.write_f32(reduction.factor)?;
+        }
+        seq.write_f32(self.item_damage.threshold)?;
+        seq.write_f32(self.item_damage.base)?;
+        seq.write_f32(self.item_damage.factor)?;
+        seq.write_option(&self.bypassed_by, |seq, types| serialize_idset(types, seq))?;
+        serialize_optional_sound(self.block_sound.as_ref(), seq)?;
+        serialize_optional_sound(self.disable_sound.as_ref(), seq)
     }
 
     fn deserialize(seq: &mut impl NetworkReadExt) -> Result<Self, ReadingError> {
-        let _block_delay = seq.get_f32()?;
-        let _disable_scale = seq.get_f32()?;
-        let red_len = seq.get_var_int()?.0 as usize;
-        for _ in 0..red_len {
-            let _ = seq.get_f32()?;
-            if seq.get_bool()? {
-                let id_type = seq.get_var_int()?.0;
-                if id_type == 0 {
-                    let _ = seq.get_str()?;
-                } else if id_type > 0 {
-                    for _ in 0..(id_type - 1) {
-                        let _ = seq.get_var_int()?;
-                    }
-                }
-            }
-            let _ = seq.get_f32()?;
-            let _ = seq.get_f32()?;
+        // Vanilla's list codec has no limit; this only bounds the allocation.
+        const MAX_DAMAGE_REDUCTIONS: usize = 256;
+
+        let block_delay_seconds = seq.get_f32()?;
+        let disable_cooldown_scale = seq.get_f32()?;
+        let len = read_count(seq, MAX_DAMAGE_REDUCTIONS)?;
+        let mut damage_reductions = Vec::with_capacity(len);
+        for _ in 0..len {
+            let horizontal_blocking_angle = seq.get_f32()?;
+            let damage_type = seq.get_option(deserialize_idset)?;
+            damage_reductions.push(DamageReduction {
+                horizontal_blocking_angle,
+                damage_type,
+                base: seq.get_f32()?,
+                factor: seq.get_f32()?,
+            });
         }
-        let item_damage_type = seq.get_var_int()?.0;
-        if item_damage_type == 1 {
-            let _ = seq.get_f32()?;
-            let _ = seq.get_f32()?;
-        }
-        if seq.get_bool()? {
-            let id_type = seq.get_var_int()?.0;
-            if id_type == 0 {
-                let _ = seq.get_str()?;
-            } else if id_type > 0 {
-                for _ in 0..(id_type - 1) {
-                    let _ = seq.get_var_int()?;
-                }
-            }
-        }
-        if seq.get_bool()? {
-            let _ = seq.get_var_int()?;
-        }
-        if seq.get_bool()? {
-            let _ = seq.get_var_int()?;
-        }
-        Ok(Self { raw: None })
+        let item_damage = ItemDamageFunction {
+            threshold: seq.get_f32()?,
+            base: seq.get_f32()?,
+            factor: seq.get_f32()?,
+        };
+        let bypassed_by = seq.get_option(deserialize_idset)?;
+        Ok(Self {
+            block_delay_seconds,
+            disable_cooldown_scale,
+            damage_reductions: Cow::Owned(damage_reductions),
+            item_damage,
+            bypassed_by,
+            block_sound: deserialize_optional_sound(seq)?,
+            disable_sound: deserialize_optional_sound(seq)?,
+        })
     }
 }
 

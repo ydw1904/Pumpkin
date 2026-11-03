@@ -82,6 +82,8 @@ pub fn build() -> TokenStream {
     let mut constants = Vec::new();
     let mut type_from_name = TokenStream::new();
     let mut type_from_id = TokenStream::new();
+    let mut type_to_name = TokenStream::new();
+    let mut all_types = Vec::new();
 
     for (id, (name, data)) in damage_types.iter().enumerate() {
         let const_ident = format_ident!("{}", name.to_shouty_snake_case());
@@ -95,6 +97,10 @@ pub fn build() -> TokenStream {
         type_from_id.extend(quote! {
             #id_lit => Some(Self::#const_ident),
         });
+        type_to_name.extend(quote! {
+            #id_lit => #resource_name,
+        });
+        all_types.push(quote! { DamageType::#const_ident });
 
         let data = data;
         let death_message_type = if let Some(msg) = &data.death_message_type {
@@ -131,8 +137,13 @@ pub fn build() -> TokenStream {
         });
     }
 
+    let type_count = all_types.len();
+
     quote! {
         use crate::tag::{RegistryKey, Tag, Taggable};
+
+        #[doc = r" Every damage type, indexed by registry id."]
+        pub static DAMAGE_TYPES: [DamageType; #type_count] = [#(#all_types),*];
 
         #[derive(Clone, Copy, PartialEq, Debug)]
         pub struct DamageType {
@@ -184,6 +195,14 @@ pub fn build() -> TokenStream {
                 match id {
                     #type_from_id
                     _ => None
+                }
+            }
+
+            #[doc = r" The resource location path of this damage type."]
+            pub const fn to_name(&self) -> &'static str {
+                match self.id {
+                    #type_to_name
+                    _ => ""
                 }
             }
         }
