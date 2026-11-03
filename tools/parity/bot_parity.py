@@ -89,9 +89,13 @@ def start_pumpkin(binary, run_dir, port, seed, rng_seed=None, settings=None):
     run_dir.mkdir(parents=True, exist_ok=True)
     config = run_dir / "pumpkin.toml"
     if not config.exists():
-        # The first boot writes the default config; stop it and adjust the copy.
+        # The first boot writes the default config; stop it and adjust the copy. It may fail to
+        # bind the default port when another server has it, which is fine: the config comes first.
         first = Server([str(binary)], run_dir, PUMPKIN_READY, run_dir / "first-boot.log", run_dir / "cmds.txt")
-        if not first.ready.wait(300):
+        deadline = time.time() + 300
+        while not first.ready.is_set() and first.proc.poll() is None and time.time() < deadline:
+            time.sleep(0.5)
+        if not config.exists():
             sys.exit(f"Pumpkin didn't start; see {run_dir / 'first-boot.log'}")
         first.stop()
         shutil.rmtree(run_dir / "world", ignore_errors=True)
@@ -178,6 +182,8 @@ def main():
     parser.add_argument("--no-build", action="store_true", help="skip cargo build of pumpkin")
     parser.add_argument("--release", action="store_true", help="use a release build of pumpkin")
     parser.add_argument("--diffs-only", action="store_true", help="only print the lines that differ")
+    parser.add_argument("--ports", type=int, nargs=2, default=(25566, 25565), metavar=("VANILLA", "PUMPKIN"),
+                        help="ports to run the servers on")
     parser.add_argument("--rng-seed", type=int,
                         help="lock gameplay randomness to per-owner streams from this seed and diff the draw logs")
     args = parser.parse_args()
@@ -200,11 +206,14 @@ def main():
                        cwd=parity.REPO, check=True)
     binary = parity.REPO / "target" / profile / ("pumpkin.exe" if os.name == "nt" else "pumpkin")
 
+    # A check can turn Pumpkin settings back on with a `// pumpkin-settings: allow_nether=true` line.
+    settings = dict(pair.split("=", 1) for line in check.read_text(encoding="utf8").splitlines()
+                    if line.startswith("// pumpkin-settings:") for pair in line.split(":", 1)[1].split())
     run_dir = args.cache / "bot-runs" / f"{time.strftime('%Y%m%d-%H%M%S')}-{check.stem}"
     outputs = {}
     for name, start, port in (
-        ("vanilla", lambda d, p: start_vanilla(java, jar, d, p, args.seed, args.cache, args.rng_seed), 25566),
-        ("pumpkin", lambda d, p: start_pumpkin(binary, d, p, args.seed, args.rng_seed), 25565),
+        ("vanilla", lambda d, p: start_vanilla(java, jar, d, p, args.seed, args.cache, args.rng_seed), args.ports[0]),
+        ("pumpkin", lambda d, p: start_pumpkin(binary, d, p, args.seed, args.rng_seed, settings), args.ports[1]),
     ):
         print(f"Running {args.check} on {name}...")
         server = start(run_dir / name, port)
