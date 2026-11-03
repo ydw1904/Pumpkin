@@ -358,15 +358,21 @@ impl Level {
     }
 
     pub fn spawn_entity_generation(self: &Arc<Self>, pos: Vector2<i32>) {
-        let arc_chunk = Arc::new(ChunkEntityData {
-            x: pos.x,
-            z: pos.y,
-            data: std::sync::Mutex::new(Vec::new()),
-            live: AtomicBool::new(false),
-            dirty: AtomicBool::new(false),
-        });
-
-        self.loaded_entity_chunks.insert(pos, arc_chunk.clone());
+        // Another caller may have created the chunk since this one found it missing on disk,
+        // and entities may already have been added to it.
+        let arc_chunk = self
+            .loaded_entity_chunks
+            .entry(pos)
+            .or_insert_with(|| {
+                Arc::new(ChunkEntityData {
+                    x: pos.x,
+                    z: pos.y,
+                    data: std::sync::Mutex::new(Vec::new()),
+                    live: AtomicBool::new(false),
+                    dirty: AtomicBool::new(false),
+                })
+            })
+            .clone();
 
         if let Some((_, waiters)) = self.pending_entity_generations.remove(&pos) {
             for tx in waiters {
