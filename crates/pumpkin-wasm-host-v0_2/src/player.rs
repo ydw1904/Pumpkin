@@ -2840,7 +2840,7 @@ impl pumpkin::plugin::player::HostPlayerWithStore<PluginHostState> for HasSelf<P
             let config = &server.advanced_config;
             let decorated = pumpkin_util::text::TextComponent::chat_decorated(
                 &config.chat.format,
-                &player.gameprofile.name,
+                &player.get_display_name(),
                 &message,
             );
             server.broadcast_message(

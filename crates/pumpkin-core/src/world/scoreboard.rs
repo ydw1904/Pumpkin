@@ -982,6 +982,28 @@ impl Team {
         }
     }
 
+    /// Vanilla `PlayerTeam.getFormattedName`.
+    #[must_use]
+    pub fn formatted_name(&self, member_name: TextComponent) -> TextComponent {
+        let name = TextComponent::empty()
+            .add_child(self.player_prefix.clone())
+            .add_child(member_name)
+            .add_child(self.player_suffix.clone());
+        match self.color {
+            Some(color) => name.color_named(color),
+            None => name,
+        }
+    }
+
+    /// Vanilla `PlayerTeam.formatNameForTeam`.
+    #[must_use]
+    pub fn format_name_for_team(team: Option<&Self>, name: TextComponent) -> TextComponent {
+        match team {
+            Some(team) => team.formatted_name(name),
+            None => name,
+        }
+    }
+
     const fn parameters(&self) -> TeamParameters<'_> {
         TeamParameters {
             display_name: &self.display_name,

@@ -3647,7 +3647,7 @@ impl World {
         let msg_comp = TextComponent::translate_cross(
             translation::java::MULTIPLAYER_PLAYER_JOINED,
             translation::bedrock::MULTIPLAYER_PLAYER_JOINED,
-            [TextComponent::text(player.gameprofile.name.clone())],
+            [player.get_display_name()],
         )
         .color_named(NamedColor::Yellow);
 
@@ -4199,7 +4199,7 @@ impl World {
         let msg_comp = TextComponent::translate_cross(
             translation::java::MULTIPLAYER_PLAYER_JOINED,
             translation::bedrock::MULTIPLAYER_PLAYER_JOINED,
-            [TextComponent::text(player.gameprofile.name.clone())],
+            [player.get_display_name()],
         )
         .color_named(NamedColor::Yellow);
         let mut event = PlayerJoinEvent::new(player.clone(), msg_comp);
@@ -5501,7 +5501,7 @@ impl World {
                 let msg_comp = TextComponent::translate_cross(
                     translation::java::MULTIPLAYER_PLAYER_LEFT,
                     translation::bedrock::MULTIPLAYER_PLAYER_LEFT,
-                    [TextComponent::text(player.gameprofile.name.clone())],
+                    [player.get_display_name()],
                 )
                 .color_named(NamedColor::Yellow);
                 let mut event = PlayerLeaveEvent::new(player.clone(), msg_comp);

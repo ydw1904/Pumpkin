@@ -7560,7 +7560,6 @@ impl EntityBase for Player {
     }
 
     fn get_name(&self) -> TextComponent {
-        //TODO: team color
         TextComponent::text(self.gameprofile.name.clone())
     }
 
@@ -7573,17 +7572,18 @@ impl EntityBase for Player {
         {
             return display_name.clone();
         }
+        // Vanilla `Player.getDisplayName`.
         let name = self.get_name();
-        let name_clone = name.clone();
-        let mut name = name.click_event(ClickEvent::SuggestCommand {
-            command: format!("/tell {} ", self.gameprofile.name.clone()).into(),
-        });
-        name = name.hover_event(HoverEvent::show_entity(
-            self.living_entity.entity.entity_uuid.to_string(),
-            self.living_entity.entity.entity_type.resource_name.into(),
-            Some(name_clone),
-        ));
-        name.insertion(self.gameprofile.name.clone())
+        crate::world::scoreboard::Team::format_name_for_team(self.get_team().as_ref(), name.clone())
+            .click_event(ClickEvent::SuggestCommand {
+                command: format!("/tell {} ", self.gameprofile.name).into(),
+            })
+            .hover_event(HoverEvent::show_entity(
+                self.living_entity.entity.entity_uuid.to_string(),
+                self.living_entity.entity.entity_type.resource_name.into(),
+                Some(name),
+            ))
+            .insertion(self.gameprofile.name.clone())
     }
 
     fn cast_any(&self) -> &dyn std::any::Any {

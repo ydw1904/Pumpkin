@@ -9,6 +9,8 @@ use crate::command::node::{CommandExecutor, CommandExecutorResult};
 use pumpkin_data::translation;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
+use pumpkin_util::text::click::ClickEvent;
+use pumpkin_util::text::hover::HoverEvent;
 
 const DESCRIPTION: &str = "Sends a message to your team.";
 const PERMISSION: &str = "minecraft:command.teammsg";
@@ -46,10 +48,16 @@ impl CommandExecutor for TeamMsgCommandExecutor {
             return Err(NO_TEAM_ERROR.create_without_context());
         };
 
-        let mut team_display_name = team.display_name.clone();
-        if let Some(color) = team.color {
-            team_display_name = team_display_name.color_named(color);
-        }
+        // Vanilla `TeamMsgCommand.SUGGEST_STYLE`.
+        let team_display_name = team
+            .formatted_display_name()
+            .hover_event(HoverEvent::show_text(TextComponent::translate(
+                translation::java::CHAT_TYPE_TEAM_HOVER,
+                [],
+            )))
+            .click_event(ClickEvent::SuggestCommand {
+                command: "/teammsg ".into(),
+            });
         let message_component = TextComponent::text(message_text);
 
         let online_players = world.players.load();

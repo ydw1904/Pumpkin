@@ -30,7 +30,7 @@ impl BedrockClient {
 
                 let decorated_message = TextComponent::chat_decorated(
                     &config.chat.format,
-                    &gameprofile.name,
+                    &player.get_display_name(),
                     &message,
                 );
 

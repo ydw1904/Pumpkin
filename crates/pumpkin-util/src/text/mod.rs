@@ -1587,31 +1587,23 @@ impl TextComponent {
     ///
     /// Replaces:
     /// - `&` with `§` for legacy formatting
-    /// - `{DISPLAYNAME}` with the player's name
+    /// - `{DISPLAYNAME}` with the player's display name component, which keeps its team
+    ///   formatting and click/hover events like vanilla's chat sender name
     /// - `{MESSAGE}` with the chat message content
-    ///
-    /// # Arguments
-    /// - `format` – The message format string.
-    /// - `player_name` – The player's display name.
-    /// - `content` – The chat message content.
-    ///
-    /// # Returns
-    /// A formatted chat component.
     #[must_use]
-    pub fn chat_decorated(format: &str, player_name: &str, content: &str) -> Self {
+    pub fn chat_decorated(format: &str, display_name: &Self, content: &str) -> Self {
         // Todo: maybe allow players to use & in chat contingent on permissions
-        let with_resolved_fields = format
-            .replace('&', "§")
-            .replace("{DISPLAYNAME}", player_name)
-            .replace("{MESSAGE}", content);
-
-        Self(TextComponentBase {
-            content: Box::new(TextContent::Text {
-                text: Cow::Owned(with_resolved_fields),
-            }),
-            style: Box::new(Style::default()),
-            extra: vec![],
-        })
+        let format = format.replace('&', "§");
+        let mut result = Self::empty();
+        for (i, part) in format.split("{DISPLAYNAME}").enumerate() {
+            if i > 0 {
+                result = result.add_child(display_name.clone());
+            }
+            if !part.is_empty() {
+                result = result.add_text(part.replace("{MESSAGE}", content));
+            }
+        }
+        result
     }
 
     /// Converts this component to a pretty console string.
