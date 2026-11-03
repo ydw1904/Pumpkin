@@ -21,12 +21,18 @@ use pumpkin_util::math::vector3::Vector3;
 use crate::entity::{
     Entity, EntityBase,
     ageable::{AgeableData, AgeableMob},
+    ai::control::{
+        Control, LookControlTrait, MoveControlTrait,
+        smooth_swimming_look_control::SmoothSwimmingLookControl,
+        smooth_swimming_move_control::SmoothSwimmingMoveControl,
+    },
     ai::goal::{
         Controls, Goal, active_target::ActiveTargetGoal, breed::BreedGoal,
         follow_parent::FollowParentGoal, look_around::RandomLookAroundGoal,
-        look_at_entity::LookAtEntityGoal, melee_attack::MeleeAttackGoal, swim::SwimGoal,
-        tempt::TemptGoal, try_find_water::TryFindWaterGoal, wander_around::WanderAroundGoal,
+        look_at_entity::LookAtEntityGoal, melee_attack::MeleeAttackGoal, tempt::TemptGoal,
+        try_find_water::TryFindWaterGoal, wander_around::WanderAroundGoal,
     },
+    ai::pathfinder::{Navigator, node::PathType},
     ai::target_match::TargetMatch,
     area_effect_cloud::INFINITE_DURATION,
     living::LivingEntity,
@@ -48,6 +54,13 @@ const PLAY_DEAD_TICKS: i32 = 200;
 const SUPPORT_RANGE: f64 = 20.0;
 /// Vanilla `Axolotl.applySupportingEffects`: the longest regeneration it tops up to.
 const MAX_SUPPORT_REGENERATION: i32 = 2400;
+/// Vanilla `AxolotlAi` speed modifiers. Out of water every behavior but breeding moves at
+/// `SPEED_MULTIPLIER_ON_LAND`, which `AxolotlMoveControl` applies.
+const SPEED_MULTIPLIER_WHEN_MAKING_LOVE: f64 = 0.2;
+const SPEED_MULTIPLIER_ON_LAND: f64 = 0.15;
+const SPEED_MULTIPLIER_WHEN_IDLING_IN_WATER: f64 = 0.5;
+const SPEED_MULTIPLIER_WHEN_CHASING_IN_WATER: f64 = 0.6;
+const SPEED_MULTIPLIER_WHEN_FOLLOWING_ADULT_IN_WATER: f64 = 0.6;
 const HUNTING_COOLDOWN_MEMORY: &str = "minecraft:has_hunting_cooldown";
 const PLAY_DEAD_TICKS_MEMORY: &str = "minecraft:play_dead_ticks";
 
@@ -109,7 +122,25 @@ pub struct AxolotlEntity {
 
 impl AxolotlEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
-        let mob_entity = MobEntity::new(entity);
+        let mut mob_entity = MobEntity::new(entity);
+        // Vanilla `Axolotl` constructor and `createNavigation`.
+        *mob_entity
+            .move_control
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Box::new(AxolotlMoveControl(
+            SmoothSwimmingMoveControl::new(85, 10, 0.1, 0.5, false),
+        ));
+        *mob_entity
+            .look_control
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Box::new(AxolotlLookControl(SmoothSwimmingLookControl::new(20)));
+        let mut navigator = Navigator::amphibious(false);
+        navigator.set_pathfinding_malus(PathType::Water, 0.0);
+        *mob_entity
+            .navigator
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = navigator;
         let variant = AxolotlVariant::random_variant();
         let axolotl = Self {
             mob_entity,
@@ -131,13 +162,38 @@ impl AxolotlEntity {
 
             // Vanilla's `PLAY_DEAD` activity replaces every idle and fight behavior.
             goal_selector.add_goal(0, Box::new(PlayDeadGoal));
-            goal_selector.add_goal(1, Box::new(TryFindWaterGoal::new()));
-            goal_selector.add_goal(1, Box::new(SwimGoal::default()));
-            goal_selector.add_goal(2, BreedGoal::new(1.0));
-            goal_selector.add_goal(3, Box::new(TemptGoal::new(1.25, TEMPT_ITEMS, false)));
-            goal_selector.add_goal(4, Box::new(FollowParentGoal::new(1.25)));
-            goal_selector.add_goal(5, Box::new(MeleeAttackGoal::new(1.2, false)));
-            goal_selector.add_goal(6, Box::new(WanderAroundGoal::new(1.0)));
+            goal_selector.add_goal(
+                1,
+                Box::new(TryFindWaterGoal::with_fluid_tag(
+                    &tag::Fluid::MINECRAFT_AXOLOTL_TRIES_TO_FIND,
+                )),
+            );
+            goal_selector.add_goal(2, BreedGoal::new(SPEED_MULTIPLIER_WHEN_MAKING_LOVE));
+            goal_selector.add_goal(
+                3,
+                Box::new(TemptGoal::new(
+                    SPEED_MULTIPLIER_WHEN_IDLING_IN_WATER,
+                    TEMPT_ITEMS,
+                    false,
+                )),
+            );
+            goal_selector.add_goal(
+                4,
+                Box::new(FollowParentGoal::new(
+                    SPEED_MULTIPLIER_WHEN_FOLLOWING_ADULT_IN_WATER,
+                )),
+            );
+            goal_selector.add_goal(
+                5,
+                Box::new(MeleeAttackGoal::new(
+                    SPEED_MULTIPLIER_WHEN_CHASING_IN_WATER,
+                    false,
+                )),
+            );
+            goal_selector.add_goal(
+                6,
+                Box::new(WanderAroundGoal::new(SPEED_MULTIPLIER_WHEN_IDLING_IN_WATER)),
+            );
             goal_selector.add_goal(
                 7,
                 LookAtEntityGoal::with_default(mob_weak, &EntityType::PLAYER, 6.0),
@@ -327,6 +383,63 @@ impl Goal for AxolotlHuntGoal {
     }
 }
 
+/// Vanilla `Axolotl.AxolotlMoveControl`: still while playing dead. Out of water it moves at
+/// `AxolotlAi`'s land speed.
+struct AxolotlMoveControl(SmoothSwimmingMoveControl);
+
+impl Control for AxolotlMoveControl {}
+
+impl MoveControlTrait for AxolotlMoveControl {
+    fn tick(&mut self, mob: &dyn Mob) {
+        if as_axolotl(mob).is_some_and(AxolotlEntity::is_playing_dead) {
+            return;
+        }
+        if !mob.get_entity().is_in_water()
+            && self.0.speed_modifier != SPEED_MULTIPLIER_WHEN_MAKING_LOVE
+        {
+            self.0.speed_modifier = SPEED_MULTIPLIER_ON_LAND;
+        }
+        self.0.tick(mob);
+    }
+
+    fn set_wanted_position(&mut self, x: f64, y: f64, z: f64, speed_modifier: f64) {
+        self.0.set_wanted_position(x, y, z, speed_modifier);
+    }
+
+    fn strafe(&mut self, forward: f32, right: f32) {
+        self.0.strafe(forward, right);
+    }
+
+    fn has_wanted(&self) -> bool {
+        self.0.has_wanted()
+    }
+}
+
+/// Vanilla `Axolotl.AxolotlLookControl`: still while playing dead.
+struct AxolotlLookControl(SmoothSwimmingLookControl);
+
+impl Control for AxolotlLookControl {}
+
+impl LookControlTrait for AxolotlLookControl {
+    fn tick(&mut self, mob: &dyn Mob) {
+        if !as_axolotl(mob).is_some_and(AxolotlEntity::is_playing_dead) {
+            self.0.tick(mob);
+        }
+    }
+
+    fn look_at_with_range(
+        &mut self,
+        x: f64,
+        y: f64,
+        z: f64,
+        max_yaw_change: f32,
+        max_pitch_change: f32,
+    ) {
+        self.0
+            .look_at_with_range(x, y, z, max_yaw_change, max_pitch_change);
+    }
+}
+
 /// Vanilla `PlayDead`, running for the whole `PLAY_DEAD` activity so nothing else moves the
 /// axolotl.
 struct PlayDeadGoal;
@@ -383,6 +496,30 @@ impl Mob for AxolotlEntity {
 
     fn as_ageable(&self) -> Option<&dyn AgeableMob> {
         Some(self)
+    }
+
+    fn get_max_look_pitch_change(&self) -> f32 {
+        1.0
+    }
+
+    fn get_max_head_rotation(&self) -> f32 {
+        1.0
+    }
+
+    fn mob_is_pushed_by_fluids(&self) -> bool {
+        false
+    }
+
+    /// Vanilla `Axolotl.travelInWater`: no gravity under water.
+    fn travel_in_water(&self, caller: &dyn EntityBase, _gravity: f64, _falling: bool) {
+        let living = &self.mob_entity.living_entity;
+        let entity = &living.entity;
+        entity.update_velocity_from_input(
+            living.movement_input.load(),
+            f64::from(living.get_speed()),
+        );
+        living.make_move(caller);
+        entity.velocity.store(entity.velocity.load() * 0.9);
     }
 
     fn as_animal(&self) -> Option<&dyn Animal> {
