@@ -8,6 +8,7 @@ use pumpkin_util::{Difficulty, math::vector3::Vector3};
 use crate::{
     entity::{
         Entity, EntityBase,
+        living::LivingEntity,
         projectile::{ProjectileHit, ThrownItemEntity},
     },
     server::Server,
@@ -75,6 +76,40 @@ impl WitherSkullEntity {
     }
 }
 
+impl WitherSkullEntity {
+    /// The damage part of vanilla `WitherSkull.onHitEntity`: a skull with a living owner heals
+    /// it when the hit kills, an ownerless one deals magic damage.
+    fn hurt_target(&self, target: &dyn EntityBase, living_owner: Option<&dyn EntityBase>) -> bool {
+        let Some(living_owner) = living_owner else {
+            return target.damage(target, 5.0, DamageType::MAGIC);
+        };
+        let was_hurt = target.damage_with_context(
+            target,
+            8.0,
+            DamageType::WITHER_SKULL,
+            None,
+            Some(self),
+            Some(living_owner),
+        );
+        if was_hurt {
+            let alive = target
+                .get_living_entity()
+                .map_or_else(|| target.get_entity().is_alive(), LivingEntity::is_alive);
+            if alive {
+                crate::enchantment::EnchantmentHelper::do_post_attack_effects(
+                    target,
+                    DamageType::WITHER_SKULL,
+                    Some(living_owner),
+                    Some(self),
+                );
+            } else if let Some(living) = living_owner.get_living_entity() {
+                living.heal(5.0);
+            }
+        }
+        was_hurt
+    }
+}
+
 impl EntityBase for WitherSkullEntity {
     fn get_projectile_owner(&self) -> Option<&ProjectileOwner> {
         Some(&self.thrown.owner)
@@ -118,12 +153,14 @@ impl EntityBase for WitherSkullEntity {
         let world = self.get_entity().world.load();
 
         if let ProjectileHit::Entity { ref entity, .. } = hit {
-            let difficulty = world.level_info.load().difficulty;
+            let owner = self.thrown.owner.get(&world);
+            let living_owner = owner
+                .as_deref()
+                .filter(|owner| owner.get_living_entity().is_some());
+            let was_hurt = self.hurt_target(entity.as_ref(), living_owner);
 
-            let _ = entity.damage(entity.as_ref(), 8.0, DamageType::WITHER_SKULL);
-
-            if let Some(living) = entity.get_living_entity() {
-                let duration = match difficulty {
+            if was_hurt && let Some(living) = entity.get_living_entity() {
+                let duration = match world.level_info.load().difficulty {
                     Difficulty::Hard => 800,   // 40 seconds
                     Difficulty::Normal => 200, // 10 seconds
                     Difficulty::Easy | Difficulty::Peaceful => 0,
@@ -140,7 +177,6 @@ impl EntityBase for WitherSkullEntity {
                         blend: true,
                     };
                     // Vanilla `Projectile.getEffectSource`: the owner, or the skull itself.
-                    let owner = self.thrown.owner.get(&world);
                     living.add_effect_with_source(effect, Some(owner.as_deref().unwrap_or(self)));
                 }
             }
