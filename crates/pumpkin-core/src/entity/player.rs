@@ -1280,18 +1280,32 @@ impl Player {
     }
 
     pub fn is_on_cooldown(&self, group: &str) -> bool {
-        let mut cooldowns = self
-            .item_cooldowns
+        let current_tick = self.tick_counter.load(Ordering::Relaxed);
+        self.item_cooldowns
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(cooldown) = cooldowns.get(group) {
-            let current_tick = self.tick_counter.load(Ordering::Relaxed);
-            if current_tick - cooldown.start_tick < cooldown.duration {
-                return true;
-            }
-            cooldowns.remove(group);
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(group)
+            .is_some_and(|cooldown| current_tick - cooldown.start_tick < cooldown.duration)
+    }
+
+    /// Vanilla `ItemCooldowns.tick`: ends the cooldowns that ran out, which
+    /// `ServerItemCooldowns.onCooldownEnded` tells the client with a zero-tick cooldown.
+    fn tick_item_cooldowns(&self) {
+        let current_tick = self.tick_counter.load(Ordering::Relaxed);
+        let mut ended = Vec::new();
+        self.item_cooldowns
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .retain(|group, cooldown| {
+                let running = current_tick - cooldown.start_tick < cooldown.duration;
+                if !running {
+                    ended.push(group.clone());
+                }
+                running
+            });
+        for group in ended {
+            self.try_send_client_packet(&CItemCooldown::new(group, VarInt(0)));
         }
-        false
     }
 
     pub fn set_display_name(&self, display_name: Option<TextComponent>) {
@@ -3614,6 +3628,7 @@ impl Player {
             .entity
             .tick_count
             .fetch_add(1, Ordering::Relaxed);
+        self.tick_item_cooldowns();
         if let Some(sleeping_since) = self.sleeping_since.load()
             && sleeping_since < 101
         {
