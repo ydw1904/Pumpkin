@@ -430,6 +430,10 @@ mod tests {
     use pumpkin_util::math::vector3::Vector3;
 
     use super::*;
+
+    /// Long enough that a busy machine starving the worker threads doesn't fail these tests;
+    /// they only guard against a goal that is never retired.
+    const THREAD_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
     use crate::entity::{Entity, ai::test_support::world, mob::MobEntity};
     use crate::world::World;
 
@@ -816,7 +820,7 @@ mod tests {
             self.resume
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .recv_timeout(std::time::Duration::from_secs(5))
+                .recv_timeout(THREAD_DEADLINE)
                 .ok()?;
             Some(GoalReach::default())
         }
@@ -850,10 +854,10 @@ mod tests {
             let report = scope.spawn(|| {
                 GoalSelector::tick_reach(&mob.0.goals_selector, &mob, &mut GoalReach::default())
             });
-            entered_rx.recv_timeout(std::time::Duration::from_secs(5))?;
+            entered_rx.recv_timeout(THREAD_DEADLINE)?;
             let clear = scope.spawn(|| mob.0.clear_ai_goals(&mob));
             let clear_thread = clear.thread().id();
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            let deadline = std::time::Instant::now() + THREAD_DEADLINE;
             while !GoalSelector::lock(&mob.0.goals_selector).goals.is_empty() {
                 assert!(std::time::Instant::now() < deadline, "goal was not retired");
                 std::thread::yield_now();
@@ -883,7 +887,7 @@ mod tests {
                 self.resume
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .recv_timeout(std::time::Duration::from_secs(5))
+                    .recv_timeout(THREAD_DEADLINE)
                     .is_ok()
             );
         }
@@ -911,7 +915,7 @@ mod tests {
         );
         std::thread::scope(|scope| -> Result<(), Box<dyn std::error::Error>> {
             let step = scope.spawn(|| mob.0.server_ai_step(&mob, &mob));
-            entered_rx.recv_timeout(std::time::Duration::from_secs(5))?;
+            entered_rx.recv_timeout(THREAD_DEADLINE)?;
             mob.0.clear_ai_goals(&mob);
             mob.0.add_goal(0, count_goal(replacement.clone()));
             let stops_before_return = counts.stops.load(Ordering::Relaxed);
