@@ -47,6 +47,38 @@ pub const fn start_reference_pos(first_piece_box: &BlockBox) -> Vector3<i32> {
     Vector3::new(center.x, first_piece_box.min.y, center.z)
 }
 
+/// Vanilla `StructurePiece.SHAPE_CHECK_BLOCKS`: blocks a piece places without their connections,
+/// so the chunk fixes their shape once it ticks.
+const fn is_shape_check_block(block: BlockId) -> bool {
+    matches!(
+        block,
+        BlockId::NETHER_BRICK_FENCE
+            | BlockId::TORCH
+            | BlockId::WALL_TORCH
+            | BlockId::OAK_FENCE
+            | BlockId::SPRUCE_FENCE
+            | BlockId::DARK_OAK_FENCE
+            | BlockId::PALE_OAK_FENCE
+            | BlockId::ACACIA_FENCE
+            | BlockId::BIRCH_FENCE
+            | BlockId::JUNGLE_FENCE
+            | BlockId::LADDER
+            | BlockId::IRON_BARS
+    )
+}
+
+/// The world half of vanilla `StructurePiece.placeBlock`, after the box check and orientation.
+fn set_piece_block(chunk: &mut ProtoChunk, pos: &Vector3<i32>, state: &BlockState) {
+    chunk.set_block_state_from_feature(pos, state);
+    let (fluid, _) = crate::generation::update_shape::fluid_state(state.id);
+    if fluid.id != pumpkin_data::fluid::Fluid::EMPTY.id {
+        chunk.schedule_fluid_tick(pos.x, pos.y, pos.z, fluid);
+    }
+    if is_shape_check_block(BlockId::from_state_id(state.id)) {
+        chunk.mark_pos_for_post_processing(pos.x, pos.y, pos.z);
+    }
+}
+
 pub trait BlockRandomizer {
     fn get_block(&self, rng: &mut RandomGenerator, is_border: bool) -> &BlockState;
 }
@@ -216,7 +248,7 @@ impl StructurePiece {
             if self.rotation != Rotation::None {
                 block_state = block_registry.rotate(block, block_state.id, self.rotation);
             }
-            chunk.set_block_state(pos.x, pos.y, pos.z, block_state);
+            set_piece_block(chunk, &pos, block_state);
         }
     }
 
@@ -466,17 +498,7 @@ impl StructurePiece {
             block = block.rotate(self.rotation);
         }
 
-        // World interaction
-        world.set_block_state(block_pos.x, block_pos.y, block_pos.z, block);
-
-        // let fluid_state = world.get_fluid_state(&block_pos);
-        // if !fluid_state.is_empty() {
-        //     world.schedule_fluid_tick(&block_pos, fluid_state.fluid(), 0);
-        // }
-
-        // if block.needs_post_processing() {
-        //     world.mark_block_for_post_processing(&block_pos);
-        // }
+        set_piece_block(world, &block_pos, block);
     }
 
     #[inline]
