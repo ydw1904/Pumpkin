@@ -486,10 +486,7 @@ impl Server {
 
         info!("All worlds loaded successfully.");
 
-        let enabled_packs = server.level_info.load().data_packs.enabled.clone();
-        server
-            .datapack_manager
-            .load_all(&world_path, &enabled_packs, &server.recipe_manager);
+        server.load_datapacks();
 
         let source = crate::command::CommandSender::Console.into_source(&server);
         let _ = server
@@ -721,11 +718,30 @@ impl Server {
         }
     }
 
-    pub fn reload_datapacks(&self, server: &Arc<Self>) {
+    /// Loads the enabled datapacks. Function commands must parse at `function-permission-level`
+    /// (vanilla `ServerFunctionLibrary`'s compilation context).
+    fn load_datapacks(self: &Arc<Self>) {
         let enabled_packs = self.level_info.load().data_packs.enabled.clone();
         let world_path = self.basic_config.get_world_path();
-        self.datapack_manager
-            .load_all(&world_path, &enabled_packs, &self.recipe_manager);
+        let dispatcher = self.command_dispatcher.load();
+        let mut source = crate::command::CommandSender::Dummy
+            .into_source(self)
+            .with_silent();
+        source.permission_level = Some(self.basic_config.function_permission_level);
+        self.datapack_manager.load_all(
+            &world_path,
+            &enabled_packs,
+            &self.recipe_manager,
+            &|command| {
+                dispatcher
+                    .validate(command, &source)
+                    .map_err(|error| error.message.get_text())
+            },
+        );
+    }
+
+    pub fn reload_datapacks(&self, server: &Arc<Self>) {
+        server.load_datapacks();
 
         let source = crate::command::CommandSender::Console.into_source(server);
         let _ = self

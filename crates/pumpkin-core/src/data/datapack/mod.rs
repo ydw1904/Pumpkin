@@ -100,15 +100,6 @@ pub struct DatapackManager {
 /// A function's id and its commands as loaded.
 pub type FunctionBody = (String, Arc<[String]>);
 
-fn share_function_bodies(
-    functions: HashMap<String, Vec<String>>,
-) -> HashMap<String, Arc<[String]>> {
-    functions
-        .into_iter()
-        .map(|(name, lines)| (name, lines.into()))
-        .collect()
-}
-
 impl Default for DatapackManager {
     fn default() -> Self {
         Self::new()
@@ -148,12 +139,13 @@ impl DatapackManager {
         world_path: &Path,
         enabled_packs: &[String],
         recipe_manager: &RecipeManager,
+        compile: function_loader::CommandCompiler,
     ) {
         let datapacks_dir = world_path.join("datapacks");
         structure_loader::clear_dynamic_worldgen_data();
         let mut loaded_packs_vec = Vec::new();
         let mut all_recipes: Vec<DynamicRecipe> = Vec::new();
-        let mut all_functions: HashMap<String, Vec<String>> = HashMap::new();
+        let mut all_functions: HashMap<String, String> = HashMap::new();
         let mut all_function_tags: HashMap<String, Vec<String>> = HashMap::new();
         let mut all_test_instances: TestInstanceRegistry = HashMap::new();
         let mut all_context_int_providers: ContextProviderRegistry = HashMap::new();
@@ -224,11 +216,6 @@ impl DatapackManager {
             .loaded_packs
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = loaded_packs_vec;
-        let all_functions = share_function_bodies(all_functions);
-        *self
-            .functions
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = all_functions;
         *self
             .function_tags
             .write()
@@ -291,6 +278,12 @@ impl DatapackManager {
             .tags
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = all_tags;
+        // Last, so the commands can refer to everything else the packs define.
+        let all_functions = function_loader::compile_functions(all_functions, compile);
+        *self
+            .functions
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = all_functions;
     }
 
     #[must_use]
@@ -1535,7 +1528,7 @@ fn build_damage_type_registry(
 
 struct PackContentAccumulators<'a> {
     recipes: &'a mut Vec<DynamicRecipe>,
-    functions: &'a mut HashMap<String, Vec<String>>,
+    functions: &'a mut HashMap<String, String>,
     function_tags: &'a mut HashMap<String, Vec<String>>,
     test_instances: &'a mut TestInstanceRegistry,
     damage_types: &'a mut HashMap<String, DamageTypeDefinition>,

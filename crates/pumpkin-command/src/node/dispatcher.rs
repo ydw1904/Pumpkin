@@ -375,15 +375,7 @@ impl<S: CommandSource> CommandDispatcher<S> {
 
     /// Executes a given result that has already been parsed from an input.
     pub fn execute(&self, parsed: ParsingResult<'_, S>) -> Result<i32, CommandSyntaxError> {
-        if parsed.reader.peek().is_some() {
-            return if let Some(err) = parsed.errors.values().next() {
-                Err(err.clone())
-            } else if parsed.context.range.is_empty() {
-                Err(Self::unknown_command_error(&parsed.reader))
-            } else {
-                Err(DISPATCHER_UNKNOWN_ARGUMENT.create(&parsed.reader))
-            };
-        }
+        Self::check_fully_parsed(&parsed)?;
 
         let command = parsed.reader.string();
         let original_context = parsed.context.build(command);
@@ -403,6 +395,38 @@ impl<S: CommandSource> CommandDispatcher<S> {
                 result
             }
         }
+    }
+
+    /// Vanilla `Commands.validateParseResults`: the whole input must have parsed.
+    fn check_fully_parsed(parsed: &ParsingResult<'_, S>) -> Result<(), CommandSyntaxError> {
+        if parsed.reader.peek().is_none() {
+            return Ok(());
+        }
+        Err(parsed.errors.values().next().map_or_else(
+            || {
+                if parsed.context.range.is_empty() {
+                    Self::unknown_command_error(&parsed.reader)
+                } else {
+                    DISPATCHER_UNKNOWN_ARGUMENT.create(&parsed.reader)
+                }
+            },
+            Clone::clone,
+        ))
+    }
+
+    /// Parses a command as running it would, without running it (vanilla
+    /// `CommandFunction.parseCommand`, which compiles a function's commands).
+    pub fn validate(&self, input: &str, source: &S) -> Result<(), CommandSyntaxError> {
+        let reader = StringReader::new(input);
+        if self.is_disabled(Self::command_name(input)) {
+            return Err(Self::unknown_command_error(&reader));
+        }
+        let parsed = self.parse_input(input, source);
+        Self::check_fully_parsed(&parsed)?;
+        if ContextChain::try_flatten(&parsed.context.build(input)).is_none() {
+            return Err(Self::unknown_command_error(&parsed.reader));
+        }
+        Ok(())
     }
 
     /// Only parses a given source with the specified source.

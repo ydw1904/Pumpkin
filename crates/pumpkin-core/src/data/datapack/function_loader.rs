@@ -11,10 +11,15 @@ use tracing::error;
 
 use crate::command::commands::data::snbt_string;
 
+/// Checks that a function command parses (vanilla `CommandFunction.parseCommand`).
+pub type CommandCompiler<'a> = &'a dyn Fn(&str) -> Result<(), String>;
+
+/// Reads the function files of a namespace, keyed by function id. They are compiled with
+/// [`compile_functions`] once everything they may refer to has loaded.
 pub fn load_functions_from_dir<S: std::hash::BuildHasher>(
     namespace: &str,
     function_dir: &Path,
-    functions: &mut HashMap<String, Vec<String>, S>,
+    functions: &mut HashMap<String, String, S>,
 ) {
     if !function_dir.is_dir() {
         return;
@@ -22,11 +27,29 @@ pub fn load_functions_from_dir<S: std::hash::BuildHasher>(
     load_functions_recursive(namespace, function_dir, function_dir, functions);
 }
 
+/// Vanilla `ServerFunctionLibrary.reload`: a function that fails to compile is logged and left
+/// out.
+pub fn compile_functions<S: std::hash::BuildHasher>(
+    sources: HashMap<String, String, S>,
+    compile: CommandCompiler,
+) -> HashMap<String, Arc<[String]>> {
+    let mut functions = HashMap::with_capacity(sources.len());
+    for (id, content) in sources {
+        match function_lines(&content, compile) {
+            Ok(lines) => {
+                functions.insert(id, lines.into());
+            }
+            Err(reason) => error!("Failed to load function {id}: {reason}"),
+        }
+    }
+    functions
+}
+
 fn load_functions_recursive<S: std::hash::BuildHasher>(
     namespace: &str,
     base_dir: &Path,
     current_dir: &Path,
-    functions: &mut HashMap<String, Vec<String>, S>,
+    functions: &mut HashMap<String, String, S>,
 ) {
     let Ok(entries) = fs::read_dir(current_dir) else {
         return;
@@ -48,27 +71,24 @@ fn load_functions_recursive<S: std::hash::BuildHasher>(
             let stem_path = stem_path.replace('\\', "/");
             let function_id = format!("{namespace}:{stem_path}");
             if let Ok(content) = fs::read_to_string(&path) {
-                match function_lines(&content) {
-                    Ok(lines) => {
-                        functions.insert(function_id, lines);
-                    }
-                    Err(reason) => error!("Failed to load function {function_id}: {reason}"),
-                }
+                functions.insert(function_id, content);
             }
         }
     }
 }
 
 /// The commands of a function file, like vanilla `CommandFunction.fromLines`: a line ending in
-/// `\` continues on the next one, and a macro line (`$`) must be a valid template.
-fn function_lines(content: &str) -> Result<Vec<String>, String> {
+/// `\` continues on the next one, a macro line (`$`) must be a valid template, and every other
+/// command must parse.
+fn function_lines(content: &str, compile: CommandCompiler) -> Result<Vec<String>, String> {
     let mut lines = Vec::new();
-    let mut raw = content.lines().map(str::trim);
-    while let Some(first) = raw.next() {
+    let mut raw = content.lines().map(str::trim).enumerate();
+    while let Some((index, first)) = raw.next() {
+        let line_number = index + 1;
         let mut line = first.to_string();
         while line.ends_with('\\') {
             line.pop();
-            let Some(next) = raw.next() else {
+            let Some((_, next)) = raw.next() else {
                 return Err("Line continuation at end of file".to_string());
             };
             line.push_str(next);
@@ -76,10 +96,28 @@ fn function_lines(content: &str) -> Result<Vec<String>, String> {
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
+        if let Some(command) = line.strip_prefix('/') {
+            if command.starts_with('/') {
+                return Err(format!(
+                    "Unknown or invalid command '{line}' on line {line_number} (if you intended to make a comment, use '#' not '//')"
+                ));
+            }
+            let name: String = command
+                .chars()
+                .take_while(|&c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '+'))
+                .collect();
+            return Err(format!(
+                "Unknown or invalid command '{line}' on line {line_number} (did you mean '{name}'? Do not use a preceding forwards slash.)"
+            ));
+        }
         if let Some(macro_line) = line.strip_prefix('$') {
             MacroTemplate::parse(macro_line)?;
+        } else {
+            compile(&line).map_err(|reason| {
+                format!("Whilst parsing command on line {line_number}: {reason}")
+            })?;
         }
-        lines.push(line.strip_prefix('/').map_or(line.clone(), str::to_string));
+        lines.push(line);
     }
     Ok(lines)
 }
@@ -284,26 +322,44 @@ mod tests {
 
     #[test]
     fn parse_mcfunction_content() {
-        let content = "# This is a comment\nsay Hello world\n/give @p diamond 1\n\n# Another comment\ngive @p stick 5\n";
-        let lines = function_lines(content).expect("valid function");
+        let content =
+            "# This is a comment\nsay Hello world\n\n# Another comment\ngive @p stick 5\n";
+        let lines = function_lines(content, &accept).expect("valid function");
+        assert_eq!(lines, ["say Hello world", "give @p stick 5"]);
 
         assert_eq!(
-            lines,
-            vec![
-                "say Hello world".to_string(),
-                "give @p diamond 1".to_string(),
-                "give @p stick 5".to_string()
-            ]
+            function_lines("say hi\n/give @p diamond 1\n", &accept),
+            Err("Unknown or invalid command '/give @p diamond 1' on line 2 (did you mean 'give'? Do not use a preceding forwards slash.)".to_string())
         );
+        let reject = |command: &str| {
+            if command.starts_with("bad") {
+                Err("Unknown command".to_string())
+            } else {
+                Ok(())
+            }
+        };
+        assert_eq!(
+            function_lines("say a \\\n b\nbad", &reject),
+            Err("Whilst parsing command on line 3: Unknown command".to_string())
+        );
+    }
+
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "a compiler that accepts every command"
+    )]
+    fn accept(_: &str) -> Result<(), String> {
+        Ok(())
     }
 
     #[test]
     fn continues_lines_and_fills_in_macros() {
-        let lines = function_lines("say a \\\n  b\n$say $(x) and $(y)!\n").expect("valid function");
+        let lines = function_lines("say a \\\n  b\n$say $(x) and $(y)!\n", &accept)
+            .expect("valid function");
         assert_eq!(lines, ["say a b", "$say $(x) and $(y)!"]);
         let lines: Arc<[String]> = lines.into();
-        assert!(function_lines("$say no variables").is_err());
-        assert!(function_lines("say end \\").is_err());
+        assert!(function_lines("$say no variables", &accept).is_err());
+        assert!(function_lines("say end \\", &accept).is_err());
 
         let mut arguments = NbtCompound::new();
         arguments.put("x", NbtTag::Float(0.5));

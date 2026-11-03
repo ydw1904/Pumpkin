@@ -310,6 +310,11 @@ impl ExecutionContext {
                 };
                 source.frame = frame.clone();
                 source.returning = false;
+                // Vanilla compiles function commands at this level, whoever runs them.
+                source.permission_level = source
+                    .server
+                    .as_ref()
+                    .map(|server| server.basic_config.function_permission_level);
                 if !lines.is_empty() {
                     self.queue_next(Entry {
                         frame,

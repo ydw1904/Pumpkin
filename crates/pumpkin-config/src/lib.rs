@@ -190,6 +190,9 @@ pub struct BasicConfiguration {
     pub default_difficulty: Difficulty,
     /// The op level assigned by the /op command.
     pub op_permission_level: PermissionLvl,
+    /// The permission level datapack functions run their commands with.
+    #[serde(alias = "function-permission-level")]
+    pub function_permission_level: PermissionLvl,
     /// Whether the Nether dimension is enabled.
     pub allow_nether: bool,
     /// Whether the End dimension is enabled.
@@ -231,6 +234,7 @@ impl Default for BasicConfiguration {
             seed: Seed(random::get_seed()),
             default_difficulty: Difficulty::Normal,
             op_permission_level: PermissionLvl::Four,
+            function_permission_level: PermissionLvl::Two,
             allow_nether: true,
             allow_end: true,
             hardcore: false,

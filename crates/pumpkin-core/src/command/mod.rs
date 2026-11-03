@@ -145,6 +145,19 @@ fn java_scientific(scientific: &str) -> String {
     }
 }
 
+/// Whether a sender with permission level `level` and no permissions of its own has `node`.
+#[must_use]
+pub fn level_has_permission(server: &Server, node: &str, level: PermissionLvl) -> bool {
+    let Some(permission) = server.permission_manager.get_permission(node) else {
+        return false;
+    };
+    match permission.default {
+        PermissionDefault::Allow => true,
+        PermissionDefault::Deny => false,
+        PermissionDefault::Op(required) => required <= level,
+    }
+}
+
 /// Represents the source of a command execution.
 ///
 /// Different senders have different permissions, output targets, and
@@ -260,14 +273,7 @@ impl CommandSender {
             Self::Console => true, // Console always has all permissions
             Self::Player(p) => p.has_permission(server, node),
             Self::CommandBlock(..) | Self::Dummy => {
-                let Some(p) = server.permission_manager.get_permission(node) else {
-                    return false;
-                };
-                match p.default {
-                    PermissionDefault::Allow => true,
-                    PermissionDefault::Deny => false,
-                    PermissionDefault::Op(o) => o <= PermissionLvl::Two,
-                }
+                level_has_permission(server, node, PermissionLvl::Two)
             }
         }
     }

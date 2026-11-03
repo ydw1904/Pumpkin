@@ -1,6 +1,6 @@
-use crate::command::CommandSender;
 use crate::command::argument_types::entity_anchor::{EntityAnchor, EntityAnchorExt};
 use crate::command::execution::ExecutionContext;
+use crate::command::{CommandSender, level_has_permission};
 use crate::entity::EntityBase;
 use crate::entity::player::Player;
 use crate::server::Server;
@@ -11,6 +11,7 @@ pub use pumpkin_command::source::{
     ResultValueTaker, ReturnValue, ReturnValueCallable, ReturnValueCallback,
 };
 use pumpkin_data::translation;
+use pumpkin_util::PermissionLvl;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector2::Vector2;
 use pumpkin_util::math::vector3::Vector3;
@@ -63,6 +64,9 @@ pub struct CommandSource {
     pub frame: Frame,
     /// Vanilla `ChainModifiers.isReturn`: this source runs the rest of a `return run` chain.
     pub returning: bool,
+    /// A fixed permission level that replaces the output's permissions: a function's commands
+    /// get `function-permission-level`, which vanilla compiles them with.
+    pub permission_level: Option<PermissionLvl>,
 }
 
 /// Vanilla `Frame`: where a `return` in a function, or in a top-level command, reports to.
@@ -130,6 +134,7 @@ impl CommandSource {
             entity_anchor: EntityAnchor::Feet,
             frame: Frame::default(),
             returning: false,
+            permission_level: None,
         }
     }
 
@@ -159,6 +164,7 @@ impl CommandSource {
             entity_anchor: EntityAnchor::Feet,
             frame: Frame::default(),
             returning: false,
+            permission_level: None,
         }
     }
 
@@ -414,7 +420,12 @@ impl CommandSource {
                 self.output,
                 crate::command::CommandSender::Console | crate::command::CommandSender::Dummy
             ),
-            |server| self.output.has_permission(server, permission),
+            |server| {
+                self.permission_level.map_or_else(
+                    || self.output.has_permission(server, permission),
+                    |level| level_has_permission(server, permission, level),
+                )
+            },
         )
     }
 
