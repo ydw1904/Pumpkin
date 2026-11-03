@@ -221,6 +221,18 @@ impl Raid {
         self.raid_omen_level = level;
     }
 
+    /// Vanilla `Raid.getEnchantOdds`: the chance a pillager or vindicator gets a buffed weapon.
+    #[must_use]
+    pub const fn get_enchant_odds(&self) -> f32 {
+        match self.raid_omen_level {
+            2 => 0.1,
+            3 => 0.25,
+            4 => 0.5,
+            5 => 0.75,
+            _ => 0.0,
+        }
+    }
+
     #[must_use]
     pub const fn has_first_wave_spawned(&self) -> bool {
         self.groups_spawned > 0
@@ -496,7 +508,7 @@ impl Raid {
             crate::entity::mob::spawn::EntitySpawnReason::Event,
             None,
         );
-        raider.apply_raid_buffs(wave, false);
+        raider.apply_raid_buffs(self, wave, false);
         entity
             .on_ground
             .store(true, std::sync::atomic::Ordering::Relaxed);

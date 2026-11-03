@@ -5,7 +5,10 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
+use pumpkin_data::data_component_impl::EquipmentSlot;
+use pumpkin_data::enchantment_provider::EnchantmentProvider;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::Sound;
 use pumpkin_data::tracked_data;
@@ -32,6 +35,8 @@ use crate::entity::{
         },
     },
 };
+use crate::world::raid::Raid;
+use pumpkin_util::difficulty::Difficulty;
 
 const PILLAGER_FLEES: &[Flee] = &[raider::flee_creaking(1, 1.0, 1.2)];
 
@@ -248,6 +253,24 @@ impl Raider for PillagerEntity {
 
     fn get_celebrate_sound(&self) -> Sound {
         Sound::EntityPillagerCelebrate
+    }
+
+    /// Vanilla `Pillager.applyRaidBuffs`: later waves can bring a Quick Charge crossbow.
+    fn apply_raid_buffs(&self, raid: &Raid, wave: i32, _is_captain: bool) {
+        if self.get_random().random::<f32>() > raid.get_enchant_odds() {
+            return;
+        }
+        let provider = if wave > Raid::get_num_groups(Difficulty::Normal) {
+            &EnchantmentProvider::RAID_PILLAGER_POST_WAVE_5
+        } else if wave > Raid::get_num_groups(Difficulty::Easy) {
+            &EnchantmentProvider::RAID_PILLAGER_POST_WAVE_3
+        } else {
+            return;
+        };
+        let mut crossbow = ItemStack::new(1, &Item::CROSSBOW);
+        provider.apply_to_stack(&mut crossbow, 0.0);
+        self.mob_entity
+            .set_item_slot(&EquipmentSlot::MAIN_HAND, crossbow);
     }
 }
 

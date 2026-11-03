@@ -133,7 +133,8 @@ pub trait Raider: PatrollingMonster {
 
     fn get_celebrate_sound(&self) -> Sound;
 
-    fn apply_raid_buffs(&self, _wave: i32, _is_captain: bool) {}
+    /// Vanilla `Raider.applyRaidBuffs`, for a raider the raid spawned in `wave`.
+    fn apply_raid_buffs(&self, _raid: &crate::world::raid::Raid, _wave: i32, _is_captain: bool) {}
 
     fn write_raider_nbt(&self, nbt: &mut NbtCompound) {
         self.write_patrol_nbt(nbt);

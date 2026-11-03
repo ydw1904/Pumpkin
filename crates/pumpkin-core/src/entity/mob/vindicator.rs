@@ -1,8 +1,13 @@
 use std::sync::{Arc, Weak};
 
+use pumpkin_data::data_component_impl::EquipmentSlot;
+use pumpkin_data::enchantment_provider::EnchantmentProvider;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::item::Item;
+use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::Sound;
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_util::difficulty::Difficulty;
 
 use crate::entity::ai::behavior::fleeing::{self, Flee};
 use crate::entity::ai::behavior::hunting::{self, Hunt};
@@ -23,6 +28,7 @@ use crate::entity::{
         },
     },
 };
+use crate::world::raid::Raid;
 
 const VINDICATOR_FLEES: &[Flee] = &[raider::flee_creaking(1, 1.0, 1.2)];
 
@@ -116,5 +122,20 @@ impl Raider for VindicatorEntity {
 
     fn get_celebrate_sound(&self) -> Sound {
         Sound::EntityVindicatorCelebrate
+    }
+
+    /// Vanilla `Vindicator.applyRaidBuffs`: an iron axe, Sharpness at higher omen levels.
+    fn apply_raid_buffs(&self, raid: &Raid, wave: i32, _is_captain: bool) {
+        let mut axe = ItemStack::new(1, &Item::IRON_AXE);
+        if self.get_random().random::<f32>() <= raid.get_enchant_odds() {
+            let provider = if wave > Raid::get_num_groups(Difficulty::Normal) {
+                &EnchantmentProvider::RAID_VINDICATOR_POST_WAVE_5
+            } else {
+                &EnchantmentProvider::RAID_VINDICATOR
+            };
+            provider.apply_to_stack(&mut axe, 0.0);
+        }
+        self.mob_entity
+            .set_item_slot(&EquipmentSlot::MAIN_HAND, axe);
     }
 }
