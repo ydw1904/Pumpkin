@@ -292,6 +292,18 @@ impl EntitySelectorOption {
                     parser.reader.set_cursor(start);
                     return Err(self.inapplicable_error(parser.reader));
                 }
+                if parser.consume_tag_start() {
+                    // An unknown tag is empty, so it matches nothing.
+                    let tag = Identifier::from_reader(parser.reader)?;
+                    parser.add_predicate(EntitySelectorPredicate::EntityTypeTag(
+                        tag.to_string(),
+                        invert,
+                    ));
+                    if invert {
+                        parser.set_flag(Flags::ENTITY_TYPE_INVERTED, true);
+                    }
+                    return Ok(());
+                }
                 let type_start = parser.reader.cursor();
                 while let Some(c) = parser.reader.peek()
                     && Identifier::is_valid_char(c)
