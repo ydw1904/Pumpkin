@@ -3908,7 +3908,9 @@ impl LivingEntity {
         }
         let config = &server.advanced_config.pvp;
 
-        if config.hurt_animation {
+        // Vanilla only shows the hit and pushes the target when the hit wasn't partly absorbed
+        // by the invulnerability window, even if it kills.
+        if config.hurt_animation && full_hit {
             let entity_id = self.entity.entity_id;
             let hurt_yaw = source.map_or(0.0, |source| {
                 let src = source.get_entity().pos.load();
@@ -3929,13 +3931,15 @@ impl LivingEntity {
             );
         }
 
-        world.broadcast_damage_event(
-            &self.entity,
-            i32::from(damage_type.id),
-            source.map(|e| e.get_entity().entity_id),
-            cause.map(|e| e.get_entity().entity_id),
-            position,
-        );
+        if full_hit {
+            world.broadcast_damage_event(
+                &self.entity,
+                i32::from(damage_type.id),
+                source.map(|e| e.get_entity().entity_id),
+                cause.map(|e| e.get_entity().entity_id),
+                position,
+            );
+        }
 
         self.no_action_time.store(0, Relaxed);
         if play_sound {
@@ -3943,16 +3947,20 @@ impl LivingEntity {
                 mob.reset_ambient_sound_time();
             }
             self.make_voice_sound(caller, self.hurt_sound(caller));
-
-            if let Some(source) = source {
-                let source_pos = source.get_entity().pos.load();
-                let target_pos = self.entity.pos.load();
-                let dx = source_pos.x - target_pos.x;
-                let dz = source_pos.z - target_pos.z;
-                let resistance = self.get_attribute_value(&Attributes::KNOCKBACK_RESISTANCE);
-                self.entity
-                    .apply_knockback(knockback_after_resistance(0.4, resistance), dx, dz);
-            }
+        }
+        // Vanilla `dealDefaultKnockback`: away from the direct source, else from the source
+        // position; with neither, `knockback` picks a random direction.
+        if full_hit && !damage_type.has_tag(&tag::DamageType::MINECRAFT_NO_KNOCKBACK) {
+            let target_pos = self.entity.pos.load();
+            let (dx, dz) = source
+                .map(|source| source.get_entity().pos.load())
+                .or(position)
+                .map_or((0.0, 0.0), |from| {
+                    (from.x - target_pos.x, from.z - target_pos.z)
+                });
+            let resistance = self.get_attribute_value(&Attributes::KNOCKBACK_RESISTANCE);
+            self.entity
+                .apply_knockback(knockback_after_resistance(0.4, resistance), dx, dz);
         }
 
         // Vanilla parity: actuallyHurt
