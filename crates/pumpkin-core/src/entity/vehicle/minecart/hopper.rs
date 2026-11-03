@@ -1,8 +1,9 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::block::entities::hopper::HopperBlockEntity;
+use crate::block::entities::hopper::{HopperBlockEntity, slots_for};
 use crate::entity::{Entity, player::Player};
+use pumpkin_data::BlockDirection;
 use pumpkin_data::translation;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::boundingbox::BoundingBox;
@@ -48,14 +49,18 @@ impl HopperMinecart {
         if let Some(block_entity) = world.get_block_entity(&source_pos)
             && let Some(source) = block_entity.get_inventory()
         {
-            for slot in 0..source.size() {
+            for slot in slots_for(source.as_ref(), BlockDirection::Down) {
                 let stack = source.get_stack(slot);
-                if stack.is_empty() || !source.can_transfer_to(inventory.as_ref(), slot, &stack) {
+                if stack.is_empty()
+                    || !source.can_transfer_to(inventory.as_ref(), slot, &stack)
+                    || !source.can_take_item_through_face(slot, &stack, BlockDirection::Down)
+                {
                     continue;
                 }
                 let backup = stack.clone();
                 let one = source.remove_stack_specific(slot, 1);
-                if HopperBlockEntity::add_one_item(source.as_ref(), inventory.as_ref(), &one) {
+                if HopperBlockEntity::add_one_item(source.as_ref(), inventory.as_ref(), &one, None)
+                {
                     return;
                 }
                 source.set_stack(slot, backup);
@@ -92,7 +97,7 @@ impl HopperMinecart {
                 }
                 (stack.clone(), stack.split(1))
             };
-            if HopperBlockEntity::add_one_item(inventory.as_ref(), inventory.as_ref(), &one) {
+            if HopperBlockEntity::add_one_item(inventory.as_ref(), inventory.as_ref(), &one, None) {
                 let is_empty = {
                     let stack = item
                         .get_item_stack()

@@ -210,7 +210,12 @@ impl CrafterBlock {
         {
             while !stack.is_empty() {
                 let one_item = stack.split(1);
-                if !HopperBlockEntity::add_one_item(crafter, target_inv.as_ref(), &one_item) {
+                if !HopperBlockEntity::add_one_item(
+                    crafter,
+                    target_inv.as_ref(),
+                    &one_item,
+                    Some(direction.opposite()),
+                ) {
                     stack.item_count += one_item.item_count;
                     break;
                 }

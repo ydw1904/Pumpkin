@@ -170,7 +170,12 @@ impl BlockBehaviour for DropperBlock {
                     let backup = item.clone();
                     let one_item = item.split(1);
 
-                    if HopperBlockEntity::add_one_item(dropper, container.as_ref(), &one_item) {
+                    if HopperBlockEntity::add_one_item(
+                        dropper,
+                        container.as_ref(),
+                        &one_item,
+                        Some(props.facing.to_block_direction().opposite()),
+                    ) {
                         dropper.set_stack(slot_index, item);
                         return;
                     }

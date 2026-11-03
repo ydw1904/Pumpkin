@@ -357,6 +357,46 @@ macro_rules! impl_inventory_for_cooking {
                 self.comparator_dirty.store(true, Ordering::Relaxed);
             }
 
+            /// AbstractFurnaceBlockEntity.canPlaceItem: nothing goes into the result, the fuel
+            /// slot takes fuel or one empty bucket.
+            fn is_valid_slot_for(&self, slot: usize, stack: &ItemStack) -> bool {
+                match slot {
+                    2 => false,
+                    1 => stack
+                        .get_data_component::<pumpkin_data::data_component_impl::CookingFuelImpl>()
+                        .is_some()
+                        || (stack.item == &pumpkin_data::item::Item::BUCKET
+                            && self.get_fuel_item().item != &pumpkin_data::item::Item::BUCKET),
+                    _ => true,
+                }
+            }
+
+            fn slots_for_face(
+                &self,
+                side: pumpkin_data::BlockDirection,
+            ) -> Option<&'static [usize]> {
+                Some(match side {
+                    pumpkin_data::BlockDirection::Down => &[2, 1],
+                    pumpkin_data::BlockDirection::Up => &[0],
+                    _ => &[1],
+                })
+            }
+
+            /// Only empty and water buckets come back out of the fuel slot from below.
+            fn can_take_item_through_face(
+                &self,
+                slot: usize,
+                stack: &ItemStack,
+                side: pumpkin_data::BlockDirection,
+            ) -> bool {
+                use pumpkin_data::tag::Taggable;
+                side != pumpkin_data::BlockDirection::Down
+                    || slot != 1
+                    || stack
+                        .item
+                        .has_tag(&pumpkin_data::tag::Item::MINECRAFT_FURNACE_FUEL_BOTTOM_TAKEABLE)
+            }
+
             fn as_any(&self) -> &dyn std::any::Any {
                 self
             }
