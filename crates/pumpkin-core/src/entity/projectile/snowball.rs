@@ -64,15 +64,22 @@ impl EntityBase for SnowballEntity {
     fn on_hit(&self, hit: crate::entity::projectile::ProjectileHit) {
         let world = self.get_entity().world.load();
 
-        // Always send particle status regardless of what was hit
-        world.send_entity_status(self.get_entity(), EntityStatus::Death, ActorEventID::Death);
-
-        // Handle entity-specific damage
+        // Vanilla `Snowball.onHitEntity`: a thrown hit from the snowball, credited to its
+        // thrower, so even the zero damage most mobs take knocks them back.
         if let ProjectileHit::Entity { ref entity, .. } = hit {
             let is_blaze = entity.get_entity().entity_type.id == EntityType::BLAZE.id;
-            let damage = if is_blaze { 3.0 } else { 0.0 }; // Only damage blazes
-
-            entity.damage(entity.as_ref(), damage, DamageType::THROWN);
+            let damage = if is_blaze { 3.0 } else { 0.0 };
+            let owner = self.get_owner_entity();
+            entity.damage_with_context(
+                entity.as_ref(),
+                damage,
+                DamageType::THROWN,
+                None,
+                Some(self),
+                owner.as_deref(),
+            );
         }
+
+        world.send_entity_status(self.get_entity(), EntityStatus::Death, ActorEventID::Death);
     }
 }

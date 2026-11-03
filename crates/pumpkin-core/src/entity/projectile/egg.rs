@@ -3,11 +3,13 @@ use pumpkin_util::random::gameplay::game_random;
 use std::sync::RwLock;
 use std::sync::atomic::AtomicBool;
 
+use crate::entity::projectile::ProjectileHit;
 use crate::plugin::player::egg_throw::PlayerEggThrowEvent;
 use crate::{
     entity::{Entity, EntityBase, projectile::ThrownItemEntity, r#type::from_type},
     server::Server,
 };
+use pumpkin_data::damage::DamageType;
 use pumpkin_data::entity::{EntityStatus, EntityType};
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -100,6 +102,20 @@ impl EntityBase for EggEntity {
 
         // Chicken spawn position offset slightly from hit position
         let spawn_pos = hit_pos.add(&normal.multiply(0.5, 0.5, 0.5));
+
+        // Vanilla `ThrownEgg.onHitEntity`, before the hatching in `onHit`: a zero thrown hit
+        // credited to the thrower, which still knocks the target back.
+        if let ProjectileHit::Entity { ref entity, .. } = hit {
+            let owner = self.get_owner_entity();
+            entity.damage_with_context(
+                entity.as_ref(),
+                0.0,
+                DamageType::THROWN,
+                None,
+                Some(self),
+                owner.as_deref(),
+            );
+        }
 
         // Play egg break particles
         world.send_entity_status(self.get_entity(), EntityStatus::Death, ActorEventID::Death);
