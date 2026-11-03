@@ -1,18 +1,19 @@
 use crate::block::entities::BlockEntity;
-use crate::entity::experience_orb::ExperienceOrbEntity;
 use crate::entity::item::ItemEntity;
+use crate::entity::vehicle::minecart::MinecartEntity;
 use crate::world::World;
 use pumpkin_data::block_properties::{FacingHopper, HopperLikeProperties};
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::tag;
 use pumpkin_data::tag::Taggable;
-use pumpkin_data::{BlockId, BlockStateId};
+use pumpkin_data::{BlockDirection, BlockId, BlockStateId};
 use pumpkin_inventory::{Clearable, Inventory};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::gameplay::game_random;
 use std::any::Any;
 use std::array::from_fn;
 use std::sync::Arc;
@@ -43,6 +44,53 @@ pub fn to_offset(facing: &FacingHopper) -> Vector3<i32> {
         FacingHopper::East => (1, 0, 0),
     }
     .into()
+}
+
+/// The direction a hopper with this facing pushes items towards.
+const fn facing_direction(facing: FacingHopper) -> BlockDirection {
+    match facing {
+        FacingHopper::Down => BlockDirection::Down,
+        FacingHopper::North => BlockDirection::North,
+        FacingHopper::South => BlockDirection::South,
+        FacingHopper::West => BlockDirection::West,
+        FacingHopper::East => BlockDirection::East,
+    }
+}
+
+/// `HopperBlockEntity.getContainerAt`: the block's container, or else a random container
+/// minecart inside the block.
+fn container_at(world: &Arc<World>, pos: BlockPos) -> Option<Arc<dyn Inventory>> {
+    if let Some(container) = world
+        .get_block_entity(&pos)
+        .and_then(super::BlockEntity::get_inventory)
+    {
+        return Some(container);
+    }
+    let min = pos.0.to_f64();
+    let block = BoundingBox::new(min, min + Vector3::new(1.0, 1.0, 1.0));
+    let mut containers: Vec<_> = world
+        .get_entities_at_box(&block)
+        .into_iter()
+        .filter(|entity| entity.get_entity().is_alive())
+        .filter_map(|entity| {
+            entity
+                .cast_any()
+                .downcast_ref::<MinecartEntity>()
+                .and_then(MinecartEntity::container_inventory)
+        })
+        .collect();
+    if containers.is_empty() {
+        return None;
+    }
+    let index = game_random().random_range(0..containers.len());
+    Some(containers.swap_remove(index))
+}
+
+/// `HopperBlockEntity.getSlots`: the slots a container exposes on `side`.
+pub fn slots_for(container: &dyn Inventory, side: BlockDirection) -> Vec<usize> {
+    container
+        .slots_for_face(side)
+        .map_or_else(|| (0..container.size()).collect(), <[usize]>::to_vec)
 }
 
 /// Properties of one state snapshot, `None` for any other block. `from_state_id` parses whatever
@@ -214,7 +262,6 @@ impl HopperBlockEntity {
 
     #[allow(clippy::too_many_lines)]
     fn suck_in_items(&self, world: &Arc<World>) -> bool {
-        // TODO getEntityContainer
         let pos_up = &self.position.up();
         let mut search_event = crate::plugin::api::events::inventory::hopper_inventory_search::HopperInventorySearchEvent::new(
             self.position,
@@ -229,13 +276,13 @@ impl HopperBlockEntity {
             return false;
         }
 
-        if let Some(entity) = world.get_block_entity(pos_up)
-            && let Some(container) = entity.clone().get_inventory()
-        {
-            // TODO check WorldlyContainer
-            for i in 0..container.size() {
+        if let Some(container) = container_at(world, *pos_up) {
+            for i in slots_for(container.as_ref(), BlockDirection::Down) {
                 let mut item = container.get_stack(i);
-                if !item.is_empty() && container.can_transfer_to(self, i, &item) {
+                if !item.is_empty()
+                    && container.can_transfer_to(self, i, &item)
+                    && container.can_take_item_through_face(i, &item, BlockDirection::Down)
+                {
                     // The hopper above can be picking up a whole dropped stack into this slot
                     // right now, and writing back the remainder read above would erase it, so
                     // take the item out and put it back on failure like `eject_items` does.
@@ -243,7 +290,7 @@ impl HopperBlockEntity {
                         let Some(extraction) = source.take_one(i) else {
                             continue;
                         };
-                        if Self::add_one_item(source, self, &extraction.one_item) {
+                        if Self::add_one_item(source, self, &extraction.one_item, None) {
                             return true;
                         }
                         if let Some(leftover) = source.put_back(i, extraction) {
@@ -252,23 +299,11 @@ impl HopperBlockEntity {
                         }
                         continue;
                     }
-                    //TODO WorldlyContainer
                     let _backup = item.clone();
                     let one_item = item.split(1);
-                    if Self::add_one_item(container.as_ref(), self, &one_item) {
+                    // Furnace XP stays stored for the next player who takes the output.
+                    if Self::add_one_item(container.as_ref(), self, &one_item, None) {
                         container.set_stack(i, item);
-                        // If extracting from furnace output slot (index 2), drop XP as orbs
-                        let furnace_output_slot: usize = 2;
-                        if i == furnace_output_slot
-                            && let Some(experience_container) =
-                                entity.clone().to_experience_container()
-                        {
-                            let xp = experience_container.extract_experience();
-                            if xp > 0 {
-                                let pos = self.position.to_f64();
-                                ExperienceOrbEntity::spawn(world, pos, xp as u32);
-                            }
-                        }
                         return true;
                     }
                 }
@@ -365,14 +400,12 @@ impl HopperBlockEntity {
     }
 
     fn eject_items(&self, world: &Arc<World>) -> bool {
-        // TODO getEntityContainer
-
-        if let Some(entity) = world.get_block_entity(&self.position.offset(to_offset(&self.facing)))
-            && let Some(container) = entity.get_inventory()
+        if let Some(container) = container_at(world, self.position.offset(to_offset(&self.facing)))
         {
-            // TODO check WorldlyContainer
+            // The hopper reaches the target through the face opposite its facing.
+            let side = facing_direction(self.facing).opposite();
             let mut is_full = true;
-            for i in 0..container.size() {
+            for i in slots_for(container.as_ref(), side) {
                 let item = container.get_stack(i);
                 if item.item_count < item.get_max_stack_size() {
                     is_full = false;
@@ -411,7 +444,7 @@ impl HopperBlockEntity {
                     // `dst.is_empty()` branch and reports a transfer that never happened.
                     continue;
                 };
-                if Self::add_one_item(self, container.as_ref(), &extraction.one_item) {
+                if Self::add_one_item(self, container.as_ref(), &extraction.one_item, Some(side)) {
                     return true;
                 }
                 if let Some(leftover) = self.put_back(slot, extraction) {
@@ -423,8 +456,14 @@ impl HopperBlockEntity {
         }
         false
     }
-    pub fn add_one_item(from: &dyn Inventory, to: &dyn Inventory, item: &ItemStack) -> bool {
-        Self::add_item(Some(from), to, item.clone()).is_empty()
+    /// Offers `item` to `to` through `side`, returning whether all of it went in.
+    pub fn add_one_item(
+        from: &dyn Inventory,
+        to: &dyn Inventory,
+        item: &ItemStack,
+        side: Option<BlockDirection>,
+    ) -> bool {
+        Self::add_item(Some(from), to, item.clone(), side).is_empty()
     }
 
     /// Vanilla `addItem(Container, ItemEntity)`: moves as much of the entity's stack as fits, and
@@ -438,7 +477,7 @@ impl HopperBlockEntity {
         if stack.is_empty() {
             return false;
         }
-        *stack = Self::add_item(None, to, stack.clone());
+        *stack = Self::add_item(None, to, stack.clone(), None);
         let changed = stack.is_empty();
         drop(stack);
         if changed {
@@ -453,13 +492,14 @@ impl HopperBlockEntity {
         from: Option<&dyn Inventory>,
         to: &dyn Inventory,
         mut stack: ItemStack,
+        side: Option<BlockDirection>,
     ) -> ItemStack {
-        // TODO WorldlyContainer
-        for slot in 0..to.size() {
+        let slots = side.map_or_else(|| (0..to.size()).collect(), |side| slots_for(to, side));
+        for slot in slots {
             if stack.is_empty() {
                 break;
             }
-            stack = Self::try_move_in_item(from, to, stack, slot);
+            stack = Self::try_move_in_item(from, to, stack, slot, side);
         }
         stack
     }
@@ -469,8 +509,11 @@ impl HopperBlockEntity {
         to: &dyn Inventory,
         mut stack: ItemStack,
         slot: usize,
+        side: Option<BlockDirection>,
     ) -> ItemStack {
-        if !to.is_valid_slot_for(slot, &stack) {
+        if !to.is_valid_slot_for(slot, &stack)
+            || !to.can_place_item_through_face(slot, &stack, side)
+        {
             return stack;
         }
         let to_empty = to.is_empty();
@@ -757,7 +800,7 @@ mod tests {
         let hopper = hopper_holding(ItemStack::EMPTY.clone());
 
         let leftover =
-            HopperBlockEntity::add_item(None, &hopper, ItemStack::new(64, &Item::DIAMOND));
+            HopperBlockEntity::add_item(None, &hopper, ItemStack::new(64, &Item::DIAMOND), None);
 
         assert!(leftover.is_empty());
         assert_eq!(hopper.get_stack(0).item_count, 64);
@@ -773,7 +816,7 @@ mod tests {
         }
 
         let leftover =
-            HopperBlockEntity::add_item(None, &hopper, ItemStack::new(10, &Item::DIAMOND));
+            HopperBlockEntity::add_item(None, &hopper, ItemStack::new(10, &Item::DIAMOND), None);
 
         assert_eq!(hopper.get_stack(0).item_count, 64);
         assert_eq!(leftover.get_item().id, Item::DIAMOND.id);
@@ -786,7 +829,7 @@ mod tests {
         let hopper = hopper_holding(ItemStack::EMPTY.clone());
 
         let leftover =
-            HopperBlockEntity::add_item(None, &hopper, ItemStack::new(99, &Item::DIAMOND));
+            HopperBlockEntity::add_item(None, &hopper, ItemStack::new(99, &Item::DIAMOND), None);
 
         assert!(leftover.is_empty());
         assert_eq!(hopper.get_stack(0).item_count, 64);

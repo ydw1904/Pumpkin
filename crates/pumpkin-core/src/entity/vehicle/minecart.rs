@@ -100,6 +100,13 @@ impl MinecartEntity {
         }
     }
 
+    /// The inventory of a chest or hopper minecart.
+    #[must_use]
+    pub fn container_inventory(&self) -> Option<Arc<dyn pumpkin_inventory::Inventory>> {
+        self.container()
+            .map(|inventory| inventory.clone() as Arc<dyn pumpkin_inventory::Inventory>)
+    }
+
     /// Vanilla `getDropItem`. Command block and spawner minecarts drop a plain minecart.
     const fn drop_item(&self) -> &'static Item {
         match &self.kind {

@@ -1,3 +1,4 @@
+use crate::entity::r#type::CreatureSpawnLevel;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 
@@ -39,13 +40,13 @@ fn outside_melee_range(hunter: &dyn Mob, target: &LivingEntity, _world: &World) 
 
 /// Vanilla `Guardian.getWalkTargetValue`.
 pub fn guardian_walk_target_value(
-    world: &World,
+    level: &dyn CreatureSpawnLevel,
     pos: &pumpkin_util::math::position::BlockPos,
 ) -> f32 {
-    if world.get_fluid(pos).has_tag(&tag::Fluid::MINECRAFT_WATER) {
-        10.0 + world.get_pathfinding_cost_from_light_levels(pos)
+    if level.fluid(pos).has_tag(&tag::Fluid::MINECRAFT_WATER) {
+        10.0 + level.pathfinding_cost_from_light_levels(pos)
     } else {
-        crate::entity::mob::monster_walk_target_value(world, pos)
+        crate::entity::mob::monster_walk_target_value(level, pos)
     }
 }
 
@@ -108,13 +109,17 @@ impl CustomSound for GuardianEntity {
 }
 
 impl Mob for GuardianEntity {
-    fn get_walk_target_value(&self, pos: &pumpkin_util::math::position::BlockPos) -> f32 {
-        guardian_walk_target_value(&self.get_entity().world.load(), pos)
+    fn get_walk_target_value(
+        &self,
+        level: &dyn CreatureSpawnLevel,
+        pos: &pumpkin_util::math::position::BlockPos,
+    ) -> f32 {
+        guardian_walk_target_value(level, pos)
     }
 
     /// Vanilla `Guardian.checkSpawnObstruction`.
-    fn check_spawn_obstruction(&self, world: &crate::world::World) -> bool {
-        crate::entity::mob::is_unobstructed(self, world)
+    fn check_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
+        crate::entity::mob::is_unobstructed(self, level)
     }
 
     fn get_mob_entity(&self) -> &MobEntity {

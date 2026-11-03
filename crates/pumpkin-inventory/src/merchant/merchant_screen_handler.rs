@@ -356,6 +356,10 @@ impl ScreenHandler for MerchantScreenHandler {
         self.inventory.set_stack(2, ItemStack::EMPTY.clone());
     }
 
+    fn can_take_item_for_pick_all(&self, _slot_index: usize) -> bool {
+        false
+    }
+
     fn quick_move(&mut self, player: &dyn InventoryPlayer, slot_index: i32) -> ItemStack {
         const PLAYER_INVENTORY_START: i32 = 3;
         const PLAYER_HOTBAR_START: i32 = 30;

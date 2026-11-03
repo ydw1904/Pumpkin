@@ -2,17 +2,26 @@ use std::sync::Arc;
 
 use pumpkin_data::block_properties::DecoratedPotLikeProperties;
 use pumpkin_data::fluid::Fluid;
+use pumpkin_data::game_event::GameEvent;
+use pumpkin_data::particle::Particle;
 use pumpkin_data::sound::{Sound, SoundCategory};
+use pumpkin_data::statistic::StatisticCategory;
 use pumpkin_data::{BlockState, BlockStateId};
 use pumpkin_macros::pumpkin_block;
+use pumpkin_util::math::vector3::Vector3;
 use pumpkin_world::tick::TickPriority;
 
 use crate::block::entities::decorated_pot::DecoratedPotBlockEntity;
 use crate::block::registry::BlockActionResult;
 use crate::block::{
     BlockBehaviour, GetComparatorOutputArgs, GetStateForNeighborUpdateArgs, NormalUseArgs,
-    OnPlaceArgs, PathComputationType, PlacedArgs, UseWithItemArgs,
+    OnPlaceArgs, OnSyncedBlockEventArgs, PathComputationType, PlacedArgs, UseWithItemArgs,
 };
+
+/// Block event that makes the pot wobble; the data is the `WobbleStyle` ordinal.
+const WOBBLE_EVENT: u8 = 1;
+const WOBBLE_POSITIVE: u8 = 0;
+const WOBBLE_NEGATIVE: u8 = 1;
 
 #[pumpkin_block("minecraft:decorated_pot")]
 pub struct DecoratedPotBlock;
@@ -63,22 +72,45 @@ impl BlockBehaviour for DecoratedPotBlock {
                 .as_any()
                 .downcast_ref::<DecoratedPotBlockEntity>()
         {
-            if pot_entity.try_insert_item(args.item_stack, 1) {
-                args.world.play_sound(
-                    Sound::BlockDecoratedPotInsert,
-                    SoundCategory::Blocks,
-                    &args.position.to_f64(),
-                );
-                // Vanilla `BlockEntity.setChanged` notifies comparators.
-                args.world
-                    .update_neighbour_for_output_signal(args.position, args.block);
-            } else {
-                args.world.play_sound(
-                    Sound::BlockDecoratedPotInsertFail,
-                    SoundCategory::Blocks,
-                    &args.position.to_f64(),
-                );
-            }
+            let item = args.item_stack.item;
+            let Some(fill) =
+                pot_entity.try_insert_item(args.item_stack, args.player.gamemode.load())
+            else {
+                // TRY_WITH_EMPTY_HAND
+                return self.normal_use(NormalUseArgs {
+                    server: args.server,
+                    world: args.world,
+                    block: args.block,
+                    position: args.position,
+                    player: args.player,
+                    hit: args.hit,
+                });
+            };
+            args.world
+                .add_synced_block_event(*args.position, WOBBLE_EVENT, WOBBLE_POSITIVE);
+            args.player
+                .increment_stat(StatisticCategory::Used, i32::from(item.id), 1);
+            args.world.play_sound_raw(
+                Sound::BlockDecoratedPotInsert as u16,
+                SoundCategory::Blocks,
+                &args.position.to_centered_f64(),
+                1.0,
+                0.7 + 0.5 * fill,
+            );
+            args.world.spawn_particle(
+                args.position.to_f64() + Vector3::new(0.5, 1.2, 0.5),
+                Vector3::new(0.0, 0.0, 0.0),
+                0.0,
+                7,
+                Particle::DustPlume,
+            );
+            // Vanilla `BlockEntity.setChanged` notifies comparators.
+            args.world
+                .update_neighbour_for_output_signal(args.position, args.block);
+            args.world.emit_game_event(
+                GameEvent::BlockChange.name(),
+                args.position.to_centered_f64(),
+            );
             return BlockActionResult::Success;
         }
 
@@ -89,9 +121,20 @@ impl BlockBehaviour for DecoratedPotBlock {
         args.world.play_sound(
             Sound::BlockDecoratedPotInsertFail,
             SoundCategory::Blocks,
-            &args.position.to_f64(),
+            &args.position.to_centered_f64(),
+        );
+        args.world
+            .add_synced_block_event(*args.position, WOBBLE_EVENT, WOBBLE_NEGATIVE);
+        args.world.emit_game_event(
+            GameEvent::BlockChange.name(),
+            args.position.to_centered_f64(),
         );
         BlockActionResult::Success
+    }
+
+    /// `DecoratedPotBlockEntity.triggerEvent`: the client plays the wobble.
+    fn on_synced_block_event(&self, args: OnSyncedBlockEventArgs<'_>) -> bool {
+        args.r#type == WOBBLE_EVENT
     }
 
     fn get_comparator_output(&self, args: GetComparatorOutputArgs<'_>) -> Option<u8> {

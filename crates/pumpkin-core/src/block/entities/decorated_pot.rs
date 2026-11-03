@@ -2,6 +2,7 @@ use super::BlockEntity;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
+use pumpkin_util::GameMode;
 use pumpkin_util::math::position::BlockPos;
 use std::sync::{Arc, Mutex};
 
@@ -167,34 +168,31 @@ impl DecoratedPotBlockEntity {
             .take()
     }
 
-    pub fn try_insert_item(&self, stack: &mut ItemStack, count: u8) -> bool {
+    /// `DecoratedPotBlock.useItemOn`: adds one of `stack` when the pot is empty or holds the same
+    /// item and components with room left. Returns how full the pot is now, for the sound pitch.
+    pub fn try_insert_item(&self, stack: &mut ItemStack, gamemode: GameMode) -> Option<f32> {
+        if stack.is_empty() {
+            return None;
+        }
         let mut item_guard = self
             .item
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(existing) = item_guard.as_mut() {
-            if existing.item.id == stack.item.id {
-                // Vanilla gates on the item's own max stack size, not a fixed 64.
-                // Saturate so a count loaded from NBT above that limit cannot underflow.
-                let space = existing
-                    .get_max_stack_size()
-                    .saturating_sub(existing.item_count);
-                let add = count.min(space).min(stack.item_count);
-                if add > 0 {
-                    existing.item_count += add;
-                    stack.item_count -= add;
-                    return true;
+        let pot = match item_guard.as_mut() {
+            Some(existing) if !existing.is_empty() => {
+                if !existing.are_items_and_components_equal(stack)
+                    || existing.item_count >= existing.get_max_stack_size()
+                {
+                    return None;
                 }
+                existing.item_count += 1;
+                existing
             }
-            false
-        } else {
-            let insert_count = count.min(stack.item_count).min(stack.get_max_stack_size());
-            let mut inserted = stack.clone();
-            inserted.item_count = insert_count;
-            *item_guard = Some(inserted);
-            stack.item_count -= insert_count;
-            true
-        }
+            _ => item_guard.insert(stack.copy_with_count(1)),
+        };
+        let fill = f32::from(pot.item_count) / f32::from(pot.get_max_stack_size());
+        stack.decrement_unless_creative(gamemode, 1);
+        Some(fill)
     }
 
     pub fn get_comparator_output(&self) -> u8 {

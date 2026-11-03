@@ -175,6 +175,10 @@ pub struct ProtoChunk {
         Option<Box<crate::generation::noise::aquifer_sampler::WorldAquiferSampler>>,
     /// See [`ChunkData::post_processing`].
     pub post_processing: Vec<Vec<u16>>,
+    /// The saved full chunk this proto chunk only relights, like vanilla's `ImposterProtoChunk`
+    /// going through `ChunkPyramid.LOADING_PYRAMID`: no generation step runs again, and the
+    /// saved chunk itself comes back once full.
+    pub relight_of: Option<Arc<ChunkData>>,
 }
 
 /// Vanilla `BlockState.getPostProcessPos`: the position to mark for post-processing when
@@ -355,6 +359,7 @@ impl ProtoChunk {
             post_processing: Vec::new(),
             surface_height_cache: FxHashMap::default(),
             aquifer_sampler: None,
+            relight_of: None,
         }
     }
 
@@ -1242,6 +1247,11 @@ impl ProtoChunk {
             return;
         }
         debug_assert_eq!(chunk.stage, StagedChunkEnum::Lighting);
+        if chunk.relight_of.is_some() {
+            // Vanilla's loading pyramid passes a saved chunk through the spawn step.
+            cache.get_center_chunk_mut().stage = StagedChunkEnum::Spawn;
+            return;
+        }
 
         let biome = chunk.get_terrain_gen_biome(
             section_to_block(chunk.x),

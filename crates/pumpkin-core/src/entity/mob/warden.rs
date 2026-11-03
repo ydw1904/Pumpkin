@@ -1,3 +1,4 @@
+use crate::entity::r#type::CreatureSpawnLevel;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicI32, Ordering},
@@ -150,7 +151,11 @@ impl WardenEntity {
 
 impl Mob for WardenEntity {
     /// Vanilla `Warden.getWalkTargetValue`.
-    fn get_walk_target_value(&self, _pos: &pumpkin_util::math::position::BlockPos) -> f32 {
+    fn get_walk_target_value(
+        &self,
+        _level: &dyn CreatureSpawnLevel,
+        _pos: &pumpkin_util::math::position::BlockPos,
+    ) -> f32 {
         0.0
     }
 
@@ -169,11 +174,11 @@ impl Mob for WardenEntity {
         &self.mob_entity
     }
 
-    fn check_spawn_obstruction(&self, world: &World) -> bool {
+    fn check_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
         let entity = &self.mob_entity.living_entity.entity;
         let bounding_box = entity.bounding_box.load();
-        !world.contains_any_liquid(bounding_box)
-            && world.get_entities_at_box(&bounding_box).is_empty()
-            && world.is_space_empty(bounding_box)
+        !level.contains_any_liquid(bounding_box)
+            && level.entities_at_box(&bounding_box).is_empty()
+            && level.is_space_empty(bounding_box)
     }
 }

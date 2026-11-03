@@ -1,3 +1,4 @@
+use pumpkin_data::BlockDirection;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
@@ -90,6 +91,38 @@ pub trait Inventory: Send + Sync + Clearable {
         _hopper_inventory: &dyn Inventory,
         _slot: usize,
         _stack: &ItemStack,
+    ) -> bool {
+        true
+    }
+
+    /// The slots hoppers and droppers may use through `side`, or `None` for every slot.
+    ///
+    /// Mojang name: `WorldlyContainer.getSlotsForFace`
+    fn slots_for_face(&self, _side: BlockDirection) -> Option<&'static [usize]> {
+        None
+    }
+
+    /// Whether `stack` may go into `slot` through `side` (`None` when not inserted through a
+    /// face, like a hopper picking up an item entity).
+    ///
+    /// Mojang name: `WorldlyContainer.canPlaceItemThroughFace`
+    fn can_place_item_through_face(
+        &self,
+        _slot: usize,
+        _stack: &ItemStack,
+        _side: Option<BlockDirection>,
+    ) -> bool {
+        true
+    }
+
+    /// Whether `stack` may be taken out of `slot` through `side`.
+    ///
+    /// Mojang name: `WorldlyContainer.canTakeItemThroughFace`
+    fn can_take_item_through_face(
+        &self,
+        _slot: usize,
+        _stack: &ItemStack,
+        _side: BlockDirection,
     ) -> bool {
         true
     }

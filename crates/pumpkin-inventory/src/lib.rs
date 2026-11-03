@@ -39,6 +39,7 @@ pub mod brewing;
 pub mod bundle;
 pub mod cartography_table_screen_handler;
 pub mod container_click;
+pub mod crafter_screen_handler;
 pub mod crafting;
 pub mod double;
 pub mod drag_handler;

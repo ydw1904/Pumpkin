@@ -433,6 +433,7 @@ fn write_entry(
             }
             // Skip special/decorated_pot recipes as they have no useful display
             CraftingRecipeTypes::CraftingDecoratedPot { .. }
+            | CraftingRecipeTypes::CraftingCustom(_)
             | CraftingRecipeTypes::CraftingSpecial => {
                 return Ok(false);
             }
@@ -505,6 +506,7 @@ impl ClientPacket for CRecipeBookAdd<'_> {
                     r,
                     CraftingRecipeTypes::CraftingSpecial
                         | CraftingRecipeTypes::CraftingDecoratedPot { .. }
+                        | CraftingRecipeTypes::CraftingCustom(_)
                 )
             })
             .count();
@@ -536,6 +538,7 @@ impl ClientPacket for CRecipeBookAdd<'_> {
                     (group.map(Cow::Borrowed), true)
                 }
                 CraftingRecipeTypes::CraftingDecoratedPot { .. }
+                | CraftingRecipeTypes::CraftingCustom(_)
                 | CraftingRecipeTypes::CraftingSpecial => (None, true),
             };
             let group_id = resolve_group_id_owned(&mut group_ids, &mut next_group_id, group);

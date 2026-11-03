@@ -2237,7 +2237,7 @@ impl World {
             // Auto-save logic
             if level_time.world_age % 100 == 0 {
                 self.level.should_unload.store(true, Relaxed);
-                let cleaned_chunks = self.level.clean_memory();
+                let cleaned_chunks = self.clean_memory();
                 if !cleaned_chunks.is_empty() {
                     let world_clone = self.clone();
                     if let Some(server) = self.server.upgrade() {
@@ -2504,25 +2504,7 @@ impl World {
     }
 
     pub fn contains_any_liquid(&self, bounding_box: BoundingBox) -> bool {
-        let min_x = bounding_box.min.x.floor() as i32;
-        let max_x = bounding_box.max.x.ceil() as i32;
-        let min_y = bounding_box.min.y.floor() as i32;
-        let max_y = bounding_box.max.y.ceil() as i32;
-        let min_z = bounding_box.min.z.floor() as i32;
-        let max_z = bounding_box.max.z.ceil() as i32;
-
-        for x in min_x..max_x {
-            for y in min_y..max_y {
-                for z in min_z..max_z {
-                    let pos = BlockPos::new(x, y, z);
-                    if self.get_fluid_and_fluid_state(&pos).0.id != Fluid::EMPTY.id {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        false
+        crate::entity::r#type::CreatureSpawnLevel::contains_any_liquid(self, bounding_box)
     }
 
     // FlowingFluid.getFlow()
@@ -5720,6 +5702,34 @@ impl World {
         true
     }
 
+    /// Vanilla `StructureTemplate.placeEntities`: creates an entity a structure placed, finalized
+    /// with reason `STRUCTURE` when the structure asks for it.
+    fn create_structure_entity(
+        self: &Arc<Self>,
+        StructureEntity { mut nbt, finalize }: StructureEntity,
+    ) -> Option<Arc<dyn EntityBase>> {
+        nbt.child_tags.remove("UUID");
+        let entity = load_static_entity_from_nbt(&nbt, Vector3::default(), self)?;
+        if finalize {
+            crate::entity::mob::spawn::finalize_spawn(
+                &entity,
+                self,
+                crate::entity::mob::spawn::EntitySpawnReason::Structure,
+                None,
+            );
+        }
+        Some(entity)
+    }
+
+    /// Adds the entities a structure placed outside world generation to the world.
+    pub fn spawn_structure_entities(self: &Arc<Self>, entities: Vec<StructureEntity>) {
+        for entity in entities {
+            if let Some(entity) = self.create_structure_entity(entity) {
+                self.spawn_entity(entity);
+            }
+        }
+    }
+
     /// Fires [`EntitySpawnEvent`]; `false` if a plugin cancels it.
     ///
     /// [`EntitySpawnEvent`]: crate::plugin::api::events::entity::entity_spawn::EntitySpawnEvent
@@ -5875,6 +5885,23 @@ impl World {
         for owned in entity.get_owned_entities() {
             self.remove_lookup_only_entity(owned.as_ref());
         }
+    }
+
+    /// [`Level::clean_memory`] plus the chunks of live entities that nothing uses any more.
+    ///
+    /// An entity can walk into a chunk whose entities were never loaded, so no entity chunk
+    /// there would ever unload it. Vanilla gives it a section in that chunk, which is saved and
+    /// unloaded with the chunk's other sections once the chunk is hidden.
+    pub fn clean_memory(&self) -> Vec<Vector2<i32>> {
+        let mut chunks = self.level.clean_memory();
+        let mut known: FxHashSet<_> = chunks.iter().copied().collect();
+        for entity in self.entities.load().iter() {
+            let pos = saved_chunk_pos(entity.as_ref());
+            if !self.level.is_entity_chunk_in_use(&pos) && known.insert(pos) {
+                chunks.push(pos);
+            }
+        }
+        chunks
     }
 
     pub async fn remove_entities_in_chunks(
@@ -8439,20 +8466,11 @@ impl WorldPortalExt for WorldPortal {
     }
 
     fn spawn_structure_entities(&self, chunk: &mut ProtoChunk, entities: Vec<StructureEntity>) {
-        for StructureEntity { mut nbt, finalize } in entities {
-            nbt.child_tags.remove("UUID");
-            if let Some(entity) = load_static_entity_from_nbt(&nbt, Vector3::default(), &self.0) {
-                if finalize {
-                    crate::entity::mob::spawn::finalize_spawn(
-                        &entity,
-                        &self.0,
-                        crate::entity::mob::spawn::EntitySpawnReason::Structure,
-                        None,
-                    );
-                }
-                if self.0.fire_entity_spawn_event(entity.as_ref()) {
-                    chunk.add_entity(natural_spawner::world_gen_entity_nbt(&entity));
-                }
+        for entity in entities {
+            if let Some(entity) = self.0.create_structure_entity(entity)
+                && self.0.fire_entity_spawn_event(entity.as_ref())
+            {
+                chunk.add_entity(natural_spawner::world_gen_entity_nbt(&entity));
             }
         }
     }
@@ -9168,7 +9186,7 @@ mod tests {
 
         // The autosave loads the entity chunk; the next memory cleanup used to unload it.
         world.autosave_entities().await;
-        let cleaned = world.level.clean_memory();
+        let cleaned = world.clean_memory();
         world.remove_entities_in_chunks(&cleaned).await;
         world.level.clean_entity_chunks(&cleaned);
 
@@ -9176,6 +9194,54 @@ mod tests {
         let alive = !cow.get_entity().is_removed() && world.get_entity_by_id(cow_id).is_some();
         world.level.shutdown().await;
         assert!(alive);
+        Ok(())
+    }
+
+    // An entity that walked into a chunk whose entities were never loaded must still unload
+    // once nothing uses that chunk.
+    #[tokio::test]
+    async fn memory_cleanup_unloads_entities_of_chunks_without_entity_chunk()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use crate::entity::{
+            Entity, EntityBase, RemovalReason, ai::test_support::world, passive::cow::CowEntity,
+        };
+        use pumpkin_data::entity::EntityType;
+        use pumpkin_util::math::{vector2::Vector2, vector3::Vector3};
+        use std::sync::Arc;
+
+        let folder = tempfile::tempdir()?;
+        let world = world(&folder);
+        let cow = CowEntity::new(Entity::new(
+            world.clone(),
+            Vector3::new(40.5, 64.0, 40.5),
+            &EntityType::COW,
+        ));
+        world.entities.store(Arc::new(vec![cow.clone()]));
+
+        let cleaned = world.clean_memory();
+        world.remove_entities_in_chunks(&cleaned).await;
+        let saved = world
+            .level
+            .get_entity_chunk_sync(&Vector2::new(2, 2))
+            .map(|chunk| {
+                chunk
+                    .data
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .len()
+            });
+        world.level.clean_entity_chunks(&cleaned);
+        let unloaded = world
+            .level
+            .get_entity_chunk_sync(&Vector2::new(2, 2))
+            .is_none();
+
+        let removal = cow.get_entity().removal_reason.load();
+        world.level.shutdown().await;
+        assert!(unloaded);
+        assert_eq!(saved, Some(1));
+        assert!(removal == Some(RemovalReason::UnloadedToChunk));
+        assert!(world.get_entity_by_id(cow.get_entity().entity_id).is_none());
         Ok(())
     }
 

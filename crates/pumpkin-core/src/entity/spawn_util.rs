@@ -156,7 +156,7 @@ pub fn try_spawn_mob<T: Mob + 'static>(
             position,
             entity_type,
         ));
-        if !mob.check_spawn_obstruction(world) {
+        if !mob.check_spawn_obstruction(world.as_ref()) {
             continue;
         }
         world.spawn_entity(mob.clone() as Arc<dyn EntityBase>);

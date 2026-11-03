@@ -42,7 +42,7 @@ use pumpkin_util::random::{
     RandomDeriverImpl, RandomImpl, hash_block_pos, legacy_rand::LegacyRand,
 };
 
-use crate::ProtoChunk;
+use crate::generation::proto_chunk::StructureEntity;
 
 pub use block_state_resolver::BlockStateResolver;
 pub use cache::{
@@ -61,7 +61,7 @@ pub use structure_template::{
 };
 pub use template_piece::TemplatePiece;
 
-/// Abstraction over block placement, implemented by [`ProtoChunk`] and
+/// Abstraction over block placement, implemented by [`ProtoChunk`](crate::ProtoChunk) and
 /// [`GenerationRegion`](crate::generation::update_shape::GenerationRegion) (worldgen) and
 /// [`WorldBlockPlacer`] (live `/place template` command).
 pub trait BlockPlacer {
@@ -382,12 +382,14 @@ pub(crate) fn finalize_processing(
     }
 }
 
+/// Vanilla `StructureTemplate.placeEntities`: hands each template entity inside `chunk_box` (all
+/// of them without one) to `add_entity` with the saved data it is created from.
 pub(crate) fn place_template_entities(
-    chunk: &mut ProtoChunk,
+    mut add_entity: impl FnMut(StructureEntity),
     template: &StructureTemplate,
     origin: Vector3<i32>,
     rotation: Rotation,
-    chunk_box: &pumpkin_util::math::block_box::BlockBox,
+    chunk_box: Option<&pumpkin_util::math::block_box::BlockBox>,
     finalize_entities: bool,
 ) {
     for entity in &template.entities {
@@ -397,7 +399,7 @@ pub(crate) fn place_template_entities(
             origin.y + block_pos.y,
             origin.z + block_pos.z,
         );
-        if !chunk_box.contains_pos(&world_block_pos) {
+        if chunk_box.is_some_and(|bbox| !bbox.contains_pos(&world_block_pos)) {
             continue;
         }
 
@@ -444,7 +446,10 @@ pub(crate) fn place_template_entities(
             nbt.put("Rotation", NbtTag::List(vec![yaw.into(), pitch.into()]));
         }
 
-        chunk.add_structure_entity(nbt, finalize_entities);
+        add_entity(StructureEntity {
+            nbt,
+            finalize: finalize_entities,
+        });
     }
 }
 

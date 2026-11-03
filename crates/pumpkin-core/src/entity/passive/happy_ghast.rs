@@ -1,3 +1,4 @@
+use crate::entity::r#type::CreatureSpawnLevel;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicBool, AtomicI32, Ordering},
@@ -128,9 +129,8 @@ impl Animal for HappyGhastEntity {
 
 impl Mob for HappyGhastEntity {
     /// Vanilla `HappyGhast.getWalkTargetValue`.
-    fn get_walk_target_value(&self, pos: &BlockPos) -> f32 {
-        let world = self.get_entity().world.load();
-        let is_empty = |pos: &BlockPos| world.get_block_state(pos).is_air();
+    fn get_walk_target_value(&self, level: &dyn CreatureSpawnLevel, pos: &BlockPos) -> f32 {
+        let is_empty = |pos: &BlockPos| level.block_state(pos).is_air();
         if !is_empty(pos) {
             0.0
         } else if is_empty(&pos.down()) && !is_empty(&pos.down_height(2)) {

@@ -30,6 +30,10 @@ pub trait CookingBlockEntityBase:
     fn set_lit_total_time(&self, total_time: u16);
 
     fn is_burning(&self) -> bool;
+    /// The recipe's cooking time divided by the current fuel's speed multiplier.
+    ///
+    /// Mojang name: `getTotalCookTime`
+    fn total_cook_time(&self, recipe: &CookingRecipe) -> u16;
     fn can_accept_recipe_output(&self, recipe: Option<&CookingRecipe>, max_count: u8) -> bool;
     fn craft_recipe(&self, recipe: Option<&CookingRecipe>) -> bool;
 }
@@ -97,6 +101,15 @@ macro_rules! impl_cooking_block_entity_base {
 
             fn is_burning(&self) -> bool {
                 self.get_lit_time_remaining() > 0
+            }
+
+            fn total_cook_time(&self, recipe: &pumpkin_data::recipes::CookingRecipe) -> u16 {
+                let speed = f32::from_bits(self.speed_multiplier.load(Ordering::Relaxed));
+                if speed > 0.0 {
+                    (recipe.cookingtime as f32 / speed).ceil() as u16
+                } else {
+                    recipe.cookingtime as u16
+                }
             }
 
             fn add_recipe_used(&self, recipe: &pumpkin_data::recipes::CookingRecipe) {
@@ -268,7 +281,7 @@ macro_rules! impl_experience_container_for_cooking {
 
 #[macro_export]
 macro_rules! impl_inventory_for_cooking {
-    ($struct_name:ty) => {
+    ($struct_name:ty, $recipe_kind:expr) => {
         impl pumpkin_inventory::Inventory for $struct_name {
             fn size(&self) -> usize {
                 Self::INVENTORY_SIZE
@@ -325,14 +338,13 @@ macro_rules! impl_inventory_for_cooking {
                 items[slot] = stack.clone();
 
                 if slot == 0 && !is_same_item {
-                    if let Some(recipe) = pumpkin_data::recipes::get_cooking_recipe_with_ingredient(
+                    // AbstractFurnaceBlockEntity.getTotalCookTime: 200 when nothing cooks.
+                    let total = pumpkin_data::recipes::get_cooking_recipe_with_ingredient(
                         stack.item,
-                        CookingRecipeKind::Smelting,
-                    ) {
-                        self.set_cooking_total_time(recipe.cookingtime as u16);
-                    } else {
-                        self.set_cooking_total_time(0);
-                    }
+                        $recipe_kind,
+                    )
+                    .map_or(200, |recipe| self.total_cook_time(recipe));
+                    self.set_cooking_total_time(total);
                     self.set_cooking_time_spent(0);
                 }
 
@@ -343,6 +355,46 @@ macro_rules! impl_inventory_for_cooking {
             fn mark_dirty(&self) {
                 self.dirty.store(true, Ordering::Relaxed);
                 self.comparator_dirty.store(true, Ordering::Relaxed);
+            }
+
+            /// AbstractFurnaceBlockEntity.canPlaceItem: nothing goes into the result, the fuel
+            /// slot takes fuel or one empty bucket.
+            fn is_valid_slot_for(&self, slot: usize, stack: &ItemStack) -> bool {
+                match slot {
+                    2 => false,
+                    1 => stack
+                        .get_data_component::<pumpkin_data::data_component_impl::CookingFuelImpl>()
+                        .is_some()
+                        || (stack.item == &pumpkin_data::item::Item::BUCKET
+                            && self.get_fuel_item().item != &pumpkin_data::item::Item::BUCKET),
+                    _ => true,
+                }
+            }
+
+            fn slots_for_face(
+                &self,
+                side: pumpkin_data::BlockDirection,
+            ) -> Option<&'static [usize]> {
+                Some(match side {
+                    pumpkin_data::BlockDirection::Down => &[2, 1],
+                    pumpkin_data::BlockDirection::Up => &[0],
+                    _ => &[1],
+                })
+            }
+
+            /// Only empty and water buckets come back out of the fuel slot from below.
+            fn can_take_item_through_face(
+                &self,
+                slot: usize,
+                stack: &ItemStack,
+                side: pumpkin_data::BlockDirection,
+            ) -> bool {
+                use pumpkin_data::tag::Taggable;
+                side != pumpkin_data::BlockDirection::Down
+                    || slot != 1
+                    || stack
+                        .item
+                        .has_tag(&pumpkin_data::tag::Item::MINECRAFT_FURNACE_FUEL_BOTTOM_TAKEABLE)
             }
 
             fn as_any(&self) -> &dyn std::any::Any {
@@ -413,17 +465,34 @@ macro_rules! impl_block_entity_for_cooking {
                         if !burn_cancelled {
                             self.set_lit_time_remaining(burn_ticks);
                             self.set_lit_total_time(burn_ticks);
+                            // 26.3 fuels carry a speed multiplier (2 in blast furnaces and
+                            // smokers) that divides the recipe's cooking time; progress made
+                            // so far keeps its ratio.
+                            let speed = fuel_component
+                                .map_or(1.0, |fuel| fuel.get_speed_multiplier(is_fast));
+                            self.speed_multiplier.store(speed.to_bits(), Ordering::Relaxed);
+                            let total = self.get_cooking_total_time();
+                            let spent = self.get_cooking_time_spent();
+                            if total > 0 && spent < total
+                                && let Some(recipe) = furnace_recipe
+                            {
+                                let ratio = f32::from(spent) / f32::from(total);
+                                let new_total = self.total_cook_time(recipe);
+                                self.set_cooking_total_time(new_total);
+                                self.set_cooking_time_spent(
+                                    (ratio * f32::from(new_total)).ceil() as u16,
+                                );
+                            }
 
                             if self.is_burning() {
                                 is_dirty = true;
                                 if let Ok(mut items_guard) = self.items.try_write() {
                                     if !items_guard[1].is_empty() {
-                                        let remainder = items_guard[1]
-                                            .get_data_component::<
-                                                pumpkin_data::data_component_impl::UseRemainderImpl,
-                                            >()
-                                            .and_then(|component| component.remainder.as_deref())
-                                            .and_then(pumpkin_data::item::Item::from_registry_key);
+                                        // consumeFuel: the item's crafting remainder replaces
+                                        // the last fuel item, or drops if fuel is left.
+                                        let remainder = pumpkin_data::item_stack::crafting_remainder(
+                                            items_guard[1].item,
+                                        );
                                         items_guard[1].decrement(1);
                                         if let Some(remainder_item) = remainder
                                         {
@@ -471,11 +540,10 @@ macro_rules! impl_block_entity_for_cooking {
                         if !start_cancelled {
                             self.cooking_time_spent.fetch_add(1, Ordering::Relaxed);
 
-                            if self.get_cooking_time_spent() == self.get_cooking_total_time() {
+                            if self.get_cooking_time_spent() >= self.get_cooking_total_time() {
                                 self.set_cooking_time_spent(0);
                                 if let Some(cooking_recipe) = furnace_recipe {
-                                    let cooking_total_time = cooking_recipe.cookingtime;
-                                    self.set_cooking_total_time(cooking_total_time as u16);
+                                    self.set_cooking_total_time(self.total_cook_time(cooking_recipe));
 
                                     let mut smelt_cancelled = false;
                                     if let Some(server) = world.server.upgrade() {
@@ -570,7 +638,12 @@ macro_rules! impl_block_entity_for_cooking {
                     }
                 }
 
+                let speed_multiplier = std::sync::atomic::AtomicU32::new(
+                    nbt.get_float("speed_multiplier").unwrap_or(1.0).to_bits(),
+                );
+
                 let mut furnace = Self {
+                    speed_multiplier,
                     position,
                     dirty: AtomicBool::new(false),
                     comparator_dirty: AtomicBool::new(false),
@@ -591,6 +664,10 @@ macro_rules! impl_block_entity_for_cooking {
                 nbt.put_int("cooking_time_spent", i32::from(self.get_cooking_time_spent()));
                 nbt.put_int("lit_total_time", i32::from(self.get_lit_total_time()));
                 nbt.put_int("lit_time_remaining", i32::from(self.get_lit_time_remaining()));
+                nbt.put_float(
+                    "speed_multiplier",
+                    f32::from_bits(self.speed_multiplier.load(Ordering::Relaxed)),
+                );
 
                 // Save RecipesUsed in vanilla format (map of recipe ID -> craft count)
                 {

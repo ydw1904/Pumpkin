@@ -1,3 +1,4 @@
+use crate::chunk::io::Dirtiable;
 use crate::chunk::{
     ChunkData, ChunkHeightmapType, ChunkHeightmaps, ChunkLight, ChunkSections,
     palette::{BiomePalette, BlockPalette},
@@ -9,7 +10,7 @@ use pumpkin_data::BlockStateId;
 use pumpkin_data::dimension::Dimension;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::Relaxed};
 
 use crate::ProtoChunk;
 use crate::level::SyncChunk;
@@ -301,6 +302,23 @@ impl Chunk {
 
         let proto_chunk = *proto_chunk_box;
 
+        // Only mark lit if past the lighting stage, and the lighting config is "default" ("full" and "dark" modes skip proper lighting)
+        let is_lit = proto_chunk.stage >= StagedChunkEnum::Lighting
+            && *lighting_config == LightingEngineConfig::Default;
+
+        if let Some(saved) = proto_chunk.relight_of {
+            if proto_chunk.stage >= StagedChunkEnum::Lighting {
+                *saved
+                    .light_engine
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = proto_chunk.light;
+                saved.light_populated.store(is_lit, Relaxed);
+                saved.mark_dirty(true);
+            }
+            *self = Self::Level(saved);
+            return;
+        }
+
         let sections = Self::build_level_sections(&proto_chunk, dimension);
         let heightmaps = Self::build_level_heightmaps(&proto_chunk, dimension.min_y);
         let structures = proto_chunk.structure_references_in_chunk();
@@ -309,10 +327,6 @@ impl Chunk {
         // By taking ownership of proto_chunk, we can move the light data directly
         // This prevents keeping duplicate lighting data in memory
         let light_data = proto_chunk.light;
-
-        // Only mark lit if past the lighting stage, and the lighting config is "default" ("full" and "dark" modes skip proper lighting)
-        let is_lit = proto_chunk.stage >= StagedChunkEnum::Lighting
-            && *lighting_config == LightingEngineConfig::Default;
 
         // Convert pending block entities from structure generation to actual block entities
         let mut pending_block_entities = FxHashMap::default();

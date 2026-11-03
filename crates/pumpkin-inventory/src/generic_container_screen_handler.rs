@@ -17,7 +17,7 @@ use pumpkin_data::{item_stack::ItemStack, screen::WindowType};
 use crate::{
     player::player_inventory::PlayerInventory,
     screen_handler::{InventoryPlayer, ScreenHandler, ScreenHandlerBehaviour},
-    slot::NormalSlot,
+    slot::{NormalSlot, Slot},
 };
 
 /// Creates a generic 9x3 container (single chest).
@@ -80,20 +80,20 @@ pub fn create_generic_3x3(
     )
 }
 
-/// Creates a crafter container (9 slots, 3x3 layout).
-pub fn create_crafter_3x3(
+/// Creates a shulker box container (27 slots that refuse shulker boxes).
+pub fn create_shulker_box(
     sync_id: u8,
     player_inventory: &Arc<PlayerInventory>,
     inventory: Arc<dyn Inventory>,
     player: &dyn InventoryPlayer,
 ) -> GenericContainerScreenHandler {
     GenericContainerScreenHandler::new(
-        WindowType::Crafter3x3,
+        WindowType::ShulkerBox,
         sync_id,
         player_inventory,
         inventory,
         3,
-        3,
+        9,
         player.is_spectator(),
     )
 }
@@ -176,14 +176,47 @@ impl GenericContainerScreenHandler {
 
     /// Adds slots for the container's inventory grid.
     fn add_inventory_slots(&mut self) {
+        let shulker_box = self.behaviour.window_type == Some(WindowType::ShulkerBox);
         for i in 0..self.rows {
             for j in 0..self.columns {
-                self.add_slot(Arc::new(NormalSlot::new(
-                    self.inventory.clone(),
-                    (j + i * self.columns) as usize,
-                )));
+                let index = (j + i * self.columns) as usize;
+                if shulker_box {
+                    self.add_slot(Arc::new(ShulkerBoxSlot(NormalSlot::new(
+                        self.inventory.clone(),
+                        index,
+                    ))));
+                } else {
+                    self.add_slot(Arc::new(NormalSlot::new(self.inventory.clone(), index)));
+                }
             }
         }
+    }
+}
+
+/// A shulker box slot: anything but another shulker box.
+///
+/// Mojang name: `ShulkerBoxSlot`
+struct ShulkerBoxSlot(NormalSlot);
+
+impl Slot for ShulkerBoxSlot {
+    fn get_inventory(&self) -> Arc<dyn Inventory> {
+        self.0.get_inventory()
+    }
+
+    fn get_index(&self) -> usize {
+        self.0.get_index()
+    }
+
+    fn set_id(&self, id: usize) {
+        self.0.set_id(id);
+    }
+
+    fn can_insert(&self, stack: &ItemStack) -> bool {
+        stack.can_fit_inside_container_items()
+    }
+
+    fn mark_dirty(&self) {
+        self.0.mark_dirty();
     }
 }
 
@@ -223,18 +256,19 @@ impl ScreenHandler for GenericContainerScreenHandler {
         if slot.has_stack() {
             let mut slot_stack = slot.get_stack();
             stack_left = slot_stack.clone();
+            let container_slots = i32::from(self.rows * self.columns);
 
-            if slot_index < i32::from(self.rows * 9) {
+            if slot_index < container_slots {
                 // Move from inventory to player area (end)
                 if !self.insert_item(
                     &mut slot_stack,
-                    (self.rows * 9).into(),
+                    container_slots,
                     self.get_behaviour().slots.len() as i32,
                     true,
                 ) {
                     return ItemStack::EMPTY.clone();
                 }
-            } else if !self.insert_item(&mut slot_stack, 0, (self.rows * 9).into(), false) {
+            } else if !self.insert_item(&mut slot_stack, 0, container_slots, false) {
                 // Move from player area to inventory (start)
                 return ItemStack::EMPTY.clone();
             }

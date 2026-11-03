@@ -266,6 +266,16 @@ impl Inventory for ShulkerBoxBlockEntity {
         self.comparator_dirty.store(true, Ordering::Relaxed);
     }
 
+    /// Shulker boxes don't take other shulker boxes from hoppers or droppers either.
+    fn can_place_item_through_face(
+        &self,
+        _slot: usize,
+        stack: &ItemStack,
+        _side: Option<pumpkin_data::BlockDirection>,
+    ) -> bool {
+        stack.can_fit_inside_container_items()
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }

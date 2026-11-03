@@ -1,4 +1,4 @@
-use crate::block::entities::BlockEntity;
+use crate::block::entities::{BlockEntity, PropertyDelegate};
 use crate::world::World;
 use pumpkin_data::block_properties::CrafterLikeProperties;
 use pumpkin_data::item_stack::ItemStack;
@@ -120,6 +120,14 @@ impl BlockEntity for CrafterBlockEntity {
 
     fn get_position(&self) -> BlockPos {
         self.position
+    }
+
+    fn to_property_delegate(self: Arc<Self>) -> Option<Arc<dyn PropertyDelegate>> {
+        Some(self as Arc<dyn PropertyDelegate>)
+    }
+
+    fn to_recipe_input_inventory(self: Arc<Self>) -> Option<Arc<dyn RecipeInputInventory>> {
+        Some(self as Arc<dyn RecipeInputInventory>)
     }
 
     fn get_inventory(self: Arc<Self>) -> Option<Arc<dyn Inventory>> {
@@ -341,5 +349,33 @@ impl Clearable for CrafterBlockEntity {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         items.fill_with(|| ItemStack::EMPTY.clone());
         self.mark_dirty();
+    }
+}
+
+/// `CrafterBlockEntity.containerData`: the nine slot states (1 = disabled), then whether the
+/// crafter is triggered.
+impl PropertyDelegate for CrafterBlockEntity {
+    fn get_property(&self, index: i32) -> i32 {
+        match usize::try_from(index) {
+            Ok(slot) if slot < Self::INVENTORY_SIZE => i32::from(self.is_slot_disabled(slot)),
+            Ok(Self::INVENTORY_SIZE) => i32::from(self.is_triggered()),
+            _ => 0,
+        }
+    }
+
+    fn set_property(&self, index: i32, value: i32) {
+        match usize::try_from(index) {
+            Ok(slot) if slot < Self::INVENTORY_SIZE => {
+                self.disabled_slots
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)[slot] = value == 1;
+            }
+            Ok(Self::INVENTORY_SIZE) => self.set_triggered(value == 1),
+            _ => {}
+        }
+    }
+
+    fn get_properties_size(&self) -> i32 {
+        Self::INVENTORY_SIZE as i32 + 1
     }
 }

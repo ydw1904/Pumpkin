@@ -43,29 +43,174 @@ pub enum RecipeTypes {
     Stonecutting(StonecuttingRecipeStruct),
     /// Special crafting recipe types.
     #[serde(rename = "minecraft:crafting_special_bannerduplicate")]
-    CraftingSpecialBannerDuplicate,
+    CraftingSpecialBannerDuplicate(BannerDuplicateStruct),
     #[serde(rename = "minecraft:crafting_special_bookcloning")]
-    CraftingSpecialBookCloning,
+    CraftingSpecialBookCloning(BookCloningStruct),
     #[serde(rename = "minecraft:crafting_special_firework_rocket")]
-    CraftingSpecialFireworkRocket,
+    CraftingSpecialFireworkRocket(FireworkRocketStruct),
     #[serde(rename = "minecraft:crafting_special_firework_star")]
-    CraftingSpecialFireworkStar,
+    CraftingSpecialFireworkStar(FireworkStarStruct),
     #[serde(rename = "minecraft:crafting_special_firework_star_fade")]
-    CraftingSpecialFireworkStarFade,
+    CraftingSpecialFireworkStarFade(TargetDyeStruct),
     #[serde(rename = "minecraft:crafting_special_mapextending")]
     CraftingSpecialMapExtending,
     #[serde(rename = "minecraft:crafting_special_repairitem")]
     CraftingSpecialRepairItem,
     #[serde(rename = "minecraft:crafting_special_shielddecoration")]
-    CraftingSpecialShieldDecoration,
+    CraftingSpecialShieldDecoration(ShieldDecorationStruct),
     #[serde(rename = "minecraft:crafting_dye")]
-    CraftingDye,
+    CraftingDye(TargetDyeStruct),
     #[serde(rename = "minecraft:crafting_imbue")]
-    CraftingImbue,
+    CraftingImbue(ImbueStruct),
     /// Any other special crafting recipe type.
     #[serde(other)]
     #[serde(rename = "minecraft:crafting_special_*")]
     CraftingSpecial,
+}
+
+/// `crafting_special_bannerduplicate`: copies a patterned banner onto a blank one.
+#[derive(Deserialize)]
+pub struct BannerDuplicateStruct {
+    banner: RecipeIngredientTypes,
+    result: RecipeResultStruct,
+}
+
+/// `crafting_special_bookcloning`: copies a written book onto writable books.
+#[derive(Deserialize)]
+pub struct BookCloningStruct {
+    source: RecipeIngredientTypes,
+    material: RecipeIngredientTypes,
+    allowed_generations: Option<IntBounds>,
+    result: RecipeResultStruct,
+}
+
+/// `crafting_special_firework_rocket`.
+#[derive(Deserialize)]
+pub struct FireworkRocketStruct {
+    shell: RecipeIngredientTypes,
+    fuel: RecipeIngredientTypes,
+    star: RecipeIngredientTypes,
+    result: RecipeResultStruct,
+}
+
+/// `crafting_special_firework_star`.
+#[derive(Deserialize)]
+pub struct FireworkStarStruct {
+    fuel: RecipeIngredientTypes,
+    dye: RecipeIngredientTypes,
+    trail: RecipeIngredientTypes,
+    twinkle: RecipeIngredientTypes,
+    shapes: BTreeMap<String, RecipeIngredientTypes>,
+    result: RecipeResultStruct,
+}
+
+/// `crafting_dye` and `crafting_special_firework_star_fade`: a target item plus dyes.
+#[derive(Deserialize)]
+pub struct TargetDyeStruct {
+    target: RecipeIngredientTypes,
+    dye: RecipeIngredientTypes,
+    result: RecipeResultStruct,
+}
+
+/// `crafting_special_shielddecoration`.
+#[derive(Deserialize)]
+pub struct ShieldDecorationStruct {
+    banner: RecipeIngredientTypes,
+    target: RecipeIngredientTypes,
+    result: RecipeResultStruct,
+}
+
+/// `crafting_imbue`: a source item surrounded by eight of a material.
+#[derive(Deserialize)]
+pub struct ImbueStruct {
+    source: RecipeIngredientTypes,
+    material: RecipeIngredientTypes,
+    result: RecipeResultStruct,
+}
+
+/// A `MinMaxBounds.Ints`: either an exact number or an optional min and max.
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub enum IntBounds {
+    Exactly(u8),
+    Between { min: Option<u8>, max: Option<u8> },
+}
+
+impl IntBounds {
+    /// The bounds with open ends filled in from `default_min` and `default_max`.
+    fn resolve(&self, default_min: u8, default_max: u8) -> (u8, u8) {
+        match self {
+            Self::Exactly(n) => (*n, *n),
+            Self::Between { min, max } => (min.unwrap_or(default_min), max.unwrap_or(default_max)),
+        }
+    }
+}
+
+/// Emits a `CustomCraftingRecipe` wrapped in `CraftingRecipeTypes::CraftingCustom`.
+fn custom_recipe(recipe: &RecipeTypes) -> Option<TokenStream> {
+    let inner = match recipe {
+        RecipeTypes::CraftingSpecialBannerDuplicate(r) => {
+            let (banner, result) = (&r.banner, &r.result);
+            quote! { BannerDuplicate { banner: #banner, result: #result } }
+        }
+        RecipeTypes::CraftingSpecialBookCloning(r) => {
+            let (source, material, result) = (&r.source, &r.material, &r.result);
+            // BookCloningRecipe.DEFAULT_BOOK_GENERATION_RANGES is 0..=1.
+            let (min, max) = r
+                .allowed_generations
+                .as_ref()
+                .map_or((0, 1), |bounds| bounds.resolve(0, 2));
+            quote! {
+                BookCloning {
+                    source: #source,
+                    material: #material,
+                    allowed_generations: (#min, #max),
+                    result: #result,
+                }
+            }
+        }
+        RecipeTypes::CraftingSpecialFireworkRocket(r) => {
+            let (shell, fuel, star, result) = (&r.shell, &r.fuel, &r.star, &r.result);
+            quote! { FireworkRocket { shell: #shell, fuel: #fuel, star: #star, result: #result } }
+        }
+        RecipeTypes::CraftingSpecialFireworkStar(r) => {
+            let (fuel, dye, trail, twinkle, result) =
+                (&r.fuel, &r.dye, &r.trail, &r.twinkle, &r.result);
+            let shapes = r
+                .shapes
+                .iter()
+                .map(|(shape, ingredient)| quote! { (#shape, #ingredient) });
+            quote! {
+                FireworkStar {
+                    fuel: #fuel,
+                    dye: #dye,
+                    trail: #trail,
+                    twinkle: #twinkle,
+                    shapes: &[#(#shapes),*],
+                    result: #result,
+                }
+            }
+        }
+        RecipeTypes::CraftingSpecialFireworkStarFade(r) => {
+            let (target, dye, result) = (&r.target, &r.dye, &r.result);
+            quote! { FireworkStarFade { target: #target, dye: #dye, result: #result } }
+        }
+        RecipeTypes::CraftingDye(r) => {
+            let (target, dye, result) = (&r.target, &r.dye, &r.result);
+            quote! { Dye { target: #target, dye: #dye, result: #result } }
+        }
+        RecipeTypes::CraftingSpecialShieldDecoration(r) => {
+            let (banner, target, result) = (&r.banner, &r.target, &r.result);
+            quote! { ShieldDecoration { banner: #banner, target: #target, result: #result } }
+        }
+        RecipeTypes::CraftingImbue(r) => {
+            let (source, material, result) = (&r.source, &r.material, &r.result);
+            quote! { Imbue { source: #source, material: #material, result: #result } }
+        }
+        RecipeTypes::CraftingSpecialRepairItem => quote! { RepairItem },
+        _ => return None,
+    };
+    Some(quote! { CraftingRecipeTypes::CraftingCustom(CustomCraftingRecipe::#inner) })
 }
 
 /// Deserialized smithing table transform recipe.
@@ -375,6 +520,10 @@ pub struct CraftingTransmuteRecipeStruct {
     input: RecipeIngredientTypes,
     /// The material item consumed alongside `input`.
     material: RecipeIngredientTypes,
+    /// How many material items the recipe takes (`exactly(1)` when absent).
+    material_count: Option<IntBounds>,
+    /// Whether each material item adds one to the result count.
+    add_material_count_to_result: Option<bool>,
     /// The base item type of the result (inherits components from `input`).
     result: RecipeResultStruct,
 }
@@ -392,6 +541,12 @@ impl ToTokens for CraftingTransmuteRecipeStruct {
         };
         let input = self.input.to_token_stream();
         let material = self.material.to_token_stream();
+        // TransmuteRecipe: open bounds fall back to its 1..=8 material range.
+        let (min, max) = self
+            .material_count
+            .as_ref()
+            .map_or((1, 1), |bounds| bounds.resolve(1, 8));
+        let add_material_count_to_result = self.add_material_count_to_result.unwrap_or(false);
         let result = self.result.to_token_stream();
 
         tokens.extend(quote! {
@@ -400,6 +555,8 @@ impl ToTokens for CraftingTransmuteRecipeStruct {
                 group: #group,
                 input: #input,
                 material: #material,
+                material_count: (#min, #max),
+                add_material_count_to_result: #add_material_count_to_result,
                 result: #result,
             }
         });
@@ -625,17 +782,9 @@ pub fn build() -> TokenStream {
             RecipeTypes::Stonecutting(recipe) => {
                 stonecutting_recipes.push(recipe.to_token_stream());
             }
-            RecipeTypes::CraftingSpecial
-            | RecipeTypes::CraftingSpecialBannerDuplicate
-            | RecipeTypes::CraftingSpecialBookCloning
-            | RecipeTypes::CraftingSpecialFireworkRocket
-            | RecipeTypes::CraftingSpecialFireworkStar
-            | RecipeTypes::CraftingSpecialFireworkStarFade
-            | RecipeTypes::CraftingSpecialMapExtending
-            | RecipeTypes::CraftingSpecialRepairItem
-            | RecipeTypes::CraftingSpecialShieldDecoration
-            | RecipeTypes::CraftingDye
-            | RecipeTypes::CraftingImbue => {}
+            // Map extending needs the map's saved data, which pumpkin-inventory can't reach.
+            RecipeTypes::CraftingSpecial | RecipeTypes::CraftingSpecialMapExtending => {}
+            other => crafting_recipes.extend(custom_recipe(&other)),
         }
     }
 
@@ -665,12 +814,69 @@ pub fn build() -> TokenStream {
                 group: Option<&'static str>,
                 input: RecipeIngredientTypes,
                 material: RecipeIngredientTypes,
+                /// Inclusive bounds on how many material items the recipe takes.
+                material_count: (u8, u8),
+                add_material_count_to_result: bool,
+                /// `minecraft:air` keeps the input's item.
                 result: RecipeResultStruct,
             },
             CraftingDecoratedPot {
                 category: RecipeCategoryTypes,
             },
             CraftingSpecial,
+            /// Recipes with vanilla code behind them (`CustomRecipe` subclasses, dyeing, imbuing).
+            CraftingCustom(CustomCraftingRecipe),
+        }
+
+        #[derive(Clone, Debug, Serialize)]
+        pub enum CustomCraftingRecipe {
+            BannerDuplicate {
+                banner: RecipeIngredientTypes,
+                result: RecipeResultStruct,
+            },
+            BookCloning {
+                source: RecipeIngredientTypes,
+                material: RecipeIngredientTypes,
+                /// Inclusive range of book generations that can be copied.
+                allowed_generations: (u8, u8),
+                result: RecipeResultStruct,
+            },
+            Dye {
+                target: RecipeIngredientTypes,
+                dye: RecipeIngredientTypes,
+                result: RecipeResultStruct,
+            },
+            FireworkRocket {
+                shell: RecipeIngredientTypes,
+                fuel: RecipeIngredientTypes,
+                star: RecipeIngredientTypes,
+                result: RecipeResultStruct,
+            },
+            FireworkStar {
+                fuel: RecipeIngredientTypes,
+                dye: RecipeIngredientTypes,
+                trail: RecipeIngredientTypes,
+                twinkle: RecipeIngredientTypes,
+                /// Explosion shape names with the ingredient that selects them.
+                shapes: &'static [(&'static str, RecipeIngredientTypes)],
+                result: RecipeResultStruct,
+            },
+            FireworkStarFade {
+                target: RecipeIngredientTypes,
+                dye: RecipeIngredientTypes,
+                result: RecipeResultStruct,
+            },
+            Imbue {
+                source: RecipeIngredientTypes,
+                material: RecipeIngredientTypes,
+                result: RecipeResultStruct,
+            },
+            RepairItem,
+            ShieldDecoration {
+                banner: RecipeIngredientTypes,
+                target: RecipeIngredientTypes,
+                result: RecipeResultStruct,
+            },
         }
 
         #[allow(dead_code)]

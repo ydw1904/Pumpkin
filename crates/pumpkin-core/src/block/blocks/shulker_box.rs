@@ -11,16 +11,22 @@ use crate::block::{
 };
 
 use crate::block::entities::shulker_box::ShulkerBoxBlockEntity;
-use pumpkin_data::BlockStateId;
+use crate::world::World;
+use pumpkin_data::block_properties::ShulkerBoxProperties;
 use pumpkin_data::translation;
+use pumpkin_data::{BlockStateId, FacingExt};
 use pumpkin_inventory::Inventory;
-use pumpkin_inventory::generic_container_screen_handler::create_generic_9x3;
+use pumpkin_inventory::generic_container_screen_handler::create_shulker_box;
 use pumpkin_inventory::player::player_inventory::PlayerInventory;
 use pumpkin_inventory::screen_handler::{
     InventoryPlayer, ScreenHandlerFactory, SharedScreenHandler,
 };
 use pumpkin_macros::pumpkin_block_from_tag;
+use pumpkin_util::math::boundingbox::BoundingBox;
+use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::text::TextComponent;
+use std::sync::atomic::Ordering;
 
 struct ShulkerBoxScreenFactory(Arc<dyn Inventory>);
 
@@ -31,7 +37,7 @@ impl ScreenHandlerFactory for ShulkerBoxScreenFactory {
         player_inventory: &Arc<PlayerInventory>,
         player: &dyn InventoryPlayer,
     ) -> Option<SharedScreenHandler> {
-        let handler = create_generic_9x3(sync_id, player_inventory, self.0.clone(), player);
+        let handler = create_shulker_box(sync_id, player_inventory, self.0.clone(), player);
         let screen_handler_arc = Arc::new(Mutex::new(handler));
 
         Some(screen_handler_arc as SharedScreenHandler)
@@ -71,6 +77,9 @@ impl BlockBehaviour for ShulkerBoxBlock {
     }
 
     fn normal_use(&self, args: NormalUseArgs<'_>) -> BlockActionResult {
+        if !can_open(args.world, args.position) {
+            return BlockActionResult::Success;
+        }
         if let Some(factory) = self.get_screen_handler_factory(GetScreenHandlerFactoryArgs {
             server: args.server,
             world: args.world,
@@ -106,4 +115,41 @@ impl BlockBehaviour for ShulkerBoxBlock {
 
 impl ShulkerBoxBlock {
     pub const OPEN_ANIMATION_EVENT_TYPE: u8 = 1;
+}
+
+/// `ShulkerBoxBlock.canOpen`: a closed box only opens when its lid has room to rise half a block.
+fn can_open(world: &Arc<World>, position: &BlockPos) -> bool {
+    let open = world.get_block_entity(position).is_some_and(|entity| {
+        entity
+            .as_any()
+            .downcast_ref::<ShulkerBoxBlockEntity>()
+            .is_some_and(|shulker| shulker.viewers.current.load(Ordering::Relaxed) > 0)
+    });
+    if open {
+        return true;
+    }
+    let facing = ShulkerBoxProperties::from_state_id(world.get_block_state_id(position))
+        .facing
+        .to_block_direction()
+        .to_offset();
+    // Shulker.getProgressDeltaAabb(1, facing, 0, 0.5): the half block in front of the lid.
+    let axis = |step: i32, low: f64, high: f64| match step {
+        1 => (low + 1.0, high + 0.5),
+        -1 => (low - 0.5, high - 1.0),
+        _ => (low, high),
+    };
+    let (min_x, max_x) = axis(facing.x, -0.5, 0.5);
+    let (min_y, max_y) = axis(facing.y, 0.0, 1.0);
+    let (min_z, max_z) = axis(facing.z, -0.5, 0.5);
+    let base = Vector3::new(
+        f64::from(position.0.x) + 0.5,
+        f64::from(position.0.y),
+        f64::from(position.0.z) + 0.5,
+    );
+    let deflate = 1.0E-6;
+    let lid = BoundingBox::new(
+        base + Vector3::new(min_x + deflate, min_y + deflate, min_z + deflate),
+        base + Vector3::new(max_x - deflate, max_y - deflate, max_z - deflate),
+    );
+    world.is_space_empty(lid)
 }

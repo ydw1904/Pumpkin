@@ -28,7 +28,7 @@ pub fn get_pos(mob: &dyn Mob, horizontal_dist: i32, vertical_dist: i32) -> Optio
                 rng,
             )
         },
-        |pos| f64::from(mob.get_walk_target_value(pos)),
+        |pos| f64::from(mob.get_walk_target_value(world.as_ref(), pos)),
     )
 }
 
@@ -101,7 +101,7 @@ fn generate_in_direction(
                 rng,
             )
         },
-        |pos| f64::from(mob.get_walk_target_value(pos)),
+        |pos| f64::from(mob.get_walk_target_value(world.as_ref(), pos)),
     )
 }
 

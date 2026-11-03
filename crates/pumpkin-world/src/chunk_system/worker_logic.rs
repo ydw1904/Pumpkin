@@ -64,11 +64,10 @@ fn process_loaded_chunk(chunk: Arc<crate::chunk::ChunkData>, level: &Level) -> C
     if chunk.status == ChunkStatus::Full {
         let needs_relight = needs_relighting(&chunk, level.lighting_config);
         if needs_relight {
-            debug!(
-                "Chunk {pos:?} has uniform lighting, downgrading to Features stage for relighting"
-            );
+            debug!("Chunk {pos:?} has uniform lighting, relighting it");
 
             let mut proto = load_proto_chunk(&chunk, level);
+            proto.relight_of = Some(chunk);
 
             // Clear all lighting data
             let section_count = proto.light.sky_light.len();

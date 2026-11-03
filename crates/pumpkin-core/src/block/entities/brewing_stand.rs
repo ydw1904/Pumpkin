@@ -12,6 +12,7 @@ use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::potion::Potion;
 use pumpkin_data::potion_brewing::BREWING_RECIPES;
 use pumpkin_data::sound::{Sound, SoundCategory};
+use pumpkin_inventory::brewing::brewing_screen_handler::{is_fuel, is_ingredient, is_potion_item};
 use pumpkin_inventory::{Inventory, sync_read_items_from_nbt};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::recipe::DynamicRecipe;
@@ -420,29 +421,33 @@ impl pumpkin_inventory::Inventory for BrewingStandBlockEntity {
         self
     }
 
+    /// BrewingStandBlockEntity.canPlaceItem: brewing fuel, reagents, and one potion or glass
+    /// bottle per bottle slot.
     fn is_valid_slot_for(&self, slot: usize, stack: &ItemStack) -> bool {
-        if stack.is_empty() {
-            return true;
-        }
-
         match slot {
-            // Slots 0-2 - potion bottles
-            0..=2 => stack
-                .get_data_component::<pumpkin_data::data_component_impl::PotionContentsImpl>()
-                .is_some(),
-            // Slot 3 - ingredient (must be tagged as brewable)
-            3 => {
-                // Fuel items belong in slot 4, not the ingredient slot.
-                if stack.get_data_component::<BrewingFuelImpl>().is_some() {
-                    return false;
-                }
-                // Allow any item that's not fuel (ingredient validation happens during brewing)
-                true
-            }
-            // Slot 4 - fuel (`minecraft:brewing_fuel` data component, 26.3+)
-            4 => stack.get_data_component::<BrewingFuelImpl>().is_some(),
+            4 => is_fuel(stack),
+            3 => is_ingredient(stack.item),
+            0..=2 => is_potion_item(stack.item) && self.get_stack(slot).is_empty(),
             _ => false,
         }
+    }
+
+    fn slots_for_face(&self, side: pumpkin_data::BlockDirection) -> Option<&'static [usize]> {
+        Some(match side {
+            pumpkin_data::BlockDirection::Up => &[3],
+            pumpkin_data::BlockDirection::Down => &[0, 1, 2, 3],
+            _ => &[0, 1, 2, 4],
+        })
+    }
+
+    /// The ingredient slot only gives up glass bottles.
+    fn can_take_item_through_face(
+        &self,
+        slot: usize,
+        stack: &ItemStack,
+        _side: pumpkin_data::BlockDirection,
+    ) -> bool {
+        slot != 3 || stack.item == &pumpkin_data::item::Item::GLASS_BOTTLE
     }
 }
 

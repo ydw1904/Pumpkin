@@ -184,6 +184,8 @@ def main():
     parser.add_argument("--diffs-only", action="store_true", help="only print the lines that differ")
     parser.add_argument("--ports", type=int, nargs=2, default=(25566, 25565), metavar=("VANILLA", "PUMPKIN"),
                         help="ports to run the servers on")
+    parser.add_argument("--vanilla-output", type=Path,
+                        help="reuse vanilla.out from an earlier run instead of running vanilla again")
     parser.add_argument("--rng-seed", type=int,
                         help="lock gameplay randomness to per-owner streams from this seed and diff the draw logs")
     args = parser.parse_args()
@@ -211,10 +213,13 @@ def main():
                     if line.startswith("// pumpkin-settings:") for pair in line.split(":", 1)[1].split())
     run_dir = args.cache / "bot-runs" / f"{time.strftime('%Y%m%d-%H%M%S')}-{check.stem}"
     outputs = {}
-    for name, start, port in (
-        ("vanilla", lambda d, p: start_vanilla(java, jar, d, p, args.seed, args.cache, args.rng_seed), args.ports[0]),
-        ("pumpkin", lambda d, p: start_pumpkin(binary, d, p, args.seed, args.rng_seed, settings), args.ports[1]),
-    ):
+    servers = [("pumpkin", lambda d, p: start_pumpkin(binary, d, p, args.seed, args.rng_seed, settings), args.ports[1])]
+    if args.vanilla_output:
+        outputs["vanilla"] = args.vanilla_output.read_text(encoding="utf8")
+    else:
+        servers.insert(0, ("vanilla", lambda d, p: start_vanilla(java, jar, d, p, args.seed, args.cache, args.rng_seed),
+                           args.ports[0]))
+    for name, start, port in servers:
         print(f"Running {args.check} on {name}...")
         server = start(run_dir / name, port)
         try:

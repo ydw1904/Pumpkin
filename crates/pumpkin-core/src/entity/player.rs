@@ -1550,7 +1550,7 @@ impl Player {
             level.clean_entity_chunks(&chunks_to_clean);
         }
         // Remove left over entries from all possiblily loaded chunks
-        let cleaned_chunks = level.clean_memory();
+        let cleaned_chunks = world.clean_memory();
         if !cleaned_chunks.is_empty() {
             world.remove_entities_in_chunks(&cleaned_chunks).await;
             level.clean_entity_chunks(&cleaned_chunks);

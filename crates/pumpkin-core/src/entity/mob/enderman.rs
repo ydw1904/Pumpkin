@@ -1,3 +1,4 @@
+use crate::entity::r#type::CreatureSpawnLevel;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicBool, Ordering},
@@ -382,7 +383,11 @@ impl NeutralMob for EndermanEntity {
 
 impl Mob for EndermanEntity {
     /// Vanilla `Enderman.getWalkTargetValue`.
-    fn get_walk_target_value(&self, _pos: &pumpkin_util::math::position::BlockPos) -> f32 {
+    fn get_walk_target_value(
+        &self,
+        _level: &dyn CreatureSpawnLevel,
+        _pos: &pumpkin_util::math::position::BlockPos,
+    ) -> f32 {
         0.0
     }
 

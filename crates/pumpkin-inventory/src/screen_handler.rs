@@ -663,6 +663,14 @@ pub trait ScreenHandler: Send + Sync {
         false
     }
 
+    /// Whether a double-click may collect items from the slot. Result slots of crafting-like
+    /// menus refuse.
+    ///
+    /// Mojang name: `canTakeItemForPickAll`
+    fn can_take_item_for_pick_all(&self, _slot_index: usize) -> bool {
+        true
+    }
+
     /// Inserts an item into a range of slots.
     ///
     /// First tries to stack with existing items, then fills empty slots.
@@ -797,35 +805,50 @@ pub trait ScreenHandler: Send + Sync {
         action_type: SlotActionType,
         player: &dyn InventoryPlayer,
     ) {
-        if action_type == SlotActionType::PickupAll && button == 0 {
-            let behavior = self.get_behaviour_mut();
-            let mut cursor_stack = behavior
+        if action_type == SlotActionType::PickupAll {
+            // Vanilla collects in two passes, leaving full stacks for the second, walking
+            // forwards for button 0 and backwards otherwise.
+            if slot_index < 0 {
+                return;
+            }
+            let behaviour = self.get_behaviour();
+            let Some(clicked) = behaviour.slots.get(slot_index as usize) else {
+                return;
+            };
+            let mut cursor_stack = behaviour
                 .cursor_stack
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let mut to_pick_up = cursor_stack.get_max_stack_size() - cursor_stack.item_count;
-
-            for (index, slot) in behavior.slots.iter().enumerate() {
-                if to_pick_up == 0 {
-                    break;
+            if cursor_stack.is_empty() || (clicked.has_stack() && clicked.can_take_items(player)) {
+                return;
+            }
+            let len = behaviour.slots.len();
+            for pass in 0..2 {
+                for step in 0..len {
+                    if cursor_stack.item_count >= cursor_stack.get_max_stack_size() {
+                        break;
+                    }
+                    let index = if button == 0 { step } else { len - 1 - step };
+                    let slot = &behaviour.slots[index];
+                    let item_stack = slot.get_cloned_stack();
+                    if item_stack.is_empty()
+                        || !item_stack.are_items_and_components_equal(&cursor_stack)
+                        || !behaviour.can_grab_from_slot(index)
+                        || !slot.can_take_items(player)
+                        || !self.can_take_item_for_pick_all(index)
+                    {
+                        continue;
+                    }
+                    if pass == 0 && item_stack.item_count == item_stack.get_max_stack_size() {
+                        continue;
+                    }
+                    let taken_stack = slot.safe_take(
+                        item_stack.item_count,
+                        cursor_stack.get_max_stack_size() - cursor_stack.item_count,
+                        player,
+                    );
+                    cursor_stack.increment(taken_stack.item_count);
                 }
-
-                let item_stack = slot.get_cloned_stack();
-                if !item_stack.are_items_and_components_equal(&cursor_stack) {
-                    continue;
-                }
-
-                if !behavior.can_grab_from_slot(index) || !slot.allow_modification(player) {
-                    continue;
-                }
-
-                let taken_stack = slot.safe_take(
-                    item_stack.item_count.min(to_pick_up),
-                    cursor_stack.get_max_stack_size() - cursor_stack.item_count,
-                    player,
-                );
-                to_pick_up -= taken_stack.item_count;
-                cursor_stack.increment(taken_stack.item_count);
             }
         } else if action_type == SlotActionType::QuickCraft {
             let drag_type = button & 3;

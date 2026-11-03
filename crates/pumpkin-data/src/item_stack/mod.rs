@@ -22,6 +22,22 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 mod categories;
 
+/// The item left behind when one of `item` is used up by crafting, as furnace fuel or as a
+/// brewing ingredient.
+///
+/// The Extractor doesn't dump `Item.craftingRemainingItem`, so this mirrors the `craftRemainder`
+/// calls in vanilla's `Items`.
+#[must_use]
+pub fn crafting_remainder(item: &Item) -> Option<&'static Item> {
+    if item == &Item::WATER_BUCKET || item == &Item::LAVA_BUCKET || item == &Item::MILK_BUCKET {
+        Some(&Item::BUCKET)
+    } else if item == &Item::DRAGON_BREATH || item == &Item::HONEY_BOTTLE {
+        Some(&Item::GLASS_BOTTLE)
+    } else {
+        None
+    }
+}
+
 /// The outcome of a [`ItemStack::damage_item`] call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DamageResult {
@@ -238,6 +254,17 @@ impl ItemStack {
 
     pub fn set_data_component<T: DataComponentImpl + 'static>(&mut self, component: T) {
         let to_set_id = T::get_enum();
+        // Vanilla `PatchedDataComponentMap.set`: a value equal to the item's default is no
+        // change, so stacks with and without it still stack and hash alike.
+        if self
+            .item
+            .components
+            .iter()
+            .any(|(id, default)| *id == to_set_id && default.equal(&component))
+        {
+            self.patch.retain(|(id, _)| *id != to_set_id);
+            return;
+        }
         let boxed = Some(Box::new(component) as _);
         if let Some((_, c)) = self.patch.iter_mut().find(|(id, _)| *id == to_set_id) {
             *c = boxed;

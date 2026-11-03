@@ -276,11 +276,11 @@ impl IglooPiece {
         placement.finish(&mut GenerationRegion(region));
         let chunk = region.get_center_chunk_mut();
         crate::generation::structure::template::place_template_entities(
-            chunk,
+            |entity| chunk.add_structure_entity(entity.nbt, entity.finalize),
             &self.template,
             self.template_position,
             rotation,
-            chunk_box,
+            Some(chunk_box),
             false,
         );
 

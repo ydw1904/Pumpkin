@@ -1,3 +1,4 @@
+use crate::entity::r#type::CreatureSpawnLevel;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicI32, Ordering},
@@ -300,8 +301,8 @@ impl Mob for DolphinEntity {
         Some(self)
     }
 
-    fn check_spawn_obstruction(&self, world: &World) -> bool {
-        self.water_creature_spawn_obstruction(world)
+    fn check_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
+        self.water_creature_spawn_obstruction(level)
     }
 
     fn get_base_experience_reward(&self) -> u32 {

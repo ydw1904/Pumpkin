@@ -264,6 +264,7 @@ impl CommandExecutor for PlaceJigsawExecutor {
                         false,
                         block_pos.0,
                         context.world().level.seed.0 as i64,
+                        None,
                     );
                 }
             }
@@ -313,6 +314,7 @@ impl CommandExecutor for PlaceStructureExecutor {
 
         let seed = hash_block_pos(block_pos.0.x, block_pos.0.y, block_pos.0.z) as u64;
 
+        let mut entities = Vec::new();
         let (_piece_count, placer) = {
             let world_gen = context.world().level.world_gen();
             let settings = NoiseSettings::from_dimension(world_gen.dimension());
@@ -380,6 +382,7 @@ impl CommandExecutor for PlaceStructureExecutor {
                             false,
                             reference_pos,
                             context.world().level.seed.0 as i64,
+                            Some(&mut |entity| entities.push(entity)),
                         );
                     }
                 }
@@ -431,6 +434,7 @@ impl CommandExecutor for PlaceStructureExecutor {
                             false,
                             reference_pos,
                             context.world().level.seed.0 as i64,
+                            Some(&mut |entity| entities.push(entity)),
                         );
                     }
                 }
@@ -538,6 +542,7 @@ impl CommandExecutor for PlaceStructureExecutor {
                             for nbt in chunk.pending_block_entities.drain(..) {
                                 placer.block_entity_nbts.push(nbt);
                             }
+                            entities.append(&mut chunk.take_pending_structure_entities());
                         }
                     }
                 }
@@ -551,6 +556,8 @@ impl CommandExecutor for PlaceStructureExecutor {
             .world()
             .queue_block_updates(&placer.changed_positions);
         context.world().flush_block_updates();
+        // Vanilla `StructureStart.placeInChunk` places into the level, so the entities join it.
+        context.world().spawn_structure_entities(entities);
 
         context.source.send_feedback(
             pumpkin_macros::translate_cross!(

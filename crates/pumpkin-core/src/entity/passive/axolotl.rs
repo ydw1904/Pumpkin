@@ -1,3 +1,4 @@
+use crate::entity::r#type::CreatureSpawnLevel;
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Weak,
@@ -367,12 +368,16 @@ impl Animal for AxolotlEntity {
 
 impl Mob for AxolotlEntity {
     /// Vanilla `Axolotl.checkSpawnObstruction`.
-    fn check_spawn_obstruction(&self, world: &crate::world::World) -> bool {
-        crate::entity::mob::is_unobstructed(self, world)
+    fn check_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
+        crate::entity::mob::is_unobstructed(self, level)
     }
 
     /// Vanilla `Axolotl.getWalkTargetValue`.
-    fn get_walk_target_value(&self, _pos: &pumpkin_util::math::position::BlockPos) -> f32 {
+    fn get_walk_target_value(
+        &self,
+        _level: &dyn CreatureSpawnLevel,
+        _pos: &pumpkin_util::math::position::BlockPos,
+    ) -> f32 {
         0.0
     }
 

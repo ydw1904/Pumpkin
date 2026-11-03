@@ -1,3 +1,4 @@
+use crate::entity::r#type::CreatureSpawnLevel;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicI32, AtomicU8, Ordering},
@@ -245,8 +246,8 @@ impl LookControlTrait for BeeLookControl {
 
 impl Mob for BeeEntity {
     /// Vanilla `Bee.getWalkTargetValue`.
-    fn get_walk_target_value(&self, pos: &BlockPos) -> f32 {
-        if self.get_entity().world.load().get_block_state(pos).is_air() {
+    fn get_walk_target_value(&self, level: &dyn CreatureSpawnLevel, pos: &BlockPos) -> f32 {
+        if level.block_state(pos).is_air() {
             10.0
         } else {
             0.0

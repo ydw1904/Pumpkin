@@ -50,6 +50,47 @@ function make (username, timeoutMs = 600000) {
     await h.waitFor(() => (h.inv()[name] || 0) >= before + n, 5000)
   }
   h.orbs = () => Object.values(bot.entities).filter(e => e.name === 'experience_orb')
+  // A raw window click with a stale state id: the server applies it and answers with the whole
+  // window, so what the bot sees afterwards is the server's result, not mineflayer's prediction.
+  h.click = async (slot, button = 0, mode = 0) => {
+    const Item = require('prismarine-item')(bot.registry)
+    const window = bot.currentWindow || bot.inventory
+    const synced = new Promise((resolve) => {
+      bot.once(`setWindowItems:${window.id}`, resolve)
+      setTimeout(resolve, 3000)
+    })
+    bot._client.write('window_click', {
+      windowId: window.id, stateId: -1, slot, mouseButton: button, mode, changedSlots: [], cursorItem: Item.toNotch(window.selectedItem)
+    })
+    await synced
+    await h.ticks(1)
+  }
+  h.stackStr = (it) => it ? `${it.name}*${it.count}` : 'empty'
+  // Non-empty slots of the open window (or the inventory) as `slot:item*count`, then the cursor.
+  h.win = (from = 0, to) => {
+    const window = bot.currentWindow || bot.inventory
+    const end = to === undefined ? window.slots.length : to
+    const parts = []
+    for (let i = from; i < end; i++) if (window.slots[i]) parts.push(`${i}:${h.stackStr(window.slots[i])}`)
+    if (window.selectedItem) parts.push(`cursor:${h.stackStr(window.selectedItem)}`)
+    return parts.join(',') || 'empty'
+  }
+  // Fills inventory slots by vanilla index (0-8 hotbar, 9-35 main) from a {index: 'item count'} map.
+  h.fill = async (map) => {
+    await h.clear()
+    for (const [i, spec] of Object.entries(map)) {
+      const [item, n] = spec.split(' ')
+      h.cmd(`item replace entity ${username} container.${i} with ${item} ${n || 1}`)
+    }
+    await h.waitFor(() => Object.keys(map).every(i => bot.inventory.slots[Number(i) < 9 ? Number(i) + 36 : Number(i)]), 5000)
+    await h.ticks(2)
+  }
+  // Waits until the server's world age has moved on by `n` ticks, so slow servers aren't
+  // measured against the bot's own clock. Updates arrive every 20 ticks.
+  h.serverTicks = async (n) => {
+    const start = bot.time.age
+    await h.waitFor(() => bot.time.age - start >= n, n * 500)
+  }
   // Hovers in creative flight until the chunks are there, then builds a stone floor under the bot.
   h.arena = async (x, y, z, r = 6) => {
     h.cmd(`gamemode creative ${username}`)

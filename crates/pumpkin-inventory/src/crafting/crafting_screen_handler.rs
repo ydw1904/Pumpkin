@@ -18,6 +18,7 @@ use std::any::Any;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
+use super::custom_recipes::{self, KeptInput};
 use super::recipe_provider::{GenericRecipe, RecipeProvider};
 use super::recipes::{RecipeFinderScreenHandler, RecipeInputInventory};
 use crate::crafting::crafting_inventory::CraftingInventory;
@@ -29,7 +30,7 @@ use crate::slot::{NormalSlot, Slot};
 
 use crate::inventory::Inventory;
 use pumpkin_data::data_component_impl::{PotDecorationsImpl, ProvidesPotteryPatternImpl};
-use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::item_stack::{ItemStack, crafting_remainder};
 use pumpkin_data::recipes::{CraftingRecipeTypes, RECIPES_CRAFTING};
 use pumpkin_data::screen::WindowType;
 use pumpkin_data::statistic::StatisticCategory;
@@ -49,15 +50,32 @@ pub struct ResultSlot {
     pub recipe_provider: Option<Arc<dyn RecipeProvider>>,
 }
 
+#[derive(Default)]
 pub struct RecipeResult {
     pub item_id: String,
     pub count: u8,
     pub pot_decorations: Option<[u16; 4]>,
+    /// The finished result of recipes that build it from their inputs' components.
+    pub stack: Option<ItemStack>,
+    /// What the recipe leaves in the grid besides crafting remainders.
+    pub kept: KeptInput,
 }
 
 impl RecipeResult {
+    fn from_stack(stack: ItemStack) -> Self {
+        Self {
+            item_id: stack.item.registry_key.to_string(),
+            count: stack.item_count,
+            stack: Some(stack),
+            ..Default::default()
+        }
+    }
+
     #[must_use]
     pub fn to_item_stack(&self) -> ItemStack {
+        if let Some(stack) = &self.stack {
+            return stack.clone();
+        }
         let key = self
             .item_id
             .strip_prefix("minecraft:")
@@ -205,6 +223,7 @@ fn recipe_matches(
                 item_id: result.id.to_string(),
                 count: result.count,
                 pot_decorations: None,
+                ..Default::default()
             })
         }
         GenericRecipe::Vanilla(CraftingRecipeTypes::CraftingShapeless {
@@ -233,30 +252,29 @@ fn recipe_matches(
                 item_id: result.id.to_string(),
                 count: result.count,
                 pot_decorations: None,
+                ..Default::default()
             })
         }
         GenericRecipe::Vanilla(CraftingRecipeTypes::CraftingTransmute {
             input,
             material,
+            material_count,
+            add_material_count_to_result,
             result,
             ..
-        }) => {
-            if count != 2 {
-                return None;
-            }
-            'item_stack: for i in 0..inventory.size() {
-                let slot = inventory.get_stack(i);
-                if slot.is_empty() {
-                    continue 'item_stack;
-                }
-                if !material.match_item(slot.item) && !input.match_item(slot.item) {
-                    return None;
-                }
-            }
-            Some(RecipeResult {
-                item_id: result.id.to_string(),
-                count: result.count,
-                pot_decorations: None,
+        }) => custom_recipes::transmute(
+            inventory,
+            input,
+            material,
+            *material_count,
+            *add_material_count_to_result,
+            result,
+        )
+        .map(RecipeResult::from_stack),
+        GenericRecipe::Vanilla(CraftingRecipeTypes::CraftingCustom(recipe)) => {
+            custom_recipes::assemble(recipe, inventory).map(|(stack, kept)| RecipeResult {
+                kept,
+                ..RecipeResult::from_stack(stack)
             })
         }
         GenericRecipe::Vanilla(CraftingRecipeTypes::CraftingDecoratedPot { .. }) => {
@@ -282,6 +300,7 @@ fn recipe_matches(
                 item_id: "minecraft:decorated_pot".to_string(),
                 count: 1,
                 pot_decorations: Some(sherds),
+                ..Default::default()
             })
         }
         GenericRecipe::Dynamic(OwnedCraftingRecipe::Shaped {
@@ -334,6 +353,7 @@ fn recipe_matches(
                 item_id: result.item_id.clone(),
                 count: result.count,
                 pot_decorations: None,
+                ..Default::default()
             })
         }
         GenericRecipe::Dynamic(OwnedCraftingRecipe::Shapeless {
@@ -362,6 +382,7 @@ fn recipe_matches(
                 item_id: result.item_id.clone(),
                 count: result.count,
                 pot_decorations: None,
+                ..Default::default()
             })
         }
         _ => None,
@@ -483,8 +504,38 @@ impl Slot for ResultSlot {
             stack.item_count as i32,
         );
         player.on_recipe_crafted(stack);
+        // ResultSlot.onTake: each input loses one item and its crafting remainder goes back
+        // into the emptied slot, merges with what is left there, or goes to the player.
+        let mut kept = self
+            .match_recipe()
+            .map_or(KeptInput::None, |matched| matched.kept);
         for i in 0..self.inventory.size() {
+            let input = self.inventory.get_stack(i);
+            if input.is_empty() {
+                continue;
+            }
+            let remainder = crafting_remainder(input.item)
+                .map(|item| ItemStack::new(1, item))
+                .or_else(|| custom_recipes::kept_input(kept, &input));
             self.inventory.remove_stack_specific(i, 1);
+            let Some(mut replacement) = remainder else {
+                continue;
+            };
+            if kept == KeptInput::WrittenBook {
+                // BookCloningRecipe.getRemainingItems stops after the first book.
+                kept = KeptInput::None;
+            }
+            let left = self.inventory.get_stack(i);
+            if left.is_empty() {
+                self.inventory.set_stack(i, replacement);
+            } else if left.are_items_and_components_equal(&replacement) {
+                replacement.increment(left.item_count);
+                self.inventory.set_stack(i, replacement);
+            } else {
+                player
+                    .get_inventory()
+                    .offer_or_drop_stack(replacement, player);
+            }
         }
         // Throw-all keeps taking until the slot's stack changes, so the result must
         // follow the inputs now rather than on the next content update.
@@ -623,6 +674,11 @@ impl ScreenHandler for CraftingTableScreenHandler {
         self.default_on_closed(player);
         self.drop_inventory(player, self.crafting_inventory.clone());
     }
+
+    fn can_take_item_for_pick_all(&self, slot_index: usize) -> bool {
+        slot_index != 0
+    }
+
     fn quick_move(&mut self, player: &dyn InventoryPlayer, slot_index: i32) -> ItemStack {
         let slot = self.get_behaviour().slots[slot_index as usize].clone();
         if slot.has_stack() {

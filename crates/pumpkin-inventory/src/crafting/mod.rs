@@ -7,5 +7,6 @@
 
 pub mod crafting_inventory;
 pub mod crafting_screen_handler;
+pub mod custom_recipes;
 pub mod recipe_provider;
 pub mod recipes;

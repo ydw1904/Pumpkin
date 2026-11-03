@@ -366,6 +366,8 @@ impl DispenserBlock {
         } else if item.item.id == Item::HONEYCOMB.id {
             // Honeycombs wax copper blocks
             Self::dispense_honeycomb(ctx, item);
+        } else if item.item.id == Item::BONE_MEAL.id {
+            Self::dispense_bone_meal(ctx, item);
         } else if entity_from_egg(item.item.id).is_some() {
             // Spawn eggs
             Self::dispense_spawn_egg(ctx, item);
@@ -408,7 +410,7 @@ impl DispenserBlock {
             // Experience bottles (bottles o' enchanting) are thrown like splash potions
             Self::dispense_experience_bottle(ctx, item);
         } else {
-            // TODO: Bone meal, chests onto llamas, brushes onto armadillos
+            // TODO: chests onto llamas, brushes onto armadillos
             // Default / Drop
             Self::drop_item(ctx, item);
         }
@@ -506,34 +508,40 @@ impl DispenserBlock {
         let target = Self::target_position(ctx);
         let is_water = |id: u16| id == Fluid::WATER.id || id == Fluid::FLOWING_WATER.id;
 
-        let spawn_pos = if is_water(ctx.world.get_fluid(&target).id) {
-            target.to_f64()
+        // BoatDispenseItemBehavior: no room check, the boat starts a block up over water.
+        let y_offset = if is_water(ctx.world.get_fluid(&target).id) {
+            1.0
         } else if ctx.world.get_block_state(&target).is_air()
             && is_water(ctx.world.get_fluid(&target.down()).id)
         {
-            target.down().to_f64()
+            0.0
         } else {
             return false;
         };
 
         let entity_type = BoatItem::item_to_entity(item.item);
-        let dimensions = EntityDimensions::new(
-            entity_type.dimension[0],
-            entity_type.dimension[1],
-            entity_type.eye_height,
+        let offset = 0.5625 + f64::from(entity_type.dimension[0]) / 2.0;
+        let facing = to_normal(ctx.facing);
+        let center = ctx.position.to_centered_f64();
+        let spawn_pos = Vector3::new(
+            center.x + facing.x * offset,
+            center.y + facing.y * 1.125 + y_offset,
+            center.z + facing.z * offset,
         );
-        if !Self::has_room_for(ctx, spawn_pos, &dimensions) {
-            return false;
-        }
 
         let _ = item.split(1);
-        let facing = to_normal(ctx.facing);
         let entity = Entity::new(ctx.world.clone(), spawn_pos, entity_type);
-        entity.set_rotation(facing.x.atan2(facing.z) as f32 * 57.295_776, 0.0);
+        // Direction.toYRot
+        let yaw = match ctx.facing {
+            Facing::South => 0.0,
+            Facing::West => 90.0,
+            Facing::North => 180.0,
+            Facing::East | Facing::Up | Facing::Down => 270.0,
+        };
+        entity.set_rotation(yaw, 0.0);
         ctx.world.spawn_entity(Arc::new(BoatEntity::new(entity)));
 
-        ctx.world
-            .sync_world_event(WorldEvent::SoundDispenserDispense, *ctx.position, 0);
+        Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserDispense);
         true
     }
 
@@ -870,6 +878,25 @@ impl DispenserBlock {
         if ignited {
             // `damage_item` already consumes the tool from the stack when it breaks.
             let _ = item.damage_item(1);
+            Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserDispense);
+        } else {
+            Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserFail);
+        }
+    }
+
+    /// Vanilla's bone meal `OptionalDispenseItemBehavior`: fertilizes the block in front, and
+    /// otherwise keeps the bone meal and clicks.
+    fn dispense_bone_meal(ctx: &DispenseContext<'_>, item: &mut ItemStack) {
+        let front = Self::target_position(ctx);
+        let (block, state_id) = ctx.world.get_block_and_state_id(&front);
+        if ctx
+            .world
+            .block_registry
+            .bone_meal(block, ctx.world, &front, state_id)
+        {
+            item.decrement(1);
+            ctx.world
+                .sync_world_event(WorldEvent::ParticlesAndSoundPlantGrowth, front, 15);
             Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserDispense);
         } else {
             Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserFail);

@@ -11,8 +11,9 @@ use crate::world::World;
 /// and water is rejected.
 #[must_use]
 pub fn get_pos(mob: &dyn Mob, horizontal_dist: i32, vertical_dist: i32) -> Option<Vector3<f64>> {
+    let world = mob.get_entity().world.load_full();
     get_pos_weighted(mob, horizontal_dist, vertical_dist, |pos| {
-        f64::from(mob.get_walk_target_value(pos))
+        f64::from(mob.get_walk_target_value(world.as_ref(), pos))
     })
 }
 
@@ -85,7 +86,7 @@ pub fn get_pos_away(
             let pos = toward_direction(mob, &world, max_horizontal_dist, restrict, direction, rng)?;
             move_pos_up_out_of_solid(mob, &world, &mut context, pos)
         },
-        |pos| f64::from(mob.get_walk_target_value(pos)),
+        |pos| f64::from(mob.get_walk_target_value(world.as_ref(), pos)),
     )
 }
 

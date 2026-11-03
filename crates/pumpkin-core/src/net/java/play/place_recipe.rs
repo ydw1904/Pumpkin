@@ -40,6 +40,7 @@ impl JavaClient {
                     r,
                     CraftingRecipeTypes::CraftingSpecial
                         | CraftingRecipeTypes::CraftingDecoratedPot { .. }
+                        | CraftingRecipeTypes::CraftingCustom(_)
                 )
             })
             .count();
@@ -74,6 +75,7 @@ impl JavaClient {
                     r,
                     CraftingRecipeTypes::CraftingSpecial
                         | CraftingRecipeTypes::CraftingDecoratedPot { .. }
+                        | CraftingRecipeTypes::CraftingCustom(_)
                 ) {
                     return false;
                 }

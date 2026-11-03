@@ -1,3 +1,4 @@
+use crate::entity::r#type::CreatureSpawnLevel;
 use std::sync::Arc;
 
 use pumpkin_data::entity::EntityType;
@@ -75,13 +76,12 @@ impl GiantEntity {
 
 impl Mob for GiantEntity {
     /// Vanilla `Giant.getWalkTargetValue`.
-    fn get_walk_target_value(&self, pos: &pumpkin_util::math::position::BlockPos) -> f32 {
-        self.mob_entity
-            .living_entity
-            .entity
-            .world
-            .load()
-            .get_pathfinding_cost_from_light_levels(pos)
+    fn get_walk_target_value(
+        &self,
+        level: &dyn CreatureSpawnLevel,
+        pos: &pumpkin_util::math::position::BlockPos,
+    ) -> f32 {
+        level.pathfinding_cost_from_light_levels(pos)
     }
 
     fn get_mob_entity(&self) -> &MobEntity {

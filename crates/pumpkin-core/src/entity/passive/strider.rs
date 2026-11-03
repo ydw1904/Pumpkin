@@ -1,3 +1,4 @@
+use crate::entity::r#type::CreatureSpawnLevel;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 
@@ -226,21 +227,15 @@ impl Animal for StriderEntity {
 
 impl Mob for StriderEntity {
     /// Vanilla `Strider.checkSpawnObstruction`.
-    fn check_spawn_obstruction(&self, world: &crate::world::World) -> bool {
-        crate::entity::mob::is_unobstructed(self, world)
+    fn check_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
+        crate::entity::mob::is_unobstructed(self, level)
     }
 
     /// Vanilla `Strider.getWalkTargetValue`.
-    fn get_walk_target_value(&self, pos: &BlockPos) -> f32 {
-        let entity = self.get_entity();
-        if entity
-            .world
-            .load()
-            .get_fluid(pos)
-            .has_tag(&tag::Fluid::MINECRAFT_LAVA)
-        {
+    fn get_walk_target_value(&self, level: &dyn CreatureSpawnLevel, pos: &BlockPos) -> f32 {
+        if level.fluid(pos).has_tag(&tag::Fluid::MINECRAFT_LAVA) {
             10.0
-        } else if entity.touching_lava.load(Ordering::Relaxed) {
+        } else if self.get_entity().touching_lava.load(Ordering::Relaxed) {
             f32::NEG_INFINITY
         } else {
             0.0

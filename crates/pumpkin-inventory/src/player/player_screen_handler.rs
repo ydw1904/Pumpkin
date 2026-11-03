@@ -146,6 +146,10 @@ impl ScreenHandler for PlayerScreenHandler {
     /// - Offhand items -> Offhand slot if empty
     /// - Main inventory (9-35) -> Hotbar
     /// - Hotbar (36-44) -> Main inventory
+    fn can_take_item_for_pick_all(&self, slot_index: usize) -> bool {
+        slot_index != 0
+    }
+
     fn quick_move(&mut self, player: &dyn InventoryPlayer, slot_index: i32) -> ItemStack {
         let slot = self.get_behaviour().slots[slot_index as usize].clone();
 

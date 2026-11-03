@@ -1,6 +1,7 @@
 use super::jigsaw_placement::{
     DimensionPadding, JigsawPlacement, LiquidSettings, MaxDistance, PoolAliasLookup,
 };
+use crate::generation::proto_chunk::StructureEntity;
 use crate::generation::structure::structures::{
     StructureGenerator, StructureGeneratorContext, StructurePieceBase, StructurePosition,
 };
@@ -879,7 +880,8 @@ impl StructurePieceBase for PoolElementStructurePiece {
 /// Places a pool element's templates outside world generation.
 ///
 /// `reference_pos` is what position rule tests measure from: the structure's start reference, or
-/// the position `/place jigsaw` and jigsaw blocks generate at.
+/// the position `/place jigsaw` and jigsaw blocks generate at. The templates' entities go to
+/// `add_entity` when there is one.
 pub fn place_pool_element_templates(
     piece: &PoolElementStructurePiece,
     placer: &mut impl BlockPlacer,
@@ -887,6 +889,7 @@ pub fn place_pool_element_templates(
     keep_jigsaws: bool,
     reference_pos: Vector3<i32>,
     world_seed: i64,
+    mut add_entity: Option<&mut dyn FnMut(StructureEntity)>,
 ) {
     let origin = Vector3::new(piece.pos.0.x, piece.pos.0.y, piece.pos.0.z);
 
@@ -917,6 +920,17 @@ pub fn place_pool_element_templates(
                 reference_pos,
                 world_seed,
             );
+            if let Some(add_entity) = add_entity.as_deref_mut() {
+                crate::generation::structure::template::place_template_entities(
+                    add_entity,
+                    &template,
+                    placement_origin,
+                    piece.rotation,
+                    chunk_box,
+                    // Vanilla `SinglePoolElement` places with `setFinalizeEntities(true)`.
+                    true,
+                );
+            }
         });
 }
 
@@ -963,12 +977,13 @@ impl PoolElementStructurePiece {
                     reference_pos,
                     seed,
                 );
+                let chunk = region.get_center_chunk_mut();
                 crate::generation::structure::template::place_template_entities(
-                    region.get_center_chunk_mut(),
+                    |entity| chunk.add_structure_entity(entity.nbt, entity.finalize),
                     &template,
                     placement_origin,
                     self.rotation,
-                    chunk_box,
+                    Some(chunk_box),
                     // Vanilla `SinglePoolElement` places with `setFinalizeEntities(true)`.
                     true,
                 );

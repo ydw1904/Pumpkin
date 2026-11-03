@@ -147,6 +147,10 @@ impl ScreenHandler for CartographyTableScreenHandler {
         }
     }
 
+    fn can_take_item_for_pick_all(&self, slot_index: usize) -> bool {
+        slot_index != Self::RESULT_SLOT
+    }
+
     fn quick_move(&mut self, player: &dyn InventoryPlayer, slot_index: i32) -> ItemStack {
         let mut clicked = ItemStack::EMPTY.clone();
         let slot = self.get_behaviour().slots.get(slot_index as usize).cloned();

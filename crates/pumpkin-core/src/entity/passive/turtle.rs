@@ -1,3 +1,4 @@
+use crate::entity::r#type::CreatureSpawnLevel;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicBool, Ordering},
@@ -112,16 +113,15 @@ impl Animal for TurtleEntity {
 
 impl Mob for TurtleEntity {
     /// Vanilla `Turtle.getWalkTargetValue`; turtles here never head home, so water always counts.
-    fn get_walk_target_value(&self, pos: &BlockPos) -> f32 {
-        let world = self.get_entity().world.load();
-        if world.get_fluid(pos).has_tag(&tag::Fluid::MINECRAFT_WATER)
-            || world
-                .get_block(&pos.down())
+    fn get_walk_target_value(&self, level: &dyn CreatureSpawnLevel, pos: &BlockPos) -> f32 {
+        if level.fluid(pos).has_tag(&tag::Fluid::MINECRAFT_WATER)
+            || level
+                .block(&pos.down())
                 .has_tag(&tag::Block::MINECRAFT_SAND)
         {
             10.0
         } else {
-            world.get_pathfinding_cost_from_light_levels(pos)
+            level.pathfinding_cost_from_light_levels(pos)
         }
     }
 
