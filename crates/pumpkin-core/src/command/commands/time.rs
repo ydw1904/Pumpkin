@@ -9,6 +9,7 @@ use crate::command::argument_types::identifier::IdentifierArgumentType;
 use crate::command::argument_types::registry_id::RegistryIdArgumentType;
 use crate::command::argument_types::time::TimeArgumentType;
 use crate::command::context::command_context::CommandContext;
+use crate::command::errors::error_types::CommandErrorType;
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
 use pumpkin_util::identifier::Identifier;
@@ -18,6 +19,17 @@ const PERMISSION: &str = "minecraft:command.time";
 
 const DEFAULT_CLOCK: &str = "minecraft:overworld";
 const DAY_TIMELINE: &str = "minecraft:day";
+/// `period_ticks` of the `minecraft:day` timeline the presets are markers of.
+const DAY_PERIOD_TICKS: i64 = 24000;
+
+static ERROR_ALREADY_AT_TIME_MARKER: CommandErrorType<2> = CommandErrorType::new(
+    translation::java::COMMANDS_TIME_SET_ALREADY_AT_TIME_MARKER,
+    "The clock is already at that time marker",
+);
+static ERROR_ALREADY_AT_TIME: CommandErrorType<2> = CommandErrorType::new(
+    translation::java::COMMANDS_TIME_SET_ALREADY_AT_TIME,
+    "The clock is already at that time",
+);
 
 #[derive(Clone, Copy)]
 enum PresetTime {
@@ -34,6 +46,15 @@ impl PresetTime {
             Self::Noon => 6000,
             Self::Night => 13000,
             Self::Midnight => 18000,
+        }
+    }
+
+    const fn marker(self) -> &'static str {
+        match self {
+            Self::Day => "minecraft:day",
+            Self::Noon => "minecraft:noon",
+            Self::Night => "minecraft:night",
+            Self::Midnight => "minecraft:midnight",
         }
     }
 }
@@ -181,17 +202,60 @@ impl CommandExecutor for ActionExecutor {
         let world = context.source.world();
 
         match self.action {
-            Action::Set(preset) => {
-                let time_count = if let Some(p) = preset {
-                    p.to_ticks()
-                } else {
-                    TimeArgumentType::get(context, "time")?
+            Action::Set(Some(preset)) => {
+                // Vanilla `ServerClockManager.moveToTimeMarker`: forward to the marker's next
+                // occurrence, so the day count keeps going.
+                let marker = i64::from(preset.to_ticks());
+                let moved = {
+                    let mut guard = world
+                        .level_time
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    let current = guard.time_of_day;
+                    let into_day = current.rem_euclid(DAY_PERIOD_TICKS);
+                    (into_day != marker).then(|| {
+                        let duration = marker - into_day;
+                        let target = current
+                            + if duration > 0 {
+                                duration
+                            } else {
+                                DAY_PERIOD_TICKS + duration
+                            };
+                        guard.set_time(target);
+                        (guard.clone(), target)
+                    })
                 };
+                let Some((level_time, total_ticks)) = moved else {
+                    return Err(ERROR_ALREADY_AT_TIME_MARKER.create_without_context(
+                        TextComponent::text(clock_name),
+                        TextComponent::text(preset.marker()),
+                    ));
+                };
+                level_time.send_time(world);
+                context.source.send_feedback(
+                    pumpkin_macros::translate_cross!(
+                        translation::java::COMMANDS_TIME_SET_TIME_MARKER,
+                        translation::bedrock::COMMANDS_TIME_SET,
+                        TextComponent::text(clock_name),
+                        TextComponent::text(preset.marker())
+                    ),
+                    true,
+                );
+                Ok(wrap_time(total_ticks))
+            }
+            Action::Set(None) => {
+                let time_count = TimeArgumentType::get(context, "time")?;
                 let level_time = {
                     let mut guard = world
                         .level_time
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    if guard.time_of_day == i64::from(time_count) {
+                        return Err(ERROR_ALREADY_AT_TIME.create_without_context(
+                            TextComponent::text(clock_name),
+                            TextComponent::text(time_count.to_string()),
+                        ));
+                    }
                     guard.set_time(time_count.into());
                     guard.clone()
                 };
