@@ -1174,17 +1174,21 @@ pub trait EntityBase: Send + Sync + std::any::Any {
 
     /// Should return the name of the entity without click or hover events.
     fn get_name(&self) -> TextComponent {
-        let entity = self.get_entity();
-        entity
+        self.get_entity()
             .custom_name
             .load()
             .as_ref()
             .clone()
-            .unwrap_or(TextComponent::translate_cross(
-                format!("entity.minecraft.{}", entity.entity_type.resource_name),
-                format!("entity.minecraft.{}", entity.entity_type.resource_name),
-                [],
-            ))
+            .unwrap_or_else(|| self.get_type_name())
+    }
+
+    /// Vanilla `Entity.getTypeName`: the name used when there is no custom name.
+    fn get_type_name(&self) -> TextComponent {
+        let key = format!(
+            "entity.minecraft.{}",
+            self.get_entity().entity_type.resource_name
+        );
+        TextComponent::translate_cross(key.clone(), key, [])
     }
 
     /// Vanilla `Entity.getDisplayName`.

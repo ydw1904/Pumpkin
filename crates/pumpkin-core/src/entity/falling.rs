@@ -6,9 +6,11 @@ use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::tag::{self, Taggable};
+use pumpkin_data::translation;
 use pumpkin_protocol::bedrock::client::CUpdateBlock;
 use pumpkin_protocol::java::client::play::CBlockUpdate;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::text::TextComponent;
 use pumpkin_world::world::BlockFlags;
 use std::sync::{Arc, atomic::Ordering};
 
@@ -57,6 +59,22 @@ impl FallingEntity {
 }
 
 impl EntityBase for FallingEntity {
+    fn get_type_name(&self) -> TextComponent {
+        let block_key = format!(
+            "block.minecraft.{}",
+            Block::from_state_id(self.block_state_id).name
+        );
+        TextComponent::translate_cross(
+            translation::java::ENTITY_MINECRAFT_FALLING_BLOCK_TYPE,
+            translation::java::ENTITY_MINECRAFT_FALLING_BLOCK_TYPE,
+            [TextComponent::translate_cross(
+                block_key.clone(),
+                block_key,
+                [],
+            )],
+        )
+    }
+
     fn tick(&self, caller: &dyn EntityBase, _server: &Server) {
         let entity = &self.entity;
         let mut velo = entity.velocity.load();
