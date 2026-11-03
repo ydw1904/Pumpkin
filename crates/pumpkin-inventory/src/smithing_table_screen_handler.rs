@@ -12,12 +12,89 @@ use crate::inventory::SimpleInventory;
 use pumpkin_data::data_component_impl::{ProvidesTrimMaterialImpl, TrimImpl};
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
-use pumpkin_data::recipes::{get_smithing_transform_recipe, get_smithing_trim_recipe};
+use pumpkin_data::recipes::{
+    RECIPES_SMITHING_TRANSFORM, RECIPES_SMITHING_TRIM, get_smithing_transform_recipe,
+    get_smithing_trim_recipe,
+};
 use pumpkin_data::screen::WindowType;
 use pumpkin_data::statistic::StatisticCategory;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_protocol::codec::recipe::DynamicRecipe;
 use pumpkin_protocol::java::server::play::SlotActionType;
+
+const RESULT_SLOT: i32 = 3;
+const INVENTORY_START: i32 = 4;
+const INVENTORY_END: i32 = INVENTORY_START + 27;
+const USE_ROW_END: i32 = INVENTORY_END + 9;
+
+/// Which input a smithing slot takes, in slot order.
+#[derive(Clone, Copy)]
+enum SmithingInput {
+    Template = 0,
+    Base = 1,
+    Addition = 2,
+}
+
+impl SmithingInput {
+    const fn pick<'a, T>(self, template: &'a T, base: &'a T, addition: &'a T) -> &'a T {
+        match self {
+            Self::Template => template,
+            Self::Base => base,
+            Self::Addition => addition,
+        }
+    }
+
+    /// Whether any smithing recipe takes `item` in this input, like vanilla's
+    /// `RecipePropertySet.SMITHING_TEMPLATE`, `SMITHING_BASE` and `SMITHING_ADDITION`.
+    fn accepts(self, item: &Item, provider: Option<&Arc<dyn RecipeProvider>>) -> bool {
+        RECIPES_SMITHING_TRANSFORM.iter().any(|r| {
+            self.pick(&r.template, &r.base, &r.addition)
+                .match_item(item)
+        }) || RECIPES_SMITHING_TRIM.iter().any(|r| {
+            self.pick(&r.template, &r.base, &r.addition)
+                .match_item(item)
+        }) || provider.is_some_and(|provider| {
+            provider.get_dynamic_recipes().iter().any(|d| match d {
+                DynamicRecipe::SmithingTransform(r) => self
+                    .pick(&r.template, &r.base, &r.addition)
+                    .match_item(item),
+                DynamicRecipe::SmithingTrim(r) => self
+                    .pick(&r.template, &r.base, &r.addition)
+                    .match_item(item),
+                _ => false,
+            })
+        })
+    }
+}
+
+/// A smithing input slot that only takes items some recipe uses there.
+struct SmithingInputSlot {
+    slot: NormalSlot,
+    role: SmithingInput,
+    recipe_provider: Option<Arc<dyn RecipeProvider>>,
+}
+
+impl Slot for SmithingInputSlot {
+    fn get_inventory(&self) -> Arc<dyn Inventory> {
+        self.slot.get_inventory()
+    }
+
+    fn get_index(&self) -> usize {
+        self.slot.get_index()
+    }
+
+    fn set_id(&self, id: usize) {
+        self.slot.set_id(id);
+    }
+
+    fn can_insert(&self, stack: &ItemStack) -> bool {
+        self.role.accepts(stack.item, self.recipe_provider.as_ref())
+    }
+
+    fn mark_dirty(&self) {
+        self.slot.mark_dirty();
+    }
+}
 
 pub struct SmithingTableScreenHandler {
     behaviour: ScreenHandlerBehaviour,
@@ -43,18 +120,17 @@ impl SmithingTableScreenHandler {
             recipe_provider,
         };
 
-        handler.add_slot(Arc::new(NormalSlot::new(
-            handler.input_inventory.clone(),
-            0,
-        )));
-        handler.add_slot(Arc::new(NormalSlot::new(
-            handler.input_inventory.clone(),
-            1,
-        )));
-        handler.add_slot(Arc::new(NormalSlot::new(
-            handler.input_inventory.clone(),
-            2,
-        )));
+        for role in [
+            SmithingInput::Template,
+            SmithingInput::Base,
+            SmithingInput::Addition,
+        ] {
+            handler.add_slot(Arc::new(SmithingInputSlot {
+                slot: NormalSlot::new(handler.input_inventory.clone(), role as usize),
+                role,
+                recipe_provider: handler.recipe_provider.clone(),
+            }));
+        }
         handler.add_slot(Arc::new(SmithingOutputSlot::new(
             handler.output_inventory.clone(),
             handler.input_inventory.clone(),
@@ -137,6 +213,15 @@ impl SmithingTableScreenHandler {
             } else {
                 None
             }
+        })
+    }
+
+    /// Mojang name: `SmithingMenu.canMoveIntoInputSlots`
+    fn can_move_into_input_slots(&self, stack: &ItemStack) -> bool {
+        let behaviour = self.get_behaviour();
+        (0..RESULT_SLOT as usize).any(|i| {
+            let slot = &behaviour.slots[i];
+            slot.can_insert(stack) && !slot.has_stack()
         })
     }
 
@@ -225,46 +310,49 @@ impl ScreenHandler for SmithingTableScreenHandler {
         slot_index != 3
     }
 
+    /// Mojang name: `ItemCombinerMenu.quickMoveStack`
     fn quick_move(&mut self, player: &dyn InventoryPlayer, slot_index: i32) -> ItemStack {
-        let mut stack = ItemStack::EMPTY.clone();
-        let slot = self.get_behaviour().slots.get(slot_index as usize).cloned();
-
-        if let Some(slot) = slot {
-            let mut slot_stack = slot.get_cloned_stack();
-            if !slot_stack.is_empty() {
-                stack = slot_stack.clone();
-                match slot_index.cmp(&3) {
-                    std::cmp::Ordering::Equal => {
-                        // From output slot to player inventory
-                        if !self.insert_item(&mut slot_stack, 4, 40, true) {
-                            return ItemStack::EMPTY.clone();
-                        }
-                        slot.on_quick_move_crafted(slot_stack.clone(), stack.clone());
-                        let mut taken_stack = stack.clone();
-                        taken_stack.set_count(stack.item_count - slot_stack.item_count);
-                        slot.on_take_item(player, &taken_stack);
-                    }
-                    std::cmp::Ordering::Less => {
-                        // From input slots to player inventory
-                        if !self.insert_item(&mut slot_stack, 4, 40, true) {
-                            return ItemStack::EMPTY.clone();
-                        }
-                    }
-                    std::cmp::Ordering::Greater => {
-                        // From player inventory into input slots (0..3)
-                        if !self.insert_item(&mut slot_stack, 0, 3, false) {
-                            return ItemStack::EMPTY.clone();
-                        }
-                    }
-                }
-                self.update_output();
-
-                if slot_stack.is_empty() {
-                    slot.set_stack(ItemStack::EMPTY.clone());
-                } else {
-                    slot.set_stack(slot_stack);
-                }
+        let Some(slot) = self.get_behaviour().slots.get(slot_index as usize).cloned() else {
+            return ItemStack::EMPTY.clone();
+        };
+        let mut slot_stack = slot.get_cloned_stack();
+        if slot_stack.is_empty() {
+            return ItemStack::EMPTY.clone();
+        }
+        let stack = slot_stack.clone();
+        let moved = if slot_index == RESULT_SLOT {
+            let moved = self.insert_item(&mut slot_stack, INVENTORY_START, USE_ROW_END, true);
+            if moved {
+                slot.on_quick_move_crafted(slot_stack.clone(), stack.clone());
             }
+            moved
+        } else if slot_index < RESULT_SLOT {
+            self.insert_item(&mut slot_stack, INVENTORY_START, USE_ROW_END, false)
+        } else if self.can_move_into_input_slots(&slot_stack) {
+            self.insert_item(&mut slot_stack, 0, RESULT_SLOT, false)
+        } else if slot_index < INVENTORY_END {
+            self.insert_item(&mut slot_stack, INVENTORY_END, USE_ROW_END, false)
+        } else {
+            self.insert_item(&mut slot_stack, INVENTORY_START, INVENTORY_END, false)
+        };
+        if !moved {
+            return ItemStack::EMPTY.clone();
+        }
+
+        if slot_stack.is_empty() {
+            slot.set_stack(ItemStack::EMPTY.clone());
+        } else {
+            slot.set_stack(slot_stack.clone());
+        }
+
+        if slot_stack.item_count != stack.item_count {
+            let mut taken_stack = stack.clone();
+            taken_stack.set_count(stack.item_count - slot_stack.item_count);
+            slot.on_take_item(player, &taken_stack);
+        }
+        self.update_output();
+        if slot_stack.item_count == stack.item_count {
+            return ItemStack::EMPTY.clone();
         }
         stack
     }
