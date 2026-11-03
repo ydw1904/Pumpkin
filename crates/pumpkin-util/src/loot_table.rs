@@ -17,6 +17,12 @@ pub enum LootCondition {
     RandomChance {
         chance: f32,
     },
+    /// `random_chance` whose chance is an `enchantment_level` number provider with a linear
+    /// level-based value.
+    RandomChanceWithEnchantmentLevel {
+        base: f32,
+        per_level_above_first: f32,
+    },
     RandomChanceWithEnchantedBonus {
         enchantment: &'static str,
         unenchanted_chance: f32,
@@ -171,6 +177,12 @@ pub enum DynamicLootCondition {
     RandomChance {
         chance: f32,
     },
+    /// `random_chance` whose chance is an `enchantment_level` number provider with a linear
+    /// level-based value.
+    RandomChanceWithEnchantmentLevel {
+        base: f32,
+        per_level_above_first: f32,
+    },
     RandomChanceWithEnchantedBonus {
         enchantment: String,
         unenchanted_chance: f32,
@@ -233,6 +245,13 @@ impl From<LootCondition> for DynamicLootCondition {
             LootCondition::SurvivesExplosion => Self::SurvivesExplosion,
             LootCondition::KilledByPlayer => Self::KilledByPlayer,
             LootCondition::RandomChance { chance } => Self::RandomChance { chance },
+            LootCondition::RandomChanceWithEnchantmentLevel {
+                base,
+                per_level_above_first,
+            } => Self::RandomChanceWithEnchantmentLevel {
+                base,
+                per_level_above_first,
+            },
             LootCondition::RandomChanceWithEnchantedBonus {
                 enchantment,
                 unenchanted_chance,

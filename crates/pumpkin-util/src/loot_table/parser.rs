@@ -93,6 +93,38 @@ fn provider(value: &Value) -> Option<LootNumberProvider> {
     }
 }
 
+/// A `random_chance` condition. Its chance is a constant or an `enchantment_level` provider
+/// with a constant or linear amount; anything else never passes.
+fn random_chance(chance: Option<&Value>) -> Condition {
+    let Some(chance) = chance else {
+        return Condition::RandomChance { chance: 0.0 };
+    };
+    if let Some(chance) = scalar(chance) {
+        return Condition::RandomChance {
+            chance: chance as f32,
+        };
+    }
+    let amount = (kind(chance) == "enchantment_level")
+        .then(|| chance.get("amount"))
+        .flatten();
+    let level_based = amount.and_then(|amount| {
+        if let Some(constant) = amount.as_f64() {
+            return Some((constant, 0.0));
+        }
+        (kind(amount) == "linear").then_some((
+            amount.get("base")?.as_f64()?,
+            amount.get("per_level_above_first")?.as_f64()?,
+        ))
+    });
+    level_based.map_or(
+        Condition::RandomChance { chance: 0.0 },
+        |(base, per_level_above_first)| Condition::RandomChanceWithEnchantmentLevel {
+            base: base as f32,
+            per_level_above_first: per_level_above_first as f32,
+        },
+    )
+}
+
 impl<R: Fn(&str) -> Option<Value>> Parser<'_, R> {
     fn table(&self, value: &Value) -> Option<Table> {
         value.as_object()?;
@@ -214,9 +246,7 @@ impl<R: Fn(&str) -> Option<Value>> Parser<'_, R> {
         Some(match kind(value) {
             "survives_explosion" => Condition::SurvivesExplosion,
             "killed_by_player" => Condition::KilledByPlayer,
-            "random_chance" => Condition::RandomChance {
-                chance: value.get("chance").and_then(Value::as_f64).unwrap_or(0.0) as f32,
-            },
+            "random_chance" => random_chance(value.get("chance")),
             "random_chance_with_enchanted_bonus" => {
                 let unenchanted_chance = value
                     .get("unenchanted_chance")

@@ -124,6 +124,12 @@ impl LootConditionGenerator {
             DynamicLootCondition::RandomChance { chance } => {
                 quote! { LootCondition::RandomChance { chance: #chance } }
             }
+            DynamicLootCondition::RandomChanceWithEnchantmentLevel {
+                base,
+                per_level_above_first,
+            } => {
+                quote! { LootCondition::RandomChanceWithEnchantmentLevel { base: #base, per_level_above_first: #per_level_above_first } }
+            }
             DynamicLootCondition::RandomChanceWithEnchantedBonus {
                 enchantment,
                 unenchanted_chance,

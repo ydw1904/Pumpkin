@@ -38,6 +38,21 @@ pub struct LootContextParameters<'a> {
     /// Computed from `Entity.fire_ticks > 0`.
     pub is_on_fire: Option<bool>,
     pub direct_attacker_weapon: Option<ItemStack>,
+    /// Vanilla's `ENCHANTMENT_LEVEL` parameter, set when an enchantment effect checks its
+    /// requirements.
+    pub enchantment_level: Option<i32>,
+}
+
+/// Vanilla `EnchantmentLevelProvider` with a linear amount; it fails without an enchantment.
+fn enchantment_level_chance(
+    params: &LootContextParameters<'_>,
+    base: f32,
+    per_level_above_first: f32,
+    rng: &mut RandomGenerator,
+) -> bool {
+    params
+        .enchantment_level
+        .is_some_and(|level| rng.next_f32() < base + per_level_above_first * (level - 1) as f32)
 }
 
 fn attacker_enchantment_level(params: &LootContextParameters<'_>, name: &str) -> i32 {
@@ -162,6 +177,10 @@ fn check_dynamic_condition(
             .explosion_radius
             .is_none_or(|radius| radius <= 1.0 || rng.next_f32() <= 1.0 / radius),
         DynamicLootCondition::RandomChance { chance } => rng.next_f32() < *chance,
+        DynamicLootCondition::RandomChanceWithEnchantmentLevel {
+            base,
+            per_level_above_first,
+        } => enchantment_level_chance(params, *base, *per_level_above_first, rng),
         DynamicLootCondition::RandomChanceWithEnchantedBonus {
             enchantment,
             unenchanted_chance,
@@ -262,6 +281,10 @@ fn check_condition(
             .explosion_radius
             .is_none_or(|radius| radius <= 1.0 || rng.next_f32() <= 1.0 / radius),
         LootCondition::RandomChance { chance } => rng.next_f32() < chance,
+        LootCondition::RandomChanceWithEnchantmentLevel {
+            base,
+            per_level_above_first,
+        } => enchantment_level_chance(params, base, per_level_above_first, rng),
         LootCondition::RandomChanceWithEnchantedBonus {
             enchantment,
             unenchanted_chance,

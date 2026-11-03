@@ -2840,7 +2840,10 @@ impl Enchantment {
                 },
                 ConditionalEffect {
                     requirements: LootCondition::AllOf(&[
-                        LootCondition::RandomChance { chance: 0f32 },
+                        LootCondition::RandomChanceWithEnchantmentLevel {
+                            base: 0.04f32,
+                            per_level_above_first: 0f32,
+                        },
                         LootCondition::EntityProperties {
                             target: LootEntityTarget::This,
                             predicate: &LOOT_PREDICATE_14,
@@ -2976,7 +2979,10 @@ impl Enchantment {
             post_attack: &[TargetedConditionalEffect {
                 enchanted: Some(EnchantmentTarget::Victim),
                 affected: Some(EnchantmentTarget::Attacker),
-                requirements: LootCondition::RandomChance { chance: 0f32 },
+                requirements: LootCondition::RandomChanceWithEnchantmentLevel {
+                    base: 0.15f32,
+                    per_level_above_first: 0.15f32,
+                },
                 effect: EnchantmentEntityEffect::AllOf(&[
                     EnchantmentEntityEffect::DamageEntity {
                         min_damage: LevelBasedValue::Constant(1f32),
