@@ -7,20 +7,39 @@ use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::potion::Effect;
-use pumpkin_data::sound::Sound;
+use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_util::difficulty::Difficulty;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::math::vector2::Vector2;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::text::TextComponent;
+use pumpkin_world::chunk::ChunkHeightmapType;
 
 use crate::entity::EntityBase;
-use crate::entity::mob::raider::create_ominous_banner;
+use crate::entity::mob::raider::{Raider, create_ominous_banner};
 use crate::entity::mob::spawn::finalize_spawn;
 use crate::entity::player::Player;
 use crate::entity::r#type::from_type;
 use crate::world::World;
 use crate::world::bossbar::{Bossbar, BossbarColor, BossbarDivisions};
+use crate::world::natural_spawner::is_spawn_position_ok;
 use crate::world::villager_poi::Occupancy;
+
+const RAID_NAME: &str = "event.minecraft.raid";
+const RAIDERS_REMAINING: &str = "event.minecraft.raid.raiders_remaining";
+const RAID_BAR_VICTORY: &str = "event.minecraft.raid.victory.full";
+const RAID_BAR_DEFEAT: &str = "event.minecraft.raid.defeat.full";
+const ALLOW_SPAWNING_WITHIN_VILLAGE_SECONDS_THRESHOLD: i32 = 7;
+const SECTION_RADIUS_FOR_FINDING_NEW_VILLAGE_CENTER: i32 = 2;
+const RAID_TIMEOUT_TICKS: i64 = 48000;
+const NUM_SPAWN_ATTEMPTS: i32 = 5;
+const POST_RAID_TICK_LIMIT: i32 = 40;
+const DEFAULT_PRE_RAID_TICKS: i32 = 300;
+const MAX_NO_ACTION_TIME: i32 = 2400;
+const MAX_CELEBRATION_TICKS: i32 = 600;
+const OUTSIDE_RAID_BOUNDS_TIMEOUT: i32 = 30;
+const LOW_MOB_THRESHOLD: usize = 2;
+const HERO_OF_THE_VILLAGE_DURATION: i32 = 48000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RaidStatus {
@@ -83,21 +102,25 @@ impl RaiderType {
     }
 }
 
+/// Vanilla `Raid`. Raiders are kept by UUID.
 pub struct Raid {
     pub id: i32,
     pub center: BlockPos,
     pub status: RaidStatus,
     pub active: bool,
     pub started: bool,
-    pub ticks_active: u64,
+    pub ticks_active: i64,
     pub raid_omen_level: i32,
     pub groups_spawned: i32,
     pub num_groups: i32,
     pub raid_cooldown_ticks: i32,
     pub post_raid_ticks: i32,
-    pub celebration_ticks: u32,
+    pub celebration_ticks: i32,
     pub total_health: f32,
     pub bossbar: Bossbar,
+    bossbar_visible: bool,
+    /// Set when a raider left the raid outside the raid tick; the bar is updated next tick.
+    bossbar_dirty: bool,
     pub group_to_leader_map: HashMap<i32, Uuid>,
     pub group_raider_map: HashMap<i32, HashSet<Uuid>>,
     pub heroes_of_the_village: HashSet<Uuid>,
@@ -113,13 +136,10 @@ impl Raid {
 
     #[must_use]
     pub fn new(id: i32, center: BlockPos, difficulty: Difficulty) -> Self {
-        let mut bossbar = Bossbar::new(TextComponent::translate("event.minecraft.raid", []));
+        let mut bossbar = Bossbar::new(TextComponent::translate(RAID_NAME, []));
         bossbar.color = BossbarColor::Red;
         bossbar.division = BossbarDivisions::Notches10;
         bossbar.health = 0.0;
-
-        let num_groups = Self::get_num_groups(difficulty);
-
         Self {
             id,
             center,
@@ -129,12 +149,14 @@ impl Raid {
             ticks_active: 0,
             raid_omen_level: 0,
             groups_spawned: 0,
-            num_groups,
-            raid_cooldown_ticks: 300,
+            num_groups: Self::get_num_groups(difficulty),
+            raid_cooldown_ticks: DEFAULT_PRE_RAID_TICKS,
             post_raid_ticks: 0,
             celebration_ticks: 0,
             total_health: 0.0,
             bossbar,
+            bossbar_visible: true,
+            bossbar_dirty: false,
             group_to_leader_map: HashMap::new(),
             group_raider_map: HashMap::new(),
             heroes_of_the_village: HashSet::new(),
@@ -193,12 +215,16 @@ impl Raid {
         self.raid_omen_level
     }
 
-    pub fn set_raid_omen_level(&mut self, level: i32) {
-        self.raid_omen_level = level.clamp(0, Self::MAX_RAID_OMEN_LEVEL);
+    pub const fn set_raid_omen_level(&mut self, level: i32) {
+        self.raid_omen_level = level;
     }
 
     #[must_use]
-    pub const fn has_more_waves(&self) -> bool {
+    pub const fn has_first_wave_spawned(&self) -> bool {
+        self.groups_spawned > 0
+    }
+
+    const fn has_more_waves(&self) -> bool {
         if self.has_bonus_wave() {
             !self.has_spawned_bonus_wave()
         } else {
@@ -206,28 +232,23 @@ impl Raid {
         }
     }
 
-    #[must_use]
-    pub const fn is_final_wave(&self) -> bool {
+    const fn is_final_wave(&self) -> bool {
         self.groups_spawned == self.num_groups
     }
 
-    #[must_use]
-    pub const fn has_bonus_wave(&self) -> bool {
+    const fn has_bonus_wave(&self) -> bool {
         self.raid_omen_level > 1
     }
 
-    #[must_use]
-    pub const fn has_spawned_bonus_wave(&self) -> bool {
+    const fn has_spawned_bonus_wave(&self) -> bool {
         self.groups_spawned > self.num_groups
     }
 
-    #[must_use]
-    pub fn should_spawn_bonus_group(&self) -> bool {
+    fn should_spawn_bonus_group(&self) -> bool {
         self.is_final_wave() && self.get_total_raiders_alive() == 0 && self.has_bonus_wave()
     }
 
-    #[must_use]
-    pub fn should_spawn_group(&self) -> bool {
+    fn should_spawn_group(&self) -> bool {
         self.raid_cooldown_ticks == 0
             && (self.groups_spawned < self.num_groups || self.should_spawn_bonus_group())
             && self.get_total_raiders_alive() == 0
@@ -240,32 +261,22 @@ impl Raid {
 
     #[must_use]
     pub fn get_all_raiders(&self) -> HashSet<Uuid> {
-        let mut set = HashSet::new();
-        for wave_set in self.group_raider_map.values() {
-            set.extend(wave_set);
-        }
-        set
+        self.group_raider_map.values().flatten().copied().collect()
     }
 
     pub fn stop(&mut self, world: &World) {
         self.active = false;
-        self.status = RaidStatus::Stopped;
         self.remove_all_players(world);
+        self.status = RaidStatus::Stopped;
     }
 
     pub fn remove_all_players(&mut self, world: &World) {
-        let players = world.players.load();
-        for player in players.iter() {
+        for player in world.players.load().iter() {
             if self.players_in_raid.contains(&player.gameprofile.id) {
                 player.remove_bossbar(self.bossbar.uuid);
             }
         }
         self.players_in_raid.clear();
-    }
-
-    #[must_use]
-    pub const fn has_first_wave_spawned(&self) -> bool {
-        self.groups_spawned > 0
     }
 
     /// Vanilla `Raid.absorbRaidOmen`: the player's Raid Omen raises the omen level.
@@ -289,18 +300,56 @@ impl Raid {
         self.heroes_of_the_village.insert(killer_uuid);
     }
 
-    const fn get_default_num_spawns(
+    pub fn remove_leader(&mut self, wave: i32) {
+        self.group_to_leader_map.remove(&wave);
+    }
+
+    /// Vanilla `Raid.removeFromRaid`; `health` is taken off the total when given.
+    fn remove_from_raid(
+        &mut self,
+        wave: i32,
+        raider_uuid: Uuid,
+        raider: Option<&dyn Raider>,
+        health: Option<f32>,
+    ) {
+        let removed = self
+            .group_raider_map
+            .get_mut(&wave)
+            .is_some_and(|raiders| raiders.remove(&raider_uuid));
+        if removed {
+            if let Some(health) = health {
+                self.total_health -= health;
+            }
+            if let Some(raider) = raider {
+                raider.get_raider_data().raid_id.store(None);
+            }
+            self.bossbar_dirty = true;
+        }
+    }
+
+    /// The raid part of vanilla `Raider.die`: a player who killed the raider becomes a hero.
+    fn on_raider_death(&mut self, raider: &dyn Raider, uuid: Uuid, killed_by_player: Option<Uuid>) {
+        if raider.is_patrol_leader() {
+            self.remove_leader(raider.get_wave());
+        }
+        if let Some(player) = killed_by_player {
+            self.add_hero_of_the_village(player);
+        }
+        self.remove_from_raid(raider.get_wave(), uuid, Some(raider), None);
+    }
+
+    fn get_default_num_spawns(
         &self,
         raider_type: RaiderType,
         wave: i32,
         is_bonus_wave: bool,
     ) -> i32 {
-        let spawns = raider_type.spawns_per_wave();
-        if is_bonus_wave {
-            spawns[self.num_groups as usize]
-        } else {
-            spawns[wave as usize]
-        }
+        let index = if is_bonus_wave { self.num_groups } else { wave };
+        raider_type
+            .spawns_per_wave()
+            .get(index as usize)
+            .copied()
+            .unwrap_or(0)
     }
 
     fn get_potential_bonus_spawns(
@@ -314,31 +363,36 @@ impl Raid {
         let bonus_spawns = match raider_type {
             RaiderType::Vindicator | RaiderType::Pillager => {
                 if is_easy {
-                    game_random().random::<u32>() % 2
+                    game_random().random_range(0..2)
                 } else if is_normal {
                     1
                 } else {
                     2
                 }
             }
-            RaiderType::Evoker => 0,
-            RaiderType::Witch => u32::from(!(is_easy || wave <= 2 || wave == 4)),
-            RaiderType::Ravager => u32::from(!is_easy && is_bonus_wave),
+            RaiderType::Evoker => return 0,
+            RaiderType::Witch => {
+                if is_easy || wave <= 2 || wave == 4 {
+                    return 0;
+                }
+                1
+            }
+            RaiderType::Ravager => i32::from(!is_easy && is_bonus_wave),
         };
         if bonus_spawns > 0 {
-            (game_random().random::<u32>() % (bonus_spawns + 1)) as i32
+            game_random().random_range(0..=bonus_spawns)
         } else {
             0
         }
     }
 
-    pub fn spawn_group(&mut self, world: &Arc<World>, pos: BlockPos) {
+    /// Vanilla `Raid.spawnGroup`.
+    fn spawn_group(&mut self, world: &Arc<World>, pos: BlockPos) {
         let mut leader_set = false;
         let group_number = self.groups_spawned + 1;
         self.total_health = 0.0;
-        let is_bonus_group = self.should_spawn_bonus_group();
-
         let difficulty = world.level_info.load().difficulty;
+        let is_bonus_group = self.should_spawn_bonus_group();
 
         for raider_type in RaiderType::VALUES {
             let num_spawns = self.get_default_num_spawns(raider_type, group_number, is_bonus_group)
@@ -351,64 +405,47 @@ impl Raid {
             let mut ravagers_spawned = 0;
 
             for _ in 0..num_spawns {
-                let uuid = Uuid::new_v4();
-                let spawn_pos = Vector3::new(
-                    f64::from(pos.0.x) + 0.5,
-                    f64::from(pos.0.y) + 1.0,
-                    f64::from(pos.0.z) + 0.5,
+                let raider_base = from_type(
+                    raider_type.entity_type(),
+                    pos.to_f64(),
+                    world,
+                    Uuid::new_v4(),
                 );
-                let entity_base = from_type(raider_type.entity_type(), spawn_pos, world, uuid);
-
-                if let Some(mob) = entity_base.get_mob()
-                    && let Some(raider) = mob.as_raider()
-                {
-                    if !leader_set && raider.can_be_leader() {
-                        raider.set_patrol_leader(true);
-                        let banner = create_ominous_banner();
-                        let living = &mob.get_mob_entity().living_entity;
-                        if let Ok(mut equipment) = living.entity_equipment.try_lock() {
-                            equipment.put(&EquipmentSlot::HEAD, banner.clone());
-                        }
-                        living.send_equipment_changes(&[(EquipmentSlot::HEAD, banner)]);
-                        self.group_to_leader_map.insert(group_number, uuid);
-                        leader_set = true;
-                    }
-                    raider.set_wave(group_number);
-                    raider.set_can_join_raid(true);
-                    // Vanilla `Raid.joinRaid` finalizes the spawn before the raid buffs.
-                    finalize_spawn(&entity_base, world, None);
-                    raider.apply_raid_buffs(group_number, false);
+                let Some(raider) = raider_base.get_mob().and_then(|mob| mob.as_raider()) else {
+                    break;
+                };
+                if !leader_set && raider.can_be_leader() {
+                    raider.set_patrol_leader(true);
+                    self.set_leader(group_number, raider_base.as_ref());
+                    leader_set = true;
                 }
+                self.join_raid(world, group_number, &raider_base, pos);
 
-                self.join_raid(group_number, uuid, &entity_base);
-                world.spawn_entity_non_save(entity_base.clone());
-
-                if *raider_type.entity_type() == EntityType::RAVAGER {
-                    let mut riding_type: Option<&'static EntityType> = None;
-                    if group_number == Self::get_num_groups(Difficulty::Normal) {
-                        riding_type = Some(&EntityType::PILLAGER);
+                if raider_type == RaiderType::Ravager {
+                    let riding_type = if group_number == Self::get_num_groups(Difficulty::Normal) {
+                        Some(&EntityType::PILLAGER)
                     } else if group_number >= Self::get_num_groups(Difficulty::Hard) {
                         if ravagers_spawned == 0 {
-                            riding_type = Some(&EntityType::EVOKER);
+                            Some(&EntityType::EVOKER)
                         } else {
-                            riding_type = Some(&EntityType::VINDICATOR);
+                            Some(&EntityType::VINDICATOR)
                         }
-                    }
+                    } else {
+                        None
+                    };
                     ravagers_spawned += 1;
-
                     if let Some(riding_type) = riding_type {
-                        let rider_uuid = Uuid::new_v4();
-                        let rider_base = from_type(riding_type, spawn_pos, world, rider_uuid);
-                        if let Some(mob) = rider_base.get_mob()
-                            && let Some(raider) = mob.as_raider()
-                        {
-                            raider.set_wave(group_number);
-                            raider.set_can_join_raid(true);
-                            finalize_spawn(&rider_base, world, None);
-                            raider.apply_raid_buffs(group_number, false);
-                        }
-                        self.join_raid(group_number, rider_uuid, &rider_base);
-                        world.spawn_entity_non_save(rider_base);
+                        let rider = from_type(riding_type, pos.to_f64(), world, Uuid::new_v4());
+                        self.join_raid(world, group_number, &rider, pos);
+                        // Vanilla `snapTo(pos)` before `startRiding`.
+                        rider.get_entity().set_pos(Vector3::new(
+                            f64::from(pos.0.x) + 0.5,
+                            f64::from(pos.0.y),
+                            f64::from(pos.0.z) + 0.5,
+                        ));
+                        raider_base
+                            .get_entity()
+                            .add_passenger(raider_base.clone(), rider);
                     }
                 }
             }
@@ -419,157 +456,351 @@ impl Raid {
         self.update_bossbar(world);
     }
 
-    pub fn join_raid(&mut self, wave: i32, uuid: Uuid, entity_base: &Arc<dyn EntityBase>) {
-        self.group_raider_map.entry(wave).or_default().insert(uuid);
+    /// Vanilla `Raid.joinRaid` for a new raider, which is placed at `pos` and spawned.
+    fn join_raid(
+        &mut self,
+        world: &Arc<World>,
+        wave: i32,
+        raider_base: &Arc<dyn EntityBase>,
+        pos: BlockPos,
+    ) {
+        let Some(mob) = raider_base.get_mob() else {
+            return;
+        };
+        let Some(raider) = mob.as_raider() else {
+            return;
+        };
+        let entity = raider_base.get_entity();
+        self.group_raider_map
+            .entry(wave)
+            .or_default()
+            .insert(entity.entity_uuid);
+        self.total_health += mob.get_mob_entity().living_entity.health.load();
 
-        if let Some(living) = entity_base.get_living_entity() {
-            self.total_health += living.health.load();
-        }
+        let data = raider.get_raider_data();
+        data.raid_id.store(Some(self.id));
+        raider.set_wave(wave);
+        raider.set_can_join_raid(true);
+        data.ticks_outside_raid
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+        entity.set_pos(Vector3::new(
+            f64::from(pos.0.x) + 0.5,
+            f64::from(pos.0.y) + 1.0,
+            f64::from(pos.0.z) + 0.5,
+        ));
+        finalize_spawn(raider_base, world, None);
+        raider.apply_raid_buffs(wave, false);
+        entity
+            .on_ground
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        world.spawn_entity(raider_base.clone());
+    }
+
+    /// Vanilla `Raid.setLeader`: the leader wears the ominous banner and always drops it.
+    fn set_leader(&mut self, wave: i32, raider_base: &dyn EntityBase) {
+        let Some(mob) = raider_base.get_mob() else {
+            return;
+        };
+        self.group_to_leader_map
+            .insert(wave, raider_base.get_entity().entity_uuid);
+        let mob_entity = mob.get_mob_entity();
+        mob_entity.set_item_slot(&EquipmentSlot::HEAD, create_ominous_banner());
+        mob_entity.set_guaranteed_drop(&EquipmentSlot::HEAD);
+    }
+
+    /// Vanilla `Raid.updateBossbar`.
+    pub fn update_bossbar(&mut self, world: &World) {
+        let progress = self.get_health_of_living_raiders(world) / self.total_health;
+        let progress = if progress.is_nan() {
+            0.0
+        } else {
+            progress.clamp(0.0, 1.0)
+        };
+        self.set_progress(world, progress);
     }
 
     #[must_use]
-    pub fn find_random_spawn_pos(&self, max_tries: usize) -> Option<BlockPos> {
+    pub fn get_health_of_living_raiders(&self, world: &World) -> f32 {
+        self.group_raider_map
+            .values()
+            .flatten()
+            .filter_map(|uuid| world.get_entity_by_uuid(*uuid))
+            .filter_map(|entity| {
+                entity
+                    .get_living_entity()
+                    .map(|living| living.health.load())
+            })
+            .sum()
+    }
+
+    /// `ServerBossEvent.setProgress`: only a change reaches the players.
+    fn set_progress(&mut self, world: &World, progress: f32) {
+        #[expect(
+            clippy::float_cmp,
+            reason = "vanilla sends the progress when it changed at all"
+        )]
+        if self.bossbar.health == progress {
+            return;
+        }
+        self.bossbar.health = progress;
+        self.for_each_bar_player(world, |player, bar| {
+            player.update_bossbar_health(&bar.uuid, bar.health);
+        });
+    }
+
+    /// `ServerBossEvent.setName`: only a change reaches the players.
+    fn set_name(&mut self, world: &World, name: TextComponent) {
+        if self.bossbar.title == name {
+            return;
+        }
+        self.bossbar.title = name;
+        self.for_each_bar_player(world, |player, bar| {
+            player.update_bossbar_title(&bar.uuid, bar.title.clone());
+        });
+    }
+
+    /// `ServerBossEvent.setVisible`.
+    fn set_visible(&mut self, world: &World, visible: bool) {
+        if self.bossbar_visible == visible {
+            return;
+        }
+        self.bossbar_visible = visible;
+        for player in world.players.load().iter() {
+            if self.players_in_raid.contains(&player.gameprofile.id) {
+                if visible {
+                    player.send_bossbar(&self.bossbar);
+                } else {
+                    player.remove_bossbar(self.bossbar.uuid);
+                }
+            }
+        }
+    }
+
+    fn for_each_bar_player(&self, world: &World, f: impl Fn(&Player, &Bossbar)) {
+        if !self.bossbar_visible {
+            return;
+        }
+        for player in world.players.load().iter() {
+            if self.players_in_raid.contains(&player.gameprofile.id) {
+                f(player, &self.bossbar);
+            }
+        }
+    }
+
+    /// Vanilla `Raid.updatePlayers`: the bar shows for living players whose nearest raid this
+    /// is.
+    fn update_players(&mut self, world: &World, raid_centers: &[(i32, BlockPos)]) {
+        for player in world.players.load().iter() {
+            let id = player.gameprofile.id;
+            let pos = player.get_entity().block_pos.load();
+            let valid = player.living_entity.health.load() > 0.0
+                && nearest_raid(raid_centers, &pos) == Some(self.id);
+            let was_in = self.players_in_raid.contains(&id);
+            if valid && !was_in {
+                self.players_in_raid.insert(id);
+                if self.bossbar_visible {
+                    player.send_bossbar(&self.bossbar);
+                }
+            } else if !valid && was_in {
+                self.players_in_raid.remove(&id);
+                if self.bossbar_visible {
+                    player.remove_bossbar(self.bossbar.uuid);
+                }
+            }
+        }
+    }
+
+    /// Vanilla `Raid.updateRaiders`: raiders that despawned, wandered off or idled outside the
+    /// village leave the raid.
+    fn update_raiders(&mut self, world: &World) {
+        let mut to_remove = Vec::new();
+        for (&wave, raiders) in &self.group_raider_map {
+            for &uuid in raiders {
+                let Some(entity) = world.get_entity_by_uuid(uuid) else {
+                    to_remove.push((wave, uuid));
+                    continue;
+                };
+                let base = entity.get_entity();
+                let raider_pos = base.block_pos.load();
+                if base.removed.load(std::sync::atomic::Ordering::Relaxed)
+                    || block_dist_squared(self.center, raider_pos)
+                        >= Self::RAID_REMOVAL_THRESHOLD_SQR
+                {
+                    to_remove.push((wave, uuid));
+                } else if base.tick_count.load(std::sync::atomic::Ordering::Relaxed) > 600
+                    && let Some(raider) = entity.get_mob().and_then(|mob| mob.as_raider())
+                {
+                    let outside = &raider.get_raider_data().ticks_outside_raid;
+                    let no_action_time = raider
+                        .get_mob_entity()
+                        .living_entity
+                        .no_action_time
+                        .load(std::sync::atomic::Ordering::Relaxed);
+                    if !world.is_village(&raider_pos) && no_action_time > MAX_NO_ACTION_TIME {
+                        outside.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    }
+                    if outside.load(std::sync::atomic::Ordering::Relaxed)
+                        >= OUTSIDE_RAID_BOUNDS_TIMEOUT
+                    {
+                        to_remove.push((wave, uuid));
+                    }
+                }
+            }
+        }
+
+        for (wave, uuid) in to_remove {
+            let entity = world.get_entity_by_uuid(uuid);
+            let raider = entity
+                .as_deref()
+                .and_then(EntityBase::get_mob)
+                .and_then(|mob| mob.as_raider());
+            let health = raider.map_or(0.0, |raider| {
+                raider.get_mob_entity().living_entity.health.load()
+            });
+            self.remove_from_raid(wave, uuid, raider, Some(health));
+            if matches!(raider, Some(raider) if raider.is_patrol_leader()) {
+                self.remove_leader(wave);
+            }
+        }
+        if self.bossbar_dirty {
+            self.bossbar_dirty = false;
+            self.update_bossbar(world);
+        }
+    }
+
+    /// Vanilla `Raid.playSound`: each player hears the horn from 13 blocks towards the raid.
+    fn play_sound(&self, world: &World, sound_origin: BlockPos) {
+        let seed = game_random().random::<i64>();
+        let raid_loc = sound_origin.to_centered_f64();
+        for player in world.players.load().iter() {
+            let player_loc = player.get_entity().pos.load();
+            let dist = (raid_loc.x - player_loc.x).hypot(raid_loc.z - player_loc.z);
+            let x = player_loc.x + 13.0 / dist * (raid_loc.x - player_loc.x);
+            let z = player_loc.z + 13.0 / dist * (raid_loc.z - player_loc.z);
+            if dist <= 64.0 || self.players_in_raid.contains(&player.gameprofile.id) {
+                player.play_sound(
+                    Sound::EventRaidHorn as u16,
+                    SoundCategory::Neutral,
+                    &Vector3::new(x, player_loc.y, z),
+                    64.0,
+                    1.0,
+                    seed,
+                );
+            }
+        }
+    }
+
+    /// Vanilla `Raid.moveRaidCenterToNearbyVillageSection`.
+    fn move_raid_center_to_nearby_village_section(&mut self, world: &World) {
+        let r = SECTION_RADIUS_FOR_FINDING_NEW_VILLAGE_CENTER;
+        let (sx, sy, sz) = (
+            self.center.0.x >> 4,
+            self.center.0.y >> 4,
+            self.center.0.z >> 4,
+        );
+        let mut best: Option<(i64, BlockPos)> = None;
+        for dx in -r..=r {
+            for dy in -r..=r {
+                for dz in -r..=r {
+                    // `SectionPos.center`.
+                    let center = BlockPos::new(
+                        ((sx + dx) << 4) + 8,
+                        ((sy + dy) << 4) + 8,
+                        ((sz + dz) << 4) + 8,
+                    );
+                    if !world.is_village(&center) {
+                        continue;
+                    }
+                    let dist = block_dist_squared_i64(center, self.center);
+                    if best.is_none_or(|(best_dist, _)| dist < best_dist) {
+                        best = Some((dist, center));
+                    }
+                }
+            }
+        }
+        if let Some((_, center)) = best {
+            self.center = center;
+        }
+    }
+
+    /// Vanilla `Raid.findRandomSpawnPos`: further out the more of the countdown is left, and
+    /// inside the village only in its last seconds.
+    fn find_random_spawn_pos(&self, world: &Arc<World>, max_tries: i32) -> Option<BlockPos> {
         let seconds_remaining = self.raid_cooldown_ticks / 20;
-        let how_far = 0.22 * (seconds_remaining as f32) - 0.24;
-        let start_angle = game_random().random::<f32>() * std::f32::consts::PI * 2.0;
-
+        let how_far = 0.22 * seconds_remaining as f32 - 0.24;
+        let rng = game_random();
+        let start_angle = rng.random::<f32>() * std::f32::consts::TAU;
         for i in 0..max_tries {
-            let angle = start_angle + std::f32::consts::PI * (i as f32) / 8.0;
+            let angle = start_angle + std::f32::consts::PI * i as f32 / 8.0;
             let spawn_x = self.center.0.x
-                + ((angle.cos() * 32.0 * how_far) as i32)
-                + (game_random().random::<i32>().rem_euclid(3)) * (how_far as i32);
+                + (angle.cos() * 32.0 * how_far).floor() as i32
+                + rng.random_range(0..3) * how_far.floor() as i32;
             let spawn_z = self.center.0.z
-                + ((angle.sin() * 32.0 * how_far) as i32)
-                + (game_random().random::<i32>().rem_euclid(3)) * (how_far as i32);
-            let spawn_y = self.center.0.y;
-
-            if (spawn_y - self.center.0.y).abs() <= 96 {
-                let spawn_pos = BlockPos(Vector3::new(spawn_x, spawn_y, spawn_z));
+                + (angle.sin() * 32.0 * how_far).floor() as i32
+                + rng.random_range(0..3) * how_far.floor() as i32;
+            // `getHeight(WORLD_SURFACE)` is the first block above the surface.
+            let spawn_y =
+                world.get_heightmap_height(ChunkHeightmapType::WorldSurface, spawn_x, spawn_z) + 1;
+            if (spawn_y - self.center.0.y).abs() > 96 {
+                continue;
+            }
+            let spawn_pos = BlockPos::new(spawn_x, spawn_y, spawn_z);
+            if world.is_village(&spawn_pos)
+                && seconds_remaining > ALLOW_SPAWNING_WITHIN_VILLAGE_SECONDS_THRESHOLD
+            {
+                continue;
+            }
+            if has_chunks_at(
+                world,
+                spawn_x - 10,
+                spawn_z - 10,
+                spawn_x + 10,
+                spawn_z + 10,
+            ) && world.is_position_entity_ticking(&spawn_pos)
+                && (is_spawn_position_ok(world, &spawn_pos, &EntityType::RAVAGER)
+                    || (world.get_block(&spawn_pos.down()) == &pumpkin_data::Block::SNOW
+                        && world.get_block_state(&spawn_pos).is_air()))
+            {
                 return Some(spawn_pos);
             }
         }
         None
     }
 
-    pub fn play_sound(&self, world: &World, pos: BlockPos) {
-        let sound_pos = pos.to_centered_f64();
-        world.play_sound_fine(
-            Sound::EventRaidHorn,
-            pumpkin_data::sound::SoundCategory::Neutral,
-            &sound_pos,
-            64.0,
-            1.0,
-        );
-    }
-
-    pub fn update_players(&mut self, world: &World) {
-        let center_f64 = self.center.to_f64();
-        let players = world.players.load();
-        let nearby_players: HashSet<Uuid> = players
-            .iter()
-            .filter(|player| {
-                let pos = player.get_entity().pos.load();
-                pos.squared_distance_to_vec(&center_f64) <= Self::VALID_RAID_RADIUS_SQR
-            })
-            .map(|player| player.gameprofile.id)
-            .collect();
-
-        for player in players.iter() {
-            let id = player.gameprofile.id;
-            let was_in = self.players_in_raid.contains(&id);
-            let is_in = nearby_players.contains(&id);
-
-            if !was_in && is_in {
-                player.send_bossbar(&self.bossbar);
-                self.players_in_raid.insert(id);
-            } else if was_in && !is_in {
-                player.remove_bossbar(self.bossbar.uuid);
-                self.players_in_raid.remove(&id);
-            }
-        }
-    }
-
-    pub fn update_living_raiders(&mut self, world: &World) {
-        let center_f64 = self.center.to_f64();
-        let entities = world.entities.load();
-
-        for raiders in self.group_raider_map.values_mut() {
-            let mut wave_dead = Vec::new();
-            for &raider_uuid in raiders.iter() {
-                let entity = entities
-                    .iter()
-                    .find(|e| e.get_entity().entity_uuid == raider_uuid);
-
-                match entity {
-                    Some(e) => {
-                        let is_dead = e
-                            .get_living_entity()
-                            .is_none_or(|living| living.health.load() <= 0.0);
-                        let pos = e.get_entity().pos.load();
-                        let dist_sq = pos.squared_distance_to_vec(&center_f64);
-                        if is_dead || dist_sq >= Self::RAID_REMOVAL_THRESHOLD_SQR {
-                            wave_dead.push(raider_uuid);
-                        }
-                    }
-                    None => {
-                        wave_dead.push(raider_uuid);
-                    }
-                }
-            }
-
-            for uuid in wave_dead {
-                raiders.remove(&uuid);
-            }
-        }
-    }
-
-    pub fn update_bossbar(&mut self, world: &World) {
-        let living_health = self.get_health_of_living_raiders(world);
-        let progress = if self.total_health > 0.0 {
-            (living_health / self.total_health).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-        self.bossbar.health = progress;
-
-        let players = world.players.load();
-        for player in players.iter() {
-            if self.players_in_raid.contains(&player.gameprofile.id) {
-                player.update_bossbar_health(&self.bossbar.uuid, self.bossbar.health);
-                player.update_bossbar_title(&self.bossbar.uuid, self.bossbar.title.clone());
-            }
-        }
-    }
-
-    #[must_use]
-    pub fn get_health_of_living_raiders(&self, world: &World) -> f32 {
-        let mut health = 0.0;
-        for raiders in self.group_raider_map.values() {
-            for &uuid in raiders {
-                if let Some(e) = world.get_entity_by_uuid(uuid)
-                    && let Some(living) = e.get_living_entity()
-                {
-                    health += living.health.load();
-                }
-            }
-        }
-        health
-    }
-
+    /// Vanilla `Raid.tick`. `raid_centers` are the active raids, for `getRaidAt`.
     #[allow(clippy::too_many_lines)]
-    pub fn tick(&mut self, world: &Arc<World>) {
+    fn tick(&mut self, world: &Arc<World>, raid_centers: &[(i32, BlockPos)]) {
         if self.is_stopped() {
             return;
         }
 
         if self.status == RaidStatus::Ongoing {
+            let old_active = self.active;
+            self.active = world.level.is_chunk_loaded(&self.center.chunk_position());
             if world.level_info.load().difficulty == Difficulty::Peaceful {
                 self.stop(world);
                 return;
             }
+            if old_active != self.active {
+                self.set_visible(world, self.active);
+            }
+            if !self.active {
+                return;
+            }
+
+            if !world.is_village(&self.center) {
+                self.move_raid_center_to_nearby_village_section(world);
+            }
+            if !world.is_village(&self.center) {
+                if self.groups_spawned > 0 {
+                    self.status = RaidStatus::Loss;
+                } else {
+                    self.stop(world);
+                }
+            }
 
             self.ticks_active += 1;
-            if self.ticks_active >= 48000 {
+            if self.ticks_active >= RAID_TIMEOUT_TICKS {
                 self.stop(world);
                 return;
             }
@@ -577,109 +808,188 @@ impl Raid {
             let raiders_alive = self.get_total_raiders_alive();
             if raiders_alive == 0 && self.has_more_waves() {
                 if self.raid_cooldown_ticks <= 0 {
-                    if self.groups_spawned > 0 {
-                        self.raid_cooldown_ticks = 300;
-                        self.bossbar.title = TextComponent::translate("event.minecraft.raid", []);
+                    if self.raid_cooldown_ticks == 0 && self.groups_spawned > 0 {
+                        self.raid_cooldown_ticks = DEFAULT_PRE_RAID_TICKS;
+                        self.set_name(world, TextComponent::translate(RAID_NAME, []));
+                        return;
                     }
                 } else {
-                    if self.wave_spawn_pos.is_none() && self.raid_cooldown_ticks % 5 == 0 {
-                        self.wave_spawn_pos = self.find_random_spawn_pos(8);
+                    let should_try = self
+                        .wave_spawn_pos
+                        .map_or(self.raid_cooldown_ticks % 5 == 0, |pos| {
+                            !world.is_position_entity_ticking(&pos)
+                        });
+                    if should_try {
+                        self.wave_spawn_pos = self.find_random_spawn_pos(world, 8);
                     }
-
-                    if self.raid_cooldown_ticks == 300 || self.raid_cooldown_ticks % 20 == 0 {
-                        self.update_players(world);
+                    if self.raid_cooldown_ticks == DEFAULT_PRE_RAID_TICKS
+                        || self.raid_cooldown_ticks % 20 == 0
+                    {
+                        self.update_players(world, raid_centers);
                     }
-
                     self.raid_cooldown_ticks -= 1;
-                    self.bossbar.health =
-                        ((300 - self.raid_cooldown_ticks) as f32 / 300.0).clamp(0.0, 1.0);
+                    let progress = (DEFAULT_PRE_RAID_TICKS - self.raid_cooldown_ticks) as f32
+                        / DEFAULT_PRE_RAID_TICKS as f32;
+                    self.set_progress(world, progress.clamp(0.0, 1.0));
                 }
             }
 
-            if self.ticks_active.is_multiple_of(20) {
-                self.update_players(world);
-                self.update_living_raiders(world);
-                let alive = self.get_total_raiders_alive();
-                if alive > 0 && alive <= 2 {
-                    self.bossbar.title = TextComponent::translate(
-                        "event.minecraft.raid.raiders_remaining",
-                        [TextComponent::text(alive.to_string())],
-                    );
+            if self.ticks_active % 20 == 0 {
+                self.update_players(world, raid_centers);
+                self.update_raiders(world);
+                let name = if raiders_alive > 0 && raiders_alive <= LOW_MOB_THRESHOLD {
+                    TextComponent::translate(RAID_NAME, [])
+                        .add_text(" - ")
+                        .add_child(TextComponent::translate(
+                            RAIDERS_REMAINING,
+                            [TextComponent::text(raiders_alive.to_string())],
+                        ))
                 } else {
-                    self.bossbar.title = TextComponent::translate("event.minecraft.raid", []);
-                }
+                    TextComponent::translate(RAID_NAME, [])
+                };
+                self.set_name(world, name);
+            } else if self.bossbar_dirty {
+                self.bossbar_dirty = false;
                 self.update_bossbar(world);
             }
 
+            let mut sound_played = false;
+            let mut attempt = 0;
             while self.should_spawn_group() {
                 let spawn_pos = self
                     .wave_spawn_pos
-                    .or_else(|| self.find_random_spawn_pos(20))
-                    .unwrap_or(self.center);
-
-                self.started = true;
-                self.spawn_group(world, spawn_pos);
-                self.play_sound(world, spawn_pos);
+                    .or_else(|| self.find_random_spawn_pos(world, 20));
+                if let Some(spawn_pos) = spawn_pos {
+                    self.started = true;
+                    self.spawn_group(world, spawn_pos);
+                    if !sound_played {
+                        self.play_sound(world, spawn_pos);
+                        sound_played = true;
+                    }
+                } else {
+                    attempt += 1;
+                }
+                if attempt > NUM_SPAWN_ATTEMPTS {
+                    self.stop(world);
+                    break;
+                }
             }
 
-            let raiders_alive = self.get_total_raiders_alive();
             if self.is_started() && !self.has_more_waves() && raiders_alive == 0 {
-                if self.post_raid_ticks < 40 {
+                if self.post_raid_ticks < POST_RAID_TICK_LIMIT {
                     self.post_raid_ticks += 1;
                 } else {
                     self.status = RaidStatus::Victory;
-                    let effect = Effect {
-                        effect_type: &StatusEffect::HERO_OF_THE_VILLAGE,
-                        duration: 48000,
-                        amplifier: (self.raid_omen_level - 1).max(0) as u8,
-                        ambient: false,
-                        show_particles: false,
-                        show_icon: true,
-                        blend: true,
-                    };
-                    let players = world.players.load();
-                    for player in players.iter() {
-                        if self.heroes_of_the_village.contains(&player.gameprofile.id) {
-                            player.add_effect(effect.clone());
-                            player.increment_stat(
-                                pumpkin_data::statistic::StatisticCategory::Custom,
-                                pumpkin_data::statistic::CustomStatistic::RaidWin as i32,
-                                1,
-                            );
-                            player.trigger_advancement(
-                                crate::entity::player::advancement::trigger::AdvancementTrigger::HeroOfTheVillage,
-                            );
-                        }
-                    }
+                    self.reward_heroes(world);
                 }
             }
         } else if self.is_over() {
             self.celebration_ticks += 1;
-            if self.celebration_ticks >= 600 {
+            if self.celebration_ticks >= MAX_CELEBRATION_TICKS {
                 self.stop(world);
                 return;
             }
-
-            if self.celebration_ticks.is_multiple_of(20) {
-                self.update_players(world);
+            if self.celebration_ticks % 20 == 0 {
+                self.update_players(world, raid_centers);
+                self.set_visible(world, true);
                 if self.is_victory() {
-                    self.bossbar.health = 0.0;
-                    self.bossbar.title =
-                        TextComponent::translate("event.minecraft.raid.victory.full", []);
+                    self.set_progress(world, 0.0);
+                    self.set_name(world, TextComponent::translate(RAID_BAR_VICTORY, []));
                 } else {
-                    self.bossbar.title =
-                        TextComponent::translate("event.minecraft.raid.defeat.full", []);
+                    self.set_name(world, TextComponent::translate(RAID_BAR_DEFEAT, []));
                 }
-                self.update_bossbar(world);
+            }
+        }
+    }
+
+    fn reward_heroes(&self, world: &World) {
+        let effect = Effect {
+            effect_type: &StatusEffect::HERO_OF_THE_VILLAGE,
+            duration: HERO_OF_THE_VILLAGE_DURATION,
+            // `MobEffectInstance` clamps the amplifier into 0..=255.
+            amplifier: (self.raid_omen_level - 1).clamp(0, 255) as u8,
+            ambient: false,
+            show_particles: false,
+            show_icon: true,
+            blend: true,
+        };
+        for player in world.players.load().iter() {
+            if self.heroes_of_the_village.contains(&player.gameprofile.id) && !player.is_spectator()
+            {
+                player.add_effect(effect.clone());
+                player.increment_stat(
+                    pumpkin_data::statistic::StatisticCategory::Custom,
+                    pumpkin_data::statistic::CustomStatistic::RaidWin as i32,
+                    1,
+                );
+                player.trigger_advancement(
+                    crate::entity::player::advancement::trigger::AdvancementTrigger::HeroOfTheVillage,
+                );
             }
         }
     }
 }
 
+/// Vanilla `Vec3i.distSqr` between two block positions.
+fn block_dist_squared(a: BlockPos, b: BlockPos) -> f64 {
+    block_dist_squared_i64(a, b) as f64
+}
+
+fn block_dist_squared_i64(a: BlockPos, b: BlockPos) -> i64 {
+    let delta = a.0 - b.0;
+    i64::from(delta.x).pow(2) + i64::from(delta.y).pow(2) + i64::from(delta.z).pow(2)
+}
+
+/// Vanilla `Level.hasChunksAt` for a block area.
+fn has_chunks_at(world: &World, min_x: i32, min_z: i32, max_x: i32, max_z: i32) -> bool {
+    (min_x >> 4..=max_x >> 4).all(|chunk_x| {
+        (min_z >> 4..=max_z >> 4)
+            .all(|chunk_z| world.level.is_chunk_loaded(&Vector2::new(chunk_x, chunk_z)))
+    })
+}
+
+/// Vanilla `Raids.getNearbyRaid(pos, 9216)` over the active raids' centres.
+fn nearest_raid(raid_centers: &[(i32, BlockPos)], pos: &BlockPos) -> Option<i32> {
+    let mut closest = None;
+    let mut closest_dist = Raid::VALID_RAID_RADIUS_SQR;
+    for &(id, center) in raid_centers {
+        let dist = center.to_f64().squared_distance_to_vec(&pos.to_f64());
+        if dist < closest_dist {
+            closest = Some(id);
+            closest_dist = dist;
+        }
+    }
+    closest
+}
+
+/// The raid part of vanilla `Raider.die`, run when a raider dies.
+pub fn on_raider_death(
+    world: &World,
+    raider: &dyn Raider,
+    uuid: Uuid,
+    killer: Option<&dyn EntityBase>,
+) {
+    let Some(raid_id) = raider.get_raider_data().raid_id.load() else {
+        return;
+    };
+    let killed_by_player = killer
+        .filter(|killer| killer.get_entity().entity_type == &EntityType::PLAYER)
+        .map(|killer| killer.get_entity().entity_uuid);
+    if let Some(raid) = world
+        .raids
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get_mut(raid_id)
+    {
+        raid.on_raider_death(raider, uuid, killed_by_player);
+    }
+}
+
+/// Vanilla `Raids`.
 pub struct Raids {
     pub raid_map: HashMap<i32, Raid>,
     pub next_id: i32,
-    pub tick_counter: u64,
+    pub tick_counter: i32,
 }
 
 impl Default for Raids {
@@ -761,11 +1071,8 @@ impl Raids {
             for pos in &pois {
                 total = total.add(&pos.to_f64());
             }
-            BlockPos::floored_v(total.multiply(
-                1.0 / pois.len() as f64,
-                1.0 / pois.len() as f64,
-                1.0 / pois.len() as f64,
-            ))
+            let scale = 1.0 / pois.len() as f64;
+            BlockPos::floored_v(total.multiply(scale, scale, scale))
         };
 
         let id = if let Some(id) = self.nearby_raid_id(&raid_center, Raid::VALID_RAID_RADIUS_SQR) {
@@ -787,20 +1094,29 @@ impl Raids {
         Some(id)
     }
 
+    /// Vanilla `Raids.tick`.
     pub fn tick(&mut self, world: &Arc<World>) {
         self.tick_counter += 1;
-
-        let mut stopped_ids = Vec::new();
-        for (&id, raid) in &mut self.raid_map {
-            raid.tick(world);
-            if raid.is_stopped() {
-                stopped_ids.push(id);
+        let raids_enabled = world.level_info.load().game_rules.raids;
+        let mut ids: Vec<i32> = self.raid_map.keys().copied().collect();
+        ids.sort_unstable();
+        for id in ids {
+            let raid_centers: Vec<(i32, BlockPos)> = self
+                .raid_map
+                .iter()
+                .filter(|(_, raid)| raid.is_active())
+                .map(|(&id, raid)| (id, raid.center))
+                .collect();
+            let Some(raid) = self.raid_map.get_mut(&id) else {
+                continue;
+            };
+            if !raids_enabled {
+                raid.stop(world);
             }
-        }
-
-        for id in stopped_ids {
-            if let Some(mut raid) = self.raid_map.remove(&id) {
-                raid.remove_all_players(world);
+            if raid.is_stopped() {
+                self.raid_map.remove(&id);
+            } else {
+                raid.tick(world, &raid_centers);
             }
         }
     }

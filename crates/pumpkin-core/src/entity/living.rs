@@ -2564,6 +2564,14 @@ impl LivingEntity {
             self.jumping.store(false, Relaxed);
             if let Some(mob) = dyn_self.get_mob() {
                 mob.on_die();
+                if let Some(raider) = mob.as_raider() {
+                    crate::world::raid::on_raider_death(
+                        &world,
+                        raider,
+                        self.entity.entity_uuid,
+                        cause.or(source),
+                    );
+                }
             }
 
             // Like vanilla, stats go to the kill credit, loot and XP to the killing blow.

@@ -6062,6 +6062,16 @@ impl World {
         )
     }
 
+    /// Vanilla `ServerLevel.isPositionEntityTicking`.
+    #[must_use]
+    pub fn is_position_entity_ticking(&self, position: &BlockPos) -> bool {
+        self.active_chunks
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .entity_ticking
+            .contains(&position.chunk_position())
+    }
+
     /// Vanilla `ServerLevel.updateNeighboursOnBlockSet`: the neighbour updates commands run
     /// themselves after placing blocks with flags that skip them.
     pub fn update_neighbours_on_block_set(
