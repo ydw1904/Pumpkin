@@ -1,5 +1,4 @@
 use crate::block::entities::BlockEntity;
-use crate::entity::experience_orb::ExperienceOrbEntity;
 use crate::entity::item::ItemEntity;
 use crate::world::World;
 use pumpkin_data::block_properties::{FacingHopper, HopperLikeProperties};
@@ -274,20 +273,9 @@ impl HopperBlockEntity {
                     }
                     let _backup = item.clone();
                     let one_item = item.split(1);
+                    // Furnace XP stays stored for the next player who takes the output.
                     if Self::add_one_item(container.as_ref(), self, &one_item, None) {
                         container.set_stack(i, item);
-                        // If extracting from furnace output slot (index 2), drop XP as orbs
-                        let furnace_output_slot: usize = 2;
-                        if i == furnace_output_slot
-                            && let Some(experience_container) =
-                                entity.clone().to_experience_container()
-                        {
-                            let xp = experience_container.extract_experience();
-                            if xp > 0 {
-                                let pos = self.position.to_f64();
-                                ExperienceOrbEntity::spawn(world, pos, xp as u32);
-                            }
-                        }
                         return true;
                     }
                 }
