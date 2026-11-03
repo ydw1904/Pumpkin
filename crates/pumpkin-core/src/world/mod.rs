@@ -479,6 +479,12 @@ impl World {
                 || Worldborder::new(0.0, 0.0, 5.999_996_8E7, 0, 5, 300),
                 |saved| Worldborder::from_saved(&saved),
             );
+        let raids = pumpkin_world::world_info::data_files::read_saved_data(
+            &level.level_folder.dim_folder,
+            "minecraft",
+            "raids",
+        )
+        .map_or_else(raid::Raids::default, |data| raid::Raids::from_nbt(&data));
         let forced_chunks: FxHashSet<Vector2<i32>> =
             pumpkin_world::world_info::data_files::read_forced_chunks(&data_dir)
                 .into_iter()
@@ -521,7 +527,7 @@ impl World {
             portal_poi: std::sync::Mutex::new(portal_poi),
             portal_forcer: tokio::sync::Mutex::new(()),
             villager_poi: std::sync::Mutex::new(villager_poi::VillagerPoiStorage::default()),
-            raids: std::sync::Mutex::new(raid::Raids::default()),
+            raids: std::sync::Mutex::new(raids),
             phantom_spawner: std::sync::Mutex::default(),
             patrol_spawner: std::sync::Mutex::default(),
             cat_spawner: std::sync::Mutex::default(),
@@ -724,6 +730,7 @@ impl World {
         }
         self.save_world_border();
         self.save_forced_chunks();
+        self.save_raids();
 
         // Save portal POI to disk
         self.save_village_poi_tickets();
@@ -825,6 +832,24 @@ impl World {
             pumpkin_world::world_info::MAXIMUM_SUPPORTED_WORLD_DATA_VERSION,
         ) {
             error!("Failed to save the forced chunks: {e}");
+        }
+    }
+
+    /// Vanilla saves each dimension's raids in its own `raids.dat`.
+    fn save_raids(&self) {
+        let data = self
+            .raids
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .to_nbt();
+        if let Err(e) = pumpkin_world::world_info::data_files::write_saved_data(
+            &self.level.level_folder.dim_folder,
+            "minecraft",
+            "raids",
+            data,
+            pumpkin_world::world_info::MAXIMUM_SUPPORTED_WORLD_DATA_VERSION,
+        ) {
+            error!("Failed to save the raids: {e}");
         }
     }
 
@@ -1696,25 +1721,11 @@ impl World {
         });
         self.update_active_chunks();
         self.tick_environment();
-        let mut raids = {
-            let mut guard = self
-                .raids
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            std::mem::take(&mut *guard)
-        };
-        raids.tick(self);
-        {
-            let mut guard = self
-                .raids
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            for (id, raid) in guard.raid_map.drain() {
-                raids.raid_map.insert(id, raid);
-            }
-            raids.next_id = raids.next_id.max(guard.next_id);
-            *guard = raids;
-        };
+        // Ticked under the lock, so a save or a loading raider never sees the raids missing.
+        self.raids
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .tick(self);
 
         let t_chunks = std::time::Instant::now();
         self.tick_chunks();
@@ -8133,6 +8144,7 @@ impl World {
         }
         self.save_world_border();
         self.save_forced_chunks();
+        self.save_raids();
 
         self.save_poi();
 

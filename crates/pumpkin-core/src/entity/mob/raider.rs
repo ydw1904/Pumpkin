@@ -156,6 +156,21 @@ pub trait Raider: PatrollingMonster {
         }
         if let Some(raid_id) = nbt.get_int("RaidId") {
             data.raid_id.store(Some(raid_id));
+            // Vanilla rejoins the raid here; it happens at the next raid tick.
+            let entity = &self.get_mob_entity().living_entity.entity;
+            entity
+                .world
+                .load()
+                .raids
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .pending_members
+                .push(crate::world::raid::PendingRaidMember {
+                    raid_id,
+                    wave: data.wave.load(Ordering::Relaxed),
+                    uuid: entity.entity_uuid,
+                    leader: self.is_patrol_leader(),
+                });
         }
     }
 }

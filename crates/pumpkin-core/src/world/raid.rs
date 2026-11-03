@@ -8,6 +8,8 @@ use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::potion::Effect;
 use pumpkin_data::sound::{Sound, SoundCategory};
+use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::difficulty::Difficulty;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector2::Vector2;
@@ -902,6 +904,71 @@ impl Raid {
         }
     }
 
+    /// Vanilla `Raid.MAP_CODEC` with the raid's id.
+    fn to_nbt(&self) -> NbtCompound {
+        let mut nbt = NbtCompound::new();
+        nbt.put_int("id", self.id);
+        nbt.put_bool("started", self.started);
+        nbt.put_bool("active", self.active);
+        nbt.put_long("ticks_active", self.ticks_active);
+        nbt.put_int("raid_omen_level", self.raid_omen_level);
+        nbt.put_int("groups_spawned", self.groups_spawned);
+        nbt.put_int("cooldown_ticks", self.raid_cooldown_ticks);
+        nbt.put_int("post_raid_ticks", self.post_raid_ticks);
+        nbt.put_float("total_health", self.total_health);
+        nbt.put_int("group_count", self.num_groups);
+        nbt.put_string("status", self.status.get_serialized_name().to_string());
+        nbt.put(
+            "center",
+            NbtTag::IntArray(vec![self.center.0.x, self.center.0.y, self.center.0.z]),
+        );
+        let mut heroes: Vec<&Uuid> = self.heroes_of_the_village.iter().collect();
+        heroes.sort_unstable();
+        nbt.put_list(
+            "heroes_of_the_village",
+            heroes.into_iter().map(|uuid| NbtTag::uuid(*uuid)).collect(),
+        );
+        nbt
+    }
+
+    fn from_nbt(nbt: &NbtCompound) -> Option<Self> {
+        let center = nbt.get_int_array("center")?;
+        let [x, y, z] = *center else {
+            return None;
+        };
+        let status = [
+            RaidStatus::Ongoing,
+            RaidStatus::Victory,
+            RaidStatus::Loss,
+            RaidStatus::Stopped,
+        ]
+        .into_iter()
+        .find(|status| Some(status.get_serialized_name()) == nbt.get_string("status"))?;
+        let mut raid = Self::new(
+            nbt.get_int("id")?,
+            BlockPos::new(x, y, z),
+            Difficulty::Peaceful,
+        );
+        raid.started = nbt.get_bool("started")?;
+        raid.active = nbt.get_bool("active")?;
+        raid.ticks_active = nbt.get_long("ticks_active")?;
+        raid.raid_omen_level = nbt.get_int("raid_omen_level")?;
+        raid.groups_spawned = nbt.get_int("groups_spawned")?;
+        raid.raid_cooldown_ticks = nbt.get_int("cooldown_ticks")?;
+        raid.post_raid_ticks = nbt.get_int("post_raid_ticks")?;
+        raid.total_health = nbt.get_float("total_health")?;
+        raid.num_groups = nbt.get_int("group_count")?;
+        raid.status = status;
+        raid.heroes_of_the_village = nbt
+            .get_list("heroes_of_the_village")?
+            .iter()
+            .filter_map(NbtTag::extract_uuid)
+            .collect();
+        // A loaded `ServerBossEvent` starts full, like any new boss bar.
+        raid.bossbar.health = 1.0;
+        Some(raid)
+    }
+
     fn reward_heroes(&self, world: &World) {
         let effect = Effect {
             effect_type: &StatusEffect::HERO_OF_THE_VILLAGE,
@@ -990,6 +1057,16 @@ pub struct Raids {
     pub raid_map: HashMap<i32, Raid>,
     pub next_id: i32,
     pub tick_counter: i32,
+    /// Raiders loaded from disk, joined to their raids at the next raid tick.
+    pub pending_members: Vec<PendingRaidMember>,
+}
+
+/// A loaded raider that belongs to a raid, vanilla's `Raider.readAdditionalSaveData`.
+pub struct PendingRaidMember {
+    pub raid_id: i32,
+    pub wave: i32,
+    pub uuid: Uuid,
+    pub leader: bool,
 }
 
 impl Default for Raids {
@@ -998,6 +1075,7 @@ impl Default for Raids {
             raid_map: HashMap::new(),
             next_id: 1,
             tick_counter: 0,
+            pending_members: Vec::new(),
         }
     }
 }
@@ -1094,8 +1172,71 @@ impl Raids {
         Some(id)
     }
 
+    /// Vanilla `Raid.addWaveMob(..., false)` and `setLeader` for raiders loaded from disk; a
+    /// raider whose raid is gone is no longer in a raid.
+    fn join_pending_members(&mut self, world: &World) {
+        for member in std::mem::take(&mut self.pending_members) {
+            if let Some(raid) = self.raid_map.get_mut(&member.raid_id) {
+                raid.group_raider_map
+                    .entry(member.wave)
+                    .or_default()
+                    .insert(member.uuid);
+                if member.leader {
+                    raid.group_to_leader_map.insert(member.wave, member.uuid);
+                }
+                raid.bossbar_dirty = true;
+            } else if let Some(entity) = world.get_entity_by_uuid(member.uuid)
+                && let Some(raider) = entity.get_mob().and_then(|mob| mob.as_raider())
+            {
+                raider.get_raider_data().raid_id.store(None);
+            }
+        }
+    }
+
+    /// Vanilla `Raids.CODEC`.
+    #[must_use]
+    pub fn to_nbt(&self) -> NbtCompound {
+        let mut ids: Vec<&i32> = self.raid_map.keys().collect();
+        ids.sort_unstable();
+        let raids = ids
+            .into_iter()
+            .filter_map(|id| self.raid_map.get(id))
+            .map(|raid| NbtTag::Compound(raid.to_nbt()))
+            .collect::<Vec<_>>();
+        let mut nbt = NbtCompound::new();
+        // `optionalFieldOf` leaves out the default empty list.
+        if !raids.is_empty() {
+            nbt.put_list("raids", raids);
+        }
+        nbt.put_int("next_id", self.next_id);
+        nbt.put_int("tick", self.tick_counter);
+        nbt
+    }
+
+    /// Vanilla `Raids.load`; raids that don't parse are left out.
+    #[must_use]
+    pub fn from_nbt(nbt: &NbtCompound) -> Self {
+        let raid_map = nbt
+            .get_list("raids")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|tag| match tag {
+                NbtTag::Compound(raid) => Raid::from_nbt(raid),
+                _ => None,
+            })
+            .map(|raid| (raid.id, raid))
+            .collect();
+        Self {
+            raid_map,
+            next_id: nbt.get_int("next_id").unwrap_or(1),
+            tick_counter: nbt.get_int("tick").unwrap_or(0),
+            pending_members: Vec::new(),
+        }
+    }
+
     /// Vanilla `Raids.tick`.
     pub fn tick(&mut self, world: &Arc<World>) {
+        self.join_pending_members(world);
         self.tick_counter += 1;
         let raids_enabled = world.level_info.load().game_rules.raids;
         let mut ids: Vec<i32> = self.raid_map.keys().copied().collect();
@@ -1119,5 +1260,58 @@ impl Raids {
                 raid.tick(world, &raid_centers);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pumpkin_nbt::compound::NbtCompound;
+    use pumpkin_nbt::tag::NbtTag;
+    use uuid::Uuid;
+
+    use super::{RaidStatus, Raids};
+
+    /// `raids.dat` as vanilla 26.3 saved it during the second wave of a raid.
+    fn vanilla_raids() -> NbtCompound {
+        let mut raid = NbtCompound::new();
+        raid.put_bool("active", false);
+        raid.put("center", NbtTag::IntArray(vec![7000, 201, -4]));
+        raid.put_int("cooldown_ticks", 0);
+        raid.put_int("group_count", 5);
+        raid.put_int("groups_spawned", 2);
+        raid.put_list(
+            "heroes_of_the_village",
+            vec![NbtTag::IntArray(vec![
+                -1_466_117_591,
+                -112_314_537,
+                -1_290_531_177,
+                1_568_531_417,
+            ])],
+        );
+        raid.put_int("id", 2);
+        raid.put_int("post_raid_ticks", 0);
+        raid.put_int("raid_omen_level", 1);
+        raid.put_bool("started", true);
+        raid.put_string("status", "ongoing".to_string());
+        raid.put_long("ticks_active", 695);
+        raid.put_float("total_health", 144.0);
+        let mut data = NbtCompound::new();
+        data.put_int("tick", 1498);
+        data.put_list("raids", vec![NbtTag::Compound(raid)]);
+        data.put_int("next_id", 2);
+        data
+    }
+
+    #[test]
+    fn vanilla_raids_load_and_save_unchanged() {
+        let data = vanilla_raids();
+        let raids = Raids::from_nbt(&data);
+        let raid = raids.get(2).expect("the saved raid loads");
+        assert_eq!(raid.status, RaidStatus::Ongoing);
+        assert_eq!(raid.groups_spawned, 2);
+        assert_eq!(raid.center.0.x, 7000);
+        let hero = Uuid::parse_str("a89cd229-f94e-3757-b314-0e975d7de3d9").expect("valid uuid");
+        assert!(raid.heroes_of_the_village.contains(&hero));
+        assert_eq!(raids.to_nbt(), data);
     }
 }
