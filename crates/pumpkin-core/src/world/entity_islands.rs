@@ -100,23 +100,28 @@ impl PlanningBudget {
 const MIN_PARALLEL_ENTITIES: usize = 16;
 const SERIAL_PROBE_INTERVAL: u8 = 20;
 const PARALLEL_SHARE_DIVISOR: usize = 4;
+/// A serial preference also ends once the entity count moves this share away from the count
+/// it was planned with. Spawns and despawns change the count almost every tick in a busy area.
+const RECOUNT_SHARE_DIVISOR: usize = 8;
 
 #[derive(Default)]
 pub(super) struct Schedule {
     entity_count: usize,
+    planned_count: usize,
     ticks_until_probe: u8,
 }
 
 impl Schedule {
     pub(super) const fn should_plan(&mut self, entity_count: usize) -> bool {
-        if self.entity_count != entity_count {
-            self.entity_count = entity_count;
-            self.ticks_until_probe = 0;
-        }
+        self.entity_count = entity_count;
         if entity_count < MIN_PARALLEL_ENTITIES {
+            self.ticks_until_probe = 0;
             return false;
         }
-        if self.ticks_until_probe > 0 {
+        if self.ticks_until_probe > 0
+            && entity_count.abs_diff(self.planned_count)
+                <= self.planned_count / RECOUNT_SHARE_DIVISOR
+        {
             self.ticks_until_probe -= 1;
             return false;
         }
@@ -124,6 +129,7 @@ impl Schedule {
     }
 
     pub(super) const fn record_plan(&mut self, largest_island: usize) -> bool {
+        self.planned_count = self.entity_count;
         // A dominant island leaves too little parallel work to pay for planning.
         let parallel =
             largest_island < self.entity_count - self.entity_count / PARALLEL_SHARE_DIVISOR;
@@ -1371,25 +1377,24 @@ mod tests {
     use pumpkin_util::math::vector3::Vector3;
 
     #[test]
-    fn serial_schedule_retries_after_twenty_ticks_or_a_count_change() {
+    fn serial_schedule_retries_after_twenty_ticks_or_a_large_count_change() {
         let mut schedule = Schedule::default();
         assert!(!schedule.should_plan(1));
         assert!(schedule.should_plan(64));
         assert!(!schedule.record_plan(64));
-        for _ in 0..19 {
-            assert!(!schedule.should_plan(64));
+        // Small spawns and despawns keep the serial preference.
+        for tick in 0..19 {
+            assert!(!schedule.should_plan(64 + tick % 9));
         }
         assert!(schedule.should_plan(64));
         assert!(!schedule.record_plan(48));
-        assert!(!schedule.should_plan(64));
-        assert!(schedule.should_plan(65));
-        assert!(!schedule.record_plan(49));
-        assert!(!schedule.should_plan(65));
-        assert!(schedule.should_plan(66));
-        assert!(schedule.record_plan(32));
-        assert!(schedule.should_plan(66));
-        assert!(schedule.should_plan(66));
-        assert!(!schedule.should_plan(1));
+        assert!(!schedule.should_plan(56));
+        assert!(schedule.should_plan(73));
+        assert!(schedule.record_plan(49));
+        // Parallel ticks always plan.
+        assert!(schedule.should_plan(73));
+        assert!(schedule.should_plan(70));
+        assert!(!schedule.record_plan(70));
         assert!(!schedule.should_plan(1));
         assert!(schedule.should_plan(65));
         assert!(schedule.record_plan(48));
