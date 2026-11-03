@@ -14,16 +14,18 @@ use crate::entity::Entity;
 use crate::entity::item::ItemEntity;
 use crate::world::World;
 use pumpkin_data::block_properties::{CrafterLikeProperties, HorizontalFacing, Orientation};
-use pumpkin_data::data_component_impl::UseRemainderImpl;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
-use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::item_stack::{ItemStack, crafting_remainder};
 use pumpkin_data::translation;
 use pumpkin_data::world::WorldEvent;
 use pumpkin_data::{Block, BlockDirection, BlockStateId, FacingExt};
 use pumpkin_inventory::Inventory;
+use pumpkin_inventory::PropertyDelegate;
+use pumpkin_inventory::crafter_screen_handler::CrafterScreenHandler;
 use pumpkin_inventory::crafting::crafting_screen_handler::match_crafting_recipe;
-use pumpkin_inventory::generic_container_screen_handler::create_crafter_3x3;
+use pumpkin_inventory::crafting::custom_recipes::{KeptInput, kept_input};
+use pumpkin_inventory::crafting::recipes::RecipeInputInventory;
 use pumpkin_inventory::player::player_inventory::PlayerInventory;
 use pumpkin_inventory::screen_handler::{
     InventoryPlayer, ScreenHandlerFactory, SharedScreenHandler,
@@ -35,19 +37,17 @@ use pumpkin_util::text::TextComponent;
 use pumpkin_world::tick::TickPriority;
 use pumpkin_world::world::BlockFlags;
 
-struct CrafterScreenFactory(Arc<dyn Inventory>);
+struct CrafterScreenFactory(Arc<dyn RecipeInputInventory>, Arc<dyn PropertyDelegate>);
 
 impl ScreenHandlerFactory for CrafterScreenFactory {
     fn create_screen_handler(
         &self,
         sync_id: u8,
         player_inventory: &Arc<PlayerInventory>,
-        player: &dyn InventoryPlayer,
+        _player: &dyn InventoryPlayer,
     ) -> Option<SharedScreenHandler> {
-        let handler = create_crafter_3x3(sync_id, player_inventory, self.0.clone(), player);
-        let screen_handler_arc = Arc::new(Mutex::new(handler));
-
-        Some(screen_handler_arc as SharedScreenHandler)
+        let handler = CrafterScreenHandler::new(sync_id, player_inventory, self.0.clone(), &self.1);
+        Some(Arc::new(Mutex::new(handler)) as SharedScreenHandler)
     }
 
     fn get_display_name(&self) -> TextComponent {
@@ -162,16 +162,21 @@ impl CrafterBlock {
                 }
             }
 
+            // Recipe.getRemainingItems: crafting remainders, plus the patterned banner or
+            // written book that copying recipes keep.
+            let mut kept = recipe_result.kept;
             for i in 0..CrafterBlockEntity::INVENTORY_SIZE {
                 let stack = crafter.get_stack(i);
-                if !stack.is_empty()
-                    && let Some(remainder) = stack.get_data_component::<UseRemainderImpl>()
-                    && let Some(remainder_item) = remainder
-                        .remainder
-                        .as_deref()
-                        .and_then(Item::from_registry_key)
-                {
-                    let mut remainder_stack = ItemStack::new(1, remainder_item);
+                if stack.is_empty() {
+                    continue;
+                }
+                let remainder = crafting_remainder(stack.item)
+                    .map(|item| ItemStack::new(1, item))
+                    .or_else(|| kept_input(kept, &stack));
+                if let Some(mut remainder_stack) = remainder {
+                    if kept == KeptInput::WrittenBook {
+                        kept = KeptInput::None;
+                    }
                     Self::dispense_item(
                         world,
                         pos,
@@ -274,8 +279,9 @@ impl BlockBehaviour for CrafterBlock {
         args: GetScreenHandlerFactoryArgs<'_>,
     ) -> Option<Box<dyn ScreenHandlerFactory>> {
         let block_entity = args.world.get_block_entity(args.position)?;
-        let inventory = block_entity.get_inventory()?;
-        Some(Box::new(CrafterScreenFactory(inventory)))
+        let inventory = block_entity.clone().to_recipe_input_inventory()?;
+        let data = block_entity.to_property_delegate()?;
+        Some(Box::new(CrafterScreenFactory(inventory, data)))
     }
 
     fn on_place(&self, args: OnPlaceArgs<'_>) -> BlockStateId {

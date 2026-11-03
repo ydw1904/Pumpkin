@@ -184,6 +184,12 @@ pub trait BlockEntity: Any + Send + Sync {
     fn to_property_delegate(self: Arc<Self>) -> Option<Arc<dyn PropertyDelegate>> {
         None
     }
+    /// The block entity as a crafting grid, for crafters.
+    fn to_recipe_input_inventory(
+        self: Arc<Self>,
+    ) -> Option<Arc<dyn pumpkin_inventory::crafting::recipes::RecipeInputInventory>> {
+        None
+    }
     fn to_experience_container(self: Arc<Self>) -> Option<Arc<dyn ExperienceContainer>> {
         None
     }

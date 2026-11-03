@@ -80,24 +80,6 @@ pub fn create_generic_3x3(
     )
 }
 
-/// Creates a crafter container (9 slots, 3x3 layout).
-pub fn create_crafter_3x3(
-    sync_id: u8,
-    player_inventory: &Arc<PlayerInventory>,
-    inventory: Arc<dyn Inventory>,
-    player: &dyn InventoryPlayer,
-) -> GenericContainerScreenHandler {
-    GenericContainerScreenHandler::new(
-        WindowType::Crafter3x3,
-        sync_id,
-        player_inventory,
-        inventory,
-        3,
-        3,
-        player.is_spectator(),
-    )
-}
-
 /// Creates a shulker box container (27 slots that refuse shulker boxes).
 pub fn create_shulker_box(
     sync_id: u8,
