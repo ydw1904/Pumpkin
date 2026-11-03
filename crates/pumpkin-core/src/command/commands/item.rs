@@ -1,4 +1,5 @@
 use pumpkin_data::data_component_impl::EquipmentSlot;
+use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::translation;
 use pumpkin_inventory::Inventory;
 use pumpkin_util::PermissionLvl;
@@ -17,6 +18,7 @@ use crate::command::argument_types::entity::EntityArgumentType;
 use crate::command::argument_types::item::ItemStackArgumentType;
 use crate::command::argument_types::slot::SlotArgumentType;
 use crate::command::context::command_context::CommandContext;
+use crate::command::errors::command_syntax_error::CommandSyntaxError;
 use crate::command::errors::error_types::CommandErrorType;
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
@@ -34,6 +36,23 @@ const ERROR_NO_SUCH_SLOT: CommandErrorType<1> = CommandErrorType::new(
     translation::java::COMMANDS_ITEM_TARGET_NO_SUCH_SLOT,
 );
 
+const ERROR_STACK_TOO_BIG: CommandErrorType<2> = CommandErrorType::new(
+    translation::java::ARGUMENTS_ITEM_OVERSTACKED,
+    translation::java::ARGUMENTS_ITEM_OVERSTACKED,
+);
+
+/// `ItemInput.createItemStack`: a count above the item's stack size is an error.
+fn check_stack_size(stack: &ItemStack, count: i32) -> Result<(), CommandSyntaxError> {
+    let max = stack.get_max_stack_size();
+    if count > i32::from(max) {
+        return Err(ERROR_STACK_TOO_BIG.create_without_context(
+            TextComponent::text(format!("minecraft:{}", stack.item.registry_key)),
+            TextComponent::text(max.to_string()),
+        ));
+    }
+    Ok(())
+}
+
 struct BlockReplaceExecutor {
     has_count: bool,
 }
@@ -50,6 +69,7 @@ impl CommandExecutor for BlockReplaceExecutor {
         } else {
             1
         };
+        check_stack_size(&parsed_stack, count)?;
 
         let block_entity = world.get_block_entity(&pos).ok_or_else(|| {
             ERROR_NOT_CONTAINER.create_without_context(
@@ -118,6 +138,7 @@ impl CommandExecutor for EntityReplaceExecutor {
         } else {
             1
         };
+        check_stack_size(&parsed_stack, count)?;
 
         let mut modified_count = 0;
         let mut item_stack = parsed_stack.clone();
