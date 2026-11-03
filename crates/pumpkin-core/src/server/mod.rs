@@ -71,6 +71,12 @@ pub use recipe::RecipeManager;
 
 use crate::data::advancement_data::AdvancementManager;
 
+/// A console command queued for the tick, with an optional signal for when it has run.
+struct ConsoleInput {
+    command: String,
+    done: Option<tokio::sync::oneshot::Sender<()>>,
+}
+
 /// Represents a Minecraft server instance.
 #[repr(C)]
 pub struct Server {
@@ -99,6 +105,8 @@ pub struct Server {
     branding: CachedBranding,
     /// Saves and dispatches commands to appropriate handlers.
     pub command_dispatcher: ArcSwap<CommandDispatcher>,
+    /// Vanilla `DedicatedServer.consoleInput`: console commands waiting for the tick.
+    console_inputs: std::sync::Mutex<std::collections::VecDeque<ConsoleInput>>,
     /// Block behaviour.
     pub block_registry: Arc<BlockRegistry>,
     /// Item behaviour.
@@ -324,6 +332,7 @@ impl Server {
             worlds: ArcSwap::from_pointee(vec![]),
             dimensions,
             command_dispatcher,
+            console_inputs: std::sync::Mutex::new(std::collections::VecDeque::new()),
             block_registry: block_registry.clone(),
             item_registry: super::item::items::default_registry(),
             key_store: OnceCell::new(),
@@ -1401,9 +1410,45 @@ impl Server {
                 self.sync_game_time();
                 self.tick_players_and_network();
             }
+            self.handle_console_inputs();
             self.flush_pending_block_updates();
             Self::resume_player_flushes(&suspended);
         });
+    }
+
+    /// Vanilla `DedicatedServer.handleConsoleInput`: the command runs in the next tick, and
+    /// `done` is signalled once it has.
+    pub fn queue_console_input(
+        &self,
+        command: String,
+        done: Option<tokio::sync::oneshot::Sender<()>>,
+    ) {
+        self.console_inputs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push_back(ConsoleInput { command, done });
+    }
+
+    /// Vanilla `DedicatedServer.handleConsoleInputs`, which `tickConnection` calls after the
+    /// levels tick, whether or not the game is frozen.
+    fn handle_console_inputs(self: &Arc<Self>) {
+        loop {
+            let Some(input) = self
+                .console_inputs
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .pop_front()
+            else {
+                break;
+            };
+            self.command_dispatcher.load().handle_command(
+                &crate::command::CommandSender::Console.into_source(self),
+                &input.command,
+            );
+            if let Some(done) = input.done {
+                let _ = done.send(());
+            }
+        }
     }
 
     fn flush_pending_block_updates(&self) {

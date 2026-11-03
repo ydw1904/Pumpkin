@@ -261,7 +261,7 @@ impl CommandExecutor for ResolveNameExecutor {
         let name_owned = name.to_string();
 
         let name_component = TextComponent::text(name_owned.clone());
-        tokio::spawn(async move {
+        context.server().spawn_task(async move {
             let result = fetch_profile_by_name_helper(&server, &name_owned).await;
             match result {
                 Some(profile) => {
@@ -295,7 +295,7 @@ impl CommandExecutor for ResolveIdExecutor {
         let source = context.source.clone();
 
         let id_component = TextComponent::text(id.to_string());
-        tokio::spawn(async move {
+        context.server().spawn_task(async move {
             let result = fetch_profile_by_id_helper(&server, id).await;
             match result {
                 Some(profile) => {

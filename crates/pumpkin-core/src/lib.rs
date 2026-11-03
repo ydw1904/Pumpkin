@@ -803,10 +803,7 @@ fn setup_stdin_console(server: &Arc<Server>) {
                 .fire(&server_clone, &mut event)
                 .await;
             if !event.cancelled {
-                server_clone.command_dispatcher.load().handle_command(
-                    &command::CommandSender::Console.into_source(&server_clone),
-                    command.as_str(),
-                );
+                server_clone.queue_console_input(command, None);
             }
         }
     });
@@ -871,10 +868,13 @@ fn setup_console(mut rl: Editor<PumpkinCommandCompleter, FileHistory>, server: A
                 let mut event = ServerCommandEvent::new(line.clone());
                 server.plugin_manager.fire(&server, &mut event).await;
                 if !event.cancelled {
-                    server.command_dispatcher.load().handle_command(
-                        &command::CommandSender::Console.into_source(&server),
-                        &line,
-                    );
+                    // Keep the prompt below the command's output: wait for the tick to run it.
+                    let (done, ran) = tokio::sync::oneshot::channel();
+                    server.queue_console_input(line, Some(done));
+                    select! {
+                        _ = ran => {},
+                        () = STOP_INTERRUPT.cancelled() => {},
+                    }
                 }
                 let _ = tx_reply.send(1).await;
             } else {

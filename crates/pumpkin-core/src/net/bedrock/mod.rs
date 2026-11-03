@@ -804,12 +804,7 @@ impl BedrockClient {
             }
             SCommandRequest::PACKET_ID => {
                 let req = SCommandRequest::read(reader)?;
-                let client = self.clone();
-                let player_c = player.clone();
-                let server_c = server.clone();
-                player.spawn_task(async move {
-                    client.handle_chat_command(&player_c, &server_c, req).await;
-                });
+                self.handle_chat_command(player, server, &req);
             }
             SSetLocalPlayerAsInitialized::PACKET_ID => {
                 self.handle_set_local_player_as_initialized(

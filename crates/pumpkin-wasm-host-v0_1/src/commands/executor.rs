@@ -66,7 +66,7 @@ impl CommandExecutor for WasmCommandExecutor {
         };
 
         tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
+            self.server.runtime.block_on(async {
                 self.plugin
                     .store
                     .call_guest(move |mut guest| {
@@ -146,7 +146,7 @@ impl SuggestionProvider for WasmCommandSuggestionProvider {
         };
 
         tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
+            self.server.runtime.block_on(async {
                 match self
                     .plugin
                     .store
