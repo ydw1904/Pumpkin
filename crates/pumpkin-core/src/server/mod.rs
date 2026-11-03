@@ -1490,6 +1490,22 @@ impl Server {
                 player.tick(self);
             });
         }
+        self.process_deferred_commands();
+    }
+
+    /// Vanilla runs every packet on the server thread. Player packet loops run in parallel, so
+    /// they stop at commands, which can reach other players, worlds and the scoreboard; the
+    /// commands and the packets after them run here, one player at a time.
+    fn process_deferred_commands(&self) {
+        let players: Vec<Arc<Player>> = self
+            .worlds
+            .load()
+            .iter()
+            .flat_map(|world| world.players.load().iter().cloned().collect::<Vec<_>>())
+            .collect();
+        for player in players {
+            player.process_deferred_packets();
+        }
     }
 
     /// Ticks the game logic for all worlds. This is the part that is affected by `/tick freeze`.
@@ -1514,6 +1530,7 @@ impl Server {
         worlds.par_iter().for_each(|world| {
             world.tick(self);
         });
+        self.process_deferred_commands();
 
         // Global tasks
         self.player_data_storage.tick(self);

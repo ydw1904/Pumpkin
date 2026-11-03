@@ -20,6 +20,7 @@ use crossbeam::atomic::AtomicCell;
 use crossbeam::channel::Receiver;
 use crossbeam::queue::SegQueue;
 use pumpkin_data::dimension::Dimension;
+use pumpkin_data::packet::CURRENT_MC_VERSION;
 use pumpkin_inventory::Inventory;
 use pumpkin_inventory::player::ender_chest_inventory::EnderChestInventory;
 use pumpkin_protocol::RawPacket;
@@ -40,11 +41,14 @@ use pumpkin_protocol::bedrock::client::{
         AttributeData as BedrockAttribute, CUpdateAttributes as CBedrockAttributes,
     },
 };
+use pumpkin_protocol::bedrock::server::command_request::SCommandRequest;
 use pumpkin_protocol::bedrock::server::{
     respawn::{RespawnState, SRespawn as SBedrockRespawn},
     text::SText,
 };
 use pumpkin_protocol::codec::item_stack_seralizer::ItemStackSerializer;
+use pumpkin_protocol::java::server::play::{SChatCommand, SChatCommandSigned};
+use pumpkin_protocol::packet::MultiVersionJavaPacket;
 use pumpkin_util::translation::Locale;
 use pumpkin_util::version::JavaMinecraftVersion;
 use pumpkin_world::chunk::ChunkData;
@@ -815,6 +819,9 @@ pub struct Player {
     pub post_effects: std::sync::Mutex<Vec<String>>,
     /// Inbound packets waiting to be processed during player tick.
     pub inbound_packets: SegQueue<RawPacket>,
+    /// A command packet the parallel packet loop stopped at, with the number of packets
+    /// handled before it this tick. [`Player::process_deferred_packets`] handles it.
+    deferred_command: std::sync::Mutex<Option<(RawPacket, usize)>>,
 }
 
 use base64::prelude::*;
@@ -1158,6 +1165,7 @@ impl Player {
             spawn_extra_particles_on_fall: AtomicBool::new(false),
             post_effects: std::sync::Mutex::new(Vec::new()),
             inbound_packets: SegQueue::new(),
+            deferred_command: std::sync::Mutex::new(None),
         }
     }
 
@@ -3361,9 +3369,9 @@ impl Player {
         self.try_send_client_packet(&packet);
     }
 
+    /// Handles this tick's packets. It runs next to other players' packet loops and other
+    /// worlds' ticks, so it stops at a command, which vanilla runs on the one server thread.
     pub fn process_inbound_packets(&self) {
-        const MAX_PACKETS_PER_TICK: usize = 64;
-
         // Both callers run this after the world's block-update flush. Acknowledge the previous
         // tick's predictions here so Java clients receive the authoritative block states before
         // resolving those predictions. Sending the ACK from the packet loop would make doors and
@@ -3376,6 +3384,44 @@ impl Player {
             }
         }
 
+        self.handle_inbound_packets(None, 0, true);
+    }
+
+    /// Runs where nothing else ticks: handles the command [`Self::process_inbound_packets`]
+    /// stopped at, then the packets after it, in order.
+    pub fn process_deferred_packets(&self) {
+        let deferred = self
+            .deferred_command
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some((packet, count)) = deferred {
+            self.handle_inbound_packets(Some(packet), count, false);
+        }
+    }
+
+    /// Whether `packet` runs a command: a chat command, signed or not, or a Bedrock command
+    /// request.
+    fn is_command_packet(&self, packet: &RawPacket) -> bool {
+        match self.client.as_ref() {
+            ClientPlatform::Java(_) => {
+                packet.id == SChatCommand::to_id(CURRENT_MC_VERSION)
+                    || packet.id == SChatCommandSigned::to_id(CURRENT_MC_VERSION)
+            }
+            ClientPlatform::Bedrock(_) => {
+                packet.id == <SCommandRequest as pumpkin_protocol::Packet>::PACKET_ID
+            }
+        }
+    }
+
+    fn handle_inbound_packets(
+        &self,
+        first: Option<RawPacket>,
+        mut count: usize,
+        defer_commands: bool,
+    ) {
+        const MAX_PACKETS_PER_TICK: usize = 64;
+
         let Some(player_arc) = self.world().get_player_by_uuid(self.gameprofile.id) else {
             return;
         };
@@ -3383,10 +3429,16 @@ impl Player {
             return;
         };
 
-        let mut count = 0;
-
-        while let Some(packet) = self.inbound_packets.pop() {
+        let mut first = first;
+        while let Some(packet) = first.take().or_else(|| self.inbound_packets.pop()) {
             if self.client.closed() {
+                break;
+            }
+            if defer_commands && self.is_command_packet(&packet) {
+                *self
+                    .deferred_command
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = Some((packet, count));
                 break;
             }
 
