@@ -136,6 +136,7 @@ impl JigsawBlockEntity {
                 .pieces,
         );
         let mut placer = crate::world::block_placer::WorldBlockPlacer::new(world);
+        let mut entities = Vec::new();
         for piece in &mut pieces {
             if let Some(pool_piece) = piece.as_any().downcast_ref::<PoolElementStructurePiece>() {
                 pumpkin_world::generation::structure::structures::jigsaw::place_pool_element_templates(
@@ -146,13 +147,14 @@ impl JigsawBlockEntity {
                     // Vanilla `JigsawPlacement.generateJigsaw` places with the generation position.
                     position.0,
                     world.level.seed.0 as i64,
-                    None,
+                    Some(&mut |entity| entities.push(entity)),
                 );
             }
         }
         placer.finalize();
         world.queue_block_updates(&placer.changed_positions);
         world.flush_block_updates();
+        world.spawn_structure_entities(entities);
     }
 }
 

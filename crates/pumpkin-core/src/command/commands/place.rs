@@ -172,12 +172,24 @@ impl CommandExecutor for PlaceTemplateExecutor {
             None,
             context.world().level.seed.0 as i64,
         );
+        // Vanilla `StructureTemplate.placeInWorld` places the template's entities without
+        // finalizing them.
+        let mut entities = Vec::new();
+        pumpkin_world::generation::structure::template::place_template_entities(
+            |entity| entities.push(entity),
+            &template,
+            block_pos.0,
+            Rotation::None,
+            None,
+            false,
+        );
 
         placer.finalize();
         context
             .world()
             .queue_block_updates(&placer.changed_positions);
         context.world().flush_block_updates();
+        context.world().spawn_structure_entities(entities);
 
         context.source.send_feedback(
             pumpkin_macros::translate_cross!(
@@ -208,6 +220,7 @@ impl CommandExecutor for PlaceJigsawExecutor {
             BlockPos::new(p.x as i32, p.y as i32, p.z as i32)
         });
 
+        let mut entities = Vec::new();
         let (_piece_count, placer) = {
             let seed = hash_block_pos(block_pos.0.x, block_pos.0.y, block_pos.0.z) as u64;
             let random = RandomGenerator::Legacy(LegacyRand::from_seed(seed));
@@ -264,7 +277,7 @@ impl CommandExecutor for PlaceJigsawExecutor {
                         false,
                         block_pos.0,
                         context.world().level.seed.0 as i64,
-                        None,
+                        Some(&mut |entity| entities.push(entity)),
                     );
                 }
             }
@@ -277,6 +290,7 @@ impl CommandExecutor for PlaceJigsawExecutor {
             .world()
             .queue_block_updates(&placer.changed_positions);
         context.world().flush_block_updates();
+        context.world().spawn_structure_entities(entities);
 
         context.source.send_feedback(
             pumpkin_macros::translate_cross!(

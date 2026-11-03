@@ -384,7 +384,7 @@ pub(crate) fn finalize_processing(
 
 /// Vanilla `StructureTemplate.placeEntities`: hands each template entity inside `chunk_box` (all
 /// of them without one) to `add_entity` with the saved data it is created from.
-pub(crate) fn place_template_entities(
+pub fn place_template_entities(
     mut add_entity: impl FnMut(StructureEntity),
     template: &StructureTemplate,
     origin: Vector3<i32>,
