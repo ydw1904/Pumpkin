@@ -5,13 +5,19 @@ use std::sync::{
 };
 
 use pumpkin_data::BlockState;
+use pumpkin_data::attributes::Attributes;
+use pumpkin_data::damage::DamageType;
+use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::potion::Effect;
 use pumpkin_data::sound::Sound;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_util::Difficulty;
 use pumpkin_util::math::position::BlockPos;
 
+use crate::enchantment::EnchantmentHelper;
 use crate::entity::ai::behavior::hunting::{self, Hunt};
 use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::{
@@ -320,6 +326,57 @@ impl Mob for BeeEntity {
 
     fn get_mob_entity(&self) -> &MobEntity {
         &self.mob_entity
+    }
+
+    /// Vanilla `Bee.doHurtTarget`: a sting that poisons and leaves the bee without its stinger.
+    fn do_hurt_target(&self, target: &dyn EntityBase) -> bool {
+        let damage = self
+            .mob_entity
+            .living_entity
+            .get_attribute_value(&Attributes::ATTACK_DAMAGE) as i32 as f32;
+        let was_hurt = target.damage_with_context(
+            target,
+            damage,
+            DamageType::STING,
+            None,
+            Some(self),
+            Some(self),
+        );
+        if !was_hurt {
+            return false;
+        }
+        EnchantmentHelper::do_post_attack_effects(
+            target,
+            DamageType::STING,
+            Some(self),
+            Some(self),
+        );
+        if let Some(living) = target.get_living_entity() {
+            let world = self.get_entity().world.load();
+            let poison_seconds = match world.level_info.load().difficulty {
+                Difficulty::Normal => 10,
+                Difficulty::Hard => 18,
+                Difficulty::Easy | Difficulty::Peaceful => 0,
+            };
+            if poison_seconds > 0 {
+                living.add_effect_with_source(
+                    Effect {
+                        effect_type: &StatusEffect::POISON,
+                        duration: poison_seconds * 20,
+                        amplifier: 0,
+                        ambient: false,
+                        show_particles: true,
+                        show_icon: true,
+                        blend: false,
+                    },
+                    Some(self),
+                );
+            }
+        }
+        self.set_has_stung(true);
+        self.stop_being_angry();
+        self.play_entity_sound(Sound::EntityBeeSting, 1.0, 1.0);
+        true
     }
 
     fn custom_server_ai_step(&self, _caller: &dyn EntityBase) {
