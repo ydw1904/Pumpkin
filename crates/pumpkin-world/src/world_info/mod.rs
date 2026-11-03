@@ -102,6 +102,22 @@ pub struct LevelData {
     /// Persisted to `data/minecraft/weather.dat`.
     #[serde(rename = "clearWeatherTime", skip_serializing, default)]
     pub clear_weather_time: i32,
+
+    /// Ticks until rain starts or stops. Persisted to `data/minecraft/weather.dat`.
+    #[serde(rename = "rainTime", skip_serializing, default)]
+    pub rain_time: i32,
+
+    /// Ticks until thunder starts or stops. Persisted to `data/minecraft/weather.dat`.
+    #[serde(rename = "thunderTime", skip_serializing, default)]
+    pub thunder_time: i32,
+
+    /// Persisted to `data/minecraft/weather.dat`.
+    #[serde(rename = "raining", skip_serializing, default)]
+    pub raining: bool,
+
+    /// Persisted to `data/minecraft/weather.dat`.
+    #[serde(rename = "thundering", skip_serializing, default)]
+    pub thundering: bool,
 }
 
 const DEFAULT_BORDER_DAMAGE_PER_BLOCK: f64 = 0.2;
@@ -562,6 +578,10 @@ impl LevelData {
             day_time: 0,
             game_time: 0,
             clear_weather_time: -1,
+            rain_time: 0,
+            thunder_time: 0,
+            raining: false,
+            thundering: false,
         }
     }
 

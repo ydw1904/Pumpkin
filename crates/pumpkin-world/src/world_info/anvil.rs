@@ -431,6 +431,10 @@ impl WorldInfoReader for AnvilLevelInfo {
         {
             let weather = read_weather(level_folder);
             level_data.clear_weather_time = weather.clear_weather_time;
+            level_data.rain_time = weather.rain_time;
+            level_data.thunder_time = weather.thunder_time;
+            level_data.raining = weather.raining;
+            level_data.thundering = weather.thundering;
         }
 
         Ok(level_data)
@@ -506,6 +510,10 @@ impl WorldInfoWriter for AnvilLevelInfo {
         // weather.dat
         let mut weather = read_weather(level_folder);
         weather.clear_weather_time = info.clear_weather_time;
+        weather.rain_time = info.rain_time;
+        weather.thunder_time = info.thunder_time;
+        weather.raining = info.raining;
+        weather.thundering = info.thundering;
         weather.data_version = data_version;
         if let Err(e) = write_weather(level_folder, &weather) {
             error!("Failed to write weather.dat: {e}");
@@ -900,6 +908,10 @@ mod test {
             border_warning_blocks: 5.0,
             border_warning_time: 15.0,
             clear_weather_time: 0,
+            rain_time: 0,
+            thunder_time: 0,
+            raining: false,
+            thundering: false,
             data_packs: DataPacks {
                 disabled: vec![
                     "minecart_improvements".to_string(),

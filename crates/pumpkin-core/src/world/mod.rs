@@ -416,6 +416,7 @@ impl World {
     }
 
     #[must_use]
+    #[expect(clippy::too_many_lines)]
     pub fn load(
         level: Arc<Level>,
         level_info: Arc<ArcSwap<LevelData>>,
@@ -428,6 +429,18 @@ impl World {
         let mut level_time = LevelTime::new();
         let info = level_info.load();
         level_time.load_from(info.day_time, info.game_time);
+        // Vanilla `ServerLevel.prepareWeather`, only for dimensions that have weather.
+        let weather = if dimension.has_skylight && !dimension.has_ceiling {
+            Weather::loaded(
+                info.clear_weather_time,
+                info.rain_time,
+                info.thunder_time,
+                info.raining,
+                info.thundering,
+            )
+        } else {
+            Weather::new()
+        };
         drop(info);
 
         // Load portal POI from disk (PoiStorage::new automatically loads from disk if files exist)
@@ -498,7 +511,7 @@ impl World {
             worldborder: std::sync::Mutex::new(worldborder),
             level_time: std::sync::Mutex::new(level_time),
             dimension,
-            weather: std::sync::Mutex::new(Weather::new()),
+            weather: std::sync::Mutex::new(weather),
             sleep_status: std::sync::Mutex::default(),
             block_registry,
             sea_level: generation_settings.sea_level,
@@ -2253,16 +2266,13 @@ impl World {
             (level_time.is_night(), level_time.time_of_day)
         };
 
-        let (should_reset_weather, weather_cycle_enabled) = {
+        let raining = {
             let mut weather = self
                 .weather
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             weather.tick_weather(self);
-            (
-                weather.raining || weather.thundering,
-                weather.weather_cycle_enabled,
-            )
+            weather.is_raining()
         };
 
         if self.should_skip_night() && is_night {
@@ -2288,12 +2298,11 @@ impl World {
                 }
             }
 
-            if weather_cycle_enabled && should_reset_weather {
-                let mut weather = self
-                    .weather
+            if raining && self.level_info.load().game_rules.advance_weather {
+                self.weather
                     .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                weather.reset_weather_cycle(self);
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .reset_weather_cycle();
             }
         }
     }
@@ -2964,11 +2973,12 @@ impl World {
         level_time.send_time(self);
     }
 
+    /// Vanilla `Level.isRaining`.
     pub fn is_raining(&self) -> bool {
         self.weather
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .raining
+            .is_raining()
     }
 
     pub fn is_raining_at(&self, pos: &BlockPos) -> bool {
@@ -3096,15 +3106,20 @@ impl World {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if weather.raining != raining {
             let thunder = weather.thundering;
-            weather.set_weather_parameters(self, 0, 0, raining, thunder);
+            weather.set_weather_parameters(0, 0, raining, thunder);
         }
     }
 
+    /// Vanilla `Level.isThundering`.
     pub fn is_thundering(&self) -> bool {
-        self.weather
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .thundering
+        self.dimension.has_skylight
+            && !self.dimension.has_ceiling
+            && self
+                .weather
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .thunder_strength()
+                > 0.9
     }
 
     pub fn set_thundering(&self, thundering: bool) {
@@ -3125,7 +3140,7 @@ impl World {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if weather.thundering != thundering {
             let raining = weather.raining;
-            weather.set_weather_parameters(self, 0, 0, raining, thundering);
+            weather.set_weather_parameters(0, 0, raining, thundering);
         }
     }
 
@@ -4143,9 +4158,9 @@ impl World {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             (
-                weather.raining,
-                weather.rain_level.clamp(0.0, 1.0),
-                weather.thunder_level.clamp(0.0, 1.0),
+                weather.is_raining(),
+                weather.rain_level,
+                weather.thunder_strength(),
             )
         };
         if is_raining {

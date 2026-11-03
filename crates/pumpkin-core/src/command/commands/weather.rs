@@ -45,7 +45,7 @@ impl CommandExecutor for WeatherExecutor {
                     let processed_duration =
                         duration.unwrap_or_else(|| game_random().random_range(12_000..=180_000));
 
-                    weather.set_weather_parameters(world, processed_duration, 0, false, false);
+                    weather.set_weather_parameters(processed_duration, 0, false, false);
                     (
                         TextComponent::translate_cross(
                             translation::java::COMMANDS_WEATHER_SET_CLEAR,
@@ -59,7 +59,7 @@ impl CommandExecutor for WeatherExecutor {
                     let processed_duration =
                         duration.unwrap_or_else(|| game_random().random_range(12_000..=24_000));
 
-                    weather.set_weather_parameters(world, 0, processed_duration, true, false);
+                    weather.set_weather_parameters(0, processed_duration, true, false);
                     (
                         TextComponent::translate_cross(
                             translation::java::COMMANDS_WEATHER_SET_RAIN,
@@ -73,7 +73,7 @@ impl CommandExecutor for WeatherExecutor {
                     let processed_duration =
                         duration.unwrap_or_else(|| game_random().random_range(3600..=15_600));
 
-                    weather.set_weather_parameters(world, 0, processed_duration, true, true);
+                    weather.set_weather_parameters(0, processed_duration, true, true);
                     (
                         TextComponent::translate_cross(
                             translation::java::COMMANDS_WEATHER_SET_THUNDER,

@@ -14,6 +14,8 @@ const THUNDER_DURATION_MAX: i32 = 15_600;
 
 const WEATHER_TRANSITION_SPEED: f32 = 0.01;
 
+/// Vanilla `WeatherData` plus the level's rain and thunder levels.
+#[derive(Clone)]
 pub struct Weather {
     pub clear_weather_time: i32,
     pub raining: bool,
@@ -25,8 +27,6 @@ pub struct Weather {
     pub old_rain_level: f32,
     pub thunder_level: f32,
     pub old_thunder_level: f32,
-
-    pub weather_cycle_enabled: bool,
 }
 
 impl Default for Weather {
@@ -48,66 +48,117 @@ impl Weather {
             old_rain_level: 0.0,
             thunder_level: 0.0,
             old_thunder_level: 0.0,
-            weather_cycle_enabled: true,
         }
     }
 
-    pub fn set_weather_parameters(
+    /// Vanilla `ServerLevel.prepareWeather`: saved rain or thunder is already at full strength.
+    #[must_use]
+    pub const fn loaded(
+        clear_weather_time: i32,
+        rain_time: i32,
+        thunder_time: i32,
+        raining: bool,
+        thundering: bool,
+    ) -> Self {
+        let mut weather = Self::new();
+        weather.clear_weather_time = clear_weather_time;
+        weather.rain_time = rain_time;
+        weather.thunder_time = thunder_time;
+        weather.raining = raining;
+        weather.thundering = thundering;
+        if raining {
+            weather.rain_level = 1.0;
+            weather.old_rain_level = 1.0;
+            if thundering {
+                weather.thunder_level = 1.0;
+                weather.old_thunder_level = 1.0;
+            }
+        }
+        weather
+    }
+
+    /// Vanilla `Level.isRaining`: the rain has faded in past a fifth.
+    #[must_use]
+    pub fn is_raining(&self) -> bool {
+        self.rain_level > 0.2
+    }
+
+    /// Vanilla `Level.getThunderLevel`: thunder only shows as strong as the rain.
+    #[must_use]
+    pub fn thunder_strength(&self) -> f32 {
+        self.thunder_level * self.rain_level
+    }
+
+    /// Vanilla `ServerLevel.setWeatherParameters`. The clients hear of it once the levels
+    /// move in `tick_weather`.
+    pub const fn set_weather_parameters(
         &mut self,
-        world: &World,
         clear_time: i32,
         rain_time: i32,
         raining: bool,
         thundering: bool,
     ) {
-        let was_raining = self.raining;
-
         self.clear_weather_time = clear_time;
         self.rain_time = rain_time;
         self.thunder_time = rain_time;
         self.raining = raining;
         self.thundering = thundering;
-
-        if was_raining != raining {
-            if was_raining {
-                world.broadcast_packet_all(&CGameEvent::new(GameEvent::EndRaining, 0.0));
-            } else {
-                world.broadcast_packet_all(&CGameEvent::new(GameEvent::BeginRaining, 0.0));
-            }
-        }
     }
 
+    /// Vanilla `ServerLevel.advanceWeatherCycle`.
     pub fn tick_weather(&mut self, world: &World) {
-        if !self.weather_cycle_enabled {
-            self.advance_weather_cycle();
+        let was_raining = self.is_raining();
+        if world.dimension.has_skylight && !world.dimension.has_ceiling {
+            if world.level_info.load().game_rules.advance_weather {
+                self.advance_weather_cycle();
+            }
+
+            self.old_thunder_level = self.thunder_level;
+            self.thunder_level = if self.thundering {
+                self.thunder_level + WEATHER_TRANSITION_SPEED
+            } else {
+                self.thunder_level - WEATHER_TRANSITION_SPEED
+            }
+            .clamp(0.0, 1.0);
+
+            self.old_rain_level = self.rain_level;
+            self.rain_level = if self.raining {
+                self.rain_level + WEATHER_TRANSITION_SPEED
+            } else {
+                self.rain_level - WEATHER_TRANSITION_SPEED
+            }
+            .clamp(0.0, 1.0);
         }
 
-        // Update visual transitions
-        self.old_rain_level = self.rain_level;
-        self.old_thunder_level = self.thunder_level;
-
-        if self.raining {
-            self.rain_level = (self.rain_level + WEATHER_TRANSITION_SPEED).min(1.0);
-        } else {
-            self.rain_level = (self.rain_level - WEATHER_TRANSITION_SPEED).max(0.0);
-        }
-
-        if self.thundering {
-            self.thunder_level = (self.thunder_level + WEATHER_TRANSITION_SPEED).min(1.0);
-        } else {
-            self.thunder_level = (self.thunder_level - WEATHER_TRANSITION_SPEED).max(0.0);
-        }
-
-        // Broadcast level changes if needed
-        if (self.old_rain_level - self.rain_level).abs() > f32::EPSILON {
+        if self.old_rain_level != self.rain_level {
             world.broadcast_packet_all(&CGameEvent::new(
                 GameEvent::RainLevelChange,
                 self.rain_level,
             ));
         }
 
-        if (self.old_thunder_level - self.thunder_level).abs() > f32::EPSILON {
+        if self.old_thunder_level != self.thunder_level {
             world.broadcast_packet_all(&CGameEvent::new(
+                GameEvent::ThunderLevelChange,
+                self.thunder_level,
+            ));
+        }
+
+        // Vanilla tells every player on the server, whatever their dimension.
+        if was_raining != self.is_raining()
+            && let Some(server) = world.server.upgrade()
+        {
+            let event = if was_raining {
+                GameEvent::EndRaining
+            } else {
+                GameEvent::BeginRaining
+            };
+            server.broadcast_packet_all(&CGameEvent::new(event, 0.0));
+            server.broadcast_packet_all(&CGameEvent::new(
+                GameEvent::RainLevelChange,
+                self.rain_level,
+            ));
+            server.broadcast_packet_all(&CGameEvent::new(
                 GameEvent::ThunderLevelChange,
                 self.thunder_level,
             ));
@@ -115,7 +166,6 @@ impl Weather {
     }
 
     fn advance_weather_cycle(&mut self) {
-        // Removed async since there are no await calls
         if self.clear_weather_time > 0 {
             self.clear_weather_time -= 1;
             self.thunder_time = i32::from(!self.thundering);
@@ -151,24 +201,11 @@ impl Weather {
         }
     }
 
-    pub fn reset_weather_cycle(&mut self, world: &World) {
-        self.set_weather_parameters(world, 0, 0, false, false);
-    }
-}
-
-impl Clone for Weather {
-    fn clone(&self) -> Self {
-        Self {
-            clear_weather_time: self.clear_weather_time,
-            raining: self.raining,
-            rain_time: self.rain_time,
-            thundering: self.thundering,
-            thunder_time: self.thunder_time,
-            rain_level: self.rain_level,
-            old_rain_level: self.old_rain_level,
-            thunder_level: self.thunder_level,
-            old_thunder_level: self.old_thunder_level,
-            weather_cycle_enabled: self.weather_cycle_enabled,
-        }
+    /// Vanilla `ServerLevel.resetWeatherCycle`.
+    pub const fn reset_weather_cycle(&mut self) {
+        self.rain_time = 0;
+        self.raining = false;
+        self.thunder_time = 0;
+        self.thundering = false;
     }
 }
