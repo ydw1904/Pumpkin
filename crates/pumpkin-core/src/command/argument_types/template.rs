@@ -14,8 +14,7 @@ impl<S: CommandSource> ArgumentType<S> for TemplateNameArgumentType {
     type Item = String;
 
     fn parse(&self, reader: &mut StringReader) -> Result<Self::Item, CommandSyntaxError> {
-        let identifier = Identifier::from_reader(reader)?;
-        Ok(identifier.path().to_string())
+        Ok(Identifier::from_reader(reader)?.to_string())
     }
 
     fn list_suggestions(

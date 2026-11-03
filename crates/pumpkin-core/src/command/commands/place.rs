@@ -190,10 +190,6 @@ impl CommandExecutor for PlaceTemplateExecutor {
             0
         };
 
-        let template_name = template_name
-            .strip_prefix("minecraft:")
-            .unwrap_or(&template_name)
-            .to_string();
         let Some(template) =
             pumpkin_world::generation::structure::template::get_template(&template_name)
         else {
@@ -253,7 +249,7 @@ impl CommandExecutor for PlaceTemplateExecutor {
             pumpkin_macros::translate_cross!(
                 translation::java::COMMANDS_PLACE_TEMPLATE_SUCCESS,
                 translation::bedrock::COMMANDS_PLACE_SUCCESS,
-                TextComponent::text(format!("minecraft:{template_name}")),
+                TextComponent::text(template_name),
                 TextComponent::text(block_pos.0.x.to_string()),
                 TextComponent::text(block_pos.0.y.to_string()),
                 TextComponent::text(block_pos.0.z.to_string())
