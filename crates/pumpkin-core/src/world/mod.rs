@@ -4740,6 +4740,7 @@ impl World {
             player.living_entity.reset_state();
             player.hunger_manager.restart();
             if !keep_inventory {
+                player.total_experience.store(0, Ordering::Relaxed);
                 player.set_experience(0, 0.0, 0);
                 player.inventory.clear();
             }

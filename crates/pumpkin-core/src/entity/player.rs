@@ -548,7 +548,7 @@ pub struct Player {
     last_item_in_main_hand: std::sync::Mutex<ItemStack>,
     /// The worn and off hand stacks whose attribute modifiers are applied, by slot.
     last_equipment: std::sync::Mutex<HashMap<EquipmentSlot, ItemStack>>,
-    /// The player's last known experience level.
+    /// The total experience last sent to the client, or -1 to resend.
     pub last_sent_xp: AtomicI32,
     pub last_sent_health: AtomicCell<f32>,
     pub last_sent_food: AtomicU8,
@@ -574,8 +574,11 @@ pub struct Player {
     pub experience_level: AtomicI32,
     /// The player's experience progress (`0.0` to `1.0`)
     pub experience_progress: AtomicCell<f32>,
-    /// The player's total experience points.
+    /// The player's experience points into the current level.
     pub experience_points: AtomicI32,
+    /// Vanilla `Player.totalExperience`: every point gained since the last reset, which
+    /// spending levels doesn't lower.
+    pub total_experience: AtomicI32,
     pub item_cooldowns: std::sync::Mutex<HashMap<String, ItemCooldown>>,
     pub experience_pick_up_delay: Mutex<u32>,
     pub chunk_sender: Mutex<crate::net::ChunkSender>,
@@ -915,6 +918,7 @@ impl Player {
             experience_level: AtomicI32::new(0),
             experience_progress: AtomicCell::new(0.0),
             experience_points: AtomicI32::new(0),
+            total_experience: AtomicI32::new(0),
             item_cooldowns: std::sync::Mutex::new(HashMap::new()),
             chunk_sender: Mutex::new(crate::net::ChunkSender::new()),
             chunk_listener: Mutex::new(world.level.chunk_listener.add_global_chunk_listener()),
@@ -4042,7 +4046,7 @@ impl Player {
             (
                 criteria::EXPERIENCE,
                 &recorded.experience,
-                experience::points_to_level(level) + self.experience_points.load(Ordering::Relaxed),
+                self.total_experience.load(Ordering::Relaxed),
             ),
             (criteria::LEVEL, &recorded.level, level),
         ] {
@@ -4540,7 +4544,7 @@ impl Player {
     }
 
     pub fn get_total_experience(&self) -> i32 {
-        self.experience_points.load(Ordering::Relaxed)
+        self.total_experience.load(Ordering::Relaxed)
     }
 
     pub fn set_experience_progress(&self, progress: f32) {
@@ -6094,11 +6098,11 @@ impl Player {
         }
 
         let level = self.experience_level.load(Ordering::Relaxed);
-        if self.last_sent_xp.load(Ordering::Relaxed) != level {
+        let total = self.total_experience.load(Ordering::Relaxed);
+        if self.last_sent_xp.load(Ordering::Relaxed) != total {
             let progress = self.experience_progress.load();
-            let points = self.experience_points.load(Ordering::Relaxed);
 
-            self.last_sent_xp.store(level, Ordering::Relaxed);
+            self.last_sent_xp.store(total, Ordering::Relaxed);
 
             let attribute = |name: &str, current_value, max_value| BedrockAttribute {
                 min_value: 0.0,
@@ -6111,7 +6115,7 @@ impl Player {
                 modifiers: Vec::new(),
             };
             self.try_enqueue_packet_editioned(
-                &CSetExperience::new(progress.clamp(0.0, 1.0), level.into(), points.into()),
+                &CSetExperience::new(progress.clamp(0.0, 1.0), level.into(), total.into()),
                 &CBedrockAttributes {
                     target_runtime_id: VarULong(self.entity_id() as u64),
                     attribute_list: vec![
@@ -6362,7 +6366,13 @@ impl Player {
     /// Add experience levels to the player.
     pub fn add_experience_levels(&self, added_levels: i32) {
         let current_level = self.experience_level.load(Ordering::Relaxed);
-        let new_level = current_level + added_levels;
+        let new_level = current_level.saturating_add(added_levels);
+        // Vanilla `giveExperienceLevels`: dropping below level 0 resets everything.
+        if new_level < 0 {
+            self.total_experience.store(0, Ordering::Relaxed);
+            self.set_experience(0, 0.0, 0);
+            return;
+        }
         self.set_experience_level(new_level, true);
     }
 
@@ -6397,6 +6407,10 @@ impl Player {
 
         let current_level = self.experience_level.load(Ordering::Relaxed);
         let current_points = self.experience_points.load(Ordering::Relaxed);
+
+        let total = self.total_experience.load(Ordering::Relaxed);
+        self.total_experience
+            .store(total.saturating_add(added_points).max(0), Ordering::Relaxed);
 
         let total_exp = experience::points_to_level(current_level) as i64 + current_points as i64;
         let new_total_exp = total_exp + added_points as i64;
@@ -7876,11 +7890,9 @@ impl EntityBase for Player {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .write_nbt(nbt);
 
-        let total_exp = experience::points_to_level(self.experience_level.load(Ordering::Relaxed))
-            + self.experience_points.load(Ordering::Relaxed);
         nbt.put_float("XpP", self.experience_progress.load());
         nbt.put_int("XpLevel", self.experience_level.load(Ordering::Relaxed));
-        nbt.put_int("XpTotal", total_exp);
+        nbt.put_int("XpTotal", self.total_experience.load(Ordering::Relaxed));
         nbt.put_int("XpSeed", self.enchantment_seed.load(Ordering::Relaxed));
         nbt.put_int("Score", self.score.load(Ordering::Relaxed));
         nbt.put_short("SleepTimer", self.sleeping_since.load().unwrap_or(0) as i16);
@@ -7994,6 +8006,7 @@ impl EntityBase for Player {
         let xp_p = nbt.get_float("XpP").unwrap_or(0.0);
         let xp_level = nbt.get_int("XpLevel");
         let total_exp = nbt.get_int("XpTotal").unwrap_or(0);
+        self.total_experience.store(total_exp, Ordering::Relaxed);
 
         if let Some(level) = xp_level {
             self.experience_level.store(level, Ordering::Relaxed);

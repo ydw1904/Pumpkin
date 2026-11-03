@@ -1,5 +1,6 @@
 // Experience orbs: their value reaches the client, they fly to a player within 8 blocks, and a
-// merged orb (Count) pays out once per merged orb.
+// merged orb (Count) pays out once per merged orb. The client's total experience counts every
+// point gained, which setting or spending levels doesn't lower.
 const { make } = require('./survival-lib')
 const h = make('Orbs')
 const { bot } = h
@@ -31,4 +32,16 @@ h.start(async () => {
   await h.waitFor(() => bot.experience.progress > 0, 10000)
   await h.ticks(100)
   h.result('count3_level_progress', `${bot.experience.level}/${Math.round(bot.experience.progress * 100)}`)
+  h.result('total_after_orbs', bot.experience.points)
+
+  h.cmd(`xp add ${bot.username} 5 levels`)
+  await h.waitFor(() => bot.experience.level === 5, 3000)
+  h.result('total_after_levels', bot.experience.points)
+  h.cmd(`xp add ${bot.username} -10 levels`)
+  await h.waitFor(() => bot.experience.level === 0, 3000)
+  await h.ticks(5)
+  h.result('total_below_level_0', bot.experience.points)
+  h.cmd(`xp add ${bot.username} 7 points`)
+  await h.waitFor(() => bot.experience.progress > 0, 3000)
+  h.result('total_after_points', bot.experience.points)
 })
