@@ -152,4 +152,9 @@ pub trait PropertyDelegate: Sync + Send {
 pub trait ExperienceContainer: Send + Sync {
     /// Extract and reset accumulated experience, returning the total as an integer
     fn extract_experience(&self) -> i32;
+
+    /// The ids of the recipes used since the experience was last extracted.
+    fn used_recipe_ids(&self) -> Vec<String> {
+        Vec::new()
+    }
 }

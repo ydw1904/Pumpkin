@@ -103,7 +103,6 @@ use pumpkin_data::{
     world::{RAW, WorldEvent},
 };
 use pumpkin_data::{BlockDirection, BlockState, HorizontalFacingExt, translation};
-use pumpkin_inventory::crafting::recipe_provider::RecipeProvider;
 use pumpkin_inventory::screen_handler::InventoryPlayer;
 use pumpkin_inventory::{Clearable, Inventory};
 use pumpkin_nbt::compound::NbtCompound;
@@ -113,9 +112,7 @@ use pumpkin_protocol::java::client::play::{
     CBlockUpdate, CDisguisedChatMessage, CExplosion, CRespawn, CSetBlockDestroyStage, CWorldEvent,
     PlayerSpawnData,
 };
-use pumpkin_protocol::java::client::play::{
-    CPlayerSpawnPosition, CRecipeBookAdd, CRecipeBookSettings, CSystemChatMessage,
-};
+use pumpkin_protocol::java::client::play::{CPlayerSpawnPosition, CSystemChatMessage};
 use pumpkin_protocol::java::client::play::{CSetEntityMetadata, Metadata};
 use pumpkin_protocol::{
     BClientPacket, ClientPacket, IdOr, SoundEvent,
@@ -1058,6 +1055,8 @@ impl World {
     }
 
     pub fn set_game_rule(&self, rule: &GameRule, value: GameRuleValue<i64, bool>) {
+        let limited_crafting = (*rule == GameRule::LimitedCrafting)
+            .then_some(matches!(value, GameRuleValue::Bool(true)));
         let current_info = self.level_info.load();
         let mut new_info = (**current_info).clone();
         match (new_info.game_rules.get_mut(rule), value) {
@@ -1070,6 +1069,15 @@ impl World {
             _ => {}
         }
         self.level_info.store(Arc::new(new_info));
+        // `MinecraftServer.onGameRuleChanged`.
+        if let Some(limited) = limited_crafting
+            && let Some(server) = self.server.upgrade()
+        {
+            server.broadcast_packet_all(&CGameEvent::new(
+                GameEvent::LimitedCrafting,
+                if limited { 1.0 } else { 0.0 },
+            ));
+        }
         // Vanilla sends every clock to every player when the rule changes.
         if *rule == GameRule::AdvanceTime
             && let Some(server) = self.server.upgrade()
@@ -3778,7 +3786,7 @@ impl World {
                     .into(), // TODO: sim view dinstance
                 false,
                 true,
-                false,
+                self.level_info.load().game_rules.limited_crafting,
                 PlayerSpawnData::new(
                     self.dimension.clone(),
                     biome::hash_seed(self.level.seed.0), // seed
@@ -4246,15 +4254,7 @@ impl World {
             && server.advanced_config.recipe.send_recipes
             && java_client.version.load() >= JavaMinecraftVersion::V_1_21_2
         {
-            let settings_packet = CRecipeBookSettings::default_closed();
-            if let Ok(data) = java_client.serialize_packet(&settings_packet) {
-                java_client.send_packet_now(data).await;
-            }
-            let dynamic_recipes = server.recipe_manager.get_dynamic_recipes();
-            let add_packet = CRecipeBookAdd::new(true, &dynamic_recipes);
-            if let Ok(data) = java_client.serialize_packet(&add_packet) {
-                java_client.send_packet_now(data).await;
-            }
+            player.send_initial_recipe_book();
         }
         let msg_comp = TextComponent::translate_cross(
             translation::java::MULTIPLAYER_PLAYER_JOINED,

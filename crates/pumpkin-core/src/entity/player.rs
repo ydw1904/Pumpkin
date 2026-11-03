@@ -1,4 +1,5 @@
 pub mod advancement;
+pub mod recipe_book;
 pub mod statistics;
 
 use core::f32;
@@ -806,6 +807,7 @@ pub struct Player {
     pub respawn_location: AtomicCell<Option<pumpkin_util::math::position::BlockPos>>,
     pub hidden_players: Mutex<std::collections::HashSet<uuid::Uuid>>,
     pub advancements: Arc<Mutex<PlayerAdvancement>>,
+    pub recipe_book: std::sync::Mutex<recipe_book::ServerRecipeBook>,
     pub enchantment_seed: AtomicI32,
     pub fishing_bobber: AtomicI32,
     /// Vanilla `LivingEntity.fallFlyTicks`.
@@ -1013,9 +1015,12 @@ impl Player {
             &inventory,
             None,
             0,
-            Some(Arc::new(crate::server::recipe::ServerRecipeAccess(
-                world.server.clone(),
-            ))),
+            Some(Arc::new(
+                crate::server::recipe::ServerRecipeAccess::for_player(
+                    world.server.clone(),
+                    gameprofile.id,
+                ),
+            )),
         )));
 
         // Initialize abilities based on gamemode (like vanilla's GameMode.setAbilities())
@@ -1041,6 +1046,7 @@ impl Player {
         Self {
             living_entity,
             config: ArcSwap::new(Arc::new(config)),
+            recipe_book: std::sync::Mutex::new(recipe_book::ServerRecipeBook::default()),
             advancements: Arc::new(Mutex::new(
                 server
                     .advancement_manager
@@ -8268,6 +8274,10 @@ impl EntityBase for Player {
         }
 
         nbt.put_bool("seenCredits", self.seen_credits.load(Ordering::Relaxed));
+        self.recipe_book
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .write_nbt(nbt);
         nbt.put_compound(
             "warden_spawn_tracker",
             self.warden_spawn_tracker
@@ -8404,6 +8414,18 @@ impl EntityBase for Player {
             nbt.get_bool("seenCredits").unwrap_or(false),
             Ordering::Relaxed,
         );
+        let dynamic_recipes = self
+            .world()
+            .server
+            .upgrade()
+            .map(|server| server.recipe_manager.get_dynamic_recipes_internal())
+            .unwrap_or_default();
+        self.recipe_book
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .read_nbt(nbt, |id| {
+                recipe_book::is_learnable_recipe(id, &dynamic_recipes)
+            });
         *self
             .warden_spawn_tracker
             .lock()
@@ -9551,21 +9573,31 @@ impl InventoryPlayer for Player {
         );
     }
 
-    fn on_recipe_crafted(&self, item: &pumpkin_data::item_stack::ItemStack) {
-        let key = item.item.registry_key.to_string();
+    /// `RecipeCraftingHolder.awardUsedRecipes`: `recipe_crafted`, then the recipe joins the
+    /// recipe book.
+    fn on_recipe_crafted(
+        &self,
+        item: &pumpkin_data::item_stack::ItemStack,
+        recipe_id: Option<&str>,
+    ) {
         self.trigger_advancement(
             crate::entity::player::advancement::trigger::AdvancementTrigger::RecipeCrafted {
-                recipe_id: format!("minecraft:{key}"),
+                recipe_id: recipe_id.map_or_else(
+                    || format!("minecraft:{}", item.item.registry_key),
+                    str::to_string,
+                ),
             },
         );
-        self.trigger_advancement(
-            crate::entity::player::advancement::trigger::AdvancementTrigger::RecipeUnlocked {
-                recipe_id: format!("minecraft:{key}"),
-            },
-        );
+        if let Some(recipe_id) = recipe_id {
+            Self::award_recipes(self, &[recipe_id]);
+        }
         self.trigger_advancement(
             crate::entity::player::advancement::trigger::AdvancementTrigger::InventoryChanged,
         );
+    }
+
+    fn award_recipes(&self, recipe_ids: &[String]) {
+        Self::award_recipes(self, recipe_ids);
     }
 
     fn on_brewed_potion(&self) {

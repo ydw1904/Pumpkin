@@ -235,7 +235,10 @@ pub trait InventoryPlayer: Send + Sync {
     fn on_enchanted_item(&self, _levels: i32) {}
 
     /// Called when the player takes a crafted item from a crafting result slot.
-    fn on_recipe_crafted(&self, _item: &ItemStack) {}
+    fn on_recipe_crafted(&self, _item: &ItemStack, _recipe_id: Option<&str>) {}
+
+    /// `Player.awardRecipes`: adds the recipes to the player's recipe book.
+    fn award_recipes(&self, _recipe_ids: &[String]) {}
 
     /// Called when the player takes a brewed potion from a brewing stand potion slot.
     fn on_brewed_potion(&self) {}

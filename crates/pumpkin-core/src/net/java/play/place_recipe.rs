@@ -101,6 +101,19 @@ impl JavaClient {
         let Ok(display_id) = usize::try_from(packet.recipe_display_id.0) else {
             return;
         };
+        // Only recipes in the player's recipe book can be placed.
+        let known = player
+            .recipe_from_display(packet.recipe_display_id.0)
+            .is_some_and(|recipe_id| {
+                player
+                    .recipe_book
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .contains(&recipe_id)
+            });
+        if !known {
+            return;
+        }
         let dynamic_recipes = server.recipe_manager.get_dynamic_recipes_internal();
         let recipe = match BuiltinRecipeDisplay::from_display_id(display_id) {
             Ok(display) => PlacedRecipe::Builtin(display),

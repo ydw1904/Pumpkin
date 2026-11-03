@@ -1236,7 +1236,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_bundle"],
         },
         requirements: &[&["has_the_recipe", "has_black_dye"]],
         criteria: &["has_black_dye", "has_the_recipe"],
@@ -1271,7 +1271,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_bundle"],
         },
         requirements: &[&["has_the_recipe", "has_blue_dye"]],
         criteria: &["has_blue_dye", "has_the_recipe"],
@@ -1306,7 +1306,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brown_bundle"],
         },
         requirements: &[&["has_the_recipe", "has_brown_dye"]],
         criteria: &["has_brown_dye", "has_the_recipe"],
@@ -1341,7 +1341,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brush"],
         },
         requirements: &[&["has_the_recipe", "has_copper_ingot"]],
         criteria: &["has_copper_ingot", "has_the_recipe"],
@@ -1376,7 +1376,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bundle"],
         },
         requirements: &[&["has_the_recipe", "has_string"]],
         criteria: &["has_string", "has_the_recipe"],
@@ -1411,7 +1411,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:clock"],
         },
         requirements: &[&["has_the_recipe", "has_redstone"]],
         criteria: &["has_redstone", "has_the_recipe"],
@@ -1446,7 +1446,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:compass"],
         },
         requirements: &[&["has_the_recipe", "has_redstone"]],
         criteria: &["has_redstone", "has_the_recipe"],
@@ -1481,7 +1481,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_axe"],
         },
         requirements: &[&["has_the_recipe", "has_copper_ingot"]],
         criteria: &["has_copper_ingot", "has_the_recipe"],
@@ -1516,7 +1516,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_hoe"],
         },
         requirements: &[&["has_the_recipe", "has_copper_ingot"]],
         criteria: &["has_copper_ingot", "has_the_recipe"],
@@ -1551,7 +1551,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_pickaxe"],
         },
         requirements: &[&["has_the_recipe", "has_copper_ingot"]],
         criteria: &["has_copper_ingot", "has_the_recipe"],
@@ -1586,7 +1586,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_shovel"],
         },
         requirements: &[&["has_the_recipe", "has_copper_ingot"]],
         criteria: &["has_copper_ingot", "has_the_recipe"],
@@ -1621,7 +1621,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cyan_bundle"],
         },
         requirements: &[&["has_the_recipe", "has_cyan_dye"]],
         criteria: &["has_cyan_dye", "has_the_recipe"],
@@ -1656,7 +1656,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diamond_axe"],
         },
         requirements: &[&["has_the_recipe", "has_diamond"]],
         criteria: &["has_diamond", "has_the_recipe"],
@@ -1691,7 +1691,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diamond_hoe"],
         },
         requirements: &[&["has_the_recipe", "has_diamond"]],
         criteria: &["has_diamond", "has_the_recipe"],
@@ -1726,7 +1726,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diamond_pickaxe"],
         },
         requirements: &[&["has_the_recipe", "has_diamond"]],
         criteria: &["has_diamond", "has_the_recipe"],
@@ -1761,7 +1761,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diamond_shovel"],
         },
         requirements: &[&["has_the_recipe", "has_diamond"]],
         criteria: &["has_diamond", "has_the_recipe"],
@@ -1796,7 +1796,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:fishing_rod"],
         },
         requirements: &[&["has_the_recipe", "has_string"]],
         criteria: &["has_string", "has_the_recipe"],
@@ -1831,7 +1831,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:flint_and_steel"],
         },
         requirements: &[&["has_the_recipe", "has_flint", "has_obsidian"]],
         criteria: &["has_flint", "has_obsidian", "has_the_recipe"],
@@ -1882,7 +1882,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:golden_axe"],
         },
         requirements: &[&["has_the_recipe", "has_gold_ingot"]],
         criteria: &["has_gold_ingot", "has_the_recipe"],
@@ -1917,7 +1917,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:golden_hoe"],
         },
         requirements: &[&["has_the_recipe", "has_gold_ingot"]],
         criteria: &["has_gold_ingot", "has_the_recipe"],
@@ -1952,7 +1952,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:golden_pickaxe"],
         },
         requirements: &[&["has_the_recipe", "has_gold_ingot"]],
         criteria: &["has_gold_ingot", "has_the_recipe"],
@@ -1987,7 +1987,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:golden_shovel"],
         },
         requirements: &[&["has_the_recipe", "has_gold_ingot"]],
         criteria: &["has_gold_ingot", "has_the_recipe"],
@@ -2022,7 +2022,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gray_bundle"],
         },
         requirements: &[&["has_the_recipe", "has_gray_dye"]],
         criteria: &["has_gray_dye", "has_the_recipe"],
@@ -2057,7 +2057,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:green_bundle"],
         },
         requirements: &[&["has_the_recipe", "has_green_dye"]],
         criteria: &["has_green_dye", "has_the_recipe"],
@@ -2092,7 +2092,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_axe"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -2127,7 +2127,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_hoe"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -2162,7 +2162,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_pickaxe"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -2197,7 +2197,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_shovel"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -2232,7 +2232,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lead"],
         },
         requirements: &[&["has_the_recipe", "has_string"]],
         criteria: &["has_string", "has_the_recipe"],
@@ -2267,7 +2267,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_blue_bundle"],
         },
         requirements: &[&["has_the_recipe", "has_light_blue_dye"]],
         criteria: &["has_light_blue_dye", "has_the_recipe"],
@@ -2302,7 +2302,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_bundle"],
         },
         requirements: &[&["has_the_recipe", "has_light_gray_dye"]],
         criteria: &["has_light_gray_dye", "has_the_recipe"],
@@ -2337,7 +2337,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lime_bundle"],
         },
         requirements: &[&["has_the_recipe", "has_lime_dye"]],
         criteria: &["has_lime_dye", "has_the_recipe"],
@@ -2372,7 +2372,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_bundle"],
         },
         requirements: &[&["has_the_recipe", "has_magenta_dye"]],
         criteria: &["has_magenta_dye", "has_the_recipe"],
@@ -2407,7 +2407,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:name_tag"],
         },
         requirements: &[&[
             "has_the_recipe",
@@ -2484,7 +2484,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:netherite_axe_smithing"],
         },
         requirements: &[&["has_the_recipe", "has_netherite_ingot"]],
         criteria: &["has_netherite_ingot", "has_the_recipe"],
@@ -2521,7 +2521,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:netherite_hoe_smithing"],
         },
         requirements: &[&["has_the_recipe", "has_netherite_ingot"]],
         criteria: &["has_netherite_ingot", "has_the_recipe"],
@@ -2558,7 +2558,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:netherite_pickaxe_smithing"],
         },
         requirements: &[&["has_the_recipe", "has_netherite_ingot"]],
         criteria: &["has_netherite_ingot", "has_the_recipe"],
@@ -2595,7 +2595,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:netherite_shovel_smithing"],
         },
         requirements: &[&["has_the_recipe", "has_netherite_ingot"]],
         criteria: &["has_netherite_ingot", "has_the_recipe"],
@@ -2632,7 +2632,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_bundle"],
         },
         requirements: &[&["has_the_recipe", "has_orange_dye"]],
         criteria: &["has_orange_dye", "has_the_recipe"],
@@ -2667,7 +2667,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_bundle"],
         },
         requirements: &[&["has_the_recipe", "has_pink_dye"]],
         criteria: &["has_pink_dye", "has_the_recipe"],
@@ -2702,7 +2702,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_bundle"],
         },
         requirements: &[&["has_the_recipe", "has_purple_dye"]],
         criteria: &["has_purple_dye", "has_the_recipe"],
@@ -2737,7 +2737,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:recovery_compass"],
         },
         requirements: &[&["has_the_recipe", "has_echo_shard"]],
         criteria: &["has_echo_shard", "has_the_recipe"],
@@ -2772,7 +2772,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_bundle"],
         },
         requirements: &[&["has_the_recipe", "has_red_dye"]],
         criteria: &["has_red_dye", "has_the_recipe"],
@@ -2807,7 +2807,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:shears"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -2842,7 +2842,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:spyglass"],
         },
         requirements: &[&["has_the_recipe", "has_amethyst_shard"]],
         criteria: &["has_amethyst_shard", "has_the_recipe"],
@@ -2877,7 +2877,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_axe"],
         },
         requirements: &[&["has_the_recipe", "has_cobblestone"]],
         criteria: &["has_cobblestone", "has_the_recipe"],
@@ -2912,7 +2912,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_hoe"],
         },
         requirements: &[&["has_the_recipe", "has_cobblestone"]],
         criteria: &["has_cobblestone", "has_the_recipe"],
@@ -2947,7 +2947,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_pickaxe"],
         },
         requirements: &[&["has_the_recipe", "has_cobblestone"]],
         criteria: &["has_cobblestone", "has_the_recipe"],
@@ -2982,7 +2982,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_shovel"],
         },
         requirements: &[&["has_the_recipe", "has_cobblestone"]],
         criteria: &["has_cobblestone", "has_the_recipe"],
@@ -3017,7 +3017,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_bundle"],
         },
         requirements: &[&["has_the_recipe", "has_white_dye"]],
         criteria: &["has_the_recipe", "has_white_dye"],
@@ -3052,7 +3052,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:wooden_axe"],
         },
         requirements: &[&["has_the_recipe", "has_stick"]],
         criteria: &["has_stick", "has_the_recipe"],
@@ -3087,7 +3087,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:wooden_hoe"],
         },
         requirements: &[&["has_the_recipe", "has_stick"]],
         criteria: &["has_stick", "has_the_recipe"],
@@ -3122,7 +3122,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:wooden_pickaxe"],
         },
         requirements: &[&["has_the_recipe", "has_stick"]],
         criteria: &["has_stick", "has_the_recipe"],
@@ -3157,7 +3157,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:wooden_shovel"],
         },
         requirements: &[&["has_the_recipe", "has_stick"]],
         criteria: &["has_stick", "has_the_recipe"],
@@ -3192,7 +3192,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_bundle"],
         },
         requirements: &[&["has_the_recipe", "has_yellow_dye"]],
         criteria: &["has_the_recipe", "has_yellow_dye"],
@@ -3227,7 +3227,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:acacia_boat"],
         },
         requirements: &[&["has_the_recipe", "in_water"]],
         criteria: &["has_the_recipe", "in_water"],
@@ -3251,7 +3251,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:acacia_chest_boat"],
         },
         requirements: &[&["has_the_recipe", "has_boat"]],
         criteria: &["has_boat", "has_the_recipe"],
@@ -3286,7 +3286,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:activator_rail"],
         },
         requirements: &[&["has_the_recipe", "has_rail"]],
         criteria: &["has_rail", "has_the_recipe"],
@@ -3321,7 +3321,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bamboo_chest_raft"],
         },
         requirements: &[&["has_the_recipe", "has_boat"]],
         criteria: &["has_boat", "has_the_recipe"],
@@ -3356,7 +3356,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bamboo_raft"],
         },
         requirements: &[&["has_the_recipe", "in_water"]],
         criteria: &["has_the_recipe", "in_water"],
@@ -3380,7 +3380,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:birch_boat"],
         },
         requirements: &[&["has_the_recipe", "in_water"]],
         criteria: &["has_the_recipe", "in_water"],
@@ -3404,7 +3404,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:birch_chest_boat"],
         },
         requirements: &[&["has_the_recipe", "has_boat"]],
         criteria: &["has_boat", "has_the_recipe"],
@@ -3439,7 +3439,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:carrot_on_a_stick"],
         },
         requirements: &[&["has_the_recipe", "has_carrot"]],
         criteria: &["has_carrot", "has_the_recipe"],
@@ -3474,7 +3474,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cherry_boat"],
         },
         requirements: &[&["has_the_recipe", "in_water"]],
         criteria: &["has_the_recipe", "in_water"],
@@ -3498,7 +3498,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cherry_chest_boat"],
         },
         requirements: &[&["has_the_recipe", "has_boat"]],
         criteria: &["has_boat", "has_the_recipe"],
@@ -3533,7 +3533,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chest_minecart"],
         },
         requirements: &[&["has_the_recipe", "has_minecart"]],
         criteria: &["has_minecart", "has_the_recipe"],
@@ -3568,7 +3568,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dark_oak_boat"],
         },
         requirements: &[&["has_the_recipe", "in_water"]],
         criteria: &["has_the_recipe", "in_water"],
@@ -3592,7 +3592,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dark_oak_chest_boat"],
         },
         requirements: &[&["has_the_recipe", "has_boat"]],
         criteria: &["has_boat", "has_the_recipe"],
@@ -3627,7 +3627,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:detector_rail"],
         },
         requirements: &[&["has_the_recipe", "has_rail"]],
         criteria: &["has_rail", "has_the_recipe"],
@@ -3662,7 +3662,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:furnace_minecart"],
         },
         requirements: &[&["has_the_recipe", "has_minecart"]],
         criteria: &["has_minecart", "has_the_recipe"],
@@ -3697,7 +3697,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:hopper_minecart"],
         },
         requirements: &[&["has_the_recipe", "has_minecart"]],
         criteria: &["has_minecart", "has_the_recipe"],
@@ -3732,7 +3732,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:jungle_boat"],
         },
         requirements: &[&["has_the_recipe", "in_water"]],
         criteria: &["has_the_recipe", "in_water"],
@@ -3756,7 +3756,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:jungle_chest_boat"],
         },
         requirements: &[&["has_the_recipe", "has_boat"]],
         criteria: &["has_boat", "has_the_recipe"],
@@ -3791,7 +3791,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mangrove_boat"],
         },
         requirements: &[&["has_the_recipe", "in_water"]],
         criteria: &["has_the_recipe", "in_water"],
@@ -3815,7 +3815,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mangrove_chest_boat"],
         },
         requirements: &[&["has_the_recipe", "has_boat"]],
         criteria: &["has_boat", "has_the_recipe"],
@@ -3850,7 +3850,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:minecart"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -3885,7 +3885,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oak_boat"],
         },
         requirements: &[&["has_the_recipe", "in_water"]],
         criteria: &["has_the_recipe", "in_water"],
@@ -3909,7 +3909,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oak_chest_boat"],
         },
         requirements: &[&["has_the_recipe", "has_boat"]],
         criteria: &["has_boat", "has_the_recipe"],
@@ -3944,7 +3944,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pale_oak_boat"],
         },
         requirements: &[&["has_the_recipe", "in_water"]],
         criteria: &["has_the_recipe", "in_water"],
@@ -3968,7 +3968,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pale_oak_chest_boat"],
         },
         requirements: &[&["has_the_recipe", "has_boat"]],
         criteria: &["has_boat", "has_the_recipe"],
@@ -4003,7 +4003,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:poplar_boat"],
         },
         requirements: &[&["has_the_recipe", "in_water"]],
         criteria: &["has_the_recipe", "in_water"],
@@ -4027,7 +4027,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:poplar_chest_boat"],
         },
         requirements: &[&["has_the_recipe", "has_boat"]],
         criteria: &["has_boat", "has_the_recipe"],
@@ -4062,7 +4062,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:powered_rail"],
         },
         requirements: &[&["has_the_recipe", "has_rail"]],
         criteria: &["has_rail", "has_the_recipe"],
@@ -4097,7 +4097,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:rail"],
         },
         requirements: &[&["has_the_recipe", "has_minecart"]],
         criteria: &["has_minecart", "has_the_recipe"],
@@ -4132,7 +4132,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:spruce_boat"],
         },
         requirements: &[&["has_the_recipe", "in_water"]],
         criteria: &["has_the_recipe", "in_water"],
@@ -4156,7 +4156,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:spruce_chest_boat"],
         },
         requirements: &[&["has_the_recipe", "has_boat"]],
         criteria: &["has_boat", "has_the_recipe"],
@@ -4191,7 +4191,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tnt_minecart"],
         },
         requirements: &[&["has_the_recipe", "has_minecart"]],
         criteria: &["has_minecart", "has_the_recipe"],
@@ -4226,7 +4226,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:warped_fungus_on_a_stick"],
         },
         requirements: &[&["has_the_recipe", "has_warped_fungus"]],
         criteria: &["has_the_recipe", "has_warped_fungus"],
@@ -9734,7 +9734,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blaze_powder"],
         },
         requirements: &[&["has_the_recipe", "has_blaze_rod"]],
         criteria: &["has_blaze_rod", "has_the_recipe"],
@@ -9769,7 +9769,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brewing_stand"],
         },
         requirements: &[&["has_the_recipe", "has_blaze_rod"]],
         criteria: &["has_blaze_rod", "has_the_recipe"],
@@ -9804,7 +9804,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cauldron"],
         },
         requirements: &[&["has_the_recipe", "has_water_bucket"]],
         criteria: &["has_the_recipe", "has_water_bucket"],
@@ -9839,7 +9839,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:fermented_spider_eye"],
         },
         requirements: &[&["has_the_recipe", "has_spider_eye"]],
         criteria: &["has_spider_eye", "has_the_recipe"],
@@ -9874,7 +9874,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:glass_bottle"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -9909,7 +9909,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:glistering_melon_slice"],
         },
         requirements: &[&["has_the_recipe", "has_melon"]],
         criteria: &["has_melon", "has_the_recipe"],
@@ -9946,7 +9946,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:golden_carrot"],
         },
         requirements: &[&["has_the_recipe", "has_gold_nugget"]],
         criteria: &["has_gold_nugget", "has_the_recipe"],
@@ -9981,7 +9981,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magma_cream"],
         },
         requirements: &[&["has_the_recipe", "has_blaze_powder"]],
         criteria: &["has_blaze_powder", "has_the_recipe"],
@@ -10016,7 +10016,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:acacia_planks"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -10051,7 +10051,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:acacia_slab"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -10086,7 +10086,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:acacia_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -10121,7 +10121,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:acacia_wood"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -10156,7 +10156,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:amethyst_block"],
         },
         requirements: &[&["has_the_recipe", "has_amethyst_shard"]],
         criteria: &["has_amethyst_shard", "has_the_recipe"],
@@ -10191,7 +10191,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:andesite"],
         },
         requirements: &[&["has_the_recipe", "has_stone"]],
         criteria: &["has_stone", "has_the_recipe"],
@@ -10226,7 +10226,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:andesite_slab"],
         },
         requirements: &[&["has_the_recipe", "has_andesite"]],
         criteria: &["has_andesite", "has_the_recipe"],
@@ -10263,7 +10263,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:andesite_slab_from_andesite_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_andesite"]],
         criteria: &["has_andesite", "has_the_recipe"],
@@ -10300,7 +10300,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:andesite_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_andesite"]],
         criteria: &["has_andesite", "has_the_recipe"],
@@ -10337,7 +10337,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:andesite_stairs_from_andesite_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_andesite"]],
         criteria: &["has_andesite", "has_the_recipe"],
@@ -10374,7 +10374,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bamboo_block"],
         },
         requirements: &[&["has_the_recipe", "has_bamboo"]],
         criteria: &["has_bamboo", "has_the_recipe"],
@@ -10409,7 +10409,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bamboo_mosaic_slab"],
         },
         requirements: &[&["has_the_recipe", "has_bamboo_mosaic"]],
         criteria: &["has_bamboo_mosaic", "has_the_recipe"],
@@ -10444,7 +10444,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bamboo_mosaic_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_bamboo_mosaic"]],
         criteria: &["has_bamboo_mosaic", "has_the_recipe"],
@@ -10479,7 +10479,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bamboo_planks"],
         },
         requirements: &[&["has_the_recipe", "has_logs"]],
         criteria: &["has_logs", "has_the_recipe"],
@@ -10514,7 +10514,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bamboo_slab"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -10549,7 +10549,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bamboo_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -10584,7 +10584,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:birch_planks"],
         },
         requirements: &[&["has_the_recipe", "has_logs"]],
         criteria: &["has_logs", "has_the_recipe"],
@@ -10619,7 +10619,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:birch_slab"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -10654,7 +10654,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:birch_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -10689,7 +10689,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:birch_wood"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -10724,7 +10724,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_concrete_powder"],
         },
         requirements: &[&["has_the_recipe", "has_sand", "has_gravel"]],
         criteria: &["has_gravel", "has_sand", "has_the_recipe"],
@@ -10775,7 +10775,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_concrete_slab"],
         },
         requirements: &[&["has_the_recipe", "has_black_concrete"]],
         criteria: &["has_black_concrete", "has_the_recipe"],
@@ -10813,7 +10813,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:black_concrete_slab_from_black_concrete_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_black_concrete"]],
             criteria: &["has_black_concrete", "has_the_recipe"],
@@ -10852,7 +10852,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_concrete_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_black_concrete"]],
         criteria: &["has_black_concrete", "has_the_recipe"],
@@ -10890,7 +10890,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_concrete_stairs_from_black_concrete_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_black_concrete"]],
         criteria: &["has_black_concrete", "has_the_recipe"],
@@ -10927,7 +10927,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_stained_glass"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -10962,7 +10962,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_terracotta"]],
         criteria: &["has_terracotta", "has_the_recipe"],
@@ -10997,7 +10997,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_black_wool"]],
         criteria: &["has_black_wool", "has_the_recipe"],
@@ -11032,7 +11032,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_black_wool"]],
         criteria: &["has_black_wool", "has_the_recipe"],
@@ -11067,7 +11067,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blackstone_slab"],
         },
         requirements: &[&["has_the_recipe", "has_blackstone"]],
         criteria: &["has_blackstone", "has_the_recipe"],
@@ -11104,7 +11104,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blackstone_slab_from_blackstone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_blackstone"]],
         criteria: &["has_blackstone", "has_the_recipe"],
@@ -11141,7 +11141,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blackstone_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_blackstone"]],
         criteria: &["has_blackstone", "has_the_recipe"],
@@ -11179,7 +11179,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:blackstone_stairs_from_blackstone_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_blackstone"]],
             criteria: &["has_blackstone", "has_the_recipe"],
@@ -11218,7 +11218,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_concrete_powder"],
         },
         requirements: &[&["has_the_recipe", "has_sand", "has_gravel"]],
         criteria: &["has_gravel", "has_sand", "has_the_recipe"],
@@ -11269,7 +11269,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_concrete_slab"],
         },
         requirements: &[&["has_the_recipe", "has_blue_concrete"]],
         criteria: &["has_blue_concrete", "has_the_recipe"],
@@ -11307,7 +11307,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:blue_concrete_slab_from_blue_concrete_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_blue_concrete"]],
             criteria: &["has_blue_concrete", "has_the_recipe"],
@@ -11346,7 +11346,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_concrete_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_blue_concrete"]],
         criteria: &["has_blue_concrete", "has_the_recipe"],
@@ -11384,7 +11384,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:blue_concrete_stairs_from_blue_concrete_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_blue_concrete"]],
             criteria: &["has_blue_concrete", "has_the_recipe"],
@@ -11423,7 +11423,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_ice"],
         },
         requirements: &[&["has_the_recipe", "has_packed_ice"]],
         criteria: &["has_packed_ice", "has_the_recipe"],
@@ -11458,7 +11458,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_stained_glass"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -11493,7 +11493,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_terracotta"]],
         criteria: &["has_terracotta", "has_the_recipe"],
@@ -11528,7 +11528,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_blue_wool"]],
         criteria: &["has_blue_wool", "has_the_recipe"],
@@ -11563,7 +11563,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_blue_wool"]],
         criteria: &["has_blue_wool", "has_the_recipe"],
@@ -11598,7 +11598,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bone_block"],
         },
         requirements: &[&["has_the_recipe", "has_bone_meal"]],
         criteria: &["has_bone_meal", "has_the_recipe"],
@@ -11633,7 +11633,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bookshelf"],
         },
         requirements: &[&["has_the_recipe", "has_book"]],
         criteria: &["has_book", "has_the_recipe"],
@@ -11668,7 +11668,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brick_slab"],
         },
         requirements: &[&["has_the_recipe", "has_bricks"]],
         criteria: &["has_bricks", "has_the_recipe"],
@@ -11705,7 +11705,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brick_slab_from_bricks_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_bricks"]],
         criteria: &["has_bricks", "has_the_recipe"],
@@ -11742,7 +11742,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brick_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_bricks"]],
         criteria: &["has_bricks", "has_the_recipe"],
@@ -11779,7 +11779,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brick_stairs_from_bricks_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_bricks"]],
         criteria: &["has_bricks", "has_the_recipe"],
@@ -11816,7 +11816,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bricks"],
         },
         requirements: &[&["has_the_recipe", "has_brick"]],
         criteria: &["has_brick", "has_the_recipe"],
@@ -11851,7 +11851,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brown_concrete_powder"],
         },
         requirements: &[&["has_the_recipe", "has_sand", "has_gravel"]],
         criteria: &["has_gravel", "has_sand", "has_the_recipe"],
@@ -11902,7 +11902,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brown_concrete_slab"],
         },
         requirements: &[&["has_the_recipe", "has_brown_concrete"]],
         criteria: &["has_brown_concrete", "has_the_recipe"],
@@ -11940,7 +11940,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:brown_concrete_slab_from_brown_concrete_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_brown_concrete"]],
             criteria: &["has_brown_concrete", "has_the_recipe"],
@@ -11979,7 +11979,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brown_concrete_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_brown_concrete"]],
         criteria: &["has_brown_concrete", "has_the_recipe"],
@@ -12017,7 +12017,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brown_concrete_stairs_from_brown_concrete_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_brown_concrete"]],
         criteria: &["has_brown_concrete", "has_the_recipe"],
@@ -12054,7 +12054,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brown_stained_glass"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -12089,7 +12089,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brown_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_terracotta"]],
         criteria: &["has_terracotta", "has_the_recipe"],
@@ -12124,7 +12124,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brown_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_brown_wool"]],
         criteria: &["has_brown_wool", "has_the_recipe"],
@@ -12159,7 +12159,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brown_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_brown_wool"]],
         criteria: &["has_brown_wool", "has_the_recipe"],
@@ -12194,7 +12194,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cherry_planks"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -12229,7 +12229,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cherry_slab"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -12264,7 +12264,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cherry_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -12299,7 +12299,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cherry_wood"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -12334,7 +12334,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_bookshelf"],
         },
         requirements: &[&["has_the_recipe", "has_book"]],
         criteria: &["has_book", "has_the_recipe"],
@@ -12369,7 +12369,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_cinnabar"],
         },
         requirements: &[&["has_the_recipe", "has_slab"]],
         criteria: &["has_slab", "has_the_recipe"],
@@ -12406,7 +12406,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_cinnabar_from_cinnabar_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cinnabar"]],
         criteria: &["has_cinnabar", "has_the_recipe"],
@@ -12443,7 +12443,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_copper"],
         },
         requirements: &[&["has_the_recipe", "has_slab"]],
         criteria: &["has_slab", "has_the_recipe"],
@@ -12481,7 +12481,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:chiseled_copper_from_copper_block_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_copper_block"]],
             criteria: &["has_copper_block", "has_the_recipe"],
@@ -12522,7 +12522,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_copper_from_cut_copper_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cut_copper"]],
         criteria: &["has_cut_copper", "has_the_recipe"],
@@ -12559,7 +12559,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_deepslate"],
         },
         requirements: &[&["has_the_recipe", "has_slab"]],
         criteria: &["has_slab", "has_the_recipe"],
@@ -12597,7 +12597,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_deepslate_from_cobbled_deepslate_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cobbled_deepslate"]],
         criteria: &["has_cobbled_deepslate", "has_the_recipe"],
@@ -12637,7 +12637,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:chiseled_deepslate_from_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_deepslate"]],
             criteria: &["has_deepslate", "has_the_recipe"],
@@ -12676,7 +12676,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_nether_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_slab"]],
         criteria: &["has_slab", "has_the_recipe"],
@@ -12716,7 +12716,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_nether_bricks_from_nether_bricks_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_nether_bricks"]],
         criteria: &["has_nether_bricks", "has_the_recipe"],
@@ -12753,7 +12753,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_polished_blackstone"],
         },
         requirements: &[&["has_the_recipe", "has_slab"]],
         criteria: &["has_slab", "has_the_recipe"],
@@ -12793,7 +12793,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_polished_blackstone_from_blackstone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_blackstone"]],
         criteria: &["has_blackstone", "has_the_recipe"],
@@ -12823,7 +12823,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_CHISELED_POLISHED_BLACKSTONE_FROM_POLISHED_BLACKSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/chiseled_polished_blackstone_from_polished_blackstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_polished_blackstone"]] , criteria : & ["has_polished_blackstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_blackstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_blackstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:chiseled_polished_blackstone_from_polished_blackstone_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_CHISELED_POLISHED_BLACKSTONE_FROM_POLISHED_BLACKSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/chiseled_polished_blackstone_from_polished_blackstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:chiseled_polished_blackstone_from_polished_blackstone_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_polished_blackstone"]] , criteria : & ["has_polished_blackstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_blackstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_blackstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:chiseled_polished_blackstone_from_polished_blackstone_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_CHISELED_QUARTZ_BLOCK: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/chiseled_quartz_block"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -12831,7 +12831,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_quartz_block"],
         },
         requirements: &[&[
             "has_the_recipe",
@@ -12911,7 +12911,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:chiseled_quartz_block_from_quartz_block_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_quartz_block"]],
             criteria: &["has_quartz_block", "has_the_recipe"],
@@ -12950,7 +12950,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_red_sandstone"],
         },
         requirements: &[&[
             "has_the_recipe",
@@ -13032,7 +13032,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_red_sandstone_from_red_sandstone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_red_sandstone"]],
         criteria: &["has_red_sandstone", "has_the_recipe"],
@@ -13069,7 +13069,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_resin_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_slab"]],
         criteria: &["has_slab", "has_the_recipe"],
@@ -13107,7 +13107,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:chiseled_resin_bricks_from_resin_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_resin_bricks"]],
             criteria: &["has_resin_bricks", "has_the_recipe"],
@@ -13146,7 +13146,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_sandstone"],
         },
         requirements: &[&["has_the_recipe", "has_sandstone_slab"]],
         criteria: &["has_sandstone_slab", "has_the_recipe"],
@@ -13184,7 +13184,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:chiseled_sandstone_from_sandstone_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_sandstone"]],
             criteria: &["has_sandstone", "has_the_recipe"],
@@ -13223,7 +13223,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_stone_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_tag"]],
         criteria: &["has_tag", "has_the_recipe"],
@@ -13261,7 +13261,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:chiseled_stone_bricks_from_stone_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_stone_bricks"]],
             criteria: &["has_stone_bricks", "has_the_recipe"],
@@ -13303,7 +13303,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:chiseled_stone_bricks_from_stone_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_stone"]],
             criteria: &["has_stone", "has_the_recipe"],
@@ -13342,7 +13342,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_sulfur"],
         },
         requirements: &[&["has_the_recipe", "has_slab"]],
         criteria: &["has_slab", "has_the_recipe"],
@@ -13379,7 +13379,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_sulfur_from_sulfur_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_sulfur"]],
         criteria: &["has_sulfur", "has_the_recipe"],
@@ -13416,7 +13416,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_tuff"],
         },
         requirements: &[&["has_the_recipe", "has_slab"]],
         criteria: &["has_slab", "has_the_recipe"],
@@ -13451,7 +13451,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_tuff_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_slab"]],
         criteria: &["has_slab", "has_the_recipe"],
@@ -13489,7 +13489,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:chiseled_tuff_bricks_from_polished_tuff_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_polished_tuff"]],
             criteria: &["has_polished_tuff", "has_the_recipe"],
@@ -13531,7 +13531,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:chiseled_tuff_bricks_from_tuff_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_tuff_bricks"]],
             criteria: &["has_the_recipe", "has_tuff_bricks"],
@@ -13572,7 +13572,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_tuff_bricks_from_tuff_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_tuff"]],
         criteria: &["has_the_recipe", "has_tuff"],
@@ -13611,7 +13611,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chiseled_tuff_from_tuff_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_tuff"]],
         criteria: &["has_the_recipe", "has_tuff"],
@@ -13648,7 +13648,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cinnabar_brick_slab"],
         },
         requirements: &[&["has_the_recipe", "has_cinnabar_bricks"]],
         criteria: &["has_cinnabar_bricks", "has_the_recipe"],
@@ -13686,7 +13686,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:cinnabar_brick_slab_from_cinnabar_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_cinnabar_bricks"]],
             criteria: &["has_cinnabar_bricks", "has_the_recipe"],
@@ -13728,7 +13728,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:cinnabar_brick_slab_from_cinnabar_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_cinnabar"]],
             criteria: &["has_cinnabar", "has_the_recipe"],
@@ -13770,7 +13770,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cinnabar_brick_slab_from_polished_cinnabar_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_polished_cinnabar"]],
         criteria: &["has_polished_cinnabar", "has_the_recipe"],
@@ -13807,7 +13807,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cinnabar_brick_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_cinnabar_bricks"]],
         criteria: &["has_cinnabar_bricks", "has_the_recipe"],
@@ -13845,7 +13845,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cinnabar_brick_stairs_from_cinnabar_bricks_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cinnabar_bricks"]],
         criteria: &["has_cinnabar_bricks", "has_the_recipe"],
@@ -13885,7 +13885,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:cinnabar_brick_stairs_from_cinnabar_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_cinnabar"]],
             criteria: &["has_cinnabar", "has_the_recipe"],
@@ -13927,7 +13927,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cinnabar_brick_stairs_from_polished_cinnabar_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_polished_cinnabar"]],
         criteria: &["has_polished_cinnabar", "has_the_recipe"],
@@ -13964,7 +13964,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cinnabar_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_polished_cinnabar"]],
         criteria: &["has_polished_cinnabar", "has_the_recipe"],
@@ -14001,7 +14001,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cinnabar_bricks_from_cinnabar_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cinnabar"]],
         criteria: &["has_cinnabar", "has_the_recipe"],
@@ -14041,7 +14041,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:cinnabar_bricks_from_polished_cinnabar_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_polished_cinnabar"]],
             criteria: &["has_polished_cinnabar", "has_the_recipe"],
@@ -14080,7 +14080,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cinnabar_slab"],
         },
         requirements: &[&["has_the_recipe", "has_cinnabar"]],
         criteria: &["has_cinnabar", "has_the_recipe"],
@@ -14117,7 +14117,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cinnabar_slab_from_cinnabar_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cinnabar"]],
         criteria: &["has_cinnabar", "has_the_recipe"],
@@ -14154,7 +14154,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cinnabar_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_cinnabar"]],
         criteria: &["has_cinnabar", "has_the_recipe"],
@@ -14191,7 +14191,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cinnabar_stairs_from_cinnabar_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cinnabar"]],
         criteria: &["has_cinnabar", "has_the_recipe"],
@@ -14228,7 +14228,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:clay"],
         },
         requirements: &[&["has_the_recipe", "has_clay_ball"]],
         criteria: &["has_clay_ball", "has_the_recipe"],
@@ -14263,7 +14263,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:coal_block"],
         },
         requirements: &[&["has_the_recipe", "has_coal"]],
         criteria: &["has_coal", "has_the_recipe"],
@@ -14298,7 +14298,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:coarse_dirt"],
         },
         requirements: &[&["has_the_recipe", "has_gravel"]],
         criteria: &["has_gravel", "has_the_recipe"],
@@ -14336,7 +14336,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:cobbled_deepslate_from_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_deepslate"]],
             criteria: &["has_deepslate", "has_the_recipe"],
@@ -14375,7 +14375,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cobbled_deepslate_slab"],
         },
         requirements: &[&["has_the_recipe", "has_cobbled_deepslate"]],
         criteria: &["has_cobbled_deepslate", "has_the_recipe"],
@@ -14415,7 +14415,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cobbled_deepslate_slab_from_cobbled_deepslate_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cobbled_deepslate"]],
         criteria: &["has_cobbled_deepslate", "has_the_recipe"],
@@ -14455,7 +14455,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:cobbled_deepslate_slab_from_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_deepslate"]],
             criteria: &["has_deepslate", "has_the_recipe"],
@@ -14494,7 +14494,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cobbled_deepslate_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_cobbled_deepslate"]],
         criteria: &["has_cobbled_deepslate", "has_the_recipe"],
@@ -14524,7 +14524,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_COBBLED_DEEPSLATE_STAIRS_FROM_COBBLED_DEEPSLATE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/cobbled_deepslate_stairs_from_cobbled_deepslate_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_cobbled_deepslate"]] , criteria : & ["has_cobbled_deepslate" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_cobbled_deepslate" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:cobbled_deepslate"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:cobbled_deepslate_stairs_from_cobbled_deepslate_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_COBBLED_DEEPSLATE_STAIRS_FROM_COBBLED_DEEPSLATE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/cobbled_deepslate_stairs_from_cobbled_deepslate_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:cobbled_deepslate_stairs_from_cobbled_deepslate_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_cobbled_deepslate"]] , criteria : & ["has_cobbled_deepslate" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_cobbled_deepslate" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:cobbled_deepslate"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:cobbled_deepslate_stairs_from_cobbled_deepslate_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_COBBLED_DEEPSLATE_STAIRS_FROM_DEEPSLATE_STONECUTTING: &Self =
         &Self {
             id: Identifier::vanilla_static(
@@ -14535,7 +14535,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:cobbled_deepslate_stairs_from_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_deepslate"]],
             criteria: &["has_deepslate", "has_the_recipe"],
@@ -14576,7 +14576,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cobblestone_from_stone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_stone"]],
         criteria: &["has_stone", "has_the_recipe"],
@@ -14613,7 +14613,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cobblestone_slab"],
         },
         requirements: &[&["has_the_recipe", "has_cobblestone"]],
         criteria: &["has_cobblestone", "has_the_recipe"],
@@ -14651,7 +14651,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:cobblestone_slab_from_cobblestone_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_cobblestone"]],
             criteria: &["has_cobblestone", "has_the_recipe"],
@@ -14692,7 +14692,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cobblestone_slab_from_stone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_stone"]],
         criteria: &["has_stone", "has_the_recipe"],
@@ -14729,7 +14729,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cobblestone_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_cobblestone"]],
         criteria: &["has_cobblestone", "has_the_recipe"],
@@ -14767,7 +14767,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:cobblestone_stairs_from_cobblestone_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_cobblestone"]],
             criteria: &["has_cobblestone", "has_the_recipe"],
@@ -14808,7 +14808,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cobblestone_stairs_from_stone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_stone"]],
         criteria: &["has_stone", "has_the_recipe"],
@@ -14845,7 +14845,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_block"],
         },
         requirements: &[&["has_the_recipe", "has_copper_ingot"]],
         criteria: &["has_copper_ingot", "has_the_recipe"],
@@ -14880,7 +14880,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_grate"],
         },
         requirements: &[&["has_the_recipe", "has_copper_block"]],
         criteria: &["has_copper_block", "has_the_recipe"],
@@ -14917,7 +14917,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_grate_from_copper_block_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_copper_block"]],
         criteria: &["has_copper_block", "has_the_recipe"],
@@ -14954,7 +14954,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cracked_deepslate_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_bricks"]],
         criteria: &["has_deepslate_bricks", "has_the_recipe"],
@@ -14991,7 +14991,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cracked_deepslate_tiles"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_tiles"]],
         criteria: &["has_deepslate_tiles", "has_the_recipe"],
@@ -15028,7 +15028,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cracked_nether_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_nether_bricks"]],
         criteria: &["has_nether_bricks", "has_the_recipe"],
@@ -15065,7 +15065,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cracked_polished_blackstone_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_polished_blackstone_bricks"]],
         criteria: &["has_polished_blackstone_bricks", "has_the_recipe"],
@@ -15102,7 +15102,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cracked_stone_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_stone_bricks"]],
         criteria: &["has_stone_bricks", "has_the_recipe"],
@@ -15137,7 +15137,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:crimson_hyphae"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -15172,7 +15172,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:crimson_planks"],
         },
         requirements: &[&["has_the_recipe", "has_logs"]],
         criteria: &["has_logs", "has_the_recipe"],
@@ -15207,7 +15207,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:crimson_slab"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -15242,7 +15242,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:crimson_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -15277,7 +15277,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cut_copper"],
         },
         requirements: &[&["has_the_recipe", "has_copper_block"]],
         criteria: &["has_copper_block", "has_the_recipe"],
@@ -15314,7 +15314,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cut_copper_from_copper_block_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_copper_block"]],
         criteria: &["has_copper_block", "has_the_recipe"],
@@ -15351,7 +15351,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cut_copper_slab"],
         },
         requirements: &[&["has_the_recipe", "has_cut_copper"]],
         criteria: &["has_cut_copper", "has_the_recipe"],
@@ -15389,7 +15389,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:cut_copper_slab_from_copper_block_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_copper_block"]],
             criteria: &["has_copper_block", "has_the_recipe"],
@@ -15430,7 +15430,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cut_copper_slab_from_cut_copper_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cut_copper"]],
         criteria: &["has_cut_copper", "has_the_recipe"],
@@ -15467,7 +15467,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cut_copper_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_cut_copper"]],
         criteria: &["has_cut_copper", "has_the_recipe"],
@@ -15505,7 +15505,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:cut_copper_stairs_from_copper_block_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_copper_block"]],
             criteria: &["has_copper_block", "has_the_recipe"],
@@ -15547,7 +15547,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:cut_copper_stairs_from_cut_copper_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_cut_copper"]],
             criteria: &["has_cut_copper", "has_the_recipe"],
@@ -15586,7 +15586,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cut_red_sandstone"],
         },
         requirements: &[&["has_the_recipe", "has_red_sandstone"]],
         criteria: &["has_red_sandstone", "has_the_recipe"],
@@ -15624,7 +15624,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:cut_red_sandstone_from_red_sandstone_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_red_sandstone"]],
             criteria: &["has_red_sandstone", "has_the_recipe"],
@@ -15663,7 +15663,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cut_red_sandstone_slab"],
         },
         requirements: &[&["has_the_recipe", "has_cut_red_sandstone"]],
         criteria: &["has_cut_red_sandstone", "has_the_recipe"],
@@ -15703,7 +15703,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cut_red_sandstone_slab_from_cut_red_sandstone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cut_red_sandstone"]],
         criteria: &["has_cut_red_sandstone", "has_the_recipe"],
@@ -15743,7 +15743,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cut_red_sandstone_slab_from_red_sandstone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_red_sandstone"]],
         criteria: &["has_red_sandstone", "has_the_recipe"],
@@ -15780,7 +15780,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cut_sandstone"],
         },
         requirements: &[&["has_the_recipe", "has_sandstone"]],
         criteria: &["has_sandstone", "has_the_recipe"],
@@ -15817,7 +15817,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cut_sandstone_from_sandstone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_sandstone"]],
         criteria: &["has_sandstone", "has_the_recipe"],
@@ -15854,7 +15854,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cut_sandstone_slab"],
         },
         requirements: &[&["has_the_recipe", "has_cut_sandstone"]],
         criteria: &["has_cut_sandstone", "has_the_recipe"],
@@ -15892,7 +15892,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:cut_sandstone_slab_from_cut_sandstone_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_cut_sandstone"]],
             criteria: &["has_cut_sandstone", "has_the_recipe"],
@@ -15934,7 +15934,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:cut_sandstone_slab_from_sandstone_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_sandstone"]],
             criteria: &["has_sandstone", "has_the_recipe"],
@@ -15973,7 +15973,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cyan_concrete_powder"],
         },
         requirements: &[&["has_the_recipe", "has_sand", "has_gravel"]],
         criteria: &["has_gravel", "has_sand", "has_the_recipe"],
@@ -16024,7 +16024,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cyan_concrete_slab"],
         },
         requirements: &[&["has_the_recipe", "has_cyan_concrete"]],
         criteria: &["has_cyan_concrete", "has_the_recipe"],
@@ -16062,7 +16062,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:cyan_concrete_slab_from_cyan_concrete_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_cyan_concrete"]],
             criteria: &["has_cyan_concrete", "has_the_recipe"],
@@ -16101,7 +16101,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cyan_concrete_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_cyan_concrete"]],
         criteria: &["has_cyan_concrete", "has_the_recipe"],
@@ -16139,7 +16139,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:cyan_concrete_stairs_from_cyan_concrete_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_cyan_concrete"]],
             criteria: &["has_cyan_concrete", "has_the_recipe"],
@@ -16178,7 +16178,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cyan_stained_glass"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -16213,7 +16213,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cyan_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_terracotta"]],
         criteria: &["has_terracotta", "has_the_recipe"],
@@ -16248,7 +16248,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cyan_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_cyan_wool"]],
         criteria: &["has_cyan_wool", "has_the_recipe"],
@@ -16283,7 +16283,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cyan_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_cyan_wool"]],
         criteria: &["has_cyan_wool", "has_the_recipe"],
@@ -16318,7 +16318,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dark_oak_planks"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -16353,7 +16353,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dark_oak_slab"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -16388,7 +16388,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dark_oak_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -16423,7 +16423,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dark_oak_wood"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -16458,7 +16458,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dark_prismarine"],
         },
         requirements: &[&["has_the_recipe", "has_prismarine_shard"]],
         criteria: &["has_prismarine_shard", "has_the_recipe"],
@@ -16493,7 +16493,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dark_prismarine_slab"],
         },
         requirements: &[&["has_the_recipe", "has_dark_prismarine"]],
         criteria: &["has_dark_prismarine", "has_the_recipe"],
@@ -16531,7 +16531,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dark_prismarine_slab_from_dark_prismarine_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_dark_prismarine"]],
         criteria: &["has_dark_prismarine", "has_the_recipe"],
@@ -16568,7 +16568,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dark_prismarine_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_dark_prismarine"]],
         criteria: &["has_dark_prismarine", "has_the_recipe"],
@@ -16608,7 +16608,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dark_prismarine_stairs_from_dark_prismarine_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_dark_prismarine"]],
         criteria: &["has_dark_prismarine", "has_the_recipe"],
@@ -16645,7 +16645,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate"],
         },
         requirements: &[&["has_the_recipe", "has_cobbled_deepslate"]],
         criteria: &["has_cobbled_deepslate", "has_the_recipe"],
@@ -16680,7 +16680,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_brick_slab"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_bricks"]],
         criteria: &["has_deepslate_bricks", "has_the_recipe"],
@@ -16718,7 +16718,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_brick_slab_from_cobbled_deepslate_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cobbled_deepslate"]],
         criteria: &["has_cobbled_deepslate", "has_the_recipe"],
@@ -16758,7 +16758,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_brick_slab_from_deepslate_bricks_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_bricks"]],
         criteria: &["has_deepslate_bricks", "has_the_recipe"],
@@ -16798,7 +16798,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:deepslate_brick_slab_from_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_deepslate"]],
             criteria: &["has_deepslate", "has_the_recipe"],
@@ -16840,7 +16840,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_brick_slab_from_polished_deepslate_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_polished_deepslate"]],
         criteria: &["has_polished_deepslate", "has_the_recipe"],
@@ -16877,7 +16877,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_brick_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_bricks"]],
         criteria: &["has_deepslate_bricks", "has_the_recipe"],
@@ -16917,7 +16917,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_brick_stairs_from_cobbled_deepslate_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cobbled_deepslate"]],
         criteria: &["has_cobbled_deepslate", "has_the_recipe"],
@@ -16957,7 +16957,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_brick_stairs_from_deepslate_bricks_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_bricks"]],
         criteria: &["has_deepslate_bricks", "has_the_recipe"],
@@ -16997,7 +16997,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:deepslate_brick_stairs_from_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_deepslate"]],
             criteria: &["has_deepslate", "has_the_recipe"],
@@ -17029,7 +17029,7 @@ impl Advancement {
                 },
             ],
         };
-    pub const RECIPES_BUILDING_BLOCKS_DEEPSLATE_BRICK_STAIRS_FROM_POLISHED_DEEPSLATE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/deepslate_brick_stairs_from_polished_deepslate_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_polished_deepslate"]] , criteria : & ["has_polished_deepslate" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_deepslate" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_deepslate"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:deepslate_brick_stairs_from_polished_deepslate_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_DEEPSLATE_BRICK_STAIRS_FROM_POLISHED_DEEPSLATE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/deepslate_brick_stairs_from_polished_deepslate_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:deepslate_brick_stairs_from_polished_deepslate_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_polished_deepslate"]] , criteria : & ["has_polished_deepslate" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_deepslate" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_deepslate"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:deepslate_brick_stairs_from_polished_deepslate_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_DEEPSLATE_BRICKS: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/deepslate_bricks"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -17037,7 +17037,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_polished_deepslate"]],
         criteria: &["has_polished_deepslate", "has_the_recipe"],
@@ -17075,7 +17075,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:deepslate_bricks_from_cobbled_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_cobbled_deepslate"]],
             criteria: &["has_cobbled_deepslate", "has_the_recipe"],
@@ -17116,7 +17116,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_bricks_from_deepslate_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate"]],
         criteria: &["has_deepslate", "has_the_recipe"],
@@ -17156,7 +17156,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:deepslate_bricks_from_polished_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_polished_deepslate"]],
             criteria: &["has_polished_deepslate", "has_the_recipe"],
@@ -17195,7 +17195,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_tile_slab"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_tiles"]],
         criteria: &["has_deepslate_tiles", "has_the_recipe"],
@@ -17233,7 +17233,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_tile_slab_from_cobbled_deepslate_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cobbled_deepslate"]],
         criteria: &["has_cobbled_deepslate", "has_the_recipe"],
@@ -17273,7 +17273,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_tile_slab_from_deepslate_bricks_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_bricks"]],
         criteria: &["has_deepslate_bricks", "has_the_recipe"],
@@ -17313,7 +17313,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:deepslate_tile_slab_from_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_deepslate"]],
             criteria: &["has_deepslate", "has_the_recipe"],
@@ -17355,7 +17355,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:deepslate_tile_slab_from_deepslate_tiles_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_deepslate_tiles"]],
             criteria: &["has_deepslate_tiles", "has_the_recipe"],
@@ -17397,7 +17397,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_tile_slab_from_polished_deepslate_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_polished_deepslate"]],
         criteria: &["has_polished_deepslate", "has_the_recipe"],
@@ -17434,7 +17434,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_tile_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_tiles"]],
         criteria: &["has_deepslate_tiles", "has_the_recipe"],
@@ -17472,7 +17472,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_tile_stairs_from_cobbled_deepslate_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cobbled_deepslate"]],
         criteria: &["has_cobbled_deepslate", "has_the_recipe"],
@@ -17512,7 +17512,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_tile_stairs_from_deepslate_bricks_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_bricks"]],
         criteria: &["has_deepslate_bricks", "has_the_recipe"],
@@ -17552,7 +17552,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:deepslate_tile_stairs_from_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_deepslate"]],
             criteria: &["has_deepslate", "has_the_recipe"],
@@ -17594,7 +17594,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_tile_stairs_from_deepslate_tiles_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_tiles"]],
         criteria: &["has_deepslate_tiles", "has_the_recipe"],
@@ -17634,7 +17634,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_tile_stairs_from_polished_deepslate_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_polished_deepslate"]],
         criteria: &["has_polished_deepslate", "has_the_recipe"],
@@ -17671,7 +17671,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_tiles"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_bricks"]],
         criteria: &["has_deepslate_bricks", "has_the_recipe"],
@@ -17709,7 +17709,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:deepslate_tiles_from_cobbled_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_cobbled_deepslate"]],
             criteria: &["has_cobbled_deepslate", "has_the_recipe"],
@@ -17751,7 +17751,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:deepslate_tiles_from_deepslate_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_deepslate_bricks"]],
             criteria: &["has_deepslate_bricks", "has_the_recipe"],
@@ -17792,7 +17792,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_tiles_from_deepslate_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate"]],
         criteria: &["has_deepslate", "has_the_recipe"],
@@ -17832,7 +17832,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:deepslate_tiles_from_polished_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_polished_deepslate"]],
             criteria: &["has_polished_deepslate", "has_the_recipe"],
@@ -17871,7 +17871,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diamond_block"],
         },
         requirements: &[&["has_the_recipe", "has_diamond"]],
         criteria: &["has_diamond", "has_the_recipe"],
@@ -17906,7 +17906,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diorite"],
         },
         requirements: &[&["has_the_recipe", "has_quartz"]],
         criteria: &["has_quartz", "has_the_recipe"],
@@ -17941,7 +17941,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diorite_slab"],
         },
         requirements: &[&["has_the_recipe", "has_diorite"]],
         criteria: &["has_diorite", "has_the_recipe"],
@@ -17978,7 +17978,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diorite_slab_from_diorite_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_diorite"]],
         criteria: &["has_diorite", "has_the_recipe"],
@@ -18015,7 +18015,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diorite_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_diorite"]],
         criteria: &["has_diorite", "has_the_recipe"],
@@ -18052,7 +18052,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diorite_stairs_from_diorite_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_diorite"]],
         criteria: &["has_diorite", "has_the_recipe"],
@@ -18089,7 +18089,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dried_ghast"],
         },
         requirements: &[&["has_the_recipe", "has_ghast_tear"]],
         criteria: &["has_ghast_tear", "has_the_recipe"],
@@ -18124,7 +18124,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dried_kelp_block"],
         },
         requirements: &[&["has_the_recipe", "has_dried_kelp"]],
         criteria: &["has_dried_kelp", "has_the_recipe"],
@@ -18159,7 +18159,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dripstone_block"],
         },
         requirements: &[&["has_the_recipe", "has_pointed_dripstone"]],
         criteria: &["has_pointed_dripstone", "has_the_recipe"],
@@ -18194,7 +18194,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_black_wool"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18229,7 +18229,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_black_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18264,7 +18264,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_black_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18299,7 +18299,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_blue_wool"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18334,7 +18334,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_blue_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18369,7 +18369,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_blue_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18404,7 +18404,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_brown_wool"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18439,7 +18439,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_brown_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18474,7 +18474,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_brown_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18509,7 +18509,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_cyan_wool"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18544,7 +18544,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_cyan_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18579,7 +18579,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_cyan_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18614,7 +18614,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_gray_wool"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18649,7 +18649,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_gray_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18684,7 +18684,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_gray_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18719,7 +18719,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_green_wool"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18754,7 +18754,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_green_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18789,7 +18789,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_green_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18824,7 +18824,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_light_blue_wool"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18859,7 +18859,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_light_blue_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18896,7 +18896,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_light_blue_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18933,7 +18933,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_light_gray_wool"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -18968,7 +18968,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_light_gray_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19005,7 +19005,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_light_gray_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19042,7 +19042,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_lime_wool"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19077,7 +19077,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_lime_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19112,7 +19112,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_lime_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19147,7 +19147,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_magenta_wool"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19182,7 +19182,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_magenta_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19217,7 +19217,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_magenta_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19254,7 +19254,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_orange_wool"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19289,7 +19289,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_orange_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19324,7 +19324,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_orange_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19361,7 +19361,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_pink_wool"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19396,7 +19396,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_pink_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19431,7 +19431,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_pink_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19466,7 +19466,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_purple_wool"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19501,7 +19501,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_purple_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19536,7 +19536,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_purple_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19573,7 +19573,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_red_wool"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19608,7 +19608,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_red_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19643,7 +19643,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_red_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19678,7 +19678,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_white_wool"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19713,7 +19713,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_white_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19748,7 +19748,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_white_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19783,7 +19783,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_yellow_wool"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19818,7 +19818,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_yellow_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19853,7 +19853,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_yellow_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -19890,7 +19890,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:emerald_block"],
         },
         requirements: &[&["has_the_recipe", "has_emerald"]],
         criteria: &["has_emerald", "has_the_recipe"],
@@ -19925,7 +19925,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:end_stone_brick_slab"],
         },
         requirements: &[&["has_the_recipe", "has_end_stone_bricks"]],
         criteria: &["has_end_stone_bricks", "has_the_recipe"],
@@ -19963,7 +19963,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:end_stone_brick_slab_from_end_stone_bricks_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_end_stone_bricks"]],
         criteria: &["has_end_stone_bricks", "has_the_recipe"],
@@ -20003,7 +20003,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:end_stone_brick_slab_from_end_stone_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_end_stone"]],
             criteria: &["has_end_stone", "has_the_recipe"],
@@ -20042,7 +20042,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:end_stone_brick_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_end_stone_bricks"]],
         criteria: &["has_end_stone_bricks", "has_the_recipe"],
@@ -20082,7 +20082,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:end_stone_brick_stairs_from_end_stone_bricks_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_end_stone_bricks"]],
         criteria: &["has_end_stone_bricks", "has_the_recipe"],
@@ -20122,7 +20122,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:end_stone_brick_stairs_from_end_stone_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_end_stone"]],
             criteria: &["has_end_stone", "has_the_recipe"],
@@ -20161,7 +20161,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:end_stone_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_end_stone"]],
         criteria: &["has_end_stone", "has_the_recipe"],
@@ -20198,7 +20198,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:end_stone_bricks_from_end_stone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_end_stone"]],
         criteria: &["has_end_stone", "has_the_recipe"],
@@ -20235,7 +20235,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:exposed_chiseled_copper"],
         },
         requirements: &[&["has_the_recipe", "has_slab"]],
         criteria: &["has_slab", "has_the_recipe"],
@@ -20275,7 +20275,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:exposed_chiseled_copper_from_exposed_copper_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_copper"]],
         criteria: &["has_exposed_copper", "has_the_recipe"],
@@ -20305,7 +20305,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_EXPOSED_CHISELED_COPPER_FROM_EXPOSED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/exposed_chiseled_copper_from_exposed_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_exposed_cut_copper"]] , criteria : & ["has_exposed_cut_copper" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_exposed_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:exposed_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:exposed_chiseled_copper_from_exposed_cut_copper_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_EXPOSED_CHISELED_COPPER_FROM_EXPOSED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/exposed_chiseled_copper_from_exposed_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:exposed_chiseled_copper_from_exposed_cut_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_exposed_cut_copper"]] , criteria : & ["has_exposed_cut_copper" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_exposed_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:exposed_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:exposed_chiseled_copper_from_exposed_cut_copper_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_EXPOSED_COPPER_GRATE: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/exposed_copper_grate"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -20313,7 +20313,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:exposed_copper_grate"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_copper"]],
         criteria: &["has_exposed_copper", "has_the_recipe"],
@@ -20351,7 +20351,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:exposed_copper_grate_from_exposed_copper_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_exposed_copper"]],
             criteria: &["has_exposed_copper", "has_the_recipe"],
@@ -20390,7 +20390,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:exposed_cut_copper"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_copper"]],
         criteria: &["has_exposed_copper", "has_the_recipe"],
@@ -20428,7 +20428,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:exposed_cut_copper_from_exposed_copper_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_exposed_copper"]],
             criteria: &["has_exposed_copper", "has_the_recipe"],
@@ -20467,7 +20467,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:exposed_cut_copper_slab"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_cut_copper"]],
         criteria: &["has_exposed_cut_copper", "has_the_recipe"],
@@ -20507,7 +20507,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:exposed_cut_copper_slab_from_exposed_copper_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_copper"]],
         criteria: &["has_exposed_copper", "has_the_recipe"],
@@ -20537,7 +20537,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_EXPOSED_CUT_COPPER_SLAB_FROM_EXPOSED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/exposed_cut_copper_slab_from_exposed_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_exposed_cut_copper"]] , criteria : & ["has_exposed_cut_copper" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_exposed_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:exposed_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:exposed_cut_copper_slab_from_exposed_cut_copper_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_EXPOSED_CUT_COPPER_SLAB_FROM_EXPOSED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/exposed_cut_copper_slab_from_exposed_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:exposed_cut_copper_slab_from_exposed_cut_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_exposed_cut_copper"]] , criteria : & ["has_exposed_cut_copper" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_exposed_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:exposed_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:exposed_cut_copper_slab_from_exposed_cut_copper_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_EXPOSED_CUT_COPPER_STAIRS: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/exposed_cut_copper_stairs"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -20545,7 +20545,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:exposed_cut_copper_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_cut_copper"]],
         criteria: &["has_exposed_cut_copper", "has_the_recipe"],
@@ -20585,7 +20585,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:exposed_cut_copper_stairs_from_exposed_copper_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_copper"]],
         criteria: &["has_exposed_copper", "has_the_recipe"],
@@ -20615,7 +20615,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_EXPOSED_CUT_COPPER_STAIRS_FROM_EXPOSED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/exposed_cut_copper_stairs_from_exposed_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_exposed_cut_copper"]] , criteria : & ["has_exposed_cut_copper" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_exposed_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:exposed_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:exposed_cut_copper_stairs_from_exposed_cut_copper_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_EXPOSED_CUT_COPPER_STAIRS_FROM_EXPOSED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/exposed_cut_copper_stairs_from_exposed_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:exposed_cut_copper_stairs_from_exposed_cut_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_exposed_cut_copper"]] , criteria : & ["has_exposed_cut_copper" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_exposed_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:exposed_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:exposed_cut_copper_stairs_from_exposed_cut_copper_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_GLASS: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/glass"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -20623,7 +20623,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:glass"],
         },
         requirements: &[&["has_the_recipe", "has_smelts_to_glass"]],
         criteria: &["has_smelts_to_glass", "has_the_recipe"],
@@ -20658,7 +20658,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:glowstone"],
         },
         requirements: &[&["has_the_recipe", "has_glowstone_dust"]],
         criteria: &["has_glowstone_dust", "has_the_recipe"],
@@ -20693,7 +20693,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gold_block"],
         },
         requirements: &[&["has_the_recipe", "has_gold_ingot"]],
         criteria: &["has_gold_ingot", "has_the_recipe"],
@@ -20728,7 +20728,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:granite"],
         },
         requirements: &[&["has_the_recipe", "has_quartz"]],
         criteria: &["has_quartz", "has_the_recipe"],
@@ -20763,7 +20763,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:granite_slab"],
         },
         requirements: &[&["has_the_recipe", "has_granite"]],
         criteria: &["has_granite", "has_the_recipe"],
@@ -20800,7 +20800,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:granite_slab_from_granite_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_granite"]],
         criteria: &["has_granite", "has_the_recipe"],
@@ -20837,7 +20837,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:granite_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_granite"]],
         criteria: &["has_granite", "has_the_recipe"],
@@ -20874,7 +20874,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:granite_stairs_from_granite_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_granite"]],
         criteria: &["has_granite", "has_the_recipe"],
@@ -20911,7 +20911,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gray_concrete_powder"],
         },
         requirements: &[&["has_the_recipe", "has_sand", "has_gravel"]],
         criteria: &["has_gravel", "has_sand", "has_the_recipe"],
@@ -20962,7 +20962,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gray_concrete_slab"],
         },
         requirements: &[&["has_the_recipe", "has_gray_concrete"]],
         criteria: &["has_gray_concrete", "has_the_recipe"],
@@ -21000,7 +21000,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:gray_concrete_slab_from_gray_concrete_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_gray_concrete"]],
             criteria: &["has_gray_concrete", "has_the_recipe"],
@@ -21039,7 +21039,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gray_concrete_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_gray_concrete"]],
         criteria: &["has_gray_concrete", "has_the_recipe"],
@@ -21077,7 +21077,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:gray_concrete_stairs_from_gray_concrete_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_gray_concrete"]],
             criteria: &["has_gray_concrete", "has_the_recipe"],
@@ -21116,7 +21116,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gray_stained_glass"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -21151,7 +21151,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gray_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_terracotta"]],
         criteria: &["has_terracotta", "has_the_recipe"],
@@ -21186,7 +21186,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gray_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_gray_wool"]],
         criteria: &["has_gray_wool", "has_the_recipe"],
@@ -21221,7 +21221,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gray_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_gray_wool"]],
         criteria: &["has_gray_wool", "has_the_recipe"],
@@ -21256,7 +21256,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:green_concrete_powder"],
         },
         requirements: &[&["has_the_recipe", "has_sand", "has_gravel"]],
         criteria: &["has_gravel", "has_sand", "has_the_recipe"],
@@ -21307,7 +21307,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:green_concrete_slab"],
         },
         requirements: &[&["has_the_recipe", "has_green_concrete"]],
         criteria: &["has_green_concrete", "has_the_recipe"],
@@ -21345,7 +21345,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:green_concrete_slab_from_green_concrete_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_green_concrete"]],
             criteria: &["has_green_concrete", "has_the_recipe"],
@@ -21384,7 +21384,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:green_concrete_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_green_concrete"]],
         criteria: &["has_green_concrete", "has_the_recipe"],
@@ -21422,7 +21422,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:green_concrete_stairs_from_green_concrete_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_green_concrete"]],
         criteria: &["has_green_concrete", "has_the_recipe"],
@@ -21459,7 +21459,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:green_stained_glass"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -21494,7 +21494,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:green_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_terracotta"]],
         criteria: &["has_terracotta", "has_the_recipe"],
@@ -21529,7 +21529,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:green_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_green_wool"]],
         criteria: &["has_green_wool", "has_the_recipe"],
@@ -21564,7 +21564,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:green_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_green_wool"]],
         criteria: &["has_green_wool", "has_the_recipe"],
@@ -21599,7 +21599,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:hay_block"],
         },
         requirements: &[&["has_the_recipe", "has_wheat"]],
         criteria: &["has_the_recipe", "has_wheat"],
@@ -21634,7 +21634,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_block"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -21669,7 +21669,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:jack_o_lantern"],
         },
         requirements: &[&["has_the_recipe", "has_carved_pumpkin"]],
         criteria: &["has_carved_pumpkin", "has_the_recipe"],
@@ -21704,7 +21704,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:jungle_planks"],
         },
         requirements: &[&["has_the_recipe", "has_logs"]],
         criteria: &["has_logs", "has_the_recipe"],
@@ -21739,7 +21739,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:jungle_slab"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -21774,7 +21774,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:jungle_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -21809,7 +21809,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:jungle_wood"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -21844,7 +21844,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lapis_block"],
         },
         requirements: &[&["has_the_recipe", "has_lapis_lazuli"]],
         criteria: &["has_lapis_lazuli", "has_the_recipe"],
@@ -21879,7 +21879,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_blue_concrete_powder"],
         },
         requirements: &[&["has_the_recipe", "has_sand", "has_gravel"]],
         criteria: &["has_gravel", "has_sand", "has_the_recipe"],
@@ -21932,7 +21932,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_blue_concrete_slab"],
         },
         requirements: &[&["has_the_recipe", "has_light_blue_concrete"]],
         criteria: &["has_light_blue_concrete", "has_the_recipe"],
@@ -21962,7 +21962,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_LIGHT_BLUE_CONCRETE_SLAB_FROM_LIGHT_BLUE_CONCRETE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/light_blue_concrete_slab_from_light_blue_concrete_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_light_blue_concrete"]] , criteria : & ["has_light_blue_concrete" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_light_blue_concrete" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:light_blue_concrete"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:light_blue_concrete_slab_from_light_blue_concrete_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_LIGHT_BLUE_CONCRETE_SLAB_FROM_LIGHT_BLUE_CONCRETE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/light_blue_concrete_slab_from_light_blue_concrete_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:light_blue_concrete_slab_from_light_blue_concrete_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_light_blue_concrete"]] , criteria : & ["has_light_blue_concrete" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_light_blue_concrete" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:light_blue_concrete"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:light_blue_concrete_slab_from_light_blue_concrete_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_LIGHT_BLUE_CONCRETE_STAIRS: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/light_blue_concrete_stairs"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -21970,7 +21970,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_blue_concrete_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_light_blue_concrete"]],
         criteria: &["has_light_blue_concrete", "has_the_recipe"],
@@ -22000,7 +22000,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_LIGHT_BLUE_CONCRETE_STAIRS_FROM_LIGHT_BLUE_CONCRETE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/light_blue_concrete_stairs_from_light_blue_concrete_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_light_blue_concrete"]] , criteria : & ["has_light_blue_concrete" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_light_blue_concrete" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:light_blue_concrete"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:light_blue_concrete_stairs_from_light_blue_concrete_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_LIGHT_BLUE_CONCRETE_STAIRS_FROM_LIGHT_BLUE_CONCRETE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/light_blue_concrete_stairs_from_light_blue_concrete_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:light_blue_concrete_stairs_from_light_blue_concrete_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_light_blue_concrete"]] , criteria : & ["has_light_blue_concrete" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_light_blue_concrete" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:light_blue_concrete"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:light_blue_concrete_stairs_from_light_blue_concrete_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_LIGHT_BLUE_STAINED_GLASS: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/light_blue_stained_glass"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -22008,7 +22008,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_blue_stained_glass"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -22045,7 +22045,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_blue_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_terracotta"]],
         criteria: &["has_terracotta", "has_the_recipe"],
@@ -22080,7 +22080,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_blue_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_light_blue_wool"]],
         criteria: &["has_light_blue_wool", "has_the_recipe"],
@@ -22115,7 +22115,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_blue_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_light_blue_wool"]],
         criteria: &["has_light_blue_wool", "has_the_recipe"],
@@ -22152,7 +22152,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_concrete_powder"],
         },
         requirements: &[&["has_the_recipe", "has_sand", "has_gravel"]],
         criteria: &["has_gravel", "has_sand", "has_the_recipe"],
@@ -22205,7 +22205,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_concrete_slab"],
         },
         requirements: &[&["has_the_recipe", "has_light_gray_concrete"]],
         criteria: &["has_light_gray_concrete", "has_the_recipe"],
@@ -22235,7 +22235,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_LIGHT_GRAY_CONCRETE_SLAB_FROM_LIGHT_GRAY_CONCRETE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/light_gray_concrete_slab_from_light_gray_concrete_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_light_gray_concrete"]] , criteria : & ["has_light_gray_concrete" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_light_gray_concrete" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:light_gray_concrete"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:light_gray_concrete_slab_from_light_gray_concrete_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_LIGHT_GRAY_CONCRETE_SLAB_FROM_LIGHT_GRAY_CONCRETE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/light_gray_concrete_slab_from_light_gray_concrete_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:light_gray_concrete_slab_from_light_gray_concrete_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_light_gray_concrete"]] , criteria : & ["has_light_gray_concrete" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_light_gray_concrete" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:light_gray_concrete"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:light_gray_concrete_slab_from_light_gray_concrete_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_LIGHT_GRAY_CONCRETE_STAIRS: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/light_gray_concrete_stairs"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -22243,7 +22243,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_concrete_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_light_gray_concrete"]],
         criteria: &["has_light_gray_concrete", "has_the_recipe"],
@@ -22273,7 +22273,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_LIGHT_GRAY_CONCRETE_STAIRS_FROM_LIGHT_GRAY_CONCRETE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/light_gray_concrete_stairs_from_light_gray_concrete_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_light_gray_concrete"]] , criteria : & ["has_light_gray_concrete" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_light_gray_concrete" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:light_gray_concrete"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:light_gray_concrete_stairs_from_light_gray_concrete_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_LIGHT_GRAY_CONCRETE_STAIRS_FROM_LIGHT_GRAY_CONCRETE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/light_gray_concrete_stairs_from_light_gray_concrete_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:light_gray_concrete_stairs_from_light_gray_concrete_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_light_gray_concrete"]] , criteria : & ["has_light_gray_concrete" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_light_gray_concrete" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:light_gray_concrete"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:light_gray_concrete_stairs_from_light_gray_concrete_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_LIGHT_GRAY_STAINED_GLASS: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/light_gray_stained_glass"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -22281,7 +22281,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_stained_glass"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -22318,7 +22318,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_terracotta"]],
         criteria: &["has_terracotta", "has_the_recipe"],
@@ -22353,7 +22353,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_light_gray_wool"]],
         criteria: &["has_light_gray_wool", "has_the_recipe"],
@@ -22388,7 +22388,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_light_gray_wool"]],
         criteria: &["has_light_gray_wool", "has_the_recipe"],
@@ -22425,7 +22425,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lime_concrete_powder"],
         },
         requirements: &[&["has_the_recipe", "has_sand", "has_gravel"]],
         criteria: &["has_gravel", "has_sand", "has_the_recipe"],
@@ -22476,7 +22476,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lime_concrete_slab"],
         },
         requirements: &[&["has_the_recipe", "has_lime_concrete"]],
         criteria: &["has_lime_concrete", "has_the_recipe"],
@@ -22514,7 +22514,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:lime_concrete_slab_from_lime_concrete_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_lime_concrete"]],
             criteria: &["has_lime_concrete", "has_the_recipe"],
@@ -22553,7 +22553,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lime_concrete_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_lime_concrete"]],
         criteria: &["has_lime_concrete", "has_the_recipe"],
@@ -22591,7 +22591,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:lime_concrete_stairs_from_lime_concrete_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_lime_concrete"]],
             criteria: &["has_lime_concrete", "has_the_recipe"],
@@ -22630,7 +22630,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lime_stained_glass"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -22665,7 +22665,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lime_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_terracotta"]],
         criteria: &["has_terracotta", "has_the_recipe"],
@@ -22700,7 +22700,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lime_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_lime_wool"]],
         criteria: &["has_lime_wool", "has_the_recipe"],
@@ -22735,7 +22735,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lime_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_lime_wool"]],
         criteria: &["has_lime_wool", "has_the_recipe"],
@@ -22770,7 +22770,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_concrete_powder"],
         },
         requirements: &[&["has_the_recipe", "has_sand", "has_gravel"]],
         criteria: &["has_gravel", "has_sand", "has_the_recipe"],
@@ -22823,7 +22823,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_concrete_slab"],
         },
         requirements: &[&["has_the_recipe", "has_magenta_concrete"]],
         criteria: &["has_magenta_concrete", "has_the_recipe"],
@@ -22861,7 +22861,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_concrete_slab_from_magenta_concrete_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_magenta_concrete"]],
         criteria: &["has_magenta_concrete", "has_the_recipe"],
@@ -22898,7 +22898,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_concrete_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_magenta_concrete"]],
         criteria: &["has_magenta_concrete", "has_the_recipe"],
@@ -22938,7 +22938,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_concrete_stairs_from_magenta_concrete_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_magenta_concrete"]],
         criteria: &["has_magenta_concrete", "has_the_recipe"],
@@ -22975,7 +22975,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_stained_glass"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -23010,7 +23010,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_terracotta"]],
         criteria: &["has_terracotta", "has_the_recipe"],
@@ -23045,7 +23045,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_magenta_wool"]],
         criteria: &["has_magenta_wool", "has_the_recipe"],
@@ -23080,7 +23080,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_magenta_wool"]],
         criteria: &["has_magenta_wool", "has_the_recipe"],
@@ -23115,7 +23115,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magma_block"],
         },
         requirements: &[&["has_the_recipe", "has_magma_cream"]],
         criteria: &["has_magma_cream", "has_the_recipe"],
@@ -23150,7 +23150,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mangrove_planks"],
         },
         requirements: &[&["has_the_recipe", "has_logs"]],
         criteria: &["has_logs", "has_the_recipe"],
@@ -23185,7 +23185,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mangrove_slab"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -23220,7 +23220,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mangrove_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -23255,7 +23255,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mangrove_wood"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -23290,7 +23290,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:melon"],
         },
         requirements: &[&["has_the_recipe", "has_melon"]],
         criteria: &["has_melon", "has_the_recipe"],
@@ -23325,7 +23325,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mossy_cobblestone_from_moss_block"],
         },
         requirements: &[&["has_the_recipe", "has_moss_block"]],
         criteria: &["has_moss_block", "has_the_recipe"],
@@ -23362,7 +23362,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mossy_cobblestone_from_vine"],
         },
         requirements: &[&["has_the_recipe", "has_vine"]],
         criteria: &["has_the_recipe", "has_vine"],
@@ -23399,7 +23399,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mossy_cobblestone_slab"],
         },
         requirements: &[&["has_the_recipe", "has_mossy_cobblestone"]],
         criteria: &["has_mossy_cobblestone", "has_the_recipe"],
@@ -23439,7 +23439,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mossy_cobblestone_slab_from_mossy_cobblestone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_mossy_cobblestone"]],
         criteria: &["has_mossy_cobblestone", "has_the_recipe"],
@@ -23476,7 +23476,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mossy_cobblestone_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_mossy_cobblestone"]],
         criteria: &["has_mossy_cobblestone", "has_the_recipe"],
@@ -23506,7 +23506,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_MOSSY_COBBLESTONE_STAIRS_FROM_MOSSY_COBBLESTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/mossy_cobblestone_stairs_from_mossy_cobblestone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_mossy_cobblestone"]] , criteria : & ["has_mossy_cobblestone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_mossy_cobblestone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:mossy_cobblestone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:mossy_cobblestone_stairs_from_mossy_cobblestone_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_MOSSY_COBBLESTONE_STAIRS_FROM_MOSSY_COBBLESTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/mossy_cobblestone_stairs_from_mossy_cobblestone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:mossy_cobblestone_stairs_from_mossy_cobblestone_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_mossy_cobblestone"]] , criteria : & ["has_mossy_cobblestone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_mossy_cobblestone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:mossy_cobblestone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:mossy_cobblestone_stairs_from_mossy_cobblestone_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_MOSSY_STONE_BRICK_SLAB: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/mossy_stone_brick_slab"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -23514,7 +23514,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mossy_stone_brick_slab"],
         },
         requirements: &[&["has_the_recipe", "has_mossy_stone_bricks"]],
         criteria: &["has_mossy_stone_bricks", "has_the_recipe"],
@@ -23544,7 +23544,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_MOSSY_STONE_BRICK_SLAB_FROM_MOSSY_STONE_BRICKS_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/mossy_stone_brick_slab_from_mossy_stone_bricks_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_mossy_stone_bricks"]] , criteria : & ["has_mossy_stone_bricks" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_mossy_stone_bricks" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:mossy_stone_bricks"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:mossy_stone_brick_slab_from_mossy_stone_bricks_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_MOSSY_STONE_BRICK_SLAB_FROM_MOSSY_STONE_BRICKS_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/mossy_stone_brick_slab_from_mossy_stone_bricks_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:mossy_stone_brick_slab_from_mossy_stone_bricks_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_mossy_stone_bricks"]] , criteria : & ["has_mossy_stone_bricks" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_mossy_stone_bricks" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:mossy_stone_bricks"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:mossy_stone_brick_slab_from_mossy_stone_bricks_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_MOSSY_STONE_BRICK_STAIRS: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/mossy_stone_brick_stairs"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -23552,7 +23552,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mossy_stone_brick_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_mossy_stone_bricks"]],
         criteria: &["has_mossy_stone_bricks", "has_the_recipe"],
@@ -23582,7 +23582,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_MOSSY_STONE_BRICK_STAIRS_FROM_MOSSY_STONE_BRICKS_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/mossy_stone_brick_stairs_from_mossy_stone_bricks_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_mossy_stone_bricks"]] , criteria : & ["has_mossy_stone_bricks" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_mossy_stone_bricks" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:mossy_stone_bricks"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:mossy_stone_brick_stairs_from_mossy_stone_bricks_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_MOSSY_STONE_BRICK_STAIRS_FROM_MOSSY_STONE_BRICKS_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/mossy_stone_brick_stairs_from_mossy_stone_bricks_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:mossy_stone_brick_stairs_from_mossy_stone_bricks_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_mossy_stone_bricks"]] , criteria : & ["has_mossy_stone_bricks" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_mossy_stone_bricks" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:mossy_stone_bricks"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:mossy_stone_brick_stairs_from_mossy_stone_bricks_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_MOSSY_STONE_BRICKS_FROM_MOSS_BLOCK: &Self = &Self {
         id: Identifier::vanilla_static(
             "recipes/building_blocks/mossy_stone_bricks_from_moss_block",
@@ -23592,7 +23592,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mossy_stone_bricks_from_moss_block"],
         },
         requirements: &[&["has_the_recipe", "has_moss_block"]],
         criteria: &["has_moss_block", "has_the_recipe"],
@@ -23629,7 +23629,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mossy_stone_bricks_from_vine"],
         },
         requirements: &[&["has_the_recipe", "has_vine"]],
         criteria: &["has_the_recipe", "has_vine"],
@@ -23666,7 +23666,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mud_brick_slab"],
         },
         requirements: &[&["has_the_recipe", "has_mud_bricks"]],
         criteria: &["has_mud_bricks", "has_the_recipe"],
@@ -23703,7 +23703,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mud_brick_slab_from_mud_bricks_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_mud_bricks"]],
         criteria: &["has_mud_bricks", "has_the_recipe"],
@@ -23740,7 +23740,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mud_brick_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_mud_bricks"]],
         criteria: &["has_mud_bricks", "has_the_recipe"],
@@ -23778,7 +23778,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:mud_brick_stairs_from_mud_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_mud_bricks"]],
             criteria: &["has_mud_bricks", "has_the_recipe"],
@@ -23817,7 +23817,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mud_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_packed_mud"]],
         criteria: &["has_packed_mud", "has_the_recipe"],
@@ -23852,7 +23852,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:muddy_mangrove_roots"],
         },
         requirements: &[&["has_the_recipe", "has_mangrove_roots"]],
         criteria: &["has_mangrove_roots", "has_the_recipe"],
@@ -23887,7 +23887,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:nether_brick_slab"],
         },
         requirements: &[&["has_the_recipe", "has_nether_bricks"]],
         criteria: &["has_nether_bricks", "has_the_recipe"],
@@ -23925,7 +23925,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:nether_brick_slab_from_nether_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_nether_bricks"]],
             criteria: &["has_nether_bricks", "has_the_recipe"],
@@ -23964,7 +23964,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:nether_brick_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_nether_bricks"]],
         criteria: &["has_nether_bricks", "has_the_recipe"],
@@ -24002,7 +24002,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:nether_brick_stairs_from_nether_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_nether_bricks"]],
             criteria: &["has_nether_bricks", "has_the_recipe"],
@@ -24041,7 +24041,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:nether_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_nether_brick"]],
         criteria: &["has_nether_brick", "has_the_recipe"],
@@ -24076,7 +24076,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:nether_wart_block"],
         },
         requirements: &[&["has_the_recipe", "has_nether_wart"]],
         criteria: &["has_nether_wart", "has_the_recipe"],
@@ -24111,7 +24111,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:netherite_block"],
         },
         requirements: &[&["has_the_recipe", "has_netherite_ingot"]],
         criteria: &["has_netherite_ingot", "has_the_recipe"],
@@ -24146,7 +24146,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oak_planks"],
         },
         requirements: &[&["has_the_recipe", "has_logs"]],
         criteria: &["has_logs", "has_the_recipe"],
@@ -24181,7 +24181,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oak_slab"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -24216,7 +24216,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oak_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -24251,7 +24251,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oak_wood"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -24286,7 +24286,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_concrete_powder"],
         },
         requirements: &[&["has_the_recipe", "has_sand", "has_gravel"]],
         criteria: &["has_gravel", "has_sand", "has_the_recipe"],
@@ -24339,7 +24339,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_concrete_slab"],
         },
         requirements: &[&["has_the_recipe", "has_orange_concrete"]],
         criteria: &["has_orange_concrete", "has_the_recipe"],
@@ -24377,7 +24377,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_concrete_slab_from_orange_concrete_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_orange_concrete"]],
         criteria: &["has_orange_concrete", "has_the_recipe"],
@@ -24414,7 +24414,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_concrete_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_orange_concrete"]],
         criteria: &["has_orange_concrete", "has_the_recipe"],
@@ -24454,7 +24454,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_concrete_stairs_from_orange_concrete_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_orange_concrete"]],
         criteria: &["has_orange_concrete", "has_the_recipe"],
@@ -24491,7 +24491,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_stained_glass"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -24526,7 +24526,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_terracotta"]],
         criteria: &["has_terracotta", "has_the_recipe"],
@@ -24561,7 +24561,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_orange_wool"]],
         criteria: &["has_orange_wool", "has_the_recipe"],
@@ -24596,7 +24596,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_orange_wool"]],
         criteria: &["has_orange_wool", "has_the_recipe"],
@@ -24631,7 +24631,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oxidized_chiseled_copper"],
         },
         requirements: &[&["has_the_recipe", "has_slab"]],
         criteria: &["has_slab", "has_the_recipe"],
@@ -24671,7 +24671,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oxidized_chiseled_copper_from_oxidized_copper_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_oxidized_copper"]],
         criteria: &["has_oxidized_copper", "has_the_recipe"],
@@ -24701,7 +24701,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_OXIDIZED_CHISELED_COPPER_FROM_OXIDIZED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/oxidized_chiseled_copper_from_oxidized_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_oxidized_cut_copper"]] , criteria : & ["has_oxidized_cut_copper" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_oxidized_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:oxidized_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:oxidized_chiseled_copper_from_oxidized_cut_copper_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_OXIDIZED_CHISELED_COPPER_FROM_OXIDIZED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/oxidized_chiseled_copper_from_oxidized_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:oxidized_chiseled_copper_from_oxidized_cut_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_oxidized_cut_copper"]] , criteria : & ["has_oxidized_cut_copper" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_oxidized_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:oxidized_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:oxidized_chiseled_copper_from_oxidized_cut_copper_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_OXIDIZED_COPPER_GRATE: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/oxidized_copper_grate"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -24709,7 +24709,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oxidized_copper_grate"],
         },
         requirements: &[&["has_the_recipe", "has_oxidized_copper"]],
         criteria: &["has_oxidized_copper", "has_the_recipe"],
@@ -24747,7 +24747,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oxidized_copper_grate_from_oxidized_copper_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_oxidized_copper"]],
         criteria: &["has_oxidized_copper", "has_the_recipe"],
@@ -24784,7 +24784,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oxidized_cut_copper"],
         },
         requirements: &[&["has_the_recipe", "has_oxidized_copper"]],
         criteria: &["has_oxidized_copper", "has_the_recipe"],
@@ -24822,7 +24822,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:oxidized_cut_copper_from_oxidized_copper_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_oxidized_copper"]],
             criteria: &["has_oxidized_copper", "has_the_recipe"],
@@ -24861,7 +24861,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oxidized_cut_copper_slab"],
         },
         requirements: &[&["has_the_recipe", "has_oxidized_cut_copper"]],
         criteria: &["has_oxidized_cut_copper", "has_the_recipe"],
@@ -24901,7 +24901,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oxidized_cut_copper_slab_from_oxidized_copper_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_oxidized_copper"]],
         criteria: &["has_oxidized_copper", "has_the_recipe"],
@@ -24931,7 +24931,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_OXIDIZED_CUT_COPPER_SLAB_FROM_OXIDIZED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/oxidized_cut_copper_slab_from_oxidized_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_oxidized_cut_copper"]] , criteria : & ["has_oxidized_cut_copper" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_oxidized_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:oxidized_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:oxidized_cut_copper_slab_from_oxidized_cut_copper_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_OXIDIZED_CUT_COPPER_SLAB_FROM_OXIDIZED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/oxidized_cut_copper_slab_from_oxidized_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:oxidized_cut_copper_slab_from_oxidized_cut_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_oxidized_cut_copper"]] , criteria : & ["has_oxidized_cut_copper" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_oxidized_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:oxidized_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:oxidized_cut_copper_slab_from_oxidized_cut_copper_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_OXIDIZED_CUT_COPPER_STAIRS: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/oxidized_cut_copper_stairs"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -24939,7 +24939,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oxidized_cut_copper_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_oxidized_cut_copper"]],
         criteria: &["has_oxidized_cut_copper", "has_the_recipe"],
@@ -24969,8 +24969,8 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_OXIDIZED_CUT_COPPER_STAIRS_FROM_OXIDIZED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/oxidized_cut_copper_stairs_from_oxidized_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_oxidized_copper"]] , criteria : & ["has_oxidized_copper" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_oxidized_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:oxidized_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:oxidized_cut_copper_stairs_from_oxidized_copper_stonecutting") , }] , } ;
-    pub const RECIPES_BUILDING_BLOCKS_OXIDIZED_CUT_COPPER_STAIRS_FROM_OXIDIZED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/oxidized_cut_copper_stairs_from_oxidized_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_oxidized_cut_copper"]] , criteria : & ["has_oxidized_cut_copper" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_oxidized_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:oxidized_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:oxidized_cut_copper_stairs_from_oxidized_cut_copper_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_OXIDIZED_CUT_COPPER_STAIRS_FROM_OXIDIZED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/oxidized_cut_copper_stairs_from_oxidized_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:oxidized_cut_copper_stairs_from_oxidized_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_oxidized_copper"]] , criteria : & ["has_oxidized_copper" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_oxidized_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:oxidized_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:oxidized_cut_copper_stairs_from_oxidized_copper_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_OXIDIZED_CUT_COPPER_STAIRS_FROM_OXIDIZED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/oxidized_cut_copper_stairs_from_oxidized_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:oxidized_cut_copper_stairs_from_oxidized_cut_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_oxidized_cut_copper"]] , criteria : & ["has_oxidized_cut_copper" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_oxidized_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:oxidized_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:oxidized_cut_copper_stairs_from_oxidized_cut_copper_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_PACKED_ICE: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/packed_ice"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -24978,7 +24978,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:packed_ice"],
         },
         requirements: &[&["has_the_recipe", "has_ice"]],
         criteria: &["has_ice", "has_the_recipe"],
@@ -25013,7 +25013,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:packed_mud"],
         },
         requirements: &[&["has_the_recipe", "has_mud"]],
         criteria: &["has_mud", "has_the_recipe"],
@@ -25048,7 +25048,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pale_oak_planks"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -25083,7 +25083,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pale_oak_slab"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -25118,7 +25118,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pale_oak_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -25153,7 +25153,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pale_oak_wood"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -25188,7 +25188,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_concrete_powder"],
         },
         requirements: &[&["has_the_recipe", "has_sand", "has_gravel"]],
         criteria: &["has_gravel", "has_sand", "has_the_recipe"],
@@ -25239,7 +25239,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_concrete_slab"],
         },
         requirements: &[&["has_the_recipe", "has_pink_concrete"]],
         criteria: &["has_pink_concrete", "has_the_recipe"],
@@ -25277,7 +25277,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:pink_concrete_slab_from_pink_concrete_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_pink_concrete"]],
             criteria: &["has_pink_concrete", "has_the_recipe"],
@@ -25316,7 +25316,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_concrete_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_pink_concrete"]],
         criteria: &["has_pink_concrete", "has_the_recipe"],
@@ -25354,7 +25354,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:pink_concrete_stairs_from_pink_concrete_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_pink_concrete"]],
             criteria: &["has_pink_concrete", "has_the_recipe"],
@@ -25393,7 +25393,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_stained_glass"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -25428,7 +25428,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_terracotta"]],
         criteria: &["has_terracotta", "has_the_recipe"],
@@ -25463,7 +25463,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_pink_wool"]],
         criteria: &["has_pink_wool", "has_the_recipe"],
@@ -25498,7 +25498,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_pink_wool"]],
         criteria: &["has_pink_wool", "has_the_recipe"],
@@ -25533,7 +25533,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_andesite"],
         },
         requirements: &[&["has_the_recipe", "has_andesite"]],
         criteria: &["has_andesite", "has_the_recipe"],
@@ -25570,7 +25570,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_andesite_from_andesite_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_andesite"]],
         criteria: &["has_andesite", "has_the_recipe"],
@@ -25607,7 +25607,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_andesite_slab"],
         },
         requirements: &[&["has_the_recipe", "has_polished_andesite"]],
         criteria: &["has_polished_andesite", "has_the_recipe"],
@@ -25647,7 +25647,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_andesite_slab_from_andesite_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_andesite"]],
             criteria: &["has_andesite", "has_the_recipe"],
@@ -25689,7 +25689,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_andesite_slab_from_polished_andesite_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_polished_andesite"]],
         criteria: &["has_polished_andesite", "has_the_recipe"],
@@ -25726,7 +25726,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_andesite_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_polished_andesite"]],
         criteria: &["has_polished_andesite", "has_the_recipe"],
@@ -25766,7 +25766,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_andesite_stairs_from_andesite_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_andesite"]],
             criteria: &["has_andesite", "has_the_recipe"],
@@ -25798,7 +25798,7 @@ impl Advancement {
                 },
             ],
         };
-    pub const RECIPES_BUILDING_BLOCKS_POLISHED_ANDESITE_STAIRS_FROM_POLISHED_ANDESITE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_andesite_stairs_from_polished_andesite_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_polished_andesite"]] , criteria : & ["has_polished_andesite" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_andesite" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_andesite"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_andesite_stairs_from_polished_andesite_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_POLISHED_ANDESITE_STAIRS_FROM_POLISHED_ANDESITE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_andesite_stairs_from_polished_andesite_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:polished_andesite_stairs_from_polished_andesite_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_polished_andesite"]] , criteria : & ["has_polished_andesite" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_andesite" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_andesite"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_andesite_stairs_from_polished_andesite_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_POLISHED_BASALT: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/polished_basalt"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -25806,7 +25806,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_basalt"],
         },
         requirements: &[&["has_the_recipe", "has_basalt"]],
         criteria: &["has_basalt", "has_the_recipe"],
@@ -25843,7 +25843,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_basalt_from_basalt_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_basalt"]],
         criteria: &["has_basalt", "has_the_recipe"],
@@ -25880,7 +25880,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_blackstone"],
         },
         requirements: &[&["has_the_recipe", "has_blackstone"]],
         criteria: &["has_blackstone", "has_the_recipe"],
@@ -25915,7 +25915,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_blackstone_brick_slab"],
         },
         requirements: &[&["has_the_recipe", "has_polished_blackstone_bricks"]],
         criteria: &["has_polished_blackstone_bricks", "has_the_recipe"],
@@ -25945,9 +25945,9 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_BRICK_SLAB_FROM_BLACKSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_blackstone_brick_slab_from_blackstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_blackstone"]] , criteria : & ["has_blackstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_blackstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:blackstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_brick_slab_from_blackstone_stonecutting") , }] , } ;
-    pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_BRICK_SLAB_FROM_POLISHED_BLACKSTONE_BRICKS_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_blackstone_brick_slab_from_polished_blackstone_bricks_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_polished_blackstone_bricks"]] , criteria : & ["has_polished_blackstone_bricks" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_blackstone_bricks" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_blackstone_bricks"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_brick_slab_from_polished_blackstone_bricks_stonecutting") , }] , } ;
-    pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_BRICK_SLAB_FROM_POLISHED_BLACKSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_blackstone_brick_slab_from_polished_blackstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_polished_blackstone"]] , criteria : & ["has_polished_blackstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_blackstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_blackstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_brick_slab_from_polished_blackstone_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_BRICK_SLAB_FROM_BLACKSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_blackstone_brick_slab_from_blackstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:polished_blackstone_brick_slab_from_blackstone_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_blackstone"]] , criteria : & ["has_blackstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_blackstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:blackstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_brick_slab_from_blackstone_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_BRICK_SLAB_FROM_POLISHED_BLACKSTONE_BRICKS_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_blackstone_brick_slab_from_polished_blackstone_bricks_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:polished_blackstone_brick_slab_from_polished_blackstone_bricks_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_polished_blackstone_bricks"]] , criteria : & ["has_polished_blackstone_bricks" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_blackstone_bricks" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_blackstone_bricks"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_brick_slab_from_polished_blackstone_bricks_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_BRICK_SLAB_FROM_POLISHED_BLACKSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_blackstone_brick_slab_from_polished_blackstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:polished_blackstone_brick_slab_from_polished_blackstone_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_polished_blackstone"]] , criteria : & ["has_polished_blackstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_blackstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_blackstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_brick_slab_from_polished_blackstone_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_BRICK_STAIRS: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/polished_blackstone_brick_stairs"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -25955,7 +25955,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_blackstone_brick_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_polished_blackstone_bricks"]],
         criteria: &["has_polished_blackstone_bricks", "has_the_recipe"],
@@ -25985,9 +25985,9 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_BRICK_STAIRS_FROM_BLACKSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_blackstone_brick_stairs_from_blackstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_blackstone"]] , criteria : & ["has_blackstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_blackstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:blackstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_brick_stairs_from_blackstone_stonecutting") , }] , } ;
-    pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_BRICK_STAIRS_FROM_POLISHED_BLACKSTONE_BRICKS_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_blackstone_brick_stairs_from_polished_blackstone_bricks_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_polished_blackstone_bricks"]] , criteria : & ["has_polished_blackstone_bricks" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_blackstone_bricks" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_blackstone_bricks"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_brick_stairs_from_polished_blackstone_bricks_stonecutting") , }] , } ;
-    pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_BRICK_STAIRS_FROM_POLISHED_BLACKSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_blackstone_brick_stairs_from_polished_blackstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_polished_blackstone"]] , criteria : & ["has_polished_blackstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_blackstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_blackstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_brick_stairs_from_polished_blackstone_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_BRICK_STAIRS_FROM_BLACKSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_blackstone_brick_stairs_from_blackstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:polished_blackstone_brick_stairs_from_blackstone_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_blackstone"]] , criteria : & ["has_blackstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_blackstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:blackstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_brick_stairs_from_blackstone_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_BRICK_STAIRS_FROM_POLISHED_BLACKSTONE_BRICKS_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_blackstone_brick_stairs_from_polished_blackstone_bricks_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:polished_blackstone_brick_stairs_from_polished_blackstone_bricks_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_polished_blackstone_bricks"]] , criteria : & ["has_polished_blackstone_bricks" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_blackstone_bricks" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_blackstone_bricks"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_brick_stairs_from_polished_blackstone_bricks_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_BRICK_STAIRS_FROM_POLISHED_BLACKSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_blackstone_brick_stairs_from_polished_blackstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:polished_blackstone_brick_stairs_from_polished_blackstone_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_polished_blackstone"]] , criteria : & ["has_polished_blackstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_blackstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_blackstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_brick_stairs_from_polished_blackstone_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_BRICKS: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/polished_blackstone_bricks"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -25995,7 +25995,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_blackstone_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_polished_blackstone"]],
         criteria: &["has_polished_blackstone", "has_the_recipe"],
@@ -26035,7 +26035,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_blackstone_bricks_from_blackstone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_blackstone"]],
         criteria: &["has_blackstone", "has_the_recipe"],
@@ -26065,7 +26065,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_BRICKS_FROM_POLISHED_BLACKSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_blackstone_bricks_from_polished_blackstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_polished_blackstone"]] , criteria : & ["has_polished_blackstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_blackstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_blackstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_bricks_from_polished_blackstone_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_BRICKS_FROM_POLISHED_BLACKSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_blackstone_bricks_from_polished_blackstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:polished_blackstone_bricks_from_polished_blackstone_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_polished_blackstone"]] , criteria : & ["has_polished_blackstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_blackstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_blackstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_bricks_from_polished_blackstone_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_FROM_BLACKSTONE_STONECUTTING: &Self =
         &Self {
             id: Identifier::vanilla_static(
@@ -26076,7 +26076,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_blackstone_from_blackstone_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_blackstone"]],
             criteria: &["has_blackstone", "has_the_recipe"],
@@ -26115,7 +26115,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_blackstone_slab"],
         },
         requirements: &[&["has_the_recipe", "has_polished_blackstone"]],
         criteria: &["has_polished_blackstone", "has_the_recipe"],
@@ -26155,7 +26155,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_blackstone_slab_from_blackstone_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_blackstone"]],
             criteria: &["has_blackstone", "has_the_recipe"],
@@ -26187,7 +26187,7 @@ impl Advancement {
                 },
             ],
         };
-    pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_SLAB_FROM_POLISHED_BLACKSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_blackstone_slab_from_polished_blackstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_polished_blackstone"]] , criteria : & ["has_polished_blackstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_blackstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_blackstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_slab_from_polished_blackstone_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_SLAB_FROM_POLISHED_BLACKSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_blackstone_slab_from_polished_blackstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:polished_blackstone_slab_from_polished_blackstone_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_polished_blackstone"]] , criteria : & ["has_polished_blackstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_blackstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_blackstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_slab_from_polished_blackstone_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_STAIRS: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/polished_blackstone_stairs"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -26195,7 +26195,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_blackstone_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_polished_blackstone"]],
         criteria: &["has_polished_blackstone", "has_the_recipe"],
@@ -26235,7 +26235,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_blackstone_stairs_from_blackstone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_blackstone"]],
         criteria: &["has_blackstone", "has_the_recipe"],
@@ -26265,7 +26265,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_STAIRS_FROM_POLISHED_BLACKSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_blackstone_stairs_from_polished_blackstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_polished_blackstone"]] , criteria : & ["has_polished_blackstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_blackstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_blackstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_stairs_from_polished_blackstone_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_POLISHED_BLACKSTONE_STAIRS_FROM_POLISHED_BLACKSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_blackstone_stairs_from_polished_blackstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:polished_blackstone_stairs_from_polished_blackstone_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_polished_blackstone"]] , criteria : & ["has_polished_blackstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_blackstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_blackstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_stairs_from_polished_blackstone_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_POLISHED_CINNABAR: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/polished_cinnabar"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -26273,7 +26273,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_cinnabar"],
         },
         requirements: &[&["has_the_recipe", "has_cinnabar"]],
         criteria: &["has_cinnabar", "has_the_recipe"],
@@ -26310,7 +26310,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_cinnabar_from_cinnabar_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cinnabar"]],
         criteria: &["has_cinnabar", "has_the_recipe"],
@@ -26347,7 +26347,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_cinnabar_slab"],
         },
         requirements: &[&["has_the_recipe", "has_polished_cinnabar"]],
         criteria: &["has_polished_cinnabar", "has_the_recipe"],
@@ -26387,7 +26387,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_cinnabar_slab_from_cinnabar_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_cinnabar"]],
             criteria: &["has_cinnabar", "has_the_recipe"],
@@ -26429,7 +26429,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_cinnabar_slab_from_polished_cinnabar_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_polished_cinnabar"]],
         criteria: &["has_polished_cinnabar", "has_the_recipe"],
@@ -26466,7 +26466,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_cinnabar_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_polished_cinnabar"]],
         criteria: &["has_polished_cinnabar", "has_the_recipe"],
@@ -26506,7 +26506,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_cinnabar_stairs_from_cinnabar_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_cinnabar"]],
             criteria: &["has_cinnabar", "has_the_recipe"],
@@ -26538,7 +26538,7 @@ impl Advancement {
                 },
             ],
         };
-    pub const RECIPES_BUILDING_BLOCKS_POLISHED_CINNABAR_STAIRS_FROM_POLISHED_CINNABAR_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_cinnabar_stairs_from_polished_cinnabar_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_polished_cinnabar"]] , criteria : & ["has_polished_cinnabar" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_cinnabar" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_cinnabar"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_cinnabar_stairs_from_polished_cinnabar_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_POLISHED_CINNABAR_STAIRS_FROM_POLISHED_CINNABAR_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_cinnabar_stairs_from_polished_cinnabar_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:polished_cinnabar_stairs_from_polished_cinnabar_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_polished_cinnabar"]] , criteria : & ["has_polished_cinnabar" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_cinnabar" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_cinnabar"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_cinnabar_stairs_from_polished_cinnabar_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_POLISHED_DEEPSLATE: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/polished_deepslate"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -26546,7 +26546,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_deepslate"],
         },
         requirements: &[&["has_the_recipe", "has_cobbled_deepslate"]],
         criteria: &["has_cobbled_deepslate", "has_the_recipe"],
@@ -26584,7 +26584,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_deepslate_from_cobbled_deepslate_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cobbled_deepslate"]],
         criteria: &["has_cobbled_deepslate", "has_the_recipe"],
@@ -26624,7 +26624,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_deepslate_from_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_deepslate"]],
             criteria: &["has_deepslate", "has_the_recipe"],
@@ -26663,7 +26663,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_deepslate_slab"],
         },
         requirements: &[&["has_the_recipe", "has_polished_deepslate"]],
         criteria: &["has_polished_deepslate", "has_the_recipe"],
@@ -26693,7 +26693,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_POLISHED_DEEPSLATE_SLAB_FROM_COBBLED_DEEPSLATE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_deepslate_slab_from_cobbled_deepslate_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_cobbled_deepslate"]] , criteria : & ["has_cobbled_deepslate" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_cobbled_deepslate" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:cobbled_deepslate"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_deepslate_slab_from_cobbled_deepslate_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_POLISHED_DEEPSLATE_SLAB_FROM_COBBLED_DEEPSLATE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_deepslate_slab_from_cobbled_deepslate_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:polished_deepslate_slab_from_cobbled_deepslate_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_cobbled_deepslate"]] , criteria : & ["has_cobbled_deepslate" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_cobbled_deepslate" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:cobbled_deepslate"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_deepslate_slab_from_cobbled_deepslate_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_POLISHED_DEEPSLATE_SLAB_FROM_DEEPSLATE_STONECUTTING: &Self =
         &Self {
             id: Identifier::vanilla_static(
@@ -26704,7 +26704,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_deepslate_slab_from_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_deepslate"]],
             criteria: &["has_deepslate", "has_the_recipe"],
@@ -26736,7 +26736,7 @@ impl Advancement {
                 },
             ],
         };
-    pub const RECIPES_BUILDING_BLOCKS_POLISHED_DEEPSLATE_SLAB_FROM_POLISHED_DEEPSLATE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_deepslate_slab_from_polished_deepslate_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_polished_deepslate"]] , criteria : & ["has_polished_deepslate" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_deepslate" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_deepslate"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_deepslate_slab_from_polished_deepslate_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_POLISHED_DEEPSLATE_SLAB_FROM_POLISHED_DEEPSLATE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_deepslate_slab_from_polished_deepslate_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:polished_deepslate_slab_from_polished_deepslate_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_polished_deepslate"]] , criteria : & ["has_polished_deepslate" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_deepslate" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_deepslate"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_deepslate_slab_from_polished_deepslate_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_POLISHED_DEEPSLATE_STAIRS: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/polished_deepslate_stairs"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -26744,7 +26744,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_deepslate_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_polished_deepslate"]],
         criteria: &["has_polished_deepslate", "has_the_recipe"],
@@ -26774,7 +26774,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_POLISHED_DEEPSLATE_STAIRS_FROM_COBBLED_DEEPSLATE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_deepslate_stairs_from_cobbled_deepslate_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_cobbled_deepslate"]] , criteria : & ["has_cobbled_deepslate" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_cobbled_deepslate" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:cobbled_deepslate"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_deepslate_stairs_from_cobbled_deepslate_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_POLISHED_DEEPSLATE_STAIRS_FROM_COBBLED_DEEPSLATE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_deepslate_stairs_from_cobbled_deepslate_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:polished_deepslate_stairs_from_cobbled_deepslate_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_cobbled_deepslate"]] , criteria : & ["has_cobbled_deepslate" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_cobbled_deepslate" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:cobbled_deepslate"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_deepslate_stairs_from_cobbled_deepslate_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_POLISHED_DEEPSLATE_STAIRS_FROM_DEEPSLATE_STONECUTTING: &Self =
         &Self {
             id: Identifier::vanilla_static(
@@ -26785,7 +26785,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_deepslate_stairs_from_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_deepslate"]],
             criteria: &["has_deepslate", "has_the_recipe"],
@@ -26817,7 +26817,7 @@ impl Advancement {
                 },
             ],
         };
-    pub const RECIPES_BUILDING_BLOCKS_POLISHED_DEEPSLATE_STAIRS_FROM_POLISHED_DEEPSLATE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_deepslate_stairs_from_polished_deepslate_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_polished_deepslate"]] , criteria : & ["has_polished_deepslate" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_deepslate" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_deepslate"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_deepslate_stairs_from_polished_deepslate_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_POLISHED_DEEPSLATE_STAIRS_FROM_POLISHED_DEEPSLATE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/polished_deepslate_stairs_from_polished_deepslate_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:polished_deepslate_stairs_from_polished_deepslate_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_polished_deepslate"]] , criteria : & ["has_polished_deepslate" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_deepslate" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_deepslate"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_deepslate_stairs_from_polished_deepslate_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_POLISHED_DIORITE: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/polished_diorite"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -26825,7 +26825,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_diorite"],
         },
         requirements: &[&["has_the_recipe", "has_diorite"]],
         criteria: &["has_diorite", "has_the_recipe"],
@@ -26862,7 +26862,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_diorite_from_diorite_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_diorite"]],
         criteria: &["has_diorite", "has_the_recipe"],
@@ -26899,7 +26899,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_diorite_slab"],
         },
         requirements: &[&["has_the_recipe", "has_polished_diorite"]],
         criteria: &["has_polished_diorite", "has_the_recipe"],
@@ -26937,7 +26937,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_diorite_slab_from_diorite_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_diorite"]],
             criteria: &["has_diorite", "has_the_recipe"],
@@ -26979,7 +26979,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_diorite_slab_from_polished_diorite_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_polished_diorite"]],
         criteria: &["has_polished_diorite", "has_the_recipe"],
@@ -27016,7 +27016,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_diorite_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_polished_diorite"]],
         criteria: &["has_polished_diorite", "has_the_recipe"],
@@ -27056,7 +27056,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_diorite_stairs_from_diorite_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_diorite"]],
             criteria: &["has_diorite", "has_the_recipe"],
@@ -27098,7 +27098,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_diorite_stairs_from_polished_diorite_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_polished_diorite"]],
         criteria: &["has_polished_diorite", "has_the_recipe"],
@@ -27135,7 +27135,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_granite"],
         },
         requirements: &[&["has_the_recipe", "has_granite"]],
         criteria: &["has_granite", "has_the_recipe"],
@@ -27172,7 +27172,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_granite_from_granite_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_granite"]],
         criteria: &["has_granite", "has_the_recipe"],
@@ -27209,7 +27209,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_granite_slab"],
         },
         requirements: &[&["has_the_recipe", "has_polished_granite"]],
         criteria: &["has_polished_granite", "has_the_recipe"],
@@ -27247,7 +27247,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_granite_slab_from_granite_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_granite"]],
             criteria: &["has_granite", "has_the_recipe"],
@@ -27289,7 +27289,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_granite_slab_from_polished_granite_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_polished_granite"]],
         criteria: &["has_polished_granite", "has_the_recipe"],
@@ -27326,7 +27326,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_granite_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_polished_granite"]],
         criteria: &["has_polished_granite", "has_the_recipe"],
@@ -27366,7 +27366,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_granite_stairs_from_granite_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_granite"]],
             criteria: &["has_granite", "has_the_recipe"],
@@ -27408,7 +27408,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_granite_stairs_from_polished_granite_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_polished_granite"]],
         criteria: &["has_polished_granite", "has_the_recipe"],
@@ -27445,7 +27445,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_sulfur"],
         },
         requirements: &[&["has_the_recipe", "has_sulfur"]],
         criteria: &["has_sulfur", "has_the_recipe"],
@@ -27482,7 +27482,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_sulfur_from_sulfur_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_sulfur"]],
         criteria: &["has_sulfur", "has_the_recipe"],
@@ -27519,7 +27519,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_sulfur_slab"],
         },
         requirements: &[&["has_the_recipe", "has_polished_sulfur"]],
         criteria: &["has_polished_sulfur", "has_the_recipe"],
@@ -27557,7 +27557,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_sulfur_slab_from_polished_sulfur_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_polished_sulfur"]],
         criteria: &["has_polished_sulfur", "has_the_recipe"],
@@ -27597,7 +27597,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_sulfur_slab_from_sulfur_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_sulfur"]],
             criteria: &["has_sulfur", "has_the_recipe"],
@@ -27636,7 +27636,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_sulfur_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_polished_sulfur"]],
         criteria: &["has_polished_sulfur", "has_the_recipe"],
@@ -27676,7 +27676,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_sulfur_stairs_from_polished_sulfur_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_polished_sulfur"]],
         criteria: &["has_polished_sulfur", "has_the_recipe"],
@@ -27716,7 +27716,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_sulfur_stairs_from_sulfur_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_sulfur"]],
             criteria: &["has_sulfur", "has_the_recipe"],
@@ -27755,7 +27755,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_tuff"],
         },
         requirements: &[&["has_the_recipe", "has_tuff"]],
         criteria: &["has_the_recipe", "has_tuff"],
@@ -27792,7 +27792,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_tuff_from_tuff_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_tuff"]],
         criteria: &["has_the_recipe", "has_tuff"],
@@ -27829,7 +27829,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_tuff_slab"],
         },
         requirements: &[&["has_the_recipe", "has_polished_tuff"]],
         criteria: &["has_polished_tuff", "has_the_recipe"],
@@ -27867,7 +27867,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_tuff_slab_from_polished_tuff_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_polished_tuff"]],
             criteria: &["has_polished_tuff", "has_the_recipe"],
@@ -27908,7 +27908,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_tuff_slab_from_tuff_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_tuff"]],
         criteria: &["has_the_recipe", "has_tuff"],
@@ -27945,7 +27945,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_tuff_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_polished_tuff"]],
         criteria: &["has_polished_tuff", "has_the_recipe"],
@@ -27983,7 +27983,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_tuff_stairs_from_polished_tuff_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_polished_tuff"]],
             criteria: &["has_polished_tuff", "has_the_recipe"],
@@ -28024,7 +28024,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_tuff_stairs_from_tuff_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_tuff"]],
         criteria: &["has_the_recipe", "has_tuff"],
@@ -28061,7 +28061,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:poplar_planks"],
         },
         requirements: &[&["has_the_recipe", "has_logs"]],
         criteria: &["has_logs", "has_the_recipe"],
@@ -28096,7 +28096,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:poplar_slab"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -28131,7 +28131,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:poplar_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -28166,7 +28166,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:poplar_wood"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -28201,7 +28201,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:potent_sulfur"],
         },
         requirements: &[&["has_the_recipe", "has_sulfur"]],
         criteria: &["has_sulfur", "has_the_recipe"],
@@ -28236,7 +28236,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:prismarine"],
         },
         requirements: &[&["has_the_recipe", "has_prismarine_shard"]],
         criteria: &["has_prismarine_shard", "has_the_recipe"],
@@ -28271,7 +28271,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:prismarine_brick_slab"],
         },
         requirements: &[&["has_the_recipe", "has_prismarine_bricks"]],
         criteria: &["has_prismarine_bricks", "has_the_recipe"],
@@ -28309,7 +28309,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:prismarine_brick_slab_from_prismarine_bricks_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_prismarine_bricks"]],
         criteria: &["has_prismarine_bricks", "has_the_recipe"],
@@ -28346,7 +28346,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:prismarine_brick_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_prismarine_bricks"]],
         criteria: &["has_prismarine_bricks", "has_the_recipe"],
@@ -28376,7 +28376,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_PRISMARINE_BRICK_STAIRS_FROM_PRISMARINE_BRICKS_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/prismarine_brick_stairs_from_prismarine_bricks_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_prismarine_bricks"]] , criteria : & ["has_prismarine_bricks" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_prismarine_bricks" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:prismarine_bricks"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:prismarine_brick_stairs_from_prismarine_bricks_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_PRISMARINE_BRICK_STAIRS_FROM_PRISMARINE_BRICKS_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/prismarine_brick_stairs_from_prismarine_bricks_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:prismarine_brick_stairs_from_prismarine_bricks_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_prismarine_bricks"]] , criteria : & ["has_prismarine_bricks" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_prismarine_bricks" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:prismarine_bricks"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:prismarine_brick_stairs_from_prismarine_bricks_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_PRISMARINE_BRICKS: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/prismarine_bricks"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -28384,7 +28384,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:prismarine_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_prismarine_shard"]],
         criteria: &["has_prismarine_shard", "has_the_recipe"],
@@ -28419,7 +28419,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:prismarine_slab"],
         },
         requirements: &[&["has_the_recipe", "has_prismarine"]],
         criteria: &["has_prismarine", "has_the_recipe"],
@@ -28456,7 +28456,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:prismarine_slab_from_prismarine_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_prismarine"]],
         criteria: &["has_prismarine", "has_the_recipe"],
@@ -28493,7 +28493,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:prismarine_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_prismarine"]],
         criteria: &["has_prismarine", "has_the_recipe"],
@@ -28531,7 +28531,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:prismarine_stairs_from_prismarine_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_prismarine"]],
             criteria: &["has_prismarine", "has_the_recipe"],
@@ -28570,7 +28570,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_concrete_powder"],
         },
         requirements: &[&["has_the_recipe", "has_sand", "has_gravel"]],
         criteria: &["has_gravel", "has_sand", "has_the_recipe"],
@@ -28623,7 +28623,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_concrete_slab"],
         },
         requirements: &[&["has_the_recipe", "has_purple_concrete"]],
         criteria: &["has_purple_concrete", "has_the_recipe"],
@@ -28661,7 +28661,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_concrete_slab_from_purple_concrete_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_purple_concrete"]],
         criteria: &["has_purple_concrete", "has_the_recipe"],
@@ -28698,7 +28698,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_concrete_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_purple_concrete"]],
         criteria: &["has_purple_concrete", "has_the_recipe"],
@@ -28738,7 +28738,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_concrete_stairs_from_purple_concrete_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_purple_concrete"]],
         criteria: &["has_purple_concrete", "has_the_recipe"],
@@ -28775,7 +28775,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_stained_glass"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -28810,7 +28810,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_terracotta"]],
         criteria: &["has_terracotta", "has_the_recipe"],
@@ -28845,7 +28845,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_purple_wool"]],
         criteria: &["has_purple_wool", "has_the_recipe"],
@@ -28880,7 +28880,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_purple_wool"]],
         criteria: &["has_purple_wool", "has_the_recipe"],
@@ -28915,7 +28915,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purpur_block"],
         },
         requirements: &[&["has_the_recipe", "has_chorus_fruit_popped"]],
         criteria: &["has_chorus_fruit_popped", "has_the_recipe"],
@@ -28950,7 +28950,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purpur_pillar"],
         },
         requirements: &[&["has_the_recipe", "has_purpur_block"]],
         criteria: &["has_purpur_block", "has_the_recipe"],
@@ -28987,7 +28987,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purpur_pillar_from_purpur_block_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_purpur_block"]],
         criteria: &["has_purpur_block", "has_the_recipe"],
@@ -29024,7 +29024,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purpur_slab"],
         },
         requirements: &[&["has_the_recipe", "has_purpur_block"]],
         criteria: &["has_purpur_block", "has_the_recipe"],
@@ -29061,7 +29061,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purpur_slab_from_purpur_block_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_purpur_block"]],
         criteria: &["has_purpur_block", "has_the_recipe"],
@@ -29098,7 +29098,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purpur_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_purpur_block"]],
         criteria: &["has_purpur_block", "has_the_recipe"],
@@ -29135,7 +29135,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purpur_stairs_from_purpur_block_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_purpur_block"]],
         criteria: &["has_purpur_block", "has_the_recipe"],
@@ -29172,7 +29172,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:quartz_block"],
         },
         requirements: &[&["has_the_recipe", "has_quartz"]],
         criteria: &["has_quartz", "has_the_recipe"],
@@ -29207,7 +29207,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:quartz_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_quartz_block"]],
         criteria: &["has_quartz_block", "has_the_recipe"],
@@ -29244,7 +29244,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:quartz_bricks_from_quartz_block_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_quartz_block"]],
         criteria: &["has_quartz_block", "has_the_recipe"],
@@ -29281,7 +29281,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:quartz_pillar"],
         },
         requirements: &[&[
             "has_the_recipe",
@@ -29360,7 +29360,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:quartz_pillar_from_quartz_block_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_quartz_block"]],
         criteria: &["has_quartz_block", "has_the_recipe"],
@@ -29397,7 +29397,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:quartz_slab"],
         },
         requirements: &[&[
             "has_the_recipe",
@@ -29476,7 +29476,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:quartz_slab_from_quartz_block_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_quartz_block"]],
         criteria: &["has_quartz_block", "has_the_recipe"],
@@ -29513,7 +29513,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:quartz_stairs"],
         },
         requirements: &[&[
             "has_the_recipe",
@@ -29592,7 +29592,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:quartz_stairs_from_quartz_block_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_quartz_block"]],
         criteria: &["has_quartz_block", "has_the_recipe"],
@@ -29629,7 +29629,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:raw_copper_block"],
         },
         requirements: &[&["has_the_recipe", "has_raw_copper"]],
         criteria: &["has_raw_copper", "has_the_recipe"],
@@ -29664,7 +29664,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:raw_gold_block"],
         },
         requirements: &[&["has_the_recipe", "has_raw_gold"]],
         criteria: &["has_raw_gold", "has_the_recipe"],
@@ -29699,7 +29699,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:raw_iron_block"],
         },
         requirements: &[&["has_the_recipe", "has_raw_iron"]],
         criteria: &["has_raw_iron", "has_the_recipe"],
@@ -29734,7 +29734,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_concrete_powder"],
         },
         requirements: &[&["has_the_recipe", "has_sand", "has_gravel"]],
         criteria: &["has_gravel", "has_sand", "has_the_recipe"],
@@ -29785,7 +29785,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_concrete_slab"],
         },
         requirements: &[&["has_the_recipe", "has_red_concrete"]],
         criteria: &["has_red_concrete", "has_the_recipe"],
@@ -29823,7 +29823,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:red_concrete_slab_from_red_concrete_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_red_concrete"]],
             criteria: &["has_red_concrete", "has_the_recipe"],
@@ -29862,7 +29862,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_concrete_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_red_concrete"]],
         criteria: &["has_red_concrete", "has_the_recipe"],
@@ -29900,7 +29900,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:red_concrete_stairs_from_red_concrete_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_red_concrete"]],
             criteria: &["has_red_concrete", "has_the_recipe"],
@@ -29939,7 +29939,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_nether_brick_slab"],
         },
         requirements: &[&["has_the_recipe", "has_red_nether_bricks"]],
         criteria: &["has_red_nether_bricks", "has_the_recipe"],
@@ -29977,7 +29977,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_nether_brick_slab_from_red_nether_bricks_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_red_nether_bricks"]],
         criteria: &["has_red_nether_bricks", "has_the_recipe"],
@@ -30014,7 +30014,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_nether_brick_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_red_nether_bricks"]],
         criteria: &["has_red_nether_bricks", "has_the_recipe"],
@@ -30044,7 +30044,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_RED_NETHER_BRICK_STAIRS_FROM_RED_NETHER_BRICKS_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/red_nether_brick_stairs_from_red_nether_bricks_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_red_nether_bricks"]] , criteria : & ["has_red_nether_bricks" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_red_nether_bricks" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:red_nether_bricks"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:red_nether_brick_stairs_from_red_nether_bricks_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_RED_NETHER_BRICK_STAIRS_FROM_RED_NETHER_BRICKS_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/red_nether_brick_stairs_from_red_nether_bricks_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:red_nether_brick_stairs_from_red_nether_bricks_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_red_nether_bricks"]] , criteria : & ["has_red_nether_bricks" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_red_nether_bricks" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:red_nether_bricks"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:red_nether_brick_stairs_from_red_nether_bricks_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_RED_NETHER_BRICKS: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/red_nether_bricks"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -30052,7 +30052,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_nether_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_nether_wart"]],
         criteria: &["has_nether_wart", "has_the_recipe"],
@@ -30087,7 +30087,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_sandstone"],
         },
         requirements: &[&["has_the_recipe", "has_sand"]],
         criteria: &["has_sand", "has_the_recipe"],
@@ -30122,7 +30122,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_sandstone_slab"],
         },
         requirements: &[&[
             "has_the_recipe",
@@ -30184,7 +30184,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:red_sandstone_slab_from_red_sandstone_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_red_sandstone"]],
             criteria: &["has_red_sandstone", "has_the_recipe"],
@@ -30223,7 +30223,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_sandstone_stairs"],
         },
         requirements: &[&[
             "has_the_recipe",
@@ -30303,7 +30303,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:red_sandstone_stairs_from_red_sandstone_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_red_sandstone"]],
             criteria: &["has_red_sandstone", "has_the_recipe"],
@@ -30342,7 +30342,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_stained_glass"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -30377,7 +30377,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_terracotta"]],
         criteria: &["has_terracotta", "has_the_recipe"],
@@ -30412,7 +30412,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_red_wool"]],
         criteria: &["has_red_wool", "has_the_recipe"],
@@ -30447,7 +30447,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_red_wool"]],
         criteria: &["has_red_wool", "has_the_recipe"],
@@ -30482,7 +30482,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:resin_block"],
         },
         requirements: &[&["has_the_recipe", "has_resin_clump"]],
         criteria: &["has_resin_clump", "has_the_recipe"],
@@ -30517,7 +30517,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:resin_brick_slab"],
         },
         requirements: &[&["has_the_recipe", "has_resin_bricks"]],
         criteria: &["has_resin_bricks", "has_the_recipe"],
@@ -30555,7 +30555,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:resin_brick_slab_from_resin_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_resin_bricks"]],
             criteria: &["has_resin_bricks", "has_the_recipe"],
@@ -30594,7 +30594,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:resin_brick_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_resin_bricks"]],
         criteria: &["has_resin_bricks", "has_the_recipe"],
@@ -30632,7 +30632,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:resin_brick_stairs_from_resin_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_resin_bricks"]],
             criteria: &["has_resin_bricks", "has_the_recipe"],
@@ -30671,7 +30671,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:resin_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_resin_brick"]],
         criteria: &["has_resin_brick", "has_the_recipe"],
@@ -30706,7 +30706,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sandstone"],
         },
         requirements: &[&["has_the_recipe", "has_sand"]],
         criteria: &["has_sand", "has_the_recipe"],
@@ -30741,7 +30741,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sandstone_slab"],
         },
         requirements: &[&["has_the_recipe", "has_sandstone", "has_chiseled_sandstone"]],
         criteria: &["has_chiseled_sandstone", "has_sandstone", "has_the_recipe"],
@@ -30794,7 +30794,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sandstone_slab_from_sandstone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_sandstone"]],
         criteria: &["has_sandstone", "has_the_recipe"],
@@ -30831,7 +30831,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sandstone_stairs"],
         },
         requirements: &[&[
             "has_the_recipe",
@@ -30910,7 +30910,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sandstone_stairs_from_sandstone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_sandstone"]],
         criteria: &["has_sandstone", "has_the_recipe"],
@@ -30947,7 +30947,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sea_lantern"],
         },
         requirements: &[&["has_the_recipe", "has_prismarine_crystals"]],
         criteria: &["has_prismarine_crystals", "has_the_recipe"],
@@ -30982,7 +30982,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:smooth_basalt"],
         },
         requirements: &[&["has_the_recipe", "has_basalt"]],
         criteria: &["has_basalt", "has_the_recipe"],
@@ -31017,7 +31017,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:smooth_quartz"],
         },
         requirements: &[&["has_the_recipe", "has_quartz_block"]],
         criteria: &["has_quartz_block", "has_the_recipe"],
@@ -31052,7 +31052,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:smooth_quartz_slab"],
         },
         requirements: &[&["has_the_recipe", "has_smooth_quartz"]],
         criteria: &["has_smooth_quartz", "has_the_recipe"],
@@ -31090,7 +31090,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:smooth_quartz_slab_from_smooth_quartz_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_smooth_quartz"]],
             criteria: &["has_smooth_quartz", "has_the_recipe"],
@@ -31129,7 +31129,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:smooth_quartz_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_smooth_quartz"]],
         criteria: &["has_smooth_quartz", "has_the_recipe"],
@@ -31167,7 +31167,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:smooth_quartz_stairs_from_smooth_quartz_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_smooth_quartz"]],
             criteria: &["has_smooth_quartz", "has_the_recipe"],
@@ -31206,7 +31206,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:smooth_red_sandstone"],
         },
         requirements: &[&["has_the_recipe", "has_red_sandstone"]],
         criteria: &["has_red_sandstone", "has_the_recipe"],
@@ -31241,7 +31241,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:smooth_red_sandstone_slab"],
         },
         requirements: &[&["has_the_recipe", "has_smooth_red_sandstone"]],
         criteria: &["has_smooth_red_sandstone", "has_the_recipe"],
@@ -31271,7 +31271,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_SMOOTH_RED_SANDSTONE_SLAB_FROM_SMOOTH_RED_SANDSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/smooth_red_sandstone_slab_from_smooth_red_sandstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_smooth_red_sandstone"]] , criteria : & ["has_smooth_red_sandstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_smooth_red_sandstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:smooth_red_sandstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:smooth_red_sandstone_slab_from_smooth_red_sandstone_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_SMOOTH_RED_SANDSTONE_SLAB_FROM_SMOOTH_RED_SANDSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/smooth_red_sandstone_slab_from_smooth_red_sandstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:smooth_red_sandstone_slab_from_smooth_red_sandstone_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_smooth_red_sandstone"]] , criteria : & ["has_smooth_red_sandstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_smooth_red_sandstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:smooth_red_sandstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:smooth_red_sandstone_slab_from_smooth_red_sandstone_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_SMOOTH_RED_SANDSTONE_STAIRS: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/smooth_red_sandstone_stairs"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -31279,7 +31279,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:smooth_red_sandstone_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_smooth_red_sandstone"]],
         criteria: &["has_smooth_red_sandstone", "has_the_recipe"],
@@ -31309,7 +31309,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_SMOOTH_RED_SANDSTONE_STAIRS_FROM_SMOOTH_RED_SANDSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/smooth_red_sandstone_stairs_from_smooth_red_sandstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_smooth_red_sandstone"]] , criteria : & ["has_smooth_red_sandstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_smooth_red_sandstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:smooth_red_sandstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:smooth_red_sandstone_stairs_from_smooth_red_sandstone_stonecutting") , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_SMOOTH_RED_SANDSTONE_STAIRS_FROM_SMOOTH_RED_SANDSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/smooth_red_sandstone_stairs_from_smooth_red_sandstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:smooth_red_sandstone_stairs_from_smooth_red_sandstone_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_smooth_red_sandstone"]] , criteria : & ["has_smooth_red_sandstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_smooth_red_sandstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:smooth_red_sandstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:smooth_red_sandstone_stairs_from_smooth_red_sandstone_stonecutting") , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_SMOOTH_SANDSTONE: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/smooth_sandstone"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -31317,7 +31317,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:smooth_sandstone"],
         },
         requirements: &[&["has_the_recipe", "has_sandstone"]],
         criteria: &["has_sandstone", "has_the_recipe"],
@@ -31352,7 +31352,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:smooth_sandstone_slab"],
         },
         requirements: &[&["has_the_recipe", "has_smooth_sandstone"]],
         criteria: &["has_smooth_sandstone", "has_the_recipe"],
@@ -31390,7 +31390,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:smooth_sandstone_slab_from_smooth_sandstone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_smooth_sandstone"]],
         criteria: &["has_smooth_sandstone", "has_the_recipe"],
@@ -31427,7 +31427,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:smooth_sandstone_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_smooth_sandstone"]],
         criteria: &["has_smooth_sandstone", "has_the_recipe"],
@@ -31467,7 +31467,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:smooth_sandstone_stairs_from_smooth_sandstone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_smooth_sandstone"]],
         criteria: &["has_smooth_sandstone", "has_the_recipe"],
@@ -31504,7 +31504,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:smooth_stone"],
         },
         requirements: &[&["has_the_recipe", "has_stone"]],
         criteria: &["has_stone", "has_the_recipe"],
@@ -31539,7 +31539,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:smooth_stone_slab"],
         },
         requirements: &[&["has_the_recipe", "has_smooth_stone"]],
         criteria: &["has_smooth_stone", "has_the_recipe"],
@@ -31577,7 +31577,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:smooth_stone_slab_from_smooth_stone_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_smooth_stone"]],
             criteria: &["has_smooth_stone", "has_the_recipe"],
@@ -31616,7 +31616,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:snow_block"],
         },
         requirements: &[&["has_the_recipe", "has_snowball"]],
         criteria: &["has_snowball", "has_the_recipe"],
@@ -31651,7 +31651,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sponge"],
         },
         requirements: &[&["has_the_recipe", "has_wet_sponge"]],
         criteria: &["has_the_recipe", "has_wet_sponge"],
@@ -31686,7 +31686,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:spruce_planks"],
         },
         requirements: &[&["has_the_recipe", "has_logs"]],
         criteria: &["has_logs", "has_the_recipe"],
@@ -31721,7 +31721,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:spruce_slab"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -31756,7 +31756,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:spruce_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -31791,7 +31791,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:spruce_wood"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -31826,7 +31826,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone"],
         },
         requirements: &[&["has_the_recipe", "has_cobblestone"]],
         criteria: &["has_cobblestone", "has_the_recipe"],
@@ -31861,7 +31861,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_brick_slab"],
         },
         requirements: &[&["has_the_recipe", "has_stone_bricks"]],
         criteria: &["has_stone_bricks", "has_the_recipe"],
@@ -31899,7 +31899,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:stone_brick_slab_from_stone_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_stone_bricks"]],
             criteria: &["has_stone_bricks", "has_the_recipe"],
@@ -31940,7 +31940,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_brick_slab_from_stone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_stone"]],
         criteria: &["has_stone", "has_the_recipe"],
@@ -31977,7 +31977,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_brick_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_stone_bricks"]],
         criteria: &["has_stone_bricks", "has_the_recipe"],
@@ -32015,7 +32015,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:stone_brick_stairs_from_stone_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_stone_bricks"]],
             criteria: &["has_stone_bricks", "has_the_recipe"],
@@ -32056,7 +32056,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_brick_stairs_from_stone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_stone"]],
         criteria: &["has_stone", "has_the_recipe"],
@@ -32093,7 +32093,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_stone"]],
         criteria: &["has_stone", "has_the_recipe"],
@@ -32130,7 +32130,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_bricks_from_stone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_stone"]],
         criteria: &["has_stone", "has_the_recipe"],
@@ -32167,7 +32167,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_slab"],
         },
         requirements: &[&["has_the_recipe", "has_stone"]],
         criteria: &["has_stone", "has_the_recipe"],
@@ -32204,7 +32204,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_slab_from_stone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_stone"]],
         criteria: &["has_stone", "has_the_recipe"],
@@ -32241,7 +32241,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_stone"]],
         criteria: &["has_stone", "has_the_recipe"],
@@ -32278,7 +32278,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_stairs_from_stone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_stone"]],
         criteria: &["has_stone", "has_the_recipe"],
@@ -32315,7 +32315,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stripped_acacia_wood"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -32350,7 +32350,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stripped_birch_wood"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -32385,7 +32385,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stripped_cherry_wood"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -32420,7 +32420,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stripped_crimson_hyphae"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -32457,7 +32457,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stripped_dark_oak_wood"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -32494,7 +32494,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stripped_jungle_wood"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -32529,7 +32529,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stripped_mangrove_wood"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -32566,7 +32566,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stripped_oak_wood"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -32601,7 +32601,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stripped_pale_oak_wood"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -32638,7 +32638,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stripped_poplar_wood"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -32673,7 +32673,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stripped_spruce_wood"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -32708,7 +32708,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stripped_warped_hyphae"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -32745,7 +32745,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sulfur_brick_slab"],
         },
         requirements: &[&["has_the_recipe", "has_sulfur_bricks"]],
         criteria: &["has_sulfur_bricks", "has_the_recipe"],
@@ -32783,7 +32783,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:sulfur_brick_slab_from_polished_sulfur_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_polished_sulfur"]],
             criteria: &["has_polished_sulfur", "has_the_recipe"],
@@ -32825,7 +32825,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:sulfur_brick_slab_from_sulfur_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_sulfur_bricks"]],
             criteria: &["has_sulfur_bricks", "has_the_recipe"],
@@ -32866,7 +32866,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sulfur_brick_slab_from_sulfur_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_sulfur"]],
         criteria: &["has_sulfur", "has_the_recipe"],
@@ -32903,7 +32903,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sulfur_brick_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_sulfur_bricks"]],
         criteria: &["has_sulfur_bricks", "has_the_recipe"],
@@ -32941,7 +32941,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:sulfur_brick_stairs_from_polished_sulfur_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_polished_sulfur"]],
             criteria: &["has_polished_sulfur", "has_the_recipe"],
@@ -32983,7 +32983,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:sulfur_brick_stairs_from_sulfur_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_sulfur_bricks"]],
             criteria: &["has_sulfur_bricks", "has_the_recipe"],
@@ -33024,7 +33024,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sulfur_brick_stairs_from_sulfur_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_sulfur"]],
         criteria: &["has_sulfur", "has_the_recipe"],
@@ -33061,7 +33061,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sulfur_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_polished_sulfur"]],
         criteria: &["has_polished_sulfur", "has_the_recipe"],
@@ -33099,7 +33099,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:sulfur_bricks_from_polished_sulfur_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_polished_sulfur"]],
             criteria: &["has_polished_sulfur", "has_the_recipe"],
@@ -33140,7 +33140,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sulfur_bricks_from_sulfur_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_sulfur"]],
         criteria: &["has_sulfur", "has_the_recipe"],
@@ -33177,7 +33177,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sulfur_from_sulfur_spikes"],
         },
         requirements: &[&["has_the_recipe", "has_sulfur_spike"]],
         criteria: &["has_sulfur_spike", "has_the_recipe"],
@@ -33214,7 +33214,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sulfur_slab"],
         },
         requirements: &[&["has_the_recipe", "has_sulfur"]],
         criteria: &["has_sulfur", "has_the_recipe"],
@@ -33251,7 +33251,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sulfur_slab_from_sulfur_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_sulfur"]],
         criteria: &["has_sulfur", "has_the_recipe"],
@@ -33288,7 +33288,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sulfur_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_sulfur"]],
         criteria: &["has_sulfur", "has_the_recipe"],
@@ -33325,7 +33325,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sulfur_stairs_from_sulfur_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_sulfur"]],
         criteria: &["has_sulfur", "has_the_recipe"],
@@ -33362,7 +33362,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_clay_block"]],
         criteria: &["has_clay_block", "has_the_recipe"],
@@ -33397,7 +33397,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tinted_glass"],
         },
         requirements: &[&["has_the_recipe", "has_amethyst_shard"]],
         criteria: &["has_amethyst_shard", "has_the_recipe"],
@@ -33432,7 +33432,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tuff_brick_slab"],
         },
         requirements: &[&["has_the_recipe", "has_tuff_bricks"]],
         criteria: &["has_the_recipe", "has_tuff_bricks"],
@@ -33470,7 +33470,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:tuff_brick_slab_from_polished_tuff_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_polished_tuff"]],
             criteria: &["has_polished_tuff", "has_the_recipe"],
@@ -33512,7 +33512,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:tuff_brick_slab_from_tuff_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_tuff_bricks"]],
             criteria: &["has_the_recipe", "has_tuff_bricks"],
@@ -33553,7 +33553,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tuff_brick_slab_from_tuff_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_tuff"]],
         criteria: &["has_the_recipe", "has_tuff"],
@@ -33590,7 +33590,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tuff_brick_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_tuff_bricks"]],
         criteria: &["has_the_recipe", "has_tuff_bricks"],
@@ -33628,7 +33628,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:tuff_brick_stairs_from_polished_tuff_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_polished_tuff"]],
             criteria: &["has_polished_tuff", "has_the_recipe"],
@@ -33670,7 +33670,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:tuff_brick_stairs_from_tuff_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_tuff_bricks"]],
             criteria: &["has_the_recipe", "has_tuff_bricks"],
@@ -33711,7 +33711,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tuff_brick_stairs_from_tuff_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_tuff"]],
         criteria: &["has_the_recipe", "has_tuff"],
@@ -33748,7 +33748,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tuff_bricks"],
         },
         requirements: &[&["has_the_recipe", "has_polished_tuff"]],
         criteria: &["has_polished_tuff", "has_the_recipe"],
@@ -33785,7 +33785,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tuff_bricks_from_polished_tuff_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_polished_tuff"]],
         criteria: &["has_polished_tuff", "has_the_recipe"],
@@ -33824,7 +33824,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tuff_bricks_from_tuff_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_tuff"]],
         criteria: &["has_the_recipe", "has_tuff"],
@@ -33861,7 +33861,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tuff_slab"],
         },
         requirements: &[&["has_the_recipe", "has_tuff"]],
         criteria: &["has_the_recipe", "has_tuff"],
@@ -33896,7 +33896,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tuff_slab_from_tuff_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_tuff"]],
         criteria: &["has_the_recipe", "has_tuff"],
@@ -33933,7 +33933,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tuff_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_tuff"]],
         criteria: &["has_the_recipe", "has_tuff"],
@@ -33970,7 +33970,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tuff_stairs_from_tuff_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_tuff"]],
         criteria: &["has_the_recipe", "has_tuff"],
@@ -34007,7 +34007,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:warped_hyphae"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -34042,7 +34042,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:warped_planks"],
         },
         requirements: &[&["has_the_recipe", "has_logs"]],
         criteria: &["has_logs", "has_the_recipe"],
@@ -34077,7 +34077,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:warped_slab"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -34112,7 +34112,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:warped_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -34147,7 +34147,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_chiseled_copper"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_cut_copper_slab"]],
         criteria: &["has_the_recipe", "has_waxed_cut_copper_slab"],
@@ -34184,7 +34184,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_chiseled_copper_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_chiseled_copper"]],
         criteria: &["has_chiseled_copper", "has_the_recipe"],
@@ -34224,7 +34224,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_chiseled_copper_from_waxed_copper_block_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_copper_block"]],
         criteria: &["has_the_recipe", "has_waxed_copper_block"],
@@ -34264,7 +34264,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_chiseled_copper_from_waxed_cut_copper_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_cut_copper"]],
         criteria: &["has_the_recipe", "has_waxed_cut_copper"],
@@ -34301,7 +34301,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_copper_bars_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_copper_bars"]],
         criteria: &["has_copper_bars", "has_the_recipe"],
@@ -34338,7 +34338,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_copper_block_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_copper_block"]],
         criteria: &["has_copper_block", "has_the_recipe"],
@@ -34375,7 +34375,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_copper_chain_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_copper_chain"]],
         criteria: &["has_copper_chain", "has_the_recipe"],
@@ -34412,7 +34412,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_copper_chest_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_copper_chest"]],
         criteria: &["has_copper_chest", "has_the_recipe"],
@@ -34451,7 +34451,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_copper_golem_statue_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_copper_golem_statue"]],
         criteria: &["has_copper_golem_statue", "has_the_recipe"],
@@ -34488,7 +34488,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_copper_grate"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_copper_block"]],
         criteria: &["has_the_recipe", "has_waxed_copper_block"],
@@ -34523,7 +34523,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_copper_grate_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_copper_grate"]],
         criteria: &["has_copper_grate", "has_the_recipe"],
@@ -34563,7 +34563,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_copper_grate_from_waxed_copper_block_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_copper_block"]],
         criteria: &["has_the_recipe", "has_waxed_copper_block"],
@@ -34602,7 +34602,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_copper_lantern_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_copper_lantern"]],
         criteria: &["has_copper_lantern", "has_the_recipe"],
@@ -34639,7 +34639,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_cut_copper"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_copper_block"]],
         criteria: &["has_the_recipe", "has_waxed_copper_block"],
@@ -34674,7 +34674,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_cut_copper_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_cut_copper"]],
         criteria: &["has_cut_copper", "has_the_recipe"],
@@ -34714,7 +34714,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:waxed_cut_copper_from_waxed_copper_block_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_waxed_copper_block"]],
             criteria: &["has_the_recipe", "has_waxed_copper_block"],
@@ -34753,7 +34753,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_cut_copper_slab"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_cut_copper"]],
         criteria: &["has_the_recipe", "has_waxed_cut_copper"],
@@ -34790,7 +34790,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_cut_copper_slab_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_cut_copper_slab"]],
         criteria: &["has_cut_copper_slab", "has_the_recipe"],
@@ -34830,7 +34830,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_cut_copper_slab_from_waxed_copper_block_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_copper_block"]],
         criteria: &["has_the_recipe", "has_waxed_copper_block"],
@@ -34870,7 +34870,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_cut_copper_slab_from_waxed_cut_copper_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_cut_copper"]],
         criteria: &["has_the_recipe", "has_waxed_cut_copper"],
@@ -34907,7 +34907,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_cut_copper_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_cut_copper"]],
         criteria: &["has_the_recipe", "has_waxed_cut_copper"],
@@ -34946,7 +34946,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_cut_copper_stairs_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_cut_copper_stairs"]],
         criteria: &["has_cut_copper_stairs", "has_the_recipe"],
@@ -34976,7 +34976,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_CUT_COPPER_STAIRS_FROM_WAXED_COPPER_BLOCK_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_cut_copper_stairs_from_waxed_copper_block_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_copper_block"]] , criteria : & ["has_the_recipe" , "has_waxed_copper_block"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_cut_copper_stairs_from_waxed_copper_block_stonecutting") , } , AdvancementCriterion { name : "has_waxed_copper_block" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_copper_block"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_CUT_COPPER_STAIRS_FROM_WAXED_COPPER_BLOCK_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_cut_copper_stairs_from_waxed_copper_block_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_cut_copper_stairs_from_waxed_copper_block_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_copper_block"]] , criteria : & ["has_the_recipe" , "has_waxed_copper_block"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_cut_copper_stairs_from_waxed_copper_block_stonecutting") , } , AdvancementCriterion { name : "has_waxed_copper_block" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_copper_block"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_WAXED_CUT_COPPER_STAIRS_FROM_WAXED_CUT_COPPER_STONECUTTING:
         &Self = &Self {
         id: Identifier::vanilla_static(
@@ -34987,7 +34987,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_cut_copper_stairs_from_waxed_cut_copper_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_cut_copper"]],
         criteria: &["has_the_recipe", "has_waxed_cut_copper"],
@@ -35024,7 +35024,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_exposed_chiseled_copper"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_exposed_cut_copper_slab"]],
         criteria: &["has_the_recipe", "has_waxed_exposed_cut_copper_slab"],
@@ -35063,7 +35063,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_exposed_chiseled_copper_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_chiseled_copper"]],
         criteria: &["has_exposed_chiseled_copper", "has_the_recipe"],
@@ -35093,8 +35093,8 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_CHISELED_COPPER_FROM_WAXED_EXPOSED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_exposed_chiseled_copper_from_waxed_exposed_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_exposed_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_exposed_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_exposed_chiseled_copper_from_waxed_exposed_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_exposed_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_exposed_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_CHISELED_COPPER_FROM_WAXED_EXPOSED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_exposed_chiseled_copper_from_waxed_exposed_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_exposed_cut_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_exposed_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_exposed_chiseled_copper_from_waxed_exposed_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_exposed_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_exposed_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_CHISELED_COPPER_FROM_WAXED_EXPOSED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_exposed_chiseled_copper_from_waxed_exposed_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_exposed_chiseled_copper_from_waxed_exposed_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_exposed_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_exposed_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_exposed_chiseled_copper_from_waxed_exposed_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_exposed_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_exposed_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_CHISELED_COPPER_FROM_WAXED_EXPOSED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_exposed_chiseled_copper_from_waxed_exposed_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_exposed_chiseled_copper_from_waxed_exposed_cut_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_exposed_cut_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_exposed_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_exposed_chiseled_copper_from_waxed_exposed_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_exposed_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_exposed_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_COPPER_BARS_FROM_HONEYCOMB: &Self = &Self {
         id: Identifier::vanilla_static(
             "recipes/building_blocks/waxed_exposed_copper_bars_from_honeycomb",
@@ -35104,7 +35104,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_exposed_copper_bars_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_copper_bars"]],
         criteria: &["has_exposed_copper_bars", "has_the_recipe"],
@@ -35143,7 +35143,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_exposed_copper_chain_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_copper_chain"]],
         criteria: &["has_exposed_copper_chain", "has_the_recipe"],
@@ -35182,7 +35182,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_exposed_copper_chest_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_copper_chest"]],
         criteria: &["has_exposed_copper_chest", "has_the_recipe"],
@@ -35221,7 +35221,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_exposed_copper_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_copper"]],
         criteria: &["has_exposed_copper", "has_the_recipe"],
@@ -35261,7 +35261,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:waxed_exposed_copper_golem_statue_from_honeycomb"],
             },
             requirements: &[&["has_the_recipe", "has_exposed_copper_golem_statue"]],
             criteria: &["has_exposed_copper_golem_statue", "has_the_recipe"],
@@ -35300,7 +35300,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_exposed_copper_grate"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_exposed_copper"]],
         criteria: &["has_the_recipe", "has_waxed_exposed_copper"],
@@ -35339,7 +35339,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_exposed_copper_grate_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_copper_grate"]],
         criteria: &["has_exposed_copper_grate", "has_the_recipe"],
@@ -35369,7 +35369,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_COPPER_GRATE_FROM_WAXED_EXPOSED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_exposed_copper_grate_from_waxed_exposed_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_exposed_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_exposed_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_exposed_copper_grate_from_waxed_exposed_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_exposed_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_exposed_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_COPPER_GRATE_FROM_WAXED_EXPOSED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_exposed_copper_grate_from_waxed_exposed_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_exposed_copper_grate_from_waxed_exposed_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_exposed_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_exposed_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_exposed_copper_grate_from_waxed_exposed_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_exposed_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_exposed_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_COPPER_LANTERN_FROM_HONEYCOMB: &Self = &Self {
         id: Identifier::vanilla_static(
             "recipes/building_blocks/waxed_exposed_copper_lantern_from_honeycomb",
@@ -35379,7 +35379,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_exposed_copper_lantern_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_copper_lantern"]],
         criteria: &["has_exposed_copper_lantern", "has_the_recipe"],
@@ -35416,7 +35416,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_exposed_cut_copper"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_exposed_copper"]],
         criteria: &["has_the_recipe", "has_waxed_exposed_copper"],
@@ -35455,7 +35455,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_exposed_cut_copper_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_cut_copper"]],
         criteria: &["has_exposed_cut_copper", "has_the_recipe"],
@@ -35485,7 +35485,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_CUT_COPPER_FROM_WAXED_EXPOSED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_exposed_cut_copper_from_waxed_exposed_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_exposed_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_exposed_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_exposed_cut_copper_from_waxed_exposed_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_exposed_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_exposed_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_CUT_COPPER_FROM_WAXED_EXPOSED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_exposed_cut_copper_from_waxed_exposed_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_exposed_cut_copper_from_waxed_exposed_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_exposed_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_exposed_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_exposed_cut_copper_from_waxed_exposed_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_exposed_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_exposed_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_CUT_COPPER_SLAB: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/waxed_exposed_cut_copper_slab"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -35493,7 +35493,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_exposed_cut_copper_slab"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_exposed_cut_copper"]],
         criteria: &["has_the_recipe", "has_waxed_exposed_cut_copper"],
@@ -35532,7 +35532,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_exposed_cut_copper_slab_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_cut_copper_slab"]],
         criteria: &["has_exposed_cut_copper_slab", "has_the_recipe"],
@@ -35562,8 +35562,8 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_CUT_COPPER_SLAB_FROM_WAXED_EXPOSED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_exposed_cut_copper_slab_from_waxed_exposed_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_exposed_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_exposed_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_exposed_cut_copper_slab_from_waxed_exposed_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_exposed_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_exposed_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_CUT_COPPER_SLAB_FROM_WAXED_EXPOSED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_exposed_cut_copper_slab_from_waxed_exposed_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_exposed_cut_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_exposed_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_exposed_cut_copper_slab_from_waxed_exposed_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_exposed_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_exposed_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_CUT_COPPER_SLAB_FROM_WAXED_EXPOSED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_exposed_cut_copper_slab_from_waxed_exposed_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_exposed_cut_copper_slab_from_waxed_exposed_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_exposed_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_exposed_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_exposed_cut_copper_slab_from_waxed_exposed_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_exposed_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_exposed_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_CUT_COPPER_SLAB_FROM_WAXED_EXPOSED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_exposed_cut_copper_slab_from_waxed_exposed_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_exposed_cut_copper_slab_from_waxed_exposed_cut_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_exposed_cut_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_exposed_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_exposed_cut_copper_slab_from_waxed_exposed_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_exposed_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_exposed_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_CUT_COPPER_STAIRS: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/waxed_exposed_cut_copper_stairs"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -35571,7 +35571,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_exposed_cut_copper_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_exposed_cut_copper"]],
         criteria: &["has_the_recipe", "has_waxed_exposed_cut_copper"],
@@ -35611,7 +35611,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:waxed_exposed_cut_copper_stairs_from_honeycomb"],
             },
             requirements: &[&["has_the_recipe", "has_exposed_cut_copper_stairs"]],
             criteria: &["has_exposed_cut_copper_stairs", "has_the_recipe"],
@@ -35643,8 +35643,8 @@ impl Advancement {
                 },
             ],
         };
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_CUT_COPPER_STAIRS_FROM_WAXED_EXPOSED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_exposed_cut_copper_stairs_from_waxed_exposed_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_exposed_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_exposed_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_exposed_cut_copper_stairs_from_waxed_exposed_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_exposed_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_exposed_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_CUT_COPPER_STAIRS_FROM_WAXED_EXPOSED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_exposed_cut_copper_stairs_from_waxed_exposed_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_exposed_cut_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_exposed_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_exposed_cut_copper_stairs_from_waxed_exposed_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_exposed_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_exposed_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_CUT_COPPER_STAIRS_FROM_WAXED_EXPOSED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_exposed_cut_copper_stairs_from_waxed_exposed_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_exposed_cut_copper_stairs_from_waxed_exposed_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_exposed_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_exposed_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_exposed_cut_copper_stairs_from_waxed_exposed_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_exposed_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_exposed_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_CUT_COPPER_STAIRS_FROM_WAXED_EXPOSED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_exposed_cut_copper_stairs_from_waxed_exposed_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_exposed_cut_copper_stairs_from_waxed_exposed_cut_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_exposed_cut_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_exposed_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_exposed_cut_copper_stairs_from_waxed_exposed_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_exposed_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_exposed_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_WAXED_EXPOSED_LIGHTNING_ROD_FROM_HONEYCOMB: &Self = &Self {
         id: Identifier::vanilla_static(
             "recipes/building_blocks/waxed_exposed_lightning_rod_from_honeycomb",
@@ -35654,7 +35654,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_exposed_lightning_rod_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_lightning_rod"]],
         criteria: &["has_exposed_lightning_rod", "has_the_recipe"],
@@ -35693,7 +35693,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_lightning_rod_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_lightning_rod"]],
         criteria: &["has_lightning_rod", "has_the_recipe"],
@@ -35730,7 +35730,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_oxidized_chiseled_copper"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_oxidized_cut_copper_slab"]],
         criteria: &["has_the_recipe", "has_waxed_oxidized_cut_copper_slab"],
@@ -35770,7 +35770,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:waxed_oxidized_chiseled_copper_from_honeycomb"],
             },
             requirements: &[&["has_the_recipe", "has_oxidized_chiseled_copper"]],
             criteria: &["has_oxidized_chiseled_copper", "has_the_recipe"],
@@ -35802,8 +35802,8 @@ impl Advancement {
                 },
             ],
         };
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_CHISELED_COPPER_FROM_WAXED_OXIDIZED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_oxidized_chiseled_copper_from_waxed_oxidized_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_oxidized_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_oxidized_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_oxidized_chiseled_copper_from_waxed_oxidized_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_oxidized_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_oxidized_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_CHISELED_COPPER_FROM_WAXED_OXIDIZED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_oxidized_chiseled_copper_from_waxed_oxidized_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_oxidized_cut_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_oxidized_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_oxidized_chiseled_copper_from_waxed_oxidized_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_oxidized_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_oxidized_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_CHISELED_COPPER_FROM_WAXED_OXIDIZED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_oxidized_chiseled_copper_from_waxed_oxidized_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_oxidized_chiseled_copper_from_waxed_oxidized_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_oxidized_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_oxidized_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_oxidized_chiseled_copper_from_waxed_oxidized_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_oxidized_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_oxidized_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_CHISELED_COPPER_FROM_WAXED_OXIDIZED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_oxidized_chiseled_copper_from_waxed_oxidized_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_oxidized_chiseled_copper_from_waxed_oxidized_cut_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_oxidized_cut_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_oxidized_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_oxidized_chiseled_copper_from_waxed_oxidized_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_oxidized_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_oxidized_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_COPPER_BARS_FROM_HONEYCOMB: &Self = &Self {
         id: Identifier::vanilla_static(
             "recipes/building_blocks/waxed_oxidized_copper_bars_from_honeycomb",
@@ -35813,7 +35813,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_oxidized_copper_bars_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_oxidized_copper_bars"]],
         criteria: &["has_oxidized_copper_bars", "has_the_recipe"],
@@ -35852,7 +35852,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_oxidized_copper_chain_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_oxidized_copper_chain"]],
         criteria: &["has_oxidized_copper_chain", "has_the_recipe"],
@@ -35891,7 +35891,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_oxidized_copper_chest_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_oxidized_copper_chest"]],
         criteria: &["has_oxidized_copper_chest", "has_the_recipe"],
@@ -35930,7 +35930,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_oxidized_copper_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_oxidized_copper"]],
         criteria: &["has_oxidized_copper", "has_the_recipe"],
@@ -35970,7 +35970,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:waxed_oxidized_copper_golem_statue_from_honeycomb"],
             },
             requirements: &[&["has_the_recipe", "has_oxidized_copper_golem_statue"]],
             criteria: &["has_oxidized_copper_golem_statue", "has_the_recipe"],
@@ -36009,7 +36009,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_oxidized_copper_grate"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_oxidized_copper"]],
         criteria: &["has_the_recipe", "has_waxed_oxidized_copper"],
@@ -36048,7 +36048,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_oxidized_copper_grate_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_oxidized_copper_grate"]],
         criteria: &["has_oxidized_copper_grate", "has_the_recipe"],
@@ -36078,7 +36078,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_COPPER_GRATE_FROM_WAXED_OXIDIZED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_oxidized_copper_grate_from_waxed_oxidized_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_oxidized_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_oxidized_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_oxidized_copper_grate_from_waxed_oxidized_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_oxidized_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_oxidized_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_COPPER_GRATE_FROM_WAXED_OXIDIZED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_oxidized_copper_grate_from_waxed_oxidized_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_oxidized_copper_grate_from_waxed_oxidized_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_oxidized_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_oxidized_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_oxidized_copper_grate_from_waxed_oxidized_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_oxidized_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_oxidized_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_COPPER_LANTERN_FROM_HONEYCOMB: &Self = &Self {
         id: Identifier::vanilla_static(
             "recipes/building_blocks/waxed_oxidized_copper_lantern_from_honeycomb",
@@ -36088,7 +36088,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_oxidized_copper_lantern_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_oxidized_copper_lantern"]],
         criteria: &["has_oxidized_copper_lantern", "has_the_recipe"],
@@ -36125,7 +36125,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_oxidized_cut_copper"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_oxidized_copper"]],
         criteria: &["has_the_recipe", "has_waxed_oxidized_copper"],
@@ -36164,7 +36164,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_oxidized_cut_copper_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_oxidized_cut_copper"]],
         criteria: &["has_oxidized_cut_copper", "has_the_recipe"],
@@ -36194,7 +36194,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_CUT_COPPER_FROM_WAXED_OXIDIZED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_oxidized_cut_copper_from_waxed_oxidized_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_oxidized_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_oxidized_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_oxidized_cut_copper_from_waxed_oxidized_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_oxidized_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_oxidized_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_CUT_COPPER_FROM_WAXED_OXIDIZED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_oxidized_cut_copper_from_waxed_oxidized_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_oxidized_cut_copper_from_waxed_oxidized_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_oxidized_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_oxidized_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_oxidized_cut_copper_from_waxed_oxidized_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_oxidized_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_oxidized_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_CUT_COPPER_SLAB: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/waxed_oxidized_cut_copper_slab"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -36202,7 +36202,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_oxidized_cut_copper_slab"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_oxidized_cut_copper"]],
         criteria: &["has_the_recipe", "has_waxed_oxidized_cut_copper"],
@@ -36242,7 +36242,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:waxed_oxidized_cut_copper_slab_from_honeycomb"],
             },
             requirements: &[&["has_the_recipe", "has_oxidized_cut_copper_slab"]],
             criteria: &["has_oxidized_cut_copper_slab", "has_the_recipe"],
@@ -36274,8 +36274,8 @@ impl Advancement {
                 },
             ],
         };
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_CUT_COPPER_SLAB_FROM_WAXED_OXIDIZED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_oxidized_cut_copper_slab_from_waxed_oxidized_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_oxidized_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_oxidized_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_oxidized_cut_copper_slab_from_waxed_oxidized_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_oxidized_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_oxidized_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_CUT_COPPER_SLAB_FROM_WAXED_OXIDIZED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_oxidized_cut_copper_slab_from_waxed_oxidized_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_oxidized_cut_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_oxidized_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_oxidized_cut_copper_slab_from_waxed_oxidized_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_oxidized_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_oxidized_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_CUT_COPPER_SLAB_FROM_WAXED_OXIDIZED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_oxidized_cut_copper_slab_from_waxed_oxidized_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_oxidized_cut_copper_slab_from_waxed_oxidized_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_oxidized_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_oxidized_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_oxidized_cut_copper_slab_from_waxed_oxidized_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_oxidized_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_oxidized_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_CUT_COPPER_SLAB_FROM_WAXED_OXIDIZED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_oxidized_cut_copper_slab_from_waxed_oxidized_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_oxidized_cut_copper_slab_from_waxed_oxidized_cut_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_oxidized_cut_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_oxidized_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_oxidized_cut_copper_slab_from_waxed_oxidized_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_oxidized_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_oxidized_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_CUT_COPPER_STAIRS: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/waxed_oxidized_cut_copper_stairs"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -36283,7 +36283,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_oxidized_cut_copper_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_oxidized_cut_copper"]],
         criteria: &["has_the_recipe", "has_waxed_oxidized_cut_copper"],
@@ -36323,7 +36323,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:waxed_oxidized_cut_copper_stairs_from_honeycomb"],
             },
             requirements: &[&["has_the_recipe", "has_oxidized_cut_copper_stairs"]],
             criteria: &["has_oxidized_cut_copper_stairs", "has_the_recipe"],
@@ -36355,8 +36355,8 @@ impl Advancement {
                 },
             ],
         };
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_CUT_COPPER_STAIRS_FROM_WAXED_OXIDIZED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_oxidized_cut_copper_stairs_from_waxed_oxidized_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_oxidized_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_oxidized_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_oxidized_cut_copper_stairs_from_waxed_oxidized_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_oxidized_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_oxidized_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_CUT_COPPER_STAIRS_FROM_WAXED_OXIDIZED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_oxidized_cut_copper_stairs_from_waxed_oxidized_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_oxidized_cut_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_oxidized_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_oxidized_cut_copper_stairs_from_waxed_oxidized_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_oxidized_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_oxidized_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_CUT_COPPER_STAIRS_FROM_WAXED_OXIDIZED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_oxidized_cut_copper_stairs_from_waxed_oxidized_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_oxidized_cut_copper_stairs_from_waxed_oxidized_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_oxidized_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_oxidized_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_oxidized_cut_copper_stairs_from_waxed_oxidized_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_oxidized_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_oxidized_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_CUT_COPPER_STAIRS_FROM_WAXED_OXIDIZED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_oxidized_cut_copper_stairs_from_waxed_oxidized_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_oxidized_cut_copper_stairs_from_waxed_oxidized_cut_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_oxidized_cut_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_oxidized_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_oxidized_cut_copper_stairs_from_waxed_oxidized_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_oxidized_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_oxidized_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_WAXED_OXIDIZED_LIGHTNING_ROD_FROM_HONEYCOMB: &Self = &Self {
         id: Identifier::vanilla_static(
             "recipes/building_blocks/waxed_oxidized_lightning_rod_from_honeycomb",
@@ -36366,7 +36366,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_oxidized_lightning_rod_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_oxidized_lightning_rod"]],
         criteria: &["has_oxidized_lightning_rod", "has_the_recipe"],
@@ -36403,7 +36403,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_weathered_chiseled_copper"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_weathered_cut_copper_slab"]],
         criteria: &["has_the_recipe", "has_waxed_weathered_cut_copper_slab"],
@@ -36443,7 +36443,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:waxed_weathered_chiseled_copper_from_honeycomb"],
             },
             requirements: &[&["has_the_recipe", "has_weathered_chiseled_copper"]],
             criteria: &["has_the_recipe", "has_weathered_chiseled_copper"],
@@ -36475,8 +36475,8 @@ impl Advancement {
                 },
             ],
         };
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_CHISELED_COPPER_FROM_WAXED_WEATHERED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_weathered_chiseled_copper_from_waxed_weathered_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_weathered_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_weathered_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_weathered_chiseled_copper_from_waxed_weathered_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_weathered_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_weathered_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_CHISELED_COPPER_FROM_WAXED_WEATHERED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_weathered_chiseled_copper_from_waxed_weathered_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_weathered_cut_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_weathered_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_weathered_chiseled_copper_from_waxed_weathered_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_weathered_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_weathered_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_CHISELED_COPPER_FROM_WAXED_WEATHERED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_weathered_chiseled_copper_from_waxed_weathered_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_weathered_chiseled_copper_from_waxed_weathered_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_weathered_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_weathered_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_weathered_chiseled_copper_from_waxed_weathered_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_weathered_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_weathered_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_CHISELED_COPPER_FROM_WAXED_WEATHERED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_weathered_chiseled_copper_from_waxed_weathered_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_weathered_chiseled_copper_from_waxed_weathered_cut_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_weathered_cut_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_weathered_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_weathered_chiseled_copper_from_waxed_weathered_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_weathered_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_weathered_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_COPPER_BARS_FROM_HONEYCOMB: &Self = &Self {
         id: Identifier::vanilla_static(
             "recipes/building_blocks/waxed_weathered_copper_bars_from_honeycomb",
@@ -36486,7 +36486,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_weathered_copper_bars_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_weathered_copper_bars"]],
         criteria: &["has_the_recipe", "has_weathered_copper_bars"],
@@ -36525,7 +36525,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_weathered_copper_chain_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_weathered_copper_chain"]],
         criteria: &["has_the_recipe", "has_weathered_copper_chain"],
@@ -36564,7 +36564,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_weathered_copper_chest_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_weathered_copper_chest"]],
         criteria: &["has_the_recipe", "has_weathered_copper_chest"],
@@ -36603,7 +36603,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_weathered_copper_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_weathered_copper"]],
         criteria: &["has_the_recipe", "has_weathered_copper"],
@@ -36643,7 +36643,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:waxed_weathered_copper_golem_statue_from_honeycomb"],
             },
             requirements: &[&["has_the_recipe", "has_weathered_copper_golem_statue"]],
             criteria: &["has_the_recipe", "has_weathered_copper_golem_statue"],
@@ -36682,7 +36682,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_weathered_copper_grate"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_weathered_copper"]],
         criteria: &["has_the_recipe", "has_waxed_weathered_copper"],
@@ -36721,7 +36721,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_weathered_copper_grate_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_weathered_copper_grate"]],
         criteria: &["has_the_recipe", "has_weathered_copper_grate"],
@@ -36751,7 +36751,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_COPPER_GRATE_FROM_WAXED_WEATHERED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_weathered_copper_grate_from_waxed_weathered_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_weathered_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_weathered_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_weathered_copper_grate_from_waxed_weathered_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_weathered_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_weathered_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_COPPER_GRATE_FROM_WAXED_WEATHERED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_weathered_copper_grate_from_waxed_weathered_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_weathered_copper_grate_from_waxed_weathered_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_weathered_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_weathered_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_weathered_copper_grate_from_waxed_weathered_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_weathered_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_weathered_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_COPPER_LANTERN_FROM_HONEYCOMB: &Self =
         &Self {
             id: Identifier::vanilla_static(
@@ -36762,7 +36762,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:waxed_weathered_copper_lantern_from_honeycomb"],
             },
             requirements: &[&["has_the_recipe", "has_weathered_copper_lantern"]],
             criteria: &["has_the_recipe", "has_weathered_copper_lantern"],
@@ -36801,7 +36801,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_weathered_cut_copper"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_weathered_copper"]],
         criteria: &["has_the_recipe", "has_waxed_weathered_copper"],
@@ -36840,7 +36840,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_weathered_cut_copper_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_weathered_cut_copper"]],
         criteria: &["has_the_recipe", "has_weathered_cut_copper"],
@@ -36870,7 +36870,7 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_CUT_COPPER_FROM_WAXED_WEATHERED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_weathered_cut_copper_from_waxed_weathered_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_weathered_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_weathered_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_weathered_cut_copper_from_waxed_weathered_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_weathered_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_weathered_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_CUT_COPPER_FROM_WAXED_WEATHERED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_weathered_cut_copper_from_waxed_weathered_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_weathered_cut_copper_from_waxed_weathered_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_weathered_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_weathered_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_weathered_cut_copper_from_waxed_weathered_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_weathered_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_weathered_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_CUT_COPPER_SLAB: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/waxed_weathered_cut_copper_slab"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -36878,7 +36878,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_weathered_cut_copper_slab"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_weathered_cut_copper"]],
         criteria: &["has_the_recipe", "has_waxed_weathered_cut_copper"],
@@ -36918,7 +36918,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:waxed_weathered_cut_copper_slab_from_honeycomb"],
             },
             requirements: &[&["has_the_recipe", "has_weathered_cut_copper_slab"]],
             criteria: &["has_the_recipe", "has_weathered_cut_copper_slab"],
@@ -36950,8 +36950,8 @@ impl Advancement {
                 },
             ],
         };
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_CUT_COPPER_SLAB_FROM_WAXED_WEATHERED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_weathered_cut_copper_slab_from_waxed_weathered_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_weathered_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_weathered_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_weathered_cut_copper_slab_from_waxed_weathered_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_weathered_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_weathered_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_CUT_COPPER_SLAB_FROM_WAXED_WEATHERED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_weathered_cut_copper_slab_from_waxed_weathered_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_weathered_cut_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_weathered_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_weathered_cut_copper_slab_from_waxed_weathered_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_weathered_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_weathered_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_CUT_COPPER_SLAB_FROM_WAXED_WEATHERED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_weathered_cut_copper_slab_from_waxed_weathered_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_weathered_cut_copper_slab_from_waxed_weathered_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_weathered_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_weathered_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_weathered_cut_copper_slab_from_waxed_weathered_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_weathered_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_weathered_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_CUT_COPPER_SLAB_FROM_WAXED_WEATHERED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_weathered_cut_copper_slab_from_waxed_weathered_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_weathered_cut_copper_slab_from_waxed_weathered_cut_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_weathered_cut_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_weathered_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_weathered_cut_copper_slab_from_waxed_weathered_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_weathered_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_weathered_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_CUT_COPPER_STAIRS: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/waxed_weathered_cut_copper_stairs"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -36959,7 +36959,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_weathered_cut_copper_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_weathered_cut_copper"]],
         criteria: &["has_the_recipe", "has_waxed_weathered_cut_copper"],
@@ -36999,7 +36999,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:waxed_weathered_cut_copper_stairs_from_honeycomb"],
             },
             requirements: &[&["has_the_recipe", "has_weathered_cut_copper_stairs"]],
             criteria: &["has_the_recipe", "has_weathered_cut_copper_stairs"],
@@ -37031,8 +37031,8 @@ impl Advancement {
                 },
             ],
         };
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_CUT_COPPER_STAIRS_FROM_WAXED_WEATHERED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_weathered_cut_copper_stairs_from_waxed_weathered_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_weathered_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_weathered_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_weathered_cut_copper_stairs_from_waxed_weathered_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_weathered_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_weathered_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
-    pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_CUT_COPPER_STAIRS_FROM_WAXED_WEATHERED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_weathered_cut_copper_stairs_from_waxed_weathered_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_waxed_weathered_cut_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_weathered_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_weathered_cut_copper_stairs_from_waxed_weathered_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_weathered_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_weathered_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_CUT_COPPER_STAIRS_FROM_WAXED_WEATHERED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_weathered_cut_copper_stairs_from_waxed_weathered_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_weathered_cut_copper_stairs_from_waxed_weathered_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_weathered_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_weathered_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_weathered_cut_copper_stairs_from_waxed_weathered_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_weathered_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_weathered_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_CUT_COPPER_STAIRS_FROM_WAXED_WEATHERED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/waxed_weathered_cut_copper_stairs_from_waxed_weathered_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:waxed_weathered_cut_copper_stairs_from_waxed_weathered_cut_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_waxed_weathered_cut_copper"]] , criteria : & ["has_the_recipe" , "has_waxed_weathered_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:waxed_weathered_cut_copper_stairs_from_waxed_weathered_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_waxed_weathered_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:waxed_weathered_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_WAXED_WEATHERED_LIGHTNING_ROD_FROM_HONEYCOMB: &Self = &Self {
         id: Identifier::vanilla_static(
             "recipes/building_blocks/waxed_weathered_lightning_rod_from_honeycomb",
@@ -37042,7 +37042,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_weathered_lightning_rod_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_weathered_lightning_rod"]],
         criteria: &["has_the_recipe", "has_weathered_lightning_rod"],
@@ -37079,7 +37079,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:weathered_chiseled_copper"],
         },
         requirements: &[&["has_the_recipe", "has_slab"]],
         criteria: &["has_slab", "has_the_recipe"],
@@ -37109,8 +37109,8 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_WEATHERED_CHISELED_COPPER_FROM_WEATHERED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/weathered_chiseled_copper_from_weathered_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_weathered_copper"]] , criteria : & ["has_the_recipe" , "has_weathered_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:weathered_chiseled_copper_from_weathered_copper_stonecutting") , } , AdvancementCriterion { name : "has_weathered_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:weathered_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
-    pub const RECIPES_BUILDING_BLOCKS_WEATHERED_CHISELED_COPPER_FROM_WEATHERED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/weathered_chiseled_copper_from_weathered_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_weathered_cut_copper"]] , criteria : & ["has_the_recipe" , "has_weathered_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:weathered_chiseled_copper_from_weathered_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_weathered_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:weathered_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WEATHERED_CHISELED_COPPER_FROM_WEATHERED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/weathered_chiseled_copper_from_weathered_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:weathered_chiseled_copper_from_weathered_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_weathered_copper"]] , criteria : & ["has_the_recipe" , "has_weathered_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:weathered_chiseled_copper_from_weathered_copper_stonecutting") , } , AdvancementCriterion { name : "has_weathered_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:weathered_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WEATHERED_CHISELED_COPPER_FROM_WEATHERED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/weathered_chiseled_copper_from_weathered_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:weathered_chiseled_copper_from_weathered_cut_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_weathered_cut_copper"]] , criteria : & ["has_the_recipe" , "has_weathered_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:weathered_chiseled_copper_from_weathered_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_weathered_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:weathered_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_WEATHERED_COPPER_GRATE: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/weathered_copper_grate"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -37118,7 +37118,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:weathered_copper_grate"],
         },
         requirements: &[&["has_the_recipe", "has_weathered_copper"]],
         criteria: &["has_the_recipe", "has_weathered_copper"],
@@ -37158,7 +37158,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:weathered_copper_grate_from_weathered_copper_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_weathered_copper"]],
         criteria: &["has_the_recipe", "has_weathered_copper"],
@@ -37195,7 +37195,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:weathered_cut_copper"],
         },
         requirements: &[&["has_the_recipe", "has_weathered_copper"]],
         criteria: &["has_the_recipe", "has_weathered_copper"],
@@ -37233,7 +37233,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:weathered_cut_copper_from_weathered_copper_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_weathered_copper"]],
         criteria: &["has_the_recipe", "has_weathered_copper"],
@@ -37270,7 +37270,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:weathered_cut_copper_slab"],
         },
         requirements: &[&["has_the_recipe", "has_weathered_cut_copper"]],
         criteria: &["has_the_recipe", "has_weathered_cut_copper"],
@@ -37300,8 +37300,8 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_WEATHERED_CUT_COPPER_SLAB_FROM_WEATHERED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/weathered_cut_copper_slab_from_weathered_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_weathered_copper"]] , criteria : & ["has_the_recipe" , "has_weathered_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:weathered_cut_copper_slab_from_weathered_copper_stonecutting") , } , AdvancementCriterion { name : "has_weathered_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:weathered_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
-    pub const RECIPES_BUILDING_BLOCKS_WEATHERED_CUT_COPPER_SLAB_FROM_WEATHERED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/weathered_cut_copper_slab_from_weathered_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_weathered_cut_copper"]] , criteria : & ["has_the_recipe" , "has_weathered_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:weathered_cut_copper_slab_from_weathered_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_weathered_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:weathered_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WEATHERED_CUT_COPPER_SLAB_FROM_WEATHERED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/weathered_cut_copper_slab_from_weathered_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:weathered_cut_copper_slab_from_weathered_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_weathered_copper"]] , criteria : & ["has_the_recipe" , "has_weathered_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:weathered_cut_copper_slab_from_weathered_copper_stonecutting") , } , AdvancementCriterion { name : "has_weathered_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:weathered_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WEATHERED_CUT_COPPER_SLAB_FROM_WEATHERED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/weathered_cut_copper_slab_from_weathered_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:weathered_cut_copper_slab_from_weathered_cut_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_weathered_cut_copper"]] , criteria : & ["has_the_recipe" , "has_weathered_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:weathered_cut_copper_slab_from_weathered_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_weathered_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:weathered_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_WEATHERED_CUT_COPPER_STAIRS: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/weathered_cut_copper_stairs"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -37309,7 +37309,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:weathered_cut_copper_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_weathered_cut_copper"]],
         criteria: &["has_the_recipe", "has_weathered_cut_copper"],
@@ -37339,8 +37339,8 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_BUILDING_BLOCKS_WEATHERED_CUT_COPPER_STAIRS_FROM_WEATHERED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/weathered_cut_copper_stairs_from_weathered_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_weathered_copper"]] , criteria : & ["has_the_recipe" , "has_weathered_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:weathered_cut_copper_stairs_from_weathered_copper_stonecutting") , } , AdvancementCriterion { name : "has_weathered_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:weathered_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
-    pub const RECIPES_BUILDING_BLOCKS_WEATHERED_CUT_COPPER_STAIRS_FROM_WEATHERED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/weathered_cut_copper_stairs_from_weathered_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_weathered_cut_copper"]] , criteria : & ["has_the_recipe" , "has_weathered_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:weathered_cut_copper_stairs_from_weathered_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_weathered_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:weathered_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WEATHERED_CUT_COPPER_STAIRS_FROM_WEATHERED_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/weathered_cut_copper_stairs_from_weathered_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:weathered_cut_copper_stairs_from_weathered_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_weathered_copper"]] , criteria : & ["has_the_recipe" , "has_weathered_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:weathered_cut_copper_stairs_from_weathered_copper_stonecutting") , } , AdvancementCriterion { name : "has_weathered_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:weathered_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
+    pub const RECIPES_BUILDING_BLOCKS_WEATHERED_CUT_COPPER_STAIRS_FROM_WEATHERED_CUT_COPPER_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/building_blocks/weathered_cut_copper_stairs_from_weathered_cut_copper_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:weathered_cut_copper_stairs_from_weathered_cut_copper_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_weathered_cut_copper"]] , criteria : & ["has_the_recipe" , "has_weathered_cut_copper"] , criteria_definitions : & [AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:weathered_cut_copper_stairs_from_weathered_cut_copper_stonecutting") , } , AdvancementCriterion { name : "has_weathered_cut_copper" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:weathered_cut_copper"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , }] , } ;
     pub const RECIPES_BUILDING_BLOCKS_WHITE_CONCRETE_POWDER: &Self = &Self {
         id: Identifier::vanilla_static("recipes/building_blocks/white_concrete_powder"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -37348,7 +37348,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_concrete_powder"],
         },
         requirements: &[&["has_the_recipe", "has_sand", "has_gravel"]],
         criteria: &["has_gravel", "has_sand", "has_the_recipe"],
@@ -37399,7 +37399,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_concrete_slab"],
         },
         requirements: &[&["has_the_recipe", "has_white_concrete"]],
         criteria: &["has_the_recipe", "has_white_concrete"],
@@ -37437,7 +37437,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:white_concrete_slab_from_white_concrete_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_white_concrete"]],
             criteria: &["has_the_recipe", "has_white_concrete"],
@@ -37476,7 +37476,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_concrete_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_white_concrete"]],
         criteria: &["has_the_recipe", "has_white_concrete"],
@@ -37514,7 +37514,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_concrete_stairs_from_white_concrete_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_white_concrete"]],
         criteria: &["has_the_recipe", "has_white_concrete"],
@@ -37551,7 +37551,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_stained_glass"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -37586,7 +37586,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_terracotta"]],
         criteria: &["has_terracotta", "has_the_recipe"],
@@ -37621,7 +37621,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_wool_from_string"],
         },
         requirements: &[&["has_the_recipe", "has_string"]],
         criteria: &["has_string", "has_the_recipe"],
@@ -37658,7 +37658,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_white_wool"]],
         criteria: &["has_the_recipe", "has_white_wool"],
@@ -37693,7 +37693,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_white_wool"]],
         criteria: &["has_the_recipe", "has_white_wool"],
@@ -37728,7 +37728,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_concrete_powder"],
         },
         requirements: &[&["has_the_recipe", "has_sand", "has_gravel"]],
         criteria: &["has_gravel", "has_sand", "has_the_recipe"],
@@ -37781,7 +37781,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_concrete_slab"],
         },
         requirements: &[&["has_the_recipe", "has_yellow_concrete"]],
         criteria: &["has_the_recipe", "has_yellow_concrete"],
@@ -37819,7 +37819,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_concrete_slab_from_yellow_concrete_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_yellow_concrete"]],
         criteria: &["has_the_recipe", "has_yellow_concrete"],
@@ -37856,7 +37856,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_concrete_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_yellow_concrete"]],
         criteria: &["has_the_recipe", "has_yellow_concrete"],
@@ -37896,7 +37896,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_concrete_stairs_from_yellow_concrete_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_yellow_concrete"]],
         criteria: &["has_the_recipe", "has_yellow_concrete"],
@@ -37933,7 +37933,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_stained_glass"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -37968,7 +37968,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_terracotta"]],
         criteria: &["has_terracotta", "has_the_recipe"],
@@ -38003,7 +38003,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_wool_slab"],
         },
         requirements: &[&["has_the_recipe", "has_yellow_wool"]],
         criteria: &["has_the_recipe", "has_yellow_wool"],
@@ -38038,7 +38038,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_wool_stairs"],
         },
         requirements: &[&["has_the_recipe", "has_yellow_wool"]],
         criteria: &["has_the_recipe", "has_yellow_wool"],
@@ -38073,7 +38073,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:arrow"],
         },
         requirements: &[&["has_the_recipe", "has_feather", "has_flint"]],
         criteria: &["has_feather", "has_flint", "has_the_recipe"],
@@ -38124,7 +38124,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_harness"],
         },
         requirements: &[&["has_the_recipe", "has_dried_ghast"]],
         criteria: &["has_dried_ghast", "has_the_recipe"],
@@ -38159,7 +38159,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_harness"],
         },
         requirements: &[&["has_the_recipe", "has_dried_ghast"]],
         criteria: &["has_dried_ghast", "has_the_recipe"],
@@ -38194,7 +38194,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bow"],
         },
         requirements: &[&["has_the_recipe", "has_string"]],
         criteria: &["has_string", "has_the_recipe"],
@@ -38229,7 +38229,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brown_harness"],
         },
         requirements: &[&["has_the_recipe", "has_dried_ghast"]],
         criteria: &["has_dried_ghast", "has_the_recipe"],
@@ -38264,7 +38264,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_boots"],
         },
         requirements: &[&["has_the_recipe", "has_copper_ingot"]],
         criteria: &["has_copper_ingot", "has_the_recipe"],
@@ -38299,7 +38299,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_chestplate"],
         },
         requirements: &[&["has_the_recipe", "has_copper_ingot"]],
         criteria: &["has_copper_ingot", "has_the_recipe"],
@@ -38334,7 +38334,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_helmet"],
         },
         requirements: &[&["has_the_recipe", "has_copper_ingot"]],
         criteria: &["has_copper_ingot", "has_the_recipe"],
@@ -38369,7 +38369,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_leggings"],
         },
         requirements: &[&["has_the_recipe", "has_copper_ingot"]],
         criteria: &["has_copper_ingot", "has_the_recipe"],
@@ -38404,7 +38404,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_spear"],
         },
         requirements: &[&["has_the_recipe", "has_copper_ingot"]],
         criteria: &["has_copper_ingot", "has_the_recipe"],
@@ -38439,7 +38439,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_sword"],
         },
         requirements: &[&["has_the_recipe", "has_copper_ingot"]],
         criteria: &["has_copper_ingot", "has_the_recipe"],
@@ -38474,7 +38474,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:crossbow"],
         },
         requirements: &[&[
             "has_the_recipe",
@@ -38551,7 +38551,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cyan_harness"],
         },
         requirements: &[&["has_the_recipe", "has_dried_ghast"]],
         criteria: &["has_dried_ghast", "has_the_recipe"],
@@ -38586,7 +38586,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diamond_boots"],
         },
         requirements: &[&["has_the_recipe", "has_diamond"]],
         criteria: &["has_diamond", "has_the_recipe"],
@@ -38621,7 +38621,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diamond_chestplate"],
         },
         requirements: &[&["has_the_recipe", "has_diamond"]],
         criteria: &["has_diamond", "has_the_recipe"],
@@ -38656,7 +38656,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diamond_helmet"],
         },
         requirements: &[&["has_the_recipe", "has_diamond"]],
         criteria: &["has_diamond", "has_the_recipe"],
@@ -38691,7 +38691,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diamond_leggings"],
         },
         requirements: &[&["has_the_recipe", "has_diamond"]],
         criteria: &["has_diamond", "has_the_recipe"],
@@ -38726,7 +38726,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diamond_spear"],
         },
         requirements: &[&["has_the_recipe", "has_diamond"]],
         criteria: &["has_diamond", "has_the_recipe"],
@@ -38761,7 +38761,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diamond_sword"],
         },
         requirements: &[&["has_the_recipe", "has_diamond"]],
         criteria: &["has_diamond", "has_the_recipe"],
@@ -38796,7 +38796,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_black_harness"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -38831,7 +38831,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_blue_harness"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -38866,7 +38866,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_brown_harness"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -38901,7 +38901,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_cyan_harness"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -38936,7 +38936,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_gray_harness"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -38971,7 +38971,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_green_harness"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -39006,7 +39006,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_light_blue_harness"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -39043,7 +39043,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_light_gray_harness"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -39080,7 +39080,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_lime_harness"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -39115,7 +39115,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_magenta_harness"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -39150,7 +39150,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_orange_harness"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -39185,7 +39185,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_pink_harness"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -39220,7 +39220,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_purple_harness"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -39255,7 +39255,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_red_harness"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -39290,7 +39290,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_white_harness"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -39325,7 +39325,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_yellow_harness"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -39360,7 +39360,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:golden_boots"],
         },
         requirements: &[&["has_the_recipe", "has_gold_ingot"]],
         criteria: &["has_gold_ingot", "has_the_recipe"],
@@ -39395,7 +39395,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:golden_chestplate"],
         },
         requirements: &[&["has_the_recipe", "has_gold_ingot"]],
         criteria: &["has_gold_ingot", "has_the_recipe"],
@@ -39430,7 +39430,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:golden_helmet"],
         },
         requirements: &[&["has_the_recipe", "has_gold_ingot"]],
         criteria: &["has_gold_ingot", "has_the_recipe"],
@@ -39465,7 +39465,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:golden_leggings"],
         },
         requirements: &[&["has_the_recipe", "has_gold_ingot"]],
         criteria: &["has_gold_ingot", "has_the_recipe"],
@@ -39500,7 +39500,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:golden_spear"],
         },
         requirements: &[&["has_the_recipe", "has_gold_ingot"]],
         criteria: &["has_gold_ingot", "has_the_recipe"],
@@ -39535,7 +39535,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:golden_sword"],
         },
         requirements: &[&["has_the_recipe", "has_gold_ingot"]],
         criteria: &["has_gold_ingot", "has_the_recipe"],
@@ -39570,7 +39570,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gray_harness"],
         },
         requirements: &[&["has_the_recipe", "has_dried_ghast"]],
         criteria: &["has_dried_ghast", "has_the_recipe"],
@@ -39605,7 +39605,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:green_harness"],
         },
         requirements: &[&["has_the_recipe", "has_dried_ghast"]],
         criteria: &["has_dried_ghast", "has_the_recipe"],
@@ -39640,7 +39640,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_boots"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -39675,7 +39675,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_chestplate"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -39710,7 +39710,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_helmet"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -39745,7 +39745,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_leggings"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -39780,7 +39780,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_spear"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -39815,7 +39815,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_sword"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -39850,7 +39850,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:leather_boots"],
         },
         requirements: &[&["has_the_recipe", "has_leather"]],
         criteria: &["has_leather", "has_the_recipe"],
@@ -39885,7 +39885,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:leather_chestplate"],
         },
         requirements: &[&["has_the_recipe", "has_leather"]],
         criteria: &["has_leather", "has_the_recipe"],
@@ -39920,7 +39920,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:leather_helmet"],
         },
         requirements: &[&["has_the_recipe", "has_leather"]],
         criteria: &["has_leather", "has_the_recipe"],
@@ -39955,7 +39955,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:leather_leggings"],
         },
         requirements: &[&["has_the_recipe", "has_leather"]],
         criteria: &["has_leather", "has_the_recipe"],
@@ -39990,7 +39990,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_blue_harness"],
         },
         requirements: &[&["has_the_recipe", "has_dried_ghast"]],
         criteria: &["has_dried_ghast", "has_the_recipe"],
@@ -40025,7 +40025,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_harness"],
         },
         requirements: &[&["has_the_recipe", "has_dried_ghast"]],
         criteria: &["has_dried_ghast", "has_the_recipe"],
@@ -40060,7 +40060,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lime_harness"],
         },
         requirements: &[&["has_the_recipe", "has_dried_ghast"]],
         criteria: &["has_dried_ghast", "has_the_recipe"],
@@ -40095,7 +40095,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mace"],
         },
         requirements: &[&["has_the_recipe", "has_breeze_rod", "has_heavy_core"]],
         criteria: &["has_breeze_rod", "has_heavy_core", "has_the_recipe"],
@@ -40146,7 +40146,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_harness"],
         },
         requirements: &[&["has_the_recipe", "has_dried_ghast"]],
         criteria: &["has_dried_ghast", "has_the_recipe"],
@@ -40181,7 +40181,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:netherite_boots_smithing"],
         },
         requirements: &[&["has_the_recipe", "has_netherite_ingot"]],
         criteria: &["has_netherite_ingot", "has_the_recipe"],
@@ -40218,7 +40218,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:netherite_chestplate_smithing"],
         },
         requirements: &[&["has_the_recipe", "has_netherite_ingot"]],
         criteria: &["has_netherite_ingot", "has_the_recipe"],
@@ -40255,7 +40255,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:netherite_helmet_smithing"],
         },
         requirements: &[&["has_the_recipe", "has_netherite_ingot"]],
         criteria: &["has_netherite_ingot", "has_the_recipe"],
@@ -40292,7 +40292,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:netherite_horse_armor_smithing"],
         },
         requirements: &[&["has_the_recipe", "has_netherite_ingot"]],
         criteria: &["has_netherite_ingot", "has_the_recipe"],
@@ -40329,7 +40329,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:netherite_leggings_smithing"],
         },
         requirements: &[&["has_the_recipe", "has_netherite_ingot"]],
         criteria: &["has_netherite_ingot", "has_the_recipe"],
@@ -40366,7 +40366,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:netherite_nautilus_armor_smithing"],
         },
         requirements: &[&["has_the_recipe", "has_netherite_ingot"]],
         criteria: &["has_netherite_ingot", "has_the_recipe"],
@@ -40403,7 +40403,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:netherite_spear_smithing"],
         },
         requirements: &[&["has_the_recipe", "has_netherite_ingot"]],
         criteria: &["has_netherite_ingot", "has_the_recipe"],
@@ -40440,7 +40440,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:netherite_sword_smithing"],
         },
         requirements: &[&["has_the_recipe", "has_netherite_ingot"]],
         criteria: &["has_netherite_ingot", "has_the_recipe"],
@@ -40477,7 +40477,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_harness"],
         },
         requirements: &[&["has_the_recipe", "has_dried_ghast"]],
         criteria: &["has_dried_ghast", "has_the_recipe"],
@@ -40512,7 +40512,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_harness"],
         },
         requirements: &[&["has_the_recipe", "has_dried_ghast"]],
         criteria: &["has_dried_ghast", "has_the_recipe"],
@@ -40547,7 +40547,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_harness"],
         },
         requirements: &[&["has_the_recipe", "has_dried_ghast"]],
         criteria: &["has_dried_ghast", "has_the_recipe"],
@@ -40582,7 +40582,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_harness"],
         },
         requirements: &[&["has_the_recipe", "has_dried_ghast"]],
         criteria: &["has_dried_ghast", "has_the_recipe"],
@@ -40617,7 +40617,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:saddle"],
         },
         requirements: &[&["has_the_recipe", "has_leather"]],
         criteria: &["has_leather", "has_the_recipe"],
@@ -40652,7 +40652,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:shield"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -40687,7 +40687,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:spectral_arrow"],
         },
         requirements: &[&["has_the_recipe", "has_glowstone_dust"]],
         criteria: &["has_glowstone_dust", "has_the_recipe"],
@@ -40722,7 +40722,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_spear"],
         },
         requirements: &[&["has_the_recipe", "has_cobblestone"]],
         criteria: &["has_cobblestone", "has_the_recipe"],
@@ -40757,7 +40757,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_sword"],
         },
         requirements: &[&["has_the_recipe", "has_cobblestone"]],
         criteria: &["has_cobblestone", "has_the_recipe"],
@@ -40792,7 +40792,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:turtle_helmet"],
         },
         requirements: &[&["has_the_recipe", "has_turtle_scute"]],
         criteria: &["has_the_recipe", "has_turtle_scute"],
@@ -40827,7 +40827,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_harness"],
         },
         requirements: &[&["has_the_recipe", "has_dried_ghast"]],
         criteria: &["has_dried_ghast", "has_the_recipe"],
@@ -40862,7 +40862,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:wolf_armor"],
         },
         requirements: &[&["has_the_recipe", "has_armadillo_scute"]],
         criteria: &["has_armadillo_scute", "has_the_recipe"],
@@ -40897,7 +40897,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:wooden_spear"],
         },
         requirements: &[&["has_the_recipe", "has_stick"]],
         criteria: &["has_stick", "has_the_recipe"],
@@ -40932,7 +40932,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:wooden_sword"],
         },
         requirements: &[&["has_the_recipe", "has_stick"]],
         criteria: &["has_stick", "has_the_recipe"],
@@ -40967,7 +40967,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_harness"],
         },
         requirements: &[&["has_the_recipe", "has_dried_ghast"]],
         criteria: &["has_dried_ghast", "has_the_recipe"],
@@ -41002,7 +41002,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:acacia_fence"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -41037,7 +41037,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:acacia_hanging_sign"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_log"]],
         criteria: &["has_stripped_log", "has_the_recipe"],
@@ -41072,7 +41072,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:acacia_shelf"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_acacia_log"]],
         criteria: &["has_stripped_acacia_log", "has_the_recipe"],
@@ -41107,7 +41107,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:acacia_sign"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -41142,7 +41142,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:andesite_wall"],
         },
         requirements: &[&["has_the_recipe", "has_andesite"]],
         criteria: &["has_andesite", "has_the_recipe"],
@@ -41179,7 +41179,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:andesite_wall_from_andesite_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_andesite"]],
         criteria: &["has_andesite", "has_the_recipe"],
@@ -41216,7 +41216,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:anvil"],
         },
         requirements: &[&["has_the_recipe", "has_iron_block"]],
         criteria: &["has_iron_block", "has_the_recipe"],
@@ -41251,7 +41251,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:armor_stand"],
         },
         requirements: &[&["has_the_recipe", "has_stone_slab"]],
         criteria: &["has_stone_slab", "has_the_recipe"],
@@ -41286,7 +41286,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bamboo_fence"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -41321,7 +41321,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bamboo_hanging_sign"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_log"]],
         criteria: &["has_stripped_log", "has_the_recipe"],
@@ -41356,7 +41356,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bamboo_mosaic"],
         },
         requirements: &[&["has_the_recipe", "has_bamboo_slab"]],
         criteria: &["has_bamboo_slab", "has_the_recipe"],
@@ -41391,7 +41391,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bamboo_shelf"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_bamboo_block"]],
         criteria: &["has_stripped_bamboo_block", "has_the_recipe"],
@@ -41426,7 +41426,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bamboo_sign"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -41461,7 +41461,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:barrel"],
         },
         requirements: &[&["has_the_recipe", "has_planks", "has_wood_slab"]],
         criteria: &["has_planks", "has_the_recipe", "has_wood_slab"],
@@ -41512,7 +41512,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:beehive"],
         },
         requirements: &[&["has_the_recipe", "has_honeycomb"]],
         criteria: &["has_honeycomb", "has_the_recipe"],
@@ -41547,7 +41547,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:birch_fence"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -41582,7 +41582,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:birch_hanging_sign"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_log"]],
         criteria: &["has_stripped_log", "has_the_recipe"],
@@ -41617,7 +41617,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:birch_shelf"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_birch_log"]],
         criteria: &["has_stripped_birch_log", "has_the_recipe"],
@@ -41652,7 +41652,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:birch_sign"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -41687,7 +41687,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_banner"],
         },
         requirements: &[&["has_the_recipe", "has_black_wool"]],
         criteria: &["has_black_wool", "has_the_recipe"],
@@ -41722,7 +41722,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_bed"],
         },
         requirements: &[&["has_the_recipe", "has_black_wool"]],
         criteria: &["has_black_wool", "has_the_recipe"],
@@ -41757,7 +41757,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_candle"],
         },
         requirements: &[&["has_the_recipe", "has_black_dye"]],
         criteria: &["has_black_dye", "has_the_recipe"],
@@ -41792,7 +41792,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_black_wool"]],
         criteria: &["has_black_wool", "has_the_recipe"],
@@ -41827,7 +41827,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_black_wool_slab"]],
         criteria: &["has_black_wool_slab", "has_the_recipe"],
@@ -41862,7 +41862,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_glazed_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_black_terracotta"]],
         criteria: &["has_black_terracotta", "has_the_recipe"],
@@ -41899,7 +41899,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_shulker_box"],
         },
         requirements: &[&["has_the_recipe", "has_shulker_box"]],
         criteria: &["has_shulker_box", "has_the_recipe"],
@@ -41934,7 +41934,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_stained_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -41973,7 +41973,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_stained_glass_pane_from_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass_pane", "has_black_dye"]],
         criteria: &["has_black_dye", "has_glass_pane", "has_the_recipe"],
@@ -42026,7 +42026,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blackstone_wall"],
         },
         requirements: &[&["has_the_recipe", "has_blackstone"]],
         criteria: &["has_blackstone", "has_the_recipe"],
@@ -42063,7 +42063,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blackstone_wall_from_blackstone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_blackstone"]],
         criteria: &["has_blackstone", "has_the_recipe"],
@@ -42100,7 +42100,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blast_furnace"],
         },
         requirements: &[&["has_the_recipe", "has_smooth_stone"]],
         criteria: &["has_smooth_stone", "has_the_recipe"],
@@ -42135,7 +42135,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_banner"],
         },
         requirements: &[&["has_the_recipe", "has_blue_wool"]],
         criteria: &["has_blue_wool", "has_the_recipe"],
@@ -42170,7 +42170,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_bed"],
         },
         requirements: &[&["has_the_recipe", "has_blue_wool"]],
         criteria: &["has_blue_wool", "has_the_recipe"],
@@ -42205,7 +42205,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_candle"],
         },
         requirements: &[&["has_the_recipe", "has_blue_dye"]],
         criteria: &["has_blue_dye", "has_the_recipe"],
@@ -42240,7 +42240,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_blue_wool"]],
         criteria: &["has_blue_wool", "has_the_recipe"],
@@ -42275,7 +42275,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_blue_wool_slab"]],
         criteria: &["has_blue_wool_slab", "has_the_recipe"],
@@ -42310,7 +42310,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_glazed_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_blue_terracotta"]],
         criteria: &["has_blue_terracotta", "has_the_recipe"],
@@ -42347,7 +42347,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_shulker_box"],
         },
         requirements: &[&["has_the_recipe", "has_shulker_box"]],
         criteria: &["has_shulker_box", "has_the_recipe"],
@@ -42382,7 +42382,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_stained_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -42421,7 +42421,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_stained_glass_pane_from_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass_pane", "has_blue_dye"]],
         criteria: &["has_blue_dye", "has_glass_pane", "has_the_recipe"],
@@ -42474,7 +42474,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brick_wall"],
         },
         requirements: &[&["has_the_recipe", "has_bricks"]],
         criteria: &["has_bricks", "has_the_recipe"],
@@ -42509,7 +42509,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brick_wall_from_bricks_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_bricks"]],
         criteria: &["has_bricks", "has_the_recipe"],
@@ -42546,7 +42546,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brown_banner"],
         },
         requirements: &[&["has_the_recipe", "has_brown_wool"]],
         criteria: &["has_brown_wool", "has_the_recipe"],
@@ -42581,7 +42581,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brown_bed"],
         },
         requirements: &[&["has_the_recipe", "has_brown_wool"]],
         criteria: &["has_brown_wool", "has_the_recipe"],
@@ -42616,7 +42616,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brown_candle"],
         },
         requirements: &[&["has_the_recipe", "has_brown_dye"]],
         criteria: &["has_brown_dye", "has_the_recipe"],
@@ -42651,7 +42651,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brown_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_brown_wool"]],
         criteria: &["has_brown_wool", "has_the_recipe"],
@@ -42686,7 +42686,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brown_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_brown_wool_slab"]],
         criteria: &["has_brown_wool_slab", "has_the_recipe"],
@@ -42721,7 +42721,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brown_glazed_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_brown_terracotta"]],
         criteria: &["has_brown_terracotta", "has_the_recipe"],
@@ -42758,7 +42758,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brown_shulker_box"],
         },
         requirements: &[&["has_the_recipe", "has_shulker_box"]],
         criteria: &["has_shulker_box", "has_the_recipe"],
@@ -42793,7 +42793,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brown_stained_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -42832,7 +42832,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brown_stained_glass_pane_from_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass_pane", "has_brown_dye"]],
         criteria: &["has_brown_dye", "has_glass_pane", "has_the_recipe"],
@@ -42885,7 +42885,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:campfire"],
         },
         requirements: &[&["has_the_recipe", "has_stick", "has_coal"]],
         criteria: &["has_coal", "has_stick", "has_the_recipe"],
@@ -42936,7 +42936,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:candle"],
         },
         requirements: &[&["has_the_recipe", "has_string", "has_honeycomb"]],
         criteria: &["has_honeycomb", "has_string", "has_the_recipe"],
@@ -42987,7 +42987,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cartography_table"],
         },
         requirements: &[&["has_the_recipe", "has_paper"]],
         criteria: &["has_paper", "has_the_recipe"],
@@ -43022,7 +43022,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cherry_fence"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -43057,7 +43057,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cherry_hanging_sign"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_log"]],
         criteria: &["has_stripped_log", "has_the_recipe"],
@@ -43092,7 +43092,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cherry_shelf"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_cherry_log"]],
         criteria: &["has_stripped_cherry_log", "has_the_recipe"],
@@ -43127,7 +43127,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cherry_sign"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -43162,7 +43162,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:chest"],
         },
         requirements: &[&["has_the_recipe", "has_lots_of_items"]],
         criteria: &["has_lots_of_items", "has_the_recipe"],
@@ -43189,7 +43189,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cinnabar_brick_wall"],
         },
         requirements: &[&["has_the_recipe", "has_cinnabar_bricks"]],
         criteria: &["has_cinnabar_bricks", "has_the_recipe"],
@@ -43227,7 +43227,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:cinnabar_brick_wall_from_cinnabar_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_cinnabar_bricks"]],
             criteria: &["has_cinnabar_bricks", "has_the_recipe"],
@@ -43268,7 +43268,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cinnabar_brick_wall_from_cinnabar_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cinnabar"]],
         criteria: &["has_cinnabar", "has_the_recipe"],
@@ -43308,7 +43308,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:cinnabar_brick_wall_from_polished_cinnabar_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_polished_cinnabar"]],
             criteria: &["has_polished_cinnabar", "has_the_recipe"],
@@ -43347,7 +43347,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cinnabar_wall"],
         },
         requirements: &[&["has_the_recipe", "has_cinnabar"]],
         criteria: &["has_cinnabar", "has_the_recipe"],
@@ -43384,7 +43384,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cinnabar_wall_from_cinnabar_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cinnabar"]],
         criteria: &["has_cinnabar", "has_the_recipe"],
@@ -43421,7 +43421,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cobbled_deepslate_wall"],
         },
         requirements: &[&["has_the_recipe", "has_cobbled_deepslate"]],
         criteria: &["has_cobbled_deepslate", "has_the_recipe"],
@@ -43461,7 +43461,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cobbled_deepslate_wall_from_cobbled_deepslate_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cobbled_deepslate"]],
         criteria: &["has_cobbled_deepslate", "has_the_recipe"],
@@ -43501,7 +43501,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:cobbled_deepslate_wall_from_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_deepslate"]],
             criteria: &["has_deepslate", "has_the_recipe"],
@@ -43540,7 +43540,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cobblestone_wall"],
         },
         requirements: &[&["has_the_recipe", "has_cobblestone"]],
         criteria: &["has_cobblestone", "has_the_recipe"],
@@ -43577,7 +43577,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cobblestone_wall_from_cobblestone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cobblestone"]],
         criteria: &["has_cobblestone", "has_the_recipe"],
@@ -43616,7 +43616,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cobblestone_wall_from_stone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_stone"]],
         criteria: &["has_stone", "has_the_recipe"],
@@ -43653,7 +43653,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:composter"],
         },
         requirements: &[&["has_the_recipe", "has_wood_slab"]],
         criteria: &["has_the_recipe", "has_wood_slab"],
@@ -43688,7 +43688,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_bars"],
         },
         requirements: &[&["has_the_recipe", "has_copper_ingot"]],
         criteria: &["has_copper_ingot", "has_the_recipe"],
@@ -43723,7 +43723,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_chain"],
         },
         requirements: &[&["has_the_recipe", "has_copper_nugget", "has_copper_ingot"]],
         criteria: &["has_copper_ingot", "has_copper_nugget", "has_the_recipe"],
@@ -43774,7 +43774,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_chest"],
         },
         requirements: &[&["has_the_recipe", "has_copper_chest"]],
         criteria: &["has_copper_chest", "has_the_recipe"],
@@ -43809,7 +43809,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_lantern"],
         },
         requirements: &[&["has_the_recipe", "has_copper_torch"]],
         criteria: &["has_copper_torch", "has_the_recipe"],
@@ -43844,7 +43844,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_torch"],
         },
         requirements: &[&["has_the_recipe", "has_copper_nugget"]],
         criteria: &["has_copper_nugget", "has_the_recipe"],
@@ -43879,7 +43879,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:crafting_table"],
         },
         requirements: &[&["has_the_recipe", "unlock_right_away"]],
         criteria: &["has_the_recipe", "unlock_right_away"],
@@ -43903,7 +43903,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:crimson_fence"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -43938,7 +43938,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:crimson_hanging_sign"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_log"]],
         criteria: &["has_stripped_log", "has_the_recipe"],
@@ -43973,7 +43973,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:crimson_shelf"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_crimson_stem"]],
         criteria: &["has_stripped_crimson_stem", "has_the_recipe"],
@@ -44008,7 +44008,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:crimson_sign"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -44043,7 +44043,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cyan_banner"],
         },
         requirements: &[&["has_the_recipe", "has_cyan_wool"]],
         criteria: &["has_cyan_wool", "has_the_recipe"],
@@ -44078,7 +44078,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cyan_bed"],
         },
         requirements: &[&["has_the_recipe", "has_cyan_wool"]],
         criteria: &["has_cyan_wool", "has_the_recipe"],
@@ -44113,7 +44113,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cyan_candle"],
         },
         requirements: &[&["has_the_recipe", "has_cyan_dye"]],
         criteria: &["has_cyan_dye", "has_the_recipe"],
@@ -44148,7 +44148,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cyan_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_cyan_wool"]],
         criteria: &["has_cyan_wool", "has_the_recipe"],
@@ -44183,7 +44183,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cyan_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_cyan_wool_slab"]],
         criteria: &["has_cyan_wool_slab", "has_the_recipe"],
@@ -44218,7 +44218,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cyan_glazed_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_cyan_terracotta"]],
         criteria: &["has_cyan_terracotta", "has_the_recipe"],
@@ -44255,7 +44255,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cyan_shulker_box"],
         },
         requirements: &[&["has_the_recipe", "has_shulker_box"]],
         criteria: &["has_shulker_box", "has_the_recipe"],
@@ -44290,7 +44290,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cyan_stained_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -44329,7 +44329,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cyan_stained_glass_pane_from_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass_pane", "has_cyan_dye"]],
         criteria: &["has_cyan_dye", "has_glass_pane", "has_the_recipe"],
@@ -44382,7 +44382,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dark_oak_fence"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -44417,7 +44417,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dark_oak_hanging_sign"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_log"]],
         criteria: &["has_stripped_log", "has_the_recipe"],
@@ -44452,7 +44452,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dark_oak_shelf"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_dark_oak_log"]],
         criteria: &["has_stripped_dark_oak_log", "has_the_recipe"],
@@ -44487,7 +44487,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dark_oak_sign"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -44522,7 +44522,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:decorated_pot_simple"],
         },
         requirements: &[&["has_the_recipe", "has_brick"]],
         criteria: &["has_brick", "has_the_recipe"],
@@ -44557,7 +44557,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_brick_wall"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_bricks"]],
         criteria: &["has_deepslate_bricks", "has_the_recipe"],
@@ -44595,7 +44595,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:deepslate_brick_wall_from_cobbled_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_cobbled_deepslate"]],
             criteria: &["has_cobbled_deepslate", "has_the_recipe"],
@@ -44637,7 +44637,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:deepslate_brick_wall_from_deepslate_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_deepslate_bricks"]],
             criteria: &["has_deepslate_bricks", "has_the_recipe"],
@@ -44678,7 +44678,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_brick_wall_from_deepslate_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate"]],
         criteria: &["has_deepslate", "has_the_recipe"],
@@ -44718,7 +44718,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:deepslate_brick_wall_from_polished_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_polished_deepslate"]],
             criteria: &["has_polished_deepslate", "has_the_recipe"],
@@ -44757,7 +44757,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_tile_wall"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_tiles"]],
         criteria: &["has_deepslate_tiles", "has_the_recipe"],
@@ -44795,7 +44795,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:deepslate_tile_wall_from_cobbled_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_cobbled_deepslate"]],
             criteria: &["has_cobbled_deepslate", "has_the_recipe"],
@@ -44837,7 +44837,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:deepslate_tile_wall_from_deepslate_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_deepslate_bricks"]],
             criteria: &["has_deepslate_bricks", "has_the_recipe"],
@@ -44878,7 +44878,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:deepslate_tile_wall_from_deepslate_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate"]],
         criteria: &["has_deepslate", "has_the_recipe"],
@@ -44918,7 +44918,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:deepslate_tile_wall_from_deepslate_tiles_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_deepslate_tiles"]],
             criteria: &["has_deepslate_tiles", "has_the_recipe"],
@@ -44960,7 +44960,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:deepslate_tile_wall_from_polished_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_polished_deepslate"]],
             criteria: &["has_polished_deepslate", "has_the_recipe"],
@@ -44999,7 +44999,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diorite_wall"],
         },
         requirements: &[&["has_the_recipe", "has_diorite"]],
         criteria: &["has_diorite", "has_the_recipe"],
@@ -45036,7 +45036,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diorite_wall_from_diorite_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_diorite"]],
         criteria: &["has_diorite", "has_the_recipe"],
@@ -45073,7 +45073,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_black_bed"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45108,7 +45108,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_black_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45143,7 +45143,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_black_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45178,7 +45178,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_blue_bed"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45213,7 +45213,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_blue_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45248,7 +45248,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_blue_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45283,7 +45283,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_brown_bed"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45318,7 +45318,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_brown_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45353,7 +45353,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_brown_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45388,7 +45388,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_cyan_bed"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45423,7 +45423,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_cyan_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45458,7 +45458,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_cyan_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45493,7 +45493,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_gray_bed"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45528,7 +45528,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_gray_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45563,7 +45563,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_gray_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45598,7 +45598,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_green_bed"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45633,7 +45633,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_green_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45668,7 +45668,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_green_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45703,7 +45703,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_light_blue_bed"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45738,7 +45738,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_light_blue_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45773,7 +45773,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_light_blue_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45810,7 +45810,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_light_gray_bed"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45845,7 +45845,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_light_gray_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45880,7 +45880,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_light_gray_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45917,7 +45917,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_lime_bed"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45952,7 +45952,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_lime_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -45987,7 +45987,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_lime_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46022,7 +46022,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_magenta_bed"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46057,7 +46057,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_magenta_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46092,7 +46092,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_magenta_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46127,7 +46127,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_orange_bed"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46162,7 +46162,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_orange_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46197,7 +46197,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_orange_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46232,7 +46232,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_pink_bed"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46267,7 +46267,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_pink_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46302,7 +46302,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_pink_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46337,7 +46337,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_purple_bed"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46372,7 +46372,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_purple_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46407,7 +46407,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_purple_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46442,7 +46442,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_red_bed"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46477,7 +46477,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_red_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46512,7 +46512,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_red_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46547,7 +46547,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_white_bed"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46582,7 +46582,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_white_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46617,7 +46617,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_white_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46652,7 +46652,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_yellow_bed"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46687,7 +46687,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_yellow_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46722,7 +46722,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dye_yellow_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_needed_dye"]],
         criteria: &["has_needed_dye", "has_the_recipe"],
@@ -46757,7 +46757,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:enchanting_table"],
         },
         requirements: &[&["has_the_recipe", "has_obsidian"]],
         criteria: &["has_obsidian", "has_the_recipe"],
@@ -46792,7 +46792,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:end_crystal"],
         },
         requirements: &[&["has_the_recipe", "has_ender_eye"]],
         criteria: &["has_ender_eye", "has_the_recipe"],
@@ -46827,7 +46827,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:end_rod"],
         },
         requirements: &[&["has_the_recipe", "has_chorus_fruit_popped"]],
         criteria: &["has_chorus_fruit_popped", "has_the_recipe"],
@@ -46862,7 +46862,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:end_stone_brick_wall"],
         },
         requirements: &[&["has_the_recipe", "has_end_stone_bricks"]],
         criteria: &["has_end_stone_bricks", "has_the_recipe"],
@@ -46900,7 +46900,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:end_stone_brick_wall_from_end_stone_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_end_stone_bricks"]],
             criteria: &["has_end_stone_bricks", "has_the_recipe"],
@@ -46941,7 +46941,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:end_stone_brick_wall_from_end_stone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_end_stone"]],
         criteria: &["has_end_stone", "has_the_recipe"],
@@ -46978,7 +46978,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:ender_chest"],
         },
         requirements: &[&["has_the_recipe", "has_ender_eye"]],
         criteria: &["has_ender_eye", "has_the_recipe"],
@@ -47013,7 +47013,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:fletching_table"],
         },
         requirements: &[&["has_the_recipe", "has_flint"]],
         criteria: &["has_flint", "has_the_recipe"],
@@ -47048,7 +47048,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:flower_pot"],
         },
         requirements: &[&["has_the_recipe", "has_brick"]],
         criteria: &["has_brick", "has_the_recipe"],
@@ -47083,7 +47083,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:furnace"],
         },
         requirements: &[&["has_the_recipe", "has_cobblestone"]],
         criteria: &["has_cobblestone", "has_the_recipe"],
@@ -47118,7 +47118,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -47153,7 +47153,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:glow_item_frame"],
         },
         requirements: &[&["has_the_recipe", "has_item_frame", "has_glow_ink_sac"]],
         criteria: &["has_glow_ink_sac", "has_item_frame", "has_the_recipe"],
@@ -47204,7 +47204,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:golden_dandelion"],
         },
         requirements: &[&["has_the_recipe", "has_gold_nugget", "has_dandelion"]],
         criteria: &["has_dandelion", "has_gold_nugget", "has_the_recipe"],
@@ -47255,7 +47255,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:granite_wall"],
         },
         requirements: &[&["has_the_recipe", "has_granite"]],
         criteria: &["has_granite", "has_the_recipe"],
@@ -47292,7 +47292,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:granite_wall_from_granite_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_granite"]],
         criteria: &["has_granite", "has_the_recipe"],
@@ -47329,7 +47329,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gray_banner"],
         },
         requirements: &[&["has_the_recipe", "has_gray_wool"]],
         criteria: &["has_gray_wool", "has_the_recipe"],
@@ -47364,7 +47364,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gray_bed"],
         },
         requirements: &[&["has_the_recipe", "has_gray_wool"]],
         criteria: &["has_gray_wool", "has_the_recipe"],
@@ -47399,7 +47399,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gray_candle"],
         },
         requirements: &[&["has_the_recipe", "has_gray_dye"]],
         criteria: &["has_gray_dye", "has_the_recipe"],
@@ -47434,7 +47434,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gray_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_gray_wool"]],
         criteria: &["has_gray_wool", "has_the_recipe"],
@@ -47469,7 +47469,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gray_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_gray_wool_slab"]],
         criteria: &["has_gray_wool_slab", "has_the_recipe"],
@@ -47504,7 +47504,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gray_glazed_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_gray_terracotta"]],
         criteria: &["has_gray_terracotta", "has_the_recipe"],
@@ -47541,7 +47541,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gray_shulker_box"],
         },
         requirements: &[&["has_the_recipe", "has_shulker_box"]],
         criteria: &["has_shulker_box", "has_the_recipe"],
@@ -47576,7 +47576,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gray_stained_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -47615,7 +47615,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gray_stained_glass_pane_from_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass_pane", "has_gray_dye"]],
         criteria: &["has_glass_pane", "has_gray_dye", "has_the_recipe"],
@@ -47668,7 +47668,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:green_banner"],
         },
         requirements: &[&["has_the_recipe", "has_green_wool"]],
         criteria: &["has_green_wool", "has_the_recipe"],
@@ -47703,7 +47703,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:green_bed"],
         },
         requirements: &[&["has_the_recipe", "has_green_wool"]],
         criteria: &["has_green_wool", "has_the_recipe"],
@@ -47738,7 +47738,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:green_candle"],
         },
         requirements: &[&["has_the_recipe", "has_green_dye"]],
         criteria: &["has_green_dye", "has_the_recipe"],
@@ -47773,7 +47773,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:green_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_green_wool"]],
         criteria: &["has_green_wool", "has_the_recipe"],
@@ -47808,7 +47808,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:green_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_green_wool_slab"]],
         criteria: &["has_green_wool_slab", "has_the_recipe"],
@@ -47843,7 +47843,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:green_glazed_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_green_terracotta"]],
         criteria: &["has_green_terracotta", "has_the_recipe"],
@@ -47880,7 +47880,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:green_shulker_box"],
         },
         requirements: &[&["has_the_recipe", "has_shulker_box"]],
         criteria: &["has_shulker_box", "has_the_recipe"],
@@ -47915,7 +47915,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:green_stained_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -47954,7 +47954,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:green_stained_glass_pane_from_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass_pane", "has_green_dye"]],
         criteria: &["has_glass_pane", "has_green_dye", "has_the_recipe"],
@@ -48007,7 +48007,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:grindstone"],
         },
         requirements: &[&["has_the_recipe", "has_stone_slab"]],
         criteria: &["has_stone_slab", "has_the_recipe"],
@@ -48042,7 +48042,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:honeycomb_block"],
         },
         requirements: &[&["has_the_recipe", "has_honeycomb"]],
         criteria: &["has_honeycomb", "has_the_recipe"],
@@ -48077,7 +48077,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_bars"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -48112,7 +48112,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_chain"],
         },
         requirements: &[&["has_the_recipe", "has_iron_nugget", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_iron_nugget", "has_the_recipe"],
@@ -48163,7 +48163,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:item_frame"],
         },
         requirements: &[&["has_the_recipe", "has_leather"]],
         criteria: &["has_leather", "has_the_recipe"],
@@ -48198,7 +48198,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:jukebox"],
         },
         requirements: &[&["has_the_recipe", "has_diamond"]],
         criteria: &["has_diamond", "has_the_recipe"],
@@ -48233,7 +48233,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:jungle_fence"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -48268,7 +48268,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:jungle_hanging_sign"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_log"]],
         criteria: &["has_stripped_log", "has_the_recipe"],
@@ -48303,7 +48303,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:jungle_shelf"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_jungle_log"]],
         criteria: &["has_stripped_jungle_log", "has_the_recipe"],
@@ -48338,7 +48338,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:jungle_sign"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -48373,7 +48373,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:ladder"],
         },
         requirements: &[&["has_the_recipe", "has_stick"]],
         criteria: &["has_stick", "has_the_recipe"],
@@ -48408,7 +48408,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lantern"],
         },
         requirements: &[&["has_the_recipe", "has_iron_nugget", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_iron_nugget", "has_the_recipe"],
@@ -48459,7 +48459,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_blue_banner"],
         },
         requirements: &[&["has_the_recipe", "has_light_blue_wool"]],
         criteria: &["has_light_blue_wool", "has_the_recipe"],
@@ -48494,7 +48494,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_blue_bed"],
         },
         requirements: &[&["has_the_recipe", "has_light_blue_wool"]],
         criteria: &["has_light_blue_wool", "has_the_recipe"],
@@ -48529,7 +48529,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_blue_candle"],
         },
         requirements: &[&["has_the_recipe", "has_light_blue_dye"]],
         criteria: &["has_light_blue_dye", "has_the_recipe"],
@@ -48564,7 +48564,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_blue_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_light_blue_wool"]],
         criteria: &["has_light_blue_wool", "has_the_recipe"],
@@ -48599,7 +48599,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_blue_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_light_blue_wool_slab"]],
         criteria: &["has_light_blue_wool_slab", "has_the_recipe"],
@@ -48634,7 +48634,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_blue_glazed_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_light_blue_terracotta"]],
         criteria: &["has_light_blue_terracotta", "has_the_recipe"],
@@ -48671,7 +48671,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_blue_shulker_box"],
         },
         requirements: &[&["has_the_recipe", "has_shulker_box"]],
         criteria: &["has_shulker_box", "has_the_recipe"],
@@ -48708,7 +48708,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_blue_stained_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -48747,7 +48747,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_blue_stained_glass_pane_from_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass_pane", "has_light_blue_dye"]],
         criteria: &["has_glass_pane", "has_light_blue_dye", "has_the_recipe"],
@@ -48800,7 +48800,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_banner"],
         },
         requirements: &[&["has_the_recipe", "has_light_gray_wool"]],
         criteria: &["has_light_gray_wool", "has_the_recipe"],
@@ -48835,7 +48835,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_bed"],
         },
         requirements: &[&["has_the_recipe", "has_light_gray_wool"]],
         criteria: &["has_light_gray_wool", "has_the_recipe"],
@@ -48870,7 +48870,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_candle"],
         },
         requirements: &[&["has_the_recipe", "has_light_gray_dye"]],
         criteria: &["has_light_gray_dye", "has_the_recipe"],
@@ -48905,7 +48905,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_light_gray_wool"]],
         criteria: &["has_light_gray_wool", "has_the_recipe"],
@@ -48940,7 +48940,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_light_gray_wool_slab"]],
         criteria: &["has_light_gray_wool_slab", "has_the_recipe"],
@@ -48975,7 +48975,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_glazed_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_light_gray_terracotta"]],
         criteria: &["has_light_gray_terracotta", "has_the_recipe"],
@@ -49012,7 +49012,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_shulker_box"],
         },
         requirements: &[&["has_the_recipe", "has_shulker_box"]],
         criteria: &["has_shulker_box", "has_the_recipe"],
@@ -49049,7 +49049,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_stained_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -49088,7 +49088,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_stained_glass_pane_from_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass_pane", "has_light_gray_dye"]],
         criteria: &["has_glass_pane", "has_light_gray_dye", "has_the_recipe"],
@@ -49141,7 +49141,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lime_banner"],
         },
         requirements: &[&["has_the_recipe", "has_lime_wool"]],
         criteria: &["has_lime_wool", "has_the_recipe"],
@@ -49176,7 +49176,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lime_bed"],
         },
         requirements: &[&["has_the_recipe", "has_lime_wool"]],
         criteria: &["has_lime_wool", "has_the_recipe"],
@@ -49211,7 +49211,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lime_candle"],
         },
         requirements: &[&["has_the_recipe", "has_lime_dye"]],
         criteria: &["has_lime_dye", "has_the_recipe"],
@@ -49246,7 +49246,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lime_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_lime_wool"]],
         criteria: &["has_lime_wool", "has_the_recipe"],
@@ -49281,7 +49281,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lime_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_lime_wool_slab"]],
         criteria: &["has_lime_wool_slab", "has_the_recipe"],
@@ -49316,7 +49316,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lime_glazed_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_lime_terracotta"]],
         criteria: &["has_lime_terracotta", "has_the_recipe"],
@@ -49353,7 +49353,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lime_shulker_box"],
         },
         requirements: &[&["has_the_recipe", "has_shulker_box"]],
         criteria: &["has_shulker_box", "has_the_recipe"],
@@ -49388,7 +49388,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lime_stained_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -49427,7 +49427,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lime_stained_glass_pane_from_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass_pane", "has_lime_dye"]],
         criteria: &["has_glass_pane", "has_lime_dye", "has_the_recipe"],
@@ -49480,7 +49480,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lodestone"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot", "has_lodestone"]],
         criteria: &["has_iron_ingot", "has_lodestone", "has_the_recipe"],
@@ -49531,7 +49531,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:loom"],
         },
         requirements: &[&["has_the_recipe", "has_string"]],
         criteria: &["has_string", "has_the_recipe"],
@@ -49566,7 +49566,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_banner"],
         },
         requirements: &[&["has_the_recipe", "has_magenta_wool"]],
         criteria: &["has_magenta_wool", "has_the_recipe"],
@@ -49601,7 +49601,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_bed"],
         },
         requirements: &[&["has_the_recipe", "has_magenta_wool"]],
         criteria: &["has_magenta_wool", "has_the_recipe"],
@@ -49636,7 +49636,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_candle"],
         },
         requirements: &[&["has_the_recipe", "has_magenta_dye"]],
         criteria: &["has_magenta_dye", "has_the_recipe"],
@@ -49671,7 +49671,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_magenta_wool"]],
         criteria: &["has_magenta_wool", "has_the_recipe"],
@@ -49706,7 +49706,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_magenta_wool_slab"]],
         criteria: &["has_magenta_wool_slab", "has_the_recipe"],
@@ -49741,7 +49741,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_glazed_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_magenta_terracotta"]],
         criteria: &["has_magenta_terracotta", "has_the_recipe"],
@@ -49778,7 +49778,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_shulker_box"],
         },
         requirements: &[&["has_the_recipe", "has_shulker_box"]],
         criteria: &["has_shulker_box", "has_the_recipe"],
@@ -49813,7 +49813,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_stained_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -49852,7 +49852,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_stained_glass_pane_from_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass_pane", "has_magenta_dye"]],
         criteria: &["has_glass_pane", "has_magenta_dye", "has_the_recipe"],
@@ -49905,7 +49905,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mangrove_fence"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -49940,7 +49940,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mangrove_hanging_sign"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_log"]],
         criteria: &["has_stripped_log", "has_the_recipe"],
@@ -49975,7 +49975,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mangrove_shelf"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_mangrove_log"]],
         criteria: &["has_stripped_mangrove_log", "has_the_recipe"],
@@ -50010,7 +50010,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mangrove_sign"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -50045,7 +50045,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:moss_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_moss_block"]],
         criteria: &["has_moss_block", "has_the_recipe"],
@@ -50080,7 +50080,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mossy_cobblestone_wall"],
         },
         requirements: &[&["has_the_recipe", "has_mossy_cobblestone"]],
         criteria: &["has_mossy_cobblestone", "has_the_recipe"],
@@ -50120,7 +50120,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mossy_cobblestone_wall_from_mossy_cobblestone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_mossy_cobblestone"]],
         criteria: &["has_mossy_cobblestone", "has_the_recipe"],
@@ -50157,7 +50157,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mossy_stone_brick_wall"],
         },
         requirements: &[&["has_the_recipe", "has_mossy_stone_bricks"]],
         criteria: &["has_mossy_stone_bricks", "has_the_recipe"],
@@ -50197,7 +50197,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mossy_stone_brick_wall_from_mossy_stone_bricks_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_mossy_stone_bricks"]],
         criteria: &["has_mossy_stone_bricks", "has_the_recipe"],
@@ -50234,7 +50234,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mud_brick_wall"],
         },
         requirements: &[&["has_the_recipe", "has_mud_bricks"]],
         criteria: &["has_mud_bricks", "has_the_recipe"],
@@ -50271,7 +50271,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mud_brick_wall_from_mud_bricks_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_mud_bricks"]],
         criteria: &["has_mud_bricks", "has_the_recipe"],
@@ -50308,7 +50308,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:nether_brick_fence"],
         },
         requirements: &[&["has_the_recipe", "has_nether_bricks"]],
         criteria: &["has_nether_bricks", "has_the_recipe"],
@@ -50343,7 +50343,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:nether_brick_wall"],
         },
         requirements: &[&["has_the_recipe", "has_nether_bricks"]],
         criteria: &["has_nether_bricks", "has_the_recipe"],
@@ -50381,7 +50381,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:nether_brick_wall_from_nether_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_nether_bricks"]],
             criteria: &["has_nether_bricks", "has_the_recipe"],
@@ -50420,7 +50420,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oak_fence"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -50455,7 +50455,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oak_hanging_sign"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_log"]],
         criteria: &["has_stripped_log", "has_the_recipe"],
@@ -50490,7 +50490,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oak_shelf"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_oak_log"]],
         criteria: &["has_stripped_oak_log", "has_the_recipe"],
@@ -50525,7 +50525,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oak_sign"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -50560,7 +50560,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_banner"],
         },
         requirements: &[&["has_the_recipe", "has_orange_wool"]],
         criteria: &["has_orange_wool", "has_the_recipe"],
@@ -50595,7 +50595,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_bed"],
         },
         requirements: &[&["has_the_recipe", "has_orange_wool"]],
         criteria: &["has_orange_wool", "has_the_recipe"],
@@ -50630,7 +50630,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_candle"],
         },
         requirements: &[&["has_the_recipe", "has_orange_dye"]],
         criteria: &["has_orange_dye", "has_the_recipe"],
@@ -50665,7 +50665,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_orange_wool"]],
         criteria: &["has_orange_wool", "has_the_recipe"],
@@ -50700,7 +50700,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_orange_wool_slab"]],
         criteria: &["has_orange_wool_slab", "has_the_recipe"],
@@ -50735,7 +50735,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_glazed_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_orange_terracotta"]],
         criteria: &["has_orange_terracotta", "has_the_recipe"],
@@ -50772,7 +50772,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_shulker_box"],
         },
         requirements: &[&["has_the_recipe", "has_shulker_box"]],
         criteria: &["has_shulker_box", "has_the_recipe"],
@@ -50807,7 +50807,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_stained_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -50846,7 +50846,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_stained_glass_pane_from_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass_pane", "has_orange_dye"]],
         criteria: &["has_glass_pane", "has_orange_dye", "has_the_recipe"],
@@ -50899,7 +50899,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:painting"],
         },
         requirements: &[&["has_the_recipe", "has_wool"]],
         criteria: &["has_the_recipe", "has_wool"],
@@ -50934,7 +50934,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pale_moss_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_pale_moss_block"]],
         criteria: &["has_pale_moss_block", "has_the_recipe"],
@@ -50969,7 +50969,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pale_oak_fence"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -51004,7 +51004,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pale_oak_hanging_sign"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_log"]],
         criteria: &["has_stripped_log", "has_the_recipe"],
@@ -51039,7 +51039,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pale_oak_shelf"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_pale_oak_log"]],
         criteria: &["has_stripped_pale_oak_log", "has_the_recipe"],
@@ -51074,7 +51074,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pale_oak_sign"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -51109,7 +51109,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_banner"],
         },
         requirements: &[&["has_the_recipe", "has_pink_wool"]],
         criteria: &["has_pink_wool", "has_the_recipe"],
@@ -51144,7 +51144,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_bed"],
         },
         requirements: &[&["has_the_recipe", "has_pink_wool"]],
         criteria: &["has_pink_wool", "has_the_recipe"],
@@ -51179,7 +51179,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_candle"],
         },
         requirements: &[&["has_the_recipe", "has_pink_dye"]],
         criteria: &["has_pink_dye", "has_the_recipe"],
@@ -51214,7 +51214,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_pink_wool"]],
         criteria: &["has_pink_wool", "has_the_recipe"],
@@ -51249,7 +51249,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_pink_wool_slab"]],
         criteria: &["has_pink_wool_slab", "has_the_recipe"],
@@ -51284,7 +51284,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_glazed_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_pink_terracotta"]],
         criteria: &["has_pink_terracotta", "has_the_recipe"],
@@ -51321,7 +51321,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_shulker_box"],
         },
         requirements: &[&["has_the_recipe", "has_shulker_box"]],
         criteria: &["has_shulker_box", "has_the_recipe"],
@@ -51356,7 +51356,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_stained_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -51395,7 +51395,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_stained_glass_pane_from_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass_pane", "has_pink_dye"]],
         criteria: &["has_glass_pane", "has_pink_dye", "has_the_recipe"],
@@ -51448,7 +51448,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_blackstone_brick_wall"],
         },
         requirements: &[&["has_the_recipe", "has_polished_blackstone_bricks"]],
         criteria: &["has_polished_blackstone_bricks", "has_the_recipe"],
@@ -51488,7 +51488,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_blackstone_brick_wall_from_blackstone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_blackstone"]],
         criteria: &["has_blackstone", "has_the_recipe"],
@@ -51518,8 +51518,8 @@ impl Advancement {
             },
         ],
     };
-    pub const RECIPES_DECORATIONS_POLISHED_BLACKSTONE_BRICK_WALL_FROM_POLISHED_BLACKSTONE_BRICKS_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/decorations/polished_blackstone_brick_wall_from_polished_blackstone_bricks_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_polished_blackstone_bricks"]] , criteria : & ["has_polished_blackstone_bricks" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_blackstone_bricks" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_blackstone_bricks"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_brick_wall_from_polished_blackstone_bricks_stonecutting") , }] , } ;
-    pub const RECIPES_DECORATIONS_POLISHED_BLACKSTONE_BRICK_WALL_FROM_POLISHED_BLACKSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/decorations/polished_blackstone_brick_wall_from_polished_blackstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & [] , } , requirements : & [& ["has_the_recipe" , "has_polished_blackstone"]] , criteria : & ["has_polished_blackstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_blackstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_blackstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_brick_wall_from_polished_blackstone_stonecutting") , }] , } ;
+    pub const RECIPES_DECORATIONS_POLISHED_BLACKSTONE_BRICK_WALL_FROM_POLISHED_BLACKSTONE_BRICKS_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/decorations/polished_blackstone_brick_wall_from_polished_blackstone_bricks_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:polished_blackstone_brick_wall_from_polished_blackstone_bricks_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_polished_blackstone_bricks"]] , criteria : & ["has_polished_blackstone_bricks" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_blackstone_bricks" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_blackstone_bricks"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_brick_wall_from_polished_blackstone_bricks_stonecutting") , }] , } ;
+    pub const RECIPES_DECORATIONS_POLISHED_BLACKSTONE_BRICK_WALL_FROM_POLISHED_BLACKSTONE_STONECUTTING : & Self = & Self { id : Identifier :: vanilla_static ("recipes/decorations/polished_blackstone_brick_wall_from_polished_blackstone_stonecutting") , parent : Some (Identifier :: from_static ("minecraft" , "recipes/root")) , send_telemetry : false , display : None , reward : & AdvancementReward { experience : 0i32 , recipes : & ["minecraft:polished_blackstone_brick_wall_from_polished_blackstone_stonecutting"] , } , requirements : & [& ["has_the_recipe" , "has_polished_blackstone"]] , criteria : & ["has_polished_blackstone" , "has_the_recipe"] , criteria_definitions : & [AdvancementCriterion { name : "has_polished_blackstone" , trigger : "minecraft:inventory_changed" , conditions : AdvancementCondition :: InventoryChanged (& InventoryChangedCondition { items : & [ItemCondition { items : & ["minecraft:polished_blackstone"] , tag : None , count_min : None , count_max : None , durability_min : None , durability_max : None , enchantments : & [] , }] , slots : None , }) , } , AdvancementCriterion { name : "has_the_recipe" , trigger : "minecraft:recipe_unlocked" , conditions : AdvancementCondition :: RecipeUnlocked ("minecraft:polished_blackstone_brick_wall_from_polished_blackstone_stonecutting") , }] , } ;
     pub const RECIPES_DECORATIONS_POLISHED_BLACKSTONE_WALL: &Self = &Self {
         id: Identifier::vanilla_static("recipes/decorations/polished_blackstone_wall"),
         parent: Some(Identifier::from_static("minecraft", "recipes/root")),
@@ -51527,7 +51527,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_blackstone_wall"],
         },
         requirements: &[&["has_the_recipe", "has_polished_blackstone"]],
         criteria: &["has_polished_blackstone", "has_the_recipe"],
@@ -51567,7 +51567,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_blackstone_wall_from_blackstone_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_blackstone"]],
             criteria: &["has_blackstone", "has_the_recipe"],
@@ -51609,7 +51609,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_blackstone_wall_from_polished_blackstone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_polished_blackstone"]],
         criteria: &["has_polished_blackstone", "has_the_recipe"],
@@ -51646,7 +51646,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_cinnabar_wall"],
         },
         requirements: &[&["has_the_recipe", "has_polished_cinnabar"]],
         criteria: &["has_polished_cinnabar", "has_the_recipe"],
@@ -51686,7 +51686,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_cinnabar_wall_from_cinnabar_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_cinnabar"]],
             criteria: &["has_cinnabar", "has_the_recipe"],
@@ -51728,7 +51728,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_cinnabar_wall_from_polished_cinnabar_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_polished_cinnabar"]],
         criteria: &["has_polished_cinnabar", "has_the_recipe"],
@@ -51765,7 +51765,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_deepslate_wall"],
         },
         requirements: &[&["has_the_recipe", "has_polished_deepslate"]],
         criteria: &["has_polished_deepslate", "has_the_recipe"],
@@ -51805,7 +51805,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_deepslate_wall_from_cobbled_deepslate_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_cobbled_deepslate"]],
         criteria: &["has_cobbled_deepslate", "has_the_recipe"],
@@ -51845,7 +51845,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_deepslate_wall_from_deepslate_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_deepslate"]],
             criteria: &["has_deepslate", "has_the_recipe"],
@@ -51887,7 +51887,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_deepslate_wall_from_polished_deepslate_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_polished_deepslate"]],
         criteria: &["has_polished_deepslate", "has_the_recipe"],
@@ -51924,7 +51924,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_sulfur_wall"],
         },
         requirements: &[&["has_the_recipe", "has_polished_sulfur"]],
         criteria: &["has_polished_sulfur", "has_the_recipe"],
@@ -51962,7 +51962,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_sulfur_wall_from_polished_sulfur_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_polished_sulfur"]],
             criteria: &["has_polished_sulfur", "has_the_recipe"],
@@ -52003,7 +52003,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_sulfur_wall_from_sulfur_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_sulfur"]],
         criteria: &["has_sulfur", "has_the_recipe"],
@@ -52040,7 +52040,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_tuff_wall"],
         },
         requirements: &[&["has_the_recipe", "has_polished_tuff"]],
         criteria: &["has_polished_tuff", "has_the_recipe"],
@@ -52078,7 +52078,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:polished_tuff_wall_from_polished_tuff_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_polished_tuff"]],
             criteria: &["has_polished_tuff", "has_the_recipe"],
@@ -52119,7 +52119,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_tuff_wall_from_tuff_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_tuff"]],
         criteria: &["has_the_recipe", "has_tuff"],
@@ -52156,7 +52156,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:poplar_fence"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -52191,7 +52191,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:poplar_hanging_sign"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_log"]],
         criteria: &["has_stripped_log", "has_the_recipe"],
@@ -52226,7 +52226,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:poplar_shelf"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_poplar_log"]],
         criteria: &["has_stripped_poplar_log", "has_the_recipe"],
@@ -52261,7 +52261,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:poplar_sign"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -52296,7 +52296,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:prismarine_wall"],
         },
         requirements: &[&["has_the_recipe", "has_prismarine"]],
         criteria: &["has_prismarine", "has_the_recipe"],
@@ -52333,7 +52333,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:prismarine_wall_from_prismarine_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_prismarine"]],
         criteria: &["has_prismarine", "has_the_recipe"],
@@ -52370,7 +52370,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_banner"],
         },
         requirements: &[&["has_the_recipe", "has_purple_wool"]],
         criteria: &["has_purple_wool", "has_the_recipe"],
@@ -52405,7 +52405,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_bed"],
         },
         requirements: &[&["has_the_recipe", "has_purple_wool"]],
         criteria: &["has_purple_wool", "has_the_recipe"],
@@ -52440,7 +52440,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_candle"],
         },
         requirements: &[&["has_the_recipe", "has_purple_dye"]],
         criteria: &["has_purple_dye", "has_the_recipe"],
@@ -52475,7 +52475,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_purple_wool"]],
         criteria: &["has_purple_wool", "has_the_recipe"],
@@ -52510,7 +52510,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_purple_wool_slab"]],
         criteria: &["has_purple_wool_slab", "has_the_recipe"],
@@ -52545,7 +52545,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_glazed_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_purple_terracotta"]],
         criteria: &["has_purple_terracotta", "has_the_recipe"],
@@ -52582,7 +52582,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_shulker_box"],
         },
         requirements: &[&["has_the_recipe", "has_shulker_box"]],
         criteria: &["has_shulker_box", "has_the_recipe"],
@@ -52617,7 +52617,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_stained_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -52656,7 +52656,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_stained_glass_pane_from_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass_pane", "has_purple_dye"]],
         criteria: &["has_glass_pane", "has_purple_dye", "has_the_recipe"],
@@ -52709,7 +52709,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_banner"],
         },
         requirements: &[&["has_the_recipe", "has_red_wool"]],
         criteria: &["has_red_wool", "has_the_recipe"],
@@ -52744,7 +52744,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_bed"],
         },
         requirements: &[&["has_the_recipe", "has_red_wool"]],
         criteria: &["has_red_wool", "has_the_recipe"],
@@ -52779,7 +52779,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_candle"],
         },
         requirements: &[&["has_the_recipe", "has_red_dye"]],
         criteria: &["has_red_dye", "has_the_recipe"],
@@ -52814,7 +52814,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_red_wool"]],
         criteria: &["has_red_wool", "has_the_recipe"],
@@ -52849,7 +52849,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_red_wool_slab"]],
         criteria: &["has_red_wool_slab", "has_the_recipe"],
@@ -52884,7 +52884,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_glazed_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_red_terracotta"]],
         criteria: &["has_red_terracotta", "has_the_recipe"],
@@ -52919,7 +52919,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_nether_brick_wall"],
         },
         requirements: &[&["has_the_recipe", "has_red_nether_bricks"]],
         criteria: &["has_red_nether_bricks", "has_the_recipe"],
@@ -52957,7 +52957,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:red_nether_brick_wall_from_red_nether_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_red_nether_bricks"]],
             criteria: &["has_red_nether_bricks", "has_the_recipe"],
@@ -52996,7 +52996,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_sandstone_wall"],
         },
         requirements: &[&["has_the_recipe", "has_red_sandstone"]],
         criteria: &["has_red_sandstone", "has_the_recipe"],
@@ -53034,7 +53034,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:red_sandstone_wall_from_red_sandstone_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_red_sandstone"]],
             criteria: &["has_red_sandstone", "has_the_recipe"],
@@ -53073,7 +53073,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_shulker_box"],
         },
         requirements: &[&["has_the_recipe", "has_shulker_box"]],
         criteria: &["has_shulker_box", "has_the_recipe"],
@@ -53108,7 +53108,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_stained_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -53147,7 +53147,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_stained_glass_pane_from_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass_pane", "has_red_dye"]],
         criteria: &["has_glass_pane", "has_red_dye", "has_the_recipe"],
@@ -53200,7 +53200,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:resin_brick_wall"],
         },
         requirements: &[&["has_the_recipe", "has_resin_bricks"]],
         criteria: &["has_resin_bricks", "has_the_recipe"],
@@ -53237,7 +53237,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:resin_brick_wall_from_resin_bricks_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_resin_bricks"]],
         criteria: &["has_resin_bricks", "has_the_recipe"],
@@ -53274,7 +53274,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:respawn_anchor"],
         },
         requirements: &[&["has_the_recipe", "has_obsidian"]],
         criteria: &["has_obsidian", "has_the_recipe"],
@@ -53309,7 +53309,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sandstone_wall"],
         },
         requirements: &[&["has_the_recipe", "has_sandstone"]],
         criteria: &["has_sandstone", "has_the_recipe"],
@@ -53346,7 +53346,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sandstone_wall_from_sandstone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_sandstone"]],
         criteria: &["has_sandstone", "has_the_recipe"],
@@ -53383,7 +53383,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:scaffolding"],
         },
         requirements: &[&["has_the_recipe", "has_bamboo"]],
         criteria: &["has_bamboo", "has_the_recipe"],
@@ -53418,7 +53418,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:shulker_box"],
         },
         requirements: &[&["has_the_recipe", "has_shulker_shell"]],
         criteria: &["has_shulker_shell", "has_the_recipe"],
@@ -53453,7 +53453,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:smithing_table"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -53488,7 +53488,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:smoker"],
         },
         requirements: &[&["has_the_recipe", "has_furnace"]],
         criteria: &["has_furnace", "has_the_recipe"],
@@ -53523,7 +53523,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:snow"],
         },
         requirements: &[&["has_the_recipe", "has_snowball"]],
         criteria: &["has_snowball", "has_the_recipe"],
@@ -53558,7 +53558,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:soul_campfire"],
         },
         requirements: &[&["has_the_recipe", "has_soul_sand"]],
         criteria: &["has_soul_sand", "has_the_recipe"],
@@ -53593,7 +53593,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:soul_lantern"],
         },
         requirements: &[&["has_the_recipe", "has_soul_torch"]],
         criteria: &["has_soul_torch", "has_the_recipe"],
@@ -53628,7 +53628,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:soul_torch"],
         },
         requirements: &[&["has_the_recipe", "has_soul_sand"]],
         criteria: &["has_soul_sand", "has_the_recipe"],
@@ -53663,7 +53663,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:spruce_fence"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -53698,7 +53698,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:spruce_hanging_sign"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_log"]],
         criteria: &["has_stripped_log", "has_the_recipe"],
@@ -53733,7 +53733,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:spruce_shelf"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_spruce_log"]],
         criteria: &["has_stripped_spruce_log", "has_the_recipe"],
@@ -53768,7 +53768,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:spruce_sign"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -53803,7 +53803,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_brick_wall"],
         },
         requirements: &[&["has_the_recipe", "has_stone_bricks"]],
         criteria: &["has_stone_bricks", "has_the_recipe"],
@@ -53840,7 +53840,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_brick_wall_from_stone_bricks_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_stone_bricks"]],
         criteria: &["has_stone_bricks", "has_the_recipe"],
@@ -53879,7 +53879,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_brick_wall_from_stone_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_stone"]],
         criteria: &["has_stone", "has_the_recipe"],
@@ -53916,7 +53916,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stonecutter"],
         },
         requirements: &[&["has_the_recipe", "has_stone"]],
         criteria: &["has_stone", "has_the_recipe"],
@@ -53951,7 +53951,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:straw_bed"],
         },
         requirements: &[&["has_the_recipe", "has_hay_block", "has_straw_bed"]],
         criteria: &["has_hay_block", "has_straw_bed", "has_the_recipe"],
@@ -54002,7 +54002,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sulfur_brick_wall"],
         },
         requirements: &[&["has_the_recipe", "has_sulfur_bricks"]],
         criteria: &["has_sulfur_bricks", "has_the_recipe"],
@@ -54040,7 +54040,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:sulfur_brick_wall_from_polished_sulfur_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_polished_sulfur"]],
             criteria: &["has_polished_sulfur", "has_the_recipe"],
@@ -54082,7 +54082,7 @@ impl Advancement {
             display: None,
             reward: &AdvancementReward {
                 experience: 0i32,
-                recipes: &[],
+                recipes: &["minecraft:sulfur_brick_wall_from_sulfur_bricks_stonecutting"],
             },
             requirements: &[&["has_the_recipe", "has_sulfur_bricks"]],
             criteria: &["has_sulfur_bricks", "has_the_recipe"],
@@ -54123,7 +54123,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sulfur_brick_wall_from_sulfur_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_sulfur"]],
         criteria: &["has_sulfur", "has_the_recipe"],
@@ -54160,7 +54160,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sulfur_wall"],
         },
         requirements: &[&["has_the_recipe", "has_sulfur"]],
         criteria: &["has_sulfur", "has_the_recipe"],
@@ -54195,7 +54195,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sulfur_wall_from_sulfur_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_sulfur"]],
         criteria: &["has_sulfur", "has_the_recipe"],
@@ -54232,7 +54232,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:torch"],
         },
         requirements: &[&["has_the_recipe", "has_stone_pickaxe"]],
         criteria: &["has_stone_pickaxe", "has_the_recipe"],
@@ -54267,7 +54267,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tuff_brick_wall"],
         },
         requirements: &[&["has_the_recipe", "has_tuff_bricks"]],
         criteria: &["has_the_recipe", "has_tuff_bricks"],
@@ -54304,7 +54304,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tuff_brick_wall_from_polished_tuff_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_polished_tuff"]],
         criteria: &["has_polished_tuff", "has_the_recipe"],
@@ -54343,7 +54343,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tuff_brick_wall_from_tuff_bricks_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_tuff_bricks"]],
         criteria: &["has_the_recipe", "has_tuff_bricks"],
@@ -54382,7 +54382,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tuff_brick_wall_from_tuff_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_tuff"]],
         criteria: &["has_the_recipe", "has_tuff"],
@@ -54419,7 +54419,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tuff_wall"],
         },
         requirements: &[&["has_the_recipe", "has_tuff"]],
         criteria: &["has_the_recipe", "has_tuff"],
@@ -54454,7 +54454,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tuff_wall_from_tuff_stonecutting"],
         },
         requirements: &[&["has_the_recipe", "has_tuff"]],
         criteria: &["has_the_recipe", "has_tuff"],
@@ -54491,7 +54491,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:warped_fence"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -54526,7 +54526,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:warped_hanging_sign"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_log"]],
         criteria: &["has_stripped_log", "has_the_recipe"],
@@ -54561,7 +54561,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:warped_shelf"],
         },
         requirements: &[&["has_the_recipe", "has_stripped_warped_stem"]],
         criteria: &["has_stripped_warped_stem", "has_the_recipe"],
@@ -54596,7 +54596,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:warped_sign"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -54631,7 +54631,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_banner"],
         },
         requirements: &[&["has_the_recipe", "has_white_wool"]],
         criteria: &["has_the_recipe", "has_white_wool"],
@@ -54666,7 +54666,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_bed"],
         },
         requirements: &[&["has_the_recipe", "has_white_wool"]],
         criteria: &["has_the_recipe", "has_white_wool"],
@@ -54701,7 +54701,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_candle"],
         },
         requirements: &[&["has_the_recipe", "has_white_dye"]],
         criteria: &["has_the_recipe", "has_white_dye"],
@@ -54736,7 +54736,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_white_wool"]],
         criteria: &["has_the_recipe", "has_white_wool"],
@@ -54771,7 +54771,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_white_wool_slab"]],
         criteria: &["has_the_recipe", "has_white_wool_slab"],
@@ -54806,7 +54806,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_glazed_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_white_terracotta"]],
         criteria: &["has_the_recipe", "has_white_terracotta"],
@@ -54843,7 +54843,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_shulker_box"],
         },
         requirements: &[&["has_the_recipe", "has_shulker_box"]],
         criteria: &["has_shulker_box", "has_the_recipe"],
@@ -54878,7 +54878,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_stained_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -54917,7 +54917,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_stained_glass_pane_from_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass_pane", "has_white_dye"]],
         criteria: &["has_glass_pane", "has_the_recipe", "has_white_dye"],
@@ -54970,7 +54970,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_banner"],
         },
         requirements: &[&["has_the_recipe", "has_yellow_wool"]],
         criteria: &["has_the_recipe", "has_yellow_wool"],
@@ -55005,7 +55005,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_bed"],
         },
         requirements: &[&["has_the_recipe", "has_yellow_wool"]],
         criteria: &["has_the_recipe", "has_yellow_wool"],
@@ -55040,7 +55040,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_candle"],
         },
         requirements: &[&["has_the_recipe", "has_yellow_dye"]],
         criteria: &["has_the_recipe", "has_yellow_dye"],
@@ -55075,7 +55075,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_carpet"],
         },
         requirements: &[&["has_the_recipe", "has_yellow_wool"]],
         criteria: &["has_the_recipe", "has_yellow_wool"],
@@ -55110,7 +55110,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_cushion"],
         },
         requirements: &[&["has_the_recipe", "has_yellow_wool_slab"]],
         criteria: &["has_the_recipe", "has_yellow_wool_slab"],
@@ -55145,7 +55145,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_glazed_terracotta"],
         },
         requirements: &[&["has_the_recipe", "has_yellow_terracotta"]],
         criteria: &["has_the_recipe", "has_yellow_terracotta"],
@@ -55182,7 +55182,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_shulker_box"],
         },
         requirements: &[&["has_the_recipe", "has_shulker_box"]],
         criteria: &["has_shulker_box", "has_the_recipe"],
@@ -55217,7 +55217,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_stained_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass"]],
         criteria: &["has_glass", "has_the_recipe"],
@@ -55256,7 +55256,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_stained_glass_pane_from_glass_pane"],
         },
         requirements: &[&["has_the_recipe", "has_glass_pane", "has_yellow_dye"]],
         criteria: &["has_glass_pane", "has_the_recipe", "has_yellow_dye"],
@@ -55309,7 +55309,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:baked_potato"],
         },
         requirements: &[&["has_the_recipe", "has_potato"]],
         criteria: &["has_potato", "has_the_recipe"],
@@ -55344,7 +55344,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:baked_potato_from_campfire_cooking"],
         },
         requirements: &[&["has_the_recipe", "has_potato"]],
         criteria: &["has_potato", "has_the_recipe"],
@@ -55381,7 +55381,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:baked_potato_from_smoking"],
         },
         requirements: &[&["has_the_recipe", "has_potato"]],
         criteria: &["has_potato", "has_the_recipe"],
@@ -55418,7 +55418,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:beetroot_soup"],
         },
         requirements: &[&["has_the_recipe", "has_beetroot"]],
         criteria: &["has_beetroot", "has_the_recipe"],
@@ -55453,7 +55453,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bread"],
         },
         requirements: &[&["has_the_recipe", "has_wheat"]],
         criteria: &["has_the_recipe", "has_wheat"],
@@ -55488,7 +55488,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cake"],
         },
         requirements: &[&["has_the_recipe", "has_egg"]],
         criteria: &["has_egg", "has_the_recipe"],
@@ -55523,7 +55523,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_beef"],
         },
         requirements: &[&["has_the_recipe", "has_beef"]],
         criteria: &["has_beef", "has_the_recipe"],
@@ -55558,7 +55558,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_beef_from_campfire_cooking"],
         },
         requirements: &[&["has_the_recipe", "has_beef"]],
         criteria: &["has_beef", "has_the_recipe"],
@@ -55595,7 +55595,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_beef_from_smoking"],
         },
         requirements: &[&["has_the_recipe", "has_beef"]],
         criteria: &["has_beef", "has_the_recipe"],
@@ -55632,7 +55632,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_chicken"],
         },
         requirements: &[&["has_the_recipe", "has_chicken"]],
         criteria: &["has_chicken", "has_the_recipe"],
@@ -55667,7 +55667,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_chicken_from_campfire_cooking"],
         },
         requirements: &[&["has_the_recipe", "has_chicken"]],
         criteria: &["has_chicken", "has_the_recipe"],
@@ -55704,7 +55704,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_chicken_from_smoking"],
         },
         requirements: &[&["has_the_recipe", "has_chicken"]],
         criteria: &["has_chicken", "has_the_recipe"],
@@ -55741,7 +55741,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_cod"],
         },
         requirements: &[&["has_the_recipe", "has_cod"]],
         criteria: &["has_cod", "has_the_recipe"],
@@ -55776,7 +55776,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_cod_from_campfire_cooking"],
         },
         requirements: &[&["has_the_recipe", "has_cod"]],
         criteria: &["has_cod", "has_the_recipe"],
@@ -55813,7 +55813,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_cod_from_smoking"],
         },
         requirements: &[&["has_the_recipe", "has_cod"]],
         criteria: &["has_cod", "has_the_recipe"],
@@ -55850,7 +55850,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_mutton"],
         },
         requirements: &[&["has_the_recipe", "has_mutton"]],
         criteria: &["has_mutton", "has_the_recipe"],
@@ -55885,7 +55885,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_mutton_from_campfire_cooking"],
         },
         requirements: &[&["has_the_recipe", "has_mutton"]],
         criteria: &["has_mutton", "has_the_recipe"],
@@ -55922,7 +55922,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_mutton_from_smoking"],
         },
         requirements: &[&["has_the_recipe", "has_mutton"]],
         criteria: &["has_mutton", "has_the_recipe"],
@@ -55959,7 +55959,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_porkchop"],
         },
         requirements: &[&["has_the_recipe", "has_porkchop"]],
         criteria: &["has_porkchop", "has_the_recipe"],
@@ -55994,7 +55994,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_porkchop_from_campfire_cooking"],
         },
         requirements: &[&["has_the_recipe", "has_porkchop"]],
         criteria: &["has_porkchop", "has_the_recipe"],
@@ -56031,7 +56031,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_porkchop_from_smoking"],
         },
         requirements: &[&["has_the_recipe", "has_porkchop"]],
         criteria: &["has_porkchop", "has_the_recipe"],
@@ -56068,7 +56068,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_rabbit"],
         },
         requirements: &[&["has_the_recipe", "has_rabbit"]],
         criteria: &["has_rabbit", "has_the_recipe"],
@@ -56103,7 +56103,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_rabbit_from_campfire_cooking"],
         },
         requirements: &[&["has_the_recipe", "has_rabbit"]],
         criteria: &["has_rabbit", "has_the_recipe"],
@@ -56140,7 +56140,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_rabbit_from_smoking"],
         },
         requirements: &[&["has_the_recipe", "has_rabbit"]],
         criteria: &["has_rabbit", "has_the_recipe"],
@@ -56177,7 +56177,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_salmon"],
         },
         requirements: &[&["has_the_recipe", "has_salmon"]],
         criteria: &["has_salmon", "has_the_recipe"],
@@ -56212,7 +56212,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_salmon_from_campfire_cooking"],
         },
         requirements: &[&["has_the_recipe", "has_salmon"]],
         criteria: &["has_salmon", "has_the_recipe"],
@@ -56249,7 +56249,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cooked_salmon_from_smoking"],
         },
         requirements: &[&["has_the_recipe", "has_salmon"]],
         criteria: &["has_salmon", "has_the_recipe"],
@@ -56286,7 +56286,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cookie"],
         },
         requirements: &[&["has_the_recipe", "has_cocoa"]],
         criteria: &["has_cocoa", "has_the_recipe"],
@@ -56321,7 +56321,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dried_kelp"],
         },
         requirements: &[&["has_the_recipe", "has_dried_kelp_block"]],
         criteria: &["has_dried_kelp_block", "has_the_recipe"],
@@ -56356,7 +56356,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dried_kelp_from_campfire_cooking"],
         },
         requirements: &[&["has_the_recipe", "has_kelp"]],
         criteria: &["has_kelp", "has_the_recipe"],
@@ -56393,7 +56393,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dried_kelp_from_smelting"],
         },
         requirements: &[&["has_the_recipe", "has_kelp"]],
         criteria: &["has_kelp", "has_the_recipe"],
@@ -56430,7 +56430,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dried_kelp_from_smoking"],
         },
         requirements: &[&["has_the_recipe", "has_kelp"]],
         criteria: &["has_kelp", "has_the_recipe"],
@@ -56467,7 +56467,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:golden_apple"],
         },
         requirements: &[&["has_the_recipe", "has_gold_ingot"]],
         criteria: &["has_gold_ingot", "has_the_recipe"],
@@ -56502,7 +56502,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:honey_bottle"],
         },
         requirements: &[&["has_the_recipe", "has_honey_block"]],
         criteria: &["has_honey_block", "has_the_recipe"],
@@ -56537,7 +56537,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mushroom_stew"],
         },
         requirements: &[&[
             "has_the_recipe",
@@ -56614,7 +56614,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pumpkin_pie"],
         },
         requirements: &[&["has_the_recipe", "has_carved_pumpkin", "has_pumpkin"]],
         criteria: &["has_carved_pumpkin", "has_pumpkin", "has_the_recipe"],
@@ -56665,7 +56665,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:rabbit_stew_from_brown_mushroom"],
         },
         requirements: &[&["has_the_recipe", "has_cooked_rabbit"]],
         criteria: &["has_cooked_rabbit", "has_the_recipe"],
@@ -56702,7 +56702,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:rabbit_stew_from_red_mushroom"],
         },
         requirements: &[&["has_the_recipe", "has_cooked_rabbit"]],
         criteria: &["has_cooked_rabbit", "has_the_recipe"],
@@ -56739,7 +56739,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:rabbit_stew_from_shelf_mushroom"],
         },
         requirements: &[&["has_the_recipe", "has_cooked_rabbit"]],
         criteria: &["has_cooked_rabbit", "has_the_recipe"],
@@ -56776,7 +56776,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:suspicious_stew_from_allium"],
         },
         requirements: &[&["has_the_recipe", "has_allium"]],
         criteria: &["has_allium", "has_the_recipe"],
@@ -56813,7 +56813,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:suspicious_stew_from_azure_bluet"],
         },
         requirements: &[&["has_the_recipe", "has_azure_bluet"]],
         criteria: &["has_azure_bluet", "has_the_recipe"],
@@ -56850,7 +56850,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:suspicious_stew_from_blue_orchid"],
         },
         requirements: &[&["has_the_recipe", "has_blue_orchid"]],
         criteria: &["has_blue_orchid", "has_the_recipe"],
@@ -56887,7 +56887,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:suspicious_stew_from_closed_eyeblossom"],
         },
         requirements: &[&["has_the_recipe", "has_closed_eyeblossom"]],
         criteria: &["has_closed_eyeblossom", "has_the_recipe"],
@@ -56924,7 +56924,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:suspicious_stew_from_cornflower"],
         },
         requirements: &[&["has_the_recipe", "has_cornflower"]],
         criteria: &["has_cornflower", "has_the_recipe"],
@@ -56961,7 +56961,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:suspicious_stew_from_dandelion"],
         },
         requirements: &[&["has_the_recipe", "has_dandelion"]],
         criteria: &["has_dandelion", "has_the_recipe"],
@@ -56998,7 +56998,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:suspicious_stew_from_golden_dandelion"],
         },
         requirements: &[&["has_the_recipe", "has_golden_dandelion"]],
         criteria: &["has_golden_dandelion", "has_the_recipe"],
@@ -57035,7 +57035,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:suspicious_stew_from_lily_of_the_valley"],
         },
         requirements: &[&["has_the_recipe", "has_lily_of_the_valley"]],
         criteria: &["has_lily_of_the_valley", "has_the_recipe"],
@@ -57072,7 +57072,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:suspicious_stew_from_open_eyeblossom"],
         },
         requirements: &[&["has_the_recipe", "has_open_eyeblossom"]],
         criteria: &["has_open_eyeblossom", "has_the_recipe"],
@@ -57109,7 +57109,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:suspicious_stew_from_orange_tulip"],
         },
         requirements: &[&["has_the_recipe", "has_orange_tulip"]],
         criteria: &["has_orange_tulip", "has_the_recipe"],
@@ -57146,7 +57146,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:suspicious_stew_from_oxeye_daisy"],
         },
         requirements: &[&["has_the_recipe", "has_oxeye_daisy"]],
         criteria: &["has_oxeye_daisy", "has_the_recipe"],
@@ -57183,7 +57183,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:suspicious_stew_from_pink_tulip"],
         },
         requirements: &[&["has_the_recipe", "has_pink_tulip"]],
         criteria: &["has_pink_tulip", "has_the_recipe"],
@@ -57220,7 +57220,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:suspicious_stew_from_poppy"],
         },
         requirements: &[&["has_the_recipe", "has_poppy"]],
         criteria: &["has_poppy", "has_the_recipe"],
@@ -57257,7 +57257,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:suspicious_stew_from_red_tulip"],
         },
         requirements: &[&["has_the_recipe", "has_red_tulip"]],
         criteria: &["has_red_tulip", "has_the_recipe"],
@@ -57294,7 +57294,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:suspicious_stew_from_torchflower"],
         },
         requirements: &[&["has_the_recipe", "has_torchflower"]],
         criteria: &["has_the_recipe", "has_torchflower"],
@@ -57331,7 +57331,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:suspicious_stew_from_white_tulip"],
         },
         requirements: &[&["has_the_recipe", "has_white_tulip"]],
         criteria: &["has_the_recipe", "has_white_tulip"],
@@ -57368,7 +57368,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:suspicious_stew_from_wither_rose"],
         },
         requirements: &[&["has_the_recipe", "has_wither_rose"]],
         criteria: &["has_the_recipe", "has_wither_rose"],
@@ -57405,7 +57405,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:beacon"],
         },
         requirements: &[&["has_the_recipe", "has_nether_star"]],
         criteria: &["has_nether_star", "has_the_recipe"],
@@ -57440,7 +57440,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_dye"],
         },
         requirements: &[&["has_the_recipe", "has_ink_sac"]],
         criteria: &["has_ink_sac", "has_the_recipe"],
@@ -57475,7 +57475,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:black_dye_from_wither_rose"],
         },
         requirements: &[&["has_the_recipe", "has_wither_rose"]],
         criteria: &["has_the_recipe", "has_wither_rose"],
@@ -57512,7 +57512,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_dye"],
         },
         requirements: &[&["has_the_recipe", "has_lapis_lazuli"]],
         criteria: &["has_lapis_lazuli", "has_the_recipe"],
@@ -57547,7 +57547,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:blue_dye_from_cornflower"],
         },
         requirements: &[&["has_the_recipe", "has_cornflower"]],
         criteria: &["has_cornflower", "has_the_recipe"],
@@ -57584,7 +57584,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bolt_armor_trim_smithing_template"],
         },
         requirements: &[&["has_the_recipe", "has_bolt_armor_trim_smithing_template"]],
         criteria: &["has_bolt_armor_trim_smithing_template", "has_the_recipe"],
@@ -57623,7 +57623,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bolt_armor_trim_smithing_template_smithing_trim"],
         },
         requirements: &[&["has_the_recipe", "has_smithing_trim_template"]],
         criteria: &["has_smithing_trim_template", "has_the_recipe"],
@@ -57660,7 +57660,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bone_meal"],
         },
         requirements: &[&["has_the_recipe", "has_bone"]],
         criteria: &["has_bone", "has_the_recipe"],
@@ -57695,7 +57695,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bone_meal_from_bone_block"],
         },
         requirements: &[&["has_the_recipe", "has_bone_block"]],
         criteria: &["has_bone_block", "has_the_recipe"],
@@ -57732,7 +57732,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:book"],
         },
         requirements: &[&["has_the_recipe", "has_paper"]],
         criteria: &["has_paper", "has_the_recipe"],
@@ -57767,7 +57767,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bordure_indented_banner_pattern"],
         },
         requirements: &[&["has_the_recipe", "has_vines"]],
         criteria: &["has_the_recipe", "has_vines"],
@@ -57804,7 +57804,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bowl"],
         },
         requirements: &[&["has_the_recipe", "has_mushroom", "has_mushroom_stew"]],
         criteria: &["has_mushroom", "has_mushroom_stew", "has_the_recipe"],
@@ -57855,7 +57855,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brick"],
         },
         requirements: &[&["has_the_recipe", "has_clay_ball"]],
         criteria: &["has_clay_ball", "has_the_recipe"],
@@ -57890,7 +57890,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:brown_dye"],
         },
         requirements: &[&["has_the_recipe", "has_cocoa_beans"]],
         criteria: &["has_cocoa_beans", "has_the_recipe"],
@@ -57925,7 +57925,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bucket"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -57960,7 +57960,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:charcoal"],
         },
         requirements: &[&["has_the_recipe", "has_log"]],
         criteria: &["has_log", "has_the_recipe"],
@@ -57995,7 +57995,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:coal"],
         },
         requirements: &[&["has_the_recipe", "has_coal_block"]],
         criteria: &["has_coal_block", "has_the_recipe"],
@@ -58030,7 +58030,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:coal_from_blasting_coal_ore"],
         },
         requirements: &[&["has_the_recipe", "has_coal_ore"]],
         criteria: &["has_coal_ore", "has_the_recipe"],
@@ -58067,7 +58067,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:coal_from_blasting_deepslate_coal_ore"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_coal_ore"]],
         criteria: &["has_deepslate_coal_ore", "has_the_recipe"],
@@ -58104,7 +58104,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:coal_from_smelting_coal_ore"],
         },
         requirements: &[&["has_the_recipe", "has_coal_ore"]],
         criteria: &["has_coal_ore", "has_the_recipe"],
@@ -58141,7 +58141,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:coal_from_smelting_deepslate_coal_ore"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_coal_ore"]],
         criteria: &["has_deepslate_coal_ore", "has_the_recipe"],
@@ -58178,7 +58178,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:coast_armor_trim_smithing_template"],
         },
         requirements: &[&["has_the_recipe", "has_coast_armor_trim_smithing_template"]],
         criteria: &["has_coast_armor_trim_smithing_template", "has_the_recipe"],
@@ -58217,7 +58217,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:coast_armor_trim_smithing_template_smithing_trim"],
         },
         requirements: &[&["has_the_recipe", "has_smithing_trim_template"]],
         criteria: &["has_smithing_trim_template", "has_the_recipe"],
@@ -58254,7 +58254,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:conduit"],
         },
         requirements: &[&["has_the_recipe", "has_nautilus_core", "has_nautilus_shell"]],
         criteria: &["has_nautilus_core", "has_nautilus_shell", "has_the_recipe"],
@@ -58305,7 +58305,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_ingot"],
         },
         requirements: &[&["has_the_recipe", "has_copper_block"]],
         criteria: &["has_copper_block", "has_the_recipe"],
@@ -58340,7 +58340,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_ingot_from_blasting_copper_ore"],
         },
         requirements: &[&["has_the_recipe", "has_copper_ore"]],
         criteria: &["has_copper_ore", "has_the_recipe"],
@@ -58379,7 +58379,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_ingot_from_blasting_deepslate_copper_ore"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_copper_ore"]],
         criteria: &["has_deepslate_copper_ore", "has_the_recipe"],
@@ -58416,7 +58416,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_ingot_from_blasting_raw_copper"],
         },
         requirements: &[&["has_the_recipe", "has_raw_copper"]],
         criteria: &["has_raw_copper", "has_the_recipe"],
@@ -58453,7 +58453,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_ingot_from_nuggets"],
         },
         requirements: &[&["has_the_recipe", "has_copper_nugget"]],
         criteria: &["has_copper_nugget", "has_the_recipe"],
@@ -58490,7 +58490,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_ingot_from_smelting_copper_ore"],
         },
         requirements: &[&["has_the_recipe", "has_copper_ore"]],
         criteria: &["has_copper_ore", "has_the_recipe"],
@@ -58529,7 +58529,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_ingot_from_smelting_deepslate_copper_ore"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_copper_ore"]],
         criteria: &["has_deepslate_copper_ore", "has_the_recipe"],
@@ -58566,7 +58566,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_ingot_from_smelting_raw_copper"],
         },
         requirements: &[&["has_the_recipe", "has_raw_copper"]],
         criteria: &["has_raw_copper", "has_the_recipe"],
@@ -58603,7 +58603,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_ingot_from_waxed_copper_block"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_copper_block"]],
         criteria: &["has_the_recipe", "has_waxed_copper_block"],
@@ -58640,7 +58640,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_nugget"],
         },
         requirements: &[&["has_the_recipe", "has_copper_ingot"]],
         criteria: &["has_copper_ingot", "has_the_recipe"],
@@ -58675,7 +58675,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_nugget_from_blasting"],
         },
         requirements: &[&[
             "has_the_recipe",
@@ -58916,7 +58916,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_nugget_from_smelting"],
         },
         requirements: &[&[
             "has_the_recipe",
@@ -59157,7 +59157,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:creaking_heart"],
         },
         requirements: &[&["has_the_recipe", "has_resin_block"]],
         criteria: &["has_resin_block", "has_the_recipe"],
@@ -59192,7 +59192,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:creeper_banner_pattern"],
         },
         requirements: &[&["has_the_recipe", "has_creeper_head"]],
         criteria: &["has_creeper_head", "has_the_recipe"],
@@ -59229,7 +59229,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cyan_dye"],
         },
         requirements: &[&["has_the_recipe", "has_green_dye", "has_blue_dye"]],
         criteria: &["has_blue_dye", "has_green_dye", "has_the_recipe"],
@@ -59280,7 +59280,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cyan_dye_from_pitcher_plant"],
         },
         requirements: &[&["has_the_recipe", "has_pitcher_plant"]],
         criteria: &["has_pitcher_plant", "has_the_recipe"],
@@ -59317,7 +59317,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diamond"],
         },
         requirements: &[&["has_the_recipe", "has_diamond_block"]],
         criteria: &["has_diamond_block", "has_the_recipe"],
@@ -59352,7 +59352,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diamond_from_blasting_deepslate_diamond_ore"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_diamond_ore"]],
         criteria: &["has_deepslate_diamond_ore", "has_the_recipe"],
@@ -59389,7 +59389,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diamond_from_blasting_diamond_ore"],
         },
         requirements: &[&["has_the_recipe", "has_diamond_ore"]],
         criteria: &["has_diamond_ore", "has_the_recipe"],
@@ -59426,7 +59426,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diamond_from_smelting_deepslate_diamond_ore"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_diamond_ore"]],
         criteria: &["has_deepslate_diamond_ore", "has_the_recipe"],
@@ -59463,7 +59463,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:diamond_from_smelting_diamond_ore"],
         },
         requirements: &[&["has_the_recipe", "has_diamond_ore"]],
         criteria: &["has_diamond_ore", "has_the_recipe"],
@@ -59500,7 +59500,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dune_armor_trim_smithing_template"],
         },
         requirements: &[&["has_the_recipe", "has_dune_armor_trim_smithing_template"]],
         criteria: &["has_dune_armor_trim_smithing_template", "has_the_recipe"],
@@ -59539,7 +59539,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dune_armor_trim_smithing_template_smithing_trim"],
         },
         requirements: &[&["has_the_recipe", "has_smithing_trim_template"]],
         criteria: &["has_smithing_trim_template", "has_the_recipe"],
@@ -59576,7 +59576,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:emerald"],
         },
         requirements: &[&["has_the_recipe", "has_emerald_block"]],
         criteria: &["has_emerald_block", "has_the_recipe"],
@@ -59611,7 +59611,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:emerald_from_blasting_deepslate_emerald_ore"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_emerald_ore"]],
         criteria: &["has_deepslate_emerald_ore", "has_the_recipe"],
@@ -59648,7 +59648,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:emerald_from_blasting_emerald_ore"],
         },
         requirements: &[&["has_the_recipe", "has_emerald_ore"]],
         criteria: &["has_emerald_ore", "has_the_recipe"],
@@ -59685,7 +59685,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:emerald_from_smelting_deepslate_emerald_ore"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_emerald_ore"]],
         criteria: &["has_deepslate_emerald_ore", "has_the_recipe"],
@@ -59722,7 +59722,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:emerald_from_smelting_emerald_ore"],
         },
         requirements: &[&["has_the_recipe", "has_emerald_ore"]],
         criteria: &["has_emerald_ore", "has_the_recipe"],
@@ -59759,7 +59759,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:ender_eye"],
         },
         requirements: &[&["has_the_recipe", "has_blaze_powder"]],
         criteria: &["has_blaze_powder", "has_the_recipe"],
@@ -59794,7 +59794,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:eye_armor_trim_smithing_template"],
         },
         requirements: &[&["has_the_recipe", "has_eye_armor_trim_smithing_template"]],
         criteria: &["has_eye_armor_trim_smithing_template", "has_the_recipe"],
@@ -59833,7 +59833,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:eye_armor_trim_smithing_template_smithing_trim"],
         },
         requirements: &[&["has_the_recipe", "has_smithing_trim_template"]],
         criteria: &["has_smithing_trim_template", "has_the_recipe"],
@@ -59870,7 +59870,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:field_masoned_banner_pattern"],
         },
         requirements: &[&["has_the_recipe", "has_bricks"]],
         criteria: &["has_bricks", "has_the_recipe"],
@@ -59907,7 +59907,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:fire_charge"],
         },
         requirements: &[&["has_the_recipe", "has_blaze_powder"]],
         criteria: &["has_blaze_powder", "has_the_recipe"],
@@ -59942,7 +59942,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:firework_rocket_simple"],
         },
         requirements: &[&["has_the_recipe", "has_gunpowder"]],
         criteria: &["has_gunpowder", "has_the_recipe"],
@@ -59979,7 +59979,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:flow_armor_trim_smithing_template"],
         },
         requirements: &[&["has_the_recipe", "has_flow_armor_trim_smithing_template"]],
         criteria: &["has_flow_armor_trim_smithing_template", "has_the_recipe"],
@@ -60018,7 +60018,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:flow_armor_trim_smithing_template_smithing_trim"],
         },
         requirements: &[&["has_the_recipe", "has_smithing_trim_template"]],
         criteria: &["has_smithing_trim_template", "has_the_recipe"],
@@ -60055,7 +60055,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:flower_banner_pattern"],
         },
         requirements: &[&["has_the_recipe", "has_oxeye_daisy"]],
         criteria: &["has_oxeye_daisy", "has_the_recipe"],
@@ -60090,7 +60090,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gold_ingot_from_blasting_deepslate_gold_ore"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_gold_ore"]],
         criteria: &["has_deepslate_gold_ore", "has_the_recipe"],
@@ -60127,7 +60127,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gold_ingot_from_blasting_gold_ore"],
         },
         requirements: &[&["has_the_recipe", "has_gold_ore"]],
         criteria: &["has_gold_ore", "has_the_recipe"],
@@ -60164,7 +60164,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gold_ingot_from_blasting_nether_gold_ore"],
         },
         requirements: &[&["has_the_recipe", "has_nether_gold_ore"]],
         criteria: &["has_nether_gold_ore", "has_the_recipe"],
@@ -60201,7 +60201,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gold_ingot_from_blasting_raw_gold"],
         },
         requirements: &[&["has_the_recipe", "has_raw_gold"]],
         criteria: &["has_raw_gold", "has_the_recipe"],
@@ -60238,7 +60238,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gold_ingot_from_gold_block"],
         },
         requirements: &[&["has_the_recipe", "has_gold_block"]],
         criteria: &["has_gold_block", "has_the_recipe"],
@@ -60275,7 +60275,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gold_ingot_from_nuggets"],
         },
         requirements: &[&["has_the_recipe", "has_gold_nugget"]],
         criteria: &["has_gold_nugget", "has_the_recipe"],
@@ -60312,7 +60312,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gold_ingot_from_smelting_deepslate_gold_ore"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_gold_ore"]],
         criteria: &["has_deepslate_gold_ore", "has_the_recipe"],
@@ -60349,7 +60349,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gold_ingot_from_smelting_gold_ore"],
         },
         requirements: &[&["has_the_recipe", "has_gold_ore"]],
         criteria: &["has_gold_ore", "has_the_recipe"],
@@ -60386,7 +60386,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gold_ingot_from_smelting_nether_gold_ore"],
         },
         requirements: &[&["has_the_recipe", "has_nether_gold_ore"]],
         criteria: &["has_nether_gold_ore", "has_the_recipe"],
@@ -60423,7 +60423,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gold_ingot_from_smelting_raw_gold"],
         },
         requirements: &[&["has_the_recipe", "has_raw_gold"]],
         criteria: &["has_raw_gold", "has_the_recipe"],
@@ -60460,7 +60460,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gold_nugget"],
         },
         requirements: &[&["has_the_recipe", "has_gold_ingot"]],
         criteria: &["has_gold_ingot", "has_the_recipe"],
@@ -60495,7 +60495,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gold_nugget_from_blasting"],
         },
         requirements: &[&[
             "has_the_recipe",
@@ -60736,7 +60736,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gold_nugget_from_smelting"],
         },
         requirements: &[&[
             "has_the_recipe",
@@ -60977,7 +60977,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gray_dye"],
         },
         requirements: &[&["has_the_recipe", "has_white_dye", "has_black_dye"]],
         criteria: &["has_black_dye", "has_the_recipe", "has_white_dye"],
@@ -61028,7 +61028,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:gray_dye_from_closed_eyeblossom"],
         },
         requirements: &[&["has_the_recipe", "has_closed_eyeblossom"]],
         criteria: &["has_closed_eyeblossom", "has_the_recipe"],
@@ -61065,7 +61065,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:green_dye"],
         },
         requirements: &[&["has_the_recipe", "has_cactus"]],
         criteria: &["has_cactus", "has_the_recipe"],
@@ -61100,7 +61100,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:host_armor_trim_smithing_template"],
         },
         requirements: &[&["has_the_recipe", "has_host_armor_trim_smithing_template"]],
         criteria: &["has_host_armor_trim_smithing_template", "has_the_recipe"],
@@ -61139,7 +61139,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:host_armor_trim_smithing_template_smithing_trim"],
         },
         requirements: &[&["has_the_recipe", "has_smithing_trim_template"]],
         criteria: &["has_smithing_trim_template", "has_the_recipe"],
@@ -61176,7 +61176,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_ingot_from_blasting_deepslate_iron_ore"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_iron_ore"]],
         criteria: &["has_deepslate_iron_ore", "has_the_recipe"],
@@ -61213,7 +61213,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_ingot_from_blasting_iron_ore"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ore"]],
         criteria: &["has_iron_ore", "has_the_recipe"],
@@ -61250,7 +61250,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_ingot_from_blasting_raw_iron"],
         },
         requirements: &[&["has_the_recipe", "has_raw_iron"]],
         criteria: &["has_raw_iron", "has_the_recipe"],
@@ -61287,7 +61287,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_ingot_from_iron_block"],
         },
         requirements: &[&["has_the_recipe", "has_iron_block"]],
         criteria: &["has_iron_block", "has_the_recipe"],
@@ -61324,7 +61324,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_ingot_from_nuggets"],
         },
         requirements: &[&["has_the_recipe", "has_iron_nugget"]],
         criteria: &["has_iron_nugget", "has_the_recipe"],
@@ -61361,7 +61361,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_ingot_from_smelting_deepslate_iron_ore"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_iron_ore"]],
         criteria: &["has_deepslate_iron_ore", "has_the_recipe"],
@@ -61398,7 +61398,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_ingot_from_smelting_iron_ore"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ore"]],
         criteria: &["has_iron_ore", "has_the_recipe"],
@@ -61435,7 +61435,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_ingot_from_smelting_raw_iron"],
         },
         requirements: &[&["has_the_recipe", "has_raw_iron"]],
         criteria: &["has_raw_iron", "has_the_recipe"],
@@ -61472,7 +61472,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_nugget"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -61507,7 +61507,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_nugget_from_blasting"],
         },
         requirements: &[&[
             "has_the_recipe",
@@ -61820,7 +61820,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_nugget_from_smelting"],
         },
         requirements: &[&[
             "has_the_recipe",
@@ -62133,7 +62133,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lapis_lazuli"],
         },
         requirements: &[&["has_the_recipe", "has_lapis_block"]],
         criteria: &["has_lapis_block", "has_the_recipe"],
@@ -62170,7 +62170,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lapis_lazuli_from_blasting_deepslate_lapis_ore"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_lapis_ore"]],
         criteria: &["has_deepslate_lapis_ore", "has_the_recipe"],
@@ -62207,7 +62207,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lapis_lazuli_from_blasting_lapis_ore"],
         },
         requirements: &[&["has_the_recipe", "has_lapis_ore"]],
         criteria: &["has_lapis_ore", "has_the_recipe"],
@@ -62246,7 +62246,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lapis_lazuli_from_smelting_deepslate_lapis_ore"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_lapis_ore"]],
         criteria: &["has_deepslate_lapis_ore", "has_the_recipe"],
@@ -62283,7 +62283,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lapis_lazuli_from_smelting_lapis_ore"],
         },
         requirements: &[&["has_the_recipe", "has_lapis_ore"]],
         criteria: &["has_lapis_ore", "has_the_recipe"],
@@ -62320,7 +62320,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:leaf_litter"],
         },
         requirements: &[&["has_the_recipe", "has_leaves"]],
         criteria: &["has_leaves", "has_the_recipe"],
@@ -62355,7 +62355,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:leather"],
         },
         requirements: &[&["has_the_recipe", "has_rabbit_hide"]],
         criteria: &["has_rabbit_hide", "has_the_recipe"],
@@ -62390,7 +62390,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:leather_boots_dyed"],
         },
         requirements: &[&["has_the_recipe", "has_leather_boots"]],
         criteria: &["has_leather_boots", "has_the_recipe"],
@@ -62425,7 +62425,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:leather_chestplate_dyed"],
         },
         requirements: &[&["has_the_recipe", "has_leather_chestplate"]],
         criteria: &["has_leather_chestplate", "has_the_recipe"],
@@ -62462,7 +62462,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:leather_helmet_dyed"],
         },
         requirements: &[&["has_the_recipe", "has_leather_helmet"]],
         criteria: &["has_leather_helmet", "has_the_recipe"],
@@ -62497,7 +62497,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:leather_horse_armor"],
         },
         requirements: &[&["has_the_recipe", "has_leather"]],
         criteria: &["has_leather", "has_the_recipe"],
@@ -62532,7 +62532,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:leather_horse_armor_dyed"],
         },
         requirements: &[&["has_the_recipe", "has_leather_horse_armor"]],
         criteria: &["has_leather_horse_armor", "has_the_recipe"],
@@ -62569,7 +62569,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:leather_leggings_dyed"],
         },
         requirements: &[&["has_the_recipe", "has_leather_leggings"]],
         criteria: &["has_leather_leggings", "has_the_recipe"],
@@ -62604,7 +62604,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_blue_dye_from_blue_orchid"],
         },
         requirements: &[&["has_the_recipe", "has_blue_orchid"]],
         criteria: &["has_blue_orchid", "has_the_recipe"],
@@ -62641,7 +62641,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_blue_dye_from_blue_white_dye"],
         },
         requirements: &[&["has_the_recipe", "has_blue_dye", "has_white_dye"]],
         criteria: &["has_blue_dye", "has_the_recipe", "has_white_dye"],
@@ -62694,7 +62694,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_dye_from_azure_bluet"],
         },
         requirements: &[&["has_the_recipe", "has_azure_bluet"]],
         criteria: &["has_azure_bluet", "has_the_recipe"],
@@ -62731,7 +62731,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_dye_from_black_white_dye"],
         },
         requirements: &[&["has_the_recipe", "has_white_dye", "has_black_dye"]],
         criteria: &["has_black_dye", "has_the_recipe", "has_white_dye"],
@@ -62784,7 +62784,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_dye_from_gray_white_dye"],
         },
         requirements: &[&["has_the_recipe", "has_gray_dye", "has_white_dye"]],
         criteria: &["has_gray_dye", "has_the_recipe", "has_white_dye"],
@@ -62837,7 +62837,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_dye_from_oxeye_daisy"],
         },
         requirements: &[&["has_the_recipe", "has_oxeye_daisy"]],
         criteria: &["has_oxeye_daisy", "has_the_recipe"],
@@ -62874,7 +62874,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_gray_dye_from_white_tulip"],
         },
         requirements: &[&["has_the_recipe", "has_white_tulip"]],
         criteria: &["has_the_recipe", "has_white_tulip"],
@@ -62911,7 +62911,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lime_dye"],
         },
         requirements: &[&["has_the_recipe", "has_green_dye", "has_white_dye"]],
         criteria: &["has_green_dye", "has_the_recipe", "has_white_dye"],
@@ -62962,7 +62962,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lime_dye_from_smelting"],
         },
         requirements: &[&["has_the_recipe", "has_sea_pickle"]],
         criteria: &["has_sea_pickle", "has_the_recipe"],
@@ -62999,7 +62999,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_dye_from_allium"],
         },
         requirements: &[&["has_the_recipe", "has_allium"]],
         criteria: &["has_allium", "has_the_recipe"],
@@ -63036,7 +63036,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_dye_from_blue_red_pink"],
         },
         requirements: &[&[
             "has_the_recipe",
@@ -63115,7 +63115,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_dye_from_blue_red_white_dye"],
         },
         requirements: &[&[
             "has_the_recipe",
@@ -63194,7 +63194,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_dye_from_lilac"],
         },
         requirements: &[&["has_the_recipe", "has_lilac"]],
         criteria: &["has_lilac", "has_the_recipe"],
@@ -63231,7 +63231,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:magenta_dye_from_purple_and_pink"],
         },
         requirements: &[&["has_the_recipe", "has_pink_dye", "has_purple_dye"]],
         criteria: &["has_pink_dye", "has_purple_dye", "has_the_recipe"],
@@ -63284,7 +63284,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:map"],
         },
         requirements: &[&["has_the_recipe", "has_compass"]],
         criteria: &["has_compass", "has_the_recipe"],
@@ -63319,7 +63319,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:map_cloning"],
         },
         requirements: &[&["has_the_recipe", "has_filled_map"]],
         criteria: &["has_filled_map", "has_the_recipe"],
@@ -63354,7 +63354,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:melon_seeds"],
         },
         requirements: &[&["has_the_recipe", "has_melon"]],
         criteria: &["has_melon", "has_the_recipe"],
@@ -63389,7 +63389,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mojang_banner_pattern"],
         },
         requirements: &[&["has_the_recipe", "has_enchanted_golden_apple"]],
         criteria: &["has_enchanted_golden_apple", "has_the_recipe"],
@@ -63424,7 +63424,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:music_disc_5"],
         },
         requirements: &[&["has_the_recipe", "has_disc_fragment_5"]],
         criteria: &["has_disc_fragment_5", "has_the_recipe"],
@@ -63459,7 +63459,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:nether_brick"],
         },
         requirements: &[&["has_the_recipe", "has_netherrack"]],
         criteria: &["has_netherrack", "has_the_recipe"],
@@ -63494,7 +63494,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:netherite_ingot"],
         },
         requirements: &[&["has_the_recipe", "has_netherite_scrap"]],
         criteria: &["has_netherite_scrap", "has_the_recipe"],
@@ -63529,7 +63529,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:netherite_ingot_from_netherite_block"],
         },
         requirements: &[&["has_the_recipe", "has_netherite_block"]],
         criteria: &["has_netherite_block", "has_the_recipe"],
@@ -63566,7 +63566,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:netherite_scrap"],
         },
         requirements: &[&["has_the_recipe", "has_ancient_debris"]],
         criteria: &["has_ancient_debris", "has_the_recipe"],
@@ -63601,7 +63601,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:netherite_scrap_from_blasting"],
         },
         requirements: &[&["has_the_recipe", "has_ancient_debris"]],
         criteria: &["has_ancient_debris", "has_the_recipe"],
@@ -63638,7 +63638,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:netherite_upgrade_smithing_template"],
         },
         requirements: &[&["has_the_recipe", "has_netherite_upgrade_smithing_template"]],
         criteria: &["has_netherite_upgrade_smithing_template", "has_the_recipe"],
@@ -63675,7 +63675,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_dye_from_open_eyeblossom"],
         },
         requirements: &[&["has_the_recipe", "has_open_eyeblossom"]],
         criteria: &["has_open_eyeblossom", "has_the_recipe"],
@@ -63712,7 +63712,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_dye_from_orange_tulip"],
         },
         requirements: &[&["has_the_recipe", "has_orange_tulip"]],
         criteria: &["has_orange_tulip", "has_the_recipe"],
@@ -63749,7 +63749,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_dye_from_red_yellow"],
         },
         requirements: &[&["has_the_recipe", "has_red_dye", "has_yellow_dye"]],
         criteria: &["has_red_dye", "has_the_recipe", "has_yellow_dye"],
@@ -63802,7 +63802,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:orange_dye_from_torchflower"],
         },
         requirements: &[&["has_the_recipe", "has_torchflower"]],
         criteria: &["has_the_recipe", "has_torchflower"],
@@ -63839,7 +63839,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:paper"],
         },
         requirements: &[&["has_the_recipe", "has_reeds"]],
         criteria: &["has_reeds", "has_the_recipe"],
@@ -63874,7 +63874,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_dye_from_cactus_flower"],
         },
         requirements: &[&["has_the_recipe", "has_cactus_flower"]],
         criteria: &["has_cactus_flower", "has_the_recipe"],
@@ -63911,7 +63911,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_dye_from_peony"],
         },
         requirements: &[&["has_the_recipe", "has_peony"]],
         criteria: &["has_peony", "has_the_recipe"],
@@ -63946,7 +63946,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_dye_from_pink_petals"],
         },
         requirements: &[&["has_the_recipe", "has_pink_petals"]],
         criteria: &["has_pink_petals", "has_the_recipe"],
@@ -63983,7 +63983,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_dye_from_pink_tulip"],
         },
         requirements: &[&["has_the_recipe", "has_pink_tulip"]],
         criteria: &["has_pink_tulip", "has_the_recipe"],
@@ -64020,7 +64020,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pink_dye_from_red_white_dye"],
         },
         requirements: &[&["has_the_recipe", "has_white_dye", "has_red_dye"]],
         criteria: &["has_red_dye", "has_the_recipe", "has_white_dye"],
@@ -64073,7 +64073,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:popped_chorus_fruit"],
         },
         requirements: &[&["has_the_recipe", "has_chorus_fruit"]],
         criteria: &["has_chorus_fruit", "has_the_recipe"],
@@ -64108,7 +64108,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pumpkin_seeds"],
         },
         requirements: &[&["has_the_recipe", "has_pumpkin"]],
         criteria: &["has_pumpkin", "has_the_recipe"],
@@ -64143,7 +64143,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:purple_dye"],
         },
         requirements: &[&["has_the_recipe", "has_blue_dye", "has_red_dye"]],
         criteria: &["has_blue_dye", "has_red_dye", "has_the_recipe"],
@@ -64194,7 +64194,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:quartz"],
         },
         requirements: &[&["has_the_recipe", "has_nether_quartz_ore"]],
         criteria: &["has_nether_quartz_ore", "has_the_recipe"],
@@ -64229,7 +64229,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:quartz_from_blasting"],
         },
         requirements: &[&["has_the_recipe", "has_nether_quartz_ore"]],
         criteria: &["has_nether_quartz_ore", "has_the_recipe"],
@@ -64264,7 +64264,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:raiser_armor_trim_smithing_template"],
         },
         requirements: &[&["has_the_recipe", "has_raiser_armor_trim_smithing_template"]],
         criteria: &["has_raiser_armor_trim_smithing_template", "has_the_recipe"],
@@ -64303,7 +64303,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:raiser_armor_trim_smithing_template_smithing_trim"],
         },
         requirements: &[&["has_the_recipe", "has_smithing_trim_template"]],
         criteria: &["has_smithing_trim_template", "has_the_recipe"],
@@ -64340,7 +64340,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:raw_copper"],
         },
         requirements: &[&["has_the_recipe", "has_raw_copper_block"]],
         criteria: &["has_raw_copper_block", "has_the_recipe"],
@@ -64375,7 +64375,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:raw_gold"],
         },
         requirements: &[&["has_the_recipe", "has_raw_gold_block"]],
         criteria: &["has_raw_gold_block", "has_the_recipe"],
@@ -64410,7 +64410,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:raw_iron"],
         },
         requirements: &[&["has_the_recipe", "has_raw_iron_block"]],
         criteria: &["has_raw_iron_block", "has_the_recipe"],
@@ -64445,7 +64445,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_dye_from_beetroot"],
         },
         requirements: &[&["has_the_recipe", "has_beetroot"]],
         criteria: &["has_beetroot", "has_the_recipe"],
@@ -64480,7 +64480,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_dye_from_poppy"],
         },
         requirements: &[&["has_the_recipe", "has_poppy"]],
         criteria: &["has_poppy", "has_the_recipe"],
@@ -64515,7 +64515,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_dye_from_rose_bush"],
         },
         requirements: &[&["has_the_recipe", "has_rose_bush"]],
         criteria: &["has_rose_bush", "has_the_recipe"],
@@ -64552,7 +64552,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:red_dye_from_tulip"],
         },
         requirements: &[&["has_the_recipe", "has_red_flower"]],
         criteria: &["has_red_flower", "has_the_recipe"],
@@ -64587,7 +64587,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:resin_brick"],
         },
         requirements: &[&["has_the_recipe", "has_resin_clump"]],
         criteria: &["has_resin_clump", "has_the_recipe"],
@@ -64622,7 +64622,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:resin_clump"],
         },
         requirements: &[&["has_the_recipe", "has_resin_block"]],
         criteria: &["has_resin_block", "has_the_recipe"],
@@ -64657,7 +64657,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:rib_armor_trim_smithing_template"],
         },
         requirements: &[&["has_the_recipe", "has_rib_armor_trim_smithing_template"]],
         criteria: &["has_rib_armor_trim_smithing_template", "has_the_recipe"],
@@ -64696,7 +64696,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:rib_armor_trim_smithing_template_smithing_trim"],
         },
         requirements: &[&["has_the_recipe", "has_smithing_trim_template"]],
         criteria: &["has_smithing_trim_template", "has_the_recipe"],
@@ -64733,7 +64733,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sentry_armor_trim_smithing_template"],
         },
         requirements: &[&["has_the_recipe", "has_sentry_armor_trim_smithing_template"]],
         criteria: &["has_sentry_armor_trim_smithing_template", "has_the_recipe"],
@@ -64772,7 +64772,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sentry_armor_trim_smithing_template_smithing_trim"],
         },
         requirements: &[&["has_the_recipe", "has_smithing_trim_template"]],
         criteria: &["has_smithing_trim_template", "has_the_recipe"],
@@ -64809,7 +64809,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:shaper_armor_trim_smithing_template"],
         },
         requirements: &[&["has_the_recipe", "has_shaper_armor_trim_smithing_template"]],
         criteria: &["has_shaper_armor_trim_smithing_template", "has_the_recipe"],
@@ -64848,7 +64848,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:shaper_armor_trim_smithing_template_smithing_trim"],
         },
         requirements: &[&["has_the_recipe", "has_smithing_trim_template"]],
         criteria: &["has_smithing_trim_template", "has_the_recipe"],
@@ -64885,7 +64885,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:silence_armor_trim_smithing_template"],
         },
         requirements: &[&["has_the_recipe", "has_silence_armor_trim_smithing_template"]],
         criteria: &["has_silence_armor_trim_smithing_template", "has_the_recipe"],
@@ -64924,7 +64924,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:silence_armor_trim_smithing_template_smithing_trim"],
         },
         requirements: &[&["has_the_recipe", "has_smithing_trim_template"]],
         criteria: &["has_smithing_trim_template", "has_the_recipe"],
@@ -64961,7 +64961,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:skull_banner_pattern"],
         },
         requirements: &[&["has_the_recipe", "has_wither_skeleton_skull"]],
         criteria: &["has_the_recipe", "has_wither_skeleton_skull"],
@@ -64996,7 +64996,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:slime_ball"],
         },
         requirements: &[&["has_the_recipe", "has_slime_block"]],
         criteria: &["has_slime_block", "has_the_recipe"],
@@ -65031,7 +65031,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:snout_armor_trim_smithing_template"],
         },
         requirements: &[&["has_the_recipe", "has_snout_armor_trim_smithing_template"]],
         criteria: &["has_snout_armor_trim_smithing_template", "has_the_recipe"],
@@ -65070,7 +65070,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:snout_armor_trim_smithing_template_smithing_trim"],
         },
         requirements: &[&["has_the_recipe", "has_smithing_trim_template"]],
         criteria: &["has_smithing_trim_template", "has_the_recipe"],
@@ -65107,7 +65107,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:spire_armor_trim_smithing_template"],
         },
         requirements: &[&["has_the_recipe", "has_spire_armor_trim_smithing_template"]],
         criteria: &["has_spire_armor_trim_smithing_template", "has_the_recipe"],
@@ -65146,7 +65146,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:spire_armor_trim_smithing_template_smithing_trim"],
         },
         requirements: &[&["has_the_recipe", "has_smithing_trim_template"]],
         criteria: &["has_smithing_trim_template", "has_the_recipe"],
@@ -65183,7 +65183,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stick"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -65218,7 +65218,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stick_from_bamboo_item"],
         },
         requirements: &[&["has_the_recipe", "has_bamboo"]],
         criteria: &["has_bamboo", "has_the_recipe"],
@@ -65255,7 +65255,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sugar_from_honey_bottle"],
         },
         requirements: &[&["has_the_recipe", "has_honey_bottle"]],
         criteria: &["has_honey_bottle", "has_the_recipe"],
@@ -65292,7 +65292,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sugar_from_sugar_cane"],
         },
         requirements: &[&["has_the_recipe", "has_sugar_cane"]],
         criteria: &["has_sugar_cane", "has_the_recipe"],
@@ -65327,7 +65327,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tide_armor_trim_smithing_template"],
         },
         requirements: &[&["has_the_recipe", "has_tide_armor_trim_smithing_template"]],
         criteria: &["has_the_recipe", "has_tide_armor_trim_smithing_template"],
@@ -65366,7 +65366,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tide_armor_trim_smithing_template_smithing_trim"],
         },
         requirements: &[&["has_the_recipe", "has_smithing_trim_template"]],
         criteria: &["has_smithing_trim_template", "has_the_recipe"],
@@ -65403,7 +65403,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tipped_arrow"],
         },
         requirements: &[&["has_the_recipe", "has_lingering_potion"]],
         criteria: &["has_lingering_potion", "has_the_recipe"],
@@ -65438,7 +65438,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:vex_armor_trim_smithing_template"],
         },
         requirements: &[&["has_the_recipe", "has_vex_armor_trim_smithing_template"]],
         criteria: &["has_the_recipe", "has_vex_armor_trim_smithing_template"],
@@ -65477,7 +65477,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:vex_armor_trim_smithing_template_smithing_trim"],
         },
         requirements: &[&["has_the_recipe", "has_smithing_trim_template"]],
         criteria: &["has_smithing_trim_template", "has_the_recipe"],
@@ -65514,7 +65514,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:ward_armor_trim_smithing_template"],
         },
         requirements: &[&["has_the_recipe", "has_ward_armor_trim_smithing_template"]],
         criteria: &["has_the_recipe", "has_ward_armor_trim_smithing_template"],
@@ -65553,7 +65553,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:ward_armor_trim_smithing_template_smithing_trim"],
         },
         requirements: &[&["has_the_recipe", "has_smithing_trim_template"]],
         criteria: &["has_smithing_trim_template", "has_the_recipe"],
@@ -65590,7 +65590,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:wayfinder_armor_trim_smithing_template"],
         },
         requirements: &[&[
             "has_the_recipe",
@@ -65635,7 +65635,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:wayfinder_armor_trim_smithing_template_smithing_trim"],
         },
         requirements: &[&["has_the_recipe", "has_smithing_trim_template"]],
         criteria: &["has_smithing_trim_template", "has_the_recipe"],
@@ -65672,7 +65672,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:wheat"],
         },
         requirements: &[&["has_the_recipe", "has_hay_block"]],
         criteria: &["has_hay_block", "has_the_recipe"],
@@ -65707,7 +65707,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_dye"],
         },
         requirements: &[&["has_the_recipe", "has_bone_meal"]],
         criteria: &["has_bone_meal", "has_the_recipe"],
@@ -65742,7 +65742,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:white_dye_from_lily_of_the_valley"],
         },
         requirements: &[&["has_the_recipe", "has_lily_of_the_valley"]],
         criteria: &["has_lily_of_the_valley", "has_the_recipe"],
@@ -65779,7 +65779,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:wild_armor_trim_smithing_template"],
         },
         requirements: &[&["has_the_recipe", "has_wild_armor_trim_smithing_template"]],
         criteria: &["has_the_recipe", "has_wild_armor_trim_smithing_template"],
@@ -65818,7 +65818,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:wild_armor_trim_smithing_template_smithing_trim"],
         },
         requirements: &[&["has_the_recipe", "has_smithing_trim_template"]],
         criteria: &["has_smithing_trim_template", "has_the_recipe"],
@@ -65855,7 +65855,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:wind_charge"],
         },
         requirements: &[&["has_the_recipe", "has_breeze_rod"]],
         criteria: &["has_breeze_rod", "has_the_recipe"],
@@ -65890,7 +65890,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:wolf_armor_dyed"],
         },
         requirements: &[&["has_the_recipe", "has_wolf_armor"]],
         criteria: &["has_the_recipe", "has_wolf_armor"],
@@ -65925,7 +65925,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:writable_book"],
         },
         requirements: &[&["has_the_recipe", "has_book"]],
         criteria: &["has_book", "has_the_recipe"],
@@ -65960,7 +65960,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_dye_from_dandelion"],
         },
         requirements: &[&["has_the_recipe", "has_dandelion"]],
         criteria: &["has_dandelion", "has_the_recipe"],
@@ -65997,7 +65997,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_dye_from_golden_dandelion"],
         },
         requirements: &[&["has_the_recipe", "has_golden_dandelion"]],
         criteria: &["has_golden_dandelion", "has_the_recipe"],
@@ -66034,7 +66034,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_dye_from_sunflower"],
         },
         requirements: &[&["has_the_recipe", "has_sunflower"]],
         criteria: &["has_sunflower", "has_the_recipe"],
@@ -66071,7 +66071,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:yellow_dye_from_wildflowers"],
         },
         requirements: &[&["has_the_recipe", "has_wildflowers"]],
         criteria: &["has_the_recipe", "has_wildflowers"],
@@ -66108,7 +66108,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:acacia_button"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -66143,7 +66143,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:acacia_door"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -66178,7 +66178,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:acacia_fence_gate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -66213,7 +66213,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:acacia_pressure_plate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -66248,7 +66248,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:acacia_trapdoor"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -66283,7 +66283,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bamboo_button"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -66318,7 +66318,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bamboo_door"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -66353,7 +66353,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bamboo_fence_gate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -66388,7 +66388,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bamboo_pressure_plate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -66423,7 +66423,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:bamboo_trapdoor"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -66458,7 +66458,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:birch_button"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -66493,7 +66493,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:birch_door"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -66528,7 +66528,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:birch_fence_gate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -66563,7 +66563,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:birch_pressure_plate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -66598,7 +66598,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:birch_trapdoor"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -66633,7 +66633,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:calibrated_sculk_sensor"],
         },
         requirements: &[&["has_the_recipe", "has_amethyst_shard"]],
         criteria: &["has_amethyst_shard", "has_the_recipe"],
@@ -66670,7 +66670,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cherry_button"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -66705,7 +66705,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cherry_door"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -66740,7 +66740,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cherry_fence_gate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -66775,7 +66775,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cherry_pressure_plate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -66810,7 +66810,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:cherry_trapdoor"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -66845,7 +66845,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:comparator"],
         },
         requirements: &[&["has_the_recipe", "has_quartz"]],
         criteria: &["has_quartz", "has_the_recipe"],
@@ -66880,7 +66880,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_bulb"],
         },
         requirements: &[&["has_the_recipe", "has_copper_block"]],
         criteria: &["has_copper_block", "has_the_recipe"],
@@ -66915,7 +66915,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_door"],
         },
         requirements: &[&["has_the_recipe", "has_copper_ingot"]],
         criteria: &["has_copper_ingot", "has_the_recipe"],
@@ -66950,7 +66950,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:copper_trapdoor"],
         },
         requirements: &[&["has_the_recipe", "has_copper_ingot"]],
         criteria: &["has_copper_ingot", "has_the_recipe"],
@@ -66985,7 +66985,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:crafter"],
         },
         requirements: &[&["has_the_recipe", "has_dropper"]],
         criteria: &["has_dropper", "has_the_recipe"],
@@ -67020,7 +67020,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:crimson_button"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -67055,7 +67055,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:crimson_door"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -67090,7 +67090,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:crimson_fence_gate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -67125,7 +67125,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:crimson_pressure_plate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -67162,7 +67162,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:crimson_trapdoor"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -67197,7 +67197,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dark_oak_button"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -67232,7 +67232,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dark_oak_door"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -67267,7 +67267,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dark_oak_fence_gate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -67302,7 +67302,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dark_oak_pressure_plate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -67339,7 +67339,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dark_oak_trapdoor"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -67374,7 +67374,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:daylight_detector"],
         },
         requirements: &[&["has_the_recipe", "has_quartz"]],
         criteria: &["has_quartz", "has_the_recipe"],
@@ -67409,7 +67409,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dispenser"],
         },
         requirements: &[&["has_the_recipe", "has_bow"]],
         criteria: &["has_bow", "has_the_recipe"],
@@ -67444,7 +67444,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:dropper"],
         },
         requirements: &[&["has_the_recipe", "has_redstone"]],
         criteria: &["has_redstone", "has_the_recipe"],
@@ -67479,7 +67479,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:exposed_copper_bulb"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_copper"]],
         criteria: &["has_exposed_copper", "has_the_recipe"],
@@ -67514,7 +67514,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:heavy_weighted_pressure_plate"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -67551,7 +67551,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:honey_block"],
         },
         requirements: &[&["has_the_recipe", "has_honey_bottle"]],
         criteria: &["has_honey_bottle", "has_the_recipe"],
@@ -67586,7 +67586,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:hopper"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -67621,7 +67621,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_door"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -67656,7 +67656,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:iron_trapdoor"],
         },
         requirements: &[&["has_the_recipe", "has_iron_ingot"]],
         criteria: &["has_iron_ingot", "has_the_recipe"],
@@ -67691,7 +67691,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:jungle_button"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -67726,7 +67726,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:jungle_door"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -67761,7 +67761,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:jungle_fence_gate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -67796,7 +67796,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:jungle_pressure_plate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -67831,7 +67831,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:jungle_trapdoor"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -67866,7 +67866,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lectern"],
         },
         requirements: &[&["has_the_recipe", "has_book"]],
         criteria: &["has_book", "has_the_recipe"],
@@ -67901,7 +67901,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lever"],
         },
         requirements: &[&["has_the_recipe", "has_cobblestone"]],
         criteria: &["has_cobblestone", "has_the_recipe"],
@@ -67936,7 +67936,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:light_weighted_pressure_plate"],
         },
         requirements: &[&["has_the_recipe", "has_gold_ingot"]],
         criteria: &["has_gold_ingot", "has_the_recipe"],
@@ -67973,7 +67973,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:lightning_rod"],
         },
         requirements: &[&["has_the_recipe", "has_copper_ingot"]],
         criteria: &["has_copper_ingot", "has_the_recipe"],
@@ -68008,7 +68008,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mangrove_button"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -68043,7 +68043,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mangrove_door"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -68078,7 +68078,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mangrove_fence_gate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -68113,7 +68113,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mangrove_pressure_plate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -68150,7 +68150,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:mangrove_trapdoor"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -68185,7 +68185,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:note_block"],
         },
         requirements: &[&["has_the_recipe", "has_redstone"]],
         criteria: &["has_redstone", "has_the_recipe"],
@@ -68220,7 +68220,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oak_button"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -68255,7 +68255,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oak_door"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -68290,7 +68290,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oak_fence_gate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -68325,7 +68325,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oak_pressure_plate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -68360,7 +68360,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oak_trapdoor"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -68395,7 +68395,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:observer"],
         },
         requirements: &[&["has_the_recipe", "has_quartz"]],
         criteria: &["has_quartz", "has_the_recipe"],
@@ -68430,7 +68430,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:oxidized_copper_bulb"],
         },
         requirements: &[&["has_the_recipe", "has_oxidized_copper"]],
         criteria: &["has_oxidized_copper", "has_the_recipe"],
@@ -68465,7 +68465,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pale_oak_button"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -68500,7 +68500,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pale_oak_door"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -68535,7 +68535,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pale_oak_fence_gate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -68570,7 +68570,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pale_oak_pressure_plate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -68607,7 +68607,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:pale_oak_trapdoor"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -68642,7 +68642,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:piston"],
         },
         requirements: &[&["has_the_recipe", "has_redstone"]],
         criteria: &["has_redstone", "has_the_recipe"],
@@ -68677,7 +68677,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_blackstone_button"],
         },
         requirements: &[&["has_the_recipe", "has_polished_blackstone"]],
         criteria: &["has_polished_blackstone", "has_the_recipe"],
@@ -68714,7 +68714,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:polished_blackstone_pressure_plate"],
         },
         requirements: &[&["has_the_recipe", "has_polished_blackstone"]],
         criteria: &["has_polished_blackstone", "has_the_recipe"],
@@ -68751,7 +68751,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:poplar_button"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -68786,7 +68786,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:poplar_door"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -68821,7 +68821,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:poplar_fence_gate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -68856,7 +68856,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:poplar_pressure_plate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -68891,7 +68891,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:poplar_trapdoor"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -68926,7 +68926,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:redstone"],
         },
         requirements: &[&["has_the_recipe", "has_redstone_block"]],
         criteria: &["has_redstone_block", "has_the_recipe"],
@@ -68961,7 +68961,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:redstone_block"],
         },
         requirements: &[&["has_the_recipe", "has_redstone"]],
         criteria: &["has_redstone", "has_the_recipe"],
@@ -68998,7 +68998,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:redstone_from_blasting_deepslate_redstone_ore"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_redstone_ore"]],
         criteria: &["has_deepslate_redstone_ore", "has_the_recipe"],
@@ -69035,7 +69035,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:redstone_from_blasting_redstone_ore"],
         },
         requirements: &[&["has_the_recipe", "has_redstone_ore"]],
         criteria: &["has_redstone_ore", "has_the_recipe"],
@@ -69074,7 +69074,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:redstone_from_smelting_deepslate_redstone_ore"],
         },
         requirements: &[&["has_the_recipe", "has_deepslate_redstone_ore"]],
         criteria: &["has_deepslate_redstone_ore", "has_the_recipe"],
@@ -69111,7 +69111,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:redstone_from_smelting_redstone_ore"],
         },
         requirements: &[&["has_the_recipe", "has_redstone_ore"]],
         criteria: &["has_redstone_ore", "has_the_recipe"],
@@ -69148,7 +69148,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:redstone_lamp"],
         },
         requirements: &[&["has_the_recipe", "has_glowstone"]],
         criteria: &["has_glowstone", "has_the_recipe"],
@@ -69183,7 +69183,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:redstone_torch"],
         },
         requirements: &[&["has_the_recipe", "has_redstone"]],
         criteria: &["has_redstone", "has_the_recipe"],
@@ -69218,7 +69218,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:repeater"],
         },
         requirements: &[&["has_the_recipe", "has_redstone_torch"]],
         criteria: &["has_redstone_torch", "has_the_recipe"],
@@ -69253,7 +69253,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:slime_block"],
         },
         requirements: &[&["has_the_recipe", "has_slime_ball"]],
         criteria: &["has_slime_ball", "has_the_recipe"],
@@ -69288,7 +69288,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:spruce_button"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -69323,7 +69323,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:spruce_door"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -69358,7 +69358,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:spruce_fence_gate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -69393,7 +69393,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:spruce_pressure_plate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -69428,7 +69428,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:spruce_trapdoor"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -69463,7 +69463,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:sticky_piston"],
         },
         requirements: &[&["has_the_recipe", "has_slime_ball"]],
         criteria: &["has_slime_ball", "has_the_recipe"],
@@ -69498,7 +69498,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_button"],
         },
         requirements: &[&["has_the_recipe", "has_stone"]],
         criteria: &["has_stone", "has_the_recipe"],
@@ -69533,7 +69533,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:stone_pressure_plate"],
         },
         requirements: &[&["has_the_recipe", "has_stone"]],
         criteria: &["has_stone", "has_the_recipe"],
@@ -69568,7 +69568,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:target"],
         },
         requirements: &[&["has_the_recipe", "has_redstone", "has_hay_block"]],
         criteria: &["has_hay_block", "has_redstone", "has_the_recipe"],
@@ -69619,7 +69619,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tnt"],
         },
         requirements: &[&["has_the_recipe", "has_gunpowder"]],
         criteria: &["has_gunpowder", "has_the_recipe"],
@@ -69654,7 +69654,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:trapped_chest"],
         },
         requirements: &[&["has_the_recipe", "has_tripwire_hook"]],
         criteria: &["has_the_recipe", "has_tripwire_hook"],
@@ -69689,7 +69689,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:tripwire_hook"],
         },
         requirements: &[&["has_the_recipe", "has_string"]],
         criteria: &["has_string", "has_the_recipe"],
@@ -69724,7 +69724,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:warped_button"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -69759,7 +69759,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:warped_door"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -69794,7 +69794,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:warped_fence_gate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -69829,7 +69829,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:warped_pressure_plate"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -69864,7 +69864,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:warped_trapdoor"],
         },
         requirements: &[&["has_the_recipe", "has_planks"]],
         criteria: &["has_planks", "has_the_recipe"],
@@ -69899,7 +69899,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_copper_bulb"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_copper_block"]],
         criteria: &["has_the_recipe", "has_waxed_copper_block"],
@@ -69934,7 +69934,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_copper_bulb_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_copper_bulb"]],
         criteria: &["has_copper_bulb", "has_the_recipe"],
@@ -69971,7 +69971,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_copper_door_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_copper_door"]],
         criteria: &["has_copper_door", "has_the_recipe"],
@@ -70008,7 +70008,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_copper_trapdoor_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_copper_trapdoor"]],
         criteria: &["has_copper_trapdoor", "has_the_recipe"],
@@ -70045,7 +70045,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_exposed_copper_bulb"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_exposed_copper"]],
         criteria: &["has_the_recipe", "has_waxed_exposed_copper"],
@@ -70082,7 +70082,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_exposed_copper_bulb_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_copper_bulb"]],
         criteria: &["has_exposed_copper_bulb", "has_the_recipe"],
@@ -70119,7 +70119,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_exposed_copper_door_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_copper_door"]],
         criteria: &["has_exposed_copper_door", "has_the_recipe"],
@@ -70158,7 +70158,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_exposed_copper_trapdoor_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_exposed_copper_trapdoor"]],
         criteria: &["has_exposed_copper_trapdoor", "has_the_recipe"],
@@ -70195,7 +70195,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_oxidized_copper_bulb"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_oxidized_copper"]],
         criteria: &["has_the_recipe", "has_waxed_oxidized_copper"],
@@ -70234,7 +70234,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_oxidized_copper_bulb_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_oxidized_copper_bulb"]],
         criteria: &["has_oxidized_copper_bulb", "has_the_recipe"],
@@ -70273,7 +70273,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_oxidized_copper_door_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_oxidized_copper_door"]],
         criteria: &["has_oxidized_copper_door", "has_the_recipe"],
@@ -70312,7 +70312,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_oxidized_copper_trapdoor_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_oxidized_copper_trapdoor"]],
         criteria: &["has_oxidized_copper_trapdoor", "has_the_recipe"],
@@ -70349,7 +70349,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_weathered_copper_bulb"],
         },
         requirements: &[&["has_the_recipe", "has_waxed_weathered_copper"]],
         criteria: &["has_the_recipe", "has_waxed_weathered_copper"],
@@ -70388,7 +70388,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_weathered_copper_bulb_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_weathered_copper_bulb"]],
         criteria: &["has_the_recipe", "has_weathered_copper_bulb"],
@@ -70427,7 +70427,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_weathered_copper_door_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_weathered_copper_door"]],
         criteria: &["has_the_recipe", "has_weathered_copper_door"],
@@ -70466,7 +70466,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:waxed_weathered_copper_trapdoor_from_honeycomb"],
         },
         requirements: &[&["has_the_recipe", "has_weathered_copper_trapdoor"]],
         criteria: &["has_the_recipe", "has_weathered_copper_trapdoor"],
@@ -70503,7 +70503,7 @@ impl Advancement {
         display: None,
         reward: &AdvancementReward {
             experience: 0i32,
-            recipes: &[],
+            recipes: &["minecraft:weathered_copper_bulb"],
         },
         requirements: &[&["has_the_recipe", "has_weathered_copper"]],
         criteria: &["has_the_recipe", "has_weathered_copper"],

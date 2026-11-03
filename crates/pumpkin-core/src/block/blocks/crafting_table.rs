@@ -43,7 +43,7 @@ impl BlockBehaviour for CraftingTableBlock {
         args: GetScreenHandlerFactoryArgs<'_>,
     ) -> Option<Box<dyn ScreenHandlerFactory>> {
         Some(Box::new(CraftingTableScreenFactory(Arc::new(
-            ServerRecipeAccess(args.world.server.clone()),
+            ServerRecipeAccess::for_player(args.world.server.clone(), args.player.gameprofile.id),
         ))))
     }
 }

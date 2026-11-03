@@ -763,6 +763,29 @@ pub fn build() -> TokenStream {
     }
 
     let mut crafting_recipes = Vec::new();
+    let mut crafting_ids = Vec::new();
+    // `Recipe.isSpecial` is false for every recipe but `CustomRecipe`s.
+    let learnable_ids: Vec<String> = recipes_assets
+        .iter()
+        .filter(|(_, recipe)| {
+            matches!(
+                recipe,
+                RecipeTypes::Blasting(_)
+                    | RecipeTypes::CampfireCooking(_)
+                    | RecipeTypes::CraftingShaped(_)
+                    | RecipeTypes::CraftingShapeless(_)
+                    | RecipeTypes::CraftingTransmute(_)
+                    | RecipeTypes::Smelting(_)
+                    | RecipeTypes::SmithingTransform(_)
+                    | RecipeTypes::SmithingTrim(_)
+                    | RecipeTypes::Smoking(_)
+                    | RecipeTypes::Stonecutting(_)
+                    | RecipeTypes::CraftingDye(_)
+                    | RecipeTypes::CraftingImbue(_)
+            )
+        })
+        .map(|(id, _)| id.clone())
+        .collect();
     let mut cooking_recipes = Vec::new();
     let mut stonecutting_recipes = Vec::new();
     let mut smithing_trim_recipes = Vec::new();
@@ -792,15 +815,19 @@ pub fn build() -> TokenStream {
             }
             RecipeTypes::CraftingShaped(recipe) => {
                 crafting_recipes.push(recipe.to_token_stream());
+                crafting_ids.push(recipe_id);
             }
             RecipeTypes::CraftingShapeless(recipe) => {
                 crafting_recipes.push(recipe.to_token_stream());
+                crafting_ids.push(recipe_id);
             }
             RecipeTypes::CraftingTransmute(recipe) => {
                 crafting_recipes.push(recipe.to_token_stream());
+                crafting_ids.push(recipe_id);
             }
             RecipeTypes::CraftingDecoratedPot(recipe) => {
                 crafting_recipes.push(recipe.to_token_stream());
+                crafting_ids.push(recipe_id);
             }
             RecipeTypes::Smelting(recipe) => {
                 let mut common_cooking_token = TokenStream::new();
@@ -832,7 +859,12 @@ pub fn build() -> TokenStream {
                 stonecutting_recipes.push(recipe.to_token_stream());
             }
             RecipeTypes::CraftingSpecial => {}
-            other => crafting_recipes.extend(custom_recipe(&other)),
+            other => {
+                if let Some(recipe) = custom_recipe(&other) {
+                    crafting_recipes.push(recipe);
+                    crafting_ids.push(recipe_id);
+                }
+            }
         }
     }
 
@@ -1050,6 +1082,14 @@ pub fn build() -> TokenStream {
 
         pub static RECIPES_CRAFTING: &[CraftingRecipeTypes] = &[
             #(#crafting_recipes),*
+        ];
+        /// The id of each recipe in [`RECIPES_CRAFTING`], in the same order.
+        pub static RECIPES_CRAFTING_IDS: &[&str] = &[
+            #(#crafting_ids),*
+        ];
+        /// The ids of the built-in recipes a recipe book can hold (not `isSpecial`), sorted.
+        pub static LEARNABLE_RECIPE_IDS: &[&str] = &[
+            #(#learnable_ids),*
         ];
         pub static RECIPES_COOKING: &[CookingRecipeType] = &[
             #(#cooking_recipes ),*

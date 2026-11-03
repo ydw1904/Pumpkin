@@ -77,20 +77,61 @@ impl RecipeProvider for RecipeManager {
     }
 }
 
-/// What crafting menus see of the server: its recipes and the map data map recipes read.
-pub struct ServerRecipeAccess(pub Weak<Server>);
+/// What crafting menus see of the server: its recipes, the map data map recipes read and,
+/// for a player's menu, the player's recipe book.
+pub struct ServerRecipeAccess {
+    server: Weak<Server>,
+    player: Option<uuid::Uuid>,
+}
+
+impl ServerRecipeAccess {
+    #[must_use]
+    pub const fn new(server: Weak<Server>) -> Self {
+        Self {
+            server,
+            player: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn for_player(server: Weak<Server>, player: uuid::Uuid) -> Self {
+        Self {
+            server,
+            player: Some(player),
+        }
+    }
+}
 
 impl RecipeProvider for ServerRecipeAccess {
     fn get_dynamic_recipes(&self) -> Vec<DynamicRecipe> {
-        self.0
+        self.server
             .upgrade()
             .map(|server| server.recipe_manager.get_dynamic_recipes_internal())
             .unwrap_or_default()
     }
 
+    fn can_use_recipe(&self, recipe_id: &str) -> bool {
+        let (Some(server), Some(uuid)) = (self.server.upgrade(), self.player) else {
+            return true;
+        };
+        if !server.level_info.load().game_rules.limited_crafting {
+            return true;
+        }
+        let dynamic_recipes = server.recipe_manager.get_dynamic_recipes_internal();
+        // Special recipes stay craftable.
+        !crate::entity::player::recipe_book::is_learnable_recipe(recipe_id, &dynamic_recipes)
+            || server.get_player_by_uuid(uuid).is_none_or(|player| {
+                player
+                    .recipe_book
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .contains(recipe_id)
+            })
+    }
+
     fn map_data(&self, stack: &ItemStack) -> Option<MapDataInfo> {
         let id = stack.get_data_component::<MapIdImpl>()?.id;
-        let map = self.0.upgrade()?.map_manager.get_map(id)?;
+        let map = self.server.upgrade()?.map_manager.get_map(id)?;
         let data = map
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -108,7 +149,7 @@ impl RecipeProvider for ServerRecipeAccess {
             return;
         };
         stack.remove_data_component(DataComponent::MapPostProcessing);
-        let Some(server) = self.0.upgrade() else {
+        let Some(server) = self.server.upgrade() else {
             return;
         };
         let Some(original) = stack

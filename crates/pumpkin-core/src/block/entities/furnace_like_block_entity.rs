@@ -275,6 +275,15 @@ macro_rules! impl_experience_container_for_cooking {
                 // Delegate to the CookingBlockEntityBase method
                 self.extract_experience_from_recipes()
             }
+
+            fn used_recipe_ids(&self) -> Vec<String> {
+                self.recipes_used
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .keys()
+                    .cloned()
+                    .collect()
+            }
         }
     };
 }

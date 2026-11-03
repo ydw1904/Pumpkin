@@ -22,6 +22,12 @@ pub trait RecipeProvider: Send + Sync {
 
     /// `Item.onCraftedPostProcess`: gives a crafted map its scaled or locked copy of the data.
     fn on_crafted_post_process(&self, _stack: &mut ItemStack) {}
+
+    /// Whether the crafting player may use the recipe, which `limitedCrafting` limits to the
+    /// recipes in their recipe book.
+    fn can_use_recipe(&self, _recipe_id: &str) -> bool {
+        true
+    }
 }
 
 #[derive(Clone, Copy)]

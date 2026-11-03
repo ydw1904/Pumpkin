@@ -1,14 +1,13 @@
 use std::any::Any;
 
 use crate::entity::player::Player;
+use crate::entity::player::recipe_book::is_learnable_recipe;
 use crate::item::{ItemBehaviour, ItemMetadata};
 use pumpkin_data::data_component_impl::{CustomDataImpl, RecipesImpl};
 use pumpkin_data::item::Item;
 use pumpkin_data::statistic::StatisticCategory;
 use pumpkin_inventory::player::player_inventory::PlayerInventory;
 use pumpkin_nbt::tag::NbtTag;
-use pumpkin_protocol::codec::recipe::DynamicRecipe;
-use pumpkin_protocol::java::client::play::CRecipeBookAdd;
 use pumpkin_util::Hand;
 
 pub struct KnowledgeBookItem;
@@ -18,16 +17,6 @@ impl ItemMetadata for KnowledgeBookItem {
     fn ids() -> Box<[u16]> {
         Box::new([Item::KNOWLEDGE_BOOK.id])
     }
-}
-
-fn dynamic_recipe_id(recipe: &DynamicRecipe) -> &str {
-    recipe.recipe_id().unwrap_or_else(|| match recipe {
-        DynamicRecipe::Crafting(
-            pumpkin_protocol::codec::recipe::OwnedCraftingRecipe::Shaped { result, .. }
-            | pumpkin_protocol::codec::recipe::OwnedCraftingRecipe::Shapeless { result, .. },
-        ) => &result.item_id,
-        _ => "",
-    })
 }
 
 impl ItemBehaviour for KnowledgeBookItem {
@@ -83,24 +72,26 @@ impl ItemBehaviour for KnowledgeBookItem {
         let Some(server) = player.world().server.upgrade() else {
             return;
         };
-        let all_recipes = server.recipe_manager.get_dynamic_recipes_internal();
-        let mut matching_recipes = Vec::with_capacity(recipe_ids.len());
-
-        for recipe_id in &recipe_ids {
-            let stripped_target = recipe_id.strip_prefix("minecraft:").unwrap_or(recipe_id);
-            if let Some(found) = all_recipes.iter().find(|r| {
-                let id = dynamic_recipe_id(r);
-                id == recipe_id || id.strip_prefix("minecraft:").unwrap_or(id) == stripped_target
-            }) {
-                matching_recipes.push(found.clone());
-            } else {
-                tracing::error!("Invalid recipe: {recipe_id}");
-                return;
-            }
+        let dynamic_recipes = server.recipe_manager.get_dynamic_recipes_internal();
+        let recipe_ids: Vec<String> = recipe_ids
+            .into_iter()
+            .map(|id| {
+                if id.contains(':') {
+                    id
+                } else {
+                    format!("minecraft:{id}")
+                }
+            })
+            .collect();
+        if let Some(invalid) = recipe_ids
+            .iter()
+            .find(|id| !is_learnable_recipe(id, &dynamic_recipes))
+        {
+            tracing::error!("Invalid recipe: {invalid}");
+            return;
         }
 
-        let packet = CRecipeBookAdd::new(false, &matching_recipes);
-        player.try_send_client_packet(&packet);
+        player.award_recipes(&recipe_ids);
         player.increment_stat(
             StatisticCategory::Used,
             i32::from(Item::KNOWLEDGE_BOOK.id),

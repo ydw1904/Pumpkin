@@ -1,5 +1,4 @@
 use crate::item_stack::ItemStack;
-use crate::potion_brewing::ItemRecipe;
 use crate::translation::java::{
     CHAT_TYPE_ADVANCEMENT_CHALLENGE, CHAT_TYPE_ADVANCEMENT_GOAL, CHAT_TYPE_ADVANCEMENT_TASK,
 };
@@ -100,7 +99,8 @@ impl FrameType {
 #[derive(Clone)]
 pub struct AdvancementReward {
     pub experience: i32,
-    pub recipes: &'static [ItemRecipe],
+    /// The ids of the recipes the advancement unlocks.
+    pub recipes: &'static [&'static str],
 }
 
 pub struct AdvancementNode {

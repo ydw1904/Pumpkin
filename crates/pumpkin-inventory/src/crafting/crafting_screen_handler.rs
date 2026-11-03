@@ -31,7 +31,7 @@ use crate::slot::{NormalSlot, Slot};
 use crate::inventory::Inventory;
 use pumpkin_data::data_component_impl::{PotDecorationsImpl, ProvidesPotteryPatternImpl};
 use pumpkin_data::item_stack::{ItemStack, crafting_remainder};
-use pumpkin_data::recipes::{CraftingRecipeTypes, RECIPES_CRAFTING};
+use pumpkin_data::recipes::{CraftingRecipeTypes, RECIPES_CRAFTING, RECIPES_CRAFTING_IDS};
 use pumpkin_data::screen::WindowType;
 use pumpkin_data::statistic::StatisticCategory;
 use pumpkin_data::tag;
@@ -59,6 +59,8 @@ pub struct RecipeResult {
     pub stack: Option<ItemStack>,
     /// What the recipe leaves in the grid besides crafting remainders.
     pub kept: KeptInput,
+    /// The id of the matched recipe, when it has one.
+    pub recipe_id: Option<String>,
 }
 
 impl RecipeResult {
@@ -452,8 +454,19 @@ pub fn match_crafting_recipe(
     provider: Option<&dyn RecipeProvider>,
 ) -> Option<RecipeResult> {
     let (top_x, top_y, input_width, input_height, count) = input_bounds(inventory)?;
+    // `RecipeCraftingHolder.setRecipeUsed`: a matching recipe the player may not use under
+    // `limitedCrafting` leaves the result empty instead of trying the next recipe.
+    let usable = |mut result: RecipeResult, recipe_id: Option<&str>| {
+        if let (Some(provider), Some(recipe_id)) = (provider, recipe_id)
+            && !provider.can_use_recipe(recipe_id)
+        {
+            return None;
+        }
+        result.recipe_id = recipe_id.map(str::to_string);
+        Some(result)
+    };
 
-    for recipe in RECIPES_CRAFTING {
+    for (recipe, recipe_id) in RECIPES_CRAFTING.iter().zip(RECIPES_CRAFTING_IDS) {
         if let Some(result) = recipe_matches(
             GenericRecipe::Vanilla(recipe),
             input_height,
@@ -464,7 +477,7 @@ pub fn match_crafting_recipe(
             inventory,
             provider,
         ) {
-            return Some(result);
+            return usable(result, Some(recipe_id));
         }
     }
 
@@ -483,7 +496,7 @@ pub fn match_crafting_recipe(
                     Some(provider),
                 )
             {
-                return Some(result);
+                return usable(result, recipe.recipe_id());
             }
         }
     }
@@ -540,12 +553,16 @@ impl Slot for ResultSlot {
             stack.item.id as i32,
             stack.item_count as i32,
         );
-        player.on_recipe_crafted(stack);
+        let matched = self.match_recipe();
+        player.on_recipe_crafted(
+            stack,
+            matched
+                .as_ref()
+                .and_then(|matched| matched.recipe_id.as_deref()),
+        );
         // ResultSlot.onTake: each input loses one item and its crafting remainder goes back
         // into the emptied slot, merges with what is left there, or goes to the player.
-        let mut kept = self
-            .match_recipe()
-            .map_or(KeptInput::None, |matched| matched.kept);
+        let mut kept = matched.map_or(KeptInput::None, |matched| matched.kept);
         for i in 0..self.inventory.size() {
             let input = self.inventory.get_stack(i);
             if input.is_empty() {

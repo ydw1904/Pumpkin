@@ -606,6 +606,7 @@ impl PlayerAdvancement {
     /// Grants the rewards (like experience) associated with completing an advancement.
     pub fn grant_reward(player: &Arc<Player>, reward: &'static AdvancementReward) {
         player.add_experience_points(reward.experience);
+        player.award_recipes(reward.recipes);
     }
 
     /// Records a criterion award while the player's advancement state is locked.

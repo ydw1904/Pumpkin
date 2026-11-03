@@ -15,5 +15,15 @@ impl JavaClient {
             packet.is_filtering,
         );
         server.plugin_manager.fire_blocking(server, &mut event);
+        if event.cancelled {
+            return;
+        }
+        if let Ok(book_type) = usize::try_from(packet.book_type.0) {
+            player
+                .recipe_book
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .set_book_setting(book_type, packet.is_open, packet.is_filtering);
+        }
     }
 }

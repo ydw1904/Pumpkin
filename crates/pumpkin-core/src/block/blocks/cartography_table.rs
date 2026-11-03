@@ -43,7 +43,7 @@ impl BlockBehaviour for CartographyTableBlock {
         args: GetScreenHandlerFactoryArgs<'_>,
     ) -> Option<Box<dyn ScreenHandlerFactory>> {
         Some(Box::new(CartographyTableScreenFactory(Arc::new(
-            ServerRecipeAccess(args.world.server.clone()),
+            ServerRecipeAccess::new(args.world.server.clone()),
         ))))
     }
 }

@@ -8,11 +8,9 @@ use crate::command::node::{CommandExecutor, CommandExecutorResult};
 use crate::command::suggestion::provider::{SuggestionProvider, SuggestionProviderResult};
 use crate::command::suggestion::suggestions::SuggestionsBuilder;
 use crate::entity::EntityBase;
-use pumpkin_data::recipes::{CraftingRecipeTypes, RECIPES_COOKING, RECIPES_CRAFTING};
+use crate::entity::player::Player;
+use crate::entity::player::recipe_book::{is_learnable_recipe, learnable_recipes};
 use pumpkin_data::translation;
-use pumpkin_protocol::codec::recipe::DynamicRecipe;
-use pumpkin_protocol::codec::var_int::VarInt;
-use pumpkin_protocol::java::client::play::{CRecipeBookAdd, CRecipeBookRemove};
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::identifier::Identifier;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
@@ -23,19 +21,14 @@ const PERMISSION: &str = "minecraft:command.recipe";
 
 static ERROR_RECIPE_NOT_FOUND: CommandErrorType<1> =
     CommandErrorType::new(translation::java::RECIPE_NOTFOUND, "Unknown recipe: %s");
-
-fn get_recipe_id(recipe: &DynamicRecipe) -> String {
-    recipe.recipe_id().map_or_else(
-        || match recipe {
-            DynamicRecipe::Crafting(
-                pumpkin_protocol::codec::recipe::OwnedCraftingRecipe::Shaped { result, .. }
-                | pumpkin_protocol::codec::recipe::OwnedCraftingRecipe::Shapeless { result, .. },
-            ) => result.item_id.clone(),
-            _ => String::new(),
-        },
-        str::to_string,
-    )
-}
+const ERROR_GIVE_FAILED: CommandErrorType<0> = CommandErrorType::new(
+    translation::java::COMMANDS_RECIPE_GIVE_FAILED,
+    "No new recipes were learned",
+);
+const ERROR_TAKE_FAILED: CommandErrorType<0> = CommandErrorType::new(
+    translation::java::COMMANDS_RECIPE_TAKE_FAILED,
+    "No recipes could be forgotten",
+);
 
 struct RecipeSuggestionProvider;
 
@@ -46,14 +39,73 @@ impl SuggestionProvider for RecipeSuggestionProvider {
         mut builder: SuggestionsBuilder,
     ) -> SuggestionProviderResult {
         if let Some(server) = &context.source.server {
-            let recipes = server.recipe_manager.get_dynamic_recipes_internal();
-            for recipe in recipes {
-                let id = get_recipe_id(&recipe);
+            let dynamic_recipes = server.recipe_manager.get_dynamic_recipes_internal();
+            for id in learnable_recipes(&dynamic_recipes) {
                 builder = builder.suggest(id);
             }
         }
         builder.build()
     }
+}
+
+/// The recipes a `/recipe` command names: `*` for every learnable recipe, or one learnable
+/// recipe (`ResourceKeyArgument.getRecipe`).
+fn target_recipes(
+    context: &CommandContext,
+    all: bool,
+) -> Result<Vec<String>, crate::command::errors::command_syntax_error::CommandSyntaxError> {
+    let dynamic_recipes = context
+        .source
+        .server
+        .as_ref()
+        .map(|server| server.recipe_manager.get_dynamic_recipes_internal())
+        .unwrap_or_default();
+    if all {
+        return Ok(learnable_recipes(&dynamic_recipes));
+    }
+    let id = context.get_argument::<Identifier>("recipe")?.to_string();
+    if is_learnable_recipe(&id, &dynamic_recipes) {
+        Ok(vec![id])
+    } else {
+        Err(ERROR_RECIPE_NOT_FOUND.create_without_context(TextComponent::text(id)))
+    }
+}
+
+/// `CommandResponseTracker.sendFeedback` with `NON_ZERO` elements.
+fn send_recipe_feedback(
+    context: &CommandContext,
+    counts: &[(&Player, usize)],
+    failed: &'static CommandErrorType<0>,
+    single: &'static str,
+    multiple: &'static str,
+) -> CommandExecutorResult {
+    let total: usize = counts.iter().map(|(_, count)| count).sum();
+    let changed: Vec<&Player> = counts
+        .iter()
+        .filter(|(_, count)| *count > 0)
+        .map(|(player, _)| *player)
+        .collect();
+    let msg = match changed.as_slice() {
+        [] => return Err(failed.create_without_context()),
+        [player] => TextComponent::translate_cross(
+            single,
+            single,
+            [
+                TextComponent::text(total.to_string()),
+                player.get_display_name(),
+            ],
+        ),
+        players => TextComponent::translate_cross(
+            multiple,
+            multiple,
+            [
+                TextComponent::text(total.to_string()),
+                TextComponent::text(players.len().to_string()),
+            ],
+        ),
+    };
+    context.source.send_feedback(msg, true);
+    Ok(total as i32)
 }
 
 struct RecipeGiveExecutor {
@@ -63,67 +115,18 @@ struct RecipeGiveExecutor {
 impl CommandExecutor for RecipeGiveExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
         let targets = EntityArgumentType::get_players(context, "targets")?;
-        let recipe_str = if self.all {
-            "*".to_string()
-        } else {
-            context.get_argument::<Identifier>("recipe")?.to_string()
-        };
-
-        let server = context.source.server.as_ref().ok_or_else(|| {
-            ERROR_RECIPE_NOT_FOUND.create_without_context(TextComponent::text(recipe_str.clone()))
-        })?;
-
-        let all_recipes = server.recipe_manager.get_dynamic_recipes_internal();
-
-        let is_all = recipe_str == "*";
-        let matching_recipes = if is_all {
-            all_recipes
-        } else {
-            all_recipes
-                .iter()
-                .filter(|r| {
-                    let id = get_recipe_id(r);
-                    id == recipe_str || id.strip_prefix("minecraft:").unwrap_or(&id) == recipe_str
-                })
-                .cloned()
-                .collect::<Vec<_>>()
-        };
-
-        if !is_all && matching_recipes.is_empty() {
-            return Err(ERROR_RECIPE_NOT_FOUND
-                .create_without_context(TextComponent::text(recipe_str.clone())));
-        }
-
-        let recipe_count = matching_recipes.len();
-        let packet = CRecipeBookAdd::new(false, &matching_recipes);
-        for player in &targets {
-            player.try_send_client_packet(&packet);
-        }
-
-        let recipe_count_str = recipe_count.to_string();
-        if targets.len() == 1 {
-            let msg = TextComponent::translate_cross(
-                translation::java::COMMANDS_RECIPE_GIVE_SUCCESS_SINGLE,
-                translation::java::COMMANDS_RECIPE_GIVE_SUCCESS_SINGLE,
-                [
-                    TextComponent::text(recipe_count_str),
-                    targets[0].get_display_name(),
-                ],
-            );
-            context.source.send_feedback(msg, true);
-        } else {
-            let msg = TextComponent::translate_cross(
-                translation::java::COMMANDS_RECIPE_GIVE_SUCCESS_MULTIPLE,
-                translation::java::COMMANDS_RECIPE_GIVE_SUCCESS_MULTIPLE,
-                [
-                    TextComponent::text(recipe_count_str),
-                    TextComponent::text(targets.len().to_string()),
-                ],
-            );
-            context.source.send_feedback(msg, true);
-        }
-
-        Ok((targets.len() * recipe_count) as i32)
+        let recipes = target_recipes(context, self.all)?;
+        let counts: Vec<(&Player, usize)> = targets
+            .iter()
+            .map(|player| (player.as_ref(), player.award_recipes(&recipes)))
+            .collect();
+        send_recipe_feedback(
+            context,
+            &counts,
+            &ERROR_GIVE_FAILED,
+            translation::java::COMMANDS_RECIPE_GIVE_SUCCESS_SINGLE,
+            translation::java::COMMANDS_RECIPE_GIVE_SUCCESS_MULTIPLE,
+        )
     }
 }
 
@@ -134,93 +137,18 @@ struct RecipeTakeExecutor {
 impl CommandExecutor for RecipeTakeExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
         let targets = EntityArgumentType::get_players(context, "targets")?;
-        let recipe_str = if self.all {
-            "*".to_string()
-        } else {
-            context.get_argument::<Identifier>("recipe")?.to_string()
-        };
-
-        let server = context.source.server.as_ref().ok_or_else(|| {
-            ERROR_RECIPE_NOT_FOUND.create_without_context(TextComponent::text(recipe_str.clone()))
-        })?;
-
-        let all_recipes = server.recipe_manager.get_dynamic_recipes_internal();
-
-        let crafting_display_count = RECIPES_CRAFTING
+        let recipes = target_recipes(context, self.all)?;
+        let counts: Vec<(&Player, usize)> = targets
             .iter()
-            .filter(|r| {
-                !matches!(
-                    r,
-                    CraftingRecipeTypes::CraftingSpecial
-                        | CraftingRecipeTypes::CraftingDecoratedPot { .. }
-                        | CraftingRecipeTypes::CraftingCustom(_)
-                )
-            })
-            .count();
-
-        let dynamic_recipe_offset = crafting_display_count + RECIPES_COOKING.len();
-
-        let displayable_recipes: Vec<_> = all_recipes
-            .iter()
-            .filter(|r| matches!(r, DynamicRecipe::Crafting(_) | DynamicRecipe::Cooking(_)))
+            .map(|player| (player.as_ref(), player.reset_recipes(&recipes)))
             .collect();
-
-        let is_all = recipe_str == "*";
-
-        let recipe_ids_to_remove: Vec<VarInt> = if is_all {
-            (0..(dynamic_recipe_offset + displayable_recipes.len()))
-                .map(|id| VarInt(id as i32))
-                .collect()
-        } else {
-            displayable_recipes
-                .iter()
-                .enumerate()
-                .filter_map(|(idx, r)| {
-                    let id = get_recipe_id(r);
-                    let is_match = id == recipe_str
-                        || id.strip_prefix("minecraft:").unwrap_or(&id) == recipe_str;
-
-                    is_match.then_some(VarInt((dynamic_recipe_offset + idx) as i32))
-                })
-                .collect()
-        };
-
-        if recipe_ids_to_remove.is_empty() {
-            return Err(ERROR_RECIPE_NOT_FOUND
-                .create_without_context(TextComponent::text(recipe_str.clone())));
-        }
-
-        let taken_count = recipe_ids_to_remove.len();
-
-        let packet = CRecipeBookRemove::new(&recipe_ids_to_remove);
-        for player in &targets {
-            player.try_send_client_packet(&packet);
-        }
-
-        let taken_count_str = taken_count.to_string();
-        if targets.len() == 1 {
-            let msg = TextComponent::translate_cross(
-                translation::java::COMMANDS_RECIPE_TAKE_SUCCESS_SINGLE,
-                translation::java::COMMANDS_RECIPE_TAKE_SUCCESS_SINGLE,
-                [
-                    TextComponent::text(taken_count_str),
-                    targets[0].get_display_name(),
-                ],
-            );
-            context.source.send_feedback(msg, true);
-        } else {
-            let msg = TextComponent::translate_cross(
-                translation::java::COMMANDS_RECIPE_TAKE_SUCCESS_MULTIPLE,
-                translation::java::COMMANDS_RECIPE_TAKE_SUCCESS_MULTIPLE,
-                [
-                    TextComponent::text(taken_count_str),
-                    TextComponent::text(targets.len().to_string()),
-                ],
-            );
-            context.source.send_feedback(msg, true);
-        }
-
-        Ok((targets.len() * taken_count) as i32)
+        send_recipe_feedback(
+            context,
+            &counts,
+            &ERROR_TAKE_FAILED,
+            translation::java::COMMANDS_RECIPE_TAKE_SUCCESS_SINGLE,
+            translation::java::COMMANDS_RECIPE_TAKE_SUCCESS_MULTIPLE,
+        )
     }
 }
 
