@@ -1270,7 +1270,13 @@ impl MobEntity {
             },
         );
 
-        base_box.expand(attack_range, 0.0, attack_range)
+        let attack_box = base_box.expand(attack_range, 0.0, attack_range);
+        // Vanilla `Ravager.getAttackBoundingBox`.
+        if self.living_entity.entity.entity_type == &EntityType::RAVAGER {
+            attack_box.expand(-0.05, 0.0, -0.05)
+        } else {
+            attack_box
+        }
     }
 
     /// Brightness at the mob's eye (sky and block light) reaches daylight.
