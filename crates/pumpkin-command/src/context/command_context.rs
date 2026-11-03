@@ -265,10 +265,18 @@ impl<'a, S: CommandSource> ContextChain<'a, S> {
     ) -> Result<i32, CommandSyntaxError> {
         let context_to_use = executable.with_source(source.clone());
 
-        let mut result = executable.command.as_ref().map_or_else(
-            || panic!("Expected `executable` to be executable"),
-            |command| command.execute(&context_to_use),
-        );
+        let Some(command) = executable.command.as_ref() else {
+            panic!("Expected `executable` to be executable");
+        };
+        let mut result = command.execute(&context_to_use);
+        if command.is_custom() {
+            // Custom executors report to the source's callbacks themselves.
+            return if forked_mode {
+                Ok(i32::from(result.is_ok()))
+            } else {
+                result
+            };
+        }
 
         if let Ok(result) = result {
             result_consumer.on_command_completion(&context_to_use, ReturnValue::Success(result));
@@ -283,16 +291,16 @@ impl<'a, S: CommandSource> ContextChain<'a, S> {
     }
 
     /// Executes all contexts in the chain, returning the ultimate result.
+    ///
+    /// Follows vanilla `BuildContexts.execute`: `return run` chains and frames discarded part
+    /// way through.
     pub fn execute_all(
         &self,
         source: &Arc<S>,
         result_consumer: &dyn ResultConsumer<S>,
     ) -> Result<i32, CommandSyntaxError> {
-        if self.modifiers.is_empty() {
-            return Self::run_executable(&self.execute, source, result_consumer, false);
-        }
-
         let mut forked_mode = false;
+        let mut returning = source.is_returning();
         let mut current_sources: Vec<Arc<S>> = vec![source.clone()];
 
         for modifier in &self.modifiers {
@@ -306,12 +314,29 @@ impl<'a, S: CommandSource> ContextChain<'a, S> {
                     Self::run_modifier(modifier, &source, &EmptyResultConsumer, forked_mode)?;
                 next_sources.append(&mut to_add);
             }
+            returning |= next_sources.iter().any(|source| S::is_returning(source));
             if next_sources.is_empty() {
+                if returning {
+                    source.fall_through();
+                }
                 return Ok(0);
             }
             current_sources = next_sources;
         }
 
+        let custom = self
+            .execute
+            .command
+            .as_ref()
+            .is_some_and(|command| command.is_custom());
+        if returning && !custom {
+            // Only the first source returns, with the frame's consumer on its callbacks.
+            current_sources.truncate(1);
+            current_sources[0] = current_sources[0].with_frame_return_callback();
+        }
+
+        // A source that discards the frame (`return`) stops the ones after it.
+        let discards = current_sources[0].frame_discards();
         let mut result = 0;
         for execution_source in current_sources {
             result += Self::run_executable(
@@ -320,6 +345,9 @@ impl<'a, S: CommandSource> ContextChain<'a, S> {
                 result_consumer,
                 forked_mode,
             )?;
+            if execution_source.frame_discards() != discards {
+                break;
+            }
         }
 
         Ok(result)

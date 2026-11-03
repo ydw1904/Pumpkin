@@ -113,6 +113,27 @@ pub trait CommandSource: Clone + Send + Sync + 'static {
     fn entity_anchor(&self) -> EntityAnchor {
         EntityAnchor::Feet
     }
+
+    /// How many times this source's frame has been discarded (vanilla `Frame.discard`). A
+    /// chain stops running its remaining sources once this changes.
+    fn frame_discards(&self) -> u64 {
+        0
+    }
+
+    /// Whether this source runs under `return run` (vanilla `ChainModifiers.isReturn`).
+    fn is_returning(&self) -> bool {
+        false
+    }
+
+    /// This source with its frame's return value consumer chained to its callbacks, for the
+    /// command a `return run` chain ends in.
+    #[must_use]
+    fn with_frame_return_callback(&self) -> Self {
+        self.clone()
+    }
+
+    /// Vanilla `FallthroughTask`: a `return run` chain that ran nothing returns failure.
+    fn fall_through(&self) {}
 }
 
 #[derive(Clone, Default)]
@@ -191,5 +212,21 @@ impl<S: CommandSource> CommandSource for Arc<S> {
 
     fn check_block_loaded(&self, pos: &BlockPos) -> Result<(), CommandSyntaxError> {
         (**self).check_block_loaded(pos)
+    }
+
+    fn frame_discards(&self) -> u64 {
+        (**self).frame_discards()
+    }
+
+    fn is_returning(&self) -> bool {
+        (**self).is_returning()
+    }
+
+    fn with_frame_return_callback(&self) -> Self {
+        Self::new((**self).with_frame_return_callback())
+    }
+
+    fn fall_through(&self) {
+        (**self).fall_through();
     }
 }

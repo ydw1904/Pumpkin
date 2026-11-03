@@ -51,6 +51,11 @@ pub type RedirectModifierExecutor = pumpkin_command::node::RedirectModifierExecu
 pub trait CommandExecutor: Sync + Send {
     /// Executes this executor for a command.
     fn execute(&self, context: &CommandContext) -> pumpkin_command::node::CommandExecutorResult;
+
+    /// See [`pumpkin_command::node::CommandExecutor::is_custom`].
+    fn is_custom(&self) -> bool {
+        false
+    }
 }
 
 pub struct CommandExecutorAdapter<T>(pub T);
@@ -64,6 +69,10 @@ impl<T: CommandExecutor> pumpkin_command::node::CommandExecutor<CommandSource>
     ) -> pumpkin_command::node::CommandExecutorResult {
         self.0.execute(context)
     }
+
+    fn is_custom(&self) -> bool {
+        self.0.is_custom()
+    }
 }
 
 pub struct ArcCommandExecutorAdapter(pub std::sync::Arc<dyn CommandExecutor>);
@@ -74,5 +83,9 @@ impl pumpkin_command::node::CommandExecutor<CommandSource> for ArcCommandExecuto
         context: &pumpkin_command::context::command_context::CommandContext<'_, CommandSource>,
     ) -> pumpkin_command::node::CommandExecutorResult {
         self.0.execute(context)
+    }
+
+    fn is_custom(&self) -> bool {
+        self.0.is_custom()
     }
 }

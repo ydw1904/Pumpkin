@@ -33,6 +33,12 @@ pub type CommandExecutorResult = Result<i32, CommandSyntaxError>;
 pub trait CommandExecutor<S: CommandSource = DummySource>: Sync + Send {
     /// Executes this executor for a command.
     fn execute(&self, context: &CommandContext<S>) -> CommandExecutorResult;
+
+    /// Whether this is a vanilla `CustomCommandExecutor`: it reports results to the source's
+    /// callbacks itself, and runs for every source of a `return run` chain.
+    fn is_custom(&self) -> bool {
+        false
+    }
 }
 
 impl<F, S: CommandSource> CommandExecutor<S> for F

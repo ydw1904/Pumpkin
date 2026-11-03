@@ -626,7 +626,7 @@ pub enum TargetKind {
 }
 
 /// The data sources and targets in vanilla's `DataCommands.ALL_PROVIDERS` order.
-const TARGET_KINDS: [(TargetKind, &str); 3] = [
+pub const TARGET_KINDS: [(TargetKind, &str); 3] = [
     (TargetKind::Entity, "entity"),
     (TargetKind::Block, "block"),
     (TargetKind::Storage, "storage"),
@@ -972,6 +972,7 @@ impl CommandExecutor for ModifyExecutor {
 
 // ---------------- REGISTRATION ----------------
 
+#[must_use]
 pub fn make_target_arg(
     kind: TargetKind,
     name: &'static str,

@@ -17,6 +17,7 @@ use pumpkin_util::math::wrap_degrees;
 use pumpkin_util::text::TextComponent;
 use pumpkin_util::text::color::{Color, NamedColor};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub const REQUIRES_PLAYER: CommandErrorType<0> = CommandErrorType::new(
     translation::java::PERMISSIONS_REQUIRES_PLAYER,
@@ -59,6 +60,54 @@ pub struct CommandSource {
     pub silent: bool,
     pub command_result_taker: ResultValueTaker,
     pub entity_anchor: EntityAnchor,
+    pub frame: Frame,
+    /// Vanilla `ChainModifiers.isReturn`: this source runs the rest of a `return run` chain.
+    pub returning: bool,
+}
+
+/// Vanilla `Frame`: where a `return` in a function, or in a top-level command, reports to.
+#[derive(Clone, Default)]
+pub struct Frame {
+    /// Vanilla `Frame.returnValueConsumer`.
+    pub return_value: ResultValueTaker,
+    /// Vanilla `Frame.frameControl`, shared with the caller's frame under `return run`.
+    pub control: Arc<FrameControl>,
+}
+
+/// Counts discards, so code running in a frame can tell one happened since it started.
+#[derive(Default)]
+pub struct FrameControl {
+    discards: AtomicU64,
+}
+
+impl Frame {
+    #[must_use]
+    pub fn new(return_value: ResultValueTaker) -> Self {
+        Self {
+            return_value,
+            control: Arc::default(),
+        }
+    }
+
+    /// Vanilla `Frame.returnSuccess`.
+    pub fn return_success(&self, value: i32) {
+        self.return_value.call(ReturnValue::Success(value));
+    }
+
+    /// Vanilla `Frame.returnFailure`.
+    pub fn return_failure(&self) {
+        self.return_value.call(ReturnValue::Failure);
+    }
+
+    /// Vanilla `Frame.discard`: nothing more runs in this frame.
+    pub fn discard(&self) {
+        self.control.discards.fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[must_use]
+    pub fn discards(&self) -> u64 {
+        self.control.discards.load(Ordering::Relaxed)
+    }
 }
 
 impl CommandSource {
@@ -86,6 +135,8 @@ impl CommandSource {
             silent: false,
             command_result_taker: ResultValueTaker::new(),
             entity_anchor: EntityAnchor::Feet,
+            frame: Frame::default(),
+            returning: false,
         }
     }
 
@@ -113,6 +164,8 @@ impl CommandSource {
             silent: false,
             command_result_taker: ResultValueTaker(Vec::new()),
             entity_anchor: EntityAnchor::Feet,
+            frame: Frame::default(),
+            returning: false,
         }
     }
 
@@ -120,19 +173,7 @@ impl CommandSource {
     /// everything else from the `source` provided.
     #[must_use]
     pub fn with_output(self, output: CommandSender) -> Self {
-        Self {
-            output,
-            world: self.world,
-            entity: self.entity,
-            position: self.position,
-            rotation: self.rotation,
-            name: self.name,
-            display_name: self.display_name,
-            server: self.server,
-            silent: self.silent,
-            command_result_taker: self.command_result_taker,
-            entity_anchor: self.entity_anchor,
-        }
+        Self { output, ..self }
     }
 
     /// Returns a new [`CommandSource`] with the specified world and
@@ -140,17 +181,9 @@ impl CommandSource {
     #[must_use]
     pub fn with_world(self, world: Arc<World>) -> Self {
         Self {
-            output: self.output,
             world: Some(world),
-            entity: self.entity,
-            position: self.position,
-            rotation: self.rotation,
-            name: self.name,
-            display_name: self.display_name,
-            server: self.server,
             silent: true,
-            command_result_taker: self.command_result_taker,
-            entity_anchor: self.entity_anchor,
+            ..self
         }
     }
 
@@ -161,17 +194,10 @@ impl CommandSource {
         let name = entity.get_name().get_text();
         let display_name = entity.get_display_name();
         Self {
-            output: self.output,
-            world: self.world,
             entity: Some(entity),
-            position: self.position,
-            rotation: self.rotation,
             name,
             display_name,
-            server: self.server,
-            silent: self.silent,
-            command_result_taker: self.command_result_taker,
-            entity_anchor: self.entity_anchor,
+            ..self
         }
     }
 
@@ -179,38 +205,14 @@ impl CommandSource {
     /// everything else from the `source` provided.
     #[must_use]
     pub fn with_position(self, position: Vector3<f64>) -> Self {
-        Self {
-            output: self.output,
-            world: self.world,
-            entity: self.entity,
-            position,
-            rotation: self.rotation,
-            name: self.name,
-            display_name: self.display_name,
-            server: self.server,
-            silent: self.silent,
-            command_result_taker: self.command_result_taker,
-            entity_anchor: self.entity_anchor,
-        }
+        Self { position, ..self }
     }
 
     /// Returns a new [`CommandSource`] with the specified rotation and
     /// everything else from the `source` provided.
     #[must_use]
     pub fn with_rotation(self, rotation: Vector2<f32>) -> Self {
-        Self {
-            output: self.output,
-            world: self.world,
-            entity: self.entity,
-            position: self.position,
-            rotation,
-            name: self.name,
-            display_name: self.display_name,
-            server: self.server,
-            silent: self.silent,
-            command_result_taker: self.command_result_taker,
-            entity_anchor: self.entity_anchor,
-        }
+        Self { rotation, ..self }
     }
 
     /// Merges the given takers with this one, returning a new [`CommandSource`] with
@@ -226,17 +228,8 @@ impl CommandSource {
     #[must_use]
     pub fn with_silent(self) -> Self {
         Self {
-            output: self.output,
-            world: self.world,
-            entity: self.entity,
-            position: self.position,
-            rotation: self.rotation,
-            name: self.name,
-            display_name: self.display_name,
-            server: self.server,
             silent: true,
-            command_result_taker: self.command_result_taker,
-            entity_anchor: self.entity_anchor,
+            ..self
         }
     }
 
@@ -245,17 +238,8 @@ impl CommandSource {
     #[must_use]
     pub fn with_command_result_taker(self, command_result_taker: ResultValueTaker) -> Self {
         Self {
-            output: self.output,
-            world: self.world,
-            entity: self.entity,
-            position: self.position,
-            rotation: self.rotation,
-            name: self.name,
-            display_name: self.display_name,
-            server: self.server,
-            silent: self.silent,
             command_result_taker,
-            entity_anchor: self.entity_anchor,
+            ..self
         }
     }
 
@@ -264,17 +248,9 @@ impl CommandSource {
     #[must_use]
     pub fn with_entity_anchor(self, entity_anchor: EntityAnchor) -> Self {
         Self {
-            output: self.output,
-            world: self.world,
-            entity: self.entity,
-            position: self.position,
-            rotation: self.rotation,
-            name: self.name,
-            display_name: self.display_name,
-            server: self.server,
             silent: true,
-            command_result_taker: self.command_result_taker,
             entity_anchor,
+            ..self
         }
     }
 
@@ -518,6 +494,24 @@ impl pumpkin_command::source::CommandSource for CommandSource {
 
     fn entity_anchor(&self) -> EntityAnchor {
         self.entity_anchor
+    }
+
+    fn frame_discards(&self) -> u64 {
+        self.frame.discards()
+    }
+
+    fn is_returning(&self) -> bool {
+        self.returning
+    }
+
+    fn with_frame_return_callback(&self) -> Self {
+        self.clone()
+            .merge_command_result_taker(&self.frame.return_value)
+    }
+
+    fn fall_through(&self) {
+        self.frame.return_failure();
+        self.frame.discard();
     }
 
     fn anchor_position(&self, anchor: EntityAnchor) -> Vector3<f64> {
