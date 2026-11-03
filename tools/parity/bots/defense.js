@@ -8,8 +8,7 @@ const X = 1800; const Y = 200; const Z = 0
 const r3 = (n) => Math.round(n * 1000) / 1000
 
 const cooldowns = []
-// The client reads a bare group as minecraft:<group>, so the namespace isn't compared.
-bot._client.on('set_cooldown', (p) => cooldowns.push(`${String(p.cooldownGroup || p.itemID).replace('minecraft:', '')}:${p.cooldownTicks}`))
+bot._client.on('set_cooldown', (p) => cooldowns.push(`${p.cooldownGroup || p.itemID}:${p.cooldownTicks}`))
 
 async function reset () {
   h.cmd(`effect clear ${bot.username}`)
@@ -120,6 +119,13 @@ h.start(async () => {
   h.cmd(`damage ${bot.username} 5 minecraft:mob_attack by @e[tag=z,limit=1]`)
   await h.ticks(10)
   h.result('shield.axe_zombie', `${r3(20 - bot.health)} cooldowns=${cooldowns.join(';') || 'none'}`)
+  await lower()
+  // A shield on cooldown can't be raised, even by a client that tries.
+  await raise(10)
+  const beforeCooldownHit = bot.health
+  h.cmd(`damage ${bot.username} 5 minecraft:mob_attack by @e[tag=z,limit=1]`)
+  await h.ticks(10)
+  h.result('shield.on_cooldown', r3(beforeCooldownHit - bot.health))
   await lower()
 
   // A custom blocks_attacks component: no block delay, partial blocking, its own durability

@@ -49,9 +49,7 @@ impl ItemRegistry {
     ) {
         let item = stack.item;
         let cooldown = stack.get_use_cooldown();
-        let cooldown_group = cooldown
-            .and_then(|c| c.cooldown_group.clone())
-            .unwrap_or_else(|| item.registry_key.to_string());
+        let cooldown_group = stack.cooldown_group();
 
         if player.is_on_cooldown(&cooldown_group) {
             return;
@@ -108,10 +106,7 @@ impl ItemRegistry {
         server: &Server,
     ) -> BlockActionResult {
         let cooldown = stack.get_use_cooldown().cloned();
-        let cooldown_group = cooldown
-            .as_ref()
-            .and_then(|c| c.cooldown_group.clone())
-            .unwrap_or_else(|| stack.item.registry_key.to_string());
+        let cooldown_group = stack.cooldown_group();
 
         if player.is_on_cooldown(&cooldown_group) {
             return BlockActionResult::Pass;

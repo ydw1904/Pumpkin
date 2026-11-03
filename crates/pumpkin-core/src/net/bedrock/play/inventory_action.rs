@@ -335,16 +335,7 @@ impl BedrockClient {
                     let stack_for_use = held.clone();
 
                     {
-                        let mut cooldown_active = false;
-                        if let Some(cooldown) = held.get_use_cooldown() {
-                            let group = cooldown
-                                .cooldown_group
-                                .clone()
-                                .unwrap_or_else(|| held.item.registry_key.to_string());
-                            if player.is_on_cooldown(&group) {
-                                cooldown_active = true;
-                            }
-                        }
+                        let cooldown_active = player.is_on_cooldown(&held.cooldown_group());
 
                         if !cooldown_active {
                             // Bedrock can repeat click-air while using an item. Do not

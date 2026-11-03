@@ -1020,11 +1020,7 @@ impl LivingEntity {
         if cooldown_ticks <= 0 {
             return;
         }
-        let group = blocking_with
-            .get_use_cooldown()
-            .and_then(|cooldown| cooldown.cooldown_group.clone())
-            .unwrap_or_else(|| blocking_with.item.registry_key.to_string());
-        player.start_cooldown(group, cooldown_ticks);
+        player.start_cooldown(blocking_with.cooldown_group(), cooldown_ticks);
         self.clear_active_hand();
         if let Some(sound) = &blocks_attacks.disable_sound {
             let pos = self.entity.pos.load();
@@ -4448,11 +4444,10 @@ impl EntityBase for LivingEntity {
                     }
 
                     if let Some(cooldown) = item.get_use_cooldown() {
-                        let group = cooldown
-                            .cooldown_group
-                            .clone()
-                            .unwrap_or_else(|| item.item.registry_key.to_string());
-                        player.start_cooldown(group, (cooldown.seconds * 20.0) as i32);
+                        player.start_cooldown(
+                            item.cooldown_group(),
+                            (cooldown.seconds * 20.0) as i32,
+                        );
                     }
                 }
 

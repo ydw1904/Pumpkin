@@ -322,6 +322,19 @@ impl ItemStack {
         self.get_data_component::<UseCooldownImpl>()
     }
 
+    /// Vanilla `ItemCooldowns.getCooldownGroup`: the `use_cooldown` group, else the item's id.
+    #[must_use]
+    pub fn cooldown_group(&self) -> String {
+        match self
+            .get_use_cooldown()
+            .and_then(|cooldown| cooldown.cooldown_group.as_deref())
+        {
+            Some(group) if group.contains(':') => group.to_string(),
+            Some(group) => format!("minecraft:{group}"),
+            None => format!("minecraft:{}", self.item.registry_key),
+        }
+    }
+
     #[must_use]
     pub fn get_damage(&self) -> i32 {
         self.get_data_component::<DamageImpl>()

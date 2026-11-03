@@ -86,14 +86,8 @@ impl JavaClient {
     fn prepare_hand_item_for_use(player: &Arc<Player>, hand: Hand, held: &mut ItemStack) {
         let inventory = player.inventory();
 
-        if let Some(cooldown) = held.get_use_cooldown() {
-            let group = cooldown
-                .cooldown_group
-                .clone()
-                .unwrap_or_else(|| held.item.registry_key.to_string());
-            if player.is_on_cooldown(&group) {
-                return;
-            }
+        if player.is_on_cooldown(&held.cooldown_group()) {
+            return;
         }
 
         if held.get_data_component::<ConsumableImpl>().is_some()

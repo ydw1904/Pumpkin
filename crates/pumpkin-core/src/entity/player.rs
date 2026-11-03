@@ -5023,7 +5023,7 @@ impl Player {
             (stack
                 .get_data_component::<pumpkin_data::data_component_impl::BlocksAttacksImpl>()
                 .is_some()
-                && !self.is_on_cooldown(stack.item.registry_key))
+                && !self.is_on_cooldown(&stack.cooldown_group()))
             .then_some((hand, stack))
         });
 
