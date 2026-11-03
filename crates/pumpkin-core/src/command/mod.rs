@@ -114,8 +114,29 @@ pub fn java_double_string(value: f64) -> String {
     if magnitude == 0.0 || (1.0e-3..1.0e7).contains(&magnitude) {
         return format!("{value:?}");
     }
-    let scientific = format!("{value:e}");
-    let (mantissa, exponent) = scientific.split_once('e').unwrap_or((&scientific, "0"));
+    java_scientific(&format!("{value:e}"))
+}
+
+/// Formats a float the way Java's `Float.toString` does: the shortest digits that read back as
+/// the same float, in the layout of [`java_double_string`].
+#[must_use]
+pub fn java_float_string(value: f32) -> String {
+    if value.is_nan() {
+        return "NaN".to_string();
+    }
+    if value.is_infinite() {
+        return if value > 0.0 { "Infinity" } else { "-Infinity" }.to_string();
+    }
+    let magnitude = value.abs();
+    if magnitude == 0.0 || (1.0e-3..1.0e7).contains(&magnitude) {
+        return format!("{value:?}");
+    }
+    java_scientific(&format!("{value:e}"))
+}
+
+/// Turns Rust's `1.5e-5` into Java's `1.5E-5`, adding the `.0` Java always prints.
+fn java_scientific(scientific: &str) -> String {
+    let (mantissa, exponent) = scientific.split_once('e').unwrap_or((scientific, "0"));
     if mantissa.contains('.') {
         format!("{mantissa}E{exponent}")
     } else {
@@ -452,7 +473,7 @@ pub use node::{Command, CommandExecutor, CommandExecutorResult};
 
 #[cfg(test)]
 mod tests {
-    use super::java_double_string;
+    use super::{java_double_string, java_float_string};
 
     #[test]
     fn java_double_string_matches_java() {
@@ -473,6 +494,21 @@ mod tests {
             (f64::NAN, "NaN"),
         ] {
             assert_eq!(java_double_string(value), java, "{value:?}");
+        }
+    }
+
+    #[test]
+    fn java_float_string_matches_java() {
+        // Expected strings are what `Float.toString` prints on Java 21.
+        for (value, java) in [
+            (45.0f32, "45.0"),
+            (0.3, "0.3"),
+            (1.0e7, "1.0E7"),
+            (1.234_567_8e-4, "1.2345678E-4"),
+            (-0.0, "-0.0"),
+            (f32::NEG_INFINITY, "-Infinity"),
+        ] {
+            assert_eq!(java_float_string(value), java, "{value:?}");
         }
     }
 }

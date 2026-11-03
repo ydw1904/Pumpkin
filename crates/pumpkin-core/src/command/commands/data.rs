@@ -11,6 +11,7 @@
     clippy::redundant_closure_for_method_calls
 )]
 
+use std::fmt::Write;
 use std::sync::Arc;
 
 use pumpkin_data::translation;
@@ -38,6 +39,7 @@ use crate::command::errors::command_syntax_error::CommandSyntaxError;
 use crate::command::errors::error_types::CommandErrorType;
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
+use crate::command::{java_double_string, java_float_string};
 use crate::entity::EntityBase;
 use crate::server::Server;
 use crate::world::World;
@@ -90,116 +92,253 @@ pub const ERROR_ENTITY_INVALID: CommandErrorType<0> = CommandErrorType::new(
     translation::java::COMMANDS_DATA_ENTITY_INVALID,
 );
 
+/// Vanilla `StringTag.quoteAndEscape`: quotes with whichever quote mark the string doesn't
+/// use first, preferring `"`.
+fn quote_and_escape(input: &str) -> String {
+    let mut body = String::with_capacity(input.len());
+    let mut quote = None;
+    for c in input.chars() {
+        match c {
+            '\\' => body.push_str("\\\\"),
+            '"' | '\'' => {
+                let quote = *quote.get_or_insert(if c == '"' { '\'' } else { '"' });
+                if quote == c {
+                    body.push('\\');
+                }
+                body.push(c);
+            }
+            '\u{8}' => body.push_str("\\b"),
+            '\t' => body.push_str("\\t"),
+            '\n' => body.push_str("\\n"),
+            '\u{c}' => body.push_str("\\f"),
+            '\r' => body.push_str("\\r"),
+            c if c < ' ' => {
+                let _ = write!(body, "\\x{:02X}", c as u32);
+            }
+            c => body.push(c),
+        }
+    }
+    let quote = quote.unwrap_or('"');
+    format!("{quote}{body}{quote}")
+}
+
+/// The order a Java `HashMap` filled one key at a time iterates its keys in, which is the order
+/// vanilla prints compound keys in. Keys sharing a bucket keep insertion order in Java, which
+/// is unknown here, so they fall back to name order.
+fn java_hash_map_key_order(compound: &NbtCompound) -> Vec<&str> {
+    let mut capacity: usize = 16;
+    while compound.child_tags.len() > capacity / 4 * 3 {
+        capacity *= 2;
+    }
+    let bucket = |key: &str| {
+        let hash = key.encode_utf16().fold(0i32, |hash, unit| {
+            hash.wrapping_mul(31).wrapping_add(i32::from(unit))
+        }) as u32;
+        (hash ^ (hash >> 16)) as usize & (capacity - 1)
+    };
+    let mut keys: Vec<&str> = compound.child_tags.keys().map(|key| &**key).collect();
+    keys.sort_by(|a, b| bucket(a).cmp(&bucket(b)).then_with(|| a.cmp(b)));
+    keys
+}
+
+/// Vanilla `Tag.toString` (`StringTagVisitor`), used where a tag is put into a message as text.
 #[must_use]
-pub fn snbt_colorful_display(tag: &NbtTag, _depth: usize) -> TextComponent {
-    let folded = TextComponent::text("<...>").color_named(NamedColor::Gray);
+pub fn snbt_string(tag: &NbtTag) -> String {
+    fn join<T>(items: &[T], format: impl Fn(&T) -> String) -> String {
+        items.iter().map(format).collect::<Vec<_>>().join(",")
+    }
     match tag {
-        NbtTag::End => TextComponent::text(""),
-        NbtTag::Byte(value) => TextComponent::text(format!("{value}"))
-            .color_named(NamedColor::Gold)
-            .add_child(TextComponent::text("b").color_named(NamedColor::Red)),
-        NbtTag::Short(value) => TextComponent::text(format!("{value}"))
-            .color_named(NamedColor::Gold)
-            .add_child(TextComponent::text("s").color_named(NamedColor::Red)),
-        NbtTag::Int(value) => TextComponent::text(format!("{value}")).color_named(NamedColor::Gold),
-        NbtTag::Long(value) => TextComponent::text(format!("{value}"))
-            .color_named(NamedColor::Gold)
-            .add_child(TextComponent::text("L").color_named(NamedColor::Red)),
-        NbtTag::Float(value) => TextComponent::text(format!("{value}"))
-            .color_named(NamedColor::Gold)
-            .add_child(TextComponent::text("f").color_named(NamedColor::Red)),
-        NbtTag::Double(value) => TextComponent::text(format!("{value}"))
-            .color_named(NamedColor::Gold)
-            .add_child(TextComponent::text("d").color_named(NamedColor::Red)),
-        NbtTag::ByteArray(value) => {
-            let mut content = TextComponent::text("[")
-                .add_child(TextComponent::text("B").color_named(NamedColor::Red))
-                .add_child(TextComponent::text("; "));
+        NbtTag::End => "END".to_string(),
+        NbtTag::Byte(value) => format!("{value}b"),
+        NbtTag::Short(value) => format!("{value}s"),
+        NbtTag::Int(value) => value.to_string(),
+        NbtTag::Long(value) => format!("{value}L"),
+        NbtTag::Float(value) => format!("{}f", java_float_string(*value)),
+        NbtTag::Double(value) => format!("{}d", java_double_string(*value)),
+        NbtTag::String(value) => quote_and_escape(value),
+        NbtTag::ByteArray(values) => format!("[B;{}]", join(values, |v| format!("{v}B"))),
+        NbtTag::IntArray(values) => format!("[I;{}]", join(values, ToString::to_string)),
+        NbtTag::LongArray(values) => format!("[L;{}]", join(values, |v| format!("{v}L"))),
+        NbtTag::List(values) => format!("[{}]", join(values, snbt_string)),
+        NbtTag::Compound(compound) => {
+            let mut keys: Vec<&str> = compound.child_tags.keys().map(|key| &**key).collect();
+            keys.sort_unstable();
+            let entries = join(&keys, |key| {
+                let unquoted = !key.eq_ignore_ascii_case("true")
+                    && !key.eq_ignore_ascii_case("false")
+                    && key.starts_with(|c: char| c.is_ascii_alphabetic() || c == '.' || c == '_')
+                    && key
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '+' | '-'));
+                let key_text = if unquoted {
+                    (*key).to_string()
+                } else {
+                    quote_and_escape(key)
+                };
+                format!("{key_text}:{}", snbt_string(&compound.child_tags[*key]))
+            });
+            format!("{{{entries}}}")
+        }
+    }
+}
 
-            for (index, byte) in value.iter().take(128).enumerate() {
-                content = content
-                    .add_child(TextComponent::text(format!("{byte}")))
-                    .add_child(TextComponent::text("b").color_named(NamedColor::Red));
-                if index < value.len() - 1 {
-                    content = content.add_child(TextComponent::text(", "));
-                }
-            }
+/// Vanilla `NbtUtils.toPrettyComponent`: `TextComponentTagVisitor` with no indentation.
+#[must_use]
+pub fn snbt_colorful_display(tag: &NbtTag) -> TextComponent {
+    let mut visitor = PrettyTagVisitor {
+        result: TextComponent::empty(),
+        depth: 0,
+    };
+    visitor.visit(tag);
+    visitor.result
+}
 
-            if value.len() > 128 {
-                content = content.add_child(folded);
-            }
+/// Vanilla `TextComponentTagVisitor.MAX_DEPTH`.
+const MAX_DEPTH: usize = 64;
+/// Vanilla `TextComponentTagVisitor.MAX_LENGTH`.
+const MAX_LENGTH: usize = 128;
+/// Vanilla `TextComponentTagVisitor.INLINE_LIST_THRESHOLD`.
+const INLINE_LIST_THRESHOLD: usize = 8;
 
-            content.add_child(TextComponent::text("]"))
+struct PrettyTagVisitor {
+    result: TextComponent,
+    depth: usize,
+}
+
+impl PrettyTagVisitor {
+    fn append(&mut self, component: TextComponent) {
+        self.result =
+            std::mem::replace(&mut self.result, TextComponent::empty()).add_child(component);
+    }
+
+    fn plain(&mut self, text: &str) {
+        self.append(TextComponent::text(text.to_string()));
+    }
+
+    fn colored(&mut self, text: String, color: NamedColor) {
+        self.append(TextComponent::text(text).color_named(color));
+    }
+
+    fn number(&mut self, value: String, suffix: &str) {
+        self.colored(value, NamedColor::Gold);
+        if !suffix.is_empty() {
+            self.colored(suffix.to_string(), NamedColor::Red);
         }
-        NbtTag::String(value) => {
-            let escaped = value.replace('"', "\\\"");
-            TextComponent::text(format!("\"{escaped}\"")).color_named(NamedColor::Green)
+    }
+
+    fn folded(&mut self) {
+        self.colored("<...>".to_string(), NamedColor::Gray);
+    }
+
+    fn array<T: ToString>(&mut self, prefix: &str, values: &[T], suffix: &str) {
+        self.plain("[");
+        self.colored(prefix.to_string(), NamedColor::Red);
+        self.plain(";");
+        for (i, value) in values.iter().take(MAX_LENGTH).enumerate() {
+            self.plain(" ");
+            self.number(value.to_string(), suffix);
+            if i != values.len() - 1 {
+                self.plain(",");
+            }
         }
-        NbtTag::List(value) => {
-            let mut content = TextComponent::text("[");
-            for (index, tag) in value.iter().take(128).enumerate() {
-                content = content.add_child(snbt_colorful_display(tag, 0));
-                if index < value.len() - 1 {
-                    content = content.add_child(TextComponent::text(", "));
+        if values.len() > MAX_LENGTH {
+            self.folded();
+        }
+        self.plain("]");
+    }
+
+    /// Only the text between the quotes is colored.
+    fn quoted(&mut self, quoted: &str, color: NamedColor) {
+        let quote = &quoted[..1];
+        let inner = &quoted[1..quoted.len() - 1];
+        self.plain(quote);
+        self.colored(inner.to_string(), color);
+        self.plain(quote);
+    }
+
+    fn sub_tag(&mut self, tag: &NbtTag) {
+        self.depth += 1;
+        self.visit(tag);
+        self.depth -= 1;
+    }
+
+    fn visit(&mut self, tag: &NbtTag) {
+        match tag {
+            NbtTag::End => {}
+            NbtTag::Byte(value) => self.number(value.to_string(), "b"),
+            NbtTag::Short(value) => self.number(value.to_string(), "s"),
+            NbtTag::Int(value) => self.number(value.to_string(), ""),
+            NbtTag::Long(value) => self.number(value.to_string(), "L"),
+            NbtTag::Float(value) => self.number(java_float_string(*value), "f"),
+            NbtTag::Double(value) => self.number(java_double_string(*value), "d"),
+            NbtTag::String(value) => self.quoted(&quote_and_escape(value), NamedColor::Green),
+            NbtTag::ByteArray(values) => self.array("B", values, "b"),
+            NbtTag::IntArray(values) => self.array("I", values, ""),
+            NbtTag::LongArray(values) => self.array("L", values, "L"),
+            NbtTag::List(values) => {
+                self.plain("[");
+                if values.is_empty() {
+                    // `[]`
+                } else if self.depth >= MAX_DEPTH {
+                    self.folded();
+                } else if values.len() >= INLINE_LIST_THRESHOLD
+                    || values.iter().all(|value| {
+                        matches!(
+                            value,
+                            NbtTag::Byte(_)
+                                | NbtTag::Short(_)
+                                | NbtTag::Int(_)
+                                | NbtTag::Long(_)
+                                | NbtTag::Float(_)
+                                | NbtTag::Double(_)
+                        )
+                    })
+                {
+                    // Vanilla doesn't fold inline lists.
+                    for (i, value) in values.iter().enumerate() {
+                        if i != 0 {
+                            self.plain(", ");
+                        }
+                        self.sub_tag(value);
+                    }
+                } else {
+                    for (i, value) in values.iter().take(MAX_LENGTH).enumerate() {
+                        self.sub_tag(value);
+                        if i != values.len() - 1 {
+                            self.plain(", ");
+                        }
+                    }
+                    if values.len() > MAX_LENGTH {
+                        self.folded();
+                    }
                 }
+                self.plain("]");
             }
-            if value.len() > 128 {
-                content = content.add_child(folded);
-            }
-            content.add_child(TextComponent::text("]"))
-        }
-        NbtTag::Compound(value) => {
-            let mut content = TextComponent::text("{");
-            let mut keys: Vec<&Box<str>> = value.child_tags.keys().collect();
-            keys.sort();
-            for (index, key) in keys.into_iter().take(128).enumerate() {
-                let tag = &value.child_tags[key];
-                content = content
-                    .add_child(
-                        TextComponent::text(format!("{key}: ")).color_named(NamedColor::Aqua),
-                    )
-                    .add_child(snbt_colorful_display(tag, 0));
-                if index < value.child_tags.len() - 1 {
-                    content = content.add_child(TextComponent::text(", "));
+            NbtTag::Compound(compound) => {
+                self.plain("{");
+                if compound.is_empty() {
+                    // `{}`
+                } else if self.depth >= MAX_DEPTH {
+                    self.folded();
+                } else {
+                    for (i, key) in java_hash_map_key_order(compound).into_iter().enumerate() {
+                        if i != 0 {
+                            self.plain(", ");
+                        }
+                        let unquoted = key.chars().all(|c| {
+                            c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '+' | '-')
+                        });
+                        if unquoted {
+                            self.colored(key.to_string(), NamedColor::Aqua);
+                        } else {
+                            self.quoted(&quote_and_escape(key), NamedColor::Aqua);
+                        }
+                        self.plain(": ");
+                        self.sub_tag(&compound.child_tags[key]);
+                    }
                 }
+                self.plain("}");
             }
-            if value.child_tags.len() > 128 {
-                content = content.add_child(folded);
-            }
-            content.add_child(TextComponent::text("}"))
-        }
-        NbtTag::IntArray(value) => {
-            let mut content = TextComponent::text("[")
-                .add_child(TextComponent::text("I").color_named(NamedColor::Red))
-                .add_child(TextComponent::text("; "));
-            for (index, int) in value.iter().take(128).enumerate() {
-                content = content
-                    .add_child(TextComponent::text(format!("{int}")).color_named(NamedColor::Gold));
-                if index < value.len() - 1 {
-                    content = content.add_child(TextComponent::text(", "));
-                }
-            }
-            if value.len() > 128 {
-                content = content.add_child(folded);
-            }
-            content.add_child(TextComponent::text("]"))
-        }
-        NbtTag::LongArray(value) => {
-            let mut content = TextComponent::text("[")
-                .add_child(TextComponent::text("L").color_named(NamedColor::Red))
-                .add_child(TextComponent::text("; "));
-            for (index, long) in value.iter().take(128).enumerate() {
-                content = content
-                    .add_child(TextComponent::text(format!("{long}")).color_named(NamedColor::Gold))
-                    .add_child(TextComponent::text("L").color_named(NamedColor::Red));
-                if index < value.len() - 1 {
-                    content = content.add_child(TextComponent::text(", "));
-                }
-            }
-            if value.len() > 128 {
-                content = content.add_child(folded);
-            }
-            content.add_child(TextComponent::text("]"))
         }
     }
 }
@@ -270,10 +409,7 @@ impl DataAccessor for EntityDataAccessor {
         TextComponent::translate_cross(
             translation::java::COMMANDS_DATA_ENTITY_QUERY,
             translation::java::COMMANDS_DATA_ENTITY_QUERY,
-            [
-                self.entity.get_display_name(),
-                snbt_colorful_display(data, 0),
-            ],
+            [self.entity.get_display_name(), snbt_colorful_display(data)],
         )
     }
 
@@ -302,6 +438,12 @@ impl BlockDataAccessor {
             return Err(ERROR_BLOCK_INVALID.create_without_context());
         }
         Ok(Self { pos, world })
+    }
+
+    /// The x, y and z message arguments vanilla passes separately.
+    fn pos_args(&self) -> [TextComponent; 3] {
+        let BlockPos(pos) = self.pos;
+        [pos.x, pos.y, pos.z].map(|coordinate| TextComponent::text(coordinate.to_string()))
     }
 }
 
@@ -332,10 +474,7 @@ impl DataAccessor for BlockDataAccessor {
         TextComponent::translate_cross(
             translation::java::COMMANDS_DATA_BLOCK_MODIFIED,
             translation::java::COMMANDS_DATA_BLOCK_MODIFIED,
-            [TextComponent::text(format!(
-                "{}, {}, {}",
-                self.pos.0.x, self.pos.0.y, self.pos.0.z
-            ))],
+            self.pos_args(),
         )
     }
 
@@ -343,13 +482,7 @@ impl DataAccessor for BlockDataAccessor {
         TextComponent::translate_cross(
             translation::java::COMMANDS_DATA_BLOCK_QUERY,
             translation::java::COMMANDS_DATA_BLOCK_QUERY,
-            [
-                TextComponent::text(format!(
-                    "{}, {}, {}",
-                    self.pos.0.x, self.pos.0.y, self.pos.0.z
-                )),
-                snbt_colorful_display(data, 0),
-            ],
+            [self.pos_args().as_slice(), &[snbt_colorful_display(data)]].concat(),
         )
     }
 
@@ -415,7 +548,7 @@ impl DataAccessor for StorageDataAccessor {
             translation::java::COMMANDS_DATA_STORAGE_QUERY,
             [
                 TextComponent::text(self.id.clone()),
-                snbt_colorful_display(data, 0),
+                snbt_colorful_display(data),
             ],
         )
     }
@@ -452,15 +585,14 @@ pub fn get_single_tag(
 fn get_as_text(tag: &NbtTag) -> Result<String, CommandSyntaxError> {
     match tag {
         NbtTag::String(s) => Ok(s.to_string()),
-        NbtTag::Byte(b) => Ok(b.to_string()),
-        NbtTag::Short(s) => Ok(s.to_string()),
-        NbtTag::Int(i) => Ok(i.to_string()),
-        NbtTag::Long(l) => Ok(l.to_string()),
-        NbtTag::Float(f) => Ok(f.to_string()),
-        NbtTag::Double(d) => Ok(d.to_string()),
+        NbtTag::Byte(_)
+        | NbtTag::Short(_)
+        | NbtTag::Int(_)
+        | NbtTag::Long(_)
+        | NbtTag::Float(_)
+        | NbtTag::Double(_) => Ok(snbt_string(tag)),
         _ => {
-            Err(ERROR_EXPECTED_VALUE
-                .create_without_context(TextComponent::text(format!("{tag:?}"))))
+            Err(ERROR_EXPECTED_VALUE.create_without_context(TextComponent::text(snbt_string(tag))))
         }
     }
 }
@@ -748,7 +880,7 @@ fn execute_modify(
                 }
                 let NbtTag::Compound(compound) = tag else {
                     return Err(ERROR_EXPECTED_OBJECT
-                        .create_without_context(TextComponent::text(format!("{tag:?}"))));
+                        .create_without_context(TextComponent::text(snbt_string(tag))));
                 };
                 combined.merge(compound);
             }
@@ -759,7 +891,7 @@ fn execute_modify(
                 |target| {
                     let NbtTag::Compound(target_object) = target else {
                         return Err(ERROR_EXPECTED_OBJECT
-                            .create_without_context(TextComponent::text(format!("{target:?}"))));
+                            .create_without_context(TextComponent::text(snbt_string(target))));
                     };
                     let original = target_object.clone();
                     target_object.merge(&combined);
@@ -875,11 +1007,10 @@ fn add_modify_sources<B: ArgumentBuilder>(
     };
 
     // value <value>
-    let node = node.then(
-        literal("value").then(
+    let node =
+        node.then(literal("value").then(
             argument("value", NbtTagArgumentType).executes(executor(None, SourceMode::Value)),
-        ),
-    );
+        ));
 
     // `then` replaces a child with the same name, so each literal collects every source kind.
     let mut from_node = literal("from");
