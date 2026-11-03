@@ -14,6 +14,7 @@ use pumpkin_protocol::bedrock::server::ActorEventID;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::random::gameplay::game_random;
+use pumpkin_world::world::BlockFlags;
 
 use crate::entity::ageable::AgeableMob;
 use crate::entity::ai::behavior::hunting::{self, Hunt};
@@ -234,6 +235,28 @@ impl Mob for RavagerEntity {
         };
         if new_speed != speed {
             living.set_attribute_base(&Attributes::MOVEMENT_SPEED, new_speed);
+        }
+
+        let entity = &living.entity;
+        let world = entity.world.load_full();
+        if entity.horizontal_collision.load(Ordering::Relaxed)
+            && world.level_info.load().game_rules.mob_griefing
+        {
+            let mut destroyed_block = false;
+            let bounding_box = entity.bounding_box.load().expand_all(0.2);
+            for pos in BlockPos::between_closed(
+                BlockPos::floored_v(bounding_box.min),
+                BlockPos::floored_v(bounding_box.max),
+            ) {
+                if world.get_block(&pos).has_tag(&tag::Block::MINECRAFT_LEAVES) {
+                    destroyed_block |= world
+                        .break_block(&pos, None, BlockFlags::NOTIFY_ALL)
+                        .is_some();
+                }
+            }
+            if !destroyed_block && entity.on_ground.load(Ordering::Relaxed) {
+                living.jump();
+            }
         }
 
         if self.roar_tick.load(Ordering::Relaxed) > 0
