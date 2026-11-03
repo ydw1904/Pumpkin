@@ -1201,6 +1201,26 @@ impl MobEntity {
     }
 }
 
+/// Vanilla `EntityGetter.isUnobstructed(entity)`: no living entity that blocks building, other
+/// than one riding with `mob`, overlaps its bounding box.
+pub fn is_unobstructed<M: Mob + ?Sized>(mob: &M, world: &World) -> bool {
+    let entity = mob.get_entity();
+    let bounds = entity.bounding_box.load();
+    let root_vehicle = entity.root_vehicle_id();
+    let unobstructed = |other: &dyn EntityBase| {
+        let other = other.get_entity();
+        !other.is_alive() || !other.blocks_building || other.root_vehicle_id() == root_vehicle
+    };
+    world
+        .get_entities_at_box(&bounds)
+        .iter()
+        .all(|other| unobstructed(other.as_ref()))
+        && world
+            .get_players_at_box(&bounds)
+            .iter()
+            .all(|player| player.is_spectator() || unobstructed(player.as_ref()))
+}
+
 const RANDOM_DESPAWN_IDLE_TICKS: i32 = 600;
 const RANDOM_DESPAWN_CHANCE: u32 = 800;
 
@@ -1545,10 +1565,10 @@ pub trait Mob: EntityBase + Send + Sync {
 
     fn set_saddled(&self, _saddled: bool) {}
 
+    /// Vanilla `Mob.checkSpawnObstruction`.
     fn check_spawn_obstruction(&self, world: &World) -> bool {
-        let bounding_box = self.get_entity().bounding_box.load();
-        !world.contains_any_liquid(bounding_box)
-            && world.get_entities_at_box(&bounding_box).is_empty()
+        !world.contains_any_liquid(self.get_entity().bounding_box.load())
+            && is_unobstructed(self, world)
     }
 
     /// Per-mob tick hook called each tick before AI runs. Override for mob-specific logic.
