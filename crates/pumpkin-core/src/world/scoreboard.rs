@@ -481,6 +481,17 @@ impl Scoreboard {
         }
     }
 
+    /// Vanilla `ScoreAccess.lock` / `unlock`, which change the score without syncing it.
+    pub fn set_score_locked(&mut self, holder: &str, objective_name: &str, locked: bool) {
+        if let Some(score) = self
+            .scores
+            .get_mut(objective_name)
+            .and_then(|scores| scores.get_mut(holder))
+        {
+            score.locked = locked;
+        }
+    }
+
     pub fn add_score(
         &mut self,
         target: &impl ScoreboardTarget,
