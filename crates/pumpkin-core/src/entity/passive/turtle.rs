@@ -110,6 +110,20 @@ impl Animal for TurtleEntity {
 }
 
 impl Mob for TurtleEntity {
+    /// Vanilla `Turtle.getWalkTargetValue`; turtles here never head home, so water always counts.
+    fn get_walk_target_value(&self, pos: &BlockPos) -> f32 {
+        let world = self.get_entity().world.load();
+        if world.get_fluid(pos).has_tag(&tag::Fluid::MINECRAFT_WATER)
+            || world
+                .get_block(&pos.down())
+                .has_tag(&tag::Block::MINECRAFT_SAND)
+        {
+            10.0
+        } else {
+            world.get_pathfinding_cost_from_light_levels(pos)
+        }
+    }
+
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
         let sound = if self.get_entity().age.load(Ordering::Relaxed) < 0 {
             Sound::EntityTurtleShambleBaby

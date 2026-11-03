@@ -209,6 +209,16 @@ impl Animal for MooshroomEntity {
 }
 
 impl Mob for MooshroomEntity {
+    /// Vanilla `MushroomCow.getWalkTargetValue`.
+    fn get_walk_target_value(&self, pos: &BlockPos) -> f32 {
+        let world = self.get_entity().world.load();
+        if world.get_block(&pos.down()) == &pumpkin_data::Block::MYCELIUM {
+            10.0
+        } else {
+            world.get_pathfinding_cost_from_light_levels(pos)
+        }
+    }
+
     /// Vanilla `AbstractCow.getSoundSet` is the classic cow for mooshrooms.
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
         let sound = CowSoundVariant::Classic.step_sound(self.is_baby());

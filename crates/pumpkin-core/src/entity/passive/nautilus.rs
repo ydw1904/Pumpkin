@@ -193,6 +193,11 @@ impl CustomSound for NautilusEntity {
 }
 
 impl Mob for NautilusEntity {
+    /// Vanilla `AbstractNautilus.getWalkTargetValue`.
+    fn get_walk_target_value(&self, _pos: &BlockPos) -> f32 {
+        0.0
+    }
+
     fn is_tamed(&self) -> bool {
         self.is_tame()
     }

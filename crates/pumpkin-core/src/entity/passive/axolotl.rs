@@ -366,6 +366,11 @@ impl Animal for AxolotlEntity {
 }
 
 impl Mob for AxolotlEntity {
+    /// Vanilla `Axolotl.getWalkTargetValue`.
+    fn get_walk_target_value(&self, _pos: &pumpkin_util::math::position::BlockPos) -> f32 {
+        0.0
+    }
+
     fn as_ageable(&self) -> Option<&dyn AgeableMob> {
         Some(self)
     }

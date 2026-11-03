@@ -226,6 +226,23 @@ impl Animal for StriderEntity {
 }
 
 impl Mob for StriderEntity {
+    /// Vanilla `Strider.getWalkTargetValue`.
+    fn get_walk_target_value(&self, pos: &BlockPos) -> f32 {
+        let entity = self.get_entity();
+        if entity
+            .world
+            .load()
+            .get_fluid(pos)
+            .has_tag(&tag::Fluid::MINECRAFT_LAVA)
+        {
+            10.0
+        } else if entity.touching_lava.load(Ordering::Relaxed) {
+            f32::NEG_INFINITY
+        } else {
+            0.0
+        }
+    }
+
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
         let sound = if self.get_entity().touching_lava.load(Ordering::Relaxed) {
             Sound::EntityStriderStepLava

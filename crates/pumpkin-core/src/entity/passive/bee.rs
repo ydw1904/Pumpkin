@@ -244,6 +244,15 @@ impl LookControlTrait for BeeLookControl {
 }
 
 impl Mob for BeeEntity {
+    /// Vanilla `Bee.getWalkTargetValue`.
+    fn get_walk_target_value(&self, pos: &BlockPos) -> f32 {
+        if self.get_entity().world.load().get_block_state(pos).is_air() {
+            10.0
+        } else {
+            0.0
+        }
+    }
+
     fn mob_is_flapping(&self) -> bool {
         let entity = self.get_entity();
         !entity.on_ground.load(Ordering::Relaxed)
