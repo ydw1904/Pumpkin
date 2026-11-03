@@ -4454,8 +4454,19 @@ impl World {
         }
     }
 
-    #[allow(clippy::too_many_lines)]
+    /// Respawns the player, ignoring requests that arrive while a respawn is still running.
+    /// Vanilla respawns on the main thread, so a second request already finds the player alive;
+    /// here two concurrent respawns could both use the respawn anchor.
     pub async fn respawn_player(self: &Arc<Self>, player: &Arc<Player>, alive: bool) {
+        if player.respawning.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        self.respawn_player_now(player, alive).await;
+        player.respawning.store(false, Ordering::Release);
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn respawn_player_now(self: &Arc<Self>, player: &Arc<Player>, alive: bool) {
         let last_death_location = player
             .last_death_location
             .lock()

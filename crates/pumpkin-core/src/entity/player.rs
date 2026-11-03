@@ -613,6 +613,8 @@ pub struct Player {
     pub seen_credits: AtomicBool,
     /// Vanilla `wonGame`: watching the credits after leaving the End, waiting to respawn.
     pub won_game: AtomicBool,
+    /// Set while `World::respawn_player` runs for this player.
+    pub respawning: AtomicBool,
     pub warden_spawn_tracker: std::sync::Mutex<WardenSpawnTracker>,
     pub score: AtomicI32,
     pub spawn_extra_particles_on_fall: AtomicBool,
@@ -951,6 +953,7 @@ impl Player {
             bedrock_skin: ArcSwap::new(Arc::new(bedrock_skin)),
             seen_credits: AtomicBool::new(false),
             won_game: AtomicBool::new(false),
+            respawning: AtomicBool::new(false),
             warden_spawn_tracker: std::sync::Mutex::new(WardenSpawnTracker::default()),
             score: AtomicI32::new(0),
             spawn_extra_particles_on_fall: AtomicBool::new(false),
