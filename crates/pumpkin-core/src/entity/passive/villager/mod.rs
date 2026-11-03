@@ -2292,6 +2292,17 @@ impl VillagerEntity {
             (time.world_age, time.query_day())
         };
         self.decay_gossips(game_time);
+        // The brain runs in vanilla's `customServerAiStep`, which `Mob.isEffectiveAi` skips for
+        // NoAI villagers, so they keep their profession and trades.
+        if !self.mob_entity.is_no_ai() {
+            self.tick_brain(&world, game_time, day);
+        }
+        // Vanilla `Mob.aiStep` picks items up after the brain has ticked.
+        self.pick_up_items(&world);
+    }
+
+    fn tick_brain(&self, world: &Arc<World>, game_time: i64, day: i64) {
+        let world = world.clone();
         let age = self.get_entity().tick_count.load(Ordering::Relaxed);
         // Vanilla's nearest entity and item sensors refresh every 20 ticks.
         let sensed = age % 20 == 0;
@@ -2312,8 +2323,6 @@ impl VillagerEntity {
         self.tick_show_trades(&world, game_time, activity);
         self.reset_profession();
         self.tick_golem_spawning(&world, game_time);
-        // Vanilla `Mob.aiStep` picks items up after the brain has ticked.
-        self.pick_up_items(&world);
     }
 }
 
