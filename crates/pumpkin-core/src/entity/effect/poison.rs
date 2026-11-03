@@ -10,9 +10,10 @@ impl MobEffect for PoisonMobEffect {
         if duration <= 0 {
             return false;
         }
-        let tick_rate = 25 >> amplifier.min(4);
+        // Java masks the shift to 5 bits.
+        let tick_rate = 25u32 >> (amplifier & 31);
         if tick_rate > 0 {
-            (duration as u32).is_multiple_of(tick_rate as u32)
+            (duration as u32).is_multiple_of(tick_rate)
         } else {
             true
         }
