@@ -623,6 +623,11 @@ impl ScreenHandler for CraftingTableScreenHandler {
         self.default_on_closed(player);
         self.drop_inventory(player, self.crafting_inventory.clone());
     }
+
+    fn can_take_item_for_pick_all(&self, slot_index: usize) -> bool {
+        slot_index != 0
+    }
+
     fn quick_move(&mut self, player: &dyn InventoryPlayer, slot_index: i32) -> ItemStack {
         let slot = self.get_behaviour().slots[slot_index as usize].clone();
         if slot.has_stack() {
