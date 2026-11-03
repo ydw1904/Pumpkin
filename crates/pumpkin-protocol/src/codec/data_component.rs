@@ -2591,19 +2591,32 @@ impl DataComponentCodec<Self> for WrittenBookContentImpl {
     }
 }
 
+// Vanilla `ArmorTrim.STREAM_CODEC`: two registry holders, each sent as its id + 1 (0 would
+// announce an inline definition, which the client then tries to read).
 impl DataComponentCodec<Self> for TrimImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
-        seq.write_var_int(&VarInt(0))?;
-        seq.write_var_int(&VarInt(0))
+        let material = self
+            .material_enum()
+            .ok_or_else(|| WritingError::Message("trim has an unknown material".into()))?;
+        let pattern = self
+            .pattern_enum()
+            .ok_or_else(|| WritingError::Message("trim has an unknown pattern".into()))?;
+        seq.write_var_int(&VarInt(material.id() as i32 + 1))?;
+        seq.write_var_int(&VarInt(pattern.id() as i32 + 1))
     }
 
     fn deserialize(seq: &mut impl NetworkReadExt) -> Result<Self, ReadingError> {
-        let _material = seq.get_var_int()?;
-        let _pattern = seq.get_var_int()?;
-        Ok(Self {
-            material: NbtTag::String("minecraft:quartz".into()),
-            pattern: NbtTag::String("minecraft:coast".into()),
-        })
+        let material_id = seq.get_var_int()?.0;
+        let material = usize::try_from(material_id - 1)
+            .ok()
+            .and_then(|idx| pumpkin_data::trim_material::TrimMaterial::all().get(idx))
+            .ok_or_else(|| ReadingError::Message(format!("Unknown trim material {material_id}")))?;
+        let pattern_id = seq.get_var_int()?.0;
+        let pattern = usize::try_from(pattern_id - 1)
+            .ok()
+            .and_then(|idx| pumpkin_data::trim_pattern::TrimPattern::all().get(idx))
+            .ok_or_else(|| ReadingError::Message(format!("Unknown trim pattern {pattern_id}")))?;
+        Ok(Self::new(*material, *pattern))
     }
 }
 
