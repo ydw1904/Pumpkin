@@ -498,6 +498,13 @@ pub enum TargetKind {
     Storage,
 }
 
+/// The data sources and targets in vanilla's `DataCommands.ALL_PROVIDERS` order.
+const TARGET_KINDS: [(TargetKind, &str); 3] = [
+    (TargetKind::Entity, "entity"),
+    (TargetKind::Block, "block"),
+    (TargetKind::Storage, "storage"),
+];
+
 impl TargetKind {
     pub fn access(
         &self,
@@ -535,11 +542,10 @@ fn execute_get(
     let accessor = target_kind.access(context, "target")?;
     if !has_path {
         let data = accessor.get_data()?;
-        let result = data.child_tags.len() as i32;
         context
             .source
             .send_feedback(accessor.get_print_success(&NbtTag::Compound(data)), false);
-        return Ok(result);
+        return Ok(1);
     }
 
     let path = context.get_argument::<NbtPath>("path")?;
@@ -577,7 +583,8 @@ fn execute_get(
         NbtTag::ByteArray(arr) => arr.len() as i32,
         NbtTag::IntArray(arr) => arr.len() as i32,
         NbtTag::LongArray(arr) => arr.len() as i32,
-        NbtTag::String(s) => s.len() as i32,
+        // Java `String.length` counts UTF-16 code units.
+        NbtTag::String(s) => s.encode_utf16().count() as i32,
         NbtTag::List(list) => list.len() as i32,
         NbtTag::Compound(compound) => compound.child_tags.len() as i32,
         NbtTag::End => {
@@ -599,9 +606,7 @@ fn execute_merge(context: &CommandContext, target_kind: TargetKind) -> CommandEx
     }
     let old = accessor.get_data()?;
     let mut updated = old.clone();
-    for (k, v) in nbt.child_tags {
-        updated.child_tags.insert(k, v);
-    }
+    updated.merge(&nbt);
     if old == updated {
         return Err(ERROR_MERGE_UNCHANGED.create_without_context());
     }
@@ -741,17 +746,26 @@ fn execute_modify(
                 if is_too_deep(tag, 0) {
                     return Err(ERROR_DATA_TOO_DEEP.create_without_context());
                 }
-                if let NbtTag::Compound(c) = tag {
-                    for (k, v) in &c.child_tags {
-                        combined.child_tags.insert(k.clone(), v.clone());
-                    }
-                } else {
+                let NbtTag::Compound(compound) = tag else {
                     return Err(ERROR_EXPECTED_OBJECT
                         .create_without_context(TextComponent::text(format!("{tag:?}"))));
-                }
+                };
+                combined.merge(compound);
             }
 
-            target_path.set(&mut root, NbtTag::Compound(combined))?
+            target_path.get_or_create(
+                &mut root,
+                &|| NbtTag::Compound(NbtCompound::new()),
+                |target| {
+                    let NbtTag::Compound(target_object) = target else {
+                        return Err(ERROR_EXPECTED_OBJECT
+                            .create_without_context(TextComponent::text(format!("{target:?}"))));
+                    };
+                    let original = target_object.clone();
+                    target_object.merge(&combined);
+                    Ok(i32::from(original != *target_object))
+                },
+            )?
         }
     };
 
@@ -842,18 +856,78 @@ pub fn make_target_arg(
     }
 }
 
+/// Adds the `value`, `from` and `string` sources of `data modify` under `node`.
+fn add_modify_sources<B: ArgumentBuilder>(
+    node: B,
+    target_kind: TargetKind,
+    modify_mode: ModifyMode,
+) -> B {
+    let executor = |source_kind, source_mode| ModifyExecutor {
+        target_kind,
+        modify_mode,
+        source_kind,
+        source_mode,
+    };
+    let string_mode = |has_path, has_start, has_end| SourceMode::String {
+        has_path,
+        has_start,
+        has_end,
+    };
+
+    // value <value>
+    let node = node.then(
+        literal("value").then(
+            argument("value", NbtTagArgumentType).executes(executor(None, SourceMode::Value)),
+        ),
+    );
+
+    // `then` replaces a child with the same name, so each literal collects every source kind.
+    let mut from_node = literal("from");
+    let mut string_node = literal("string");
+    for (source_kind, source_name) in TARGET_KINDS {
+        let source = Some(source_kind);
+        // from <source> [<sourcePath>]
+        from_node = from_node.then(
+            literal(source_name).then(
+                make_target_arg(source_kind, "source")
+                    .executes(executor(source, SourceMode::From { has_path: false }))
+                    .then(
+                        argument("sourcePath", NbtPathArgumentType)
+                            .executes(executor(source, SourceMode::From { has_path: true })),
+                    ),
+            ),
+        );
+
+        // string <source> [<sourcePath>] [<start>] [<end>]
+        string_node = string_node.then(
+            literal(source_name).then(
+                make_target_arg(source_kind, "source")
+                    .executes(executor(source, string_mode(false, false, false)))
+                    .then(
+                        argument("sourcePath", NbtPathArgumentType)
+                            .executes(executor(source, string_mode(true, false, false)))
+                            .then(
+                                argument("start", IntegerArgumentType::any())
+                                    .executes(executor(source, string_mode(true, true, false)))
+                                    .then(
+                                        argument("end", IntegerArgumentType::any()).executes(
+                                            executor(source, string_mode(true, true, true)),
+                                        ),
+                                    ),
+                            ),
+                    ),
+            ),
+        );
+    }
+    node.then(from_node).then(string_node)
+}
+
 pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistry) {
     registry.register_permission_or_panic(Permission::new(
         PERMISSION,
         DESCRIPTION,
         PermissionDefault::Op(PermissionLvl::Two),
     ));
-
-    let all_target_kinds = [
-        (TargetKind::Entity, "entity"),
-        (TargetKind::Block, "block"),
-        (TargetKind::Storage, "storage"),
-    ];
 
     let mut data_cmd = command("data", DESCRIPTION).requires(PERMISSION);
 
@@ -864,7 +938,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
     let mut merge_node = literal("merge");
     let mut get_node = literal("get");
     let mut remove_node = literal("remove");
-    for &(target_kind, name) in &all_target_kinds {
+    for (target_kind, name) in TARGET_KINDS {
         // data merge <target> <nbt>
         merge_node = merge_node.then(literal(name).then(
             make_target_arg(target_kind, "target").then(
@@ -918,110 +992,18 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
     ];
 
     let mut modify_node = literal("modify");
-    for &(target_kind, target_name) in &all_target_kinds {
+    for (target_kind, target_name) in TARGET_KINDS {
         let mut target_path_arg = argument("targetPath", NbtPathArgumentType);
-
-        for &(mod_name, mod_mode) in &modify_modes {
-            let mut mod_node = if mod_name == "insert" {
-                literal("insert").then(argument("index", IntegerArgumentType::any()))
-            } else {
-                literal(mod_name)
-            };
-
-            // value <value>
-            mod_node = mod_node.then(literal("value").then(
-                argument("value", NbtTagArgumentType).executes(ModifyExecutor {
+        for &(mod_name, modify_mode) in &modify_modes {
+            let mod_node = if mod_name == "insert" {
+                literal("insert").then(add_modify_sources(
+                    argument("index", IntegerArgumentType::any()),
                     target_kind,
-                    modify_mode: mod_mode,
-                    source_kind: None,
-                    source_mode: SourceMode::Value,
-                }),
-            ));
-
-            // from & string sources
-            for &(source_kind, source_name) in &all_target_kinds {
-                // from <source> [<sourcePath>]
-                mod_node = mod_node.then(
-                    literal("from").then(
-                        literal(source_name).then(
-                            make_target_arg(source_kind, "source")
-                                .executes(ModifyExecutor {
-                                    target_kind,
-                                    modify_mode: mod_mode,
-                                    source_kind: Some(source_kind),
-                                    source_mode: SourceMode::From { has_path: false },
-                                })
-                                .then(argument("sourcePath", NbtPathArgumentType).executes(
-                                    ModifyExecutor {
-                                        target_kind,
-                                        modify_mode: mod_mode,
-                                        source_kind: Some(source_kind),
-                                        source_mode: SourceMode::From { has_path: true },
-                                    },
-                                )),
-                        ),
-                    ),
-                );
-
-                // string <source> [<sourcePath>] [<start>] [<end>]
-                mod_node = mod_node.then(
-                    literal("string").then(
-                        literal(source_name).then(
-                            make_target_arg(source_kind, "source")
-                                .executes(ModifyExecutor {
-                                    target_kind,
-                                    modify_mode: mod_mode,
-                                    source_kind: Some(source_kind),
-                                    source_mode: SourceMode::String {
-                                        has_path: false,
-                                        has_start: false,
-                                        has_end: false,
-                                    },
-                                })
-                                .then(
-                                    argument("sourcePath", NbtPathArgumentType)
-                                        .executes(ModifyExecutor {
-                                            target_kind,
-                                            modify_mode: mod_mode,
-                                            source_kind: Some(source_kind),
-                                            source_mode: SourceMode::String {
-                                                has_path: true,
-                                                has_start: false,
-                                                has_end: false,
-                                            },
-                                        })
-                                        .then(
-                                            argument("start", IntegerArgumentType::any())
-                                                .executes(ModifyExecutor {
-                                                    target_kind,
-                                                    modify_mode: mod_mode,
-                                                    source_kind: Some(source_kind),
-                                                    source_mode: SourceMode::String {
-                                                        has_path: true,
-                                                        has_start: true,
-                                                        has_end: false,
-                                                    },
-                                                })
-                                                .then(
-                                                    argument("end", IntegerArgumentType::any())
-                                                        .executes(ModifyExecutor {
-                                                            target_kind,
-                                                            modify_mode: mod_mode,
-                                                            source_kind: Some(source_kind),
-                                                            source_mode: SourceMode::String {
-                                                                has_path: true,
-                                                                has_start: true,
-                                                                has_end: true,
-                                                            },
-                                                        }),
-                                                ),
-                                        ),
-                                ),
-                        ),
-                    ),
-                );
-            }
-
+                    modify_mode,
+                ))
+            } else {
+                add_modify_sources(literal(mod_name), target_kind, modify_mode)
+            };
             target_path_arg = target_path_arg.then(mod_node);
         }
 

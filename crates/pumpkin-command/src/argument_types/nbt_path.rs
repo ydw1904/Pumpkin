@@ -217,6 +217,90 @@ impl NbtPathNode {
         }
     }
 
+    /// Vanilla `Node.getOrCreate` over every parent, creating missing children with `child`.
+    fn get_or_create_tags(
+        &self,
+        parents: &[*mut NbtTag],
+        child: &dyn Fn() -> NbtTag,
+    ) -> Vec<*mut NbtTag> {
+        let mut next = Vec::new();
+        for &parent_ptr in parents {
+            // SAFETY: We traverse disjoint paths in the NBT tree.
+            let parent = unsafe { &mut *parent_ptr };
+            match self {
+                Self::CompoundChild(name) => {
+                    if let NbtTag::Compound(compound) = parent {
+                        if !compound.child_tags.contains_key(name.as_str()) {
+                            compound.child_tags.insert(name.clone().into(), child());
+                        }
+                        if let Some(tag) = compound.child_tags.get_mut(name.as_str()) {
+                            next.push(tag as *mut NbtTag);
+                        }
+                    }
+                }
+                Self::AllElements => {
+                    if let NbtTag::List(list) = parent {
+                        if list.is_empty() {
+                            list.push(child());
+                        }
+                        for elem in list.iter_mut() {
+                            next.push(elem as *mut NbtTag);
+                        }
+                    }
+                }
+                Self::IndexedElement(index) => {
+                    if let NbtTag::List(list) = parent {
+                        let size = list.len() as i32;
+                        let actual_index = if *index < 0 { size + index } else { *index };
+                        if actual_index >= 0 && (actual_index as usize) < list.len() {
+                            next.push(&mut list[actual_index as usize] as *mut NbtTag);
+                        }
+                    }
+                }
+                Self::MatchElement(pattern) => {
+                    if let NbtTag::List(list) = parent {
+                        let pattern_tag = NbtTag::Compound(pattern.clone());
+                        let mut found = false;
+                        for elem in list.iter_mut() {
+                            if compare_nbt(&pattern_tag, elem) {
+                                next.push(elem as *mut NbtTag);
+                                found = true;
+                            }
+                        }
+                        if !found {
+                            list.push(pattern_tag);
+                            if let Some(last) = list.last_mut() {
+                                next.push(last as *mut NbtTag);
+                            }
+                        }
+                    }
+                }
+                Self::MatchObject(name, pattern) => {
+                    if let NbtTag::Compound(compound) = parent {
+                        let pattern_tag = NbtTag::Compound(pattern.clone());
+                        if !compound.child_tags.contains_key(name.as_str()) {
+                            compound
+                                .child_tags
+                                .insert(name.clone().into(), pattern_tag.clone());
+                        }
+                        if let Some(tag) = compound.child_tags.get_mut(name.as_str()) {
+                            if compare_nbt(&pattern_tag, tag) {
+                                next.push(tag as *mut NbtTag);
+                            }
+                        }
+                    }
+                }
+                Self::MatchRootObject(pattern) => {
+                    let pattern_tag = NbtTag::Compound(pattern.clone());
+                    if compare_nbt(&pattern_tag, parent) {
+                        next.push(parent as *mut NbtTag);
+                    }
+                }
+            }
+        }
+        next
+    }
+
     pub fn create_preferred_parent_tag(&self) -> NbtTag {
         match self {
             Self::AllElements | Self::IndexedElement(_) | Self::MatchElement(_) => {
@@ -461,92 +545,36 @@ impl NbtPath {
     ) -> Result<Vec<*mut NbtTag>, CommandSyntaxError> {
         let mut current: Vec<*mut NbtTag> = vec![tag as *mut NbtTag];
         for i in 0..self.nodes.len().saturating_sub(1) {
-            let node = &self.nodes[i];
             let next_node = &self.nodes[i + 1];
-            let mut next = Vec::new();
-            for &parent_ptr in &current {
-                // SAFETY: We traverse disjoint paths in the NBT tree.
-                let parent = unsafe { &mut *parent_ptr };
-                match node {
-                    NbtPathNode::CompoundChild(name) => {
-                        if let NbtTag::Compound(compound) = parent {
-                            if !compound.child_tags.contains_key(name.as_str()) {
-                                compound.child_tags.insert(
-                                    name.clone().into(),
-                                    next_node.create_preferred_parent_tag(),
-                                );
-                            }
-                            if let Some(child) = compound.child_tags.get_mut(name.as_str()) {
-                                next.push(child as *mut NbtTag);
-                            }
-                        }
-                    }
-                    NbtPathNode::AllElements => {
-                        if let NbtTag::List(list) = parent {
-                            if list.is_empty() {
-                                list.push(next_node.create_preferred_parent_tag());
-                            }
-                            for elem in list.iter_mut() {
-                                next.push(elem as *mut NbtTag);
-                            }
-                        }
-                    }
-                    NbtPathNode::IndexedElement(index) => {
-                        if let NbtTag::List(list) = parent {
-                            let size = list.len() as i32;
-                            let actual_index = if *index < 0 { size + index } else { *index };
-                            if actual_index >= 0 && (actual_index as usize) < list.len() {
-                                next.push(&mut list[actual_index as usize] as *mut NbtTag);
-                            }
-                        }
-                    }
-                    NbtPathNode::MatchElement(pattern) => {
-                        if let NbtTag::List(list) = parent {
-                            let pattern_tag = NbtTag::Compound(pattern.clone());
-                            let mut found = false;
-                            for elem in list.iter_mut() {
-                                if compare_nbt(&pattern_tag, elem) {
-                                    next.push(elem as *mut NbtTag);
-                                    found = true;
-                                }
-                            }
-                            if !found {
-                                list.push(pattern_tag.clone());
-                                if let Some(last) = list.last_mut() {
-                                    next.push(last as *mut NbtTag);
-                                }
-                            }
-                        }
-                    }
-                    NbtPathNode::MatchObject(name, pattern) => {
-                        if let NbtTag::Compound(compound) = parent {
-                            let pattern_tag = NbtTag::Compound(pattern.clone());
-                            if !compound.child_tags.contains_key(name.as_str()) {
-                                compound
-                                    .child_tags
-                                    .insert(name.clone().into(), pattern_tag.clone());
-                            }
-                            if let Some(child) = compound.child_tags.get_mut(name.as_str()) {
-                                if compare_nbt(&pattern_tag, child) {
-                                    next.push(child as *mut NbtTag);
-                                }
-                            }
-                        }
-                    }
-                    NbtPathNode::MatchRootObject(pattern) => {
-                        let pattern_tag = NbtTag::Compound(pattern.clone());
-                        if compare_nbt(&pattern_tag, parent) {
-                            next.push(parent as *mut NbtTag);
-                        }
-                    }
-                }
-            }
+            let next = self.nodes[i]
+                .get_or_create_tags(&current, &|| next_node.create_preferred_parent_tag());
             if next.is_empty() {
                 return Err(self.create_not_found_exception(i));
             }
             current = next;
         }
         Ok(current)
+    }
+
+    /// Vanilla `NbtPath.getOrCreate`: calls `visit` on each tag at this path, creating missing
+    /// ones with `new_tag`, and sums what it returns.
+    pub fn get_or_create(
+        &self,
+        tag: &mut NbtTag,
+        new_tag: &dyn Fn() -> NbtTag,
+        mut visit: impl FnMut(&mut NbtTag) -> Result<i32, CommandSyntaxError>,
+    ) -> Result<i32, CommandSyntaxError> {
+        let parents = self.get_or_create_parents(tag)?;
+        let targets = match self.nodes.last() {
+            Some(last_node) => last_node.get_or_create_tags(&parents, new_tag),
+            None => parents,
+        };
+        let mut total = 0;
+        for target_ptr in targets {
+            // SAFETY: the targets are disjoint tags inside `tag`, which is borrowed mutably here.
+            total += visit(unsafe { &mut *target_ptr })?;
+        }
+        Ok(total)
     }
 
     /// Sets the value at this path on the given root tag.
