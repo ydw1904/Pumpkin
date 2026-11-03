@@ -412,7 +412,7 @@ impl SpearItem {
         let mut affected = effects.knockback || dealt_damage;
         if effects.knockback {
             let attacker_entity = attacker.get_entity();
-            Self::cause_extra_knockback(attacker_entity, target.as_ref(), MOB_STAB_KNOCKBACK);
+            combat::cause_extra_knockback(attacker_entity, target.as_ref(), MOB_STAB_KNOCKBACK);
             // Vanilla `LivingEntity.getKnockback`.
             let knockback = attacker.get_living_entity().map_or(0.0, |living| {
                 crate::enchantment::EnchantmentHelper::modify_knockback(
@@ -420,7 +420,7 @@ impl SpearItem {
                     living.get_attribute_value(&Attributes::ATTACK_KNOCKBACK) as f32,
                 ) / 2.0
             });
-            Self::cause_extra_knockback(attacker_entity, target.as_ref(), knockback);
+            combat::cause_extra_knockback(attacker_entity, target.as_ref(), knockback);
             target_entity.send_velocity();
         }
 
@@ -458,14 +458,6 @@ impl SpearItem {
             );
         }
         true
-    }
-
-    /// Vanilla `LivingEntity.causeExtraKnockback`.
-    fn cause_extra_knockback(attacker: &Entity, target: &dyn EntityBase, knockback: f32) {
-        if knockback > 0.0 && target.get_living_entity().is_some() {
-            // `handle_knockback` halves the strength like the player attack does.
-            combat::handle_knockback(attacker, target, f64::from(knockback) * 2.0);
-        }
     }
 
     fn look_vector(player: &Player) -> Vector3<f64> {

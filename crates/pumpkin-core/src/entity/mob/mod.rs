@@ -1,5 +1,6 @@
 use super::{Entity, EntityBase, LeashTick, ai::pathfinder::Navigator, living::LivingEntity};
 use crate::block::blocks::bubble_column::SURFACE_UPWARD_ACCELERATION;
+use crate::enchantment::EnchantmentHelper;
 use crate::entity::ai::behavior::temperament::Temperament;
 use crate::entity::ai::brain::Brain;
 use crate::entity::ai::brain::memory::PackedMemories;
@@ -13,6 +14,7 @@ use crate::entity::ai::goal::{
     Controls, GoalReach, escape_danger::EscapeDangerGoal, goal_selector::GoalSelector,
 };
 use crate::entity::ai::sensing::Sensing;
+use crate::entity::combat;
 use crate::entity::living::prevents_armor_change;
 use crate::entity::player::Player;
 use crate::entity::predicate::EntityPredicate;
@@ -29,7 +31,7 @@ use crate::world::game_event::notified_area;
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::damage::DamageType;
-use pumpkin_data::data_component_impl::{EquipmentSlot, EquippableImpl};
+use pumpkin_data::data_component_impl::{DamageTypeImpl, EquipmentSlot, EquippableImpl};
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
@@ -1129,40 +1131,91 @@ impl MobEntity {
         Self::check_surface_water_animal_spawn_rules(world, pos)
     }
 
+    /// Vanilla `Mob.doHurtTarget`: a melee hit with the main hand weapon, `true` when it landed.
     pub fn try_attack(&self, caller: &dyn EntityBase, target: &dyn EntityBase) -> bool {
-        if self.living_entity.dead.load(Relaxed) {
+        let living = &self.living_entity;
+        if living.dead.load(Relaxed) {
             return false;
         }
 
-        let attack_damage: f32 =
-            self.living_entity
-                .get_attribute_value(&Attributes::ATTACK_DAMAGE) as f32;
+        let weapon = living.held_item(caller);
+        // Vanilla `MaceItem.getItemDamageSource` and `getAttackDamageBonus`.
+        let mace_smash = weapon.item.id == Item::MACE.id && combat::can_smash_attack(living);
+        let damage_type = if mace_smash {
+            DamageType::MACE_SMASH
+        } else {
+            weapon
+                .get_data_component::<DamageTypeImpl>()
+                .map_or(DamageType::MOB_ATTACK, |component| component.damage_type)
+        };
+        let mut damage = living.get_attribute_value(&Attributes::ATTACK_DAMAGE) as f32;
+        damage = EnchantmentHelper::modify_damage_against(
+            &weapon,
+            target.get_entity().entity_type,
+            f64::from(damage),
+        ) as f32;
+        if mace_smash {
+            let fall_distance = living.fall_distance.load();
+            damage += EnchantmentHelper::modify_fall_based_damage(&weapon, 0.0).mul_add(
+                fall_distance,
+                combat::mace_smash_damage_bonus(fall_distance),
+            ) as f32;
+        }
 
-        let damaged = target.damage_with_context(
+        let was_hurt = target.damage_with_context(
             target,
-            attack_damage,
-            DamageType::MOB_ATTACK,
+            damage,
+            damage_type,
             None,
             Some(caller),
             Some(caller),
         );
-
-        if damaged {
-            crate::enchantment::EnchantmentHelper::do_post_attack_effects(
+        if was_hurt {
+            // Vanilla `LivingEntity.getKnockback`.
+            let knockback = EnchantmentHelper::modify_knockback(
+                &weapon,
+                living.get_attribute_value(&Attributes::ATTACK_KNOCKBACK) as f32,
+            ) / 2.0;
+            combat::cause_extra_knockback(&living.entity, target, knockback);
+            if mace_smash && target.get_living_entity().is_some() {
+                Self::mace_hurt_enemy(caller, target);
+            }
+            EnchantmentHelper::do_post_attack_effects_with_item_source(
                 target,
-                DamageType::MOB_ATTACK,
+                damage_type,
                 Some(caller),
                 Some(caller),
+                Some(&weapon),
             );
-            self.living_entity
+            living
                 .last_attacking_id
                 .store(target.get_entity().entity_id, Relaxed);
-            self.living_entity
+            living
                 .last_attack_time
-                .store(self.living_entity.entity.tick_count.load(Relaxed), Relaxed);
+                .store(living.entity.tick_count.load(Relaxed), Relaxed);
         }
 
-        damaged
+        was_hurt
+    }
+
+    /// Vanilla `MaceItem.hurtEnemy` for a mob that smashes with a mace.
+    fn mace_hurt_enemy(caller: &dyn EntityBase, target: &dyn EntityBase) {
+        let entity = caller.get_entity();
+        let velocity = entity.velocity.load();
+        entity.set_velocity(Vector3::new(velocity.x, f64::from(0.01f32), velocity.z));
+        let world = entity.world.load();
+        let sound = if !target.get_entity().on_ground.load(Relaxed) {
+            Sound::ItemMaceSmashAir
+        } else if caller
+            .get_living_entity()
+            .is_some_and(|living| living.fall_distance.load() > 5.0)
+        {
+            Sound::ItemMaceSmashGroundHeavy
+        } else {
+            Sound::ItemMaceSmashGround
+        };
+        world.play_sound_fine(sound, caller.sound_source(), &entity.pos.load(), 1.0, 1.0);
+        combat::mace_smash_knockback(&world, caller, target);
     }
 
     /// Vanilla `Mob.lookAt`: turns the body (not only the head) towards `target`, by at most

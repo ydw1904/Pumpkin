@@ -148,6 +148,14 @@ pub fn handle_knockback(attacker: &Entity, victim: &dyn EntityBase, strength: f6
     attacker.velocity.store(velocity.multiply(0.6, 1.0, 0.6));
 }
 
+/// Vanilla `LivingEntity.causeExtraKnockback`, with the vanilla `knockback` strength.
+pub fn cause_extra_knockback(attacker: &Entity, target: &dyn EntityBase, knockback: f32) {
+    if knockback > 0.0 && target.get_living_entity().is_some() {
+        // `handle_knockback` halves the strength like the player attack does.
+        handle_knockback(attacker, target, f64::from(knockback) * 2.0);
+    }
+}
+
 pub fn spawn_sweep_particle(attacker_entity: &Entity, world: &World, pos: &Vector3<f64>) {
     let yaw = attacker_entity.yaw.load();
     let d = -f64::from((yaw.to_radians()).sin());
