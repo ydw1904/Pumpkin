@@ -73,4 +73,14 @@ impl ItemStack {
     pub fn is_hoe(&self) -> bool {
         self.item.has_tag(&tag::Item::MINECRAFT_HOES)
     }
+
+    /// Whether this item may be stored inside container items and shulker boxes; only shulker
+    /// boxes may not.
+    ///
+    /// Mojang name: `canFitInsideContainerItems`
+    #[inline]
+    #[must_use]
+    pub fn can_fit_inside_container_items(&self) -> bool {
+        !self.item.has_tag(&tag::Item::MINECRAFT_SHULKER_BOXES)
+    }
 }
