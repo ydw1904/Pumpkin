@@ -6361,6 +6361,21 @@ impl World {
             && self.get_sky_light_level(position) >= MAX_LIGHT_LEVEL
     }
 
+    /// Vanilla `LevelReader.canSeeSkyFromBelowWater`: below sea level, liquid and blocks that let
+    /// light through don't hide the sky.
+    #[must_use]
+    pub fn can_see_sky_from_below_water(&self, position: &BlockPos) -> bool {
+        if position.0.y >= self.sea_level {
+            return self.can_see_sky(position);
+        }
+        let (x, z) = (position.0.x, position.0.z);
+        self.can_see_sky(&BlockPos::new(x, self.sea_level, z))
+            && (position.0.y + 1..self.sea_level).all(|y| {
+                let state = self.get_block_state(&BlockPos::new(x, y, z));
+                state.opacity == 0 || state.is_liquid()
+            })
+    }
+
     /// [`Self::can_see_sky`] for a sky light the caller already read.
     #[must_use]
     pub const fn can_see_sky_with_light(&self, position: &BlockPos, sky_light: u8) -> bool {

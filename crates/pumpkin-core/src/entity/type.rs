@@ -783,7 +783,7 @@ pub fn check_spawn_rules(
         {
             return false;
         }
-        return game_random().random_range(0..20) == 0 || !world.can_see_sky(pos);
+        return game_random().random_range(0..20) == 0 || !world.can_see_sky_from_below_water(pos);
     }
 
     // Generic mob spawn rules (Iron Golem, Snow Golem, Villager, Phantom, Shulker, Wandering Trader, Ender Dragon, etc.)
