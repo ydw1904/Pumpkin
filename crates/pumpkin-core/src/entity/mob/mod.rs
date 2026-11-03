@@ -1217,6 +1217,53 @@ impl MobEntity {
     }
 }
 
+/// The entity types whose vanilla class extends `Monster`.
+const MONSTERS: &[&EntityType] = &[
+    &EntityType::BLAZE,
+    &EntityType::BOGGED,
+    &EntityType::BREEZE,
+    &EntityType::CAVE_SPIDER,
+    &EntityType::CREAKING,
+    &EntityType::CREEPER,
+    &EntityType::DROWNED,
+    &EntityType::ELDER_GUARDIAN,
+    &EntityType::ENDERMAN,
+    &EntityType::ENDERMITE,
+    &EntityType::EVOKER,
+    &EntityType::GIANT,
+    &EntityType::GUARDIAN,
+    &EntityType::HUSK,
+    &EntityType::ILLUSIONER,
+    &EntityType::PARCHED,
+    &EntityType::PIGLIN,
+    &EntityType::PIGLIN_BRUTE,
+    &EntityType::PILLAGER,
+    &EntityType::RAVAGER,
+    &EntityType::SILVERFISH,
+    &EntityType::SKELETON,
+    &EntityType::SPIDER,
+    &EntityType::STRAY,
+    &EntityType::VEX,
+    &EntityType::VINDICATOR,
+    &EntityType::WARDEN,
+    &EntityType::WITCH,
+    &EntityType::WITHER,
+    &EntityType::WITHER_SKELETON,
+    &EntityType::ZOGLIN,
+    &EntityType::ZOMBIE,
+    &EntityType::ZOMBIE_VILLAGER,
+    &EntityType::ZOMBIFIED_PIGLIN,
+];
+
+fn is_monster(entity_type: &EntityType) -> bool {
+    MONSTERS.iter().any(|monster| monster.id == entity_type.id)
+}
+
+/// Vanilla `Monster.getWalkTargetValue`: monsters prefer the dark.
+pub fn monster_walk_target_value(world: &World, pos: &BlockPos) -> f32 {
+    -world.get_pathfinding_cost_from_light_levels(pos)
+}
+
 /// Vanilla `EntityGetter.isUnobstructed(entity)`: no living entity that blocks building, other
 /// than one riding with `mob`, overlaps its bounding box.
 pub fn is_unobstructed<M: Mob + ?Sized>(mob: &M, world: &World) -> bool {
@@ -1889,8 +1936,15 @@ pub trait Mob: EntityBase + Send + Sync {
 
     /// How much this mob likes standing on `pos`, used to rank stroll candidates.
     fn get_walk_target_value(&self, pos: &BlockPos) -> f32 {
-        self.as_animal()
-            .map_or(0.0, |animal| animal.animal_walk_target_value(pos))
+        if let Some(animal) = self.as_animal() {
+            return animal.animal_walk_target_value(pos);
+        }
+        let entity = self.get_entity();
+        if is_monster(entity.entity_type) {
+            monster_walk_target_value(&entity.world.load(), pos)
+        } else {
+            0.0
+        }
     }
 
     fn as_tamable(&self) -> Option<&dyn crate::entity::passive::tamable::TamableAnimal> {

@@ -2,6 +2,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::{damage::DamageType, sound::Sound};
 
 use crate::entity::ai::behavior::hunting::{self, Hunt};
@@ -34,6 +35,18 @@ fn outside_melee_range(hunter: &dyn Mob, target: &LivingEntity, _world: &World) 
         .load()
         .squared_distance_to_vec(&hunter_pos)
         > 9.0
+}
+
+/// Vanilla `Guardian.getWalkTargetValue`.
+pub fn guardian_walk_target_value(
+    world: &World,
+    pos: &pumpkin_util::math::position::BlockPos,
+) -> f32 {
+    if world.get_fluid(pos).has_tag(&tag::Fluid::MINECRAFT_WATER) {
+        10.0 + world.get_pathfinding_cost_from_light_levels(pos)
+    } else {
+        crate::entity::mob::monster_walk_target_value(world, pos)
+    }
 }
 
 pub const GUARDIAN_HUNTS: &[Hunt] =
@@ -95,6 +108,10 @@ impl CustomSound for GuardianEntity {
 }
 
 impl Mob for GuardianEntity {
+    fn get_walk_target_value(&self, pos: &pumpkin_util::math::position::BlockPos) -> f32 {
+        guardian_walk_target_value(&self.get_entity().world.load(), pos)
+    }
+
     /// Vanilla `Guardian.checkSpawnObstruction`.
     fn check_spawn_obstruction(&self, world: &crate::world::World) -> bool {
         crate::entity::mob::is_unobstructed(self, world)

@@ -8,7 +8,7 @@ use pumpkin_data::potion::Effect;
 use pumpkin_protocol::java::client::play::{CGameEvent, GameEvent};
 
 use crate::entity::ai::behavior::hunting;
-use crate::entity::mob::guardian::GUARDIAN_HUNTS;
+use crate::entity::mob::guardian::{GUARDIAN_HUNTS, guardian_walk_target_value};
 use crate::entity::{
     Entity, EntityBase,
     ai::goal::{
@@ -54,6 +54,10 @@ impl ElderGuardianEntity {
 }
 
 impl Mob for ElderGuardianEntity {
+    fn get_walk_target_value(&self, pos: &pumpkin_util::math::position::BlockPos) -> f32 {
+        guardian_walk_target_value(&self.get_entity().world.load(), pos)
+    }
+
     /// Vanilla `Guardian.checkSpawnObstruction`.
     fn check_spawn_obstruction(&self, world: &crate::world::World) -> bool {
         crate::entity::mob::is_unobstructed(self, world)

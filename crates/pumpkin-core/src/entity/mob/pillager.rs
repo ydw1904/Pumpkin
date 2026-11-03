@@ -138,6 +138,11 @@ impl PillagerEntity {
 }
 
 impl Mob for PillagerEntity {
+    /// Vanilla `Pillager.getWalkTargetValue`.
+    fn get_walk_target_value(&self, _pos: &pumpkin_util::math::position::BlockPos) -> f32 {
+        0.0
+    }
+
     fn get_mob_entity(&self) -> &MobEntity {
         &self.mob_entity
     }
