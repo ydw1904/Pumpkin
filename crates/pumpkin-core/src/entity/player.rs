@@ -543,6 +543,8 @@ pub struct Player {
     pub ping: AtomicU32,
     /// The amount of ticks since the player's last attack.
     pub last_attacked_ticks: AtomicU32,
+    /// Vanilla `Player.lastItemInMainHand`, compared every tick to catch held item changes.
+    last_item_in_main_hand: std::sync::Mutex<ItemStack>,
     /// The player's last known experience level.
     pub last_sent_xp: AtomicI32,
     pub last_sent_health: AtomicCell<f32>,
@@ -881,6 +883,7 @@ impl Player {
             last_action_time: AtomicCell::new(std::time::Instant::now()),
             ping: AtomicU32::new(0),
             last_attacked_ticks: AtomicU32::new(0),
+            last_item_in_main_hand: std::sync::Mutex::new(ItemStack::EMPTY.clone()),
             client_loaded: AtomicBool::new(initially_loaded),
             bedrock_spawned: AtomicBool::new(false),
             client_loaded_timeout: AtomicU32::new(if initially_loaded { 0 } else { 60 }),
@@ -1713,6 +1716,25 @@ impl Player {
         stack
             .get_data_component::<WeaponImpl>()
             .map_or(0, |w| w.item_damage_per_attack as i32)
+    }
+
+    /// Vanilla `LivingEntity.detectEquipmentUpdates` for the main hand, which commands and
+    /// inventory clicks change without going through `send_equipment_changes`.
+    fn detect_main_hand_change(&self) {
+        let held = self.inventory.held_item();
+        let mut last = self
+            .last_item_in_main_hand
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if last.are_equal(&held) {
+            return;
+        }
+        self.living_entity
+            .apply_and_send_equipment_attribute_modifiers(&[(
+                EquipmentSlot::MAIN_HAND,
+                held.clone(),
+            )]);
+        *last = held;
     }
 
     /// Vanilla `Player.canCriticalAttack`.
@@ -3421,6 +3443,7 @@ impl Player {
             }
         }
         self.last_attacked_ticks.fetch_add(1, Ordering::Relaxed);
+        self.detect_main_hand_change();
 
         self.living_entity.tick(self, server);
 
