@@ -1455,7 +1455,10 @@ impl Player {
         let config = &server.advanced_config.pvp;
 
         let inventory = self.inventory();
-        let item_stack = inventory.held_item();
+        let spin_attack = self.living_entity.auto_spin_attack_weapon();
+        let item_stack = spin_attack
+            .as_ref()
+            .map_or_else(|| inventory.held_item(), |(_, item)| item.clone());
         if !item_stack.is_empty() {
             self.increment_stat(
                 statistics::StatisticCategory::Used,
@@ -1465,10 +1468,14 @@ impl Player {
         }
 
         // `ATTACK_DAMAGE` is a ranged attribute with a minimum of 0, which Weakness can reach.
-        let mut base_damage = self
-            .living_entity
-            .get_attribute_value(&Attributes::ATTACK_DAMAGE)
-            .max(0.0) as f32;
+        let mut base_damage = spin_attack.map_or_else(
+            || {
+                self.living_entity
+                    .get_attribute_value(&Attributes::ATTACK_DAMAGE)
+                    .max(0.0) as f32
+            },
+            |(damage, _)| damage,
+        );
         let attack_speed = self
             .living_entity
             .get_attribute_value(&Attributes::ATTACK_SPEED);
@@ -2761,11 +2768,6 @@ impl Player {
         }
     }
 
-    const fn is_auto_spin_attack() -> bool {
-        // TODO: Track active auto-spin/riptide state and return true while it is active.
-        false
-    }
-
     fn can_fit_pose(&self, pose: EntityPose) -> bool {
         let entity = self.get_entity();
         let dimensions = entity.get_dimensions(pose);
@@ -2786,7 +2788,7 @@ impl Player {
             EntityPose::Swimming
         } else if entity.is_fall_flying() {
             EntityPose::FallFlying
-        } else if Self::is_auto_spin_attack() {
+        } else if self.living_entity.is_auto_spin_attack() {
             EntityPose::SpinAttack
         } else if entity.is_sneaking() && !self.is_flying() {
             EntityPose::Crouching

@@ -139,6 +139,42 @@ h.start(async () => {
   }
   h.cmd('weather clear')
 
+  // Riptide in water: the spin shows on the thrower, and hits an armor stand it touches. The bot
+  // doesn't move itself, so the stand is placed where it already touches it. A hit on the first
+  // tick ends the spin before vanilla syncs it, so the spin itself is checked without a stand.
+  let spun = false
+  const standEvents = []
+  let armorStand
+  bot._client.on('entity_metadata', (p) => {
+    if (p.entityId === bot.entity.id && p.metadata.some(m => m.key === 8 && (m.value & 4))) spun = true
+  })
+  bot._client.on('entity_status', (p) => { if (armorStand && p.entityId === armorStand.id) standEvents.push(p.entityStatus) })
+  for (const touching of [false, true]) {
+    await clearMobs()
+    await stand()
+    h.cmd(`fill ${X - 1} ${Y + 1} ${Z - 1} ${X + 1} ${Y + 1} ${Z + 1} water`)
+    await give(['trident[enchantments={riptide:1}]'])
+    armorStand = undefined
+    if (touching) {
+      h.cmd(`summon armor_stand ${X + 0.5} ${Y + 1} ${Z + 0.6} {NoGravity:1b}`)
+      await h.waitFor(() => (armorStand = named('armor_stand')[0]), 5000)
+    }
+    spun = false
+    standEvents.length = 0
+    await bot.look(0, 0, true)
+    bot.activateItem()
+    await h.ticks(12)
+    bot.deactivateItem()
+    await h.ticks(10)
+    const riptideTrident = bot.inventory.items()[0]
+    const durability = riptideTrident ? riptideTrident.durabilityUsed : '-'
+    h.result(`riptide.${touching ? 'touching_stand' : 'alone'}`, touching
+      ? `stand_events=${standEvents.join(',') || 'none'} durability=${durability}`
+      : `spun=${spun} durability=${durability}`)
+    h.cmd(`fill ${X - 1} ${Y + 1} ${Z - 1} ${X + 1} ${Y + 1} ${Z + 1} air`)
+    await h.ticks(5)
+  }
+
   // Crossbow charge time and the arrows a shot spawns.
   for (const c of ['crossbow', 'crossbow[enchantments={quick_charge:3}]', 'crossbow[enchantments={multishot:1}]']) {
     await clearMobs()

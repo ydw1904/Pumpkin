@@ -85,6 +85,14 @@ struct LastHurtByMob {
 ///
 /// This struct encapsulates the core properties and behaviors of living entities, including players, mobs, and other creatures.
 #[repr(C)]
+/// A riptide spin: for `ticks` ticks the spinning entity attacks the first living entity it
+/// touches, with `damage` as base damage and `item` as weapon.
+struct AutoSpinAttack {
+    ticks: i32,
+    damage: f32,
+    item: ItemStack,
+}
+
 pub struct LivingEntity {
     /// The underlying entity object, providing basic entity information and functionality.
     pub entity: Entity,
@@ -100,6 +108,8 @@ pub struct LivingEntity {
     pub item_in_use: std::sync::Mutex<Option<ItemStack>>,
     pub active_hand: std::sync::Mutex<Option<Hand>>,
     pub recent_kinetic_enemies: std::sync::Mutex<FxHashMap<i32, i32>>,
+    /// Vanilla `autoSpinAttackTicks`, `autoSpinAttackDmg` and `autoSpinAttackItemStack`.
+    auto_spin_attack: std::sync::Mutex<Option<AutoSpinAttack>>,
     pub death_time: AtomicU8,
     /// Indicates whether the entity is dead. (`on_death` called)
     pub dead: AtomicBool,
@@ -242,7 +252,6 @@ impl LivingEntity {
     const USING_ITEM_FLAG: u8 = 1;
     const OFF_HAND_ACTIVE_FLAG: u8 = 2;
     const RANDOM_TELEPORT_ATTEMPTS: usize = 16;
-    #[expect(dead_code)]
     const USING_RIPTIDE_FLAG: u8 = 4;
 
     const PREVENT_AREA_FALL_DAMAGE_BLOCKS: [&'static Block; 4] = [
@@ -352,6 +361,7 @@ impl LivingEntity {
             item_in_use: std::sync::Mutex::new(None),
             active_hand: std::sync::Mutex::new(None),
             recent_kinetic_enemies: std::sync::Mutex::new(FxHashMap::default()),
+            auto_spin_attack: std::sync::Mutex::new(None),
             livings_flags: AtomicU8::new(0),
             active_effects: std::sync::Mutex::new(FxHashMap::default()),
             hidden_effects: std::sync::Mutex::new(FxHashMap::default()),
@@ -824,6 +834,79 @@ impl LivingEntity {
             SpearItem::mob_kinetic_attack(caller, &held, remaining_use_ticks);
         } else {
             self.clear_active_hand();
+        }
+    }
+
+    /// Vanilla `Player.startAutoSpinAttack`.
+    pub fn start_auto_spin_attack(&self, ticks: i32, damage: f32, item: ItemStack) {
+        *self
+            .auto_spin_attack
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(AutoSpinAttack {
+            ticks,
+            damage,
+            item,
+        });
+        self.set_living_flag(Self::USING_RIPTIDE_FLAG, true);
+    }
+
+    /// Vanilla `isAutoSpinAttack`.
+    pub fn is_auto_spin_attack(&self) -> bool {
+        self.livings_flags.load(Ordering::Relaxed) & Self::USING_RIPTIDE_FLAG != 0
+    }
+
+    /// The base damage and weapon of an attack made while spinning, which vanilla `Player.attack`
+    /// and `getWeaponItem` use instead of the attack damage attribute and the held item.
+    pub fn auto_spin_attack_weapon(&self) -> Option<(f32, ItemStack)> {
+        if !self.is_auto_spin_attack() {
+            return None;
+        }
+        self.auto_spin_attack
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map(|spin| (spin.damage, spin.item.clone()))
+    }
+
+    /// Vanilla `aiStep`'s spin countdown and `checkAutoSpinAttack`, with `Player`'s
+    /// `doAutoAttackOnTouch`. The bounce off the hit entity is the client's: its movement is
+    /// its own.
+    fn tick_auto_spin_attack(&self, player: &crate::entity::player::Player) {
+        let ticks = {
+            let mut spin = self
+                .auto_spin_attack
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let Some(spin) = spin.as_mut().filter(|spin| spin.ticks > 0) else {
+                return;
+            };
+            spin.ticks -= 1;
+            spin.ticks
+        };
+        let world = self.entity.world.load();
+        let touched = world
+            .get_all_at_box(&self.entity.bounding_box.load())
+            .into_iter()
+            .filter(|entity| {
+                entity.get_entity().entity_id != self.entity.entity_id && !entity.is_spectator()
+            })
+            .collect::<Vec<_>>();
+        let mut stopped = ticks <= 0;
+        if let Some(target) = touched
+            .iter()
+            .find(|entity| entity.get_living_entity().is_some())
+        {
+            player.attack(target);
+            stopped = true;
+        } else if touched.is_empty() && self.entity.horizontal_collision.load(Ordering::Relaxed) {
+            stopped = true;
+        }
+        if stopped {
+            *self
+                .auto_spin_attack
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+            self.set_living_flag(Self::USING_RIPTIDE_FLAG, false);
         }
     }
 
@@ -4218,6 +4301,11 @@ impl EntityBase for LivingEntity {
                 caller.damage(caller, 1.0, DamageType::IN_WALL);
             } else if let Some(damage) = self.outside_border_damage() {
                 caller.damage(caller, damage, DamageType::OUTSIDE_BORDER);
+            }
+
+            // Vanilla `aiStep`: the riptide spin looks for a hit before entities are pushed.
+            if let Some(player) = caller.get_player() {
+                self.tick_auto_spin_attack(player);
             }
 
             // Vanilla `ServerPlayer.pushEntities`: players still tick while the game is frozen,

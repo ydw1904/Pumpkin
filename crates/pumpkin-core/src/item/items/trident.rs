@@ -1,6 +1,7 @@
 use std::any::Any;
 use std::sync::Arc;
 
+use crate::enchantment::helper::EnchantmentHelper;
 use crate::entity::player::Player;
 use crate::entity::projectile::arrow::ArrowPickup;
 use crate::entity::projectile::trident::TridentEntity;
@@ -12,6 +13,7 @@ use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::statistic::StatisticCategory;
+use pumpkin_protocol::java::client::play::CEntityVelocity;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::{GameMode, Hand};
 
@@ -44,7 +46,14 @@ impl TridentItem {
                 .is_some_and(|max| stack.get_damage() >= max - 1)
     }
 
-    fn perform_riptide(player: &Player, hand: Hand, riptide_level: u32) {
+    /// Vanilla `EnchantmentHelper.getTridentSpinAttackStrength`.
+    fn spin_attack_strength(stack: &ItemStack) -> f32 {
+        EnchantmentHelper::modify_trident_spin_attack_strength(stack, 0.0)
+    }
+
+    /// The riptide half of vanilla `TridentItem.releaseUsing`. The client pushes itself and
+    /// starts its own spin, so the push is only sent to the players watching.
+    fn perform_riptide(player: &Player, hand: Hand, riptide_level: u32, strength: f32) {
         if !player.get_entity().is_in_water_or_rain() || player.get_entity().has_vehicle() {
             player.living_entity.clear_active_hand();
             return;
@@ -68,26 +77,32 @@ impl TridentItem {
         }
 
         player.increment_stat(StatisticCategory::Used, i32::from(Item::TRIDENT.id), 1);
+        player.damage_item_in_slot(&EquipmentSlot::from_hand(hand), 1);
 
-        let riptide_strength = f64::from(0.75 * riptide_level as f32 + 0.75);
         let (yaw, pitch) = player.rotation();
-        let f_yaw = f32::to_radians(yaw);
-        let f_pitch = f32::to_radians(pitch);
-
-        let vx = f64::from(-f32::sin(f_yaw) * f32::cos(f_pitch));
-        let vy = f64::from(-f32::sin(f_pitch));
-        let vz = f64::from(f32::cos(f_yaw) * f32::cos(f_pitch));
-
-        let sq = (vx * vx + vy * vy + vz * vz).sqrt();
-        if sq > 0.0 {
-            let mult = riptide_strength / sq;
-            player.living_entity.entity.velocity.store(Vector3::new(
-                vx * mult,
-                vy * mult,
-                vz * mult,
-            ));
-            player.get_entity().send_velocity();
-        }
+        let f_yaw = yaw * (std::f32::consts::PI / 180.0);
+        let f_pitch = pitch * (std::f32::consts::PI / 180.0);
+        let xd = -f_yaw.sin() * f_pitch.cos();
+        let yd = -f_pitch.sin();
+        let zd = f_yaw.cos() * f_pitch.cos();
+        let scale = strength / (xd * xd + yd * yd + zd * zd).sqrt();
+        let entity = player.get_entity();
+        let velocity = entity.velocity.load()
+            + Vector3::new(
+                f64::from(xd * scale),
+                f64::from(yd * scale),
+                f64::from(zd * scale),
+            );
+        entity.velocity.store(velocity);
+        // Vanilla `push` marks the entity `needsSync`, whose motion goes to trackers only.
+        player.world().send_to_tracking_players(
+            entity,
+            &CEntityVelocity::new(entity.entity_id.into(), velocity),
+        );
+        let stack = player.inventory().get_stack_in_hand(hand);
+        player
+            .living_entity
+            .start_auto_spin_attack(SPIN_ATTACK_TICKS, SPIN_ATTACK_DAMAGE, stack);
 
         let sound = match riptide_level {
             1 => Sound::ItemTridentRiptide1,
@@ -95,16 +110,13 @@ impl TridentItem {
             _ => Sound::ItemTridentRiptide3,
         };
         world.play_sound(sound, SoundCategory::Players, &player.position());
-
-        let slot = if hand == Hand::Left {
-            EquipmentSlot::OFF_HAND
-        } else {
-            EquipmentSlot::MAIN_HAND
-        };
-        player.damage_item_in_slot(&slot, 1);
         player.living_entity.clear_active_hand();
     }
 }
+
+/// Vanilla `TridentItem.releaseUsing`'s `startAutoSpinAttack(20, 8.0F, ...)`.
+const SPIN_ATTACK_TICKS: i32 = 20;
+const SPIN_ATTACK_DAMAGE: f32 = 8.0;
 
 impl ItemBehaviour for TridentItem {
     fn normal_use_with_hand(
@@ -119,7 +131,7 @@ impl ItemBehaviour for TridentItem {
         if Self::next_damage_will_break(&stack) {
             return;
         }
-        if Self::riptide_level(&stack) > 0 && !player.get_entity().is_in_water_or_rain() {
+        if Self::spin_attack_strength(&stack) > 0.0 && !player.get_entity().is_in_water_or_rain() {
             return;
         }
 
@@ -151,10 +163,9 @@ impl ItemBehaviour for TridentItem {
             return;
         }
 
-        let riptide_level = Self::riptide_level(&stack_guard);
-
-        if riptide_level > 0 {
-            Self::perform_riptide(player, hand, riptide_level);
+        let strength = Self::spin_attack_strength(&stack_guard);
+        if strength > 0.0 {
+            Self::perform_riptide(player, hand, Self::riptide_level(&stack_guard), strength);
             return;
         }
 
