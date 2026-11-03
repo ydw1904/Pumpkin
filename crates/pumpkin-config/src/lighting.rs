@@ -12,3 +12,15 @@ pub enum LightingEngineConfig {
     /// Completely dark lighting everywhere (zero light).
     Dark,
 }
+
+impl LightingEngineConfig {
+    /// The light level every block has in this mode, or `None` when light is propagated.
+    #[must_use]
+    pub const fn fixed_level(self) -> Option<u8> {
+        match self {
+            Self::Default => None,
+            Self::Full => Some(15),
+            Self::Dark => Some(0),
+        }
+    }
+}

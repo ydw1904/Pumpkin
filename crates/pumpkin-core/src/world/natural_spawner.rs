@@ -632,6 +632,7 @@ pub fn spawn_mobs_for_chunk_generation(
                     let level = GenerationSpawnLevel {
                         cache,
                         ambient_light: world.dimension.ambient_light,
+                        fixed_light: world.level.lighting_config.fixed_level(),
                     };
                     if !level.is_space_empty(entity_type.get_spawn_bounding_box(
                         fx,
@@ -712,6 +713,8 @@ pub fn world_gen_entity_nbt(entity: &Arc<dyn EntityBase>) -> NbtCompound {
 struct GenerationSpawnLevel<'a> {
     cache: &'a dyn GenerationCache,
     ambient_light: f32,
+    /// The light level of a full or dark lighting mode, which never lights generating chunks.
+    fixed_light: Option<u8>,
 }
 
 impl CreatureSpawnLevel for GenerationSpawnLevel<'_> {
@@ -747,6 +750,9 @@ impl CreatureSpawnLevel for GenerationSpawnLevel<'_> {
     }
 
     fn raw_brightness(&self, pos: &BlockPos) -> u8 {
+        if let Some(level) = self.fixed_light {
+            return level;
+        }
         let Some(chunk) = self.cache.get_chunk(pos.0.x >> 4, pos.0.z >> 4) else {
             return 0;
         };

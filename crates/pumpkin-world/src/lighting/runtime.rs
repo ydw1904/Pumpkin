@@ -4,7 +4,6 @@ use crate::level::Level;
 use crate::lighting::engine::{
     LayerLightEngine, LightLayer, LightStorage, find_lowest_sky_source_y,
 };
-use pumpkin_config::lighting::LightingEngineConfig;
 use pumpkin_data::{BlockState, BlockStateId};
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector2::Vector2;
@@ -165,12 +164,7 @@ impl DynamicLightEngine {
     /// Updates light after several blocks changed, checking all of them before propagating like
     /// vanilla does for the block checks queued between two light updates.
     pub fn update_lighting(&self, level: &Arc<Level>, positions: &[BlockPos]) {
-        let fixed_level = match level.lighting_config {
-            LightingEngineConfig::Full => Some(15),
-            LightingEngineConfig::Dark => Some(0),
-            LightingEngineConfig::Default => None,
-        };
-        if let Some(value) = fixed_level {
+        if let Some(value) = level.lighting_config.fixed_level() {
             for pos in positions {
                 self.set_block_light_level(level, pos, value).ok();
                 self.set_sky_light_level(level, pos, value).ok();
