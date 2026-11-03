@@ -135,6 +135,10 @@ pub trait Slot: Send + Sync {
         inv.remove_stack_specific(self.get_index(), amount)
     }
 
+    /// `Item.onCraftedBy` on a result slot's stack before it reaches the player, which turns
+    /// scaled and locked maps into new maps. Other slots leave the stack alone.
+    fn on_crafted_by(&self, _stack: &mut ItemStack) {}
+
     /// Checks if the player can take items from this slot.
     ///
     /// Mojang name: `mayPickup`

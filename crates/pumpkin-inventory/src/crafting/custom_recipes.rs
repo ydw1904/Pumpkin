@@ -1,12 +1,13 @@
 //! Crafting recipes whose results vanilla computes in code: transmuting, dyeing, imbuing and the
-//! `CustomRecipe` subclasses (banner and book copies, fireworks, repairs, shield decoration).
+//! `CustomRecipe` subclasses (banner and book copies, fireworks, map extending, repairs, shield
+//! decoration).
 
 use std::borrow::Cow;
 
 use pumpkin_data::data_component_impl::{
     BannerPatternsImpl, BaseColorImpl, DyeImpl, DyedColorImpl, EnchantmentsImpl,
-    FireworkExplosionImpl, FireworkExplosionShape, FireworksImpl, MaxDamageImpl,
-    PotionContentsImpl, StoredEnchantmentsImpl, WrittenBookContentImpl,
+    FireworkExplosionImpl, FireworkExplosionShape, FireworksImpl, MapIdImpl, MapPostProcessingImpl,
+    MaxDamageImpl, PotionContentsImpl, StoredEnchantmentsImpl, WrittenBookContentImpl,
 };
 use pumpkin_data::dye_color::DyeColor;
 use pumpkin_data::item::Item;
@@ -15,6 +16,7 @@ use pumpkin_data::recipes::{CustomCraftingRecipe, RecipeIngredientTypes, RecipeR
 use pumpkin_data::tag::Enchantment as EnchantmentTag;
 use pumpkin_data::tag::Taggable;
 
+use super::recipe_provider::{MAX_MAP_SCALE, RecipeProvider};
 use super::recipes::RecipeInputInventory;
 
 /// What a matched recipe leaves in the grid besides each item's crafting remainder.
@@ -131,6 +133,7 @@ pub fn transmute(
 pub fn assemble(
     recipe: &CustomCraftingRecipe,
     inventory: &dyn RecipeInputInventory,
+    provider: Option<&dyn RecipeProvider>,
 ) -> Option<(ItemStack, KeptInput)> {
     let stacks = non_empty(inventory);
     match recipe {
@@ -141,6 +144,13 @@ pub fn assemble(
             ..
         } => dye_recipe(&stacks, target, dye, result).map(|s| (s, KeptInput::None)),
         CustomCraftingRecipe::RepairItem => repair_item(&stacks).map(|s| (s, KeptInput::None)),
+        CustomCraftingRecipe::MapExtending {
+            map,
+            material,
+            result,
+        } => {
+            map_extending(inventory, map, material, result, provider).map(|s| (s, KeptInput::None))
+        }
         CustomCraftingRecipe::BannerDuplicate { banner, result } => {
             banner_duplicate(&stacks, banner, result).map(|s| (s, KeptInput::PatternedBanner))
         }
@@ -183,6 +193,40 @@ pub fn assemble(
             ..
         } => imbue(inventory, source, material, result).map(|s| (s, KeptInput::None)),
     }
+}
+
+/// `MapExtendingRecipe`: a filled map in the middle of eight of the material, below the largest
+/// scale. The result scales the map out once it is taken.
+fn map_extending(
+    inventory: &dyn RecipeInputInventory,
+    map: &RecipeIngredientTypes,
+    material: &RecipeIngredientTypes,
+    result: &RecipeResultStruct,
+    provider: Option<&dyn RecipeProvider>,
+) -> Option<ItemStack> {
+    // The pattern is "###", "#x#", "###".
+    const MAP_SLOT: usize = 4;
+    if inventory.get_width() != 3 || inventory.get_height() != 3 {
+        return None;
+    }
+    for slot in 0..inventory.size() {
+        let stack = inventory.get_stack(slot);
+        let ingredient = if slot == MAP_SLOT { map } else { material };
+        if stack.is_empty() || !ingredient.match_item(stack.item) {
+            return None;
+        }
+    }
+    // findFilledMap: the first stack with a map id.
+    let source = (0..inventory.size())
+        .map(|slot| inventory.get_stack(slot))
+        .find(|stack| stack.get_data_component::<MapIdImpl>().is_some())?;
+    let data = provider?.map_data(&source)?;
+    if data.scale >= MAX_MAP_SCALE {
+        return None;
+    }
+    let mut stack = with_original_components(result, &source, 0);
+    stack.set_data_component(MapPostProcessingImpl::SCALE);
+    Some(stack)
 }
 
 /// `DyeRecipe`.

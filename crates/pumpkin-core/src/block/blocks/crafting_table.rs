@@ -1,8 +1,10 @@
 use crate::block::registry::BlockActionResult;
 use crate::block::{BlockBehaviour, GetScreenHandlerFactoryArgs, NormalUseArgs};
 
+use crate::server::recipe::ServerRecipeAccess;
 use pumpkin_data::translation;
 use pumpkin_inventory::crafting::crafting_screen_handler::CraftingTableScreenHandler;
+use pumpkin_inventory::crafting::recipe_provider::RecipeProvider;
 use pumpkin_inventory::player::player_inventory::PlayerInventory;
 use pumpkin_inventory::screen_handler::{
     InventoryPlayer, ScreenHandlerFactory, SharedScreenHandler,
@@ -40,12 +42,13 @@ impl BlockBehaviour for CraftingTableBlock {
         &self,
         args: GetScreenHandlerFactoryArgs<'_>,
     ) -> Option<Box<dyn ScreenHandlerFactory>> {
-        let recipe_manager = args.server.recipe_manager.clone();
-        Some(Box::new(CraftingTableScreenFactory(recipe_manager)))
+        Some(Box::new(CraftingTableScreenFactory(Arc::new(
+            ServerRecipeAccess(args.world.server.clone()),
+        ))))
     }
 }
 
-struct CraftingTableScreenFactory(Arc<crate::server::RecipeManager>);
+struct CraftingTableScreenFactory(Arc<dyn RecipeProvider>);
 
 impl ScreenHandlerFactory for CraftingTableScreenFactory {
     fn create_screen_handler(

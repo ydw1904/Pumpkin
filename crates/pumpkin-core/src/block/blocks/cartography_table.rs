@@ -1,8 +1,10 @@
 use crate::block::registry::BlockActionResult;
 use crate::block::{BlockBehaviour, GetScreenHandlerFactoryArgs, NormalUseArgs};
 
+use crate::server::recipe::ServerRecipeAccess;
 use pumpkin_data::translation;
 use pumpkin_inventory::cartography_table_screen_handler::CartographyTableScreenHandler;
+use pumpkin_inventory::crafting::recipe_provider::RecipeProvider;
 use pumpkin_inventory::player::player_inventory::PlayerInventory;
 use pumpkin_inventory::screen_handler::{
     InventoryPlayer, ScreenHandlerFactory, SharedScreenHandler,
@@ -38,13 +40,15 @@ impl BlockBehaviour for CartographyTableBlock {
 
     fn get_screen_handler_factory(
         &self,
-        _args: GetScreenHandlerFactoryArgs<'_>,
+        args: GetScreenHandlerFactoryArgs<'_>,
     ) -> Option<Box<dyn ScreenHandlerFactory>> {
-        Some(Box::new(CartographyTableScreenFactory))
+        Some(Box::new(CartographyTableScreenFactory(Arc::new(
+            ServerRecipeAccess(args.world.server.clone()),
+        ))))
     }
 }
 
-struct CartographyTableScreenFactory;
+struct CartographyTableScreenFactory(Arc<dyn RecipeProvider>);
 
 impl ScreenHandlerFactory for CartographyTableScreenFactory {
     fn create_screen_handler(
@@ -54,7 +58,7 @@ impl ScreenHandlerFactory for CartographyTableScreenFactory {
         _player: &dyn InventoryPlayer,
     ) -> Option<SharedScreenHandler> {
         let handler: SharedScreenHandler = Arc::new(Mutex::new(
-            CartographyTableScreenHandler::new(sync_id, player_inventory),
+            CartographyTableScreenHandler::new(sync_id, player_inventory, Some(self.0.clone())),
         ));
         Some(handler)
     }

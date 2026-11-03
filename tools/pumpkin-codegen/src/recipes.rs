@@ -53,7 +53,7 @@ pub enum RecipeTypes {
     #[serde(rename = "minecraft:crafting_special_firework_star_fade")]
     CraftingSpecialFireworkStarFade(TargetDyeStruct),
     #[serde(rename = "minecraft:crafting_special_mapextending")]
-    CraftingSpecialMapExtending,
+    CraftingSpecialMapExtending(MapExtendingStruct),
     #[serde(rename = "minecraft:crafting_special_repairitem")]
     CraftingSpecialRepairItem,
     #[serde(rename = "minecraft:crafting_special_shielddecoration")]
@@ -127,6 +127,14 @@ pub struct DyeStruct {
 pub struct ShieldDecorationStruct {
     banner: RecipeIngredientTypes,
     target: RecipeIngredientTypes,
+    result: RecipeResultStruct,
+}
+
+/// `crafting_special_mapextending`: a filled map surrounded by eight of a material.
+#[derive(Deserialize)]
+pub struct MapExtendingStruct {
+    map: RecipeIngredientTypes,
+    material: RecipeIngredientTypes,
     result: RecipeResultStruct,
 }
 
@@ -243,6 +251,10 @@ fn custom_recipe(recipe: &RecipeTypes) -> Option<TokenStream> {
                     result: #result,
                 }
             }
+        }
+        RecipeTypes::CraftingSpecialMapExtending(r) => {
+            let (map, material, result) = (&r.map, &r.material, &r.result);
+            quote! { MapExtending { map: #map, material: #material, result: #result } }
         }
         RecipeTypes::CraftingSpecialRepairItem => quote! { RepairItem },
         _ => return None,
@@ -819,8 +831,7 @@ pub fn build() -> TokenStream {
             RecipeTypes::Stonecutting(recipe) => {
                 stonecutting_recipes.push(recipe.to_token_stream());
             }
-            // Map extending needs the map's saved data, which pumpkin-inventory can't reach.
-            RecipeTypes::CraftingSpecial | RecipeTypes::CraftingSpecialMapExtending => {}
+            RecipeTypes::CraftingSpecial => {}
             other => crafting_recipes.extend(custom_recipe(&other)),
         }
     }
@@ -909,6 +920,12 @@ pub fn build() -> TokenStream {
                 category: RecipeCategoryTypes,
                 group: Option<&'static str>,
                 source: RecipeIngredientTypes,
+                material: RecipeIngredientTypes,
+                result: RecipeResultStruct,
+            },
+            /// The result keeps the map's item when it has no id.
+            MapExtending {
+                map: RecipeIngredientTypes,
                 material: RecipeIngredientTypes,
                 result: RecipeResultStruct,
             },

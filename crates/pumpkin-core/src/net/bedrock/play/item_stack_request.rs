@@ -1765,7 +1765,7 @@ mod tests {
         );
 
         // Cartography Table
-        let cartography = CartographyTableScreenHandler::new(1, &inventory);
+        let cartography = CartographyTableScreenHandler::new(1, &inventory, None);
         assert_eq!(
             get_output_screen_slot(
                 &cartography,

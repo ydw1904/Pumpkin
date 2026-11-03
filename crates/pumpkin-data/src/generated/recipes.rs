@@ -83,6 +83,12 @@ pub enum CustomCraftingRecipe {
         material: RecipeIngredientTypes,
         result: RecipeResultStruct,
     },
+    #[doc = r" The result keeps the map's item when it has no id."]
+    MapExtending {
+        map: RecipeIngredientTypes,
+        material: RecipeIngredientTypes,
+        result: RecipeResultStruct,
+    },
     RepairItem,
     ShieldDecoration {
         banner: RecipeIngredientTypes,
@@ -11270,6 +11276,14 @@ pub static RECIPES_CRAFTING: &[CraftingRecipeTypes] = &[
             count: 1u8,
         },
     },
+    CraftingRecipeTypes::CraftingCustom(CustomCraftingRecipe::MapExtending {
+        map: RecipeIngredientTypes::Tagged("#minecraft:extendable_maps"),
+        material: RecipeIngredientTypes::Simple("minecraft:paper"),
+        result: RecipeResultStruct {
+            id: "minecraft:air",
+            count: 1u8,
+        },
+    }),
     CraftingRecipeTypes::CraftingShapeless {
         category: RecipeCategoryTypes::Building,
         group: None,

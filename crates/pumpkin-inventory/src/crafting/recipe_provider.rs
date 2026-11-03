@@ -1,7 +1,27 @@
+use pumpkin_data::item_stack::ItemStack;
 use pumpkin_protocol::codec::recipe::DynamicRecipe;
 
+/// `MapItemSavedData.MAX_SCALE`: maps can't be scaled out past this.
+pub const MAX_MAP_SCALE: i8 = 4;
+
+/// What crafting needs to know about a filled map's `MapItemSavedData`.
+#[derive(Clone, Copy, Debug)]
+pub struct MapDataInfo {
+    pub scale: i8,
+    pub locked: bool,
+}
+
+/// The server side of crafting: recipes added at runtime and the level data some recipes read.
 pub trait RecipeProvider: Send + Sync {
     fn get_dynamic_recipes(&self) -> Vec<DynamicRecipe>;
+
+    /// `MapItem.getSavedData`: the data of the map the stack shows, if there is any.
+    fn map_data(&self, _stack: &ItemStack) -> Option<MapDataInfo> {
+        None
+    }
+
+    /// `Item.onCraftedPostProcess`: gives a crafted map its scaled or locked copy of the data.
+    fn on_crafted_post_process(&self, _stack: &mut ItemStack) {}
 }
 
 #[derive(Clone, Copy)]

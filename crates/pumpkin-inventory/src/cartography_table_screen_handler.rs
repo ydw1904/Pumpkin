@@ -2,6 +2,7 @@ use std::any::Any;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
+use crate::crafting::recipe_provider::{MAX_MAP_SCALE, RecipeProvider};
 use crate::player::player_inventory::PlayerInventory;
 use crate::screen_handler::{InventoryPlayer, ScreenHandler, ScreenHandlerBehaviour};
 use crate::slot::Slot;
@@ -13,6 +14,8 @@ use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::screen::WindowType;
 use pumpkin_data::statistic::StatisticCategory;
+use pumpkin_data::tag;
+use pumpkin_data::tag::Taggable;
 use pumpkin_protocol::java::server::play::SlotActionType;
 
 #[must_use]
@@ -31,6 +34,8 @@ pub struct CartographyTableScreenHandler {
     behaviour: ScreenHandlerBehaviour,
     pub input_inventory: Arc<SimpleInventory>,
     pub output_inventory: Arc<SimpleInventory>,
+    /// Reads the map data the results depend on.
+    map_access: Option<Arc<dyn RecipeProvider>>,
 }
 
 impl CartographyTableScreenHandler {
@@ -42,7 +47,11 @@ impl CartographyTableScreenHandler {
     pub const USE_ROW_SLOT_START: usize = 30;
     pub const USE_ROW_SLOT_END: usize = 39;
 
-    pub fn new(sync_id: u8, player_inventory: &Arc<PlayerInventory>) -> Self {
+    pub fn new(
+        sync_id: u8,
+        player_inventory: &Arc<PlayerInventory>,
+        map_access: Option<Arc<dyn RecipeProvider>>,
+    ) -> Self {
         let behaviour = ScreenHandlerBehaviour::new(sync_id, Some(WindowType::CartographyTable));
         let input_inventory = Arc::new(SimpleInventory::new(2));
         let output_inventory = Arc::new(SimpleInventory::new(1));
@@ -51,6 +60,7 @@ impl CartographyTableScreenHandler {
             behaviour,
             input_inventory: input_inventory.clone(),
             output_inventory: output_inventory.clone(),
+            map_access: map_access.clone(),
         };
 
         handler.add_slot(Arc::new(CartographyMapSlot::new(
@@ -65,6 +75,7 @@ impl CartographyTableScreenHandler {
             output_inventory as Arc<dyn Inventory>,
             input_inventory as Arc<dyn Inventory>,
             0,
+            map_access,
         )));
 
         let player_inventory: Arc<dyn Inventory> = player_inventory.clone();
@@ -87,32 +98,45 @@ impl CartographyTableScreenHandler {
         }
     }
 
+    /// `CartographyTableMenu.setupResultSlot`: nothing changes for a map without data.
     pub fn setup_result_slot(&mut self) {
         let mut map_stack = self.input_inventory.get_stack(0);
         let additional_stack = self.input_inventory.get_stack(1);
+        let Some(map_data) = self
+            .map_access
+            .as_ref()
+            .and_then(|access| access.map_data(&map_stack))
+        else {
+            return;
+        };
 
-        if !map_stack.is_empty() && !additional_stack.is_empty() && is_map_item(&map_stack) {
-            let result = if additional_stack.item.id == Item::PAPER.id {
-                map_stack.item_count = 1;
-                map_stack.set_data_component(MapPostProcessingImpl::SCALE);
-                map_stack
-            } else if additional_stack.item.id == Item::GLASS_PANE.id {
-                map_stack.item_count = 1;
-                map_stack.set_data_component(MapPostProcessingImpl::LOCK);
-                map_stack
-            } else if additional_stack.item.id == Item::MAP.id {
-                map_stack.item_count = 2;
-                map_stack
-            } else {
-                ItemStack::EMPTY.clone()
-            };
-
-            let current_result = self.output_inventory.get_stack(0);
-            if !current_result.are_items_and_components_equal(&result) {
-                self.output_inventory.set_stack(0, result);
-            }
+        let result = if additional_stack.item.id == Item::PAPER.id
+            && map_stack
+                .item
+                .has_tag(&tag::Item::MINECRAFT_EXTENDABLE_MAPS)
+            && !map_data.locked
+            && map_data.scale < MAX_MAP_SCALE
+        {
+            map_stack.item_count = 1;
+            map_stack.set_data_component(MapPostProcessingImpl::SCALE);
+            map_stack
+        } else if additional_stack.item.id == Item::GLASS_PANE.id && !map_data.locked {
+            map_stack.item_count = 1;
+            map_stack.set_data_component(MapPostProcessingImpl::LOCK);
+            map_stack
+        } else if additional_stack.item.id == Item::MAP.id {
+            map_stack.item_count = 2;
+            map_stack
         } else {
             self.output_inventory.set_stack(0, ItemStack::EMPTY.clone());
+            return;
+        };
+
+        let current_result = self.output_inventory.get_stack(0);
+        if !(current_result.item_count == result.item_count
+            && current_result.are_items_and_components_equal(&result))
+        {
+            self.output_inventory.set_stack(0, result);
         }
     }
 }
@@ -160,6 +184,7 @@ impl ScreenHandler for CartographyTableScreenHandler {
             if !stack.is_empty() {
                 clicked = stack.clone();
                 if slot_index == 2 {
+                    slot.on_crafted_by(&mut stack);
                     if !self.insert_item(&mut stack, 3, 39, true) {
                         return ItemStack::EMPTY.clone();
                     }
@@ -330,6 +355,7 @@ pub struct CartographyResultSlot {
     input_inventory: Arc<dyn Inventory>,
     index: usize,
     id: AtomicU8,
+    map_access: Option<Arc<dyn RecipeProvider>>,
 }
 
 impl CartographyResultSlot {
@@ -337,12 +363,14 @@ impl CartographyResultSlot {
         inventory: Arc<dyn Inventory>,
         input_inventory: Arc<dyn Inventory>,
         index: usize,
+        map_access: Option<Arc<dyn RecipeProvider>>,
     ) -> Self {
         Self {
             inventory,
             input_inventory,
             index,
             id: AtomicU8::new(0),
+            map_access,
         }
     }
 }
@@ -362,6 +390,18 @@ impl Slot for CartographyResultSlot {
 
     fn can_insert(&self, _stack: &ItemStack) -> bool {
         false
+    }
+
+    fn take_stack(&self, amount: u8) -> ItemStack {
+        let mut stack = self.inventory.remove_stack_specific(self.index, amount);
+        self.on_crafted_by(&mut stack);
+        stack
+    }
+
+    fn on_crafted_by(&self, stack: &mut ItemStack) {
+        if let Some(access) = &self.map_access {
+            access.on_crafted_post_process(stack);
+        }
     }
 
     fn on_take_item(&self, player: &dyn InventoryPlayer, stack: &ItemStack) {

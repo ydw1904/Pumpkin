@@ -1001,7 +1001,9 @@ impl Player {
             &inventory,
             None,
             0,
-            Some(server.recipe_manager.clone()),
+            Some(Arc::new(crate::server::recipe::ServerRecipeAccess(
+                world.server.clone(),
+            ))),
         )));
 
         // Initialize abilities based on gamemode (like vanilla's GameMode.setAbilities())

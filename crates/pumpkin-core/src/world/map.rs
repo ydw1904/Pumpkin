@@ -1,6 +1,7 @@
 use crate::entity::player::Player;
 use dashmap::DashMap;
 use pumpkin_data::dimension::Dimension;
+use pumpkin_inventory::crafting::recipe_provider::MAX_MAP_SCALE;
 use pumpkin_util::math::{position::BlockPos, vector2::Vector2};
 use std::sync::{Arc, Mutex};
 
@@ -9,6 +10,16 @@ const NETHER_SPIN_INTERVAL_TICKS: i64 = 10;
 /// Vanilla's arbitrary constants for the hash that picks the Nether icon rotation.
 const NETHER_SPIN_HASH_MULTIPLIER: i32 = 34_187_121;
 const NETHER_SPIN_HASH_INCREMENT: i32 = 121;
+
+/// `MapItemSavedData.createFresh`: the center of the map at this scale that covers the origin.
+#[must_use]
+pub fn fresh_map_center(origin_x: i32, origin_z: i32, scale: i8) -> (i32, i32) {
+    let size = 128 * (1 << scale);
+    let center = |origin: i32| {
+        (f64::from(origin + 64) / f64::from(size)).floor() as i32 * size + size / 2 - 64
+    };
+    (center(origin_x), center(origin_z))
+}
 
 pub struct MapManager {
     pub maps: DashMap<i32, Arc<Mutex<MapData>>>,
@@ -31,6 +42,10 @@ impl MapManager {
     #[must_use]
     pub fn get_map(&self, id: i32) -> Option<Arc<Mutex<MapData>>> {
         self.maps.get(&id).map(|m| m.clone())
+    }
+
+    pub fn insert_map(&self, id: i32, data: MapData) {
+        self.maps.insert(id, Arc::new(Mutex::new(data)));
     }
 
     #[must_use]
@@ -74,6 +89,30 @@ impl MapData {
             dirty: true,
             fully_updated: false,
         }
+    }
+
+    /// `MapItemSavedData.locked`: a locked copy with the same colors and decorations.
+    #[must_use]
+    pub fn locked(&self) -> Self {
+        Self {
+            scale: self.scale,
+            locked: true,
+            dimension: self.dimension.clone(),
+            center_x: self.center_x,
+            center_z: self.center_z,
+            colors: self.colors.clone(),
+            decorations: self.decorations.clone(),
+            dirty: true,
+            fully_updated: false,
+        }
+    }
+
+    /// `MapItemSavedData.scaled`: a fresh map one scale out, centered on the grid of that scale.
+    #[must_use]
+    pub fn scaled(&self) -> Self {
+        let scale = (self.scale + 1).clamp(0, MAX_MAP_SCALE);
+        let (x, z) = fresh_map_center(self.center_x, self.center_z, scale);
+        Self::new(self.dimension.clone(), x, z, scale)
     }
 
     pub fn set_color(&mut self, x: usize, z: usize, color: u8) {
@@ -159,6 +198,7 @@ impl MapData {
     }
 }
 
+#[derive(Clone)]
 pub struct MapDecoration {
     pub icon_type: i32,
     pub x: i8,

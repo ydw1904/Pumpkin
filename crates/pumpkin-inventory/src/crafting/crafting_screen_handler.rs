@@ -121,7 +121,7 @@ fn is_symmetrical_horizontally(pattern: &[&str]) -> bool {
 }
 
 /// Checks if a crafting recipe matches the current inventory state.
-#[expect(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines, clippy::too_many_arguments)]
 fn recipe_matches(
     recipe: GenericRecipe<'_>,
     input_height: usize,
@@ -130,6 +130,7 @@ fn recipe_matches(
     top_y: usize,
     count: usize,
     inventory: &dyn RecipeInputInventory,
+    provider: Option<&dyn RecipeProvider>,
 ) -> Option<RecipeResult> {
     match recipe {
         GenericRecipe::Vanilla(CraftingRecipeTypes::CraftingShaped {
@@ -272,9 +273,11 @@ fn recipe_matches(
         )
         .map(RecipeResult::from_stack),
         GenericRecipe::Vanilla(CraftingRecipeTypes::CraftingCustom(recipe)) => {
-            custom_recipes::assemble(recipe, inventory).map(|(stack, kept)| RecipeResult {
-                kept,
-                ..RecipeResult::from_stack(stack)
+            custom_recipes::assemble(recipe, inventory, provider).map(|(stack, kept)| {
+                RecipeResult {
+                    kept,
+                    ..RecipeResult::from_stack(stack)
+                }
             })
         }
         GenericRecipe::Vanilla(CraftingRecipeTypes::CraftingDecoratedPot { .. }) => {
@@ -437,6 +440,7 @@ pub fn crafting_recipe_matches(
             top_y,
             count,
             inventory,
+            None,
         )
         .is_some()
     })
@@ -458,6 +462,7 @@ pub fn match_crafting_recipe(
             top_y,
             count,
             inventory,
+            provider,
         ) {
             return Some(result);
         }
@@ -475,6 +480,7 @@ pub fn match_crafting_recipe(
                     top_y,
                     count,
                     inventory,
+                    Some(provider),
                 )
             {
                 return Some(result);
@@ -616,12 +622,21 @@ impl Slot for ResultSlot {
     }
     fn take_stack(&self, _amount: u8) -> ItemStack {
         if self.has_stack() {
-            self.result
+            let mut stack = self
+                .result
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .clone()
+                .clone();
+            self.on_crafted_by(&mut stack);
+            stack
         } else {
             ItemStack::EMPTY.clone()
+        }
+    }
+
+    fn on_crafted_by(&self, stack: &mut ItemStack) {
+        if let Some(provider) = &self.recipe_provider {
+            provider.on_crafted_post_process(stack);
         }
     }
 }
@@ -716,9 +731,13 @@ impl ScreenHandler for CraftingTableScreenHandler {
             let mut slot_stack = slot.get_stack();
             let stack_prev = slot_stack.clone();
             if slot_index == 0 {
+                slot.on_crafted_by(&mut slot_stack);
                 if !self.insert_item(&mut slot_stack, 10, 46, true) {
                     return ItemStack::EMPTY.clone();
                 }
+                // Vanilla's `onQuickCraft` post-processes the copy taken before the move too,
+                // which uses up another map id.
+                slot.on_crafted_by(&mut stack_prev.clone());
             } else if (1..=9).contains(&slot_index) {
                 if !self.insert_item(&mut slot_stack, 10, 46, false) {
                     return ItemStack::EMPTY.clone();
