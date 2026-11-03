@@ -601,6 +601,8 @@ pub fn build() -> TokenStream {
             (24000, Vec::new(), Vec::new())
         };
 
+    let timelines = build_timelines();
+
     let mut variants = TokenStream::new();
     let mut to_name_match = TokenStream::new();
     let mut to_resource_match = TokenStream::new();
@@ -1165,5 +1167,90 @@ pub fn build() -> TokenStream {
             }
             current
         }
+
+        #timelines
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct TimelineClockJson {
+    clock: String,
+    #[serde(default)]
+    period_ticks: Option<i32>,
+    #[serde(default)]
+    time_markers: std::collections::BTreeMap<String, TimeMarkerJson>,
+}
+
+/// Vanilla `Timeline.TimeMarkerInfo`: either just the ticks or an object.
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum TimeMarkerJson {
+    Ticks(i32),
+    Full {
+        ticks: i32,
+        #[serde(default)]
+        show_in_commands: bool,
+    },
+}
+
+/// Every timeline's clock, period and time markers, for `/time`.
+fn build_timelines() -> TokenStream {
+    let dir = std::path::Path::new("../../assets/datapack/data/minecraft/timeline");
+    let mut files: Vec<_> = std::fs::read_dir(dir)
+        .map(|entries| entries.filter_map(Result::ok).map(|e| e.path()).collect())
+        .unwrap_or_default();
+    files.sort();
+
+    let mut entries = TokenStream::new();
+    for path in files {
+        let Some(name) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let Some(timeline) = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|content| serde_json::from_str::<TimelineClockJson>(&content).ok())
+        else {
+            continue;
+        };
+        let name = format!("minecraft:{name}");
+        let clock = timeline.clock;
+        let period = match timeline.period_ticks {
+            Some(ticks) => quote! { Some(#ticks) },
+            None => quote! { None },
+        };
+        let markers = timeline.time_markers.iter().map(|(marker, info)| {
+            let (ticks, show) = match info {
+                TimeMarkerJson::Ticks(ticks) => (*ticks, false),
+                TimeMarkerJson::Full {
+                    ticks,
+                    show_in_commands,
+                } => (*ticks, *show_in_commands),
+            };
+            quote! { TimeMarker { name: #marker, ticks: #ticks, show_in_commands: #show } }
+        });
+        entries.extend(quote! {
+            Timeline { name: #name, clock: #clock, period_ticks: #period, time_markers: &[#(#markers),*] },
+        });
+    }
+
+    quote! {
+        /// A time marker of a timeline, which `/time set` can move its clock to.
+        #[derive(Clone, Copy, Debug)]
+        pub struct TimeMarker {
+            pub name: &'static str,
+            pub ticks: i32,
+            pub show_in_commands: bool,
+        }
+
+        /// A timeline's clock, period and time markers.
+        #[derive(Clone, Copy, Debug)]
+        pub struct Timeline {
+            pub name: &'static str,
+            pub clock: &'static str,
+            pub period_ticks: Option<i32>,
+            pub time_markers: &'static [TimeMarker],
+        }
+
+        pub const TIMELINES: &[Timeline] = &[#entries];
     }
 }

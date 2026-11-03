@@ -1048,3 +1048,75 @@ pub fn sample_activity_track(
     }
     current
 }
+#[doc = r" A time marker of a timeline, which `/time set` can move its clock to."]
+#[derive(Clone, Copy, Debug)]
+pub struct TimeMarker {
+    pub name: &'static str,
+    pub ticks: i32,
+    pub show_in_commands: bool,
+}
+#[doc = r" A timeline's clock, period and time markers."]
+#[derive(Clone, Copy, Debug)]
+pub struct Timeline {
+    pub name: &'static str,
+    pub clock: &'static str,
+    pub period_ticks: Option<i32>,
+    pub time_markers: &'static [TimeMarker],
+}
+pub const TIMELINES: &[Timeline] = &[
+    Timeline {
+        name: "minecraft:day",
+        clock: "minecraft:overworld",
+        period_ticks: Some(24000i32),
+        time_markers: &[
+            TimeMarker {
+                name: "minecraft:day",
+                ticks: 1000i32,
+                show_in_commands: true,
+            },
+            TimeMarker {
+                name: "minecraft:midnight",
+                ticks: 18000i32,
+                show_in_commands: true,
+            },
+            TimeMarker {
+                name: "minecraft:night",
+                ticks: 13000i32,
+                show_in_commands: true,
+            },
+            TimeMarker {
+                name: "minecraft:noon",
+                ticks: 6000i32,
+                show_in_commands: true,
+            },
+            TimeMarker {
+                name: "minecraft:roll_village_siege",
+                ticks: 18000i32,
+                show_in_commands: false,
+            },
+            TimeMarker {
+                name: "minecraft:wake_up_from_sleep",
+                ticks: 0i32,
+                show_in_commands: false,
+            },
+        ],
+    },
+    Timeline {
+        name: "minecraft:early_game",
+        clock: "minecraft:overworld",
+        period_ticks: None,
+        time_markers: &[],
+    },
+    Timeline {
+        name: "minecraft:moon",
+        clock: "minecraft:overworld",
+        period_ticks: Some(192000i32),
+        time_markers: &[],
+    },
+    Timeline {
+        name: "minecraft:villager_schedule",
+        clock: "minecraft:overworld",
+        period_ticks: Some(24000i32),
+        time_markers: &[],
+    },
+];

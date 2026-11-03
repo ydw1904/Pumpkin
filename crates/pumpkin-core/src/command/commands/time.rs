@@ -1,3 +1,4 @@
+use pumpkin_data::environment_attribute::{TIMELINES, TimeMarker, Timeline};
 use pumpkin_data::translation;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
@@ -9,19 +10,32 @@ use crate::command::argument_types::identifier::IdentifierArgumentType;
 use crate::command::argument_types::registry_id::RegistryIdArgumentType;
 use crate::command::argument_types::time::TimeArgumentType;
 use crate::command::context::command_context::CommandContext;
+use crate::command::errors::command_syntax_error::CommandSyntaxError;
 use crate::command::errors::error_types::CommandErrorType;
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
+use crate::command::suggestion::provider::{SuggestionProvider, SuggestionProviderResult};
+use crate::command::suggestion::suggestions::SuggestionsBuilder;
 use pumpkin_util::identifier::Identifier;
 
 const DESCRIPTION: &str = "Query or modify the world time and clocks.";
 const PERMISSION: &str = "minecraft:command.time";
 
 const DEFAULT_CLOCK: &str = "minecraft:overworld";
-const DAY_TIMELINE: &str = "minecraft:day";
-/// `period_ticks` of the `minecraft:day` timeline the presets are markers of.
-const DAY_PERIOD_TICKS: i64 = 24000;
+const TIMELINE_REGISTRY: &str = "minecraft:timeline";
 
+static ERROR_UNKNOWN_TIMELINE: CommandErrorType<2> = CommandErrorType::new(
+    translation::java::ARGUMENT_RESOURCE_NOT_FOUND,
+    translation::java::ARGUMENT_RESOURCE_NOT_FOUND,
+);
+static ERROR_NO_TIME_MARKER_FOUND: CommandErrorType<2> = CommandErrorType::new(
+    translation::java::COMMANDS_TIME_NO_TIME_MARKER_FOUND,
+    translation::java::COMMANDS_TIME_NO_TIME_MARKER_FOUND,
+);
+static ERROR_WRONG_TIMELINE_FOR_CLOCK: CommandErrorType<2> = CommandErrorType::new(
+    translation::java::COMMANDS_TIME_WRONG_TIMELINE_FOR_CLOCK,
+    translation::java::COMMANDS_TIME_WRONG_TIMELINE_FOR_CLOCK,
+);
 static ERROR_ALREADY_AT_TIME_MARKER: CommandErrorType<2> = CommandErrorType::new(
     translation::java::COMMANDS_TIME_SET_ALREADY_AT_TIME_MARKER,
     "The clock is already at that time marker",
@@ -30,38 +44,23 @@ static ERROR_ALREADY_AT_TIME: CommandErrorType<2> = CommandErrorType::new(
     translation::java::COMMANDS_TIME_SET_ALREADY_AT_TIME,
     "The clock is already at that time",
 );
-
-#[derive(Clone, Copy)]
-enum PresetTime {
-    Day,
-    Noon,
-    Night,
-    Midnight,
-}
-
-impl PresetTime {
-    const fn to_ticks(self) -> i32 {
-        match self {
-            Self::Day => 1000,
-            Self::Noon => 6000,
-            Self::Night => 13000,
-            Self::Midnight => 18000,
-        }
-    }
-
-    const fn marker(self) -> &'static str {
-        match self {
-            Self::Day => "minecraft:day",
-            Self::Noon => "minecraft:noon",
-            Self::Night => "minecraft:night",
-            Self::Midnight => "minecraft:midnight",
-        }
-    }
-}
+static ERROR_ALREADY_PAUSED: CommandErrorType<1> = CommandErrorType::new(
+    translation::java::COMMANDS_TIME_PAUSE_ALREADY_PAUSED,
+    translation::java::COMMANDS_TIME_PAUSE_ALREADY_PAUSED,
+);
+static ERROR_ALREADY_RUNNING: CommandErrorType<1> = CommandErrorType::new(
+    translation::java::COMMANDS_TIME_PAUSE_ALREADY_RUNNING,
+    translation::java::COMMANDS_TIME_PAUSE_ALREADY_RUNNING,
+);
+static ERROR_ALREADY_SAME_RATE: CommandErrorType<2> = CommandErrorType::new(
+    translation::java::COMMANDS_TIME_RATE_ALREADY_SAME,
+    translation::java::COMMANDS_TIME_RATE_ALREADY_SAME,
+);
 
 #[derive(Clone, Copy)]
 enum Action {
-    Set(Option<PresetTime>),
+    SetTicks,
+    SetTimeMarker,
     Add,
     Pause,
     Resume,
@@ -72,21 +71,63 @@ enum Action {
 enum QueryMode {
     Time,
     GameTime,
-    DayTime,
-    Day,
+    TimelineTicks,
+    TimelineRepetitions,
 }
 
 const fn wrap_time(ticks: i64) -> i32 {
     (ticks % 2_147_483_647) as i32
 }
 
-/// The Java 26.3 client no longer has `commands.time.query`, so Java gets the text vanilla
-/// prints for `/time query minecraft:day` (and `... repetitions`). Bedrock keeps its own
-/// one-argument keys.
-fn day_timeline_feedback(
+fn clock_name(context: &CommandContext, has_clock: bool) -> String {
+    if has_clock {
+        IdentifierArgumentType::get(context, "clock")
+            .map_or_else(|_| DEFAULT_CLOCK.to_string(), |id| id.to_string())
+    } else {
+        DEFAULT_CLOCK.to_string()
+    }
+}
+
+/// The `<timeline>` argument, which has to run on `clock`.
+fn timeline_for_clock(
+    context: &CommandContext,
+    clock: &str,
+) -> Result<&'static Timeline, CommandSyntaxError> {
+    let id = RegistryIdArgumentType::get(context, "timeline")?.to_string();
+    let Some(timeline) = TIMELINES.iter().find(|timeline| timeline.name == id) else {
+        return Err(ERROR_UNKNOWN_TIMELINE.create_without_context(
+            TextComponent::text(id),
+            TextComponent::text(TIMELINE_REGISTRY),
+        ));
+    };
+    if timeline.clock != clock {
+        return Err(ERROR_WRONG_TIMELINE_FOR_CLOCK.create_without_context(
+            TextComponent::text(timeline.name),
+            TextComponent::text(clock.to_string()),
+        ));
+    }
+    Ok(timeline)
+}
+
+/// The time markers of the timelines on `clock`, with their timeline's period.
+fn clock_time_markers(clock: &str) -> impl Iterator<Item = (&'static TimeMarker, Option<i64>)> {
+    TIMELINES
+        .iter()
+        .filter(move |timeline| timeline.clock == clock)
+        .flat_map(|timeline| {
+            timeline
+                .time_markers
+                .iter()
+                .map(|marker| (marker, timeline.period_ticks.map(i64::from)))
+        })
+}
+
+/// Timeline feedback; Bedrock has its own one-argument keys.
+fn timeline_feedback(
     context: &CommandContext,
     java_key: &'static str,
     bedrock_key: &'static str,
+    timeline: &Timeline,
     value: i64,
 ) -> TextComponent {
     let value = TextComponent::text(value.to_string());
@@ -102,7 +143,7 @@ fn day_timeline_feedback(
         TextComponent::translate_cross(
             java_key,
             bedrock_key,
-            [TextComponent::text(DAY_TIMELINE), value],
+            [TextComponent::text(timeline.name), value],
         )
     }
 }
@@ -114,12 +155,7 @@ struct QueryExecutor {
 
 impl CommandExecutor for QueryExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
-        let clock_name = if self.has_clock {
-            IdentifierArgumentType::get(context, "clock")
-                .map_or_else(|_| DEFAULT_CLOCK.to_string(), |id| id.to_string())
-        } else {
-            DEFAULT_CLOCK.to_string()
-        };
+        let clock_name = clock_name(context, self.has_clock);
 
         let world = context.source.world();
         let level_time = world
@@ -154,31 +190,42 @@ impl CommandExecutor for QueryExecutor {
                 );
                 Ok(wrap_time(total_ticks))
             }
-            QueryMode::DayTime => {
-                let curr_time = level_time.query_daytime();
+            // Vanilla `Timeline.getCurrentTicks`.
+            QueryMode::TimelineTicks => {
+                let timeline = timeline_for_clock(context, &clock_name)?;
+                let total_ticks = level_time.time_of_day;
+                let ticks = timeline
+                    .period_ticks
+                    .map_or(total_ticks, |period| total_ticks % i64::from(period));
                 context.source.send_feedback(
-                    day_timeline_feedback(
+                    timeline_feedback(
                         context,
                         translation::java::COMMANDS_TIME_QUERY_TIMELINE,
                         translation::bedrock::COMMANDS_TIME_QUERY_DAYTIME,
-                        curr_time,
+                        timeline,
+                        ticks,
                     ),
                     false,
                 );
-                Ok(wrap_time(curr_time))
+                Ok(wrap_time(ticks))
             }
-            QueryMode::Day => {
-                let curr_time = level_time.query_day();
+            // Vanilla `Timeline.getPeriodCount`.
+            QueryMode::TimelineRepetitions => {
+                let timeline = timeline_for_clock(context, &clock_name)?;
+                let repetitions = timeline
+                    .period_ticks
+                    .map_or(0, |period| level_time.time_of_day / i64::from(period));
                 context.source.send_feedback(
-                    day_timeline_feedback(
+                    timeline_feedback(
                         context,
                         translation::java::COMMANDS_TIME_QUERY_TIMELINE_REPETITIONS,
                         translation::bedrock::COMMANDS_TIME_QUERY_DAY,
-                        curr_time,
+                        timeline,
+                        repetitions,
                     ),
                     false,
                 );
-                Ok(curr_time as i32)
+                Ok(wrap_time(repetitions))
             }
         }
     }
@@ -192,35 +239,46 @@ struct ActionExecutor {
 impl CommandExecutor for ActionExecutor {
     #[allow(clippy::too_many_lines)]
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
-        let clock_name = if self.has_clock {
-            IdentifierArgumentType::get(context, "clock")
-                .map_or_else(|_| DEFAULT_CLOCK.to_string(), |id| id.to_string())
-        } else {
-            DEFAULT_CLOCK.to_string()
-        };
+        let clock_name = clock_name(context, self.has_clock);
 
         let world = context.source.world();
 
         match self.action {
-            Action::Set(Some(preset)) => {
-                // Vanilla `ServerClockManager.moveToTimeMarker`: forward to the marker's next
-                // occurrence, so the day count keeps going.
-                let marker = i64::from(preset.to_ticks());
+            Action::SetTimeMarker => {
+                let marker_id = IdentifierArgumentType::get(context, "timemarker")?.to_string();
+                let Some((marker, period)) =
+                    clock_time_markers(&clock_name).find(|(marker, _)| marker.name == marker_id)
+                else {
+                    return Err(ERROR_NO_TIME_MARKER_FOUND.create_without_context(
+                        TextComponent::text(marker_id),
+                        TextComponent::text(clock_name),
+                    ));
+                };
+                // Vanilla `ClockTimeMarker.occursAt` and `resolveTimeToMoveTo`: periodic markers
+                // move forward to their next occurrence, so the day count keeps going.
+                let marker_ticks = i64::from(marker.ticks);
                 let moved = {
                     let mut guard = world
                         .level_time
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
                     let current = guard.time_of_day;
-                    let into_day = current.rem_euclid(DAY_PERIOD_TICKS);
-                    (into_day != marker).then(|| {
-                        let duration = marker - into_day;
-                        let target = current
-                            + if duration > 0 {
-                                duration
-                            } else {
-                                DAY_PERIOD_TICKS + duration
-                            };
+                    let target = match period {
+                        Some(period) if current % period != marker_ticks => {
+                            let duration = marker_ticks - current % period;
+                            Some(
+                                current
+                                    + if duration > 0 {
+                                        duration
+                                    } else {
+                                        period + duration
+                                    },
+                            )
+                        }
+                        None if current != marker_ticks => Some(marker_ticks),
+                        _ => None,
+                    };
+                    target.map(|target| {
                         guard.set_time(target);
                         (guard.clone(), target)
                     })
@@ -228,7 +286,7 @@ impl CommandExecutor for ActionExecutor {
                 let Some((level_time, total_ticks)) = moved else {
                     return Err(ERROR_ALREADY_AT_TIME_MARKER.create_without_context(
                         TextComponent::text(clock_name),
-                        TextComponent::text(preset.marker()),
+                        TextComponent::text(marker.name),
                     ));
                 };
                 level_time.send_time(world);
@@ -237,13 +295,13 @@ impl CommandExecutor for ActionExecutor {
                         translation::java::COMMANDS_TIME_SET_TIME_MARKER,
                         translation::bedrock::COMMANDS_TIME_SET,
                         TextComponent::text(clock_name),
-                        TextComponent::text(preset.marker())
+                        TextComponent::text(marker.name)
                     ),
                     true,
                 );
                 Ok(wrap_time(total_ticks))
             }
-            Action::Set(None) => {
+            Action::SetTicks => {
                 let time_count = TimeArgumentType::get(context, "time")?;
                 let level_time = {
                     let mut guard = world
@@ -294,42 +352,39 @@ impl CommandExecutor for ActionExecutor {
                 );
                 Ok(wrap_time(total_ticks))
             }
-            Action::Pause => {
+            Action::Pause | Action::Resume => {
+                let paused = matches!(self.action, Action::Pause);
                 let level_time = {
                     let mut guard = world
                         .level_time
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    guard.set_paused(true);
+                    if guard.paused == paused {
+                        let error = if paused {
+                            &ERROR_ALREADY_PAUSED
+                        } else {
+                            &ERROR_ALREADY_RUNNING
+                        };
+                        return Err(error.create_without_context(TextComponent::text(clock_name)));
+                    }
+                    guard.set_paused(paused);
                     guard.clone()
                 };
                 level_time.send_time(world);
                 context.source.send_feedback(
-                    pumpkin_macros::translate_cross!(
-                        translation::java::COMMANDS_TIME_PAUSE,
-                        translation::bedrock::COMMANDS_TIME_STOP,
-                        TextComponent::text(clock_name)
-                    ),
-                    true,
-                );
-                Ok(1)
-            }
-            Action::Resume => {
-                let level_time = {
-                    let mut guard = world
-                        .level_time
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    guard.set_paused(false);
-                    guard.clone()
-                };
-                level_time.send_time(world);
-                context.source.send_feedback(
-                    pumpkin_macros::translate_cross!(
-                        translation::java::COMMANDS_TIME_RESUME,
-                        translation::bedrock::COMMANDS_TIME_SET,
-                        TextComponent::text(clock_name)
-                    ),
+                    if paused {
+                        pumpkin_macros::translate_cross!(
+                            translation::java::COMMANDS_TIME_PAUSE,
+                            translation::bedrock::COMMANDS_TIME_STOP,
+                            TextComponent::text(clock_name)
+                        )
+                    } else {
+                        pumpkin_macros::translate_cross!(
+                            translation::java::COMMANDS_TIME_RESUME,
+                            translation::bedrock::COMMANDS_TIME_SET,
+                            TextComponent::text(clock_name)
+                        )
+                    },
                     true,
                 );
                 Ok(1)
@@ -341,6 +396,13 @@ impl CommandExecutor for ActionExecutor {
                         .level_time
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    #[expect(clippy::float_cmp, reason = "vanilla compares the rates exactly")]
+                    if guard.rate == rate {
+                        return Err(ERROR_ALREADY_SAME_RATE.create_without_context(
+                            TextComponent::text(clock_name),
+                            TextComponent::text(rate.to_string()),
+                        ));
+                    }
                     guard.set_rate(rate);
                     guard.clone()
                 };
@@ -360,30 +422,44 @@ impl CommandExecutor for ActionExecutor {
     }
 }
 
+/// Vanilla `TimeCommand.suggestTimeMarkers`: the markers shown in commands for the clock.
+struct TimeMarkerSuggestionProvider {
+    has_clock: bool,
+}
+
+impl SuggestionProvider for TimeMarkerSuggestionProvider {
+    fn suggest(
+        &self,
+        context: &CommandContext,
+        builder: SuggestionsBuilder,
+    ) -> SuggestionProviderResult {
+        let clock = clock_name(context, self.has_clock);
+        let markers: Vec<&str> = clock_time_markers(&clock)
+            .filter(|(marker, _)| marker.show_in_commands)
+            .map(|(marker, _)| marker.name)
+            .collect();
+        builder.filter_and_suggest_iter(markers).build()
+    }
+}
+
 macro_rules! build_branches {
     ($builder:expr, $has_clock:expr) => {{
         let set_node = literal("set")
-            .then(literal("day").executes(ActionExecutor {
-                action: Action::Set(Some(PresetTime::Day)),
-                has_clock: $has_clock,
-            }))
-            .then(literal("noon").executes(ActionExecutor {
-                action: Action::Set(Some(PresetTime::Noon)),
-                has_clock: $has_clock,
-            }))
-            .then(literal("night").executes(ActionExecutor {
-                action: Action::Set(Some(PresetTime::Night)),
-                has_clock: $has_clock,
-            }))
-            .then(literal("midnight").executes(ActionExecutor {
-                action: Action::Set(Some(PresetTime::Midnight)),
-                has_clock: $has_clock,
-            }))
             .then(
                 argument("time", TimeArgumentType::any()).executes(ActionExecutor {
-                    action: Action::Set(None),
+                    action: Action::SetTicks,
                     has_clock: $has_clock,
                 }),
+            )
+            .then(
+                argument("timemarker", IdentifierArgumentType)
+                    .suggests(TimeMarkerSuggestionProvider {
+                        has_clock: $has_clock,
+                    })
+                    .executes(ActionExecutor {
+                        action: Action::SetTimeMarker,
+                        has_clock: $has_clock,
+                    }),
             );
 
         let add_node = literal("add").then(
@@ -414,18 +490,30 @@ macro_rules! build_branches {
                 mode: QueryMode::Time,
                 has_clock: $has_clock,
             }))
-            .then(literal("gametime").executes(QueryExecutor {
+            .then(
+                argument(
+                    "timeline",
+                    RegistryIdArgumentType::resource(Identifier::vanilla_static("timeline")),
+                )
+                .executes(QueryExecutor {
+                    mode: QueryMode::TimelineTicks,
+                    has_clock: $has_clock,
+                })
+                .then(literal("repetition").executes(QueryExecutor {
+                    mode: QueryMode::TimelineRepetitions,
+                    has_clock: $has_clock,
+                })),
+            );
+
+        // `query gametime` only exists without `of <clock>`.
+        let query_node = if $has_clock {
+            query_node
+        } else {
+            query_node.then(literal("gametime").executes(QueryExecutor {
                 mode: QueryMode::GameTime,
-                has_clock: $has_clock,
+                has_clock: false,
             }))
-            .then(literal("daytime").executes(QueryExecutor {
-                mode: QueryMode::DayTime,
-                has_clock: $has_clock,
-            }))
-            .then(literal("day").executes(QueryExecutor {
-                mode: QueryMode::Day,
-                has_clock: $has_clock,
-            }));
+        };
 
         $builder
             .then(set_node)
