@@ -32,6 +32,7 @@ use crate::entity::{
 };
 use crate::plugin::api::events::entity::entity_drop_item::EntityDropItemEvent;
 use crate::world::World;
+use crate::world::loot::{LootContextParameters, LootTableHandle, generate_loot_from_handle};
 
 const EGG_LAY_TIME: std::ops::Range<i32> = 6000..12000;
 const CHICKEN_JOCKEY_EXPERIENCE_REWARD: u32 = 10;
@@ -104,20 +105,47 @@ impl ChickenEntity {
         mob_arc
     }
 
+    /// Vanilla `dropFromGiftLootTable(CHICKEN_LAY)`: the egg matching the chicken's variant.
     fn lay_egg(&self) -> bool {
         let entity = self.get_entity();
-        let mut drop_event =
-            EntityDropItemEvent::new(entity.entity_id, "minecraft:egg".to_string(), 1);
-        if let Some(server) = entity.world.load().server.upgrade() {
-            server
-                .plugin_manager
-                .fire_blocking(&server, &mut drop_event);
+        let world = entity.world.load_full();
+        let params = LootContextParameters {
+            world: Some(&world),
+            position: Some(entity.pos.load()),
+            this_entity: Some(self),
+            ..Default::default()
+        };
+        let handle = world
+            .server
+            .upgrade()
+            .and_then(|server| {
+                server
+                    .datapack_manager
+                    .get_loot_table("minecraft:gameplay/chicken_lay")
+            })
+            .unwrap_or(LootTableHandle::Static(
+                &pumpkin_data::loot_table::GAMEPLAY_CHICKEN_LAY,
+            ));
+        let loot = generate_loot_from_handle(&handle, 0, &params);
+        let mut dropped = false;
+        for stack in loot {
+            let mut drop_event = EntityDropItemEvent::new(
+                entity.entity_id,
+                format!("minecraft:{}", stack.item.registry_key),
+                stack.item_count,
+            );
+            if let Some(server) = world.server.upgrade() {
+                server
+                    .plugin_manager
+                    .fire_blocking(&server, &mut drop_event);
+            }
+            if drop_event.cancelled {
+                continue;
+            }
+            entity.spawn_at_location(stack);
+            dropped = true;
         }
-        if drop_event.cancelled {
-            return false;
-        }
-        entity.spawn_at_location(ItemStack::new(1, &Item::EGG));
-        true
+        dropped
     }
 
     pub fn is_chicken_jockey(&self) -> bool {
