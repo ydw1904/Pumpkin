@@ -5,6 +5,8 @@ use std::sync::{
 };
 
 use pumpkin_data::BlockState;
+use pumpkin_data::attributes::Attributes;
+use pumpkin_data::damage::DamageType;
 use pumpkin_data::entity::{EntityStatus, EntityType};
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -13,7 +15,10 @@ use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::bedrock::server::ActorEventID;
 use pumpkin_util::GameMode;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::gameplay::game_random;
 
+use crate::enchantment::EnchantmentHelper;
 use crate::entity::ai::behavior::hunting::{self, Hunt};
 use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::{
@@ -203,6 +208,45 @@ impl Mob for IronGolemEntity {
 
     fn as_iron_golem(&self) -> Option<&crate::entity::passive::iron_golem::IronGolemEntity> {
         Some(self)
+    }
+
+    /// Vanilla `IronGolem.doHurtTarget`: a random hit that throws the target upwards.
+    fn do_hurt_target(&self, target: &dyn EntityBase) -> bool {
+        self.trigger_attack_animation();
+        let attack_damage = self
+            .mob_entity
+            .living_entity
+            .get_attribute_value(&Attributes::ATTACK_DAMAGE) as f32;
+        let damage = if attack_damage as i32 > 0 {
+            attack_damage / 2.0 + game_random().random_range(0..attack_damage as i32) as f32
+        } else {
+            attack_damage
+        };
+        let hurt = target.damage_with_context(
+            target,
+            damage,
+            DamageType::MOB_ATTACK,
+            None,
+            Some(self),
+            Some(self),
+        );
+        if hurt {
+            let knockback_resistance = target.get_living_entity().map_or(0.0, |living| {
+                living.get_attribute_value(&Attributes::KNOCKBACK_RESISTANCE)
+            });
+            let scale = (1.0 - knockback_resistance).max(0.0);
+            target
+                .get_entity()
+                .add_velocity(Vector3::new(0.0, f64::from(0.4f32) * scale, 0.0));
+            EnchantmentHelper::do_post_attack_effects(
+                target,
+                DamageType::MOB_ATTACK,
+                Some(self),
+                Some(self),
+            );
+        }
+        self.play_entity_sound(Sound::EntityIronGolemAttack, 1.0, 1.0);
+        hurt
     }
 
     fn mob_tick(&self, _caller: &dyn EntityBase) {
