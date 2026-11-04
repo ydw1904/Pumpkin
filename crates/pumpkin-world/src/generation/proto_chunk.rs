@@ -105,6 +105,27 @@ pub trait GenerationCache: HeightLimitView + BlockAccessor {
     fn world_seed(&self) -> u64 {
         self.get_center_chunk().world_seed
     }
+    /// Vanilla `ChunkAccess.markPosForPostProcessing` on the chunk holding `pos`.
+    fn mark_pos_for_post_processing(&mut self, pos: &Vector3<i32>) {
+        if let Some(chunk) = self.get_chunk_mut(pos.x >> 4, pos.z >> 4) {
+            chunk.mark_pos_for_post_processing(pos.x, pos.y, pos.z);
+        }
+    }
+    /// Vanilla `Feature.markAboveForPostProcessing`: marks up to two non-air blocks above
+    /// `pos`, so a plant or fluid resting on a block a feature placed updates once it ticks.
+    fn mark_above_for_post_processing(&mut self, pos: &Vector3<i32>) {
+        let mut above = *pos;
+        for _ in 0..2 {
+            above.y += 1;
+            if GenerationCache::get_block_state(self, &above)
+                .to_state()
+                .is_air()
+            {
+                return;
+            }
+            self.mark_pos_for_post_processing(&above);
+        }
+    }
 }
 
 const AIR_BLOCK: Block = Block::AIR;
@@ -1476,6 +1497,8 @@ impl ProtoChunk {
                             && new_state.id != state.id
                         {
                             self.set_block_state(x, y, z, new_state);
+                            // `MaterialSystem.buildSurface`: swamp water patches flow once ticked.
+                            self.mark_fluid_for_post_processing(x, y, z, new_state);
                         }
                     }
                 }

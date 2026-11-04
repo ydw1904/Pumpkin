@@ -72,6 +72,9 @@ impl DiskFeature {
                     self.state_provider
                         .get_with_context(block_registry, chunk, random, cur_pos);
                 chunk.set_block_state(&cur_pos.0, state);
+                if !placed_any {
+                    chunk.mark_above_for_post_processing(&cur_pos.0);
+                }
                 placed_any = true;
             }
             y -= 1;
