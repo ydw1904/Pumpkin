@@ -4,8 +4,8 @@ use crate::data_component::DataComponent::Enchantments;
 use crate::data_component_impl::{
     BlocksAttacksImpl, ConsumableImpl, CustomDataImpl, DamageImpl, DamageResistantImpl,
     DataComponentImpl, EnchantmentsImpl, IDSet, MaxDamageImpl, MaxStackSizeImpl, Rarity,
-    RarityImpl, SwingAnimationImpl, ToolImpl, UnbreakableImpl, UseCooldownImpl, get, get_mut,
-    read_data,
+    RarityImpl, StoredEnchantmentsImpl, SwingAnimationImpl, ToolImpl, UnbreakableImpl,
+    UseCooldownImpl, get, get_mut, read_data,
 };
 
 use crate::item::Item;
@@ -730,11 +730,28 @@ impl ItemStack {
         *self = Self::EMPTY.clone();
     }
 
+    /// `ItemStack.enchant`: raises the enchantment to `level`, in the stored enchantments of an
+    /// enchanted book.
     pub fn enchant(&mut self, enchantment: &'static Enchantment, level: i32) {
         if level <= 0 {
             return;
         }
         let level = min(level, 255);
+        if self.item == &Item::ENCHANTED_BOOK {
+            let mut stored = self
+                .get_data_component::<StoredEnchantmentsImpl>()
+                .map(|data| data.enchantment.to_vec())
+                .unwrap_or_default();
+            if let Some((_, old_level)) = stored.iter_mut().find(|(enc, _)| *enc == enchantment) {
+                *old_level = max(*old_level, level);
+            } else {
+                stored.push((enchantment, level));
+            }
+            self.set_data_component(StoredEnchantmentsImpl {
+                enchantment: Cow::Owned(stored),
+            });
+            return;
+        }
         if let Some(data) = self.get_data_component_mut::<EnchantmentsImpl>() {
             for (enc, old_level) in data.enchantment.to_mut() {
                 if *enc == enchantment {

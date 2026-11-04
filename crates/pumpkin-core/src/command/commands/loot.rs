@@ -400,9 +400,10 @@ impl CommandExecutor for LootExecutor {
                             .create_without_context(TextComponent::text(loot_table_str.to_string()))
                     })?;
 
+                // `LootCommand.dropChestLoot`: the origin is the source's position.
                 let params = LootContextParameters {
                     world: Some(context.world()),
-                    position: context.source.as_player().map(|p| p.position()),
+                    position: Some(context.source.position),
                     ..Default::default()
                 };
                 drops = crate::world::loot::generate_loot_from_handle(&loot_table, 0, &params);

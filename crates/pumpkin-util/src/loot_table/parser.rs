@@ -3,8 +3,8 @@ use serde_json::Value;
 use super::{
     DynamicLootCondition as Condition, DynamicLootEntry as Entry,
     DynamicLootEntryKind as EntryKind, DynamicLootFunction as Function, DynamicLootPool as Pool,
-    DynamicLootTable as Table, LootBonusFormula, LootEntityTarget, LootFunctionKind,
-    LootNumberProvider,
+    DynamicLootTable as Table, JSON_LOOT_FUNCTIONS, LootBonusFormula, LootEntityTarget,
+    LootFunctionKind, LootNumberProvider,
 };
 
 const MAX_PREDICATE_DEPTH: usize = 128;
@@ -28,6 +28,15 @@ pub fn parse_condition_with_predicates(
 #[must_use]
 pub fn parse_condition(value: &Value) -> Option<Condition> {
     parse_condition_with_predicates(value, &|_| None)
+}
+
+/// Parses a function, or a list of them, like the `on_pass` of a `filtered` function.
+#[must_use]
+pub fn parse_functions(value: &Value) -> Vec<Function> {
+    Parser {
+        predicates: &|_: &str| None,
+    }
+    .function_list(value)
 }
 
 /// Parses a loot table with a resolver for named predicate definitions.
@@ -76,7 +85,9 @@ fn scalar(value: &Value) -> Option<f64> {
         .or_else(|| value.get("value").and_then(Value::as_f64))
 }
 
-fn provider(value: &Value) -> Option<LootNumberProvider> {
+/// Parses a number provider: a constant, `uniform` or `binomial`.
+#[must_use]
+pub fn provider(value: &Value) -> Option<LootNumberProvider> {
     if let Some(value) = scalar(value) {
         return Some(LootNumberProvider::Constant(value));
     }
@@ -464,9 +475,13 @@ impl<R: Fn(&str) -> Option<Value>> Parser<'_, R> {
     }
 
     fn functions(&self, value: &Value) -> Vec<Function> {
-        let Some(functions) = value.get("modifier").or_else(|| value.get("functions")) else {
-            return Vec::new();
-        };
+        value
+            .get("modifier")
+            .or_else(|| value.get("functions"))
+            .map_or_else(Vec::new, |functions| self.function_list(functions))
+    }
+
+    fn function_list(&self, functions: &Value) -> Vec<Function> {
         many(functions)
             .iter()
             .filter_map(|function| {
@@ -538,6 +553,7 @@ impl<R: Fn(&str) -> Option<Value>> Parser<'_, R> {
                         LootFunctionKind::LimitCount { min, max }
                     }
                     "explosion_decay" => LootFunctionKind::ExplosionDecay,
+                    name if JSON_LOOT_FUNCTIONS.contains(&name) => LootFunctionKind::Json,
                     _ => return None,
                 };
                 let enchantment = function
@@ -555,6 +571,7 @@ impl<R: Fn(&str) -> Option<Value>> Parser<'_, R> {
                     kind,
                     enchantment,
                     condition: self.conditions(function),
+                    json: (kind == LootFunctionKind::Json).then(|| function.clone()),
                 })
             })
             .collect()

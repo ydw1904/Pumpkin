@@ -3,7 +3,9 @@ use crate::server::Server;
 use crate::world::World;
 use dashmap::DashMap;
 use pumpkin_data::data_component::DataComponent;
-use pumpkin_data::data_component_impl::{EquipmentType, MapDecorationsImpl, MapIdImpl};
+use pumpkin_data::data_component_impl::{
+    EquipmentType, MapDecorationEntry, MapDecorationsImpl, MapIdImpl,
+};
 use pumpkin_data::dimension::Dimension;
 use pumpkin_data::fluid::Fluid;
 use pumpkin_data::item::Item;
@@ -16,7 +18,7 @@ use pumpkin_inventory::crafting::recipe_provider::MAX_MAP_SCALE;
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_protocol::java::client::play::{CMapItemData, MapIcon, MapPatch};
-use pumpkin_util::math::vector2::Vector2;
+use pumpkin_util::math::{position::BlockPos, vector2::Vector2};
 use pumpkin_util::text::TextComponent;
 use pumpkin_world::chunk::ChunkHeightmapType;
 use pumpkin_world::level::SyncChunk;
@@ -34,6 +36,8 @@ const HALF_MAP_SIZE: i32 = 64;
 const PLAYER_OFF_MAP_RANGE: f32 = 320.0;
 /// `HoldingPlayer.nextUpdatePacket` sends changed markers at most every this many updates.
 const DECORATION_UPDATE_INTERVAL: i32 = 5;
+/// The rotation `MapItemSavedData.addTargetDecoration` gives a structure marker.
+const TARGET_DECORATION_ROTATION: f32 = 180.0;
 /// The height `MapItem.update` gives every pixel under a ceiling.
 const CEILING_AVERAGE_HEIGHT: f64 = 100.0;
 // `MapColor.Brightness` ids.
@@ -607,7 +611,7 @@ impl MapData {
     }
 
     /// `MapItem.renderBiomePreviewMap`: outlines the water biomes of an exploration map.
-    pub fn render_biome_preview(&mut self, world: &crate::world::World) {
+    pub fn render_biome_preview(&mut self, world: &World) {
         if world.dimension.minecraft_name != self.dimension.minecraft_name {
             return;
         }
@@ -869,6 +873,48 @@ fn sample_area(
         }
     }
     (color, average_area_height, water_depth)
+}
+
+/// The map part of `ExplorationMapFunction.run`: `MapItem.applyNewSavedData` tracking the
+/// position without limit, `MapItem.renderBiomePreviewMap` and
+/// `MapItemSavedData.addTargetDecoration` with the `+` key.
+pub fn make_exploration_map(
+    world: &World,
+    stack: &mut ItemStack,
+    target: BlockPos,
+    zoom: i8,
+    decoration_type: &MapDecorationType,
+) {
+    let Some(server) = world.server.upgrade() else {
+        return;
+    };
+    let map_id = server.next_map_id();
+    let (center_x, center_z) = fresh_map_center(target.0.x, target.0.z, zoom);
+    let map =
+        server
+            .map_manager
+            .create_map(map_id, world.dimension.clone(), center_x, center_z, zoom);
+    let mut map_data = map
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    map_data.unlimited_tracking = true;
+    map_data.render_biome_preview(world);
+    drop(map_data);
+    stack.set_data_component(MapIdImpl { id: map_id });
+    let decorations = stack
+        .get_data_component::<MapDecorationsImpl>()
+        .cloned()
+        .unwrap_or_default()
+        .with_decoration(
+            "+",
+            MapDecorationEntry {
+                decoration_type: format!("minecraft:{}", decoration_type.name),
+                x: f64::from(target.0.x),
+                z: f64::from(target.0.z),
+                rotation: TARGET_DECORATION_ROTATION,
+            },
+        );
+    stack.set_data_component(decorations);
 }
 
 /// `MapItem.inventoryTick`: a map anywhere in a player's inventory keeps its markers up to date,

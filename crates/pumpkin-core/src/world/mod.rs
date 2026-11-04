@@ -3192,6 +3192,49 @@ impl World {
         }
     }
 
+    /// `ServerLevel.findNearestMapStructure` for random-spread structures: the nearest start of
+    /// any of `structures`, searched ring by ring out to `max_search_radius` regions.
+    #[must_use]
+    pub fn find_nearest_map_structure(
+        &self,
+        structures: &[impl AsRef<str>],
+        origin: BlockPos,
+        max_search_radius: i32,
+    ) -> Option<BlockPos> {
+        use pumpkin_data::structures::{StructureKeys, StructureSet};
+        use pumpkin_world::generation::generator::structure_finder::find_nearest_structure_start_in_sets;
+
+        // `getPlacementsForStructure`: the structures grouped by the set that places them.
+        let mut scans: Vec<(usize, Vec<StructureKeys>)> = Vec::new();
+        for key in structures.iter().filter_map(|name| {
+            let name = name.as_ref();
+            StructureKeys::from_name(name.strip_prefix("minecraft:").unwrap_or(name))
+        }) {
+            let Some(index) = StructureSet::ALL
+                .iter()
+                .position(|set| set.structures.iter().any(|entry| entry.structure == key))
+            else {
+                continue;
+            };
+            if let Some((_, keys)) = scans.iter_mut().find(|(set, _)| *set == index) {
+                keys.push(key);
+            } else {
+                scans.push((index, vec![key]));
+            }
+        }
+        let searches: Vec<_> = scans
+            .iter()
+            .map(|(index, keys)| (&StructureSet::ALL[*index], keys.as_slice()))
+            .collect();
+        find_nearest_structure_start_in_sets(
+            origin,
+            &searches,
+            max_search_radius,
+            &self.level.world_gen(),
+        )
+        .map(|(pos, _)| pos)
+    }
+
     /// Gets the y position of the first non air block from the top down
     pub fn get_top_block(&self, position: Vector2<i32>) -> i32 {
         let chunk_pos = Vector2::new(position.x >> 4, position.y >> 4);

@@ -725,9 +725,7 @@ impl VillagerEntity {
 
     fn create_explorer_map(&self, destination: &str, given: &ItemStack) -> Option<ItemStack> {
         use pumpkin_data::data_component::DataComponent;
-        use pumpkin_data::data_component_impl::{
-            DataComponentImpl, ItemNameImpl, MapDecorationEntry, MapDecorationsImpl, MapIdImpl,
-        };
+        use pumpkin_data::data_component_impl::{DataComponentImpl, ItemNameImpl};
         use pumpkin_data::structures::StructureSet;
         use pumpkin_world::generation::generator::structure_finder::find_nearest_structure_start;
 
@@ -742,25 +740,6 @@ impl VillagerEntity {
             100,
             &generator,
         )?;
-        let server = world.server.upgrade()?;
-        // `ExplorationMapFunction.run`: `MapItem.applyNewSavedData` with the default zoom,
-        // tracking the position without limit, then the biome preview.
-        let map_id = server.next_map_id();
-        let (center_x, center_z) =
-            crate::world::map::fresh_map_center(target.0.x, target.0.z, EXPLORATION_MAP_ZOOM);
-        let map = server.map_manager.create_map(
-            map_id,
-            world.dimension.clone(),
-            center_x,
-            center_z,
-            EXPLORATION_MAP_ZOOM,
-        );
-        let mut map_data = map
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        map_data.unlimited_tracking = true;
-        map_data.render_biome_preview(&world);
-        drop(map_data);
         let decoration_type = pumpkin_data::map_decoration::MapDecorationType::from_id(
             u32::try_from(icon_type).ok()?,
         )?;
@@ -777,25 +756,13 @@ impl VillagerEntity {
         } else {
             given.clone()
         };
-        stack.patch.push((
-            DataComponent::MapId,
-            Some(MapIdImpl { id: map_id }.to_dyn()),
-        ));
-        // `MapItemSavedData.addTargetDecoration`.
-        let decorations = stack
-            .get_data_component::<MapDecorationsImpl>()
-            .cloned()
-            .unwrap_or_default()
-            .with_decoration(
-                "+",
-                MapDecorationEntry {
-                    decoration_type: format!("minecraft:{}", decoration_type.name),
-                    x: f64::from(target.0.x),
-                    z: f64::from(target.0.z),
-                    rotation: 180.0,
-                },
-            );
-        stack.set_data_component(decorations);
+        crate::world::map::make_exploration_map(
+            &world,
+            &mut stack,
+            target,
+            EXPLORATION_MAP_ZOOM,
+            decoration_type,
+        );
         Some(stack)
     }
 

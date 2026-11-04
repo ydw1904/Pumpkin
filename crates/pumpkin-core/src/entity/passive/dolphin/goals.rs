@@ -8,12 +8,10 @@ use pumpkin_data::{
     item_stack::ItemStack,
     potion::Effect,
     sound::Sound,
-    structures::{StructureKeys, StructureSet},
     tag::{self, Taggable},
 };
 use pumpkin_protocol::bedrock::server::ActorEventID;
 use pumpkin_util::math::{position::BlockPos, vector3::Vector3, wrap_degrees};
-use pumpkin_world::generation::generator::structure_finder::find_nearest_structure_start_in_sets;
 
 use super::DolphinEntity;
 use crate::entity::{
@@ -33,6 +31,8 @@ use crate::entity::{
 };
 
 const ITEM_SEARCH_RANGE: f64 = 8.0;
+/// The region rings `DolphinSwimToTreasureGoal.start` searches for a structure.
+const DOLPHIN_SEARCH_RADIUS: i32 = 50;
 const STEPS_TO_CHECK: [i32; 6] = [0, 1, 4, 5, 6, 7];
 pub(super) const JUMP_HORIZONTAL_SPEED: f64 = 0.6;
 pub(super) const JUMP_VERTICAL_SPEED: f64 = 0.7;
@@ -135,34 +135,12 @@ impl Goal for DolphinSwimToTreasureGoal {
         mob.get_mob_entity().steered().navigator().stop();
         let entity = mob.get_entity();
         let world = entity.world.load();
-        let generator = world.level.world_gen();
         let origin = entity.block_pos.load();
-        let wanted: Vec<_> = tag::WorldgenStructure::MINECRAFT_DOLPHIN_LOCATED
-            .0
-            .iter()
-            .filter_map(|name| StructureKeys::from_name(name))
-            .collect();
-        let mut scans: Vec<(usize, Vec<StructureKeys>)> = Vec::new();
-        for key in wanted {
-            let Some(index) = StructureSet::ALL
-                .iter()
-                .position(|set| set.structures.iter().any(|entry| entry.structure == key))
-            else {
-                continue;
-            };
-            if let Some((_, keys)) = scans.iter_mut().find(|(set, _)| *set == index) {
-                keys.push(key);
-            } else {
-                scans.push((index, vec![key]));
-            }
-        }
-        let searches: Vec<_> = scans
-            .iter()
-            .map(|(index, keys)| (&StructureSet::ALL[*index], keys.as_slice()))
-            .collect();
-        if let Some((pos, _)) =
-            find_nearest_structure_start_in_sets(origin, &searches, 50, &generator)
-        {
+        if let Some(pos) = world.find_nearest_map_structure(
+            tag::WorldgenStructure::MINECRAFT_DOLPHIN_LOCATED.0,
+            origin,
+            DOLPHIN_SEARCH_RADIUS,
+        ) {
             self.treasure_pos = Some(pos);
             world.send_entity_status(
                 entity,

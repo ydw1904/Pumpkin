@@ -2,6 +2,8 @@ use std::collections::HashSet;
 
 use pumpkin_util::random::gameplay::game_random;
 
+mod functions;
+
 use super::{
     DynamicLootCondition, DynamicLootEntry, DynamicLootEntryKind, DynamicLootFunction,
     DynamicLootPool, DynamicLootTable, Item, ItemStack, LootCondition, LootContextParameters,
@@ -169,8 +171,17 @@ impl<'a> Entry<'a> {
         (weight as f32 + quality as f32 * luck).floor().max(0.0) as i32
     }
 }
+/// One loot function: its kind, condition, enchantment and, for [`LootFunctionKind::Json`],
+/// its JSON.
+type FunctionParts<'a> = (
+    LootFunctionKind,
+    Condition<'a>,
+    Option<&'a str>,
+    Option<&'a serde_json::Value>,
+);
+
 impl<'a> Functions<'a> {
-    fn iter(self) -> impl Iterator<Item = (LootFunctionKind, Condition<'a>, Option<&'a str>)> {
+    fn iter(self) -> impl Iterator<Item = FunctionParts<'a>> {
         let (s, d): (&[_], &[_]) = match self {
             Self::Static(functions) => (functions, &[]),
             Self::Dynamic(functions) => (&[], functions),
@@ -181,6 +192,7 @@ impl<'a> Functions<'a> {
                     function.kind,
                     Condition::Static(function.condition),
                     function.enchantment,
+                    function.json.map(|json| &**json),
                 )
             })
             .chain(d.iter().map(|function: &DynamicLootFunction| {
@@ -188,6 +200,7 @@ impl<'a> Functions<'a> {
                     function.kind,
                     Condition::Dynamic(&function.condition),
                     function.enchantment.as_deref(),
+                    function.json.as_ref(),
                 )
             }))
     }
@@ -204,9 +217,30 @@ struct Candidate<'a> {
     item: Option<&'static Item>,
     parents: Vec<Functions<'a>>,
 }
+/// A stack being built. The count lives outside the `ItemStack` because functions may take it
+/// past what a `u8` holds before the result is split into stacks.
 struct Stack {
-    item: &'static Item,
+    stack: ItemStack,
     count: i32,
+}
+
+impl Stack {
+    fn new(item: &'static Item) -> Self {
+        Self {
+            stack: ItemStack::new(1, item),
+            count: 1,
+        }
+    }
+
+    /// Turns the stack into `ItemStack.EMPTY`, as `discard` does.
+    fn clear(&mut self) {
+        self.stack = ItemStack::EMPTY.clone();
+        self.count = 0;
+    }
+
+    fn is_empty(&self) -> bool {
+        self.count <= 0 || self.stack.item == &Item::AIR
+    }
 }
 
 pub(super) fn generate(
@@ -238,12 +272,16 @@ pub(super) fn generate(
     let mut stacks = Vec::new();
     generator.table(table, &[], &mut stacks);
     let mut result = Vec::new();
+    // `LootTable.createStackSplitter`.
     for stack in stacks {
-        let max_count = i32::from(ItemStack::new(1, stack.item).get_max_stack_size());
+        if stack.is_empty() {
+            continue;
+        }
+        let max_count = i32::from(stack.stack.get_max_stack_size()).max(1);
         let mut count = stack.count;
         while count > 0 {
             let split = count.min(max_count);
-            result.push(ItemStack::new(split as u8, stack.item));
+            result.push(stack.stack.copy_with_count(split as u8));
             count -= split;
         }
     }
@@ -441,13 +479,13 @@ impl Generator<'_, '_> {
         output: &mut Vec<Stack>,
     ) {
         if let Some(item) = candidate.item {
-            self.emit(Stack { item, count: 1 }, functions, output);
+            self.emit(Stack::new(item), functions, output);
             return;
         }
         match candidate.entry.kind() {
             Kind::Item(name) => {
                 if let Some(item) = Item::from_registry_key(name.trim_start_matches("minecraft:")) {
-                    self.emit(Stack { item, count: 1 }, functions, output);
+                    self.emit(Stack::new(item), functions, output);
                 }
             }
             // Dynamic drops emit nothing without a block-registered callback.
@@ -457,7 +495,7 @@ impl Generator<'_, '_> {
                     if let Some(item) =
                         Item::from_registry_key(name.trim_start_matches("minecraft:"))
                     {
-                        self.emit(Stack { item, count: 1 }, functions, output);
+                        self.emit(Stack::new(item), functions, output);
                     }
                 }
             }
@@ -484,8 +522,13 @@ impl Generator<'_, '_> {
         }
     }
     fn emit(&mut self, mut stack: Stack, functions: &[Functions<'_>], output: &mut Vec<Stack>) {
+        self.apply(&mut stack, functions);
+        output.push(stack);
+    }
+    /// Runs the functions over the stack in order, each only if its condition passes.
+    fn apply(&mut self, stack: &mut Stack, functions: &[Functions<'_>]) {
         for functions in functions {
-            for (kind, condition, enchantment) in functions.iter() {
+            for (kind, condition, enchantment, json) in functions.iter() {
                 if !self.test(condition) {
                     continue;
                 }
@@ -554,13 +597,17 @@ impl Generator<'_, '_> {
                         if stack.count <= 0 {
                             continue;
                         }
-                        let (item, count) = smelt(stack.item, stack.count);
-                        stack.item = item;
+                        let (item, count) = smelt(stack.stack.item, stack.count);
+                        stack.stack.item = item;
                         stack.count = count;
+                    }
+                    LootFunctionKind::Json => {
+                        if let Some(json) = json {
+                            self.apply_json(json, stack);
+                        }
                     }
                 }
             }
         }
-        output.push(stack);
     }
 }

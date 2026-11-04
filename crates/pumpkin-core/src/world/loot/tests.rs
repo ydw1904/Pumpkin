@@ -983,3 +983,41 @@ fn time_check_and_predicate_reference_evaluation() {
         &params_stick
     ));
 }
+
+#[test]
+fn enchant_randomly_turns_a_book_into_an_enchanted_book() {
+    use pumpkin_data::data_component_impl::StoredEnchantmentsImpl;
+
+    let table = parse_loot_table(
+        r##"{"pools":[{"rolls":1,"entries":[{"type":"minecraft:item","name":"minecraft:book","modifier":{"type":"minecraft:enchant_randomly","options":"#minecraft:on_random_loot"}}]}]}"##,
+    )
+    .unwrap();
+    for seed in 1..16 {
+        let drops = generate_dynamic_loot(&table, seed);
+        assert_eq!(drops.len(), 1, "seed {seed}");
+        assert_eq!(drops[0].item, &Item::ENCHANTED_BOOK, "seed {seed}");
+        let stored = drops[0]
+            .get_data_component::<StoredEnchantmentsImpl>()
+            .unwrap();
+        let [(enchantment, level)] = stored.enchantment.as_ref() else {
+            panic!("seed {seed}: {} enchantments", stored.enchantment.len());
+        };
+        assert!(enchantment.has_tag(&pumpkin_data::tag::Enchantment::MINECRAFT_ON_RANDOM_LOOT));
+        assert!((1..=enchantment.max_level).contains(level), "seed {seed}");
+    }
+}
+
+#[test]
+fn treasure_map_without_a_found_structure_is_discarded() {
+    // Without a world no structure is found, so the map gets no id and `filtered` discards it.
+    let table = get_loot_table("chests/shipwreck_map").unwrap();
+    for seed in 1..16 {
+        assert!(
+            table
+                .generate_loot(seed)
+                .iter()
+                .all(|stack| stack.item != &Item::BURIED_TREASURE_MAP),
+            "seed {seed}"
+        );
+    }
+}

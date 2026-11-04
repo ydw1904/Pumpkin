@@ -625,7 +625,23 @@ pub(super) fn item_matches(tool: &ItemStack, predicate: &Value) -> bool {
                         "stored_enchantments" => match_enchantments(tool, requirements, true),
                         "damage" => match_damage(tool, requirements),
                         "custom_data" => match_custom_data(tool, requirements),
-                        _ => false,
+                        // The other concrete `DataComponentPredicates`, which aren't ported.
+                        "potion_contents"
+                        | "container"
+                        | "bundle_contents"
+                        | "firework_explosion"
+                        | "fireworks"
+                        | "writable_book_content"
+                        | "written_book_content"
+                        | "attribute_modifiers"
+                        | "trim"
+                        | "jukebox_playable"
+                        | "villager/variant" => false,
+                        // `DataComponentPredicate.AnyValueType`: any other component only has
+                        // to be there.
+                        name => DataComponent::try_from_name(name).is_some_and(|component| {
+                            get_item_data_component(tool, component).is_some()
+                        }),
                     }
                 })
             }),

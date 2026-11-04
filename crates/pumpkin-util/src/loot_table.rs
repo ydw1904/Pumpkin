@@ -111,13 +111,39 @@ pub enum LootFunctionKind {
     ExplosionDecay,
     ApplyBonus(LootBonusFormula),
     FurnaceSmelt,
+    /// A function that works on the item's components; the generator reads its settings from
+    /// the function's JSON when it applies it.
+    Json,
 }
+
+/// The loot functions that become [`LootFunctionKind::Json`].
+pub const JSON_LOOT_FUNCTIONS: &[&str] = &[
+    "discard",
+    "enchant_randomly",
+    "enchant_with_levels",
+    "exploration_map",
+    "filtered",
+    "sequence",
+    "set_components",
+    "set_custom_data",
+    "set_damage",
+    "set_enchantments",
+    "set_instrument",
+    "set_item",
+    "set_lore",
+    "set_name",
+    "set_ominous_bottle_amplifier",
+    "set_potion",
+    "set_stew_effect",
+];
 
 #[derive(Clone, Copy, Debug)]
 pub struct LootFunction {
     pub kind: LootFunctionKind,
     pub enchantment: Option<&'static str>,
     pub condition: LootCondition,
+    /// The function as written, for [`LootFunctionKind::Json`].
+    pub json: Option<&'static std::sync::LazyLock<serde_json::Value>>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -330,6 +356,8 @@ pub struct DynamicLootFunction {
     pub kind: LootFunctionKind,
     pub enchantment: Option<String>,
     pub condition: DynamicLootCondition,
+    /// The function as written, for [`LootFunctionKind::Json`].
+    pub json: Option<serde_json::Value>,
 }
 
 impl From<LootFunction> for DynamicLootFunction {
@@ -338,6 +366,7 @@ impl From<LootFunction> for DynamicLootFunction {
             kind: function.kind,
             enchantment: function.enchantment.map(str::to_owned),
             condition: function.condition.into(),
+            json: function.json.map(|json| (**json).clone()),
         }
     }
 }

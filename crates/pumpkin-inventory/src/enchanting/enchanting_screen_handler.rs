@@ -186,75 +186,18 @@ impl EnchantingTableScreenHandler {
         item: &ItemStack,
         level: i32,
     ) -> Vec<(&'static Enchantment, i32)> {
-        let Some(enchantability) = item
-            .get_data_component::<EnchantableImpl>()
-            .map(|e| e.value)
-        else {
-            return Vec::new();
-        };
-        let mut cost = level
-            + 1
-            + random.next_bounded_i32(enchantability / 4 + 1)
-            + random.next_bounded_i32(enchantability / 4 + 1);
-        let span = (random.next_f32() + random.next_f32() - 1.0) * 0.15;
-        cost = ((cost as f32 + cost as f32 * span).round() as i32).max(1);
-
-        // getAvailableEnchantmentResults: books take every enchantment in the table.
-        let is_book = item.item == &Item::BOOK;
-        let mut available = Vec::new();
-        for enchant in Enchantment::all() {
-            if enchant.has_tag(&EnchantmentTag::MINECRAFT_IN_ENCHANTING_TABLE)
-                && (is_book || enchant.is_primary_item(item.item))
-            {
-                for l in (1..=enchant.max_level).rev() {
-                    if cost >= enchant.min_cost.calculate(l)
-                        && cost <= enchant.max_cost.calculate(l)
-                    {
-                        available.push((*enchant, l));
-                        break;
-                    }
-                }
-            }
-        }
-
-        let mut result: Vec<(&'static Enchantment, i32)> = Vec::new();
-        if !available.is_empty() {
-            result.extend(Self::weighted_pick(random, &available));
-            while random.next_bounded_i32(50) <= cost {
-                if let Some((last, _)) = result.last() {
-                    available.retain(|(e, _)| e.are_compatible(last));
-                }
-                if available.is_empty() {
-                    break;
-                }
-                result.extend(Self::weighted_pick(random, &available));
-                cost /= 2;
-            }
-        }
-
-        if is_book && result.len() > 1 {
+        let mut result = super::select_enchantment(
+            random,
+            item,
+            level,
+            Enchantment::all()
+                .copied()
+                .filter(|enchant| enchant.has_tag(&EnchantmentTag::MINECRAFT_IN_ENCHANTING_TABLE)),
+        );
+        if item.item == &Item::BOOK && result.len() > 1 {
             result.remove(random.next_bounded_i32(result.len() as i32) as usize);
         }
         result
-    }
-
-    /// `WeightedRandom.getRandomItem`.
-    fn weighted_pick(
-        random: &mut LegacyRand,
-        available: &[(&'static Enchantment, i32)],
-    ) -> Option<(&'static Enchantment, i32)> {
-        let total_weight: i32 = available.iter().map(|(e, _)| e.weight).sum();
-        if total_weight <= 0 {
-            return None;
-        }
-        let mut weight = random.next_bounded_i32(total_weight);
-        for (e, l) in available {
-            weight -= e.weight;
-            if weight < 0 {
-                return Some((*e, *l));
-            }
-        }
-        None
     }
 
     fn send_property_updates(&self) {
