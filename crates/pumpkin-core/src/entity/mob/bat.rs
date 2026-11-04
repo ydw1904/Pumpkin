@@ -43,7 +43,11 @@ impl BatEntity {
     }
 
     #[must_use]
-    pub fn check_bat_spawn_rules(world: &World, pos: &BlockPos) -> bool {
+    pub fn check_bat_spawn_rules(
+        world: &World,
+        pos: &BlockPos,
+        reason: crate::entity::mob::spawn::EntitySpawnReason,
+    ) -> bool {
         if pos.0.y >= world.get_heightmap_height(ChunkHeightmapType::WorldSurface, pos.0.x, pos.0.z)
         {
             return false;
@@ -61,7 +65,7 @@ impl BatEntity {
         {
             return false;
         }
-        MobEntity::check_mob_spawn_rules(world, pos)
+        MobEntity::check_mob_spawn_rules(world, pos, reason)
     }
 
     #[must_use]

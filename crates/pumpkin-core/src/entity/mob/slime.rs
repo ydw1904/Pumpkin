@@ -20,10 +20,12 @@ use crate::entity::{
     Entity, EntityBase,
     ai::control::{Control, MoveControlTrait, move_control::MoveControl},
     ai::goal::Goal,
-    mob::{Mob, MobEntity},
+    mob::{Mob, MobEntity, spawn::EntitySpawnReason},
 };
 use crate::world::World;
 use pumpkin_util::random::RandomImpl;
+
+const PASSENGER_SINK_PER_SIZE: f64 = 0.015_625;
 
 const SLIME_HUNTS: &[Hunt] = &[
     Hunt::new(1, TargetMatch::Type(&EntityType::PLAYER), true)
@@ -155,13 +157,17 @@ impl SlimeEntity {
         self.get_size() <= 1
     }
 
-    pub fn check_slime_spawn_rules(world: &World, pos: &BlockPos) -> bool {
+    pub fn check_slime_spawn_rules(
+        world: &World,
+        pos: &BlockPos,
+        reason: EntitySpawnReason,
+    ) -> bool {
         if world.level_info.load().difficulty == Difficulty::Peaceful {
             return false;
         }
-
-        // TODO: check spawn reason. if it's spawner, we should return true if block below is valid
-        // For now, we assume natural spawning as that's what we are implementing.
+        if reason.is_spawner() {
+            return MobEntity::check_mob_spawn_rules(world, pos, reason);
+        }
 
         let rng = game_random();
         if world
@@ -172,7 +178,7 @@ impl SlimeEntity {
             && rng.random::<f32>() < world.surface_slime_spawn_chance(pos)
             && i32::from(world.get_max_local_raw_brightness(pos)) <= rng.random_range(0..8)
         {
-            return MobEntity::check_mob_spawn_rules(world, pos);
+            return MobEntity::check_mob_spawn_rules(world, pos, reason);
         }
 
         // Slime Chunk Spawning
@@ -187,7 +193,7 @@ impl SlimeEntity {
         let mut slime_rand = pumpkin_util::random::legacy_rand::LegacyRand::from_seed(slime_seed);
 
         if rng.random_range(0..10) == 0 && slime_rand.next_bounded_i32(10) == 0 && pos.0.y < 40 {
-            return MobEntity::check_mob_spawn_rules(world, pos);
+            return MobEntity::check_mob_spawn_rules(world, pos, reason);
         }
 
         false
@@ -271,6 +277,21 @@ impl Mob for SlimeEntity {
 
     fn get_mob_entity(&self) -> &MobEntity {
         &self.entity
+    }
+
+    fn mob_passenger_attachment_point(
+        &self,
+        _passenger: &dyn EntityBase,
+        _index: usize,
+    ) -> Option<Vector3<f64>> {
+        let living = &self.entity.living_entity;
+        let scale = living.get_attribute_value(&Attributes::SCALE);
+        Some(Vector3::new(
+            0.0,
+            f64::from(living.entity.height())
+                - PASSENGER_SINK_PER_SIZE * f64::from(self.get_size()) * scale,
+            0.0,
+        ))
     }
 
     fn mob_metadata(&self) -> Option<crate::entity::mob::MobMetadata> {

@@ -46,9 +46,9 @@ impl JavaClient {
             }
             Action::LeaveBed => player.wake_up(),
 
-            Action::StartHorseJump | Action::StopHorseJump => {
-                debug!("todo");
-            }
+            Action::StartHorseJump => player.start_riding_jump(server, command.jump_boost.0),
+            // Releasing the jump key does nothing on any rideable mob.
+            Action::StopHorseJump => {}
             // Vanilla opens any vehicle that is a `HasCustomInventoryScreen`.
             Action::OpenVehicleInventory => {
                 let vehicle = player.get_entity().get_vehicle();

@@ -183,9 +183,7 @@ impl<'a> crate::ServerPacket<'a> for CMerchantOffers {
                 (base_cost_a, output, cost_b)
             };
 
-            // Stock status is also represented by uses/max_uses below.
-            // The packet does not transmit the reward_exp setting.
-            let _out_of_stock = bytebuf.get_bool()?;
+            let out_of_stock = bytebuf.get_bool()?;
             let uses = bytebuf.get_i32_be()?;
             let max_uses = bytebuf.get_i32_be()?;
             let xp = bytebuf.get_i32_be()?;
@@ -198,7 +196,7 @@ impl<'a> crate::ServerPacket<'a> for CMerchantOffers {
                 output,
                 cost_b,
                 reward_exp: true,
-                uses,
+                uses: if out_of_stock { max_uses } else { uses },
                 max_uses,
                 xp,
                 special_price,
@@ -295,13 +293,16 @@ mod tests {
                 let decoded = CMerchantOffers::read(&mut input, &version).unwrap();
                 assert!(input.is_empty());
                 assert!(decoded.offers[0].reward_exp);
-                assert_eq!(decoded.offers[0].uses, uses);
+                // Vanilla `MerchantOffer.setToOutOfStock` on the flag clamps uses to max uses.
+                assert_eq!(decoded.offers[0].uses, uses.min(12));
                 assert_eq!(decoded.offers[0].max_uses, 12);
                 assert_eq!(decoded.offers[0].is_out_of_stock(), uses >= 12);
 
-                let mut encoded = Vec::new();
-                decoded.write_packet_data(&mut encoded, &version).unwrap();
-                assert_eq!(encoded, bytes);
+                if uses <= 12 {
+                    let mut encoded = Vec::new();
+                    decoded.write_packet_data(&mut encoded, &version).unwrap();
+                    assert_eq!(encoded, bytes);
+                }
             }
         }
     }

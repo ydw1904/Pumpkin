@@ -1,4 +1,6 @@
-use super::{Entity, EntityBase, LeashTick, ai::pathfinder::Navigator, living::LivingEntity};
+use super::{
+    Entity, EntityBase, GearDamage, LeashTick, ai::pathfinder::Navigator, living::LivingEntity,
+};
 use crate::block::blocks::bubble_column::SURFACE_UPWARD_ACCELERATION;
 use crate::enchantment::EnchantmentHelper;
 use crate::entity::ai::behavior::temperament::Temperament;
@@ -515,13 +517,13 @@ impl MobEntity {
             move_control.tick(mob);
         };
 
-        {
+        if mob.ticks_look_control() {
             let mut look_control = self
                 .look_control
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             look_control.tick(mob);
-        };
+        }
 
         self.jump_control
             .lock()
@@ -889,6 +891,19 @@ impl MobEntity {
 
     /// Accesses the species' brain, building it on first use.
     /// Neither `make_brain` nor the callback may lock this brain again; Brain callbacks use `BrainTick`.
+    /// Reads another mob's brain without building one. A brain busy in its own tick reads as
+    /// empty, so a mob checks itself through its `BrainTick` instead.
+    pub fn brain_has_memory_value(
+        &self,
+        id: crate::entity::ai::brain::memory::MemoryModuleId,
+    ) -> bool {
+        self.brain
+            .try_lock()
+            .ok()
+            .and_then(|slot| slot.as_ref().map(|brain| brain.has_memory_value(id)))
+            .unwrap_or(false)
+    }
+
     pub fn with_brain<R>(&self, mob: &dyn Mob, callback: impl FnOnce(&mut Brain) -> R) -> R {
         let result = {
             let mut slot = self
@@ -1095,45 +1110,67 @@ impl MobEntity {
         brightness <= dimension.monster_spawn_light_level.get(&mut random) as u8
     }
 
-    pub fn check_mob_spawn_rules(world: &World, pos: &BlockPos) -> bool {
-        let below = pos.down();
-        let state = world.get_block_state(&below);
-        state.is_side_solid(BlockDirection::Up)
+    pub fn check_mob_spawn_rules(
+        world: &World,
+        pos: &BlockPos,
+        reason: spawn::EntitySpawnReason,
+    ) -> bool {
+        reason.is_spawner()
+            || world
+                .get_block_state(&pos.down())
+                .is_side_solid(BlockDirection::Up)
     }
 
-    pub fn check_monster_spawn_rules(world: &World, pos: &BlockPos, is_thundering: bool) -> bool {
+    pub fn check_monster_spawn_rules(
+        world: &World,
+        pos: &BlockPos,
+        is_thundering: bool,
+        reason: spawn::EntitySpawnReason,
+    ) -> bool {
         if world.level_info.load().difficulty == Difficulty::Peaceful {
             return false;
         }
 
-        if !Self::is_dark_enough_to_spawn(world, pos, is_thundering) {
+        if !reason.ignores_light_requirements()
+            && !Self::is_dark_enough_to_spawn(world, pos, is_thundering)
+        {
             return false;
         }
 
-        Self::check_mob_spawn_rules(world, pos)
+        Self::check_mob_spawn_rules(world, pos, reason)
     }
 
-    pub fn check_any_light_monster_spawn_rules(world: &World, pos: &BlockPos) -> bool {
+    pub fn check_any_light_monster_spawn_rules(
+        world: &World,
+        pos: &BlockPos,
+        reason: spawn::EntitySpawnReason,
+    ) -> bool {
         if world.level_info.load().difficulty == Difficulty::Peaceful {
             return false;
         }
 
-        Self::check_mob_spawn_rules(world, pos)
+        Self::check_mob_spawn_rules(world, pos, reason)
     }
 
     pub fn check_surface_monsters_spawn_rules(
         world: &World,
         pos: &BlockPos,
         is_thundering: bool,
+        reason: spawn::EntitySpawnReason,
     ) -> bool {
-        Self::check_monster_spawn_rules(world, pos, is_thundering) && world.can_see_sky(pos)
+        Self::check_monster_spawn_rules(world, pos, is_thundering, reason)
+            && (reason.is_spawner() || world.can_see_sky(pos))
     }
 
-    pub fn check_animal_spawn_rules(level: &impl CreatureSpawnLevel, pos: &BlockPos) -> bool {
+    pub fn check_animal_spawn_rules(
+        level: &impl CreatureSpawnLevel,
+        pos: &BlockPos,
+        reason: spawn::EntitySpawnReason,
+    ) -> bool {
         level
             .block(&pos.down())
             .has_tag(&tag::Block::MINECRAFT_ANIMALS_SPAWNABLE_ON)
-            && Self::is_bright_enough_to_spawn(level, pos)
+            && (reason.ignores_light_requirements() || Self::is_bright_enough_to_spawn(level, pos))
     }
 
     /// Vanilla `Animal.isBrightEnoughToSpawn`: the time of day doesn't darken the sky light here.
@@ -1773,6 +1810,14 @@ pub trait Mob: EntityBase + Send + Sync {
         75.0
     }
 
+    fn ticks_look_control(&self) -> bool {
+        true
+    }
+
+    fn ticks_body_rotation(&self) -> bool {
+        true
+    }
+
     /// Vanilla `LookControl.resetXRotOnTick`: the look control levels the pitch each tick.
     fn look_resets_pitch(&self) -> bool {
         true
@@ -1784,12 +1829,27 @@ pub trait Mob: EntityBase + Send + Sync {
         self.get_mob_entity().living_entity.is_dead_or_dying()
     }
 
-    /// Vanilla `getVehicleAttachmentPoint` for mobs that override it.
-    fn mob_vehicle_attachment_point(&self, _vehicle: &dyn EntityBase) -> Vector3<f64> {
-        self.get_mob_entity()
-            .living_entity
-            .entity
-            .default_vehicle_attachment_point()
+    /// See [`EntityBase::passenger_attachment_point`].
+    fn mob_passenger_attachment_point(
+        &self,
+        _passenger: &dyn EntityBase,
+        _index: usize,
+    ) -> Option<Vector3<f64>> {
+        None
+    }
+
+    fn mob_vehicle_attachment_point(&self, _vehicle: &dyn EntityBase) -> Option<Vector3<f64>> {
+        None
+    }
+
+    fn mob_on_rider_positioned(&self, _passenger: &dyn EntityBase) {}
+
+    fn mob_consume_sound(&self, _stack: &ItemStack) -> Option<pumpkin_data::sound::Sound> {
+        None
+    }
+
+    fn mob_hurt_gear_slots(&self, _gear: GearDamage) -> &'static [EquipmentSlot] {
+        &[]
     }
 
     fn mob_controlling_passenger(&self) -> Option<Arc<dyn EntityBase>> {
@@ -2293,8 +2353,8 @@ pub trait Mob: EntityBase + Send + Sync {
         let custom_sound = self.as_custom_sound();
         self.get_mob_entity().living_entity.make_sound(
             sound,
-            custom_sound.map_or(
-                pumpkin_data::sound::SoundCategory::Players,
+            custom_sound.map_or_else(
+                || self.sound_source(),
                 crate::entity::custom_sound::CustomSound::sound_category,
             ),
             custom_sound.map_or(1.0, crate::entity::custom_sound::CustomSound::sound_volume),
@@ -3094,6 +3154,9 @@ impl<T: Mob + Send + 'static> EntityBase for T {
                 .get_mob_entity()
                 .goals_selector
                 .is_running::<EscapeDangerGoal>()
+            || self
+                .get_mob_entity()
+                .brain_has_memory_value(crate::entity::ai::brain::memory::types::IS_PANICKING.id())
     }
 
     fn get_job_site_pos(&self) -> Option<pumpkin_util::math::position::BlockPos> {
@@ -3162,8 +3225,24 @@ impl<T: Mob + Send + 'static> EntityBase for T {
         self.mob_controlling_passenger()
     }
 
-    fn get_vehicle_attachment_point(&self, vehicle: &dyn EntityBase) -> Vector3<f64> {
+    fn passenger_attachment_point(
+        &self,
+        passenger: &dyn EntityBase,
+        index: usize,
+    ) -> Option<Vector3<f64>> {
+        self.mob_passenger_attachment_point(passenger, index)
+    }
+
+    fn hurt_gear_slots(&self, gear: GearDamage) -> &'static [EquipmentSlot] {
+        self.mob_hurt_gear_slots(gear)
+    }
+
+    fn vehicle_attachment_point(&self, vehicle: &dyn EntityBase) -> Option<Vector3<f64>> {
         self.mob_vehicle_attachment_point(vehicle)
+    }
+
+    fn on_rider_positioned(&self, passenger: &dyn EntityBase) {
+        self.mob_on_rider_positioned(passenger);
     }
 
     fn get_experience_reward(&self, _killer: Option<&dyn EntityBase>) -> u32 {
