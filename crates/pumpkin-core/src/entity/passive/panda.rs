@@ -1,7 +1,7 @@
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Weak,
-    atomic::{AtomicI32, AtomicU8, Ordering},
+    atomic::{AtomicBool, AtomicI32, AtomicU8, Ordering},
 };
 
 use pumpkin_data::BlockState;
@@ -18,9 +18,10 @@ use crate::entity::{
     Entity, EntityBase,
     ageable::{AgeableData, AgeableMob},
     ai::goal::{
-        breed::BreedGoal, escape_danger::EscapeDangerGoal, follow_parent::FollowParentGoal,
-        look_around::RandomLookAroundGoal, look_at_entity::LookAtEntityGoal, swim::SwimGoal,
-        tempt::TemptGoal, wander_around::WanderAroundGoal,
+        Controls, Goal, GoalReach, breed::BreedGoal, escape_danger::EscapeDangerGoal,
+        follow_parent::FollowParentGoal, look_around::RandomLookAroundGoal,
+        look_at_entity::LookAtEntityGoal, melee_attack::MeleeAttackGoal, revenge::RevengeGoal,
+        swim::SwimGoal, tempt::TemptGoal, wander_around::WanderAroundGoal,
     },
     mob::{Mob, MobEntity},
     passive::animal::Animal,
@@ -92,6 +93,22 @@ impl PandaGene {
         }
     }
 
+    /// Vanilla `Gene.isRecessive`.
+    #[must_use]
+    pub const fn is_recessive(self) -> bool {
+        matches!(self, Self::Brown | Self::Weak)
+    }
+
+    /// Vanilla `Gene.getVariantFromGenes`.
+    #[must_use]
+    pub fn variant_from_genes(main: Self, hidden: Self) -> Self {
+        if main.is_recessive() && main != hidden {
+            Self::Normal
+        } else {
+            main
+        }
+    }
+
     #[must_use]
     pub fn random_gene() -> Self {
         let rng = game_random();
@@ -114,6 +131,10 @@ pub struct PandaEntity {
     pub eat_counter: AtomicI32,
     pub sneeze_counter: AtomicI32,
     pub unhappy_counter: AtomicI32,
+    /// Vanilla `gotBamboo`: fed while it had a target, so it drops the grudge.
+    got_bamboo: AtomicBool,
+    /// Vanilla `didBite`: a panda that isn't aggressive bites once and calms down.
+    did_bite: AtomicBool,
 }
 
 impl PandaEntity {
@@ -130,6 +151,8 @@ impl PandaEntity {
             eat_counter: AtomicI32::new(0),
             sneeze_counter: AtomicI32::new(0),
             unhappy_counter: AtomicI32::new(0),
+            got_bamboo: AtomicBool::new(false),
+            did_bite: AtomicBool::new(false),
         };
         let mob_arc = Arc::new(panda);
         let mob_weak: Weak<dyn Mob> = {
@@ -143,6 +166,12 @@ impl PandaEntity {
             goal_selector.add_goal(0, Box::new(SwimGoal::default()));
             goal_selector.add_goal(1, EscapeDangerGoal::new(2.0));
             goal_selector.add_goal(2, BreedGoal::new(1.0));
+            goal_selector.add_goal(
+                3,
+                Box::new(PandaAttackGoal {
+                    melee_attack: MeleeAttackGoal::new(f64::from(1.2f32), true),
+                }),
+            );
             goal_selector.add_goal(3, Box::new(TemptGoal::new(1.2, TEMPT_ITEMS, false)));
             goal_selector.add_goal(4, Box::new(FollowParentGoal::new(1.25)));
             goal_selector.add_goal(6, Box::new(WanderAroundGoal::new(1.0)));
@@ -151,6 +180,22 @@ impl PandaEntity {
                 LookAtEntityGoal::with_default(mob_weak, &EntityType::PLAYER, 6.0),
             );
             goal_selector.add_goal(8, Box::new(RandomLookAroundGoal::default()));
+
+            // Vanilla `PandaHurtByTargetGoal(this).setAlertOthers()`.
+            mob_arc.mob_entity.target_selector.add_goal(
+                1,
+                Box::new(
+                    RevengeGoal::new(true)
+                        .alerting_others()
+                        .alerting_only(is_aggressive_panda)
+                        .continuing_while(|mob| {
+                            as_panda(mob).is_none_or(|panda| {
+                                !panda.got_bamboo.load(Ordering::Relaxed)
+                                    && !panda.did_bite.load(Ordering::Relaxed)
+                            })
+                        }),
+                ),
+            );
         };
 
         mob_arc
@@ -182,6 +227,33 @@ impl PandaEntity {
             pumpkin_data::tracked_data::panda::HIDDEN_GENE_ID,
             gene.id() as i8,
         );
+    }
+
+    /// Vanilla `getVariant`.
+    #[must_use]
+    pub fn get_variant(&self) -> PandaGene {
+        PandaGene::variant_from_genes(self.get_main_gene(), self.get_hidden_gene())
+    }
+
+    #[must_use]
+    pub fn is_aggressive(&self) -> bool {
+        self.get_variant() == PandaGene::Aggressive
+    }
+
+    /// Vanilla `isScared`.
+    #[must_use]
+    pub fn is_scared(&self) -> bool {
+        self.get_variant() == PandaGene::Worried && self.get_entity().world.load().is_thundering()
+    }
+
+    /// Vanilla `canPerformAction`.
+    #[must_use]
+    pub fn can_perform_action(&self) -> bool {
+        !self.is_on_back()
+            && !self.is_scared()
+            && self.eat_counter.load(Ordering::Relaxed) <= 0
+            && !self.is_rolling()
+            && !self.is_sitting()
     }
 
     #[must_use]
@@ -334,6 +406,77 @@ impl Mob for PandaEntity {
     }
 
     fn mob_interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
+        if self.is_food(item_stack) && self.mob_entity.get_target().is_some() {
+            self.got_bamboo.store(true, Ordering::Relaxed);
+        }
         self.animal_interact(player, item_stack)
+    }
+
+    /// Vanilla `Panda.doHurtTarget`.
+    fn do_hurt_target(&self, target: &dyn EntityBase) -> bool {
+        if !self.is_aggressive() {
+            self.did_bite.store(true, Ordering::Relaxed);
+        }
+        let damaged = self.mob_entity.try_attack(self.get_entity(), target);
+        if damaged {
+            self.on_attack(target);
+        }
+        damaged
+    }
+
+    /// The part of vanilla `Panda.tick` that forgets the bite and the bamboo with the target.
+    fn post_tick(&self) {
+        if self.mob_entity.get_target().is_none() {
+            self.got_bamboo.store(false, Ordering::Relaxed);
+            self.did_bite.store(false, Ordering::Relaxed);
+        }
+    }
+}
+
+fn as_panda(mob: &dyn Mob) -> Option<&PandaEntity> {
+    mob.cast_any().downcast_ref::<PandaEntity>()
+}
+
+fn is_aggressive_panda(mob: &dyn Mob) -> bool {
+    as_panda(mob).is_some_and(PandaEntity::is_aggressive)
+}
+
+/// Vanilla `Panda.PandaAttackGoal`: the melee attack, only while the panda can act.
+struct PandaAttackGoal {
+    melee_attack: MeleeAttackGoal,
+}
+
+impl Goal for PandaAttackGoal {
+    fn tick_reach(&self, mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        self.melee_attack.tick_reach(mob, running)
+    }
+
+    fn can_start(&mut self, mob: &dyn Mob) -> bool {
+        as_panda(mob).is_some_and(PandaEntity::can_perform_action)
+            && self.melee_attack.can_start(mob)
+    }
+
+    fn should_continue(&mut self, mob: &dyn Mob) -> bool {
+        self.melee_attack.should_continue(mob)
+    }
+
+    fn start(&mut self, mob: &dyn Mob) {
+        self.melee_attack.start(mob);
+    }
+
+    fn stop(&mut self, mob: &dyn Mob) {
+        self.melee_attack.stop(mob);
+    }
+
+    fn tick(&mut self, mob: &dyn Mob) {
+        self.melee_attack.tick(mob);
+    }
+
+    fn should_run_every_tick(&self) -> bool {
+        self.melee_attack.should_run_every_tick()
+    }
+
+    fn controls(&self) -> Controls {
+        self.melee_attack.controls()
     }
 }
