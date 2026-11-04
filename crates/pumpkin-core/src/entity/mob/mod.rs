@@ -1668,6 +1668,21 @@ pub(crate) fn game_event_listener_links(
     );
 }
 
+/// How far past its box a baby that grows up this tick reaches with the adult one.
+fn growth_this_tick(mob: &dyn Mob) -> f64 {
+    let Some(ageable) = mob.as_ageable() else {
+        return 0.0;
+    };
+    if !ageable.can_age_up() || ageable.get_age() < -mob.audited_growth_ticks() {
+        return 0.0;
+    }
+    let entity = mob.get_entity();
+    let adult = entity.get_dimensions_at_age(entity.pose.load(), false);
+    let current = entity.entity_dimension.load();
+    let growth = ((adult.width - current.width) / 2.0).max(adult.height - current.height);
+    f64::from(growth.max(0.0))
+}
+
 impl MobEntity {
     /// What the goals and the item pickup can touch next tick, if every goal is audited.
     fn goal_reach(&self, mob: &dyn Mob) -> Option<GoalReach> {
@@ -1736,6 +1751,8 @@ impl MobEntity {
         // `Mob.setSpeed` also sets the forward input to the speed.
         let speed = mob.audited_movement_speed() * goals.speed.max(1.0);
         goals.add(mob.audited_species_reach(speed));
+        // A baby that grows up this tick has the adult box for the rest of it.
+        goals.impulse += growth_this_tick(mob);
         let block_friction = LivingEntity::compute_modified_friction(
             *LEAST_SLIPPERINESS,
             living.get_attribute_value(&Attributes::FRICTION_MODIFIER) as f32,
@@ -1809,6 +1826,11 @@ pub trait Mob: EntityBase + Send + Sync {
     /// How far outside its box the species' tick code spawns entities this tick.
     fn audited_spawn_distance(&self) -> f64 {
         0.0
+    }
+
+    /// Most age ticks a baby can gain this tick.
+    fn audited_growth_ticks(&self) -> i32 {
+        1
     }
 
     /// Highest movement speed attribute value the mob can move with this tick.
@@ -3657,7 +3679,8 @@ mod lifecycle_tests {
                     &mob.living_entity,
                 )
         );
-        cow.get_entity().age.store(-1, Relaxed);
+        // Old enough to stay a baby through the next tick.
+        cow.get_entity().age.store(-2, Relaxed);
         let baby = mob
             .audited_reach(cow.as_ref())
             .ok_or("missing baby reach")?;
@@ -3667,7 +3690,7 @@ mod lifecycle_tests {
             .ok_or("missing grown reach")?;
         assert!(baby.motion.0 > standing.motion.0);
         assert_eq!(grown.motion, baby.motion);
-        cow.get_entity().age.store(-1, Relaxed);
+        cow.get_entity().age.store(-2, Relaxed);
         mob.navigator
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -3688,6 +3711,35 @@ mod lifecycle_tests {
             .ok_or("missing done reach")?;
         assert_eq!(done.motion, standing.motion);
         world.level.shutdown().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn audited_reach_covers_a_baby_growing_up_this_tick()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use crate::entity::ageable::AgeableMob;
+
+        let folder = tempfile::tempdir()?;
+        let world = world(&folder);
+        let cow = CowEntity::new(Entity::new(
+            world.clone(),
+            Vector3::new(0.5, 64.0, 0.5),
+            &EntityType::COW,
+        ));
+        cow.set_age(-1);
+        let reach = cow
+            .get_mob_entity()
+            .audited_reach(cow.as_ref())
+            .ok_or("missing baby reach")?;
+        cow.ageable_ai_step();
+        let grown = cow.get_entity().bounding_box.load();
+        world.level.shutdown().await;
+        let (horizontal, vertical) = reach.motion;
+        let bound = reach.bounding_box.expand(horizontal, vertical, horizontal);
+        assert!(!cow.is_baby());
+        assert!(bound.min.x <= grown.min.x && bound.max.x >= grown.max.x);
+        assert!(bound.min.z <= grown.min.z && bound.max.z >= grown.max.z);
+        assert!(bound.max.y >= grown.max.y);
         Ok(())
     }
 

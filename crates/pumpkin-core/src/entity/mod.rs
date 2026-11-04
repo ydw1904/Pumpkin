@@ -2179,7 +2179,11 @@ impl Entity {
 
     #[must_use]
     pub fn get_dimensions(&self, pose: EntityPose) -> EntityDimensions {
-        let baby = self.age.load(Relaxed) < 0;
+        self.get_dimensions_at_age(pose, self.age.load(Relaxed) < 0)
+    }
+
+    #[must_use]
+    pub fn get_dimensions_at_age(&self, pose: EntityPose, baby: bool) -> EntityDimensions {
         if let Some(pose_dimensions) = self.entity_type.pose_dimensions(pose, baby) {
             return pose_dimensions.dimensions;
         }

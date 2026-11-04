@@ -67,6 +67,10 @@ const COLD_SPAWN_CONFIGURATION: SheepColorSpawnConfiguration = [
     (SheepColorProvider::Single(DyeColor::Brown), 3),
     (SheepColorProvider::CommonColors(DyeColor::Black), 82),
 ];
+
+/// Vanilla `Sheep.ate`: a baby that eats grass ages up by this many seconds.
+const EAT_GRASS_AGE_UP_SECONDS: i32 = 60;
+
 const COMMON_COLOR_WEIGHT: u32 = 499;
 
 fn find_color_mix_in_recipes(
@@ -318,6 +322,11 @@ impl Mob for SheepEntity {
         true
     }
 
+    // Eating grass ages a baby up too.
+    fn audited_growth_ticks(&self) -> i32 {
+        1 + EAT_GRASS_AGE_UP_SECONDS * 20
+    }
+
     fn as_ageable(&self) -> Option<&dyn AgeableMob> {
         Some(self)
     }
@@ -368,7 +377,7 @@ impl Mob for SheepEntity {
     fn on_eating_grass(&self) {
         self.set_sheared(false);
         if self.can_age_up() {
-            self.age_up(60, false);
+            self.age_up(EAT_GRASS_AGE_UP_SECONDS, false);
         }
     }
 
