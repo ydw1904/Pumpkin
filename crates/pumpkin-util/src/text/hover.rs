@@ -70,12 +70,29 @@ fn json_to_nbt(value: &serde_json::Value) -> pumpkin_nbt::tag::NbtTag {
     }
 }
 
+/// Vanilla's `ComponentSerialization.CODEC`: one component, written as a string, a list or an
+/// object.
+fn component<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<TextComponentBase>, D::Error> {
+    Ok(vec![TextComponent::deserialize(deserializer)?.0])
+}
+
+fn optional_component<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Vec<TextComponentBase>>, D::Error> {
+    component(deserializer).map(Some)
+}
+
 /// Represents the hover event action in a chat component.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum HoverEvent {
     /// Displays a tooltip with the given text.
-    ShowText { value: Vec<TextComponentBase> },
+    ShowText {
+        #[serde(deserialize_with = "component")]
+        value: Vec<TextComponentBase>,
+    },
     /// Shows an item.
     ShowItem {
         /// Resource identifier of the item.
@@ -96,7 +113,11 @@ pub enum HoverEvent {
         /// The UUID cannot use `uuid::Uuid` because its serialization parses it into bytes, so its double bytes serialized.
         uuid: Cow<'static, str>,
         /// Optional custom name for the entity.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "optional_component"
+        )]
         name: Option<Vec<TextComponentBase>>,
     },
 }
