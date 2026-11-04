@@ -164,7 +164,7 @@ impl PandaEntity {
             let goal_selector = &mob_arc.mob_entity.goals_selector;
 
             goal_selector.add_goal(0, Box::new(SwimGoal::default()));
-            goal_selector.add_goal(1, EscapeDangerGoal::new(2.0));
+            goal_selector.add_goal(2, EscapeDangerGoal::new(2.0));
             goal_selector.add_goal(2, BreedGoal::new(1.0));
             goal_selector.add_goal(
                 3,
@@ -172,14 +172,14 @@ impl PandaEntity {
                     melee_attack: MeleeAttackGoal::new(f64::from(1.2f32), true),
                 }),
             );
-            goal_selector.add_goal(3, Box::new(TemptGoal::new(1.2, TEMPT_ITEMS, false)));
-            goal_selector.add_goal(4, Box::new(FollowParentGoal::new(1.25)));
-            goal_selector.add_goal(6, Box::new(WanderAroundGoal::new(1.0)));
+            goal_selector.add_goal(4, Box::new(TemptGoal::new(1.0, TEMPT_ITEMS, false)));
             goal_selector.add_goal(
-                7,
+                9,
                 LookAtEntityGoal::with_default(mob_weak, &EntityType::PLAYER, 6.0),
             );
-            goal_selector.add_goal(8, Box::new(RandomLookAroundGoal::default()));
+            goal_selector.add_goal(10, Box::new(RandomLookAroundGoal::default()));
+            goal_selector.add_goal(13, Box::new(FollowParentGoal::new(1.25)));
+            goal_selector.add_goal(14, Box::new(WanderAroundGoal::water_avoiding(1.0)));
 
             // Vanilla `PandaHurtByTargetGoal(this).setAlertOthers()`.
             mob_arc.mob_entity.target_selector.add_goal(
