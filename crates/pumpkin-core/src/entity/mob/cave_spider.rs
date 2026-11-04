@@ -14,11 +14,13 @@ use crate::entity::{
         spawn::SpawnGroupData,
         spider::{
             initialize_spider_navigation, register_spider_goals, spider_metadata,
-            spider_vehicle_attachment_point, update_spider_climbing,
+            update_spider_climbing,
         },
     },
 };
 use crate::world::World;
+
+const VEHICLE_SEAT_HEIGHT: f64 = 0.218_75;
 
 pub struct CaveSpiderEntity {
     pub mob_entity: MobEntity,
@@ -39,8 +41,12 @@ impl CaveSpiderEntity {
 }
 
 impl Mob for CaveSpiderEntity {
-    fn mob_vehicle_attachment_point(&self, vehicle: &dyn EntityBase) -> Vector3<f64> {
-        spider_vehicle_attachment_point(&self.mob_entity, vehicle, 0.21875)
+    fn mob_vehicle_attachment_point(&self, vehicle: &dyn EntityBase) -> Option<Vector3<f64>> {
+        super::spider::small_vehicle_attachment_point(
+            &self.mob_entity,
+            vehicle,
+            VEHICLE_SEAT_HEIGHT,
+        )
     }
 
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {

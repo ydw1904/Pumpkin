@@ -32,6 +32,7 @@ use crate::entity::{
 
 pub struct NautilusEntity {
     pub mob_entity: MobEntity,
+    pub ageable_data: crate::entity::ageable::AgeableData,
     pub is_tame: AtomicBool,
     pub owner: AtomicCell<Option<Uuid>>,
     pub is_dashing: AtomicBool,
@@ -44,6 +45,7 @@ impl NautilusEntity {
         let mob_entity = MobEntity::new(entity);
         let nautilus = Self {
             mob_entity,
+            ageable_data: crate::entity::ageable::AgeableData::default(),
             is_tame: AtomicBool::new(false),
             owner: AtomicCell::new(None),
             is_dashing: AtomicBool::new(false),
@@ -147,6 +149,14 @@ impl NautilusEntity {
 }
 
 impl Animal for NautilusEntity {
+    fn play_eating_sound(&self) {
+        self.make_sound(if self.mob_entity.living_entity.is_baby() {
+            Sound::EntityBabyNautilusEat
+        } else {
+            Sound::EntityNautilusEat
+        });
+    }
+
     fn is_food(&self, item_stack: &ItemStack) -> bool {
         item_stack.item == &pumpkin_data::item::Item::NAUTILUS_SHELL
             || item_stack.item == &pumpkin_data::item::Item::PUFFERFISH
@@ -192,6 +202,12 @@ impl CustomSound for NautilusEntity {
     }
 }
 
+impl crate::entity::ageable::AgeableMob for NautilusEntity {
+    fn get_ageable_data(&self) -> &crate::entity::ageable::AgeableData {
+        &self.ageable_data
+    }
+}
+
 impl Mob for NautilusEntity {
     /// Vanilla `AbstractNautilus.checkSpawnObstruction`.
     fn check_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
@@ -201,6 +217,10 @@ impl Mob for NautilusEntity {
     /// Vanilla `AbstractNautilus.getWalkTargetValue`.
     fn get_walk_target_value(&self, _level: &dyn CreatureSpawnLevel, _pos: &BlockPos) -> f32 {
         0.0
+    }
+
+    fn as_ageable(&self) -> Option<&dyn crate::entity::ageable::AgeableMob> {
+        Some(self)
     }
 
     fn can_dispenser_equip_into_slot(&self, slot: &EquipmentSlot) -> bool {
@@ -393,7 +413,7 @@ impl Mob for NautilusEntity {
             }
         }
 
-        self.animal_interact(player, item_stack, self.get_ambient_sound())
+        self.animal_interact(player, item_stack)
     }
 
     fn can_use_slot(&self, slot: &EquipmentSlot) -> bool {

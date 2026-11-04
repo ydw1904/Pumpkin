@@ -3,6 +3,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, PoisonError, Weak};
 
 use pumpkin_data::BlockState;
+use pumpkin_data::attributes::Attributes;
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::potion::Effect;
@@ -32,6 +33,8 @@ use crate::entity::{
     r#type::from_type,
 };
 use crate::world::World;
+
+const VEHICLE_SEAT_HEIGHT: f64 = 0.3125;
 
 pub const SPIDER_FLEES: &[Flee] =
     &[
@@ -169,25 +172,24 @@ pub fn finalize_spider_spawn(
     Some(group_data)
 }
 
-/// Vanilla `Spider.getVehicleAttachmentPoint` and `CaveSpider.getVehicleAttachmentPoint`: a
-/// spider sits `height` (times its scale) above a vehicle no wider than itself.
-pub fn spider_vehicle_attachment_point(
-    mob_entity: &MobEntity,
+pub(super) fn small_vehicle_attachment_point(
+    mob: &MobEntity,
     vehicle: &dyn EntityBase,
-    height: f64,
-) -> Vector3<f64> {
-    let entity = &mob_entity.living_entity.entity;
-    let width = |entity: &Entity| entity.get_dimensions(entity.pose.load()).width;
-    if width(vehicle.get_entity()) <= width(entity) {
-        Vector3::new(0.0, height * entity.attachment_scale(), 0.0)
-    } else {
-        entity.default_vehicle_attachment_point()
-    }
+    seat_height: f64,
+) -> Option<Vector3<f64>> {
+    let living = &mob.living_entity;
+    (vehicle.get_entity().width() <= living.entity.width()).then(|| {
+        Vector3::new(
+            0.0,
+            seat_height * living.get_attribute_value(&Attributes::SCALE),
+            0.0,
+        )
+    })
 }
 
 impl Mob for SpiderEntity {
-    fn mob_vehicle_attachment_point(&self, vehicle: &dyn EntityBase) -> Vector3<f64> {
-        spider_vehicle_attachment_point(&self.mob_entity, vehicle, 0.3125)
+    fn mob_vehicle_attachment_point(&self, vehicle: &dyn EntityBase) -> Option<Vector3<f64>> {
+        small_vehicle_attachment_point(&self.mob_entity, vehicle, VEHICLE_SEAT_HEIGHT)
     }
 
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {

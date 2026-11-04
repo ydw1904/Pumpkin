@@ -6,6 +6,7 @@ use std::sync::Arc;
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::effect::StatusEffect;
+use pumpkin_data::entity_variant::HorseVariant;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use time::{Month, OffsetDateTime};
@@ -36,6 +37,11 @@ pub enum SpawnGroupData {
     /// A llama spawn group sharing the first llama's variant.
     Llama {
         variant: pumpkin_data::entity_variant::LlamaVariant,
+        group_size: u32,
+    },
+    /// A horse spawn group sharing the first horse's coat color.
+    Horse {
+        color: HorseVariant,
         group_size: u32,
     },
     /// Vanilla `FoxGroupData`: the group's variant and how many joined so far.
@@ -201,6 +207,18 @@ pub enum EntitySpawnReason {
     DimensionTravel,
 }
 
+impl EntitySpawnReason {
+    #[must_use]
+    pub const fn is_spawner(self) -> bool {
+        matches!(self, Self::Spawner | Self::TrialSpawner)
+    }
+
+    #[must_use]
+    pub const fn ignores_light_requirements(self) -> bool {
+        matches!(self, Self::TrialSpawner)
+    }
+}
+
 /// Finalizes `entity` if it is a mob, and returns the group data for the next mob of the group.
 pub fn finalize_spawn(
     entity: &Arc<dyn EntityBase>,
@@ -223,6 +241,7 @@ impl MobEntity {
             .age
             .store(-24000, std::sync::atomic::Ordering::Relaxed);
         entity.set_synced_data(pumpkin_data::tracked_data::ageable_mob::DATA_BABY_ID, true);
+        entity.refresh_dimensions();
     }
 
     /// Baby state kept as a mob's own flag and synced key (vanilla zombies and piglins), so it
@@ -241,5 +260,6 @@ impl MobEntity {
             if baby { -24000 } else { 0 },
             std::sync::atomic::Ordering::Relaxed,
         );
+        entity.refresh_dimensions();
     }
 }

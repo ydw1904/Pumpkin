@@ -583,6 +583,15 @@ impl PoiStorage {
         radius: i32,
         matches: impl Fn(&str) -> bool,
     ) -> Option<(BlockPos, String)> {
+        self.find_closest_where(center, radius, |poi_type, _| matches(poi_type))
+    }
+
+    pub fn find_closest_where(
+        &mut self,
+        center: BlockPos,
+        radius: i32,
+        matches: impl Fn(&str, BlockPos) -> bool,
+    ) -> Option<(BlockPos, String)> {
         let min_rx = ((center.0.x - radius) >> 4) >> 5;
         let max_rx = ((center.0.x + radius) >> 4) >> 5;
         let min_rz = ((center.0.z - radius) >> 4) >> 5;
@@ -596,7 +605,7 @@ impl PoiStorage {
                 for entry in region.get_all() {
                     if (entry.pos.0.x - center.0.x).abs() > radius
                         || (entry.pos.0.z - center.0.z).abs() > radius
-                        || !matches(&entry.poi_type)
+                        || !matches(&entry.poi_type, entry.pos())
                     {
                         continue;
                     }

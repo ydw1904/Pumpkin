@@ -88,8 +88,13 @@ impl PatrolSpawner {
         if !natural_spawner::is_valid_empty_spawn_block(
             world.get_block_state(&pos),
             &EntityType::PILLAGER,
-        ) || !check_spawn_rules(&EntityType::PILLAGER, world, &pos, world.is_thundering())
-        {
+        ) || !check_spawn_rules(
+            &EntityType::PILLAGER,
+            world,
+            &pos,
+            world.is_thundering(),
+            crate::entity::mob::spawn::EntitySpawnReason::Patrol,
+        ) {
             return false;
         }
         let pillager = from_type(&EntityType::PILLAGER, pos.to_f64(), world, Uuid::new_v4());

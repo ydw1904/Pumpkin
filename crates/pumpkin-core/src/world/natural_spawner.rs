@@ -638,9 +638,21 @@ pub fn spawn_mobs_for_chunk_generation(
                         fx,
                         f64::from(pos.0.y),
                         fz,
-                    )) || !check_creature_spawn_rules(entity_type, &level, &check_pos)
-                        .unwrap_or_else(|| check_spawn_rules(entity_type, world, &check_pos, false))
-                    {
+                    )) || !check_creature_spawn_rules(
+                        entity_type,
+                        &level,
+                        &check_pos,
+                        crate::entity::mob::spawn::EntitySpawnReason::ChunkGeneration,
+                    )
+                    .unwrap_or_else(|| {
+                        check_spawn_rules(
+                            entity_type,
+                            world,
+                            &check_pos,
+                            false,
+                            crate::entity::mob::spawn::EntitySpawnReason::ChunkGeneration,
+                        )
+                    }) {
                         // Vanilla `continue`s here, so the next attempt retries the same column.
                         continue;
                     }
@@ -1207,7 +1219,13 @@ pub fn is_valid_spawn_position_for_type(
     if !is_spawn_position_ok(world, block_pos, entity_type) {
         return false;
     }
-    if !check_spawn_rules(entity_type, world, block_pos, is_thundering) {
+    if !check_spawn_rules(
+        entity_type,
+        world,
+        block_pos,
+        is_thundering,
+        crate::entity::mob::spawn::EntitySpawnReason::Natural,
+    ) {
         return false;
     }
     if !world.is_space_empty(entity_type.get_spawn_bounding_box(

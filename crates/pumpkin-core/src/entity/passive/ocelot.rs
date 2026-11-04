@@ -44,6 +44,7 @@ fn is_wary(mob: &dyn Mob) -> bool {
 /// Wiki: <https://minecraft.wiki/w/Ocelot>
 pub struct OcelotEntity {
     pub mob_entity: MobEntity,
+    pub ageable_data: crate::entity::ageable::AgeableData,
     pub is_trusting: AtomicBool,
 }
 
@@ -52,6 +53,7 @@ impl OcelotEntity {
         let mob_entity = MobEntity::new(entity);
         let ocelot = Self {
             mob_entity,
+            ageable_data: crate::entity::ageable::AgeableData::default(),
             is_trusting: AtomicBool::new(false),
         };
         let mob_arc = Arc::new(ocelot);
@@ -103,6 +105,12 @@ impl Animal for OcelotEntity {
     }
 }
 
+impl crate::entity::ageable::AgeableMob for OcelotEntity {
+    fn get_ageable_data(&self) -> &crate::entity::ageable::AgeableData {
+        &self.ageable_data
+    }
+}
+
 impl Mob for OcelotEntity {
     /// Vanilla `Ocelot.checkSpawnObstruction`: above sea level, on grass or leaves.
     fn check_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
@@ -118,6 +126,10 @@ impl Mob for OcelotEntity {
         }
         let below = level.block(&pos.down());
         below == &pumpkin_data::Block::GRASS_BLOCK || below.has_tag(&tag::Block::MINECRAFT_LEAVES)
+    }
+
+    fn as_ageable(&self) -> Option<&dyn crate::entity::ageable::AgeableMob> {
+        Some(self)
     }
 
     fn as_animal(&self) -> Option<&dyn Animal> {
@@ -180,10 +192,6 @@ impl Mob for OcelotEntity {
             return true;
         }
 
-        self.animal_interact(
-            player,
-            item_stack,
-            pumpkin_data::sound::Sound::EntityOcelotAmbient,
-        )
+        self.animal_interact(player, item_stack)
     }
 }

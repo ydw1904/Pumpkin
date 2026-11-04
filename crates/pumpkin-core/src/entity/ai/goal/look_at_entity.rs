@@ -29,7 +29,24 @@ impl LookAtEntityGoal {
         chance: f32,
         look_forward: bool,
     ) -> Self {
-        let target_predicate = Self::create_target_predicate(mob_weak, target_type, range);
+        Self::matching(
+            mob_weak,
+            TargetMatch::Type(target_type),
+            range,
+            chance,
+            look_forward,
+        )
+    }
+
+    #[must_use]
+    pub fn matching(
+        mob_weak: Weak<dyn Mob>,
+        target_match: TargetMatch,
+        range: f32,
+        chance: f32,
+        look_forward: bool,
+    ) -> Self {
+        let target_predicate = Self::create_target_predicate(mob_weak, target_match, range);
         Self {
             goal_control: Controls::LOOK,
             target: None,
@@ -37,7 +54,7 @@ impl LookAtEntityGoal {
             look_time: 0,
             chance,
             look_forward,
-            target_match: TargetMatch::Type(target_type),
+            target_match,
             target_predicate,
         }
     }
@@ -70,12 +87,12 @@ impl LookAtEntityGoal {
 
     fn create_target_predicate(
         mob_weak: Weak<dyn Mob>,
-        target_type: &'static EntityType,
+        target_match: TargetMatch,
         range: f32,
     ) -> TargetPredicate {
         let mut target_predicate = TargetPredicate::create_non_attackable();
         target_predicate.base_max_distance = f64::from(range);
-        if target_type == &EntityType::PLAYER {
+        if target_match.is_player() {
             target_predicate.set_predicate(move |living_entity, _world| {
                 mob_weak.upgrade().is_some_and(|mob_arc| {
                     let predicate = EntityPredicate::Rides(mob_arc.get_entity());
@@ -135,10 +152,8 @@ impl Goal for LookAtEntityGoal {
 
         // The conditions filter the candidates instead of being applied to the nearest one.
         let predicate = &self.target_predicate;
-        let mobs_only = matches!(self.target_match, TargetMatch::Mob);
         self.target = self.target_match.find_nearest(&world, &area, |candidate| {
-            (!mobs_only || candidate.get_mob().is_some())
-                && predicate.test(&world, Some(mob), candidate)
+            predicate.test(&world, Some(mob), candidate)
         });
 
         self.target.is_some()

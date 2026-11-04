@@ -119,19 +119,17 @@ impl MinecartEntity {
     }
 }
 
+const LOWERED_PASSENGER_ATTACHMENT: Vector3<f64> = Vector3::new(0.0, 0.0, 0.0);
+
 impl EntityBase for MinecartEntity {
-    /// Vanilla `AbstractMinecart.getPassengerAttachmentPoint`: villagers and wandering traders
-    /// sit lower (`LOWERED_PASSENGER_ATTACHMENT`).
-    fn get_passenger_attachment_point(&self, passenger: &dyn EntityBase) -> Vector3<f64> {
+    fn passenger_attachment_point(
+        &self,
+        passenger: &dyn EntityBase,
+        _index: usize,
+    ) -> Option<Vector3<f64>> {
         let passenger_type = passenger.get_entity().entity_type;
-        if passenger_type == &EntityType::VILLAGER
-            || passenger_type == &EntityType::WANDERING_TRADER
-        {
-            Vector3::new(0.0, 0.0, 0.0)
-        } else {
-            self.get_entity()
-                .default_passenger_attachment_point(passenger)
-        }
+        (passenger_type == &EntityType::VILLAGER || passenger_type == &EntityType::WANDERING_TRADER)
+            .then_some(LOWERED_PASSENGER_ATTACHMENT)
     }
 
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
@@ -455,14 +453,6 @@ impl EntityBase for MinecartEntity {
                     velocity.x.mul_add(velocity.x, velocity.z * velocity.z),
                 );
                 return;
-            }
-
-            let new_pos = self.vehicle.entity.pos.load();
-
-            if let Ok(passengers) = self.vehicle.entity.passengers.try_lock() {
-                for passenger in passengers.iter() {
-                    passenger.get_entity().set_pos(new_pos);
-                }
             }
 
             #[allow(clippy::useless_let_if_seq)]

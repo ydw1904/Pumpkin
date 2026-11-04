@@ -25,6 +25,10 @@ use pumpkin_util::math::vector3::Vector3;
 
 use crate::entity::vehicle::vehicle::VehicleEntity;
 
+const FRONT_SEAT_OFFSET: f32 = 0.2;
+const BACK_SEAT_OFFSET: f32 = -0.6;
+const ANIMAL_SEAT_SHIFT: f32 = 0.2;
+
 pub struct BoatEntity {
     pub vehicle: VehicleEntity,
     kind: BoatKind,
@@ -147,47 +151,39 @@ impl BoatEntity {
     }
 }
 
-/// Vanilla `AbstractChestBoat.getSinglePassengerXOffset`.
-const CHEST_BOAT_SINGLE_PASSENGER_OFFSET: f32 = 0.15;
-/// Vanilla `Raft.rideHeight` / `ChestRaft.rideHeight` factor of the raft's height.
-const RAFT_RIDE_HEIGHT: f32 = 0.888_888_9;
-
 impl EntityBase for BoatEntity {
-    /// Vanilla `AbstractBoat.getPassengerAttachmentPoint`.
-    fn get_passenger_attachment_point(&self, passenger: &dyn EntityBase) -> Vector3<f64> {
+    fn passenger_attachment_point(
+        &self,
+        passenger: &dyn EntityBase,
+        index: usize,
+    ) -> Option<Vector3<f64>> {
         let entity = self.get_entity();
-        let mut offset = match self.kind {
-            BoatKind::Chest(_) => CHEST_BOAT_SINGLE_PASSENGER_OFFSET,
-            BoatKind::Normal => 0.0,
-        };
+        let seats = entity.entity_type.boat?;
+        let mut offset = seats.single_passenger_x_offset;
         let passenger_count = entity
             .passengers
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .len();
         if passenger_count > 1 {
-            offset = if entity.passenger_index(passenger.get_entity().entity_id) == Some(0) {
-                0.2
+            offset = if index == 0 {
+                FRONT_SEAT_OFFSET
             } else {
-                -0.6
+                BACK_SEAT_OFFSET
             };
             if passenger
                 .get_mob()
                 .and_then(|mob| mob.as_animal())
                 .is_some()
             {
-                offset += 0.2;
+                offset += ANIMAL_SEAT_SHIFT;
             }
         }
-        let height = entity.entity_type.dimension[1];
-        let ride_height = if entity.entity_type == &EntityType::BAMBOO_RAFT
-            || entity.entity_type == &EntityType::BAMBOO_CHEST_RAFT
-        {
-            height * RAFT_RIDE_HEIGHT
-        } else {
-            height / 3.0
-        };
-        entity.attachment_point(Vector3::new(0.0, f64::from(ride_height), f64::from(offset)))
+        Some(crate::entity::attachment_point(
+            [0.0, seats.ride_height, f64::from(offset)],
+            1.0,
+            entity.yaw.load(),
+        ))
     }
 
     fn get_controlling_passenger(&self) -> Option<Arc<dyn EntityBase>> {

@@ -167,6 +167,16 @@ impl AgeableMob for GoatEntity {
 }
 
 impl Animal for GoatEntity {
+    fn play_eating_sound(&self) {
+        let sound = if self.is_screaming() {
+            Sound::EntityGoatScreamingEat
+        } else {
+            Sound::EntityGoatEat
+        };
+        let pitch = 0.8 + self.get_random().random::<f32>() * 0.4;
+        self.play_entity_sound(sound, 1.0, pitch);
+    }
+
     fn is_food(&self, item_stack: &ItemStack) -> bool {
         item_stack.item.has_tag(&tag::Item::MINECRAFT_GOAT_FOOD)
     }
@@ -191,18 +201,6 @@ impl Animal for GoatEntity {
             selected_parent_screaming || random.random::<f64>() < GOAT_SCREAMING_CHANCE,
         );
         baby
-    }
-
-    /// Vanilla `Goat.playEatingSound`.
-    fn play_eating_sound(&self, sound: Sound) {
-        let entity = self.get_entity();
-        entity.world.load().play_sound_fine(
-            sound,
-            SoundCategory::Neutral,
-            &entity.pos.load(),
-            1.0,
-            self.get_random().next_inbetween_f32(0.8, 1.2),
-        );
     }
 }
 
@@ -303,13 +301,11 @@ impl Mob for GoatEntity {
             return true;
         }
 
-        let eating_sound =
-            self.screaming_sound(Sound::EntityGoatEat, Sound::EntityGoatScreamingEat);
-        let consumed = self.animal_interact(player, item_stack, eating_sound);
+        let consumed = self.animal_interact(player, item_stack);
         // Vanilla `Goat.mobInteract` plays the eating sound again on top of `Animal`'s, unless
         // the last food item was used up.
         if consumed && self.is_food(item_stack) {
-            self.play_eating_sound(eating_sound);
+            self.play_eating_sound();
         }
         consumed
     }

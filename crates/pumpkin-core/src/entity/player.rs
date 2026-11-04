@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
 use crate::entity::attributes::{Modifier, ModifierOperation};
+use crate::entity::passive::abstract_horse::player_jump_pending_scale;
 use crate::plugin::api::events::enchantment::{EnchantItemEvent, PrepareItemEnchantEvent};
 use crate::world::scoreboard::{BedrockScoreboard, Scoreboard};
 use advancement::PlayerAdvancement;
@@ -313,6 +314,7 @@ use crate::log_at_level;
 use crate::net::{ClientPlatform, GameProfile};
 use crate::net::{DisconnectReason, PlayerConfig};
 use crate::plugin::api::events::entity::entity_toggle_glide::EntityToggleGlideEvent;
+use crate::plugin::api::events::entity::horse_jump::HorseJumpEvent;
 use crate::plugin::player::exp_change::PlayerExpChangeEvent;
 use crate::plugin::player::inventory_interact::InventoryClickEvent;
 use crate::plugin::player::player_change_world::PlayerChangeWorldEvent;
@@ -332,7 +334,7 @@ use super::hunger::HungerManager;
 use super::item::ItemEntity;
 use super::living::LivingEntity;
 use super::mob::warden_spawn_tracker::WardenSpawnTracker;
-use super::{Entity, EntityBase, NBTStorage, NBTStorageInit};
+use super::{Entity, EntityBase, GearDamage, NBTStorage, NBTStorageInit};
 use pumpkin_data::potion::Effect;
 const MAX_CACHED_SIGNATURES: u8 = 128; // Vanilla: 128
 const MAX_PREVIOUS_MESSAGES: u8 = 20; // Vanilla: 20
@@ -2341,30 +2343,6 @@ impl Player {
         }
 
         false
-    }
-
-    /// Vanilla `LivingEntity.doHurtEquipment`. Lives on `Player` because only players wear
-    /// armor that takes durability in Pumpkin so far.
-    fn do_hurt_equipment(&self, damage_type: DamageType, damage: f32, slots: &[EquipmentSlot]) {
-        if damage <= 0.0 {
-            return;
-        }
-        let durability_damage = (damage / 4.0).max(1.0) as i32;
-        for slot in slots {
-            let stack = self
-                .living_entity
-                .entity_equipment
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .get(slot);
-            if stack
-                .get_data_component::<EquippableImpl>()
-                .is_some_and(|equippable| equippable.damage_on_hurt)
-                && stack.can_be_hurt_by(damage_type)
-            {
-                self.damage_item_in_slot(slot, durability_damage);
-            }
-        }
     }
 
     /// Checks and triggers location-based enchantments (e.g. Frost Walker) on the player's equipped armor.
@@ -7049,6 +7027,33 @@ impl Player {
         true
     }
 
+    /// Only rears and plays the sound; the rider's client simulates the jump itself.
+    pub fn start_riding_jump(&self, server: &Arc<Server>, jump_scale: i32) {
+        let Some(vehicle) = self.get_entity().get_vehicle() else {
+            return;
+        };
+        if vehicle
+            .get_controlling_passenger()
+            .is_none_or(|rider| rider.get_entity().entity_id != self.entity_id())
+        {
+            return;
+        }
+        let Some(horse) = vehicle.get_mob().and_then(|mob| mob.as_abstract_horse()) else {
+            return;
+        };
+        if !horse.can_jump() || jump_scale <= 0 {
+            return;
+        }
+        let mut event = HorseJumpEvent::new(
+            vehicle.get_entity().entity_id,
+            player_jump_pending_scale(jump_scale),
+        );
+        server.plugin_manager.fire_blocking(server, &mut event);
+        if !event.cancelled {
+            horse.handle_start_jump(jump_scale);
+        }
+    }
+
     pub fn open_mount_screen(
         &self,
         inventory_columns: i32,
@@ -8103,21 +8108,16 @@ impl EntityBase for Player {
         self.damage_with_context(caller, amount, damage_type, position, source, cause)
     }
 
-    fn hurt_armor(&self, damage_type: DamageType, damage: f32) {
-        self.do_hurt_equipment(
-            damage_type,
-            damage,
-            &[
+    fn hurt_gear_slots(&self, gear: GearDamage) -> &'static [EquipmentSlot] {
+        match gear {
+            GearDamage::Armor => &[
                 EquipmentSlot::FEET,
                 EquipmentSlot::LEGS,
                 EquipmentSlot::CHEST,
                 EquipmentSlot::HEAD,
             ],
-        );
-    }
-
-    fn hurt_helmet(&self, damage_type: DamageType, damage: f32) {
-        self.do_hurt_equipment(damage_type, damage, &[EquipmentSlot::HEAD]);
+            GearDamage::Helmet => &[EquipmentSlot::HEAD],
+        }
     }
 
     fn teleport(

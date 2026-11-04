@@ -123,6 +123,7 @@ impl BlockEntity for MobSpawnerBlockEntity {
         self.position
     }
 
+    #[expect(clippy::too_many_lines)]
     fn tick(&self, world: &Arc<World>) {
         if let Some(entity_type) = &self.entity_type.load() {
             let center = self.position.to_centered_f64();
@@ -188,7 +189,13 @@ impl BlockEntity for MobSpawnerBlockEntity {
                     spawn_pos.x,
                     spawn_pos.y,
                     spawn_pos.z,
-                )) {
+                )) || !crate::entity::r#type::check_spawn_rules(
+                    entity_type,
+                    world,
+                    &BlockPos::floored_v(spawn_pos),
+                    world.is_thundering(),
+                    crate::entity::mob::spawn::EntitySpawnReason::Spawner,
+                ) {
                     continue;
                 }
                 let entity = crate::entity::r#type::from_type(
