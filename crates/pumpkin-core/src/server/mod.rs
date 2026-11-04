@@ -952,6 +952,11 @@ impl Server {
             &mut PlayerLoginEvent::new(player.clone(), TextComponent::text("You have been kicked from the server"));
             'after: {
                 player.screen_handler_sync_handler.store_player(player.clone());
+                if let ClientPlatform::Java(client) = player.client.as_ref() {
+                    // Set first so the login packet is translated for older clients.
+                    client.set_player(player.clone());
+                    world.send_java_login(&self.basic_config, &player, self);
+                }
                 if !self.admit_player(&world, &player) {
                     player.kick(DisconnectReason::Shutdown, &TextComponent::text("Server stopped"));
                     return None;

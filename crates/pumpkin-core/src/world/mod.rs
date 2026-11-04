@@ -3873,6 +3873,83 @@ impl World {
         }
     }
 
+    /// Sends the Java login packet that opens the play phase.
+    ///
+    /// Vanilla `placeNewPlayer` sends it before `addNewPlayer`, so it has to be queued before
+    /// the player joins the world: from then on ticks and broadcasts queue packets for them, and
+    /// a client fails on any play packet that comes before its login.
+    pub fn send_java_login(
+        &self,
+        base_config: &BasicConfiguration,
+        player: &Player,
+        server: &Server,
+    ) {
+        let Some(client) = player.client.java() else {
+            return;
+        };
+        let dimensions: Vec<ResourceLocation> = server
+            .dimensions
+            .iter()
+            .map(|d| ResourceLocation::from(d.minecraft_name))
+            .collect();
+        let entity_id = player.entity_id();
+        let gamemode = player.gamemode.load();
+        let last_death_location = player
+            .last_death_location
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        let level_info = self.level_info.load_full();
+        let game_rules = &level_info.game_rules;
+        client.try_send_packet(&CLogin::new(
+            entity_id,
+            base_config.hardcore,
+            &dimensions,
+            server
+                .advanced_config
+                .networking
+                .java
+                .max_players
+                .try_into()
+                .unwrap_or(u16::MAX.into()),
+            server
+                .advanced_config
+                .networking
+                .java
+                .view_distance
+                .get()
+                .into(), //  TODO: view distance
+            server
+                .advanced_config
+                .networking
+                .java
+                .simulation_distance
+                .get()
+                .into(), // TODO: sim view dinstance
+            game_rules.reduced_debug_info,
+            !game_rules.immediate_respawn,
+            game_rules.limited_crafting,
+            PlayerSpawnData::new(
+                self.dimension.clone(),
+                biome::hash_seed(self.level.seed.0), // seed
+                gamemode as u8,
+                player
+                    .previous_gamemode
+                    .load()
+                    .map_or(-1, |gamemode| gamemode as i8),
+                false,
+                self.is_flat(),
+                last_death_location,
+                VarInt(player.get_entity().portal_cooldown.load(Ordering::Relaxed) as i32),
+                self.sea_level.into(),
+            ),
+            server.advanced_config.networking.java.online_mode,
+            // This should stay true even when reports are disabled.
+            // It prevents the annoying popup when joining the server.
+            true,
+        ));
+    }
+
     #[expect(clippy::too_many_lines)]
     pub async fn spawn_java_player(
         &self,
@@ -3880,13 +3957,7 @@ impl World {
         player: &Arc<Player>,
         server: &Arc<Server>,
     ) {
-        let dimensions: Vec<ResourceLocation> = server
-            .dimensions
-            .iter()
-            .map(|d| ResourceLocation::from(d.minecraft_name))
-            .collect();
-
-        // This code follows the vanilla packet order
+        // This code follows the vanilla packet order; the login packet went out in `send_java_login`.
         let entity_id = player.entity_id();
         let gamemode = player.gamemode.load();
         debug!(
@@ -3897,63 +3968,6 @@ impl World {
         let Some(client) = player.client.java() else {
             return;
         };
-        let last_death_location = player
-            .last_death_location
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
-        let level_info = self.level_info.load_full();
-        let game_rules = &level_info.game_rules;
-        // Send the login packet for our new player
-        client
-            .send_packet(&CLogin::new(
-                entity_id,
-                base_config.hardcore,
-                &dimensions,
-                server
-                    .advanced_config
-                    .networking
-                    .java
-                    .max_players
-                    .try_into()
-                    .unwrap_or(u16::MAX.into()),
-                server
-                    .advanced_config
-                    .networking
-                    .java
-                    .view_distance
-                    .get()
-                    .into(), //  TODO: view distance
-                server
-                    .advanced_config
-                    .networking
-                    .java
-                    .simulation_distance
-                    .get()
-                    .into(), // TODO: sim view dinstance
-                game_rules.reduced_debug_info,
-                !game_rules.immediate_respawn,
-                game_rules.limited_crafting,
-                PlayerSpawnData::new(
-                    self.dimension.clone(),
-                    biome::hash_seed(self.level.seed.0), // seed
-                    gamemode as u8,
-                    player
-                        .previous_gamemode
-                        .load()
-                        .map_or(-1, |gamemode| gamemode as i8),
-                    false,
-                    self.is_flat(),
-                    last_death_location,
-                    VarInt(player.get_entity().portal_cooldown.load(Ordering::Relaxed) as i32),
-                    self.sea_level.into(),
-                ),
-                server.advanced_config.networking.java.online_mode,
-                // This should stay true even when reports are disabled.
-                // It prevents the annoying popup when joining the server.
-                true,
-            ))
-            .await;
 
         // Vanilla `placeNewPlayer` sends the tab list before `addNewPlayer`: a Java client drops
         // a player spawn whose info entry is missing, leaving that player invisible.
