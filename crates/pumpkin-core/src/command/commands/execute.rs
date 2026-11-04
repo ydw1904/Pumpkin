@@ -14,12 +14,10 @@
 )]
 
 use crate::block::entities::BlockEntity;
-use crate::command::CommandSource;
 use crate::command::argument_builder::{
     ArgumentBuilder, LiteralArgumentBuilder, RequiredArgumentBuilder, argument, command, literal,
 };
-use crate::command::argument_types::FromStringReader;
-use crate::command::argument_types::argument_type::{ArgumentType, JavaClientArgumentType};
+use crate::command::argument_types::argument_type::JavaClientArgumentType;
 use crate::command::argument_types::block_predicate::BlockPredicateArgumentType;
 use crate::command::argument_types::client_parsed::ClientParsed;
 use crate::command::argument_types::coordinates::block_pos::BlockPosArgumentType;
@@ -33,6 +31,9 @@ use crate::command::argument_types::entity_anchor::{EntityAnchorArgumentType, En
 use crate::command::argument_types::function::FunctionArgumentType;
 use crate::command::argument_types::identifier::IdentifierArgumentType;
 use crate::command::argument_types::item_predicate::ItemPredicateArgumentType;
+use crate::command::argument_types::loot_resource::{
+    LootRegistry, LootResource, LootResourceArgumentType,
+};
 use crate::command::argument_types::nbt_path::{NbtPath, NbtPathArgumentType};
 use crate::command::argument_types::objective::ObjectiveArgumentType;
 use crate::command::argument_types::range::{FloatRangeArgumentType, IntRangeArgumentType};
@@ -59,7 +60,6 @@ use crate::command::node::tree::Tree;
 use crate::command::node::{
     CommandExecutor, CommandExecutorResult, RedirectModifier, RedirectModifierResult, Redirection,
 };
-use crate::command::string_reader::StringReader;
 use crate::entity::EntityBase;
 use crate::entity::mob::spawn::finalize_spawn;
 use crate::entity::r#type::from_type;
@@ -100,11 +100,6 @@ const MAX_TEST_AREA: i64 = 32768;
 const ERROR_AREA_TOO_LARGE: CommandErrorType<2> = CommandErrorType::new(
     translation::java::COMMANDS_EXECUTE_BLOCKS_TOOBIG,
     translation::java::COMMANDS_EXECUTE_BLOCKS_TOOBIG,
-);
-
-const ERROR_NO_SUCH_PREDICATE: CommandErrorType<2> = CommandErrorType::new(
-    translation::java::ARGUMENT_RESOURCE_OR_ID_NO_SUCH_ELEMENT,
-    translation::java::ARGUMENT_RESOURCE_OR_ID_NO_SUCH_ELEMENT,
 );
 
 const ERROR_CONDITIONAL_FAILED_COUNT: CommandErrorType<1> = CommandErrorType::new(
@@ -933,49 +928,9 @@ fn data_conditionals(expected: bool) -> LiteralArgumentBuilder {
         )
 }
 
-/// Vanilla `ResourceOrIdArgument.lootPredicate` for predicate ids: an unknown id fails parsing.
-struct LootPredicateArgumentType;
-
-impl ArgumentType<CommandSource> for LootPredicateArgumentType {
-    type Item = Identifier;
-
-    fn parse(&self, reader: &mut StringReader) -> Result<Identifier, CommandSyntaxError> {
-        Identifier::from_reader(reader)
-    }
-
-    fn parse_with_source(
-        &self,
-        reader: &mut StringReader,
-        source: &CommandSource,
-    ) -> Result<Identifier, CommandSyntaxError> {
-        let id = Identifier::from_reader(reader)?;
-        if let Some(server) = &source.server {
-            let name = id.to_string();
-            if server.datapack_manager.get_predicate(&name).is_none()
-                && pumpkin_data::loot_table::get_loot_predicate(&name).is_none()
-            {
-                return Err(ERROR_NO_SUCH_PREDICATE.create(
-                    reader,
-                    TextComponent::text(name),
-                    TextComponent::text("minecraft:predicate"),
-                ));
-            }
-        }
-        Ok(id)
-    }
-
-    fn client_side_parser(&self) -> JavaClientArgumentType {
-        JavaClientArgumentType::LootPredicate
-    }
-
-    fn examples(&self) -> Vec<String> {
-        crate::examples!("foo", "foo:bar", "012", "{}", "true")
-    }
-}
-
 /// Vanilla `ExecuteCommand.checkCustomPredicate`.
 fn check_predicate(context: &CommandContext) -> Result<bool, CommandSyntaxError> {
-    let id = context.get_argument::<Identifier>("predicate")?.to_string();
+    let predicate = LootResourceArgumentType::get(context, "predicate")?;
     let source = &context.source;
     let params = crate::world::loot::LootContextParameters {
         this_entity: source.entity.as_deref(),
@@ -983,7 +938,11 @@ fn check_predicate(context: &CommandContext) -> Result<bool, CommandSyntaxError>
         world: Some(source.world()),
         ..Default::default()
     };
-    Ok(crate::world::loot::evaluate_predicate(&id, &params))
+    Ok(match predicate {
+        LootResource::Id(id) => crate::world::loot::evaluate_predicate(&id.to_string(), &params),
+        LootResource::Inline(value) => crate::world::loot::evaluate_predicate_value(value, &params),
+        LootResource::InlineTable(_) => false,
+    })
 }
 
 fn execute_if_predicate_modifier(context: &CommandContext) -> RedirectModifierResult {
@@ -1009,7 +968,7 @@ const ERROR_SOURCE_NOT_A_CONTAINER: CommandErrorType<3> = CommandErrorType::new(
 
 /// Vanilla `Entity.getSlot` for the slots Pumpkin models: the items of the slots in `range` that
 /// the entity has.
-fn entity_slot_items(entity: &dyn EntityBase, range: &[usize]) -> Vec<ItemStack> {
+pub(super) fn entity_slot_items(entity: &dyn EntityBase, range: &[usize]) -> Vec<ItemStack> {
     let mut items = Vec::new();
     for &slot in range {
         if let Some(player) = entity.get_player() {
@@ -1947,7 +1906,10 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                 )
                 .then(data_conditionals(true))
                 .then(literal("predicate").then(add_conditional(
-                    argument("predicate", LootPredicateArgumentType),
+                    argument(
+                        "predicate",
+                        LootResourceArgumentType(LootRegistry::Predicate),
+                    ),
                     execute_if_predicate_modifier,
                 )))
                 .then(function_conditional(true))
@@ -2121,7 +2083,10 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                 )
                 .then(data_conditionals(false))
                 .then(literal("predicate").then(add_conditional(
-                    argument("predicate", LootPredicateArgumentType),
+                    argument(
+                        "predicate",
+                        LootResourceArgumentType(LootRegistry::Predicate),
+                    ),
                     execute_unless_predicate_modifier,
                 )))
                 .then(function_conditional(false))
