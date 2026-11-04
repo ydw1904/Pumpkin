@@ -1,14 +1,10 @@
 use pumpkin_data::{
     Block, BlockDirection, BlockId, BlockStateId,
     block_properties::{Axis, DoubleBlockHalf, TallSeagrassLikeProperties, WaterLikeProperties},
-    fluid::Fluid,
 };
 use pumpkin_macros::pumpkin_block;
 use pumpkin_util::math::position::BlockPos;
-use pumpkin_world::{
-    tick::TickPriority,
-    world::{BlockAccessor, BlockFlags},
-};
+use pumpkin_world::world::{BlockAccessor, BlockFlags};
 
 use crate::block::{
     BlockBehaviour, BrokenArgs, CanPlaceAtArgs, GetStateForNeighborUpdateArgs, PlacedArgs,
@@ -105,13 +101,7 @@ impl BlockBehaviour for TallSeaGrassBlock {
         if !Self::can_survive(args.world, args.position, args.state_id) {
             return Block::AIR.default_state.id;
         }
-
-        args.world.schedule_fluid_tick(
-            &Fluid::WATER,
-            *args.position,
-            Fluid::WATER.flow_speed,
-            TickPriority::Normal,
-        );
+        // Unlike seagrass, vanilla `TallSeagrassBlock` schedules no water tick here.
         args.state_id
     }
 
