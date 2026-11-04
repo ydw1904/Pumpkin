@@ -5228,6 +5228,32 @@ impl Player {
         }
     }
 
+    /// Vanilla `ServerGamePacketListenerImpl.teleport` with `Relative.ROTATION`: moves the Java
+    /// client to `position` and keeps its own rotation.
+    pub fn teleport_keeping_rotation(&self, position: Vector3<f64>) {
+        if !matches!(self.client.as_ref(), ClientPlatform::Java(_)) {
+            return;
+        }
+        let teleport_id = self.teleport_id_count.fetch_add(1, Ordering::Relaxed) + 1;
+        self.living_entity.entity.set_pos(position);
+        *self
+            .awaiting_teleport
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Some((teleport_id.into(), position));
+        self.try_send_client_packet(&CPlayerPosition::new(
+            teleport_id.into(),
+            position,
+            Vector3::new(0.0, 0.0, 0.0),
+            0.0,
+            0.0,
+            vec![
+                pumpkin_protocol::PositionFlag::YRot,
+                pumpkin_protocol::PositionFlag::XRot,
+            ],
+        ));
+    }
+
     pub fn block_interaction_range(&self) -> f64 {
         let is_bedrock = matches!(self.client.as_ref(), ClientPlatform::Bedrock(_));
         if self.gamemode.load() == GameMode::Creative {

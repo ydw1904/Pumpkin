@@ -5279,12 +5279,14 @@ impl Entity {
             .map(|p| VarInt(p.get_entity().entity_id))
             .collect();
         drop(passengers);
-        // Vanilla `ServerPlayer.startRiding` puts the player on the vehicle right away.
+        // Vanilla `ServerPlayer.startRiding` puts the player on the seat right away and teleports
+        // the client there.
         if let Some(rider) = player_rider
             && let Some(vehicle) = rider.get_entity().get_vehicle()
         {
             position_rider(vehicle.as_ref(), rider.as_ref());
             if let Some(player) = self.world.load().get_player_by_id(passenger_entity_id) {
+                player.teleport_keeping_rotation(player.living_entity.entity.pos.load());
                 crate::world::chunker::update_position(&player);
             }
         }
