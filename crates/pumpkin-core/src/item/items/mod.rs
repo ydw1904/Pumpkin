@@ -67,7 +67,7 @@ use crate::item::items::goat_horn::GoatHornItem;
 use crate::item::items::hanging_entity::HangingEntityItem;
 use crate::item::items::knowledge_book::{DiscFragmentItem, KnowledgeBookItem};
 use crate::item::items::lead::LeadItem;
-use crate::item::items::map::MapItem;
+use crate::item::items::map::{FilledMapItem, MapItem};
 
 use crate::item::items::minecart::MinecartItem;
 use crate::item::items::name_tag::NameTagItem;
@@ -151,6 +151,7 @@ pub fn default_registry() -> Arc<ItemRegistry> {
     manager.register(FireChargeItem);
     manager.register(DyeItem);
     manager.register(MapItem);
+    manager.register(FilledMapItem);
     manager.register(FireworkRocketItem);
     manager.register(InkSacItem);
     manager.register(GlowingInkSacItem);

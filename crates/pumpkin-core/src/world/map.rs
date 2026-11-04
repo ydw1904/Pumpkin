@@ -1,3 +1,4 @@
+use crate::block::entities::banner::{BannerBlockEntity, banner_base_color_from_block_name};
 use crate::entity::player::Player;
 use crate::server::Server;
 use crate::world::World;
@@ -7,6 +8,7 @@ use pumpkin_data::data_component_impl::{
     EquipmentType, MapDecorationEntry, MapDecorationsImpl, MapIdImpl,
 };
 use pumpkin_data::dimension::Dimension;
+use pumpkin_data::dye_color::DyeColor;
 use pumpkin_data::fluid::Fluid;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -30,6 +32,10 @@ use uuid::Uuid;
 
 /// `MapItemSavedData.MAP_SIZE`.
 const MAP_SIZE: usize = 128;
+/// The rotation `MapItemSavedData.toggleBanner` gives a banner marker.
+const BANNER_DECORATION_ROTATION: f64 = 180.0;
+/// `MapItemSavedData.toggleBanner` stops adding banners past this many tracked markers.
+const MAX_TRACKED_DECORATIONS: usize = 256;
 /// `MapItemSavedData.HALF_MAP_SIZE`.
 const HALF_MAP_SIZE: i32 = 64;
 /// How far from the center, in map pixels, a player still shows as an off-map dot.
@@ -184,9 +190,10 @@ pub struct MapData {
     pub colors: Box<[u8; MAP_SIZE * MAP_SIZE]>,
     /// Kept in insertion order like vanilla's `LinkedHashMap`, which is the order they are sent in.
     pub decorations: Vec<MapDecoration>,
-    /// Banner and frame markers, kept as saved so vanilla gets them back.
-    banners: Vec<NbtTag>,
-    frames: Vec<NbtTag>,
+    /// `bannerMarkers`.
+    banners: Vec<MapBanner>,
+    /// `frameMarkers`.
+    frames: Vec<MapFrame>,
     /// `SavedData.isDirty`: the map has changed since it was last written to disk.
     pub needs_save: bool,
     /// `carriedBy`: the players that carry the map, in the order they first did.
@@ -258,6 +265,8 @@ impl HoldingPlayer {
 /// What `tickCarriedBy` needs to know about one carrier, read without the map locked.
 struct CarrierState {
     present: bool,
+    /// `Inventory.contains(mapMatcher)`.
+    carries: bool,
     in_map_dimension: bool,
     x: f64,
     z: f64,
@@ -310,7 +319,7 @@ impl MapData {
                 *color = stored as u8;
             }
         }
-        Some(Self {
+        let mut map = Self {
             scale: (nbt.get_numeric_int("scale").unwrap_or(0) as i8).clamp(0, MAX_MAP_SCALE),
             locked: flag("locked", false),
             dimension,
@@ -320,11 +329,38 @@ impl MapData {
             unlimited_tracking: flag("unlimitedTracking", false),
             colors,
             decorations: Vec::new(),
-            banners: list("banners"),
-            frames: list("frames"),
+            banners: Vec::new(),
+            frames: Vec::new(),
             needs_save: false,
             carried_by: Vec::new(),
-        })
+        };
+        for frame in list("frames").iter().filter_map(MapFrame::from_nbt) {
+            map.add_decoration(
+                &MapDecorationType::FRAME,
+                None,
+                &frame_key(frame.entity_id),
+                f64::from(frame.pos.0.x),
+                f64::from(frame.pos.0.z),
+                f64::from(frame.rotation),
+                None,
+            );
+            map.frames.push(frame);
+        }
+        // The vanilla constructor marks every saved banner again.
+        for banner in list("banners").iter().filter_map(MapBanner::from_nbt) {
+            map.add_decoration(
+                banner.decoration_type(),
+                None,
+                &banner.id(),
+                f64::from(banner.pos.0.x),
+                f64::from(banner.pos.0.z),
+                BANNER_DECORATION_ROTATION,
+                banner.name.clone(),
+            );
+            map.banners.push(banner);
+        }
+        map.needs_save = false;
+        Some(map)
     }
 
     /// Encodes vanilla's `MapItemSavedData.CODEC`, which leaves out optional fields at their default.
@@ -351,10 +387,13 @@ impl MapData {
             nbt.put_bool("locked", true);
         }
         if !self.banners.is_empty() {
-            nbt.put_list("banners", self.banners.clone());
+            nbt.put_list(
+                "banners",
+                self.banners.iter().map(MapBanner::to_nbt).collect(),
+            );
         }
         if !self.frames.is_empty() {
-            nbt.put_list("frames", self.frames.clone());
+            nbt.put_list("frames", self.frames.iter().map(MapFrame::to_nbt).collect());
         }
         nbt
     }
@@ -436,6 +475,119 @@ impl MapData {
         (adjusted_y_rot * 16.0 / 360.0) as i32 as i8
     }
 
+    /// `MapItemSavedData.toggleBanner`: marks the banner at `pos`, or unmarks it if it already
+    /// is. Returns whether anything changed.
+    pub fn toggle_banner(&mut self, world: &World, pos: &BlockPos) -> bool {
+        let x = f64::from(pos.0.x) + 0.5;
+        let z = f64::from(pos.0.z) + 0.5;
+        let scale = f64::from(1 << self.scale);
+        let dx = (x - f64::from(self.center_x)) / scale;
+        let dz = (z - f64::from(self.center_z)) / scale;
+        let half = f64::from(HALF_MAP_SIZE - 1);
+        if !(-half..=half).contains(&dx) || !(-half..=half).contains(&dz) {
+            return false;
+        }
+        let Some(banner) = MapBanner::from_world(world, pos) else {
+            return false;
+        };
+        if let Some(index) = self.banners.iter().position(|marked| *marked == banner) {
+            self.banners.remove(index);
+            self.remove_decoration(&banner.id());
+            self.needs_save = true;
+            return true;
+        }
+        if self.tracked_decoration_count() >= MAX_TRACKED_DECORATIONS {
+            return false;
+        }
+        self.add_decoration(
+            banner.decoration_type(),
+            Some(world.get_world_age()),
+            &banner.id(),
+            x,
+            z,
+            BANNER_DECORATION_ROTATION,
+            banner.name.clone(),
+        );
+        // A banner whose color or name changed replaces the old marker under its id.
+        self.banners.retain(|marked| marked.pos != banner.pos);
+        self.banners.push(banner);
+        self.needs_save = true;
+        true
+    }
+
+    /// `MapItemSavedData.checkBanners`: drops the markers of banners in the column that are
+    /// gone or changed.
+    fn check_banners(&mut self, world: &World, x: i32, z: i32) {
+        let mut index = 0;
+        while index < self.banners.len() {
+            let expected = &self.banners[index];
+            if expected.pos.0.x == x
+                && expected.pos.0.z == z
+                && MapBanner::from_world(world, &expected.pos).as_ref() != Some(expected)
+            {
+                let removed = self.banners.remove(index);
+                self.remove_decoration(&removed.id());
+                self.needs_save = true;
+            } else {
+                index += 1;
+            }
+        }
+    }
+
+    /// `MapItemSavedData.removedFromFrame`.
+    pub fn removed_from_frame(&mut self, pos: &BlockPos, entity_id: i32) {
+        self.remove_decoration(&frame_key(entity_id));
+        self.frames.retain(|frame| frame.pos != *pos);
+        self.needs_save = true;
+    }
+
+    /// The `placedInFrame` part of `MapItemSavedData.tickCarriedBy`.
+    fn mark_frame(&mut self, frame: &MapFrame, game_time: i64) {
+        if let Some(existing) = self.frames.iter().find(|marked| marked.pos == frame.pos)
+            && existing.entity_id != frame.entity_id
+        {
+            let key = frame_key(existing.entity_id);
+            self.remove_decoration(&key);
+        }
+        self.add_decoration(
+            &MapDecorationType::FRAME,
+            Some(game_time),
+            &frame_key(frame.entity_id),
+            f64::from(frame.pos.0.x),
+            f64::from(frame.pos.0.z),
+            f64::from(frame.rotation),
+            None,
+        );
+        match self
+            .frames
+            .iter_mut()
+            .find(|marked| marked.pos == frame.pos)
+        {
+            Some(marked) if *marked == *frame => {}
+            Some(marked) => {
+                *marked = frame.clone();
+                self.needs_save = true;
+            }
+            None => {
+                self.frames.push(frame.clone());
+                self.needs_save = true;
+            }
+        }
+    }
+
+    /// `MapItemSavedData.trackedDecorationCount`.
+    fn tracked_decoration_count(&self) -> usize {
+        self.decorations
+            .iter()
+            .filter(|decoration| {
+                u32::try_from(decoration.icon_type)
+                    .ok()
+                    .and_then(MapDecorationType::from_id)
+                    .is_some_and(|decoration_type| decoration_type.track_count)
+            })
+            .count()
+    }
+
     /// `MapItemSavedData.setDecorationsDirty`.
     fn set_decorations_dirty(&mut self) {
         for holder in &mut self.carried_by {
@@ -459,7 +611,7 @@ impl MapData {
         x: f64,
         z: f64,
         y_rot: f64,
-        display_name: Option<String>,
+        display_name: Option<TextComponent>,
     ) {
         let scaling = (1 << self.scale) as f32;
         let dx = (x - f64::from(self.center_x)) as f32 / scaling;
@@ -489,7 +641,8 @@ impl MapData {
             icon_type: decoration_type.id as i32,
             x: clamp_map_coordinate(dx),
             z: clamp_map_coordinate(dz),
-            direction: self.calculate_rotation(game_time, y_rot),
+            // The `MapDecoration` constructor keeps only the low four bits.
+            direction: self.calculate_rotation(game_time, y_rot) & 15,
             display_name,
         };
         match self.decorations.iter().position(|d| d.key == key) {
@@ -585,10 +738,7 @@ impl MapData {
                     x: decoration.x,
                     z: decoration.z,
                     direction: decoration.direction,
-                    display_name: decoration
-                        .display_name
-                        .as_ref()
-                        .map(|name| TextComponent::text(name.clone())),
+                    display_name: decoration.display_name.clone(),
                 })
                 .collect()
         });
@@ -741,6 +891,13 @@ impl MapData {
                 ) else {
                     continue;
                 };
+                if !has_ceiling && !self.banners.is_empty() {
+                    for x in area_min_x..area_min_x + scale {
+                        for z in area_min_z..area_min_z + scale {
+                            self.check_banners(&world, x, z);
+                        }
+                    }
+                }
                 let checker = f64::from((img_x + img_y) & 1);
                 let brightness = if color == MapColor::WATER.id {
                     let diff = f64::from(water_depth) * 0.1 + checker * 0.2;
@@ -926,7 +1083,7 @@ pub fn inventory_tick(server: &Server, player: &Player, stack: &ItemStack, in_ha
     let Some(map) = server.map_manager.get_map(map_id) else {
         return;
     };
-    tick_carried_by(server, &map, player, stack, map_id);
+    tick_carried_by(server, &map, player, stack, map_id, None);
     let mut map = map
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -935,13 +1092,34 @@ pub fn inventory_tick(server: &Server, player: &Player, stack: &ItemStack, in_ha
     }
 }
 
-/// `MapItemSavedData.tickCarriedBy` for a map in a player's inventory (frames aren't ported).
+/// The framed map part of vanilla `ServerEntity.sendChanges`: the map ticks for every player in
+/// the frame's level and each is sent what changed.
+pub fn tick_framed(server: &Server, world: &World, stack: &ItemStack, frame: &MapFrame) {
+    if stack.item.id != Item::FILLED_MAP.id {
+        return;
+    }
+    let Some(map_id) = stack.get_data_component::<MapIdImpl>().map(|id| id.id) else {
+        return;
+    };
+    let Some(map) = server.map_manager.get_map(map_id) else {
+        return;
+    };
+    for player in world.players.load().iter() {
+        tick_carried_by(server, &map, player, stack, map_id, Some(frame));
+        map.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .send_update(map_id, player);
+    }
+}
+
+/// `MapItemSavedData.tickCarriedBy`, for a map in a player's inventory or in `placed_in_frame`.
 fn tick_carried_by(
     server: &Server,
     map: &Mutex<MapData>,
     ticking_player: &Player,
     stack: &ItemStack,
     map_id: i32,
+    placed_in_frame: Option<&MapFrame>,
 ) {
     let (holders, dimension): (Vec<Uuid>, _) = {
         let mut map = map
@@ -960,6 +1138,7 @@ fn tick_carried_by(
             let state = server.get_player_by_uuid(uuid).map_or_else(
                 || CarrierState {
                     present: false,
+                    carries: false,
                     in_map_dimension: false,
                     x: 0.0,
                     z: 0.0,
@@ -971,9 +1150,11 @@ fn tick_carried_by(
                 |player| {
                     let world = player.world();
                     let pos = player.position();
+                    let carries = carries_map(&player, stack.item, map_id);
                     CarrierState {
                         present: !player.living_entity.entity.is_removed()
-                            && carries_map(&player, stack.item, map_id),
+                            && (placed_in_frame.is_some() || carries),
+                        carries,
                         in_map_dimension: world.dimension.minecraft_name == dimension,
                         x: pos.x,
                         z: pos.z,
@@ -990,7 +1171,7 @@ fn tick_carried_by(
     let ticking_carries = carriers
         .iter()
         .find(|(uuid, _)| *uuid == ticking_player.gameprofile.id)
-        .is_some_and(|(_, state)| state.present);
+        .is_some_and(|(_, state)| state.carries);
 
     let mut map = map
         .lock()
@@ -1008,7 +1189,7 @@ fn tick_carried_by(
             continue;
         };
         if carrier.present {
-            if carrier.in_map_dimension && map.tracking_position {
+            if placed_in_frame.is_none() && carrier.in_map_dimension && map.tracking_position {
                 map.add_decoration(
                     &MapDecorationType::PLAYER,
                     Some(carrier.game_time),
@@ -1028,8 +1209,14 @@ fn tick_carried_by(
         }
         index += 1;
     }
+    let game_time = ticking_player.world().get_world_age();
+    if let Some(frame) = placed_in_frame
+        && map.tracking_position
+    {
+        map.mark_frame(frame, game_time);
+    }
     if let Some(decorations) = stack.get_data_component::<MapDecorationsImpl>() {
-        map.add_static_decorations(decorations, ticking_player.world().get_world_age());
+        map.add_static_decorations(decorations, game_time);
     }
 }
 
@@ -1086,7 +1273,120 @@ pub struct MapDecoration {
     pub x: i8,
     pub z: i8,
     pub direction: i8,
-    pub display_name: Option<String>,
+    pub display_name: Option<TextComponent>,
+}
+
+/// `MapItemSavedData.getFrameKey`.
+fn frame_key(entity_id: i32) -> String {
+    format!("frame-{entity_id}")
+}
+
+/// Vanilla `MapFrame`: an item frame showing the map.
+#[derive(Clone, PartialEq, Eq)]
+pub struct MapFrame {
+    pub pos: BlockPos,
+    pub rotation: i32,
+    pub entity_id: i32,
+}
+
+impl MapFrame {
+    fn from_nbt(tag: &NbtTag) -> Option<Self> {
+        let NbtTag::Compound(compound) = tag else {
+            return None;
+        };
+        let [x, y, z] = compound.get_int_array("pos")? else {
+            return None;
+        };
+        Some(Self {
+            pos: BlockPos::new(*x, *y, *z),
+            rotation: compound.get_int("rotation")?,
+            entity_id: compound.get_int("entity_id")?,
+        })
+    }
+
+    fn to_nbt(&self) -> NbtTag {
+        let mut compound = NbtCompound::new();
+        compound.put(
+            "pos",
+            NbtTag::IntArray(vec![self.pos.0.x, self.pos.0.y, self.pos.0.z]),
+        );
+        compound.put_int("rotation", self.rotation);
+        compound.put_int("entity_id", self.entity_id);
+        NbtTag::Compound(compound)
+    }
+}
+
+/// Vanilla `MapBanner`: a banner a map marks.
+#[derive(Clone, PartialEq, Eq)]
+pub struct MapBanner {
+    pub pos: BlockPos,
+    pub color: DyeColor,
+    pub name: Option<TextComponent>,
+}
+
+impl MapBanner {
+    /// `MapBanner.fromWorld`: the banner at `pos`, if there is one.
+    #[must_use]
+    pub fn from_world(world: &World, pos: &BlockPos) -> Option<Self> {
+        let entity = world.get_block_entity(pos)?;
+        let banner = entity.as_any().downcast_ref::<BannerBlockEntity>()?;
+        let color = banner_base_color_from_block_name(world.get_block(pos).name)?;
+        let name = banner
+            .custom_name
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+            .map(TextComponent::text);
+        Some(Self {
+            pos: *pos,
+            color,
+            name,
+        })
+    }
+
+    /// Decodes `MapBanner.CODEC`; the color defaults to white.
+    fn from_nbt(tag: &NbtTag) -> Option<Self> {
+        let NbtTag::Compound(compound) = tag else {
+            return None;
+        };
+        let [x, y, z] = compound.get_int_array("pos")? else {
+            return None;
+        };
+        Some(Self {
+            pos: BlockPos::new(*x, *y, *z),
+            color: compound
+                .get_string("color")
+                .and_then(DyeColor::by_name)
+                .unwrap_or(DyeColor::White),
+            name: compound.get("name").map(TextComponent::from_nbt),
+        })
+    }
+
+    fn to_nbt(&self) -> NbtTag {
+        let mut compound = NbtCompound::new();
+        compound.put(
+            "pos",
+            NbtTag::IntArray(vec![self.pos.0.x, self.pos.0.y, self.pos.0.z]),
+        );
+        if self.color != DyeColor::White {
+            compound.put_string("color", self.color.name().to_string());
+        }
+        if let Some(name) = &self.name {
+            compound.put("name", name.0.to_nbt_tag());
+        }
+        NbtTag::Compound(compound)
+    }
+
+    /// `MapBanner.getDecoration`.
+    fn decoration_type(&self) -> &'static MapDecorationType {
+        MapDecorationType::from_name(&format!("banner_{}", self.color.name()))
+            .unwrap_or(&MapDecorationType::BANNER_WHITE)
+    }
+
+    /// `MapBanner.getId`.
+    fn id(&self) -> String {
+        format!("banner-{},{},{}", self.pos.0.x, self.pos.0.y, self.pos.0.z)
+    }
 }
 
 #[cfg(test)]

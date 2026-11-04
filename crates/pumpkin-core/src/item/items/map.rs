@@ -1,6 +1,8 @@
+use crate::block::registry::BlockActionResult;
 use crate::entity::player::Player;
 use crate::item::ItemBehaviour;
 use crate::item::ItemMetadata;
+use crate::server::Server;
 use pumpkin_data::data_component::DataComponent;
 use pumpkin_data::data_component_impl::DataComponentImpl;
 use pumpkin_data::data_component_impl::MapIdImpl;
@@ -8,7 +10,11 @@ use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::statistic::StatisticCategory;
+use pumpkin_data::tag::{self, Taggable};
+use pumpkin_data::{Block, BlockDirection};
 use pumpkin_inventory::player::player_inventory::PlayerInventory;
+use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::{GameMode, Hand};
 use std::any::Any;
 
@@ -89,6 +95,48 @@ impl ItemBehaviour for MapItem {
             }
         }
         player.increment_stat(StatisticCategory::Used, i32::from(item.id), 1);
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// Vanilla `MapItem`, the filled map.
+pub struct FilledMapItem;
+
+impl ItemMetadata for FilledMapItem {
+    fn ids() -> Box<[u16]> {
+        [Item::FILLED_MAP.id].into()
+    }
+}
+
+impl ItemBehaviour for FilledMapItem {
+    /// `MapItem.useOn`: using the map on a banner marks or unmarks it.
+    fn use_on_block(
+        &self,
+        item: &mut ItemStack,
+        player: &Player,
+        location: BlockPos,
+        _face: BlockDirection,
+        _cursor_pos: Vector3<f32>,
+        block: &Block,
+        server: &Server,
+    ) -> BlockActionResult {
+        if !block.has_tag(&tag::Block::MINECRAFT_BANNERS) {
+            return BlockActionResult::Pass;
+        }
+        if let Some(map) = item
+            .get_data_component::<MapIdImpl>()
+            .and_then(|id| server.map_manager.get_map(id.id))
+            && !map
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .toggle_banner(&player.world(), &location)
+        {
+            return BlockActionResult::Fail;
+        }
+        BlockActionResult::Success
     }
 
     fn as_any(&self) -> &dyn Any {

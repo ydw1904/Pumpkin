@@ -228,12 +228,36 @@ impl ItemFrameEntity {
         }
     }
 
+    /// The frame as `MapItemSavedData` marks it.
+    fn map_frame(&self) -> crate::world::map::MapFrame {
+        crate::world::map::MapFrame {
+            pos: self.entity.block_pos.load(),
+            rotation: self.get_facing().get_2d_data_value() * 90,
+            entity_id: self.entity.entity_id,
+        }
+    }
+
+    /// `ItemFrame.removeFramedMap`.
+    fn remove_framed_map(&self, item_stack: &ItemStack) {
+        let world = self.entity.world.load();
+        if let Some(map_id) =
+            item_stack.get_data_component::<pumpkin_data::data_component_impl::MapIdImpl>()
+            && let Some(server) = world.server.upgrade()
+            && let Some(map) = server.map_manager.get_map(map_id.id)
+        {
+            map.lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .removed_from_frame(&self.entity.block_pos.load(), self.entity.entity_id);
+        }
+    }
+
     pub fn drop_item(&self, caused_by: Option<&dyn EntityBase>, with_frame: bool) {
         if self.is_fixed() {
             return;
         }
 
         let item_stack = self.get_item();
+        self.remove_framed_map(&item_stack);
         *self
             .item_stack
             .lock()
@@ -270,7 +294,18 @@ impl ItemFrameEntity {
     }
 }
 
+/// `ServerEntity.sendChanges` updates a framed map every this many ticks.
+const FRAMED_MAP_UPDATE_INTERVAL: i32 = 10;
+
 impl EntityBase for ItemFrameEntity {
+    fn tick(&self, caller: &dyn EntityBase, server: &crate::server::Server) {
+        self.entity.tick(caller, server);
+        if self.entity.tick_count.load(Ordering::Relaxed) % FRAMED_MAP_UPDATE_INTERVAL == 0 {
+            let world = self.entity.world.load();
+            crate::world::map::tick_framed(server, &world, &self.get_item(), &self.map_frame());
+        }
+    }
+
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
         let item = self
             .item_stack

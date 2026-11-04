@@ -239,6 +239,19 @@ impl BlockDirection {
         [Self::Down, Self::North, Self::South, Self::West, Self::East]
     }
 
+    /// Vanilla `Direction.get2DDataValue`: south, west, north, east count from 0; up and down
+    /// are -1.
+    #[must_use]
+    pub const fn get_2d_data_value(&self) -> i32 {
+        match self {
+            Self::Down | Self::Up => -1,
+            Self::South => 0,
+            Self::West => 1,
+            Self::North => 2,
+            Self::East => 3,
+        }
+    }
+
     #[must_use]
     pub const fn is_horizontal(&self) -> bool {
         matches!(self, Self::North | Self::South | Self::West | Self::East)

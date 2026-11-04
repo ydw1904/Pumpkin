@@ -45,6 +45,21 @@ h.start(async () => {
     h.result('treasure_map_data', shown.join(' | ') || 'none')
   }
 
+  // Shipwreck treasure maps keep `skip_existing_chunks` off, so they all lead to the nearest
+  // treasure instead of each claiming its own.
+  const leadApart = async (key, give) => {
+    await h.clear()
+    for (let i = 0; i < 2; i++) {
+      give(i)
+      await h.waitFor(() => bot.inventory.items().filter((it) => decorations(it) !== 'none').length > i, 20000)
+      await h.ticks(5)
+    }
+    const targets = bot.inventory.items().map(decorations).filter((d) => d !== 'none')
+    h.result(key, targets.length === 2 ? (targets[0] !== targets[1] ? 'different' : 'same') : `count=${targets.length}`)
+  }
+  await leadApart('shipwreck_maps_lead_apart', () =>
+    h.cmd(`execute as ${bot.username} at @s run loot give @s loot minecraft:chests/shipwreck_map`))
+
   // Loot rolls differ between servers, so only what the components look like is compared.
   await h.clear()
   for (let i = 0; i < 8; i++) h.cmd(`execute as ${bot.username} at @s run loot give @s loot minecraft:chests/pillager_outpost`)
@@ -69,4 +84,26 @@ h.start(async () => {
   await h.ticks(40)
   const held = Object.values(maps)[0]
   h.result('fresh_map_after_40_ticks', held ? `icons=[${held.icons}] painted=${held.colors.filter((c) => c !== 0).length} hash=${colorHash(held)}` : 'none')
+
+  // Using the map on a banner marks it, and using it again unmarks it.
+  const mapId = Object.keys(maps)[0]
+  h.cmd(`setblock ${X + 2} ${Y + 1} ${Z} red_banner{CustomName:"Base"}`)
+  await h.waitFor(() => h.blockName(X + 2, Y + 1, Z) === 'red_banner', 3000)
+  await h.ticks(5)
+  await bot.lookAt(new h.Vec3(X + 2.5, Y + 1.5, Z + 0.5), true)
+  await bot.activateBlock(h.block(X + 2, Y + 1, Z)).catch(() => {})
+  await h.ticks(30)
+  h.result('banner_marked', held ? `icons=[${held.icons}]` : 'none')
+  await bot.activateBlock(h.block(X + 2, Y + 1, Z)).catch(() => {})
+  await h.ticks(30)
+  h.result('banner_unmarked', held ? `icons=[${held.icons}]` : 'none')
+
+  // A map in an item frame updates for players who don't carry it, with a frame marker.
+  if (mapId !== undefined) {
+    await h.clear()
+    await h.ticks(10)
+    h.cmd(`summon item_frame ${X - 2} ${Y + 1} ${Z} {Facing:1b,Item:{id:"minecraft:filled_map",count:1,components:{"minecraft:map_id":${mapId}}}}`)
+    await h.ticks(40)
+    h.result('framed_map', `icons=[${maps[mapId].icons}]`)
+  }
 })
