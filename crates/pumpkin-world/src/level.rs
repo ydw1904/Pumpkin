@@ -712,13 +712,21 @@ impl Level {
     }
 
     /// Whether a chunk's entities must stay loaded: a player or a forced ticket watches it, or
-    /// it is still a full chunk. Vanilla only unloads entities once their chunk drops below
-    /// full, so entities that walk out of a forced chunk stay in the world.
+    /// it is still a full chunk. Vanilla unloads entities once their chunk drops below full
+    /// (`PersistentEntitySectionManager.updateChunkStatus` to `HIDDEN`), even when the chunk
+    /// itself stays in memory, and keeps them while it is full, so entities that walk out of a
+    /// forced chunk stay in the world.
     pub fn is_entity_chunk_in_use(&self, chunk: &Vector2<i32>) -> bool {
         self.chunk_watchers
             .get(chunk)
             .is_some_and(|count| *count != 0)
-            || self.loaded_chunks.contains_key(chunk)
+            || self
+                .chunk_loading
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .pos_level
+                .get(chunk)
+                .is_some_and(|&level| level <= ChunkLoading::FULL_CHUNK_LEVEL)
     }
 
     pub fn clean_memory(self: &Arc<Self>) -> Vec<Vector2<i32>> {

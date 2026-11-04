@@ -9800,6 +9800,58 @@ mod tests {
         Ok(())
     }
 
+    // A chunk that dropped below full stays in memory for a while; its entities unload anyway.
+    #[tokio::test]
+    async fn memory_cleanup_unloads_entities_of_chunks_below_full()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use crate::entity::{Entity, EntityBase, ai::test_support::world, passive::cow::CowEntity};
+        use pumpkin_data::entity::EntityType;
+        use pumpkin_util::math::{vector2::Vector2, vector3::Vector3};
+        use pumpkin_world::{chunk::ChunkData, chunk_system::ChunkLoading};
+        use std::sync::Arc;
+
+        let folder = tempfile::tempdir()?;
+        let world = world(&folder);
+        let full = Vector2::new(0, 0);
+        let below_full = Vector2::new(2, 0);
+        for pos in [full, below_full] {
+            world
+                .level
+                .loaded_chunks
+                .insert(pos, ChunkData::empty_sync(pos.x, pos.y));
+        }
+        // A ticket at full level for chunk 0 leaves chunk 2 two levels below full.
+        world
+            .level
+            .chunk_loading
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .add_ticket(full, ChunkLoading::FULL_CHUNK_LEVEL);
+        let cow_at = |x: f64| {
+            CowEntity::new(Entity::new(
+                world.clone(),
+                Vector3::new(x, 64.0, 0.5),
+                &EntityType::COW,
+            ))
+        };
+        let kept = cow_at(0.5);
+        let unloaded = cow_at(32.5);
+        world
+            .entities
+            .store(Arc::new(vec![kept.clone(), unloaded.clone()]));
+
+        let cleaned = world.clean_memory();
+        world.remove_entities_in_chunks(&cleaned).await;
+        world.level.clean_entity_chunks(&cleaned);
+
+        let kept_live = !kept.get_entity().is_removed();
+        let unloaded_removed = unloaded.get_entity().is_removed();
+        world.level.shutdown().await;
+        assert!(kept_live);
+        assert!(unloaded_removed);
+        Ok(())
+    }
+
     #[tokio::test]
     async fn removing_a_wither_clears_its_bossbar_registration_without_dropping_loot()
     -> Result<(), Box<dyn std::error::Error>> {
