@@ -30,6 +30,7 @@ use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::chunk::{ChunkData, ChunkHeightmapType};
 use pumpkin_world::generation::proto_chunk::GenerationCache;
+use rustc_hash::FxHashMap;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, Ordering::Relaxed};
@@ -37,7 +38,9 @@ use uuid::Uuid;
 
 const MAGIC_NUMBER: i32 = 17 * 17;
 
-pub struct MobCounts([AtomicI32; 8]);
+const MOB_CATEGORY_COUNT: usize = 8;
+
+pub struct MobCounts([AtomicI32; MOB_CATEGORY_COUNT]);
 
 impl Default for MobCounts {
     fn default() -> Self {
@@ -65,6 +68,12 @@ impl MobCounts {
     #[inline]
     pub fn add(&self, category: &'static MobCategory) {
         self.0[category.id].fetch_add(1, Relaxed);
+    }
+
+    fn add_counts(&self, counts: &[i32; MOB_CATEGORY_COUNT]) {
+        for (count, &added) in self.0.iter().zip(counts) {
+            count.fetch_add(added, Relaxed);
+        }
     }
 
     #[inline]
@@ -165,6 +174,17 @@ impl LocalMobCapCalculator {
                 .entry(player)
                 .or_default()
                 .add(category);
+        }
+    }
+
+    /// Adds a chunk's mobs counted by category, like [`Self::add_mob`] for each of them.
+    fn add_mobs(&self, chunk_pos: Vector2<i32>, world: &World, counts: &[i32; MOB_CATEGORY_COUNT]) {
+        let players = self.get_players_near(world, chunk_pos);
+        for &player in players.iter() {
+            self.player_mob_counts
+                .entry(player)
+                .or_default()
+                .add_counts(counts);
         }
     }
 
@@ -382,40 +402,52 @@ impl SpawnState {
         entities: &ArcSwap<Vec<Arc<dyn EntityBase>>>,
         world: &World,
     ) -> Self {
-        let potential = PotentialCalculator::default();
-        let local_mob_cap = LocalMobCapCalculator::default();
-        let counter = MobCounts::default();
+        let mut charges = Vec::new();
+        let mut category_counts = [0; MOB_CATEGORY_COUNT];
+        // Mobs are counted per chunk first, so each chunk's nearby players are looked up once.
+        let mut chunk_mob_counts: FxHashMap<Vector2<i32>, [i32; MOB_CATEGORY_COUNT]> =
+            FxHashMap::default();
+        let mut loaded_chunks: FxHashMap<Vector2<i32>, bool> = FxHashMap::default();
         for entity in entities.load().iter() {
-            if let Some(mob) = entity.get_mob()
-                && (mob.get_mob_entity().persistence_required.load(Relaxed)
-                    || mob.requires_custom_persistence())
-            {
-                continue;
-            }
             let base_entity = entity.get_entity();
             let entity_type = base_entity.entity_type;
             if entity_type.category == &MobCategory::MISC {
                 continue;
             }
-            // Vanilla `NaturalSpawner.createState` counts mobs in every loaded full chunk.
-            let chunk_pos = base_entity.chunk_pos.load();
-            if !world.level.is_chunk_loaded(&chunk_pos) {
+            let mob = entity.get_mob();
+            if let Some(mob) = mob
+                && (mob.get_mob_entity().persistence_required.load(Relaxed)
+                    || mob.requires_custom_persistence())
+            {
                 continue;
             }
-            let entity_pos = base_entity.block_pos.load();
+            // Vanilla `NaturalSpawner.createState` counts mobs in every loaded full chunk.
+            let chunk_pos = base_entity.chunk_pos.load();
+            if !*loaded_chunks
+                .entry(chunk_pos)
+                .or_insert_with(|| world.level.is_chunk_loaded(&chunk_pos))
+            {
+                continue;
+            }
             let biome = base_entity.current_biome.load();
-            if let Some(cost) = biome.spawn_costs.get(entity_type.resource_name) {
-                potential.add_charge(&entity_pos, cost.charge);
+            if let Some(cost) = biome.spawn_costs.get(entity_type.resource_name)
+                && cost.charge != 0.0
+            {
+                charges.push(PointCharge(base_entity.block_pos.load(), cost.charge));
             }
-            if entity.get_mob().is_some() || entity_type.mob {
-                local_mob_cap.add_mob(chunk_pos, world, entity_type.category);
+            if mob.is_some() || entity_type.mob {
+                chunk_mob_counts.entry(chunk_pos).or_default()[entity_type.category.id] += 1;
             }
-            counter.add(entity_type.category);
+            category_counts[entity_type.category.id] += 1;
+        }
+        let local_mob_cap = LocalMobCapCalculator::default();
+        for (chunk_pos, counts) in chunk_mob_counts {
+            local_mob_cap.add_mobs(chunk_pos, world, &counts);
         }
         Self {
             spawnable_chunk_count: chunk_count,
-            mob_category_counts: counter,
-            spawn_potential: potential,
+            mob_category_counts: MobCounts(category_counts.map(AtomicI32::new)),
+            spawn_potential: PotentialCalculator(std::sync::Mutex::new(charges)),
             local_mob_cap_calculator: local_mob_cap,
             last_checked: AtomicCell::new(None),
         }
