@@ -1,4 +1,5 @@
 use pumpkin_data::BlockState;
+use pumpkin_data::damage::DamageType;
 use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
@@ -163,5 +164,24 @@ impl Mob for HuskEntity {
     // Converting spawns another type.
     fn has_audited_tick(&self) -> bool {
         !self.entity.converts_next_tick()
+    }
+
+    fn on_damage_with_context(
+        &self,
+        _damage_type: DamageType,
+        source: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
+    ) -> bool {
+        self.entity.call_reinforcements(cause.or(source));
+        true
+    }
+
+    // Hits in other entities' turns join them to this reach, so it covers those calls too.
+    fn audited_spawn_distance(&self) -> f64 {
+        self.entity.reinforcement_reach()
+    }
+
+    fn additional_tick_movement(&self) -> f64 {
+        self.entity.reinforcement_reach()
     }
 }

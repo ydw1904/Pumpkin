@@ -268,8 +268,8 @@ pub struct AuditedReach {
     pub players: f64,
     /// Searches that only touch entities of the matched types.
     pub typed_entities: Vec<(f64, TargetMatch)>,
-    /// Audited entities spawn and turn into no type that a typed search matches.
-    pub kind: &'static EntityType,
+    /// Its type; `None` while it can spawn other types, which any typed search may match.
+    pub kind: Option<&'static EntityType>,
     pub block_reads: f64,
     /// Area where block changes make it recompute its path.
     pub route: Option<BoundingBox>,
@@ -795,7 +795,7 @@ fn finish(audited: AuditedReach, extra: f64) -> TickReach {
             .into_iter()
             .map(|(distance, target)| (around(distance), target))
             .collect(),
-        kind: Some(audited.kind),
+        kind: audited.kind,
         block_reads,
         block_writes,
         global: audited.global,
@@ -2169,7 +2169,7 @@ mod tests {
             entities: 0.0,
             players: 0.0,
             typed_entities: Vec::new(),
-            kind: &EntityType::PIG,
+            kind: Some(&EntityType::PIG),
             block_reads: 0.0,
             route: None,
             changes_blocks: false,

@@ -10,19 +10,21 @@ use crate::entity::ai::goal::zombie_attack::ZombieAttackGoal;
 use crate::entity::attributes::{Modifier, ModifierOperation};
 use crate::entity::mob::conversion_tracker::ConversionTracker;
 use crate::entity::mob::equipment::RegionalDifficulty;
+use crate::entity::mob::is_unobstructed;
 use crate::entity::mob::spawn::{
-    PendingVehicle, RANDOM_SPAWN_BONUS_ID, SpawnGroupData, finalize_spawn,
+    EntitySpawnReason, PendingVehicle, RANDOM_SPAWN_BONUS_ID, SpawnGroupData, finalize_spawn,
 };
 use crate::entity::passive::chicken::ChickenEntity;
 use crate::entity::passive::villager::VillagerEntity;
-use crate::entity::r#type::from_type;
+use crate::entity::r#type::{check_spawn_rules, from_type};
 use crate::entity::{
     Entity, EntityBase,
     ai::behavior::hunting::{self, Hunt},
     ai::goal::look_at_entity::LookAtEntityGoal,
     ai::target_match::TargetMatch,
 };
-use crate::world::World;
+use crate::plugin::api::events::entity::entity_target::TargetReason;
+use crate::world::{World, natural_spawner};
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::entity::EntityType;
@@ -33,6 +35,8 @@ use pumpkin_data::tracked_data;
 use pumpkin_data::world::WorldEvent;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::Difficulty;
+use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
@@ -54,6 +58,19 @@ const ZOMBIE_HUNTS: &[Hunt] = &[
 const SPEED_MODIFIER_BABY_ID: &str = "minecraft:baby";
 const LEADER_ZOMBIE_BONUS_ID: &str = "minecraft:leader_zombie_bonus";
 const ZOMBIE_RANDOM_SPAWN_BONUS_ID: &str = "minecraft:zombie_random_spawn_bonus";
+const REINFORCEMENT_CALLER_CHARGE_ID: &str = "minecraft:reinforcement_caller_charge";
+const REINFORCEMENT_CALLEE_CHARGE_ID: &str = "minecraft:reinforcement_callee_charge";
+const REINFORCEMENT_ATTEMPTS: usize = 50;
+const REINFORCEMENT_RANGE_MAX: i32 = 40;
+const REINFORCEMENT_RANGE_MIN: i32 = 7;
+/// Vanilla `Zombie.hurtServer`: no reinforcement spawns this close to a living player.
+const REINFORCEMENT_PLAYER_DISTANCE: f64 = 7.0;
+/// Vanilla `ZOMBIE_REINFORCEMENT_CALLEE_CHARGE` and the caller's charge per call.
+const REINFORCEMENT_CHARGE: f64 = 0.05;
+/// Furthest a call reaches from the caller's body: the spawn offset and the block the caller
+/// stands in, then the player check, which is wider than the chicken jockey search.
+const REINFORCEMENT_REACH: f64 =
+    REINFORCEMENT_RANGE_MAX as f64 + 1.0 + REINFORCEMENT_PLAYER_DISTANCE;
 /// Vanilla compares `nextFloat()` against the double `0.05` for both chicken jockey rolls.
 const CHICKEN_JOCKEY_CHANCE: f64 = 0.05;
 
@@ -292,12 +309,7 @@ impl ZombieEntityBase {
                 Uuid::new_v4(),
             );
             chicken.get_entity().set_rotation(entity.yaw.load(), 0.0);
-            finalize_spawn(
-                &chicken,
-                world,
-                crate::entity::mob::spawn::EntitySpawnReason::Jockey,
-                None,
-            );
+            finalize_spawn(&chicken, world, EntitySpawnReason::Jockey, None);
             set_chicken_jockey(chicken.as_ref());
             self.mob_entity
                 .set_pending_vehicle(PendingVehicle::New(chicken));
@@ -358,6 +370,123 @@ impl ZombieEntityBase {
     #[must_use]
     pub fn is_baby(&self) -> bool {
         self.is_baby.load(Ordering::Relaxed)
+    }
+
+    /// The conditions of vanilla `Zombie.hurtServer` that don't depend on the hit.
+    fn may_call_reinforcements(&self) -> bool {
+        let living = &self.mob_entity.living_entity;
+        let level_info = living.entity.world.load().level_info.load();
+        level_info.difficulty == Difficulty::Hard
+            && level_info.game_rules.spawn_mobs
+            && level_info.game_rules.spawn_monsters
+            && living.get_attribute_value(&Attributes::SPAWN_REINFORCEMENTS) > 0.0
+    }
+
+    /// How far outside its body a hit can make this zombie spawn a reinforcement.
+    #[must_use]
+    pub fn reinforcement_reach(&self) -> f64 {
+        if self.may_call_reinforcements() {
+            REINFORCEMENT_REACH
+        } else {
+            0.0
+        }
+    }
+
+    /// Vanilla `Zombie.hurtServer` after the damage landed: on hard difficulty a hurt zombie
+    /// with a target, or hurt by a living entity, sometimes calls another of its type for help.
+    pub fn call_reinforcements(&self, attacker: Option<&dyn EntityBase>) {
+        let living = &self.mob_entity.living_entity;
+        let entity = &living.entity;
+        let world = entity.world.load_full();
+        let Some(target) = self.mob_entity.get_target().or_else(|| {
+            attacker
+                .filter(|attacker| attacker.get_living_entity().is_some())
+                .and_then(|attacker| world.get_entity_by_id(attacker.get_entity().entity_id))
+        }) else {
+            return;
+        };
+        let level_info = world.level_info.load();
+        let rng = game_random();
+        if level_info.difficulty != Difficulty::Hard
+            || f64::from(rng.random::<f32>())
+                >= living.get_attribute_value(&Attributes::SPAWN_REINFORCEMENTS)
+            || !(level_info.game_rules.spawn_mobs && level_info.game_rules.spawn_monsters)
+        {
+            return;
+        }
+
+        let origin = entity.block_pos.load().0;
+        let entity_type = entity.entity_type;
+        let reinforcement = from_type(entity_type, entity.pos.load(), &world, Uuid::new_v4());
+        let Some(reinforcement_mob) = reinforcement.get_mob() else {
+            return;
+        };
+        let reinforcement_entity = reinforcement.get_entity();
+        let offset = || {
+            rng.random_range(REINFORCEMENT_RANGE_MIN..=REINFORCEMENT_RANGE_MAX)
+                * rng.random_range(-1..=1)
+        };
+        for _ in 0..REINFORCEMENT_ATTEMPTS {
+            let x = origin.x + offset();
+            let y = origin.y + offset();
+            let z = origin.z + offset();
+            let spawn_pos = BlockPos::new(x, y, z);
+            if !natural_spawner::is_spawn_position_ok(&world, &spawn_pos, entity_type)
+                || !check_spawn_rules(
+                    entity_type,
+                    &world,
+                    &spawn_pos,
+                    world.is_thundering(),
+                    EntitySpawnReason::Reinforcement,
+                )
+            {
+                continue;
+            }
+            let pos = Vector3::new(f64::from(x), f64::from(y), f64::from(z));
+            reinforcement_entity.set_pos(pos);
+            let bounding_box = reinforcement_entity.bounding_box.load();
+            if has_nearby_alive_player(&world, pos, REINFORCEMENT_PLAYER_DISTANCE)
+                || !is_unobstructed(reinforcement_mob, world.as_ref())
+                || !world.is_space_empty(bounding_box)
+                || (!can_spawn_in_liquids(entity_type) && world.contains_any_liquid(bounding_box))
+            {
+                continue;
+            }
+            reinforcement_mob.set_mob_target(Some(target), TargetReason::Unknown);
+            finalize_spawn(
+                &reinforcement,
+                &world,
+                EntitySpawnReason::Reinforcement,
+                None,
+            );
+            world.spawn_entity(reinforcement.clone());
+            living.update_attribute(&Attributes::SPAWN_REINFORCEMENTS, |attribute| {
+                let charged = attribute
+                    .modifiers
+                    .iter()
+                    .find(|modifier| modifier.id == REINFORCEMENT_CALLER_CHARGE_ID)
+                    .map_or(0.0, |modifier| modifier.amount);
+                attribute.add_or_replace_permanent_modifier(Modifier {
+                    id: REINFORCEMENT_CALLER_CHARGE_ID.to_string(),
+                    amount: charged - REINFORCEMENT_CHARGE,
+                    operation: ModifierOperation::Add,
+                });
+            });
+            if let Some(reinforcement_living) = reinforcement.get_living_entity() {
+                reinforcement_living.update_attribute(
+                    &Attributes::SPAWN_REINFORCEMENTS,
+                    |attribute| {
+                        attribute.add_or_replace_permanent_modifier(Modifier {
+                            id: REINFORCEMENT_CALLEE_CHARGE_ID.to_string(),
+                            // A Java float.
+                            amount: f64::from(-(REINFORCEMENT_CHARGE as f32)),
+                            operation: ModifierOperation::Add,
+                        });
+                    },
+                );
+            }
+            return;
+        }
     }
 
     /// Whether the drowning tracker turns the mob into another type next tick.
@@ -458,6 +587,21 @@ impl ZombieEntityBase {
                 }
             })
     }
+}
+
+/// Vanilla `Zombie.canSpawnInLiquids`, which only the drowned override.
+fn can_spawn_in_liquids(entity_type: &EntityType) -> bool {
+    entity_type == &EntityType::DROWNED
+}
+
+/// Vanilla `EntityGetter.hasNearbyAlivePlayer`.
+fn has_nearby_alive_player(world: &World, pos: Vector3<f64>, range: f64) -> bool {
+    world.players.load().iter().any(|player| {
+        let entity = player.get_entity();
+        !player.is_spectator()
+            && entity.is_alive()
+            && entity.pos.load().squared_distance_to_vec(&pos) < range * range
+    })
 }
 
 fn set_chicken_jockey(chicken: &dyn EntityBase) {

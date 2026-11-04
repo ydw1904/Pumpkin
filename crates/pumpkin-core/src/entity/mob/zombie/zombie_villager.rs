@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::Block;
 use pumpkin_data::BlockState;
+use pumpkin_data::damage::DamageType;
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::{EntityStatus, EntityType};
 use pumpkin_data::item::Item;
@@ -375,6 +376,25 @@ impl Mob for ZombieVillagerEntity {
     // The cure reads blocks around the mob, then spawns a villager and rewards its curer.
     fn has_audited_tick(&self) -> bool {
         !self.is_converting()
+    }
+
+    fn on_damage_with_context(
+        &self,
+        _damage_type: DamageType,
+        source: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
+    ) -> bool {
+        self.mob_entity.call_reinforcements(cause.or(source));
+        true
+    }
+
+    // Hits in other entities' turns join them to this reach, so it covers those calls too.
+    fn audited_spawn_distance(&self) -> f64 {
+        self.mob_entity.reinforcement_reach()
+    }
+
+    fn additional_tick_movement(&self) -> f64 {
+        self.mob_entity.reinforcement_reach()
     }
 
     fn mob_tick(&self, _caller: &dyn EntityBase) {

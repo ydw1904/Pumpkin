@@ -344,7 +344,7 @@ impl EntityBase for ExperienceOrbEntity {
             entities: Self::ORB_MERGE_DISTANCE,
             players: Self::MAX_FOLLOW_DIST,
             typed_entities: Vec::new(),
-            kind: entity.entity_type,
+            kind: Some(entity.entity_type),
             block_reads: 1.0,
             route: None,
             changes_blocks: false,

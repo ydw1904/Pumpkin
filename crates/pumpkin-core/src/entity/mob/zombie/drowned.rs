@@ -1,6 +1,7 @@
 use crate::entity::r#type::CreatureSpawnLevel;
 use pumpkin_data::BlockState;
 use pumpkin_data::attributes::Attributes;
+use pumpkin_data::damage::DamageType;
 use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -227,6 +228,20 @@ impl DrownedEntity {
 }
 
 impl Mob for DrownedEntity {
+    fn on_damage_with_context(
+        &self,
+        _damage_type: DamageType,
+        source: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
+    ) -> bool {
+        self.entity.call_reinforcements(cause.or(source));
+        true
+    }
+
+    fn additional_tick_movement(&self) -> f64 {
+        self.entity.reinforcement_reach()
+    }
+
     /// Vanilla `Drowned.checkSpawnObstruction`.
     fn check_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
         crate::entity::mob::is_unobstructed(self, level)

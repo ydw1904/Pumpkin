@@ -1749,7 +1749,8 @@ impl MobEntity {
             entities: goals.entities,
             players: goals.players,
             typed_entities: goals.typed,
-            kind: entity.entity_type,
+            // Spawns, like a reinforcement's chicken jockey, can be of another type.
+            kind: (spawns == 0.0).then_some(entity.entity_type),
             // Searches also check the nodes next to their furthest ones.
             block_reads: (path_length + 1.0).max(goals.block_reads),
             route,

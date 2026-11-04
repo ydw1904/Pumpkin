@@ -629,7 +629,7 @@ impl EntityBase for ItemEntity {
             entities: MERGE_DISTANCE,
             players: 0.0,
             typed_entities: Vec::new(),
-            kind: entity.entity_type,
+            kind: Some(entity.entity_type),
             block_reads: 1.0,
             route: None,
             changes_blocks: false,

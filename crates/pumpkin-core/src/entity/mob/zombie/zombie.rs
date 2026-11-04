@@ -6,6 +6,7 @@ use crate::entity::mob::zombie::ZombieEntityBase;
 use crate::entity::mob::{Mob, MobEntity};
 use crate::world::World;
 use pumpkin_data::BlockState;
+use pumpkin_data::damage::DamageType;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::Sound;
@@ -104,10 +105,28 @@ impl Mob for ZombieEntity {
             .tick_under_water_conversion(&EntityType::DROWNED, WorldEvent::SoundZombieToDrowned);
     }
 
-    // Converting spawns another type. Reinforcements aren't implemented yet; they would spawn
-    // up to 40 blocks away.
+    fn on_damage_with_context(
+        &self,
+        _damage_type: DamageType,
+        source: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
+    ) -> bool {
+        self.entity.call_reinforcements(cause.or(source));
+        true
+    }
+
+    // Converting spawns another type.
     fn has_audited_tick(&self) -> bool {
         !self.entity.converts_next_tick()
+    }
+
+    // Hits in other entities' turns join them to this reach, so it covers those calls too.
+    fn audited_spawn_distance(&self) -> f64 {
+        self.entity.reinforcement_reach()
+    }
+
+    fn additional_tick_movement(&self) -> f64 {
+        self.entity.reinforcement_reach()
     }
 }
 
