@@ -24,14 +24,19 @@ impl FluidBehaviour for FlowingWater {
     fn placed(
         &self,
         world: &Arc<World>,
-        fluid: &Fluid,
+        _fluid: &Fluid,
         state_id: BlockStateId,
         block_pos: &BlockPos,
         old_state_id: BlockStateId,
         _notify: bool,
     ) {
         if old_state_id != state_id {
-            world.schedule_fluid_tick(fluid, *block_pos, WATER_FLOW_SPEED, TickPriority::Normal);
+            world.schedule_fluid_tick(
+                World::get_fluid_type_from_state_id(state_id),
+                *block_pos,
+                WATER_FLOW_SPEED,
+                TickPriority::Normal,
+            );
         }
     }
 
@@ -42,14 +47,13 @@ impl FluidBehaviour for FlowingWater {
     fn on_neighbor_update(
         &self,
         world: &Arc<World>,
-        fluid: &Fluid,
+        _fluid: &Fluid,
         block_pos: &BlockPos,
         _notify: bool,
     ) {
-        // Avoid rescheduling a fluid tick if one is already queued.
-        if !world.is_fluid_tick_scheduled(block_pos, fluid) {
-            world.schedule_fluid_tick(fluid, *block_pos, WATER_FLOW_SPEED, TickPriority::Normal);
-        }
+        // `LiquidBlock.neighborChanged`
+        let fluid = World::get_fluid_type_from_state_id(world.get_block_state_id(block_pos));
+        world.schedule_fluid_tick(fluid, *block_pos, WATER_FLOW_SPEED, TickPriority::Normal);
     }
 
     fn on_entity_collision(&self, entity: &dyn EntityBase) {

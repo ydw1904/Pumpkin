@@ -2451,11 +2451,14 @@ impl World {
 
         for scheduled_tick in &tick_data.fluid_ticks {
             let pos = scheduled_tick.position;
-            let fluid = self.get_fluid(&pos);
-            // Pumpkin keys fluid behaviour by the flowing variant, so compare the fluid kind.
-            if !fluid.matches_type(scheduled_tick.value) {
+            // Vanilla `ServerLevel.tickFluid` runs the tick only if the fluid is still exactly
+            // the scheduled type, so a source tick doesn't run on flowing fluid and vice versa.
+            let state_id = self.get_block_state_id(&pos);
+            if Self::get_fluid_type_from_state_id(state_id).id != scheduled_tick.value.id {
                 continue;
             }
+            // Pumpkin keys fluid behaviour by the flowing variant.
+            let fluid = Self::get_fluid_from_state_id(state_id);
             if let Some(pumpkin_fluid) = self.block_registry.get_pumpkin_fluid(fluid.id) {
                 gameplay::with_owner(
                     || format!("fluid@{},{},{}", pos.0.x, pos.0.y, pos.0.z),
@@ -7308,8 +7311,16 @@ impl World {
     }
 
     pub(crate) fn get_fluid_from_state_id(id: BlockStateId) -> &'static pumpkin_data::fluid::Fluid {
+        Self::get_fluid_type_from_state_id(id).to_flowing()
+    }
+
+    /// Vanilla `FluidState.getType`: unlike [`Self::get_fluid_from_state_id`], a source is
+    /// `WATER` or `LAVA`. Scheduled fluid ticks are keyed and run by this exact type.
+    pub(crate) fn get_fluid_type_from_state_id(
+        id: BlockStateId,
+    ) -> &'static pumpkin_data::fluid::Fluid {
         if let Some(fluid) = Fluid::from_state_id(id) {
-            return fluid.to_flowing();
+            return fluid;
         }
         // These blocks contain source water without a `waterlogged` property.
         if matches!(
@@ -7321,7 +7332,7 @@ impl World {
                 | pumpkin_data::BlockId::BUBBLE_COLUMN
         ) || id.is_waterlogged()
         {
-            &Fluid::FLOWING_WATER
+            &Fluid::WATER
         } else {
             &Fluid::EMPTY
         }
