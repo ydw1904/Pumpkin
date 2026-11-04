@@ -623,10 +623,14 @@ impl EntityBase for ItemEntity {
             .load()
             .expand(horizontal, vertical, horizontal);
         super::mob::game_event_listener_links(&world, false, &moved, &mut links);
+        // `process_age_and_merge` merges on even tick counts at most, and the tick count grows
+        // by one first.
+        let merges = !self.never_despawn.load(Ordering::Relaxed)
+            && entity.tick_count.load(Ordering::Relaxed).wrapping_add(1) % 2 == 0;
         let mut reach = AuditedReach {
             bounding_box: entity.bounding_box.load(),
             motion: (horizontal, vertical),
-            entities: MERGE_DISTANCE,
+            entities: if merges { MERGE_DISTANCE } else { 0.0 },
             players: 0.0,
             typed_entities: Vec::new(),
             kind: Some(entity.entity_type),
