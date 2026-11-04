@@ -16,7 +16,10 @@ use super::ageable_water_creature::AgeableWaterCreature;
 use crate::entity::{
     Entity, EntityBase,
     ageable::{AgeableData, AgeableMob},
-    ai::{goal::Goal, pathfinder::node::PathType},
+    ai::{
+        goal::{Goal, GoalReach},
+        pathfinder::node::PathType,
+    },
     mob::{Mob, MobEntity},
 };
 
@@ -235,6 +238,10 @@ struct SquidRandomMovementGoal {
 }
 
 impl Goal for SquidRandomMovementGoal {
+    fn tick_reach(&self, _mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        Some(GoalReach::default())
+    }
+
     fn can_start(&mut self, _mob: &dyn Mob) -> bool {
         true
     }
@@ -269,6 +276,20 @@ struct SquidFleeGoal {
 }
 
 impl Goal for SquidFleeGoal {
+    fn tick_reach(&self, _mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        // A running goal ticks on odd ticks without checking the distance, so it can read the
+        // block mirrored from an attacker that hit the squid from anywhere earlier in the tick.
+        if running {
+            return None;
+        }
+        // Starting needs the attacker, a link, closer than the maximum distance, and the goal
+        // reads the block mirrored from it.
+        Some(GoalReach {
+            block_reads: SQUID_FLEE_MAX_DISTANCE + 1.0,
+            ..GoalReach::default()
+        })
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         mob.get_entity().is_in_water()
             && last_hurt_by_mob(mob).is_some_and(|attacker| {
@@ -327,6 +348,7 @@ macro_rules! squid_mob_hooks {
             true
         }
         fn mob_is_pushed_by_fluids(&self) -> bool { false }
+        fn has_audited_tick(&self) -> bool { true }
         fn get_mob_gravity(&self) -> f64 { $crate::entity::passive::squid::DEFAULT_GRAVITY }
         fn check_spawn_obstruction(&self, level: &dyn $crate::entity::r#type::CreatureSpawnLevel) -> bool {
             $crate::entity::passive::ageable_water_creature::AgeableWaterCreature::water_creature_spawn_obstruction(self, level)
