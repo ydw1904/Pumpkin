@@ -23,6 +23,7 @@ use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
 use crate::command::string_reader::StringReader;
 use crate::command::suggestion::suggestions::{Suggestions, SuggestionsBuilder};
+use crate::command::text_resolution::resolve_for_entity;
 use crate::world::bossbar::{Bossbar, BossbarColor, BossbarDivisions};
 use crate::world::custom_bossbar::BossbarUpdateError;
 
@@ -188,7 +189,11 @@ struct AddExecutor;
 impl CommandExecutor for AddExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
         let namespace = IdentifierArgumentType::get(context, "id")?.to_string();
-        let text_component = ComponentArgumentType::get(context, "name")?;
+        let text_component = resolve_for_entity(
+            &context.source,
+            &ComponentArgumentType::get(context, "name")?,
+            None,
+        )?;
         let server = context.source.server();
 
         if server.bossbars.lock().unwrap().has_bossbar(&namespace) {
@@ -496,7 +501,11 @@ impl CommandExecutor for SetExecutor {
                 Ok(max_value)
             }
             CommandValueSet::Name => {
-                let name = ComponentArgumentType::get(context, "name")?;
+                let name = resolve_for_entity(
+                    &context.source,
+                    &ComponentArgumentType::get(context, "name")?,
+                    None,
+                )?;
                 server
                     .bossbars
                     .lock()

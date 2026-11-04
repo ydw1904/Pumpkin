@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 
@@ -7,6 +9,8 @@ use crate::command::argument_types::entity::EntityArgumentType;
 use crate::command::context::command_context::CommandContext;
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
+use crate::command::text_resolution::resolve_for_entity;
+use crate::entity::EntityBase;
 
 const DESCRIPTION: &str = "Send raw message to players.";
 const PERMISSION: &str = "minecraft:command.tellraw";
@@ -19,7 +23,8 @@ impl CommandExecutor for TellRawExecutor {
         let text = ComponentArgumentType::get(context, "message")?;
 
         for target in &targets {
-            target.send_system_message(&text);
+            let entity: Arc<dyn EntityBase> = target.clone();
+            target.send_system_message(&resolve_for_entity(&context.source, &text, Some(&entity))?);
         }
 
         Ok(targets.len() as i32)

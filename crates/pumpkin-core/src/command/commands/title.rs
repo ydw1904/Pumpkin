@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use pumpkin_protocol::java::client::play::CClearTitle;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
@@ -10,6 +12,7 @@ use crate::command::argument_types::time::TimeArgumentType;
 use crate::command::context::command_context::CommandContext;
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
+use crate::command::text_resolution::resolve_for_entity;
 use crate::entity::EntityBase;
 use crate::entity::player::TitleMode;
 
@@ -61,7 +64,11 @@ impl CommandExecutor for TitleExecutor {
         let mode = self.0;
 
         for target in &targets {
-            target.show_title(&text, &mode);
+            let entity: Arc<dyn EntityBase> = target.clone();
+            target.show_title(
+                &resolve_for_entity(&context.source, &text, Some(&entity))?,
+                &mode,
+            );
         }
 
         let mode_name = format!("{mode:?}").to_lowercase();

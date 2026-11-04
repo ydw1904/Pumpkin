@@ -32,6 +32,7 @@ pub mod commands;
 pub mod context;
 pub mod execution;
 pub mod node;
+pub mod text_resolution;
 
 pub mod dispatcher {
     pub use pumpkin_command::dispatcher::*;
