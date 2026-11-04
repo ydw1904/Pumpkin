@@ -4,9 +4,14 @@ use std::sync::{
 };
 
 use super::abstract_fish::AbstractFish;
-use crate::entity::{EntityBase, mob::spawn::SpawnGroupData};
+use crate::entity::{
+    EntityBase,
+    ai::{goal::GoalReach, target_match::TargetMatch},
+    mob::spawn::SpawnGroupData,
+};
 
 pub const SCHOOL_SEARCH_RANGE: f64 = 8.0;
+pub const LEADER_PATH_SPEED: f64 = 1.0;
 const LEADER_DISTANCE_SQR: f64 = 121.0;
 const SCHOOL_CHECK_INTERVAL: i32 = 200;
 
@@ -121,26 +126,46 @@ pub trait AbstractSchoolingFish: AbstractFish {
         if let Some(leader) = self.leader() {
             let mob = self.get_mob_entity();
             if let Some(living) = leader.get_living_entity() {
-                mob.steered()
-                    .navigator()
-                    .move_to_entity(living, 1.0, &mob.living_entity);
+                mob.steered().navigator().move_to_entity(
+                    living,
+                    LEADER_PATH_SPEED,
+                    &mob.living_entity,
+                );
             }
         }
     }
 
     fn school_neighbors(&self) -> Vec<Arc<dyn EntityBase>> {
         let entity = self.get_entity();
-        entity
-            .world
-            .load()
-            .get_entities_at_box(&entity.bounding_box.load().expand(
+        // A typed query: the school search only reaches fish of its own type.
+        entity.world.load().get_entities_of_types_at_box(
+            &entity.bounding_box.load().expand(
                 SCHOOL_SEARCH_RANGE,
                 SCHOOL_SEARCH_RANGE,
                 SCHOOL_SEARCH_RANGE,
-            ))
-            .into_iter()
-            .filter(|other| other.get_entity().entity_type == entity.entity_type)
-            .collect()
+            ),
+            |entity_type| entity_type == entity.entity_type,
+        )
+    }
+
+    /// The search for school members around this fish.
+    fn school_search(&self) -> (f64, TargetMatch) {
+        (
+            SCHOOL_SEARCH_RANGE,
+            TargetMatch::Type(self.get_entity().entity_type),
+        )
+    }
+
+    /// What `schooling_tick` touches: a leader counts its school.
+    fn schooling_reach(&self) -> GoalReach {
+        GoalReach {
+            typed: self
+                .has_followers()
+                .then(|| self.school_search())
+                .into_iter()
+                .collect(),
+            ..GoalReach::default()
+        }
     }
 
     fn schooling_tick(&self) {

@@ -1,7 +1,8 @@
 use pumpkin_util::random::gameplay::game_random;
 
-use super::{Goal, to_goal_ticks};
+use super::{Goal, GoalReach, to_goal_ticks};
 use crate::entity::mob::Mob;
+use crate::entity::passive::abstract_schooling_fish::LEADER_PATH_SPEED;
 
 const INTERVAL_TICKS: i32 = 200;
 const START_TICK_VARIATION: i32 = 20;
@@ -30,6 +31,21 @@ impl FollowFlockLeaderGoal {
 }
 
 impl Goal for FollowFlockLeaderGoal {
+    fn tick_reach(&self, mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        let fish = mob.as_schooling_fish()?;
+        // The leader is a link of every follower. A fish that starts following ticks at once.
+        Some(GoalReach {
+            // `can_start` looks for a school once its countdown runs out, and makes the
+            // neighbours it finds follow.
+            typed: (!running && self.next_start_tick <= 0)
+                .then(|| fish.school_search())
+                .into_iter()
+                .collect(),
+            speed: LEADER_PATH_SPEED,
+            ..GoalReach::default()
+        })
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         let Some(fish) = mob.as_schooling_fish() else {
             return false;

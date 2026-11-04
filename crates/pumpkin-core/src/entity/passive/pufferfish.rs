@@ -18,7 +18,7 @@ use super::abstract_fish::{AbstractFish, FishData};
 use crate::entity::bucketable::Bucketable;
 use crate::entity::{
     Entity, EntityBase,
-    ai::goal::Goal,
+    ai::goal::{Goal, GoalReach},
     ai::target_predicate::TargetPredicate,
     mob::{Mob, MobEntity},
     player::Player,
@@ -139,6 +139,25 @@ impl PufferfishEntity {
 impl Mob for PufferfishEntity {
     crate::fish_mob_hooks!();
 
+    fn has_audited_tick(&self) -> bool {
+        true
+    }
+
+    fn audited_species_reach(&self, speed: f64) -> GoalReach {
+        let mut reach = self.fish_species_reach(speed);
+        // `mob_tick` can puff the fish up, growing its box towards the full size.
+        let dimension = self.get_entity().entity_type.dimension;
+        reach.impulse += f64::from(
+            dimension[0].max(dimension[1]) * (1.0 - Self::get_scale(self.get_puff_state())),
+        );
+        if self.get_puff_state() > STATE_SMALL || self.inflate_counter.load(Relaxed) > 0 {
+            // `mob_ai_step` stings the mobs it touches once `mob_tick` has puffed it up.
+            reach.entities = STING_RANGE;
+            reach.knockback = STING_RANGE;
+        }
+        reach
+    }
+
     fn mob_tick(&self, _caller: &dyn EntityBase) {
         if !self.get_entity().is_alive()
             || self.mob_entity.living_entity.is_dead_or_dying()
@@ -252,6 +271,15 @@ impl PufferfishPuffGoal {
 }
 
 impl Goal for PufferfishPuffGoal {
+    fn tick_reach(&self, _mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        // Starting and continuing both look for scary entities and players.
+        Some(GoalReach {
+            entities: PUFF_RANGE,
+            players: PUFF_RANGE,
+            ..GoalReach::default()
+        })
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         let Some(fish) = Self::fish(mob) else {
             return false;

@@ -4,7 +4,7 @@ use crate::entity::{
     EntityBase,
     ai::{
         control::fish_move_control::FishMoveControl,
-        goal::{Controls, Goal, random_swimming::RandomSwimmingGoal},
+        goal::{Controls, Goal, GoalReach, random_swimming::RandomSwimmingGoal},
         pathfinder::{Navigator, node::PathType},
     },
     mob::{Mob, MobEntity},
@@ -66,6 +66,10 @@ impl Default for FishSwimGoal {
 }
 
 impl Goal for FishSwimGoal {
+    fn tick_reach(&self, mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        self.inner.tick_reach(mob, running)
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         mob.as_fish().is_some_and(AbstractFish::can_random_swim) && self.inner.can_start(mob)
     }
@@ -135,6 +139,22 @@ pub trait AbstractFish: WaterAnimal + crate::entity::bucketable::Bucketable {
             entity.velocity_dirty.store(true, Relaxed);
             self.make_sound(self.flop_sound());
         }
+    }
+
+    /// What `AbstractFish`'s own tick adds to the audited reach when the move control runs at
+    /// most at `speed`: the flop out of water and the move control's buoyancy and vertical
+    /// steering all add to the velocity before the fish moves.
+    fn fish_species_reach(&self, speed: f64) -> GoalReach {
+        let current = f64::from(self.get_mob_entity().living_entity.get_speed());
+        let mut reach = GoalReach {
+            impulse: f64::from(FLOP_VERTICAL)
+                + FishMoveControl::max_vertical_impulse(current.max(speed)),
+            ..GoalReach::default()
+        };
+        if let Some(fish) = self.as_schooling_fish() {
+            reach.add(fish.schooling_reach());
+        }
+        reach
     }
 
     fn fish_data(&self) -> &FishData;
@@ -361,6 +381,14 @@ macro_rules! schooling_fish_mob_hooks {
             $crate::entity::passive::abstract_schooling_fish::AbstractSchoolingFish::schooling_tick(
                 self,
             );
+        }
+
+        fn has_audited_tick(&self) -> bool {
+            true
+        }
+
+        fn audited_species_reach(&self, speed: f64) -> $crate::entity::ai::goal::GoalReach {
+            $crate::entity::passive::abstract_fish::AbstractFish::fish_species_reach(self, speed)
         }
     };
 }

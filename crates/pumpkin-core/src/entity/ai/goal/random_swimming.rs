@@ -1,6 +1,6 @@
 use pumpkin_util::math::vector3::Vector3;
 
-use super::{Controls, Goal, to_goal_ticks};
+use super::{Controls, Goal, GoalReach, to_goal_ticks};
 use crate::entity::{
     ai::{brain::behavior::utils::get_random_swimmable_pos, pathfinder::NavigatorGoal},
     mob::Mob,
@@ -28,6 +28,13 @@ impl RandomSwimmingGoal {
 }
 
 impl Goal for RandomSwimmingGoal {
+    fn tick_reach(&self, _mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        Some(GoalReach {
+            speed: self.speed,
+            ..GoalReach::default()
+        })
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         if mob.mob_controlling_passenger().is_some()
             || mob

@@ -15,6 +15,14 @@ pub struct FishMoveControl {
     inner: MoveControl,
 }
 
+impl FishMoveControl {
+    /// Most `tick` adds to the vertical velocity while the mob's speed stays within `speed`.
+    #[must_use]
+    pub fn max_vertical_impulse(speed: f64) -> f64 {
+        BUOYANCY + VERTICAL_ACCELERATION * speed
+    }
+}
+
 impl Control for FishMoveControl {}
 
 impl MoveControlTrait for FishMoveControl {
