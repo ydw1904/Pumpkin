@@ -1905,18 +1905,44 @@ impl World {
                     .map(|(entity, _)| entity.get_entity().entity_id)
                     .collect();
                 let ticking: FxHashSet<i32> = ids.iter().copied().collect();
-                let idle_entities: Vec<_> = entities_to_tick
-                    .iter()
-                    .map(|entity| entity.get_entity())
-                    .filter(|entity| !ticking.contains(&entity.entity_id))
-                    .map(|entity| {
-                        (
-                            entity.entity_id,
-                            entity.bounding_box.load(),
-                            entity.entity_type,
-                        )
-                    })
-                    .collect();
+                // Hits from other entities' turns can make these react beyond their bodies. A
+                // ticking entity's stand-in links it, an idle one's stand-in replaces it.
+                let mut stand_ins = Vec::new();
+                for (entity, _) in &tickable {
+                    if let Some(hurt) = entity
+                        .get_mob()
+                        .and_then(crate::entity::mob::Mob::hurt_reach)
+                    {
+                        let base = entity.get_entity();
+                        stand_ins.push((
+                            !base.entity_id,
+                            hurt.stand_in(
+                                base.bounding_box.load(),
+                                base.entity_type,
+                                vec![base.entity_id],
+                            ),
+                        ));
+                    }
+                }
+                let mut idle_entities = Vec::new();
+                for entity in entities_to_tick.iter() {
+                    let base = entity.get_entity();
+                    if ticking.contains(&base.entity_id) {
+                        continue;
+                    }
+                    let body = base.bounding_box.load();
+                    if let Some(hurt) = entity
+                        .get_mob()
+                        .and_then(crate::entity::mob::Mob::hurt_reach)
+                    {
+                        stand_ins.push((
+                            base.entity_id,
+                            hurt.stand_in(body, base.entity_type, Vec::new()),
+                        ));
+                    } else {
+                        idle_entities.push((base.entity_id, body, base.entity_type));
+                    }
+                }
                 let player_bodies: Vec<_> = players
                     .iter()
                     .map(|player| {
@@ -1929,6 +1955,7 @@ impl World {
                     &ids,
                     reports,
                     &block_write_checks,
+                    &stand_ins,
                     &idle_entities,
                     &player_bodies,
                     islands_config,

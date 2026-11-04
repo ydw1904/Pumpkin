@@ -2323,6 +2323,10 @@ impl AgeableMob for VillagerEntity {
     }
 }
 
+/// `Player::find_bed_spawn_position` stands a sleeper up within this many blocks of its bed,
+/// counting the blocks it checks above.
+const BED_STAND_UP_RANGE: f64 = 3.0;
+
 impl Mob for VillagerEntity {
     fn as_ageable(&self) -> Option<&dyn AgeableMob> {
         Some(self)
@@ -2734,6 +2738,23 @@ impl Mob for VillagerEntity {
         if entity.age.load(Ordering::Relaxed) < 0 {
             entity.set_synced_data(tracked_data::villager::BABY_ID, true);
         }
+    }
+
+    // `on_damage` wakes a sleeper, which frees its bed and stands it up next to the bed.
+    fn hurt_reach(&self) -> Option<crate::world::entity_islands::HurtReach> {
+        let bed = (*self
+            .sleeping_pos
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner))?;
+        let area = BoundingBox::from_block(&bed).expand(
+            BED_STAND_UP_RANGE,
+            BED_STAND_UP_RANGE,
+            BED_STAND_UP_RANGE,
+        );
+        Some(crate::world::entity_islands::HurtReach {
+            area,
+            changes_blocks: true,
+        })
     }
 
     fn on_damage(

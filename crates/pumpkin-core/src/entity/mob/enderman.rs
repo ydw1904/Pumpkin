@@ -1,4 +1,5 @@
 use crate::entity::r#type::CreatureSpawnLevel;
+use crate::world::entity_islands::HurtReach;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicBool, Ordering},
@@ -45,6 +46,8 @@ use crate::entity::{
 };
 
 const SPEED_BOOST: f64 = 0.15;
+/// `teleport_randomly` moves at most this far on each horizontal axis.
+const RANDOM_TELEPORT_RANGE: f64 = 32.0;
 const ENDERMAN_SPEED_BOOST_ID: &str = "minecraft:attacking";
 
 pub const ENDERMAN_EYE_HEIGHT: f64 = 2.55;
@@ -128,9 +131,9 @@ impl EndermanEntity {
         let (x, y, z) = {
             let rng = self.get_random();
             (
-                pos.x + (rng.random_range(0.0..1.0) - 0.5) * 64.0,
+                pos.x + (rng.random_range(0.0..1.0) - 0.5) * 2.0 * RANDOM_TELEPORT_RANGE,
                 pos.y + (rng.random_range(0i32..64) - 32) as f64,
-                pos.z + (rng.random_range(0.0..1.0) - 0.5) * 64.0,
+                pos.z + (rng.random_range(0.0..1.0) - 0.5) * 2.0 * RANDOM_TELEPORT_RANGE,
             )
         };
 
@@ -431,6 +434,24 @@ impl Mob for EndermanEntity {
     }
 
     // TODO: sunlight avoidance, carried block drop on death, ambient sound override
+
+    // `pre_damage` and `on_damage` teleport randomly, to any height of the column.
+    fn hurt_reach(&self) -> Option<HurtReach> {
+        let entity = self.get_entity();
+        let world = entity.world.load();
+        let mut area =
+            entity
+                .bounding_box
+                .load()
+                .expand(RANDOM_TELEPORT_RANGE, 0.0, RANDOM_TELEPORT_RANGE);
+        area.min.y = f64::from(world.dimension.min_y);
+        area.max.y =
+            f64::from(world.dimension.min_y + world.dimension.height) + f64::from(entity.height());
+        Some(HurtReach {
+            area,
+            changes_blocks: false,
+        })
+    }
 
     fn pre_damage(&self, damage_type: DamageType, _source: Option<&dyn EntityBase>) -> bool {
         let is_projectile = is_projectile_damage(damage_type);

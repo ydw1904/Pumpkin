@@ -28,7 +28,7 @@ use crate::plugin::api::events::player::player_shear_entity::PlayerShearEntityEv
 use crate::server::Server;
 use crate::world::World;
 use crate::world::brightness::DAYLIGHT_BRIGHTNESS;
-use crate::world::entity_islands::{self, AuditedReach};
+use crate::world::entity_islands::{self, AuditedReach, HurtReach};
 use crate::world::game_event::notified_area;
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::attributes::Attributes;
@@ -1809,6 +1809,11 @@ pub trait Mob: EntityBase + Send + Sync {
     /// How far outside its box the species' tick code spawns entities this tick.
     fn audited_spawn_distance(&self) -> f64 {
         0.0
+    }
+
+    /// What damage taken in another entity's turn can make the mob touch beyond its body.
+    fn hurt_reach(&self) -> Option<HurtReach> {
+        None
     }
 
     /// What the species' own tick code touches next tick besides its goals, when its movement

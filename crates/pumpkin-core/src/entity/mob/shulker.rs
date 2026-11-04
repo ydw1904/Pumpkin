@@ -349,6 +349,19 @@ impl Mob for ShulkerEntity {
         self.on_shulker_damage();
     }
 
+    // `on_shulker_damage` can teleport it to a block around it, checking the blocks there.
+    fn hurt_reach(&self) -> Option<crate::world::entity_islands::HurtReach> {
+        let reach = f64::from(MAX_TELEPORT_DISTANCE) + 1.0;
+        Some(crate::world::entity_islands::HurtReach {
+            area: self
+                .get_entity()
+                .bounding_box
+                .load()
+                .expand(reach, reach, reach),
+            changes_blocks: false,
+        })
+    }
+
     fn pre_damage(&self, damage_type: DamageType, _source: Option<&dyn EntityBase>) -> bool {
         if self.is_closed() && damage_type == DamageType::ARROW {
             return false;

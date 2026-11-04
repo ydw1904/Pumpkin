@@ -523,6 +523,43 @@ pub fn links_of(entity: &dyn EntityBase) -> Vec<i32> {
 /// An entity that doesn't tick this tick: id, body and type.
 pub type IdleEntity = (i32, BoundingBox, &'static EntityType);
 
+/// What damage dealt in another entity's turn can make an entity touch beyond its body, like a
+/// teleport away from the hit.
+#[derive(Clone, Copy, Debug)]
+pub struct HurtReach {
+    pub area: BoundingBox,
+    pub changes_blocks: bool,
+}
+
+impl HurtReach {
+    /// A node that stands in for these reactions of an entity with `body` and `kind`. It never
+    /// ticks, but joins whatever the reactions can touch with whatever hits the entity.
+    #[must_use]
+    pub fn stand_in(
+        &self,
+        body: BoundingBox,
+        kind: &'static EntityType,
+        links: Vec<i32>,
+    ) -> TickReach {
+        TickReach {
+            body,
+            entities: self.area,
+            players: self.area,
+            typed_entities: Vec::new(),
+            kind: Some(kind),
+            block_reads: self.area,
+            block_writes: self.changes_blocks.then(|| {
+                self.area
+                    .expand(BLOCK_UPDATE_REACH, BLOCK_UPDATE_REACH, BLOCK_UPDATE_REACH)
+            }),
+            global: false,
+            links,
+            sight: Vec::new(),
+            spans_contacts: false,
+        }
+    }
+}
+
 /// Turns reports into reaches.
 ///
 /// Audited bodies grow by the pushes they can receive, and by
@@ -871,13 +908,20 @@ pub struct Islands {
 pub type IslandMap = FxHashMap<i32, usize>;
 
 /// Plans this tick's islands from each ticking entity's ID, report and block write check.
+/// `stand_ins` are nodes after the ticking ones that join the [`HurtReach`] of entities with
+/// what hits them; they leave no slot in the islands.
 /// Groups that can't touch each other resolve, prune and partition on their own and in
 /// parallel. Returns `None` when the tick needs serial execution or planning exceeds its budget.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Everything one tick's plan depends on, gathered by `World::tick`."
+)]
 pub(crate) fn plan(
     world: &World,
     ids: &[i32],
     reports: Vec<EntityReach>,
     checks: &[BlockWriteCheck],
+    stand_ins: &[(i32, TickReach)],
     idle_entities: &[IdleEntity],
     players: &[(i32, BoundingBox)],
     config: &EntityIslandsConfig,
@@ -885,6 +929,38 @@ pub(crate) fn plan(
     if reports.iter().any(EntityReach::is_global) {
         return None;
     }
+    let ticking = ids.len();
+    let mut islands = plan_with_stand_ins(
+        world,
+        ids,
+        reports,
+        checks,
+        stand_ins,
+        idle_entities,
+        players,
+        config,
+    )?;
+    for island in &mut islands.islands {
+        island.retain(|&slot| slot < ticking);
+    }
+    Some(islands)
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Everything one tick's plan depends on, passed through from `plan`."
+)]
+fn plan_with_stand_ins(
+    world: &World,
+    ids: &[i32],
+    reports: Vec<EntityReach>,
+    checks: &[BlockWriteCheck],
+    stand_ins: &[(i32, TickReach)],
+    idle_entities: &[IdleEntity],
+    players: &[(i32, BoundingBox)],
+    config: &EntityIslandsConfig,
+) -> Option<Islands> {
+    let ticking = ids.len();
     // Audited bodies grow with the pushers they count, so their group bounds assume the most a
     // group lets them count.
     let grouped_extra =
@@ -899,28 +975,60 @@ pub(crate) fn plan(
             };
             (*id, bounds)
         })
+        .chain(
+            stand_ins
+                .iter()
+                .map(|(id, reach)| (*id, total_bounds(reach))),
+        )
         .collect();
     let groups = groups(
         &bounds,
-        |slot| reports[slot].links(),
+        |slot| {
+            reports.get(slot).map_or_else(
+                || stand_ins[slot - ticking].1.links.as_slice(),
+                EntityReach::links,
+            )
+        },
         idle_entities,
         players,
     );
     let grouped = groups
         .par_iter()
         .map(|group| {
+            // Stand-ins follow the ticking nodes in the group, like in the whole tick.
             let group_reports = group
                 .nodes
                 .iter()
+                .filter(|&&slot| slot < ticking)
                 .map(|&slot| reports[slot].clone())
                 .collect();
             let mut reaches = resolve_bounded(group_reports, config, MAX_GROUPED_PUSHERS)?;
-            let group_checks: Vec<_> = group.nodes.iter().map(|&slot| checks[slot]).collect();
+            reaches.extend(
+                group
+                    .nodes
+                    .iter()
+                    .filter(|&&slot| slot >= ticking)
+                    .map(|&slot| stand_ins[slot - ticking].1.clone()),
+            );
+            let group_checks: Vec<_> = group
+                .nodes
+                .iter()
+                .map(|&slot| {
+                    checks
+                        .get(slot)
+                        .copied()
+                        .unwrap_or(BlockWriteCheck::Unconditional)
+                })
+                .collect();
             prune_block_writes(world, &mut reaches, &group_checks)?;
             let nodes: Vec<_> = group
                 .nodes
                 .iter()
-                .map(|&slot| ids[slot])
+                .map(|&slot| {
+                    ids.get(slot)
+                        .copied()
+                        .unwrap_or_else(|| stand_ins[slot - ticking].0)
+                })
                 .zip(reaches)
                 .collect();
             let local = Group {
@@ -940,8 +1048,16 @@ pub(crate) fn plan(
     }
     // A group exceeded its pusher bound or budget, so plan the whole tick at once.
     let mut reaches = resolve(reports, config)?;
-    prune_block_writes(world, &mut reaches, checks)?;
-    let nodes: Vec<_> = ids.iter().copied().zip(reaches).collect();
+    reaches.extend(stand_ins.iter().map(|(_, reach)| reach.clone()));
+    let mut checks = checks.to_vec();
+    checks.resize(reaches.len(), BlockWriteCheck::Unconditional);
+    prune_block_writes(world, &mut reaches, &checks)?;
+    let nodes: Vec<_> = ids
+        .iter()
+        .copied()
+        .chain(stand_ins.iter().map(|(id, _)| *id))
+        .zip(reaches)
+        .collect();
     partition(&nodes, idle_entities, players)
 }
 
@@ -2374,9 +2490,18 @@ mod tests {
         for reports in [pushed, crowded] {
             let ids: Vec<i32> = (0..reports.len() as i32).collect();
             let checks = vec![BlockWriteCheck::Unconditional; reports.len()];
-            let mut grouped = plan(&world, &ids, reports.clone(), &checks, &[], &[], &config)
-                .ok_or("grouped planning refused")?
-                .islands;
+            let mut grouped = plan(
+                &world,
+                &ids,
+                reports.clone(),
+                &checks,
+                &[],
+                &[],
+                &[],
+                &config,
+            )
+            .ok_or("grouped planning refused")?
+            .islands;
             let mut reaches = resolve(reports, &config).ok_or("resolve refused")?;
             prune_block_writes(&world, &mut reaches, &checks).ok_or("pruning refused")?;
             let nodes: Vec<_> = ids.iter().copied().zip(reaches).collect();
@@ -2525,6 +2650,65 @@ mod tests {
         .ok_or("unexpected pruning budget exhaustion")?;
         assert!(reach.block_writes.is_none());
         assert_box(&reach.body, &original.body);
+        world.level.shutdown().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn hurt_reactions_join_what_they_reach_with_the_hitter()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let folder = tempfile::tempdir()?;
+        let world = crate::entity::ai::test_support::world(&folder);
+        let config = EntityIslandsConfig::default();
+        // The hitter reaches the victim's body, the reaction reaches the far node.
+        let hitter = node(1, 0.0, 2.0).1;
+        let far = node(2, 30.0, 0.0).1;
+        let victim = cube(2.5, 1.0);
+        let hurt = HurtReach {
+            area: victim.expand(40.0, 40.0, 40.0),
+            changes_blocks: false,
+        };
+        let planned = |ticking: &[(i32, TickReach)],
+                       stand_ins: &[(i32, TickReach)],
+                       idle: &[IdleEntity]|
+         -> Result<Vec<Vec<usize>>, &'static str> {
+            let ids: Vec<_> = ticking.iter().map(|(id, _)| *id).collect();
+            let reports = ticking
+                .iter()
+                .map(|(_, reach)| EntityReach::Conservative(reach.clone()))
+                .collect();
+            let checks = vec![BlockWriteCheck::Unconditional; ids.len()];
+            let mut islands = plan(
+                &world,
+                &ids,
+                reports,
+                &checks,
+                stand_ins,
+                idle,
+                &[],
+                &config,
+            )
+            .ok_or("unexpected serial fallback")?
+            .islands;
+            islands.retain(|island| !island.is_empty());
+            islands.sort();
+            Ok(islands)
+        };
+        let nodes = [(1, hitter.clone()), (2, far.clone())];
+        assert_eq!(
+            planned(&nodes, &[], &[(3, victim, &EntityType::ENDERMAN)])?,
+            [vec![0], vec![1]]
+        );
+        let idle_stand_in = [(3, hurt.stand_in(victim, &EntityType::ENDERMAN, Vec::new()))];
+        assert_eq!(planned(&nodes, &idle_stand_in, &[])?, [vec![0, 1]]);
+
+        let mut ticking_victim = node(3, 2.5, 0.0).1;
+        ticking_victim.body = victim;
+        ticking_victim.entities = victim;
+        let nodes = [(1, hitter), (2, far), (3, ticking_victim)];
+        assert_eq!(planned(&nodes, &[], &[])?, [vec![0, 2], vec![1]]);
+        let linked_stand_in = [(!3, hurt.stand_in(victim, &EntityType::ENDERMAN, vec![3]))];
+        assert_eq!(planned(&nodes, &linked_stand_in, &[])?, [vec![0, 1, 2]]);
         world.level.shutdown().await;
         Ok(())
     }
