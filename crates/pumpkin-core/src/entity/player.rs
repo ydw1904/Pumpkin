@@ -1575,20 +1575,18 @@ impl Player {
             sender.reset();
         }
 
-        // Radial chunks are all of the chunks the player is theoretically viewing.
-        // Given enough time, all of these chunks will be in memory.
-        let radial_chunks = cylindrical.all_chunks_within();
+        let entity_chunks = crate::world::chunker::entity_chunks(cylindrical, &world);
 
         debug!(
             "Removing player {}, unwatching {} chunks",
             self.gameprofile.name,
-            radial_chunks.len()
+            entity_chunks.len()
         );
 
         let level = &world.level;
 
         // Decrement the value of watched chunks
-        let chunks_to_clean = level.mark_chunks_as_not_watched(radial_chunks);
+        let chunks_to_clean = level.mark_chunks_as_not_watched(entity_chunks);
         // Remove chunks with no watchers from the cache
         if !chunks_to_clean.is_empty() {
             world.remove_entities_in_chunks(&chunks_to_clean).await;
@@ -4972,14 +4970,17 @@ impl Player {
     }
 
     pub async fn unload_watched_chunks(&self, world: &World) {
-        let radial_chunks = self.watched_section.load().all_chunks_within();
+        let watched = self.watched_section.load();
         let level = &world.level;
-        let chunks_to_clean = level.mark_chunks_as_not_watched(radial_chunks);
+        let chunks_to_clean =
+            level.mark_chunks_as_not_watched(crate::world::chunker::entity_chunks(watched, world));
         if !chunks_to_clean.is_empty() {
             world.remove_entities_in_chunks(&chunks_to_clean).await;
             level.clean_entity_chunks(&chunks_to_clean);
         }
-        for chunk in &chunks_to_clean {
+        // Only the chunks the client was sent.
+        let sent: Vec<_> = watched.all_chunks_within().collect();
+        for chunk in chunks_to_clean.iter().filter(|chunk| sent.contains(chunk)) {
             self.send_client_packet(&CUnloadChunk::new(chunk.x, chunk.y))
                 .await;
         }

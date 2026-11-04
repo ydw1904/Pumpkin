@@ -4952,9 +4952,8 @@ impl World {
         #[cfg(debug_assertions)]
         let inst = std::time::Instant::now();
 
-        // Note: `chunks` originates from `Cylindrical::changed_chunks`, which is
-        // already ordered from closest to farthest from center by the precompiled
-        // cylindrical chunk view LUT. No re-sorting needed.
+        // Note: a player's `chunks` come from `chunker::entity_chunks`, which is
+        // already ordered from closest to farthest from center. No re-sorting needed.
 
         let mut entity_receiver = self.level.receive_entity_chunks(chunks);
         let level = self.level.clone();

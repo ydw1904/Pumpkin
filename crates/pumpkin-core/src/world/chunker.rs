@@ -5,11 +5,12 @@ use pumpkin_protocol::{
     bedrock::client::network_chunk_publisher_update::CNetworkChunkPublisherUpdate,
     java::client::play::CCenterChunk,
 };
-use pumpkin_world::cylindrical_chunk_iterator::Cylindrical;
+use pumpkin_world::{chunk_system::ChunkLoading, cylindrical_chunk_iterator::Cylindrical};
 
 use crate::{
     entity::{EntityBase, player::Player},
     net::ClientPlatform,
+    world::World,
 };
 
 pub fn get_view_distance(player: &Player) -> NonZero<u8> {
@@ -37,6 +38,58 @@ pub fn is_within_chebyshev_distance(
     distance: i32,
 ) -> bool {
     (target.x - center.x).abs().max((target.y - center.y).abs()) <= distance
+}
+
+/// The level of the ticket a player holds for its view.
+const fn view_ticket_level(view_distance: NonZero<u8>) -> i8 {
+    ChunkLoading::get_level_from_view_distance(view_distance.get() + 1)
+}
+
+/// The level of the ticket a player holds for the world's simulation distance.
+fn simulation_ticket_level(world: &World) -> i8 {
+    let sim_dist = world.server.upgrade().map_or(10, |s| {
+        s.advanced_config.networking.java.simulation_distance.get()
+    });
+    ChunkLoading::get_level_from_simulation_distance(sim_dist)
+}
+
+/// The center and Chebyshev radius of the full chunks a player watching `view` makes with its
+/// tickets, or `None` before the player has watched anything. Vanilla loads the entities of
+/// every full chunk, so the player keeps the entities of this square loaded, which is wider
+/// than the chunks its client is sent.
+fn entity_area(view: Cylindrical, world: &World) -> Option<(Vector2<i32>, i32)> {
+    // A view distance of 1 marks a player who hasn't watched anything yet.
+    if view.view_distance.get() == 1 {
+        return None;
+    }
+    let level = view_ticket_level(view.view_distance).min(simulation_ticket_level(world));
+    Some((
+        view.center,
+        i32::from(ChunkLoading::FULL_CHUNK_LEVEL - level),
+    ))
+}
+
+fn in_entity_area(area: Option<(Vector2<i32>, i32)>, pos: Vector2<i32>) -> bool {
+    area.is_some_and(|(center, radius)| is_within_chebyshev_distance(center, pos, radius))
+}
+
+fn area_chunks(area: Option<(Vector2<i32>, i32)>) -> Vec<Vector2<i32>> {
+    let Some((center, radius)) = area else {
+        return Vec::new();
+    };
+    let mut offsets: Vec<_> = (-radius..=radius)
+        .flat_map(|dx| (-radius..=radius).map(move |dz| (dx, dz)))
+        .collect();
+    offsets.sort_by_key(|&(dx, dz)| dx * dx + dz * dz);
+    offsets
+        .into_iter()
+        .map(|(dx, dz)| Vector2::new(center.x + dx, center.y + dz))
+        .collect()
+}
+
+/// The chunks whose entities a player watching `view` keeps loaded, closest first.
+pub fn entity_chunks(view: Cylindrical, world: &World) -> Vec<Vector2<i32>> {
+    area_chunks(entity_area(view, world))
 }
 
 #[allow(clippy::too_many_lines)]
@@ -95,18 +148,11 @@ pub fn update_position(player: &Arc<Player>) {
         .game_rules
         .spectators_generate_chunks;
 
-    let new_view_level = (!is_spectator || spectators_generate_chunks).then(|| {
-        pumpkin_world::chunk_system::ChunkLoading::get_level_from_view_distance(
-            u8::from(view_distance) + 1,
-        )
-    });
+    let new_view_level =
+        (!is_spectator || spectators_generate_chunks).then(|| view_ticket_level(view_distance));
 
-    let new_sim_level = (!is_spectator || spectators_generate_chunks).then(|| {
-        let sim_dist = world.server.upgrade().map_or(10, |s| {
-            s.advanced_config.networking.java.simulation_distance.get()
-        });
-        pumpkin_world::chunk_system::ChunkLoading::get_level_from_simulation_distance(sim_dist)
-    });
+    let new_sim_level =
+        (!is_spectator || spectators_generate_chunks).then(|| simulation_ticket_level(&world));
 
     {
         let mut lock = level
@@ -149,13 +195,24 @@ pub fn update_position(player: &Arc<Player>) {
     }
     player.watched_section.store(new_cylindrical);
 
+    let old_area = entity_area(old_cylindrical, &world);
+    let new_area = entity_area(new_cylindrical, &world);
+    let entity_loading: Vec<_> = area_chunks(new_area)
+        .into_iter()
+        .filter(|pos| !in_entity_area(old_area, *pos))
+        .collect();
+    let entity_unloading: Vec<_> = area_chunks(old_area)
+        .into_iter()
+        .filter(|pos| !in_entity_area(new_area, *pos))
+        .collect();
+
     // Make sure the watched section and the chunk watcher updates are async atomic. We want to
     // ensure what we unload when the player disconnects is correct.
-    if !loading_chunks.is_empty() || !unloading_chunks.is_empty() {
+    if !entity_loading.is_empty() || !entity_unloading.is_empty() {
         let level = world.level.clone();
         let world_clone = world.clone();
-        let loading_chunks_clone = loading_chunks.clone();
-        let unloading_chunks_clone = unloading_chunks;
+        let loading_chunks_clone = entity_loading.clone();
+        let unloading_chunks_clone = entity_unloading;
 
         if let Some(server) = world.server.upgrade() {
             server.spawn_task(async move {
@@ -172,7 +229,7 @@ pub fn update_position(player: &Arc<Player>) {
         }
     }
 
-    if !loading_chunks.is_empty() {
-        world.spawn_world_entity_chunks(Some(player.clone()), loading_chunks);
+    if !entity_loading.is_empty() {
+        world.spawn_world_entity_chunks(Some(player.clone()), entity_loading);
     }
 }
