@@ -159,4 +159,9 @@ impl Mob for HuskEntity {
         self.entity
             .tick_under_water_conversion(&EntityType::ZOMBIE, WorldEvent::SoundHuskToZombie);
     }
+
+    // Converting spawns another type.
+    fn has_audited_tick(&self) -> bool {
+        !self.entity.converts_next_tick()
+    }
 }

@@ -1,4 +1,4 @@
-use super::{Controls, Goal, to_goal_ticks};
+use super::{Controls, Goal, GoalReach, to_goal_ticks};
 use crate::entity::ai::goal::ParentHandle;
 use crate::entity::ai::goal::move_to_target_pos::{MoveToTargetPos, MoveToTargetPosGoal};
 use crate::entity::mob::Mob;
@@ -10,6 +10,10 @@ use pumpkin_world::world::BlockFlags;
 use std::sync::Arc;
 
 const MAX_COOLDOWN: i32 = 20;
+/// Ticks spent standing on the block before it breaks.
+const DESTROY_TICKS: i32 = 60;
+/// Vertical speed of the stomping on the block.
+const STEP_SPEED: f64 = 0.3;
 
 pub struct StepAndDestroyBlockGoal<S: Stepping, M: MoveToTargetPos> {
     pub stepping: ParentHandle<S>,
@@ -81,6 +85,19 @@ pub trait Stepping: Send + Sync {
 impl<S: Stepping + Send + Sync, M: MoveToTargetPos + Send + Sync> Goal
     for StepAndDestroyBlockGoal<S, M>
 {
+    fn tick_reach(&self, _mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        let goal = &self.move_to_target_pos_goal;
+        Some(GoalReach {
+            speed: goal.speed,
+            // `tick` removes the block below once it has stood there long enough.
+            changes_blocks: running && self.counter > DESTROY_TICKS,
+            impulse: if running { STEP_SPEED } else { 0.0 },
+            // `find_target_pos` looks this far around the mob's block.
+            block_reads: f64::from(goal.range) + 1.0,
+            ..GoalReach::default()
+        })
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         let world = mob.get_entity().world.load();
         let level_info = world.level_info.load();
@@ -131,16 +148,17 @@ impl<S: Stepping + Send + Sync, M: MoveToTargetPos + Send + Sync> Goal
             mob_entity
                 .living_entity
                 .entity
-                .set_velocity(Vector3::new(velocity.x, 0.3, velocity.z));
+                .set_velocity(Vector3::new(velocity.x, STEP_SPEED, velocity.z));
             // TODO: spawn particles
         }
 
         if counter % 2 == 0 {
             let velocity = mob_entity.living_entity.entity.velocity.load();
-            mob_entity
-                .living_entity
-                .entity
-                .set_velocity(Vector3::new(velocity.x, -0.3, velocity.z));
+            mob_entity.living_entity.entity.set_velocity(Vector3::new(
+                velocity.x,
+                -STEP_SPEED,
+                velocity.z,
+            ));
             if counter % 6 == 0 {
                 if let Some(stepping) = self.stepping.get() {
                     stepping.tick_stepping(world.clone(), self.move_to_target_pos_goal.target_pos);
@@ -150,7 +168,7 @@ impl<S: Stepping + Send + Sync, M: MoveToTargetPos + Send + Sync> Goal
             }
         }
 
-        if counter > 60 {
+        if counter > DESTROY_TICKS {
             // Replace with air, no drops.
             world.set_block_state(&tweak_pos, BlockStateId::AIR, BlockFlags::NOTIFY_ALL);
             // TODO: spawn the poof particles

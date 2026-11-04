@@ -1,4 +1,4 @@
-use super::{Controls, Goal, to_goal_ticks};
+use super::{Controls, Goal, GoalReach, to_goal_ticks};
 
 use crate::entity::ageable::AgeableMob;
 use crate::entity::ai::behavior::hunting::TargetPredicateFn;
@@ -13,6 +13,7 @@ use crate::entity::{EntityBase, mob::MobEntity};
 use crate::plugin::api::events::entity::entity_target::TargetReason;
 use crate::world::World;
 use pumpkin_data::attributes::Attributes;
+use pumpkin_data::entity::EntityType;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -248,6 +249,44 @@ impl ActiveTargetGoal {
 }
 
 impl Goal for ActiveTargetGoal {
+    fn tick_reach(&self, mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        // A grudge target is found by UUID at any distance.
+        if self.condition == TargetCondition::AngryAt {
+            return None;
+        }
+        let mob_entity = mob.get_mob_entity();
+        let follow_range = self.track_target_goal.follow_range(mob_entity);
+        let mut reach = GoalReach {
+            links: self
+                .target
+                .iter()
+                .map(|target| target.get_entity().entity_id)
+                .chain(self.track_target_goal.target_mob_id())
+                .collect(),
+            sight: self.track_target_goal.target_mob_id().into_iter().collect(),
+            ..GoalReach::default()
+        };
+        let searches = !running
+            && (self.condition != TargetCondition::NoDaylight || !mob_entity.is_in_daylight());
+        if searches {
+            // Sight checks on the candidates in the search box.
+            reach.block_reads = follow_range;
+            if self.target_type.matches(&EntityType::PLAYER) {
+                reach.players = mob
+                    .get_entity()
+                    .world
+                    .load()
+                    .player_search
+                    .attackable_reach(follow_range);
+                reach.block_reads = reach.block_reads.max(reach.players);
+            }
+            if !self.target_type.is_player() {
+                reach.typed.push((follow_range, self.target_type));
+            }
+        }
+        Some(reach)
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         if self.gate.is_some_and(|gate| !gate(mob)) {
             return false;

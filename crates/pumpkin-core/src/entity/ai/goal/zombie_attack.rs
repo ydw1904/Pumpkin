@@ -1,4 +1,4 @@
-use super::{Controls, Goal};
+use super::{Controls, Goal, GoalReach};
 
 use crate::entity::ai::goal::melee_attack::MeleeAttackGoal;
 use crate::entity::mob::Mob;
@@ -19,6 +19,10 @@ impl ZombieAttackGoal {
 }
 
 impl Goal for ZombieAttackGoal {
+    fn tick_reach(&self, mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        self.melee_attack_goal.tick_reach(mob, running)
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         self.melee_attack_goal.can_start(mob)
     }

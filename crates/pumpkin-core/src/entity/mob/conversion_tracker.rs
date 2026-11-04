@@ -62,6 +62,12 @@ impl ConversionTracker {
         }
     }
 
+    /// Whether `tick` converts the mob if it stays afflicted.
+    #[must_use]
+    pub fn converts_next_tick(&self) -> bool {
+        self.is_converting() && self.conversion_time.load(Ordering::Relaxed) <= 0
+    }
+
     #[must_use]
     pub fn is_converting(&self) -> bool {
         self.converting.load(Ordering::Relaxed)

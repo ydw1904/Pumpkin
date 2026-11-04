@@ -360,6 +360,12 @@ impl ZombieEntityBase {
         self.is_baby.load(Ordering::Relaxed)
     }
 
+    /// Whether the drowning tracker turns the mob into another type next tick.
+    #[must_use]
+    pub fn converts_next_tick(&self) -> bool {
+        self.drowning_tracker.converts_next_tick()
+    }
+
     /// Vanilla `Zombie.tick` runs the drowning tracker after the rest of the tick for the zombie
     /// types that convert in water: zombies turn into drowned and husks into zombies.
     pub fn tick_under_water_conversion(&self, converts_to: &'static EntityType, sound: WorldEvent) {

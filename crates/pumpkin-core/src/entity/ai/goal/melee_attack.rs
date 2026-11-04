@@ -1,9 +1,9 @@
-use super::{Controls, Goal};
+use super::{Controls, Goal, GoalReach};
 
 use crate::entity::EntityBase;
 use crate::entity::ai::goal::revenge::MobFilter;
 use crate::entity::ai::pathfinder::path::Path;
-use crate::entity::mob::Mob;
+use crate::entity::mob::{Mob, MobEntity};
 use crate::entity::predicate::EntityPredicate;
 use crate::plugin::api::events::entity::entity_target::TargetReason;
 use pumpkin_util::math::vector3::Vector3;
@@ -65,6 +65,27 @@ impl MeleeAttackGoal {
 }
 
 impl Goal for MeleeAttackGoal {
+    fn tick_reach(&self, mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        // A running goal attacks its linked target; one that starts can attack a target the
+        // target selector found earlier in the tick, within that selector's reach.
+        // Without its gate the goal neither starts nor keeps running, and stopping only stops
+        // the mob.
+        if self.gate.is_some_and(|gate| !gate(mob)) {
+            return Some(GoalReach::default());
+        }
+        if self.attack.is_some() || !mob.get_mob_entity().hits_only_its_target() {
+            return None;
+        }
+        Some(GoalReach {
+            // A target set by another mob this tick is only hit inside the attack box.
+            entities: MobEntity::DEFAULT_ATTACK_REACH,
+            players: MobEntity::DEFAULT_ATTACK_REACH,
+            speed: self.speed,
+            knockback: MobEntity::DEFAULT_ATTACK_REACH,
+            ..GoalReach::default()
+        })
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         if self.gate.is_some_and(|gate| !gate(mob)) {
             return false;

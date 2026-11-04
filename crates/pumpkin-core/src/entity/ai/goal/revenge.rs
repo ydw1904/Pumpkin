@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
-use super::{Controls, Goal};
+use super::{Controls, Goal, GoalReach};
 use crate::entity::EntityBase;
 use crate::plugin::api::events::entity::entity_target::TargetReason;
 
 use crate::entity::ai::goal::track_target::TrackTargetGoal;
+use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::ai::target_predicate::TargetPredicate;
 use crate::entity::ai::util::goal_utils;
 use crate::entity::mob::Mob;
@@ -136,6 +137,43 @@ impl RevengeGoal {
 }
 
 impl Goal for RevengeGoal {
+    fn tick_reach(&self, mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        // The attacker can be anywhere when the sight check runs.
+        if self.alert_in_sight {
+            return None;
+        }
+        let mut reach = GoalReach {
+            links: self
+                .target
+                .iter()
+                .map(|target| target.get_entity().entity_id)
+                .chain(self.track_target_goal.target_mob_id())
+                .collect(),
+            sight: self.track_target_goal.target_mob_id().into_iter().collect(),
+            ..GoalReach::default()
+        };
+        if !running {
+            // Starting targets the last attacker, and the attack goals then check the sight to
+            // it. An attacker that hits the mob earlier in the tick is one of its contacts.
+            reach.sight.extend(
+                mob.get_mob_entity()
+                    .living_entity
+                    .get_last_hurt_by_mob_id()
+                    .filter(|id| *id != 0),
+            );
+            reach.spans_contacts = true;
+            // Such a hit can also start the alert, so it doesn't wait for the state either.
+            if self.alert_others || self.alarm_when.is_some() {
+                let entity_type = mob.get_entity().entity_type;
+                reach.typed.push((
+                    goal_utils::alert_range(mob.get_mob_entity()),
+                    TargetMatch::Type(entity_type),
+                ));
+            }
+        }
+        Some(reach)
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         let mob_entity = mob.get_mob_entity();
         let living = &mob_entity.living_entity;

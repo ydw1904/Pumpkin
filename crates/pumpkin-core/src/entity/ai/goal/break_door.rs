@@ -6,7 +6,7 @@ use pumpkin_util::Difficulty;
 use pumpkin_world::world::BlockFlags;
 
 use super::door_interact::DoorInteractGoal;
-use super::{Controls, Goal};
+use super::{Controls, Goal, GoalReach};
 use crate::block::blocks::doors::DoorBlock;
 use crate::entity::mob::Mob;
 
@@ -70,6 +70,14 @@ impl Default for BreakDoorGoal {
 }
 
 impl Goal for BreakDoorGoal {
+    fn tick_reach(&self, _mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        // The door is within two blocks of the mob, and breaks on the last tick of the timer.
+        Some(GoalReach {
+            changes_blocks: running && self.break_time + 1 == self.get_door_break_time(),
+            ..GoalReach::default()
+        })
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         if !self.door_interact_goal.can_use(mob) {
             return false;

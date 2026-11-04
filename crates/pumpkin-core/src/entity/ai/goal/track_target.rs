@@ -82,6 +82,13 @@ impl TrackTargetGoal {
         self.target_mob = target;
     }
 
+    /// The retained fallback target, which `should_continue` reads at any distance.
+    pub fn target_mob_id(&self) -> Option<i32> {
+        self.target_mob
+            .as_ref()
+            .map(|target| target.get_entity().entity_id)
+    }
+
     fn can_navigate_to_entity(&mut self, mob: &dyn Mob) -> bool {
         self.check_can_navigate_cooldown = to_goal_ticks(10 + mob.get_random().random_range(0..5));
         // TODO: after implementing path

@@ -103,6 +103,12 @@ impl Mob for ZombieEntity {
         self.entity
             .tick_under_water_conversion(&EntityType::DROWNED, WorldEvent::SoundZombieToDrowned);
     }
+
+    // Converting spawns another type. Reinforcements aren't implemented yet; they would spawn
+    // up to 40 blocks away.
+    fn has_audited_tick(&self) -> bool {
+        !self.entity.converts_next_tick()
+    }
 }
 
 impl ZombieEntity {

@@ -372,6 +372,11 @@ impl Mob for ZombieVillagerEntity {
         self.mob_entity.mob_interact(player, item_stack)
     }
 
+    // The cure reads blocks around the mob, then spawns a villager and rewards its curer.
+    fn has_audited_tick(&self) -> bool {
+        !self.is_converting()
+    }
+
     fn mob_tick(&self, _caller: &dyn EntityBase) {
         if !self.get_entity().is_alive() || !self.is_converting() {
             return;

@@ -3,7 +3,7 @@ use pumpkin_data::item_stack::ItemStack;
 use pumpkin_util::Hand;
 use pumpkin_util::math::vector3::Vector3;
 
-use super::{Controls, Goal, to_goal_ticks};
+use super::{Controls, Goal, GoalReach, to_goal_ticks};
 use crate::entity::ai::pathfinder::path::Path;
 use crate::entity::ai::util::land_random_pos;
 use crate::entity::mob::Mob;
@@ -161,6 +161,17 @@ impl SpearUseGoal {
 }
 
 impl Goal for SpearUseGoal {
+    fn tick_reach(&self, mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        // Kinetic stabs hit whatever the look ray passes. Without a kinetic weapon in hand the
+        // goal can't start.
+        (!running
+            && !Self::is_using_item(mob)
+            && Self::main_hand_item(mob)
+                .get_data_component::<KineticWeaponImpl>()
+                .is_none())
+        .then(GoalReach::default)
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         Self::able_to_attack(mob) && !Self::is_using_item(mob)
     }

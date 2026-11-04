@@ -93,13 +93,25 @@ pub fn nearby_same_type(mob: &dyn Mob) -> Vec<std::sync::Arc<dyn crate::entity::
         BoundingBox::new(pos, pos.add_raw(1.0, 1.0, 1.0)).expand(within, ALERT_RANGE_Y, within);
 
     world
-        .get_entities_at_box(&search_box)
+        .get_entities_of_types_at_box(&search_box, |entity_type| entity_type == entity.entity_type)
         .into_iter()
         .filter(|other| {
             let other_entity = other.get_entity();
             other_entity.entity_id != entity.entity_id
-                && other_entity.entity_type == entity.entity_type
                 && EntityPredicate::ExceptSpectator.test(other_entity)
         })
         .collect()
+}
+
+/// How far from its body [`nearby_same_type`] reaches: the unit cube at the mob's feet grown
+/// by the follow range, and by the alert height vertically.
+#[must_use]
+pub fn alert_range(mob_entity: &crate::entity::mob::MobEntity) -> f64 {
+    use pumpkin_data::attributes::Attributes;
+
+    mob_entity
+        .living_entity
+        .get_attribute_value(&Attributes::FOLLOW_RANGE)
+        .max(ALERT_RANGE_Y)
+        + 1.0
 }

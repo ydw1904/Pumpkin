@@ -1,6 +1,6 @@
 use crate::entity::ai::goal::move_to_target_pos::MoveToTargetPos;
 use crate::entity::ai::goal::step_and_destroy_block::{StepAndDestroyBlockGoal, Stepping};
-use crate::entity::ai::goal::{Controls, Goal, ParentHandle};
+use crate::entity::ai::goal::{Controls, Goal, GoalReach, ParentHandle};
 use crate::entity::mob::Mob;
 use crate::world::World;
 use pumpkin_data::Block;
@@ -37,6 +37,10 @@ impl DestroyEggGoal {
 }
 
 impl Goal for DestroyEggGoal {
+    fn tick_reach(&self, mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        self.step_and_destroy_block_goal.tick_reach(mob, running)
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         self.step_and_destroy_block_goal.can_start(mob)
     }
