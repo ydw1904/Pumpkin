@@ -1,7 +1,7 @@
 use std::sync::{Arc, Weak};
 
 use crate::entity::EntityBase;
-use crate::entity::ai::goal::{Controls, Goal};
+use crate::entity::ai::goal::{Controls, Goal, GoalReach};
 use crate::entity::ai::pathfinder::NavigatorGoal;
 use crate::entity::mob::{Mob, RangedAttackMob};
 
@@ -61,6 +61,21 @@ impl RangedAttackGoal {
 }
 
 impl Goal for RangedAttackGoal {
+    fn tick_reach(&self, _mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        // It keeps aiming at the target it started with, whose sight it checks. The species'
+        // `perform_ranged_attack` decides what the shot reaches.
+        let target = self
+            .target
+            .iter()
+            .map(|target| target.get_entity().entity_id);
+        Some(GoalReach {
+            speed: self.speed_modifier,
+            links: target.clone().collect(),
+            sight: target.collect(),
+            ..GoalReach::default()
+        })
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         let target = mob.get_mob_entity().get_target().clone();
         if let Some(target) = target

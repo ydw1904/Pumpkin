@@ -24,7 +24,7 @@ use crate::entity::ai::goal::move_to_target_pos::{MoveToTargetPos, MoveToTargetP
 use crate::entity::ai::goal::ranged_attack::RangedAttackGoal;
 use crate::entity::ai::goal::wander_around::WanderAroundGoal;
 use crate::entity::ai::goal::zombie_attack::ZombieAttackGoal;
-use crate::entity::ai::goal::{Controls, Goal, ParentHandle};
+use crate::entity::ai::goal::{Controls, Goal, GoalReach, ParentHandle};
 use crate::entity::ai::pathfinder::node::PathType;
 use crate::entity::ai::pathfinder::{Navigator, NavigatorGoal};
 use crate::entity::ai::target_match::TargetMatch;
@@ -44,6 +44,14 @@ use pumpkin_nbt::compound::NbtCompound;
 
 /// Vanilla `Drowned.NAUTILUS_SHELL_CHANCE`.
 const NAUTILUS_SHELL_CHANCE: f32 = 0.03;
+/// `DrownedMoveControl`: extra fall speed of a drowned off the ground and out of swimming.
+const DROWNED_SINK_SPEED: f64 = 0.008;
+/// `DrownedMoveControl`: lift while swimming up to a higher target or searching for land.
+const DROWNED_RISE_SPEED: f64 = 0.002;
+/// `DrownedMoveControl`: push per block of horizontal distance to the wanted position.
+const DROWNED_SWIM_HORIZONTAL_PUSH: f64 = 0.005;
+/// `DrownedMoveControl`: push along the normalized vertical direction.
+const DROWNED_SWIM_VERTICAL_PUSH: f64 = 0.1;
 
 const DROWNED_HUNTS: &[Hunt] = &[
     Hunt::new(2, TargetMatch::Type(&EntityType::PLAYER), true).matching(ok_target),
@@ -246,6 +254,39 @@ impl Mob for DrownedEntity {
         self.entity.reinforcement_reach()
     }
 
+    fn has_audited_tick(&self) -> bool {
+        true
+    }
+
+    // Hits in other entities' turns join them to this reach, so it covers those calls too.
+    fn audited_spawn_distance(&self) -> f64 {
+        self.entity.reinforcement_reach()
+    }
+
+    /// `DrownedMoveControl` pushes a swimming drowned towards the navigation's next node and up
+    /// towards a higher target, and pulls one out of water down.
+    fn audited_species_reach(&self, speed: f64) -> GoalReach {
+        let mob_entity = &self.entity.mob_entity;
+        let speed = speed.max(f64::from(mob_entity.living_entity.get_speed()));
+        // The next node lies within the path, which stays within the search range.
+        let node_distance = f64::from(
+            mob_entity
+                .navigator
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .max_path_length(&mob_entity.living_entity),
+        ) + 2.0;
+        let horizontal = speed * DROWNED_SWIM_HORIZONTAL_PUSH * node_distance;
+        // Sinking and rising are the two branches of the control.
+        let vertical = speed
+            .mul_add(DROWNED_SWIM_VERTICAL_PUSH, DROWNED_RISE_SPEED)
+            .max(DROWNED_SINK_SPEED);
+        GoalReach {
+            impulse: horizontal.max(vertical),
+            ..GoalReach::default()
+        }
+    }
+
     /// Vanilla `Drowned.checkSpawnObstruction`.
     fn check_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
         crate::entity::mob::is_unobstructed(self, level)
@@ -392,9 +433,11 @@ impl MoveControlTrait for DrownedMoveControl {
         if !drowned.wants_to_swim() || !entity.is_in_water() {
             if !entity.on_ground.load(Ordering::Relaxed) {
                 let velocity = entity.velocity.load();
-                entity
-                    .velocity
-                    .store(Vector3::new(velocity.x, velocity.y - 0.008, velocity.z));
+                entity.velocity.store(Vector3::new(
+                    velocity.x,
+                    velocity.y - DROWNED_SINK_SPEED,
+                    velocity.z,
+                ));
             }
             self.inner.tick(mob);
             return;
@@ -407,9 +450,11 @@ impl MoveControlTrait for DrownedMoveControl {
             || drowned.searching_for_land.load(Ordering::Relaxed)
         {
             let velocity = entity.velocity.load();
-            entity
-                .velocity
-                .store(Vector3::new(velocity.x, velocity.y + 0.002, velocity.z));
+            entity.velocity.store(Vector3::new(
+                velocity.x,
+                velocity.y + DROWNED_RISE_SPEED,
+                velocity.z,
+            ));
         }
 
         if self.inner.operation != Operation::MoveTo || mob_entity.steered().navigator().is_done() {
@@ -435,9 +480,9 @@ impl MoveControlTrait for DrownedMoveControl {
         entity.velocity.store(
             entity.velocity.load()
                 + Vector3::new(
-                    new_speed * xd * 0.005,
-                    new_speed * yd * 0.1,
-                    new_speed * zd * 0.005,
+                    new_speed * xd * DROWNED_SWIM_HORIZONTAL_PUSH,
+                    new_speed * yd * DROWNED_SWIM_VERTICAL_PUSH,
+                    new_speed * zd * DROWNED_SWIM_HORIZONTAL_PUSH,
                 ),
         );
     }
@@ -492,6 +537,14 @@ impl DrownedGoToWaterGoal {
 }
 
 impl Goal for DrownedGoToWaterGoal {
+    fn tick_reach(&self, _mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        // Its water search stays within the navigation's search range.
+        Some(GoalReach {
+            speed: self.speed,
+            ..GoalReach::default()
+        })
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         let entity = mob.get_entity();
         if !entity.world.load().is_bright_outside() || entity.is_in_water() {
@@ -538,6 +591,10 @@ impl DrownedAttackGoal {
 }
 
 impl Goal for DrownedAttackGoal {
+    fn tick_reach(&self, mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        self.zombie_attack.tick_reach(mob, running)
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         self.zombie_attack.can_start(mob) && Self::has_ok_target(mob)
     }
@@ -573,6 +630,11 @@ struct DrownedTridentAttackGoal {
 }
 
 impl Goal for DrownedTridentAttackGoal {
+    fn tick_reach(&self, mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        // The trident spawns inside the drowned; its own tick reaches the rest.
+        self.ranged_attack.tick_reach(mob, running)
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         self.ranged_attack.can_start(mob) && main_hand_item(mob).item.id == Item::TRIDENT.id
     }
@@ -633,6 +695,27 @@ impl DrownedGoToBeachGoal {
 }
 
 impl Goal for DrownedGoToBeachGoal {
+    fn tick_reach(&self, mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        // The search stays within the navigation's search range, but a running goal keeps
+        // checking the shore it found, and the two blocks above it, wherever the mob drifted.
+        let block_reads = if running {
+            let target = self.move_to_block.target_pos.to_centered_f64();
+            mob.get_entity()
+                .pos
+                .load()
+                .squared_distance_to_vec(&target)
+                .sqrt()
+                + 3.0
+        } else {
+            0.0
+        };
+        Some(GoalReach {
+            speed: self.move_to_block.speed,
+            block_reads,
+            ..GoalReach::default()
+        })
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         if !self.move_to_block.can_start(mob) {
             return false;
@@ -703,6 +786,14 @@ impl DrownedSwimUpGoal {
 }
 
 impl Goal for DrownedSwimUpGoal {
+    fn tick_reach(&self, _mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        // Its target search stays within the navigation's search range.
+        Some(GoalReach {
+            speed: self.speed,
+            ..GoalReach::default()
+        })
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         let entity = mob.get_entity();
         !entity.world.load().is_bright_outside()
