@@ -1711,6 +1711,7 @@ impl MobEntity {
 
         // `Mob.setSpeed` also sets the forward input to the speed.
         let speed = living.get_attribute_value(&Attributes::MOVEMENT_SPEED) * goals.speed.max(1.0);
+        goals.add(mob.audited_species_reach(speed));
         let block_friction = LivingEntity::compute_modified_friction(
             *LEAST_SLIPPERINESS,
             living.get_attribute_value(&Attributes::FRICTION_MODIFIER) as f32,
@@ -1784,6 +1785,12 @@ pub trait Mob: EntityBase + Send + Sync {
     /// How far outside its box the species' tick code spawns entities this tick.
     fn audited_spawn_distance(&self) -> f64 {
         0.0
+    }
+
+    /// What the species' own tick code touches next tick besides its goals, when its movement
+    /// controls run at most at movement speed `speed`.
+    fn audited_species_reach(&self, _speed: f64) -> GoalReach {
+        GoalReach::default()
     }
 
     fn can_attack(&self, target: &dyn EntityBase) -> bool {

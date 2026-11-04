@@ -13,6 +13,7 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_world::chunk::ChunkHeightmapType;
 
+use crate::entity::ai::goal::GoalReach;
 use crate::entity::custom_sound::CustomSound;
 use crate::entity::mob::{Mob, MobEntity};
 use crate::entity::{Entity, EntityBase};
@@ -24,6 +25,8 @@ const CLOSE_PLAYER_DISTANCE: f64 = 4.0;
 const SOUND_VOLUME: f32 = 0.1;
 /// Vanilla `closerToCenterThan(position, 2.0)`.
 const CLOSE_TARGET_DISTANCE_SQ: f64 = 4.0;
+/// A new hanging target is at most this many blocks away on each horizontal axis.
+const TARGET_RANGE: f64 = 6.0;
 
 pub struct BatEntity {
     pub mob_entity: MobEntity,
@@ -182,6 +185,37 @@ impl Mob for BatEntity {
         false
     }
 
+    fn has_audited_tick(&self) -> bool {
+        true
+    }
+
+    fn audited_species_reach(&self, _speed: f64) -> GoalReach {
+        let entity = self.get_entity();
+        let pos = entity.pos.load();
+        // The hanging target it checks for air, wherever it was picked.
+        let target = self
+            .hanging_position
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .map_or(0.0, |target| {
+                let center = target.to_centered_f64();
+                (center.x - pos.x).abs().max((center.z - pos.z).abs()) + 1.0
+            });
+        GoalReach {
+            // `BAT_RESTING_TARGETING` around a resting bat.
+            players: if self.is_roosting() {
+                CLOSE_PLAYER_DISTANCE
+            } else {
+                0.0
+            },
+            block_reads: target.max(TARGET_RANGE + 1.0),
+            // A flying bat steers each axis by at most 0.05 or 0.07, and `post_tick` snaps a bat
+            // that rests by the end of the tick to the ceiling, less than its height away.
+            impulse: f64::from(entity.height()),
+            ..GoalReach::default()
+        }
+    }
+
     fn mob_is_flapping(&self) -> bool {
         !self.is_roosting() && self.get_entity().tick_count.load(Relaxed) % 10 == 0
     }
@@ -301,5 +335,30 @@ impl CustomSound for BatEntity {
 
     fn sound_category(&self) -> SoundCategory {
         SoundCategory::Neutral
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entity::ai::test_support::world;
+    use pumpkin_data::entity::EntityType;
+
+    #[tokio::test]
+    async fn the_ceiling_snap_stays_within_the_audited_motion()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let folder = tempfile::tempdir()?;
+        let world = world(&folder);
+        let start = Vector3::new(0.5, 64.95, 0.5);
+        let bat = BatEntity::new(Entity::new(world.clone(), start, &EntityType::BAT));
+        let reach = bat
+            .get_mob_entity()
+            .audited_reach(bat.as_ref())
+            .ok_or("missing bat reach")?;
+        bat.post_tick();
+        let moved = bat.get_entity().pos.load() - start;
+        world.level.shutdown().await;
+        assert!(moved.y.abs() <= reach.motion.1);
+        Ok(())
     }
 }
