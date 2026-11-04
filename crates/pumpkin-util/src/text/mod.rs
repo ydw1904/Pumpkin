@@ -146,6 +146,37 @@ impl TextComponentBase {
             TextContent::Keybind { keybind } => {
                 compound.put_string("keybind", keybind.to_string());
             }
+            TextContent::Score { score } => {
+                let mut inner = pumpkin_nbt::NbtCompound::new();
+                inner.put_string("name", score.name.to_string());
+                inner.put_string("objective", score.objective.to_string());
+                compound.put_compound("score", inner);
+            }
+            TextContent::Nbt {
+                nbt,
+                interpret,
+                plain,
+                separator,
+                block,
+                entity,
+                storage,
+            } => {
+                compound.put_string("nbt", nbt.to_string());
+                if *interpret {
+                    compound.put_bool("interpret", true);
+                }
+                if *plain {
+                    compound.put_bool("plain", true);
+                }
+                if let Some(separator) = separator {
+                    compound.put("separator", separator.0.to_nbt_tag_for_version(version));
+                }
+                for (key, value) in [("block", block), ("entity", entity), ("storage", storage)] {
+                    if let Some(value) = value {
+                        compound.put_string(key, value.to_string());
+                    }
+                }
+            }
             TextContent::Custom { key, with, .. } => {
                 compound.put_string("translate", key.to_string());
                 if !with.is_empty() {
@@ -505,6 +536,46 @@ impl TextComponentBase {
                     "keybind".to_string(),
                     serde_json::Value::String(keybind.to_string()),
                 );
+            }
+            TextContent::Score { score } => {
+                map.insert(
+                    "score".to_string(),
+                    serde_json::json!({ "name": score.name, "objective": score.objective }),
+                );
+            }
+            TextContent::Nbt {
+                nbt,
+                interpret,
+                plain,
+                separator,
+                block,
+                entity,
+                storage,
+            } => {
+                map.insert(
+                    "nbt".to_string(),
+                    serde_json::Value::String(nbt.to_string()),
+                );
+                if *interpret {
+                    map.insert("interpret".to_string(), serde_json::Value::Bool(true));
+                }
+                if *plain {
+                    map.insert("plain".to_string(), serde_json::Value::Bool(true));
+                }
+                if let Some(separator) = separator {
+                    map.insert(
+                        "separator".to_string(),
+                        separator.0.to_json_value_for_version(version),
+                    );
+                }
+                for (key, value) in [("block", block), ("entity", entity), ("storage", storage)] {
+                    if let Some(value) = value {
+                        map.insert(
+                            key.to_string(),
+                            serde_json::Value::String(value.to_string()),
+                        );
+                    }
+                }
             }
             TextContent::Custom { key, with, .. } => {
                 map.insert(
@@ -1028,6 +1099,7 @@ impl TextComponentBase {
                 separator: _,
             } => selector.into_owned(),
             TextContent::Keybind { keybind } => keybind.into_owned(),
+            TextContent::Score { .. } | TextContent::Nbt { .. } => String::new(),
             TextContent::Custom { key, with, .. } => translation_to_pretty(key, Locale::EnUs, with),
             TextContent::PlayerSprite { ref profile, .. } => profile
                 .0
@@ -1082,6 +1154,7 @@ impl TextComponentBase {
             }
             TextContent::EntityNames { selector, .. } => text.push_str(selector),
             TextContent::Keybind { keybind } => text.push_str(keybind),
+            TextContent::Score { .. } | TextContent::Nbt { .. } => {}
             TextContent::Custom { key, .. } => {
                 let _ = write!(text, "%{key}");
             }
@@ -1147,6 +1220,7 @@ impl TextComponentBase {
             }
             TextContent::EntityNames { selector, .. } => text.push_str(selector),
             TextContent::Keybind { keybind } => text.push_str(keybind),
+            TextContent::Score { .. } | TextContent::Nbt { .. } => {}
             TextContent::Custom { key, with, .. } => {
                 text.push_str(&get_translation_text(key.clone(), locale, with.clone()));
             }
@@ -1192,6 +1266,7 @@ impl TextComponentBase {
                 separator: _,
             } => selector.into_owned(),
             TextContent::Keybind { keybind } => keybind.into_owned(),
+            TextContent::Score { .. } | TextContent::Nbt { .. } => String::new(),
             TextContent::Custom { key, with, .. } => get_translation_text(key, locale, with),
             TextContent::PlayerSprite { profile, .. } => profile
                 .0
@@ -2056,6 +2131,22 @@ impl std::hash::Hash for ProfileNbt {
     }
 }
 
+/// The score a [`TextContent::Score`] shows.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct ScoreContent {
+    /// A score holder name, or an entity selector; `*` is the entity the text is resolved for.
+    pub name: Cow<'static, str>,
+    pub objective: Cow<'static, str>,
+}
+
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's skip_serializing_if passes a reference"
+)]
+const fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 /// The content type of the text component.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(untagged)]
@@ -2087,6 +2178,31 @@ pub enum TextContent {
     Keybind {
         /// The keybind identifier (e.g., "key.forward").
         keybind: Cow<'static, str>,
+    },
+    /// A scoreboard score, filled in by the server (vanilla `ScoreContents`).
+    Score { score: ScoreContent },
+    /// NBT read from a block, entity or storage, filled in by the server (vanilla
+    /// `NbtContents`). Exactly one of `block`, `entity` and `storage` is set.
+    Nbt {
+        /// The NBT path to read.
+        nbt: Cow<'static, str>,
+        /// Whether the values read are themselves text components.
+        #[serde(default, skip_serializing_if = "is_false")]
+        interpret: bool,
+        /// Whether the values are shown without SNBT highlighting.
+        #[serde(default, skip_serializing_if = "is_false")]
+        plain: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        separator: Option<Box<TextComponent>>,
+        /// A block position, as command coordinates.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        block: Option<Cow<'static, str>>,
+        /// An entity selector.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        entity: Option<Cow<'static, str>>,
+        /// A command storage id.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        storage: Option<Cow<'static, str>>,
     },
     /// A custom translation key for modded content.
     ///
@@ -2145,6 +2261,33 @@ mod test {
     /// The client expects the hover event payload to be inlined next to `action`.
     /// Nesting it under `item`/`entity` makes the component fail to decode and
     /// kicks the player off the server.
+    /// Score and NBT contents keep their fields when read from JSON and written as NBT, the
+    /// way `ScoreContents.MAP_CODEC` and `NbtContents.MAP_CODEC` lay them out.
+    #[test]
+    fn score_and_nbt_contents_round_trip() {
+        let score: TextComponent =
+            serde_json::from_str(r#"{"score":{"name":"@p","objective":"kills"}}"#).unwrap();
+        let tag = score.0.to_nbt_compound();
+        let inner = tag.get_compound("score").unwrap();
+        assert_eq!(inner.get_string("name"), Some("@p"));
+        assert_eq!(inner.get_string("objective"), Some("kills"));
+
+        let nbt: TextComponent = serde_json::from_str(
+            r#"{"nbt":"Inventory[0].id","entity":"@s","interpret":true,"separator":"|"}"#,
+        )
+        .unwrap();
+        let tag = nbt.0.to_nbt_compound();
+        assert_eq!(tag.get_string("nbt"), Some("Inventory[0].id"));
+        assert_eq!(tag.get_string("entity"), Some("@s"));
+        assert_eq!(tag.get_bool("interpret"), Some(true));
+        assert_eq!(tag.get_string("separator"), Some("|"));
+        assert!(tag.get("plain").is_none());
+        assert_eq!(
+            TextComponent::from_nbt(&pumpkin_nbt::tag::NbtTag::Compound(tag)),
+            nbt
+        );
+    }
+
     #[test]
     fn hover_event_payload_is_inlined() {
         let show_item = TextComponent::text("sword")

@@ -279,6 +279,7 @@ impl TextComponent {
             }
             TextContent::EntityNames { selector, .. } => text.push_str(selector),
             TextContent::Keybind { keybind } => text.push_str(keybind),
+            TextContent::Score { .. } | TextContent::Nbt { .. } => {}
             TextContent::Custom { key, with, .. } => {
                 text.push_str(&get_translation_text(key.clone(), locale, with.clone()));
             }
