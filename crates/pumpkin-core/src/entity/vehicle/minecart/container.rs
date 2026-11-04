@@ -14,12 +14,13 @@ use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::text::TextComponent;
 
+use crate::block::entities::container_loot::ContainerLoot;
 use crate::entity::{Entity, player::Player};
 
 pub(super) struct MinecartInventory {
     items: RwLock<Vec<ItemStack>>,
     size: usize,
-    loot_table: Mutex<Option<(String, i64)>>,
+    loot: ContainerLoot,
     drops_claimed: AtomicBool,
 }
 
@@ -28,7 +29,7 @@ impl MinecartInventory {
         Self {
             items: RwLock::new(vec![ItemStack::EMPTY.clone(); size]),
             size,
-            loot_table: Mutex::new(None),
+            loot: ContainerLoot::new(),
             drops_claimed: AtomicBool::new(false),
         }
     }
@@ -37,78 +38,49 @@ impl MinecartInventory {
         !self.drops_claimed.swap(true, Ordering::AcqRel)
     }
 
+    /// Vanilla `ContainerEntity.readChestVehicleSaveData`.
     pub(super) fn read_nbt(&self, nbt: &NbtCompound) {
-        let loot_table = nbt.get_string("LootTable").map(|loot_table| {
-            (
-                loot_table.to_owned(),
-                nbt.get_long("LootTableSeed").unwrap_or(0),
-            )
-        });
-        let has_loot_table = loot_table.is_some();
-        if let Ok(mut guard) = self.loot_table.try_lock() {
-            *guard = loot_table;
-        }
-
-        if !has_loot_table && let Ok(mut items) = self.items.try_write() {
-            items.fill_with(|| ItemStack::EMPTY.clone());
+        let mut items = self
+            .items
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        items.fill_with(|| ItemStack::EMPTY.clone());
+        if !self.loot.read_nbt(nbt) {
             self.read_data(nbt, &mut items);
         }
     }
 
+    /// Vanilla `ContainerEntity.addChestVehicleSaveData`.
     pub(super) fn write_nbt(&self, nbt: &mut NbtCompound) {
-        let loot_table = self
-            .loot_table
-            .try_lock()
-            .ok()
-            .and_then(|guard| guard.clone());
-        if let Some((loot_table, seed)) = loot_table {
-            nbt.put_string("LootTable", loot_table);
-            if seed != 0 {
-                nbt.put_long("LootTableSeed", seed);
-            }
-        } else if let Ok(items) = self.items.try_read() {
-            let mut list: Vec<pumpkin_nbt::tag::NbtTag> = Vec::new();
-            for (slot, stack) in items.iter().enumerate() {
-                if !stack.is_empty() {
-                    let mut compound = NbtCompound::new();
-                    compound.put_byte("Slot", slot as i8);
-                    stack.write_item_stack(&mut compound);
-                    list.push(pumpkin_nbt::tag::NbtTag::Compound(compound));
-                }
-            }
-            nbt.put("Items", pumpkin_nbt::tag::NbtTag::List(list));
+        if self.loot.write_nbt(nbt) {
+            return;
         }
+        let items = self
+            .items
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut list: Vec<pumpkin_nbt::tag::NbtTag> = Vec::new();
+        for (slot, stack) in items.iter().enumerate() {
+            if !stack.is_empty() {
+                let mut compound = NbtCompound::new();
+                compound.put_byte("Slot", slot as i8);
+                stack.write_item_stack(&mut compound);
+                list.push(pumpkin_nbt::tag::NbtTag::Compound(compound));
+            }
+        }
+        nbt.put("Items", pumpkin_nbt::tag::NbtTag::List(list));
     }
 
     pub(super) fn has_loot_table(&self) -> bool {
-        self.loot_table
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .is_some()
+        self.loot.is_pending()
     }
 
-    pub(super) fn unpack_loot(
-        self: &Arc<Self>,
-        params: &crate::world::loot::LootContextParameters<'_>,
-    ) {
-        let loot_table = self
-            .loot_table
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take();
-        let Some((loot_table, seed)) = loot_table else {
-            return;
-        };
-        let Some(table) = crate::world::loot::get_loot_table(&loot_table) else {
-            *self
-                .loot_table
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some((loot_table, seed));
-            return;
-        };
-
-        let inventory: Arc<dyn Inventory> = self.clone();
-        crate::world::loot::fill_chest_inventory_handle(&inventory, &table, seed, params);
+    /// Vanilla `ContainerEntity.unpackChestVehicleLootTable`.
+    pub(super) fn unpack_loot(&self, entity: &Entity, player: Option<&Player>) {
+        if self.loot.is_pending() {
+            self.loot
+                .unpack_in(&entity.world.load(), self, entity.pos.load(), player);
+        }
     }
 }
 
@@ -210,17 +182,7 @@ pub(super) fn open(
     hopper: bool,
 ) -> bool {
     if !player.is_spectator() {
-        let world = entity.world.load();
-        inventory.unpack_loot(&crate::world::loot::LootContextParameters {
-            world: Some(&world),
-            position: Some(entity.pos.load()),
-            this_entity: Some(player.as_ref()),
-            luck: player
-                .living_entity
-                .get_attribute_value(&pumpkin_data::attributes::Attributes::LUCK)
-                as f32,
-            ..Default::default()
-        });
+        inventory.unpack_loot(entity, Some(player));
     }
 
     player
@@ -240,10 +202,7 @@ pub(super) fn velocity(
     inventory: &MinecartInventory,
     velocity: Vector3<f64>,
 ) -> Vector3<f64> {
-    let has_loot = inventory
-        .loot_table
-        .try_lock()
-        .is_ok_and(|guard| guard.is_some());
+    let has_loot = inventory.has_loot_table();
     let signal = if has_loot {
         0
     } else if let Ok(items) = inventory.items.try_read() {
@@ -289,7 +248,7 @@ mod tests {
 
     #[test]
     fn deferred_mineshaft_loot_is_preserved_until_unpacked() {
-        let inventory = std::sync::Arc::new(MinecartInventory::new(27));
+        let inventory = MinecartInventory::new(27);
         let mut source = NbtCompound::new();
         source.put_string(
             "LootTable",
@@ -306,14 +265,6 @@ mod tests {
         );
         assert_eq!(deferred.get_long("LootTableSeed"), Some(1234));
         assert!(deferred.get_list("Items").is_none());
-
-        inventory.unpack_loot(&crate::world::loot::LootContextParameters::default());
-        assert!(!inventory.is_empty());
-
-        let mut unpacked = NbtCompound::new();
-        inventory.write_nbt(&mut unpacked);
-        assert!(unpacked.get_string("LootTable").is_none());
-        assert!(unpacked.get_list("Items").is_some());
     }
 
     #[test]

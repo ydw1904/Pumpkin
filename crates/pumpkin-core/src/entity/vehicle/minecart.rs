@@ -103,8 +103,11 @@ impl MinecartEntity {
     /// The inventory of a chest or hopper minecart.
     #[must_use]
     pub fn container_inventory(&self) -> Option<Arc<dyn pumpkin_inventory::Inventory>> {
-        self.container()
-            .map(|inventory| inventory.clone() as Arc<dyn pumpkin_inventory::Inventory>)
+        // Vanilla's container accessors all unpack the loot table first.
+        self.container().map(|inventory| {
+            inventory.unpack_loot(&self.vehicle.entity, None);
+            inventory.clone() as Arc<dyn pumpkin_inventory::Inventory>
+        })
     }
 
     /// Vanilla `getDropItem`. Command block and spawner minecarts drop a plain minecart.
@@ -763,11 +766,7 @@ impl EntityBase for MinecartEntity {
                 if let Some(container) = self.container()
                     && container.claim_drops()
                 {
-                    container.unpack_loot(&crate::world::loot::LootContextParameters {
-                        world: Some(&world),
-                        position: Some(self.vehicle.entity.pos.load()),
-                        ..Default::default()
-                    });
+                    container.unpack_loot(&self.vehicle.entity, None);
                     let inventory: Arc<dyn Inventory> = container.clone();
                     world.scatter_inventory(&position, &inventory);
                 }

@@ -1,3 +1,4 @@
+use crate::block::entities::container_loot::ContainerLoot;
 use crate::block::entities::{BlockEntity, PropertyDelegate};
 use crate::world::World;
 use pumpkin_data::block_properties::CrafterLikeProperties;
@@ -22,15 +23,18 @@ pub struct CrafterBlockEntity {
     pub triggered: AtomicBool,
     pub dirty: AtomicBool,
     pub comparator_dirty: AtomicBool,
+    pub loot: ContainerLoot,
 }
 
 impl BlockEntity for CrafterBlockEntity {
     fn write_nbt(&self, nbt: &mut NbtCompound) {
-        let items = self
-            .items
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        sync_write_items_to_nbt(items.as_slice(), nbt);
+        if !self.loot.write_nbt(nbt) {
+            let items = self
+                .items
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            sync_write_items_to_nbt(items.as_slice(), nbt);
+        }
         nbt.put_int(
             "crafting_ticks_remaining",
             self.crafting_ticks_remaining.load(Ordering::Relaxed),
@@ -69,15 +73,18 @@ impl BlockEntity for CrafterBlockEntity {
             ),
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
+            loot: ContainerLoot::default(),
         };
 
-        sync_read_items_from_nbt(
-            nbt,
-            crafter
-                .items
-                .get_mut()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-        );
+        if !crafter.loot.read_nbt(nbt) {
+            sync_read_items_from_nbt(
+                nbt,
+                crafter
+                    .items
+                    .get_mut()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+            );
+        }
 
         if let Some(NbtTag::IntArray(disabled)) = nbt.get("disabled_slots") {
             let disabled_array = crafter
@@ -128,6 +135,14 @@ impl BlockEntity for CrafterBlockEntity {
 
     fn to_recipe_input_inventory(self: Arc<Self>) -> Option<Arc<dyn RecipeInputInventory>> {
         Some(self as Arc<dyn RecipeInputInventory>)
+    }
+
+    fn apply_item_components(&self, stack: &ItemStack) {
+        self.loot.apply_item_components(stack);
+    }
+
+    fn container_loot(&self) -> Option<&ContainerLoot> {
+        Some(&self.loot)
     }
 
     fn get_inventory(self: Arc<Self>) -> Option<Arc<dyn Inventory>> {
@@ -191,6 +206,7 @@ impl CrafterBlockEntity {
             triggered: AtomicBool::new(false),
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
+            loot: ContainerLoot::default(),
         }
     }
 
@@ -276,6 +292,7 @@ impl Inventory for CrafterBlockEntity {
     }
 
     fn is_empty(&self) -> bool {
+        self.loot.unpack(self, &self.position);
         let items = self
             .items
             .read()
@@ -284,6 +301,7 @@ impl Inventory for CrafterBlockEntity {
     }
 
     fn get_stack(&self, slot: usize) -> ItemStack {
+        self.loot.unpack(self, &self.position);
         let items = self
             .items
             .read()
@@ -292,6 +310,7 @@ impl Inventory for CrafterBlockEntity {
     }
 
     fn remove_stack(&self, slot: usize) -> ItemStack {
+        self.loot.unpack(self, &self.position);
         let mut items = self
             .items
             .write()
@@ -302,6 +321,7 @@ impl Inventory for CrafterBlockEntity {
     }
 
     fn remove_stack_specific(&self, slot: usize, amount: u8) -> ItemStack {
+        self.loot.unpack(self, &self.position);
         let mut items = self
             .items
             .write()
@@ -316,6 +336,7 @@ impl Inventory for CrafterBlockEntity {
     }
 
     fn set_stack(&self, slot: usize, stack: ItemStack) {
+        self.loot.unpack(self, &self.position);
         if self.is_slot_disabled(slot) {
             self.set_slot_state(slot, true);
         }

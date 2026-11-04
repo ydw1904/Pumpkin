@@ -20,12 +20,14 @@ use crate::world::{BlockFlags, World};
 use pumpkin_inventory::{Clearable, Inventory};
 
 use super::BlockEntity;
+use super::container_loot::ContainerLoot;
 
 pub struct BarrelBlockEntity {
     pub position: BlockPos,
     pub items: RwLock<[ItemStack; Self::INVENTORY_SIZE]>,
     pub dirty: AtomicBool,
     pub comparator_dirty: AtomicBool,
+    pub loot: ContainerLoot,
 
     // Viewer
     viewers: ViewerCountTracker,
@@ -49,27 +51,40 @@ impl BlockEntity for BarrelBlockEntity {
             items: RwLock::new(from_fn(|_| ItemStack::EMPTY.clone())),
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
+            loot: ContainerLoot::default(),
             viewers: ViewerCountTracker::new(),
         };
 
-        pumpkin_inventory::sync_read_items_from_nbt(
-            nbt,
-            barrel
-                .items
-                .get_mut()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-        );
+        if !barrel.loot.read_nbt(nbt) {
+            pumpkin_inventory::sync_read_items_from_nbt(
+                nbt,
+                barrel
+                    .items
+                    .get_mut()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+            );
+        }
 
         barrel
     }
 
     fn write_nbt(&self, nbt: &mut NbtCompound) {
-        self.write_inventory_nbt(nbt, true);
+        if !self.loot.write_nbt(nbt) {
+            self.write_inventory_nbt(nbt, true);
+        }
     }
 
     fn tick(&self, world: &Arc<World>) {
         self.viewers
             .update_viewer_count::<Self>(self, world, &self.position);
+    }
+
+    fn apply_item_components(&self, stack: &ItemStack) {
+        self.loot.apply_item_components(stack);
+    }
+
+    fn container_loot(&self) -> Option<&ContainerLoot> {
+        Some(&self.loot)
     }
 
     fn get_inventory(self: Arc<Self>) -> Option<Arc<dyn Inventory>> {
@@ -131,6 +146,7 @@ impl BarrelBlockEntity {
             items: RwLock::new(from_fn(|_| ItemStack::EMPTY.clone())),
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
+            loot: ContainerLoot::default(),
             viewers: ViewerCountTracker::new(),
         }
     }
@@ -175,6 +191,7 @@ impl Inventory for BarrelBlockEntity {
     }
 
     fn is_empty(&self) -> bool {
+        self.loot.unpack(self, &self.position);
         let items = self
             .items
             .read()
@@ -183,6 +200,7 @@ impl Inventory for BarrelBlockEntity {
     }
 
     fn get_stack(&self, slot: usize) -> ItemStack {
+        self.loot.unpack(self, &self.position);
         let items = self
             .items
             .read()
@@ -191,6 +209,7 @@ impl Inventory for BarrelBlockEntity {
     }
 
     fn remove_stack(&self, slot: usize) -> ItemStack {
+        self.loot.unpack(self, &self.position);
         let mut items = self
             .items
             .write()
@@ -201,6 +220,7 @@ impl Inventory for BarrelBlockEntity {
     }
 
     fn remove_stack_specific(&self, slot: usize, amount: u8) -> ItemStack {
+        self.loot.unpack(self, &self.position);
         let mut items = self
             .items
             .write()
@@ -215,6 +235,7 @@ impl Inventory for BarrelBlockEntity {
     }
 
     fn set_stack(&self, slot: usize, stack: ItemStack) {
+        self.loot.unpack(self, &self.position);
         let mut items = self
             .items
             .write()

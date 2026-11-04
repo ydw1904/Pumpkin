@@ -1,5 +1,7 @@
 use super::BlockEntity;
+use super::container_loot::ContainerLoot;
 use pumpkin_data::item_stack::ItemStack;
+use pumpkin_inventory::{Clearable, Inventory};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::GameMode;
@@ -12,6 +14,7 @@ pub struct DecoratedPotBlockEntity {
     pub position: BlockPos,
     pub sherds: Mutex<Option<Vec<NbtTag>>>,
     pub item: Mutex<Option<ItemStack>>,
+    pub loot: ContainerLoot,
 }
 
 impl BlockEntity for DecoratedPotBlockEntity {
@@ -34,13 +37,18 @@ impl BlockEntity for DecoratedPotBlockEntity {
         Self: Sized,
     {
         let sherds = nbt.get_list("sherds").map(<[_]>::to_vec);
-        let item = nbt
-            .get_compound("item")
-            .and_then(ItemStack::read_item_stack);
+        let loot = ContainerLoot::default();
+        let item = if loot.read_nbt(nbt) {
+            None
+        } else {
+            nbt.get_compound("item")
+                .and_then(ItemStack::read_item_stack)
+        };
         Self {
             position,
             sherds: Mutex::new(sherds),
             item: Mutex::new(item),
+            loot,
         }
     }
 
@@ -50,7 +58,8 @@ impl BlockEntity for DecoratedPotBlockEntity {
         {
             nbt.put_list("sherds", sh.clone());
         }
-        if let Ok(item) = self.item.lock()
+        if !self.loot.write_nbt(nbt)
+            && let Ok(item) = self.item.lock()
             && let Some(it) = item.as_ref()
         {
             let mut it_nbt = NbtCompound::new();
@@ -110,7 +119,12 @@ impl BlockEntity for DecoratedPotBlockEntity {
         }
     }
 
+    fn container_loot(&self) -> Option<&ContainerLoot> {
+        Some(&self.loot)
+    }
+
     fn apply_item_components(&self, stack: &ItemStack) {
+        self.loot.apply_item_components(stack);
         if let Some(decorations) =
             stack.get_data_component::<pumpkin_data::data_component_impl::PotDecorationsImpl>()
             && !decorations.sherds.is_empty()
@@ -151,10 +165,17 @@ impl DecoratedPotBlockEntity {
             position,
             sherds: Mutex::new(None),
             item: Mutex::new(None),
+            loot: ContainerLoot::new(),
         }
     }
 
+    /// The `unpackLootTable(null)` of vanilla `getTheItem`, `splitTheItem` and `setTheItem`.
+    fn unpack(&self) {
+        self.loot.unpack(self, &self.position);
+    }
+
     pub fn get_item(&self) -> Option<ItemStack> {
+        self.unpack();
         self.item
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -162,6 +183,7 @@ impl DecoratedPotBlockEntity {
     }
 
     pub fn take_item(&self) -> Option<ItemStack> {
+        self.unpack();
         self.item
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -174,6 +196,7 @@ impl DecoratedPotBlockEntity {
         if stack.is_empty() {
             return None;
         }
+        self.unpack();
         let mut item_guard = self
             .item
             .lock()
@@ -196,6 +219,7 @@ impl DecoratedPotBlockEntity {
     }
 
     pub fn get_comparator_output(&self) -> u8 {
+        self.unpack();
         self.item
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -211,6 +235,60 @@ impl DecoratedPotBlockEntity {
                     1 + (filled * 14.0).floor() as u8
                 }
             })
+    }
+}
+
+/// The pot's single slot (vanilla `ContainerSingleItem`), here only the container its loot
+/// table fills: the pot isn't exposed as an inventory.
+impl Inventory for DecoratedPotBlockEntity {
+    fn size(&self) -> usize {
+        1
+    }
+
+    fn is_empty(&self) -> bool {
+        self.get_stack(0).is_empty()
+    }
+
+    fn get_stack(&self, _slot: usize) -> ItemStack {
+        self.item
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+            .unwrap_or_else(|| ItemStack::EMPTY.clone())
+    }
+
+    fn remove_stack(&self, _slot: usize) -> ItemStack {
+        self.item
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+            .unwrap_or_else(|| ItemStack::EMPTY.clone())
+    }
+
+    fn remove_stack_specific(&self, _slot: usize, amount: u8) -> ItemStack {
+        let mut item = self
+            .item
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        item.as_mut()
+            .map_or_else(|| ItemStack::EMPTY.clone(), |item| item.split(amount))
+    }
+
+    fn set_stack(&self, _slot: usize, stack: ItemStack) {
+        *self
+            .item
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(stack);
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+impl Clearable for DecoratedPotBlockEntity {
+    fn clear(&self) {
+        self.remove_stack(0);
     }
 }
 

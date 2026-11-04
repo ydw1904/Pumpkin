@@ -91,7 +91,12 @@ impl BoatEntity {
     pub fn open_inventory(&self, player: &Arc<Player>) -> bool {
         if let BoatKind::Chest(boat) = &self.kind {
             let custom_name = self.vehicle.entity.custom_name.load().as_ref().clone();
-            return boat.interact(custom_name, self.get_chest_boat_translation(), player);
+            return boat.interact(
+                &self.vehicle.entity,
+                custom_name,
+                self.get_chest_boat_translation(),
+                player,
+            );
         }
         false
     }
@@ -251,6 +256,7 @@ impl EntityBase for BoatEntity {
             let world = self.vehicle.entity.world.load();
             if world.level_info.load().game_rules.entity_drops {
                 let position = self.vehicle.entity.block_pos.load();
+                boat.inventory().unpack_loot(&self.vehicle.entity, None);
                 let inventory: Arc<dyn Inventory> = boat.inventory().clone();
                 world.scatter_inventory(&position, &inventory);
             }

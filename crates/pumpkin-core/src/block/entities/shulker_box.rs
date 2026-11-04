@@ -1,4 +1,4 @@
-use pumpkin_data::data_component_impl::ContainerImpl;
+use pumpkin_data::data_component_impl::{ContainerImpl, ContainerLootImpl};
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_nbt::compound::NbtCompound;
@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::{array::from_fn, sync::Arc};
 
 use crate::block::entities::BlockEntity;
+use crate::block::entities::container_loot::ContainerLoot;
 use crate::block::viewer::{ViewerCountListener, ViewerCountTracker, ViewerCountTrackerExt};
 use crate::world::World;
 use pumpkin_inventory::{Clearable, Inventory};
@@ -18,6 +19,7 @@ pub struct ShulkerBoxBlockEntity {
     pub items: RwLock<[ItemStack; Self::INVENTORY_SIZE]>,
     pub dirty: AtomicBool,
     pub comparator_dirty: AtomicBool,
+    pub loot: ContainerLoot,
 
     // Viewer
     pub viewers: ViewerCountTracker,
@@ -41,22 +43,27 @@ impl BlockEntity for ShulkerBoxBlockEntity {
             items: RwLock::new(from_fn(|_| ItemStack::EMPTY.clone())),
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
+            loot: ContainerLoot::default(),
             viewers: ViewerCountTracker::new(),
         };
 
-        pumpkin_inventory::sync_read_items_from_nbt(
-            nbt,
-            shulker_box
-                .items
-                .get_mut()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-        );
+        if !shulker_box.loot.read_nbt(nbt) {
+            pumpkin_inventory::sync_read_items_from_nbt(
+                nbt,
+                shulker_box
+                    .items
+                    .get_mut()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+            );
+        }
 
         shulker_box
     }
 
     fn write_nbt(&self, nbt: &mut NbtCompound) {
-        self.write_inventory_nbt(nbt, true);
+        if !self.loot.write_nbt(nbt) {
+            self.write_inventory_nbt(nbt, true);
+        }
     }
 
     fn tick(&self, world: &Arc<World>) {
@@ -66,6 +73,10 @@ impl BlockEntity for ShulkerBoxBlockEntity {
 
     fn on_block_replaced(self: Arc<Self>, _world: &Arc<World>, _position: &BlockPos) {
         // Shulker boxes retain items when broken
+    }
+
+    fn container_loot(&self) -> Option<&ContainerLoot> {
+        Some(&self.loot)
     }
 
     fn get_inventory(self: Arc<Self>) -> Option<Arc<dyn Inventory>> {
@@ -87,9 +98,13 @@ impl BlockEntity for ShulkerBoxBlockEntity {
         if !contents.is_empty() {
             stack.set_data_component(ContainerImpl { items: contents });
         }
+        if let Some((loot_table, seed)) = self.loot.get() {
+            stack.set_data_component(ContainerLootImpl { loot_table, seed });
+        }
     }
 
     fn apply_item_components(&self, stack: &ItemStack) {
+        self.loot.apply_item_components(stack);
         let Some(container) = stack.get_data_component::<ContainerImpl>() else {
             return;
         };
@@ -179,6 +194,7 @@ impl ShulkerBoxBlockEntity {
             items: RwLock::new(from_fn(|_| ItemStack::EMPTY.clone())),
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
+            loot: ContainerLoot::default(),
             viewers: ViewerCountTracker::new(),
         }
     }
@@ -205,6 +221,7 @@ impl Inventory for ShulkerBoxBlockEntity {
     }
 
     fn is_empty(&self) -> bool {
+        self.loot.unpack(self, &self.position);
         let items = self
             .items
             .read()
@@ -213,6 +230,7 @@ impl Inventory for ShulkerBoxBlockEntity {
     }
 
     fn get_stack(&self, slot: usize) -> ItemStack {
+        self.loot.unpack(self, &self.position);
         let items = self
             .items
             .read()
@@ -221,6 +239,7 @@ impl Inventory for ShulkerBoxBlockEntity {
     }
 
     fn remove_stack(&self, slot: usize) -> ItemStack {
+        self.loot.unpack(self, &self.position);
         let mut items = self
             .items
             .write()
@@ -231,6 +250,7 @@ impl Inventory for ShulkerBoxBlockEntity {
     }
 
     fn remove_stack_specific(&self, slot: usize, amount: u8) -> ItemStack {
+        self.loot.unpack(self, &self.position);
         let mut items = self
             .items
             .write()
@@ -245,6 +265,7 @@ impl Inventory for ShulkerBoxBlockEntity {
     }
 
     fn set_stack(&self, slot: usize, stack: ItemStack) {
+        self.loot.unpack(self, &self.position);
         let mut items = self
             .items
             .write()
@@ -304,6 +325,23 @@ pub fn build_shulker_box_actor(
         .custom_name(custom_name)
         .put_byte("facing", facing as i8)
         .finish()
+}
+
+/// Vanilla `ShulkerBoxBlock.playerWillDestroy`: unless a creative player keeps the box whole,
+/// the breaking player unpacks its loot table.
+pub fn player_will_destroy(
+    world: &World,
+    position: &BlockPos,
+    player: &crate::entity::player::Player,
+) {
+    if player.gamemode.load() == pumpkin_util::GameMode::Creative {
+        return;
+    }
+    if let Some(entity) = world.get_block_entity(position)
+        && entity.as_any().is::<ShulkerBoxBlockEntity>()
+    {
+        crate::block::entities::container_loot::unpack_for_player(&entity, world, player);
+    }
 }
 
 #[cfg(test)]

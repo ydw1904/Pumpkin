@@ -1,5 +1,6 @@
 use crate::block::blocks::chests::{chest_container, is_chest_block_entity};
 use crate::block::entities::BlockEntity;
+use crate::block::entities::container_loot::ContainerLoot;
 use crate::entity::item::ItemEntity;
 use crate::entity::vehicle::minecart::MinecartEntity;
 use crate::world::World;
@@ -30,6 +31,7 @@ pub struct HopperBlockEntity {
     pub items: RwLock<[ItemStack; Self::INVENTORY_SIZE]>,
     pub dirty: AtomicBool,
     pub comparator_dirty: AtomicBool,
+    pub loot: ContainerLoot,
     pub facing: FacingHopper,
     pub cooldown_time: AtomicI32,
     pub ticked_game_time: AtomicI64,
@@ -125,7 +127,9 @@ impl BlockEntity for HopperBlockEntity {
             "TransferCooldown",
             NbtTag::Int(self.cooldown_time.load(Ordering::Relaxed)),
         );
-        self.write_inventory_nbt(nbt, true);
+        if !self.loot.write_nbt(nbt) {
+            self.write_inventory_nbt(nbt, true);
+        }
     }
 
     fn from_nbt(nbt: &pumpkin_nbt::compound::NbtCompound, position: BlockPos) -> Self
@@ -137,18 +141,21 @@ impl BlockEntity for HopperBlockEntity {
             items: RwLock::new(from_fn(|_| ItemStack::EMPTY.clone())),
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
+            loot: ContainerLoot::default(),
             facing: FacingHopper::Down,
             cooldown_time: AtomicI32::from(nbt.get_int("TransferCooldown").unwrap_or(-1)),
             ticked_game_time: AtomicI64::new(0),
         };
 
-        pumpkin_inventory::sync_read_items_from_nbt(
-            nbt,
-            hopper
-                .items
-                .get_mut()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-        );
+        if !hopper.loot.read_nbt(nbt) {
+            pumpkin_inventory::sync_read_items_from_nbt(
+                nbt,
+                hopper
+                    .items
+                    .get_mut()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+            );
+        }
 
         hopper
     }
@@ -180,6 +187,14 @@ impl BlockEntity for HopperBlockEntity {
 
     fn get_position(&self) -> BlockPos {
         self.position
+    }
+
+    fn apply_item_components(&self, stack: &ItemStack) {
+        self.loot.apply_item_components(stack);
+    }
+
+    fn container_loot(&self) -> Option<&ContainerLoot> {
+        Some(&self.loot)
     }
 
     fn get_inventory(self: Arc<Self>) -> Option<Arc<dyn Inventory>> {
@@ -234,6 +249,7 @@ impl HopperBlockEntity {
             items: RwLock::new(from_fn(|_| ItemStack::EMPTY.clone())),
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
+            loot: ContainerLoot::default(),
             facing,
             cooldown_time: AtomicI32::new(-1),
             ticked_game_time: AtomicI64::new(0),
@@ -597,6 +613,7 @@ impl Inventory for HopperBlockEntity {
     }
 
     fn is_empty(&self) -> bool {
+        self.loot.unpack(self, &self.position);
         let items = self
             .items
             .read()
@@ -605,6 +622,7 @@ impl Inventory for HopperBlockEntity {
     }
 
     fn get_stack(&self, slot: usize) -> ItemStack {
+        self.loot.unpack(self, &self.position);
         let items = self
             .items
             .read()
@@ -613,6 +631,7 @@ impl Inventory for HopperBlockEntity {
     }
 
     fn remove_stack(&self, slot: usize) -> ItemStack {
+        self.loot.unpack(self, &self.position);
         let mut items = self
             .items
             .write()
@@ -623,6 +642,7 @@ impl Inventory for HopperBlockEntity {
     }
 
     fn remove_stack_specific(&self, slot: usize, amount: u8) -> ItemStack {
+        self.loot.unpack(self, &self.position);
         let mut items = self
             .items
             .write()
@@ -637,6 +657,7 @@ impl Inventory for HopperBlockEntity {
     }
 
     fn set_stack(&self, slot: usize, stack: ItemStack) {
+        self.loot.unpack(self, &self.position);
         let mut items = self
             .items
             .write()

@@ -47,6 +47,7 @@ pub mod brushable_block;
 pub mod calibrated_sculk_sensor;
 pub mod campfire;
 pub mod conduit;
+pub mod container_loot;
 pub mod copper_golem_statue;
 pub mod crafter;
 pub mod creaking_heart;
@@ -80,19 +81,10 @@ pub trait BlockEntity: Any + Send + Sync {
     fn resource_location(&self) -> &'static str;
     fn get_position(&self) -> BlockPos;
 
-    /// Atomically takes the pending loot-table key and seed from this block entity.
-    ///
-    /// Returns `Some((key, seed))` if a deferred loot table was set, clearing it in the
-    /// process. Returns `None` for entities that do not support loot tables, or if the
-    /// loot has already been generated.
-    fn take_loot_table(&self) -> Option<(String, i64)> {
+    /// The container's pending loot table (vanilla `RandomizableContainer`), for containers
+    /// that have one.
+    fn container_loot(&self) -> Option<&container_loot::ContainerLoot> {
         None
-    }
-
-    /// Returns `true` if this block entity has a pending deferred loot table that has
-    /// not yet been unpacked. Does not consume the loot table.
-    fn has_loot_table(&self) -> bool {
-        false
     }
 
     fn write_internal(&self, nbt: &mut NbtCompound) {

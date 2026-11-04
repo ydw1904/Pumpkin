@@ -277,6 +277,13 @@ impl BlockBehaviour for CrafterBlock {
         args: GetScreenHandlerFactoryArgs<'_>,
     ) -> Option<Box<dyn ScreenHandlerFactory>> {
         let block_entity = args.world.get_block_entity(args.position)?;
+        if !crate::block::entities::container_loot::open_container(
+            &block_entity,
+            args.world,
+            args.player,
+        ) {
+            return None;
+        }
         let inventory = block_entity.clone().to_recipe_input_inventory()?;
         let data = block_entity.to_property_delegate()?;
         Some(Box::new(CrafterScreenFactory(inventory, data)))

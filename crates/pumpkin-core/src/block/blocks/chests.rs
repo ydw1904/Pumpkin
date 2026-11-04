@@ -6,7 +6,6 @@ use crate::block::entities::trapped_chest::TrappedChestBlockEntity;
 use pumpkin_data::BlockStateId;
 use pumpkin_data::block_properties::{ChestLikeProperties, ChestType, HorizontalFacing};
 use pumpkin_data::entity::EntityPose;
-use pumpkin_data::loot_table::get_loot_table;
 use pumpkin_data::sound::Sound;
 use pumpkin_data::{Block, BlockDirection, translation};
 use pumpkin_inventory::Inventory;
@@ -23,6 +22,7 @@ use pumpkin_util::text::TextComponent;
 use pumpkin_world::world::BlockFlags;
 use std::sync::Mutex;
 
+use crate::block::entities::container_loot::has_pending_loot;
 use crate::block::{
     BlockBehaviour, BrokenArgs, EmitsRedstonePowerArgs, GetComparatorOutputArgs,
     GetRedstonePowerArgs, GetScreenHandlerFactoryArgs, NormalUseArgs, OnPlaceArgs,
@@ -32,7 +32,6 @@ use crate::block::{
 use crate::entity::EntityBase;
 use crate::entity::player::Player;
 use crate::world::World;
-use crate::world::loot::{LootContextParameters, fill_chest_inventory_handle};
 use pumpkin_data::BlockState;
 
 struct ChestScreenFactory {
@@ -221,33 +220,7 @@ fn get_chest_screen_handler_factory(
     };
 
     let unpack = |entity: &Arc<dyn BlockEntity>| {
-        if let Some((loot_key, seed)) = entity.take_loot_table()
-            && let Some(table) = get_loot_table(&loot_key)
-            && let Some(inv) = entity.clone().get_inventory()
-        {
-            args.player.trigger_advancement(
-                crate::entity::player::advancement::trigger::AdvancementTrigger::PlayerGeneratesContainerLoot {
-                    loot_table_id: loot_key.clone(),
-                },
-            );
-            fill_chest_inventory_handle(
-                &inv,
-                &crate::world::loot::LootTableHandle::Static(table),
-                seed,
-                &LootContextParameters {
-                    world: Some(args.world),
-                    position: Some(args.position.to_f64()),
-                    this_entity: Some(args.player.as_ref()),
-                    luck: args
-                        .player
-                        .living_entity
-                        .get_attribute_value(&pumpkin_data::attributes::Attributes::LUCK)
-                        as f32,
-                    ..Default::default()
-                },
-            );
-            inv.mark_dirty();
-        }
+        crate::block::entities::container_loot::unpack_for_player(entity, args.world, args.player);
     };
 
     // Unpack deferred loot table on first open (non-spectator only).
@@ -257,7 +230,7 @@ fn get_chest_screen_handler_factory(
 
     let first_loot_pending = first_chest
         .as_ref()
-        .is_some_and(|entity| entity.has_loot_table());
+        .is_some_and(|entity| has_pending_loot(entity.as_ref()));
     let first_inventory = first_chest.and_then(BlockEntity::get_inventory)?;
 
     if is_chest_blocked(args.world, args.position) {
@@ -285,7 +258,7 @@ fn get_chest_screen_handler_factory(
         || connected_towards.is_some_and(|direction| {
             args.world
                 .get_block_entity(&args.position.offset(direction.to_offset()))
-                .is_some_and(|second| second.has_loot_table())
+                .is_some_and(|second| has_pending_loot(second.as_ref()))
         });
 
     let inventory = if let Some(direction) = connected_towards

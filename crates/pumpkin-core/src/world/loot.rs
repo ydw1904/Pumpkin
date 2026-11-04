@@ -549,7 +549,7 @@ pub fn generate_loot_from_handle(
 }
 
 fn place_items_in_chest(
-    inventory: &std::sync::Arc<dyn pumpkin_inventory::Inventory>,
+    inventory: &dyn pumpkin_inventory::Inventory,
     mut items_to_place: Vec<ItemStack>,
     seed: i64,
 ) {
@@ -581,7 +581,7 @@ fn place_items_in_chest(
 }
 
 pub fn fill_chest_inventory_handle(
-    inventory: &std::sync::Arc<dyn pumpkin_inventory::Inventory>,
+    inventory: &dyn pumpkin_inventory::Inventory,
     handle: &LootTableHandle,
     seed: i64,
     params: &LootContextParameters<'_>,
@@ -591,7 +591,7 @@ pub fn fill_chest_inventory_handle(
 }
 
 pub fn fill_chest_inventory(
-    inventory: &std::sync::Arc<dyn pumpkin_inventory::Inventory>,
+    inventory: &dyn pumpkin_inventory::Inventory,
     table: &LootTable,
     seed: i64,
 ) {

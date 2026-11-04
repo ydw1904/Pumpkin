@@ -1,11 +1,12 @@
-use std::sync::{Arc, Mutex as StdMutex, RwLock, atomic::AtomicBool};
+use std::sync::{Arc, RwLock, atomic::AtomicBool};
 
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_util::math::position::BlockPos;
 
 use crate::{
-    block::viewer::ViewerCountTracker, impl_block_entity_for_chest, impl_chest_helper_methods,
-    impl_clearable_for_chest, impl_inventory_for_chest, impl_viewer_count_listener_for_chest,
+    block::entities::container_loot::ContainerLoot, block::viewer::ViewerCountTracker,
+    impl_block_entity_for_chest, impl_chest_helper_methods, impl_clearable_for_chest,
+    impl_inventory_for_chest, impl_viewer_count_listener_for_chest,
 };
 
 pub struct TrappedChestBlockEntity {
@@ -17,10 +18,7 @@ pub struct TrappedChestBlockEntity {
     // Viewer
     viewers: ViewerCountTracker,
 
-    /// Pending loot-table key. Set during generation; cleared on first open.
-    pub loot_table: StdMutex<Option<String>>,
-    /// Seed used for deterministic loot generation.
-    pub loot_table_seed: i64,
+    pub loot: ContainerLoot,
 }
 
 impl TrappedChestBlockEntity {

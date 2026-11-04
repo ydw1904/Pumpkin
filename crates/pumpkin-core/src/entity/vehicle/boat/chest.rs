@@ -4,6 +4,7 @@ use pumpkin_nbt::NbtCompound;
 use pumpkin_util::text::TextComponent;
 
 use crate::entity::{
+    Entity,
     player::Player,
     vehicle::boat::container::{BoatInventory, BoatScreenFactory},
 };
@@ -26,10 +27,15 @@ impl ChestBoat {
 
     pub(super) fn interact(
         &self,
+        entity: &Entity,
         custom_name: Option<TextComponent>,
         default_boat_name: TextComponent,
         player: &Arc<Player>,
     ) -> bool {
+        // Vanilla `AbstractChestBoat.createMenu`.
+        if !player.is_spectator() {
+            self.inventory.unpack_loot(entity, Some(player));
+        }
         player
             .open_handled_screen(
                 &BoatScreenFactory {

@@ -2034,6 +2034,9 @@ impl World {
                 ) {
                     continue;
                 }
+                if let Some(loot) = be.container_loot() {
+                    loot.set_world(self);
+                }
                 be.tick(self);
             }
         });
@@ -6568,6 +6571,10 @@ impl World {
             return None;
         }
 
+        if let Some(player) = cause {
+            crate::block::entities::shulker_box::player_will_destroy(self, position, player);
+        }
+
         let mut flags = flags;
         if flags.contains(BlockFlags::SKIP_DROPS)
             && cause.is_some_and(|p| p.gamemode.load() == pumpkin_util::GameMode::Creative)
@@ -7589,6 +7596,7 @@ impl World {
                 .insert(*block_pos, custom_data.clone());
         }
         let entity = block_entity_from_nbt(&nbt)?;
+        self.set_block_entity_world(entity.as_ref());
         let unmodelled = unmodelled_block_entity_fields(entity.as_ref(), &nbt);
         if unmodelled.is_empty() {
             self.unmodelled_block_entity_nbt.remove(block_pos);
@@ -7661,6 +7669,23 @@ impl World {
             .collect()
     }
 
+    /// Vanilla `BlockEntity.setLevel`, for the containers that unpack their loot table into it.
+    fn set_block_entity_world(&self, block_entity: &dyn BlockEntity) {
+        let Some(loot) = block_entity.container_loot() else {
+            return;
+        };
+        if let Some(world) = self.server.upgrade().and_then(|server| {
+            server
+                .worlds
+                .load()
+                .iter()
+                .find(|world| std::ptr::eq(world.as_ref(), self))
+                .cloned()
+        }) {
+            loot.set_world(&world);
+        }
+    }
+
     pub fn add_block_entity(&self, block_entity: Arc<dyn BlockEntity>) {
         let block_pos = block_entity.get_position();
         let chunk_pos = block_pos.chunk_position();
@@ -7694,6 +7719,7 @@ impl World {
             self.broadcast_to_chunk_bedrock(chunk_pos, &CBlockActorData::new(block_pos, data));
         }
 
+        self.set_block_entity_world(block_entity.as_ref());
         self.block_entities
             .entry(chunk_pos)
             .or_default()

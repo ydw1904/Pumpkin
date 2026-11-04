@@ -13,9 +13,13 @@ use pumpkin_inventory::{
 use pumpkin_nbt::NbtCompound;
 use pumpkin_util::text::TextComponent;
 
+use crate::block::entities::container_loot::ContainerLoot;
+use crate::entity::{Entity, player::Player};
+
 pub(super) struct BoatInventory {
     items: RwLock<Vec<ItemStack>>,
     size: usize,
+    loot: ContainerLoot,
 }
 
 impl BoatInventory {
@@ -23,6 +27,7 @@ impl BoatInventory {
         Self {
             items: RwLock::new(vec![ItemStack::EMPTY.clone(); size]),
             size,
+            loot: ContainerLoot::new(),
         }
     }
 
@@ -32,10 +37,15 @@ impl BoatInventory {
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         items.fill_with(|| ItemStack::EMPTY.clone());
-        self.read_data(nbt, &mut items);
+        if !self.loot.read_nbt(nbt) {
+            self.read_data(nbt, &mut items);
+        }
     }
 
     pub(super) fn write_nbt(&self, nbt: &mut NbtCompound) {
+        if self.loot.write_nbt(nbt) {
+            return;
+        }
         let items = self
             .items
             .read()
@@ -50,6 +60,18 @@ impl BoatInventory {
             }
         }
         nbt.put("Items", pumpkin_nbt::tag::NbtTag::List(list));
+    }
+
+    pub(super) fn has_loot_table(&self) -> bool {
+        self.loot.is_pending()
+    }
+
+    /// Vanilla `ContainerEntity.unpackChestVehicleLootTable`.
+    pub(super) fn unpack_loot(&self, entity: &Entity, player: Option<&Player>) {
+        if self.loot.is_pending() {
+            self.loot
+                .unpack_in(&entity.world.load(), self, entity.pos.load(), player);
+        }
     }
 }
 
@@ -125,6 +147,9 @@ impl ScreenHandlerFactory for BoatScreenFactory {
         player_inventory: &Arc<PlayerInventory>,
         player: &dyn InventoryPlayer,
     ) -> Option<SharedScreenHandler> {
+        if self.inventory.has_loot_table() && player.is_spectator() {
+            return None;
+        }
         let inventory: Arc<dyn Inventory> = self.inventory.clone();
         let handler = create_generic_9x3(sync_id, player_inventory, inventory, player);
         Some(Arc::new(Mutex::new(handler)) as SharedScreenHandler)

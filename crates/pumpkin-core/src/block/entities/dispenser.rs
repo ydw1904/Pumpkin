@@ -1,4 +1,5 @@
 use crate::block::entities::BlockEntity;
+use crate::block::entities::container_loot::ContainerLoot;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_inventory::{Clearable, Inventory};
 use pumpkin_nbt::compound::NbtCompound;
@@ -15,11 +16,14 @@ pub struct DispenserBlockEntity {
     pub items: RwLock<[ItemStack; Self::INVENTORY_SIZE]>,
     pub dirty: AtomicBool,
     pub comparator_dirty: AtomicBool,
+    pub loot: ContainerLoot,
 }
 
 impl BlockEntity for DispenserBlockEntity {
     fn write_nbt(&self, nbt: &mut NbtCompound) {
-        self.write_inventory_nbt(nbt, true);
+        if !self.loot.write_nbt(nbt) {
+            self.write_inventory_nbt(nbt, true);
+        }
     }
 
     fn from_nbt(nbt: &pumpkin_nbt::compound::NbtCompound, position: BlockPos) -> Self
@@ -31,15 +35,18 @@ impl BlockEntity for DispenserBlockEntity {
             items: RwLock::new(from_fn(|_| ItemStack::EMPTY.clone())),
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
+            loot: ContainerLoot::default(),
         };
 
-        pumpkin_inventory::sync_read_items_from_nbt(
-            nbt,
-            dispenser
-                .items
-                .get_mut()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-        );
+        if !dispenser.loot.read_nbt(nbt) {
+            pumpkin_inventory::sync_read_items_from_nbt(
+                nbt,
+                dispenser
+                    .items
+                    .get_mut()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+            );
+        }
 
         dispenser
     }
@@ -50,6 +57,14 @@ impl BlockEntity for DispenserBlockEntity {
 
     fn get_position(&self) -> BlockPos {
         self.position
+    }
+
+    fn apply_item_components(&self, stack: &ItemStack) {
+        self.loot.apply_item_components(stack);
+    }
+
+    fn container_loot(&self) -> Option<&ContainerLoot> {
+        Some(&self.loot)
     }
 
     fn get_inventory(self: Arc<Self>) -> Option<Arc<dyn Inventory>> {
@@ -99,10 +114,12 @@ impl DispenserBlockEntity {
             items: RwLock::new(from_fn(|_| ItemStack::EMPTY.clone())),
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
+            loot: ContainerLoot::default(),
         }
     }
 
     pub fn get_random_slot(&self) -> Option<(usize, ItemStack)> {
+        self.loot.unpack(self, &self.position);
         let items = self
             .items
             .read()
@@ -128,6 +145,7 @@ impl Inventory for DispenserBlockEntity {
     }
 
     fn is_empty(&self) -> bool {
+        self.loot.unpack(self, &self.position);
         let items = self
             .items
             .read()
@@ -136,6 +154,7 @@ impl Inventory for DispenserBlockEntity {
     }
 
     fn get_stack(&self, slot: usize) -> ItemStack {
+        self.loot.unpack(self, &self.position);
         let items = self
             .items
             .read()
@@ -144,6 +163,7 @@ impl Inventory for DispenserBlockEntity {
     }
 
     fn remove_stack(&self, slot: usize) -> ItemStack {
+        self.loot.unpack(self, &self.position);
         let mut items = self
             .items
             .write()
@@ -154,6 +174,7 @@ impl Inventory for DispenserBlockEntity {
     }
 
     fn remove_stack_specific(&self, slot: usize, amount: u8) -> ItemStack {
+        self.loot.unpack(self, &self.position);
         let mut items = self
             .items
             .write()
@@ -168,6 +189,7 @@ impl Inventory for DispenserBlockEntity {
     }
 
     fn set_stack(&self, slot: usize, stack: ItemStack) {
+        self.loot.unpack(self, &self.position);
         let mut items = self
             .items
             .write()
