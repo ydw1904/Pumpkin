@@ -166,7 +166,8 @@ pub struct ProtoChunk {
     pub default_block: &'static BlockState,
     biome_mixer_seed: i64,
     world_seed: u64,
-    pub(crate) flat_block_map: Vec<BlockStateId>,
+    /// Block sections up to the highest one generation wrote to.
+    pub(crate) block_sections: Vec<ProtoSection>,
     pub flat_biome_map: Box<[u8]>,
     pub flat_surface_height_map: [i16; CHUNK_AREA],
     pub flat_ocean_floor_height_map: [i16; CHUNK_AREA],
@@ -200,6 +201,124 @@ pub struct ProtoChunk {
     /// going through `ChunkPyramid.LOADING_PYRAMID`: no generation step runs again, and the
     /// saved chunk itself comes back once full.
     pub relight_of: Option<Arc<ChunkData>>,
+}
+
+/// A proto chunk's block section: one state, or a byte per block indexing a palette. Unlike
+/// [`BlockPalette`] the palette only grows, which keeps reads and writes cheap during
+/// generation; the level chunk's palettes are rebuilt from it.
+#[derive(Clone)]
+pub(crate) enum ProtoSection {
+    Single(BlockStateId),
+    Indexed {
+        palette: Vec<BlockStateId>,
+        indices: Box<[u8; BlockPalette::VOLUME]>,
+    },
+    Dense(Box<[BlockStateId; BlockPalette::VOLUME]>),
+}
+
+impl ProtoSection {
+    /// Packs a section's states, laid out like [`ProtoChunk::local_pos_to_block_index`].
+    fn from_states(states: &[BlockStateId]) -> Self {
+        let mut palette = vec![states[0]];
+        let mut indices = Box::new([0u8; BlockPalette::VOLUME]);
+        let mut last = (states[0], 0u8);
+        for (index, &state) in indices.iter_mut().zip(states) {
+            if state != last.0 {
+                let position = palette.iter().position(|&s| s == state).unwrap_or_else(|| {
+                    palette.push(state);
+                    palette.len() - 1
+                });
+                let Ok(position) = u8::try_from(position) else {
+                    let mut dense = Box::new([BlockStateId::AIR; BlockPalette::VOLUME]);
+                    dense.copy_from_slice(states);
+                    return Self::Dense(dense);
+                };
+                last = (state, position);
+            }
+            *index = last.1;
+        }
+        if palette.len() == 1 {
+            Self::Single(palette[0])
+        } else {
+            Self::Indexed { palette, indices }
+        }
+    }
+
+    #[inline]
+    fn get(&self, index: usize) -> BlockStateId {
+        match self {
+            Self::Single(state) => *state,
+            Self::Indexed { palette, indices } => palette[indices[index] as usize],
+            Self::Dense(states) => states[index],
+        }
+    }
+
+    /// Sets the state at `index` and returns the one that was there.
+    fn set(&mut self, index: usize, state: BlockStateId) -> BlockStateId {
+        let old = self.get(index);
+        if old == state {
+            return old;
+        }
+        match self {
+            Self::Single(_) => {
+                let mut indices = Box::new([0u8; BlockPalette::VOLUME]);
+                indices[index] = 1;
+                *self = Self::Indexed {
+                    palette: vec![old, state],
+                    indices,
+                };
+            }
+            Self::Indexed { palette, indices } => {
+                let position = palette.iter().position(|&s| s == state).unwrap_or_else(|| {
+                    palette.push(state);
+                    palette.len() - 1
+                });
+                if let Ok(position) = u8::try_from(position) {
+                    indices[index] = position;
+                } else {
+                    let mut dense = Box::new([BlockStateId::AIR; BlockPalette::VOLUME]);
+                    for (dense, &i) in dense.iter_mut().zip(indices.iter()) {
+                        *dense = palette[i as usize];
+                    }
+                    dense[index] = state;
+                    *self = Self::Dense(dense);
+                }
+            }
+            Self::Dense(states) => states[index] = state,
+        }
+        old
+    }
+
+    /// Copies the 16 states of the column at `x`, `z` into `out`, bottom first.
+    fn copy_column(&self, x: i32, z: i32, out: &mut [BlockStateId]) {
+        let base = ProtoChunk::local_pos_to_block_index(x, 0, z);
+        let step = ProtoChunk::local_pos_to_block_index(0, 1, 0);
+        match self {
+            Self::Single(state) => out.fill(*state),
+            Self::Indexed { palette, indices } => {
+                for (y, out) in out.iter_mut().enumerate() {
+                    *out = palette[indices[base + y * step] as usize];
+                }
+            }
+            Self::Dense(states) => {
+                for (y, out) in out.iter_mut().enumerate() {
+                    *out = states[base + y * step];
+                }
+            }
+        }
+    }
+
+    /// The level chunk palette holding the same blocks.
+    pub(crate) fn to_palette(&self) -> BlockPalette {
+        match self {
+            Self::Single(state) => BlockPalette::Homogeneous(*state),
+            _ => BlockPalette::from_fn(|x, y, z| {
+                self.get(ProtoChunk::local_pos_to_block_index(
+                    x as i32, y as i32, z as i32,
+                ))
+            }),
+        }
+    }
 }
 
 /// Vanilla `BlockState.getPostProcessPos`: the position to mark for post-processing when
@@ -341,7 +460,7 @@ impl ProtoChunk {
             default_block,
             biome_mixer_seed,
             world_seed: generator.seed(),
-            flat_block_map: Vec::new(),
+            block_sections: Vec::new(),
             flat_biome_map: vec![
                 Biome::PLAINS.id;
                 biome_coords::from_block(CHUNK_DIM as i32) as usize
@@ -684,10 +803,7 @@ impl ProtoChunk {
             }
 
             for scan_local_y in (0..local_y).rev() {
-                let idx = Self::local_pos_to_block_index(local_x, scan_local_y, local_z);
-                let Some(&state_id) = self.flat_block_map.get(idx) else {
-                    continue;
-                };
+                let state_id = self.get_block_state_raw(local_x, scan_local_y, local_z);
                 if state_id == BlockStateId::AIR {
                     continue;
                 }
@@ -738,7 +854,7 @@ impl ProtoChunk {
 
     pub fn prime_heightmaps(&mut self) {
         let bottom_y = self.generation_bottom_y() as i32;
-        let max_populated_y = bottom_y + (self.flat_block_map.len() / CHUNK_AREA) as i32 - 1;
+        let max_populated_y = bottom_y + self.populated_height() - 1;
         let top_y = (bottom_y + self.generation_height() as i32 - 1).min(max_populated_y);
         let default_y = (self.bottom_y() as i32 - 1) as i16;
 
@@ -762,10 +878,7 @@ impl ProtoChunk {
                 self.flat_motion_blocking_no_leaves_height_map[index] = default_y;
 
                 for y in (bottom_y..=col_top_y).rev() {
-                    let block_index = Self::local_pos_to_block_index(lx, y - bottom_y, lz);
-                    let Some(&state_id) = self.flat_block_map.get(block_index) else {
-                        continue;
-                    };
+                    let state_id = self.get_block_state_raw(lx, y - bottom_y, lz);
                     if state_id == BlockStateId::AIR {
                         continue;
                     }
@@ -857,8 +970,10 @@ impl ProtoChunk {
         x as usize * CHUNK_DIM as usize + z as usize
     }
 
+    /// The index of a block in [`Self::block_sections`] counted from the bottom section, so a
+    /// `y` below 16 gives the index inside one [`ProtoSection`].
     #[inline]
-    const fn local_pos_to_block_index(x: i32, y: i32, z: i32) -> usize {
+    pub(crate) const fn local_pos_to_block_index(x: i32, y: i32, z: i32) -> usize {
         ((y as usize) >> 4) * BlockPalette::VOLUME
             + (x as usize) * CHUNK_AREA
             + ((y as usize) & 15) * CHUNK_DIM as usize
@@ -880,14 +995,32 @@ impl ProtoChunk {
         is_air(self.get_block_state(local_pos))
     }
 
+    /// Copies the states of the column at local `x`, `z` into `out`, bottom first.
+    fn copy_column(&self, x: i32, z: i32, out: &mut [BlockStateId]) {
+        let mut sections = out.as_chunks_mut::<{ BlockPalette::SIZE }>().0.iter_mut();
+        for (section, out) in self.block_sections.iter().zip(&mut sections) {
+            section.copy_column(x, z, out);
+        }
+        for out in sections {
+            out.fill(BlockStateId::AIR);
+        }
+    }
+
+    /// How many blocks up from the bottom generation placed anything; everything above is air.
+    #[must_use]
+    pub(crate) const fn populated_height(&self) -> i32 {
+        (self.block_sections.len() * BlockPalette::SIZE) as i32
+    }
+
     #[inline]
     #[must_use]
     pub fn get_block_state_raw(&self, x: i32, y: i32, z: i32) -> BlockStateId {
         debug_assert!((0..i32::from(self.height())).contains(&y));
-        self.flat_block_map
-            .get(Self::local_pos_to_block_index(x, y, z))
-            .copied()
-            .unwrap_or(BlockStateId::AIR)
+        self.block_sections
+            .get(y as usize / BlockPalette::SIZE)
+            .map_or(BlockStateId::AIR, |section| {
+                section.get(Self::local_pos_to_block_index(x, y & 15, z))
+            })
     }
 
     #[inline]
@@ -909,19 +1042,18 @@ impl ProtoChunk {
             return;
         }
 
-        let index = Self::local_pos_to_block_index(local_x, local_y, local_z);
-        if index >= self.flat_block_map.len() {
+        let section_index = local_y as usize / BlockPalette::SIZE;
+        if section_index >= self.block_sections.len() {
             if block_state.id == BlockStateId::AIR {
                 return;
             }
-            let section_end = ((local_y as usize >> 4) + 1) * BlockPalette::VOLUME;
-            self.flat_block_map
-                .reserve_exact(section_end - self.flat_block_map.len());
-            self.flat_block_map.resize(section_end, BlockStateId::AIR);
-        } else if self.flat_block_map[index] == block_state.id {
+            self.block_sections
+                .resize(section_index + 1, ProtoSection::Single(BlockStateId::AIR));
+        }
+        let index = Self::local_pos_to_block_index(local_x, local_y & 15, local_z);
+        if self.block_sections[section_index].set(index, block_state.id) == block_state.id {
             return;
         }
-        self.flat_block_map[index] = block_state.id;
 
         let hm_index = Self::local_position_to_height_map_index(local_x, local_z);
         self.update_height_map_column(hm_index, local_x, local_y, local_z, y as i16, block_state);
@@ -1236,6 +1368,10 @@ impl ProtoChunk {
     ) {
         let volume = *noise_sampler.volume();
         let densities = noise_sampler.sample_density();
+        debug_assert!(self.block_sections.is_empty());
+        // The noise fill writes every block once, so it goes into a flat array that is packed
+        // into sections at the end.
+        let mut blocks: Vec<BlockStateId> = Vec::new();
 
         for z in 0..volume.size_z {
             let block_z = volume.block_z(z);
@@ -1253,13 +1389,47 @@ impl ProtoChunk {
                             surface_height_estimate_sampler,
                         );
                     let block_state = block_state.unwrap_or(generator.default_block);
-                    self.set_block_state(block_x, block_y, block_z, block_state);
+                    self.set_noise_block(&mut blocks, block_x, block_y, block_z, block_state);
                     if should_schedule_fluid_update {
                         self.mark_fluid_for_post_processing(block_x, block_y, block_z, block_state);
                     }
                 }
             }
         }
+
+        self.block_sections = blocks
+            .as_chunks::<{ BlockPalette::VOLUME }>()
+            .0
+            .iter()
+            .map(|states| ProtoSection::from_states(states))
+            .collect();
+    }
+
+    /// [`Self::set_block_state`] into the noise fill's flat array. The fill goes down each
+    /// column once over an empty chunk, so only non-air blocks change anything and they never
+    /// lower a heightmap.
+    fn set_noise_block(
+        &mut self,
+        blocks: &mut Vec<BlockStateId>,
+        x: i32,
+        y: i32,
+        z: i32,
+        block_state: &BlockState,
+    ) {
+        let local_x = x & 15;
+        let local_y = y - self.bottom_y() as i32;
+        let local_z = z & 15;
+        if local_y < 0 || local_y >= self.height() as i32 || block_state.id == BlockStateId::AIR {
+            return;
+        }
+        let index = Self::local_pos_to_block_index(local_x, local_y, local_z);
+        if index >= blocks.len() {
+            let section_end = (local_y as usize / BlockPalette::SIZE + 1) * BlockPalette::VOLUME;
+            blocks.resize(section_end, BlockStateId::AIR);
+        }
+        blocks[index] = block_state.id;
+        let hm_index = Self::local_position_to_height_map_index(local_x, local_z);
+        self.update_height_map_column(hm_index, local_x, local_y, local_z, y as i16, block_state);
     }
 
     pub fn spawn_mobs<T: GenerationCache>(cache: &mut T, block_registry: &dyn WorldPortalExt) {
@@ -1400,6 +1570,7 @@ impl ProtoChunk {
             || surface_biomes.contains_biome(Biome::DEEP_FROZEN_OCEAN.id);
         let check_column_biome = has_eroded_badlands || has_frozen_ocean;
 
+        let mut column = vec![BlockStateId::AIR; self.height() as usize];
         for local_x in 0..16 {
             for local_z in 0..16 {
                 let x = start_x + local_x;
@@ -1433,13 +1604,24 @@ impl ProtoChunk {
                 let top_block = self.top_block_height_exclusive(local_x, local_z);
 
                 context.init_horizontal(x, z);
+                // The loop below only changes the block it is at and reads the ones under it,
+                // so a copy of the column taken now reads the same.
+                let filled = ((top_block - min_y as i32 + 1).clamp(0, column.len() as i32)
+                    as usize)
+                    .next_multiple_of(BlockPalette::SIZE);
+                self.copy_column(local_x, local_z, &mut column[..filled]);
+                let column_state = |y: i32| {
+                    column[..filled]
+                        .get((y - min_y as i32) as usize)
+                        .copied()
+                        .unwrap_or(Block::VOID_AIR.default_state.id)
+                };
 
                 let mut stone_depth_above = 0;
                 let mut min = i32::MAX;
                 let mut fluid_height = i32::MIN;
                 for y in (min_y as i32..=top_block).rev() {
-                    let pos = Vector3::new(x, y, z);
-                    let state_id = self.get_block_state(&pos);
+                    let state_id = column_state(y);
                     if state_id == BlockStateId::AIR {
                         stone_depth_above = 0;
                         fluid_height = i32::MIN;
@@ -1467,9 +1649,7 @@ impl ProtoChunk {
                                 break;
                             }
 
-                            let block_id = self
-                                .get_block_state(&Vector3::new(local_x, search_y, local_z))
-                                .to_block_id();
+                            let block_id = column_state(search_y).to_block_id();
 
                             if !(block_id != AIR_BLOCK
                                 && block_id != WATER_BLOCK

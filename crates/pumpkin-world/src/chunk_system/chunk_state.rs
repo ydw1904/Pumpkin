@@ -217,13 +217,12 @@ impl Chunk {
         let biome_min_y = biome_coords::from_block(dimension.min_y);
         let block_sections = (0..total_sections)
             .map(|section_index| {
-                if section_index * BlockPalette::VOLUME >= proto_chunk.flat_block_map.len() {
-                    return BlockPalette::Homogeneous(BlockStateId::AIR);
-                }
-                BlockPalette::from_fn(|x, y, z| {
-                    let y = section_index * BlockPalette::SIZE + y;
-                    proto_chunk.get_block_state_raw(x as i32, y as i32, z as i32)
-                })
+                proto_chunk
+                    .block_sections
+                    .get(section_index)
+                    .map_or(BlockPalette::Homogeneous(BlockStateId::AIR), |section| {
+                        section.to_palette()
+                    })
             })
             .collect::<Vec<_>>()
             .into_boxed_slice();

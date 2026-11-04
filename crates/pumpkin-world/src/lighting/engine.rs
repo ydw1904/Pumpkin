@@ -472,11 +472,15 @@ impl CacheLightStorage<'_> {
         let index = self.chunk_index(BlockPos(Vector3::new(x, 0, z)))?;
         let (local_x, local_z) = ((x & 15) as usize, (z & 15) as usize);
         Some(match &self.cache.chunks[index] {
-            Chunk::Proto(chunk) => find_lowest_sky_source_y(self.bottom_y, self.top_y, |y| {
-                chunk
-                    .get_block_state_raw(local_x as i32, y - self.bottom_y, local_z as i32)
-                    .to_state()
-            }),
+            Chunk::Proto(chunk) => {
+                // Air never stops sky light, so skip the sections nothing was placed in.
+                let top_y = self.top_y.min(self.bottom_y + chunk.populated_height());
+                find_lowest_sky_source_y(self.bottom_y, top_y, |y| {
+                    chunk
+                        .get_block_state_raw(local_x as i32, y - self.bottom_y, local_z as i32)
+                        .to_state()
+                })
+            }
             Chunk::Level(chunk) => find_lowest_sky_source_y(self.bottom_y, self.top_y, |y| {
                 chunk
                     .section
