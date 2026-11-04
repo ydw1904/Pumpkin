@@ -15,8 +15,7 @@ use crate::entity::{
     ai::goal::{
         bow_attack::BowAttackGoal, flee_sun::FleeSunGoal, look_around::RandomLookAroundGoal,
         look_at_entity::LookAtEntityGoal, melee_attack::MeleeAttackGoal,
-        restrict_sun::RestrictSunGoal, revenge::RevengeGoal, swim::SwimGoal,
-        wander_around::WanderAroundGoal,
+        restrict_sun::RestrictSunGoal, revenge::RevengeGoal, wander_around::WanderAroundGoal,
     },
     ai::target_match::TargetMatch,
     mob::{Mob, MobEntity, equipment::RegionalDifficulty},
@@ -76,8 +75,6 @@ impl SkeletonEntityBase {
         {
             let goal_selector = &mob_arc.mob_entity.goals_selector;
             let target_selector = &mob_arc.mob_entity.target_selector;
-
-            goal_selector.add_goal(0, Box::new(SwimGoal::default()));
             goal_selector.add_goal(2, Box::new(RestrictSunGoal::new()));
             goal_selector.add_goal(3, Box::new(FleeSunGoal::new(1.0)));
             fleeing::apply(goal_selector, SKELETON_FLEES);

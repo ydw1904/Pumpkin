@@ -11,7 +11,7 @@ use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::{
     Entity, EntityBase,
     ai::goal::{
-        look_around::RandomLookAroundGoal, look_at_entity::LookAtEntityGoal, swim::SwimGoal,
+        look_around::RandomLookAroundGoal, look_at_entity::LookAtEntityGoal,
         wander_around::WanderAroundGoal,
     },
     mob::{Mob, MobEntity},
@@ -48,8 +48,6 @@ impl BlazeEntity {
         {
             let goal_selector = &mob_arc.entity.goals_selector;
             let target_selector = &mob_arc.entity.target_selector;
-
-            goal_selector.add_goal(0, Box::new(SwimGoal::default()));
 
             goal_selector.add_goal(
                 4,
