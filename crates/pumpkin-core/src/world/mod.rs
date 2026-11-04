@@ -1887,8 +1887,7 @@ impl World {
                     .collect();
                 let block_write_checks: Vec<_> = reports
                     .iter()
-                    .zip(&tickable)
-                    .map(|(report, (entity, _))| report.block_write_check(entity.as_ref()))
+                    .map(entity_islands::EntityReach::block_write_check)
                     .collect();
                 let ids: Vec<_> = tickable
                     .iter()

@@ -12,7 +12,10 @@ use std::sync::atomic::Ordering;
 use pumpkin_protocol::java::server::play::SPlayerInput;
 
 use crate::{
-    entity::{Entity, EntityBase, living::LivingEntity, player::Player},
+    entity::{
+        Entity, EntityBase, MINECART_PICKUP_GROWTH, MINECART_PUSH_GROWTH, living::LivingEntity,
+        player::Player,
+    },
     server::Server,
 };
 use pumpkin_data::Block;
@@ -29,6 +32,10 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 
 use crate::entity::vehicle::vehicle::VehicleEntity;
+use crate::plugin::{
+    api::events::vehicle::vehicle_update::VehicleUpdateEvent, server::packet::PacketSentEvent,
+};
+use crate::world::entity_islands::{self, AuditedReach};
 use chest::ChestMinecart;
 use container::MinecartInventory;
 use furnace::FurnaceMinecart;
@@ -56,6 +63,8 @@ const fn get_exits(
 
 const GRAVITY: f64 = 0.04;
 const RAIL_HEIGHT_OFFSET: f64 = 0.0625;
+/// Speed a powered rail accelerates a minecart to.
+const MAX_POWERED_SPEED: f64 = 0.4;
 
 pub struct MinecartEntity {
     pub vehicle: VehicleEntity,
@@ -124,7 +133,70 @@ impl MinecartEntity {
 
 const LOWERED_PASSENGER_ATTACHMENT: Vector3<f64> = Vector3::new(0.0, 0.0, 0.0);
 
+impl MinecartEntity {
+    /// What an empty rideable or chest minecart can touch next tick.
+    fn empty_cart_reach(&self) -> Option<AuditedReach> {
+        let entity = &self.vehicle.entity;
+        let rideable = matches!(self.kind, MinecartKind::Rideable(_));
+        if !(rideable || matches!(self.kind, MinecartKind::Chest(_)))
+            || entity.has_passengers()
+            || entity.has_vehicle()
+        {
+            return None;
+        }
+        let world = entity.world.load();
+        // Plugins see every tick through these events.
+        if world.server.upgrade().is_some_and(|server| {
+            server.plugin_manager.has_handlers::<VehicleUpdateEvent>()
+                || server.plugin_manager.has_handlers::<PacketSentEvent>()
+        }) {
+            return None;
+        }
+        let fluid_push = super::super::max_fluid_push_speed(world.dimension.fast_lava);
+        // A powered rail can speed it up to its maximum, it falls off the rails, and a rail
+        // first moves it onto the rail's line in its block or the block below.
+        let speed = entity.velocity.load().length().max(MAX_POWERED_SPEED) + GRAVITY + fluid_push;
+        let motion = (speed + std::f64::consts::SQRT_2, speed + 2.0);
+        let mut links = entity_islands::links_of(self);
+        let moved = entity
+            .bounding_box
+            .load()
+            .expand(motion.0, motion.1, motion.0);
+        super::super::mob::game_event_listener_links(&world, true, &moved, &mut links);
+        let mut reach = AuditedReach {
+            bounding_box: entity.bounding_box.load(),
+            motion,
+            // A rideable minecart takes passengers after moving, and both kinds push what they
+            // touch then.
+            entities: if rideable {
+                MINECART_PICKUP_GROWTH
+            } else {
+                MINECART_PUSH_GROWTH
+            },
+            players: MINECART_PUSH_GROWTH,
+            typed_entities: Vec::new(),
+            kind: Some(entity.entity_type),
+            // The rail in its block or the block below.
+            block_reads: 2.0,
+            route: None,
+            changes_blocks: false,
+            global: false,
+            links,
+            sight: Vec::new(),
+            spans_contacts: false,
+            // Pushing another minecart shares their speeds, more than an ordinary push.
+            knockback: MINECART_PUSH_GROWTH,
+        };
+        reach.scan_contact_blocks(&world);
+        Some(reach)
+    }
+}
+
 impl EntityBase for MinecartEntity {
+    fn audited_reach(&self) -> Option<AuditedReach> {
+        self.empty_cart_reach()
+    }
+
     fn passenger_attachment_point(
         &self,
         passenger: &dyn EntityBase,
@@ -225,7 +297,7 @@ impl EntityBase for MinecartEntity {
                     let mut velocity = self.vehicle.entity.velocity.load();
                     let speed = velocity.length();
                     if speed > 0.01 {
-                        let new_speed = (speed + 0.06).min(0.4);
+                        let new_speed = (speed + 0.06).min(MAX_POWERED_SPEED);
                         velocity = velocity
                             .normalize()
                             .multiply(new_speed, new_speed, new_speed);

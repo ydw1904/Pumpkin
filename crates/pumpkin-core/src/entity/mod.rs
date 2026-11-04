@@ -127,6 +127,10 @@ pub(crate) const AIR_DRAG: f32 = 0.98;
 
 /// Push strength per axis in `Entity.push`.
 pub(crate) const PUSH_STRENGTH: f64 = 0.05f32 as f64;
+/// Growth of the box a minecart pushes other entities in after moving.
+pub(crate) const MINECART_PUSH_GROWTH: f64 = 1.0e-7;
+/// Horizontal growth of the box a rideable minecart takes passengers from.
+pub(crate) const MINECART_PICKUP_GROWTH: f64 = 0.2;
 
 const MAX_LOADED_MOTION: f64 = 10.0;
 const MAX_HORIZONTAL_POSITION: f64 = 3.000_051_2E7;
@@ -1062,7 +1066,8 @@ pub trait EntityBase: Send + Sync + std::any::Any {
             let is_vehicle = self.is_vehicle();
 
             if is_rideable_minecart && !is_vehicle {
-                let pickup_bb = entity_bb.expand(0.2, 0.0, 0.2);
+                let pickup_bb =
+                    entity_bb.expand(MINECART_PICKUP_GROWTH, 0.0, MINECART_PICKUP_GROWTH);
                 let other_entities = world.get_entities_at_box(&pickup_bb);
 
                 for other in other_entities {
@@ -1086,7 +1091,11 @@ pub trait EntityBase: Send + Sync + std::any::Any {
                 }
             }
 
-            let push_bb = entity_bb.expand(1.0e-7, 1.0e-7, 1.0e-7);
+            let push_bb = entity_bb.expand(
+                MINECART_PUSH_GROWTH,
+                MINECART_PUSH_GROWTH,
+                MINECART_PUSH_GROWTH,
+            );
 
             let other_entities = world.get_entities_at_box(&push_bb);
             for other in other_entities {

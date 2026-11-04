@@ -27,9 +27,6 @@ use crate::plugin::api::events::entity::{
     entity_breed::EntityBreedEvent, entity_target::EntityTargetEvent,
     entity_toggle_sit::EntityToggleSitEvent, pig_zombie_anger::PigZombieAngerEvent,
 };
-use crate::plugin::{
-    api::events::vehicle::vehicle_update::VehicleUpdateEvent, server::packet::PacketSentEvent,
-};
 use crate::server::Server;
 use crate::world::World;
 
@@ -374,7 +371,6 @@ pub enum EntityReach {
 pub(crate) enum BlockWriteCheck {
     Unconditional,
     Contact,
-    DetectorRail(BlockPos),
 }
 
 impl EntityReach {
@@ -393,28 +389,9 @@ impl EntityReach {
     }
 
     #[must_use]
-    pub(crate) fn block_write_check(&self, entity: &dyn EntityBase) -> BlockWriteCheck {
+    pub(crate) const fn block_write_check(&self) -> BlockWriteCheck {
         match self {
             Self::Audited(audited) if !audited.changes_blocks => BlockWriteCheck::Contact,
-            Self::Conservative(reach)
-                if entity.get_entity().entity_type == &EntityType::CHEST_MINECART
-                    && entity
-                        .cast_any()
-                        .is::<crate::entity::vehicle::minecart::MinecartEntity>()
-                    && reach.links.is_empty() =>
-            {
-                let base = entity.get_entity();
-                let world = base.world.load();
-                if world.server.upgrade().is_some_and(|server| {
-                    server.plugin_manager.has_handlers::<VehicleUpdateEvent>()
-                        || server.plugin_manager.has_handlers::<PacketSentEvent>()
-                }) {
-                    return BlockWriteCheck::Unconditional;
-                }
-                // Chest carts only activate the rail inspected before movement. Their tick
-                // does not run Entity's general contact callbacks.
-                BlockWriteCheck::DetectorRail(BlockPos::floored_v(base.pos.load()))
-            }
             _ => BlockWriteCheck::Unconditional,
         }
     }
@@ -621,30 +598,17 @@ pub(crate) fn prune_block_writes(
         if !active[slot] {
             continue;
         }
-        let contact = match checks[slot] {
-            BlockWriteCheck::Unconditional => continue,
-            BlockWriteCheck::Contact => {
-                let area = reach.body.expand_towards(0.0, -1.0, 0.0);
-                let contact = BoundingBox::new(
-                    area.min_block_pos().0.to_f64(),
-                    area.max_block_pos().0.to_f64() + Vector3::new(1.0, 1.0, 1.0),
-                );
-                if contact_may_change_blocks(world, &contact, &mut sections) {
-                    continue;
-                }
-                contact
-            }
-            BlockWriteCheck::DetectorRail(pos) => {
-                if !world.level.is_chunk_loaded(&pos.chunk_position())
-                    || [pos, pos.down()]
-                        .iter()
-                        .any(|pos| world.get_block(pos).id == Block::DETECTOR_RAIL.id)
-                {
-                    continue;
-                }
-                BoundingBox::from_block(&pos).expand_towards(0.0, -1.0, 0.0)
-            }
-        };
+        if matches!(checks[slot], BlockWriteCheck::Unconditional) {
+            continue;
+        }
+        let area = reach.body.expand_towards(0.0, -1.0, 0.0);
+        let contact = BoundingBox::new(
+            area.min_block_pos().0.to_f64(),
+            area.max_block_pos().0.to_f64() + Vector3::new(1.0, 1.0, 1.0),
+        );
+        if contact_may_change_blocks(world, &contact, &mut sections) {
+            continue;
+        }
         active[slot] = false;
         contacts.insert(candidates.len(), contact, &mut budget)?;
         candidates.push(slot);
@@ -2492,7 +2456,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn chest_cart_writes_only_bridge_elevated_readers_when_a_rail_can_activate()
+    async fn chest_cart_writes_only_bridge_elevated_readers_next_to_a_contact_block()
     -> Result<(), Box<dyn std::error::Error>> {
         use crate::entity::{Entity, vehicle::minecart::MinecartEntity};
 
@@ -2503,7 +2467,6 @@ mod tests {
             .level
             .loaded_chunks
             .insert(Vector2::new(0, 0), chunk.clone());
-        let pos = BlockPos::new(8, 40, 8);
         let cart = MinecartEntity::new(Entity::new(
             world.clone(),
             Vector3::new(8.5, 40.0, 8.5),
@@ -2516,12 +2479,9 @@ mod tests {
             &EntityType::CHEST_MINECART,
         );
         assert!(matches!(
-            EntityReach::of(&custom, &config).block_write_check(&custom),
+            EntityReach::of(&custom, &config).block_write_check(),
             BlockWriteCheck::Unconditional
         ));
-        let report = EntityReach::of(&cart, &config);
-        assert!(matches!(report, EntityReach::Conservative(_)));
-        let check = report.block_write_check(&cart);
         let mut reader = node(1, 8.0, 0.0).1;
         reader.body =
             BoundingBox::new(Vector3::new(8.0, 200.0, 8.0), Vector3::new(9.0, 201.0, 9.0));
@@ -2530,66 +2490,25 @@ mod tests {
         reader.block_reads = reader.body;
         reader.block_reads.min.y = f64::NEG_INFINITY;
         reader.block_reads.max.y = f64::INFINITY;
-        let mut original = resolve(vec![report], &config).ok_or("unexpected serial fallback")?;
-        original.push(reader);
-        let partitioned = |reaches: &[TickReach]| {
+        let partitioned = || -> Result<Vec<Vec<usize>>, &'static str> {
+            let report = EntityReach::of(&cart, &config);
+            assert!(matches!(report, EntityReach::Audited(_)));
+            let checks = [report.block_write_check(), BlockWriteCheck::Unconditional];
+            let mut reaches = resolve(vec![report], &config).ok_or("unexpected serial fallback")?;
+            reaches.push(reader.clone());
+            prune_block_writes(&world, &mut reaches, &checks)
+                .ok_or("unexpected pruning budget exhaustion")?;
             let nodes: Vec<_> = reaches
-                .iter()
-                .cloned()
+                .into_iter()
                 .enumerate()
                 .map(|(id, reach)| (id as i32, reach))
                 .collect();
-            islands(&nodes, &[], &[])
+            Ok(islands(&nodes, &[], &[]))
         };
-        assert_eq!(partitioned(&original), [vec![0, 1]]);
-        let mut reaches = original.clone();
-        prune_block_writes(
-            &world,
-            &mut reaches,
-            &[check, BlockWriteCheck::Unconditional],
-        )
-        .ok_or("unexpected pruning budget exhaustion")?;
-        assert_eq!(partitioned(&reaches), [vec![0], vec![1]]);
-        assert_box(&reaches[0].body, &original[0].body);
-        assert_box(&reaches[0].entities, &original[0].entities);
-        assert_box(&reaches[0].block_reads, &original[0].block_reads);
+        assert_eq!(partitioned()?, [vec![0], vec![1]]);
 
         chunk.set_block_absolute_y(8, 39, 8, Block::DETECTOR_RAIL.default_state.id);
-        let mut reaches = original.clone();
-        prune_block_writes(
-            &world,
-            &mut reaches,
-            &[check, BlockWriteCheck::Unconditional],
-        )
-        .ok_or("unexpected pruning budget exhaustion")?;
-        assert_eq!(partitioned(&reaches), [vec![0, 1]]);
-
-        chunk.set_block_absolute_y(8, 39, 8, Block::AIR.default_state.id);
-        let mut reaches = original.clone();
-        let mut writer = node(2, 100.0, 0.0).1;
-        writer.block_writes = Some(BoundingBox::from_block(&pos.down()));
-        reaches.push(writer);
-        prune_block_writes(
-            &world,
-            &mut reaches,
-            &[
-                check,
-                BlockWriteCheck::Unconditional,
-                BlockWriteCheck::Unconditional,
-            ],
-        )
-        .ok_or("unexpected pruning budget exhaustion")?;
-        assert!(reaches[0].block_writes.is_some());
-
-        world.level.loaded_chunks.remove(&Vector2::new(0, 0));
-        let mut reaches = original;
-        prune_block_writes(
-            &world,
-            &mut reaches,
-            &[check, BlockWriteCheck::Unconditional],
-        )
-        .ok_or("unexpected pruning budget exhaustion")?;
-        assert!(reaches[0].block_writes.is_some());
+        assert_eq!(partitioned()?, [vec![0, 1]]);
         world.level.shutdown().await;
         Ok(())
     }
