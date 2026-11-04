@@ -217,6 +217,15 @@ impl Mob for CreeperEntity {
         &self.mob_entity
     }
 
+    // Priming emits a game event and exploding reaches past any margin.
+    fn has_audited_tick(&self) -> bool {
+        !self.primes_next_tick() && !self.explodes_next_tick()
+    }
+
+    fn has_global_tick_reach(&self) -> bool {
+        self.explodes_next_tick()
+    }
+
     fn mob_metadata(&self) -> Option<crate::entity::mob::MobMetadata> {
         let mut meta = crate::entity::mob::MobMetadata::new();
         if self.is_charged() {
@@ -336,6 +345,26 @@ impl Mob for CreeperEntity {
 }
 
 impl CreeperEntity {
+    /// The fuse speed `mob_tick` uses next.
+    fn next_fuse_speed(&self) -> i32 {
+        if self.ignited.load(Ordering::Relaxed) {
+            1
+        } else {
+            self.fuse_speed.load(Ordering::Relaxed)
+        }
+    }
+
+    /// Whether `mob_tick` plays the priming sound and emits its game event next tick.
+    fn primes_next_tick(&self) -> bool {
+        self.next_fuse_speed() > 0 && self.current_fuse_time.load(Ordering::Relaxed) == 0
+    }
+
+    /// Whether `mob_tick` makes the creeper explode next tick.
+    fn explodes_next_tick(&self) -> bool {
+        let fuse = self.current_fuse_time.load(Ordering::Relaxed) + self.next_fuse_speed();
+        fuse.max(0) >= self.fuse_time.load(Ordering::Relaxed)
+    }
+
     pub fn is_charged(&self) -> bool {
         self.charged.load(Ordering::Relaxed)
     }

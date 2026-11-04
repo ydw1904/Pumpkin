@@ -2047,6 +2047,44 @@ mod tests {
         assert_eq!(islands(&nodes, &[], &[]), [(0..150).collect::<Vec<_>>()]);
     }
 
+    #[tokio::test]
+    async fn a_creeper_serializes_the_tick_it_explodes() -> Result<(), Box<dyn std::error::Error>> {
+        use crate::entity::{
+            Entity,
+            mob::{Mob, creeper::CreeperEntity},
+        };
+        use pumpkin_nbt::compound::NbtCompound;
+
+        let folder = tempfile::tempdir()?;
+        let world = crate::entity::ai::test_support::world(&folder);
+        let creeper = CreeperEntity::new(Entity::new(
+            world.clone(),
+            Vector3::new(0.0, 64.0, 0.0),
+            &EntityType::CREEPER,
+        ));
+        // A blast this wide reaches past every margin of the unaudited fallback.
+        let mut nbt = NbtCompound::new();
+        nbt.put_byte("ExplosionRadius", 100);
+        creeper.mob_read_nbt(&nbt);
+        let config = EntityIslandsConfig::default();
+        assert!(matches!(
+            EntityReach::of(creeper.as_ref(), &config),
+            EntityReach::Audited(_)
+        ));
+        creeper.set_ignited(true);
+        // Ignited, it primes next tick: a game event outside the audited reach.
+        assert!(matches!(
+            EntityReach::of(creeper.as_ref(), &config),
+            EntityReach::Conservative(_)
+        ));
+        creeper
+            .current_fuse_time
+            .store(creeper.get_fuse() - 1, std::sync::atomic::Ordering::Relaxed);
+        assert!(resolve(vec![EntityReach::of(creeper.as_ref(), &config)], &config).is_none());
+        world.level.shutdown().await;
+        Ok(())
+    }
+
     #[test]
     fn typed_searches_join_only_the_kinds_they_match() {
         let golems = TargetMatch::Type(&EntityType::IRON_GOLEM);

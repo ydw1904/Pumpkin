@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use super::{Controls, Goal};
+use super::{Controls, Goal, GoalReach};
 
 use crate::entity::EntityBase;
 use crate::entity::mob::Mob;
@@ -25,6 +25,20 @@ impl CreeperIgniteGoal {
 }
 
 impl Goal for CreeperIgniteGoal {
+    fn tick_reach(&self, _mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        // The fuse it sets burns from the next tick, which the creeper's own reach covers.
+        let target: Vec<_> = self
+            .target
+            .iter()
+            .map(|target| target.get_entity().entity_id)
+            .collect();
+        Some(GoalReach {
+            links: target.clone(),
+            sight: target,
+            ..GoalReach::default()
+        })
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         if self.creeper.fuse_speed.load(Ordering::Relaxed) > 0 {
             return true;
