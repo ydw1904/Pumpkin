@@ -9,6 +9,7 @@ use pumpkin_util::math::vector3::Vector3;
 use pumpkin_world::tick::TickPriority;
 use pumpkin_world::world::BlockFlags;
 
+use crate::block::fluid::{flowing_trait::FlowingFluid, lava::FlowingLava};
 use crate::block::{
     BlockBehaviour, BlockMetadata, GetStateForNeighborUpdateArgs, OnEntityCollisionArgs,
     OnNeighborUpdateArgs, OnScheduledTickArgs, PlacedArgs,
@@ -31,7 +32,7 @@ pub struct BubbleColumnBlock;
 
 impl BlockMetadata for BubbleColumnBlock {
     fn ids() -> Box<[BlockId]> {
-        [BlockId::BUBBLE_COLUMN, BlockId::WATER].into()
+        [BlockId::BUBBLE_COLUMN, BlockId::WATER, BlockId::LAVA].into()
     }
 }
 
@@ -213,8 +214,13 @@ impl BlockBehaviour for BubbleColumnBlock {
         args: GetStateForNeighborUpdateArgs<'_>,
     ) -> BlockStateId {
         if args.block == &Block::BUBBLE_COLUMN {
-            // `BubbleColumnBlock.updateShape`. Its water tick comes from the fluid's
-            // `on_neighbor_update`, as for other water.
+            // `BubbleColumnBlock.updateShape`
+            args.world.schedule_fluid_tick(
+                &Fluid::WATER,
+                *args.position,
+                Fluid::WATER.flow_speed,
+                TickPriority::Normal,
+            );
             if !can_survive(args.world, args.position)
                 || args.direction == BlockDirection::Down
                 || (args.direction == BlockDirection::Up
@@ -228,9 +234,25 @@ impl BlockBehaviour for BubbleColumnBlock {
                     TickPriority::Normal,
                 );
             }
-        } else if args.direction == BlockDirection::Down && is_source_water_state(args.state_id) {
-            // `LiquidBlock.updateShape`
-            try_schedule_bubble_column(args.world, args.position, args.neighbor_state_id);
+        } else {
+            // `LiquidBlock.updateShape`: a source, or a liquid next to one, may flow again.
+            let fluid = World::get_fluid_type_from_state_id(args.state_id);
+            let is_source = |state| {
+                let fluid = World::get_fluid_type_from_state_id(state);
+                fluid == &Fluid::WATER || fluid == &Fluid::LAVA
+            };
+            if is_source(args.state_id) || is_source(args.neighbor_state_id) {
+                let delay = if args.block == &Block::LAVA {
+                    FlowingLava.get_flow_speed(args.world)
+                } else {
+                    Fluid::WATER.flow_speed
+                };
+                args.world
+                    .schedule_fluid_tick(fluid, *args.position, delay, TickPriority::Normal);
+            }
+            if args.direction == BlockDirection::Down && is_source_water_state(args.state_id) {
+                try_schedule_bubble_column(args.world, args.position, args.neighbor_state_id);
+            }
         }
         args.state_id
     }
