@@ -44,12 +44,46 @@ const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 static MAIN_THREAD: OnceLock<ThreadId> = OnceLock::new();
 
+/// glibc gives each thread that contends for the heap its own arena, up to eight per core, and
+/// memory freed in one arena isn't reused by the others. With chunk generation spread over many
+/// threads that kept a quarter of the peak RSS in free memory. Fewer arenas than this slowed
+/// ticks down through lock contention. `MALLOC_ARENA_MAX` still wins.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn limit_malloc_arenas() {
+    const M_ARENA_MAX: i32 = -8;
+    const MAX_ARENAS: i32 = 32;
+    unsafe extern "C" {
+        fn mallopt(param: i32, value: i32) -> i32;
+    }
+    if std::env::var_os("MALLOC_ARENA_MAX").is_none() {
+        // SAFETY: `mallopt` only tunes the allocator and may be called at any time.
+        unsafe {
+            mallopt(M_ARENA_MAX, MAX_ARENAS);
+        }
+    }
+}
+
+fn main() {
+    // Before the runtime starts any thread: glibc fixes the arena limit when the first extra
+    // arena is made.
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    limit_malloc_arenas();
+    #[expect(
+        clippy::expect_used,
+        reason = "what `#[tokio::main]` does; nothing can run without the runtime"
+    )]
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Failed building the Runtime")
+        .block_on(async_main());
+}
+
 // WARNING: All rayon calls from the tokio runtime must be non-blocking! This includes things
 // like `par_iter`. These should be spawned in the the rayon pool and then passed to the tokio
 // runtime with a channel! See `Level::fetch_chunks` as an example!
 #[allow(clippy::too_many_lines)]
-#[tokio::main]
-async fn main() {
+async fn async_main() {
     let _ = MAIN_THREAD.set(thread::current().id());
 
     // reqwest is built with `rustls-no-provider`, so pick the ring provider (the one
