@@ -1,13 +1,12 @@
+use super::light::light_data_from_chunk;
 use super::util::write_compound_nbt;
 use crate::block::entities::block_entity_from_nbt;
-use pumpkin_protocol::codec::bit_set::BitSet;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_protocol::ser::NetworkWriteExt;
 use pumpkin_protocol::ser::WritingError;
 use pumpkin_util::math::position::get_local_cord;
 use pumpkin_util::version::JavaMinecraftVersion;
 use pumpkin_world::chunk::ChunkData;
-use pumpkin_world::chunk::format::LightContainer;
 use pumpkin_world::chunk::palette::NetworkPalette;
 use std::io::Write;
 
@@ -221,80 +220,7 @@ pub fn write_chunk_data(
         write.write_compound_nbt_with_version(update_tag.as_ref(), version)?;
     }
 
-    {
-        // Light masks include sections from -1 (below world) to num_sections (above world)
-        // This means we need to account for 2 extra sections in the bitset
-        let light_engine = chunk
-            .light_engine
-            .lock()
-            .map_err(|_| WritingError::Message("light_engine lock poisoned".into()))?;
-        let num_sections = light_engine.sky_light.len();
-
-        let mut sky_light_empty_mask = 0u64;
-        let mut block_light_empty_mask = 0u64;
-        let mut sky_light_mask = 0u64;
-        let mut block_light_mask = 0u64;
-
-        // Bit 0 represents the section below the world (always empty)
-        sky_light_empty_mask |= 1 << 0;
-        block_light_empty_mask |= 1 << 0;
-
-        // Bits 1..=num_sections represent the actual world sections
-        for section_index in 0..num_sections {
-            let bit_index = section_index + 1; // Offset by 1 for the below-world section
-
-            if let LightContainer::Full(_) = &light_engine.sky_light[section_index] {
-                sky_light_mask |= 1 << bit_index;
-            } else {
-                sky_light_empty_mask |= 1 << bit_index;
-            }
-
-            if let LightContainer::Full(_) = &light_engine.block_light[section_index] {
-                block_light_mask |= 1 << bit_index;
-            } else {
-                block_light_empty_mask |= 1 << bit_index;
-            }
-        }
-
-        // Bit num_sections+1 represents the section above the world (always empty)
-        sky_light_empty_mask |= 1 << (num_sections + 1);
-        block_light_empty_mask |= 1 << (num_sections + 1);
-
-        // Trust edges (1.18 - 1.19.4; removed in 1.20)
-        if version < &JavaMinecraftVersion::V_1_20 {
-            write.write_bool(true)?;
-        }
-
-        // Write Sky Light Mask
-        BitSet(Box::new([sky_light_mask as i64])).encode_with_version(&mut write, version)?;
-        // Write Block Light Mask
-        BitSet(Box::new([block_light_mask as i64])).encode_with_version(&mut write, version)?;
-        // Write Empty Sky Light Mask
-        BitSet(Box::new([sky_light_empty_mask as i64])).encode_with_version(&mut write, version)?;
-        // Write Empty Block Light Mask
-        BitSet(Box::new([block_light_empty_mask as i64]))
-            .encode_with_version(&mut write, version)?;
-
-        let light_data_size: VarInt = VarInt(LightContainer::ARRAY_SIZE as i32);
-
-        // Write Sky Light arrays
-        write.write_var_int(&VarInt(sky_light_mask.count_ones() as i32))?;
-        for section_index in 0..num_sections {
-            if let LightContainer::Full(data) = &light_engine.sky_light[section_index] {
-                write.write_var_int(&light_data_size)?;
-                write.write_slice(data.as_ref())?;
-            }
-        }
-
-        // Write Block Light arrays
-        write.write_var_int(&VarInt(block_light_mask.count_ones() as i32))?;
-        for section_index in 0..num_sections {
-            if let LightContainer::Full(data) = &light_engine.block_light[section_index] {
-                write.write_var_int(&light_data_size)?;
-                write.write_slice(data.as_ref())?;
-            }
-        }
-    }
+    light_data_from_chunk(chunk, *version)?.write(&mut write, version)?;
 
     Ok(())
 }

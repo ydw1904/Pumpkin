@@ -106,4 +106,25 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn light_leaves_out_sections_far_from_blocks() {
+        use pumpkin_world::chunk::format::LightContainer;
+        let chunk = ChunkData::empty(0, 0);
+        chunk
+            .section
+            .set_block_absolute_y(0, 64, 0, pumpkin_data::Block::STONE.default_state.id);
+        let mut light = chunk.light_engine.lock().unwrap();
+        light.sky_light = vec![LightContainer::new_filled(15); 24].into();
+        light.block_light = vec![LightContainer::Empty(0); 24].into();
+        drop(light);
+        let data = light::light_data_from_chunk(&chunk, JavaMinecraftVersion::V_26_3).unwrap();
+        // y = 64 is in world section 8, which is light section 9.
+        let near = 0b111 << 8;
+        assert_eq!(data.sky_light_mask.as_u64(), near);
+        assert_eq!(data.sky_light_arrays.len(), 3);
+        assert_eq!(data.empty_sky_light_mask.as_u64(), 0);
+        assert_eq!(data.block_light_mask.as_u64(), 0);
+        assert_eq!(data.empty_block_light_mask.as_u64(), near);
+    }
 }

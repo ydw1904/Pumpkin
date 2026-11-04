@@ -1663,6 +1663,15 @@ impl LightContainer {
         matches!(self, Self::Empty(_))
     }
 
+    /// Whether every position holds `value`.
+    #[must_use]
+    pub fn is_filled_with(&self, value: u8) -> bool {
+        match self {
+            Self::Empty(default) => *default == value,
+            Self::Full(data) => data.iter().all(|&byte| byte == value << 4 | value),
+        }
+    }
+
     #[inline]
     const fn index(x: usize, y: usize, z: usize) -> usize {
         y * 16 * 16 + z * 16 + x

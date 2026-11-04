@@ -29,6 +29,16 @@ pub fn light_data_from_chunk(
     chunk: &ChunkData,
     version: JavaMinecraftVersion,
 ) -> Result<LightData, WritingError> {
+    const BELOW_WORLD: LightContainer = LightContainer::Empty(0);
+    const ABOVE_WORLD_SKY: LightContainer = LightContainer::Empty(15);
+    let has_blocks: Vec<bool> = chunk
+        .section
+        .block_sections
+        .read()
+        .map_err(|_| WritingError::Message("block_sections lock poisoned".into()))?
+        .iter()
+        .map(|section| !section.has_only_air())
+        .collect();
     let light_engine = chunk
         .light_engine
         .lock()
@@ -171,47 +181,60 @@ pub fn light_data_from_chunk(
         })
     } else {
         let num_sections = light_engine.sky_light.len();
-        let mut sky_light_empty_mask = 0u64;
-        let mut block_light_empty_mask = 0u64;
+        let mut data = LightData {
+            trust_edges: true,
+            ..LightData::default()
+        };
         let mut sky_light_mask = 0u64;
         let mut block_light_mask = 0u64;
-
-        let mut sky_light_arrays = Vec::new();
-        let mut block_light_arrays = Vec::new();
-
-        sky_light_empty_mask |= 1 << 0;
-        block_light_empty_mask |= 1 << 0;
-
-        for section_index in 0..num_sections {
-            let bit_index = section_index + 1;
-
-            if let LightContainer::Full(data) = &light_engine.sky_light[section_index] {
-                sky_light_mask |= 1 << bit_index;
-                sky_light_arrays.push(data.to_vec());
-            } else {
-                sky_light_empty_mask |= 1 << bit_index;
+        let mut empty_sky_light_mask = 0u64;
+        let mut empty_block_light_mask = 0u64;
+        // Vanilla only keeps light for sections with blocks and the sections next to them
+        // (the `LayerLightSectionStorage` section states) and sends nothing for the others.
+        // The client takes missing sky light above the terrain as full, so a far section is
+        // left out when it holds the default light. Neighbouring chunks also count in vanilla,
+        // which only adds sections with that same default light.
+        let near_blocks = |light_index: usize| {
+            (light_index.saturating_sub(2)..=light_index)
+                .any(|section| has_blocks.get(section).copied().unwrap_or(false))
+        };
+        // Light section 0 is the one below the world, `num_sections + 1` the one above it.
+        for light_index in 0..num_sections + 2 {
+            let (sky, block, outside_world) = match light_index.checked_sub(1) {
+                Some(section) if section < num_sections => (
+                    &light_engine.sky_light[section],
+                    &light_engine.block_light[section],
+                    false,
+                ),
+                Some(_) => (&ABOVE_WORLD_SKY, &BELOW_WORLD, true),
+                None => (&BELOW_WORLD, &BELOW_WORLD, true),
+            };
+            let near = near_blocks(light_index);
+            let bit = 1 << light_index;
+            if near || !(outside_world || sky.is_filled_with(15)) {
+                push_section(
+                    sky,
+                    bit,
+                    &mut sky_light_mask,
+                    &mut empty_sky_light_mask,
+                    &mut data.sky_light_arrays,
+                );
             }
-
-            if let LightContainer::Full(data) = &light_engine.block_light[section_index] {
-                block_light_mask |= 1 << bit_index;
-                block_light_arrays.push(data.to_vec());
-            } else {
-                block_light_empty_mask |= 1 << bit_index;
+            if near || !(outside_world || block.is_filled_with(0)) {
+                push_section(
+                    block,
+                    bit,
+                    &mut block_light_mask,
+                    &mut empty_block_light_mask,
+                    &mut data.block_light_arrays,
+                );
             }
         }
-
-        sky_light_empty_mask |= 1 << (num_sections + 1);
-        block_light_empty_mask |= 1 << (num_sections + 1);
-
-        Ok(LightData {
-            trust_edges: true,
-            sky_light_mask: BitSet::from_u64(sky_light_mask),
-            block_light_mask: BitSet::from_u64(block_light_mask),
-            empty_sky_light_mask: BitSet::from_u64(sky_light_empty_mask),
-            empty_block_light_mask: BitSet::from_u64(block_light_empty_mask),
-            sky_light_arrays,
-            block_light_arrays,
-        })
+        data.sky_light_mask = BitSet::from_u64(sky_light_mask);
+        data.block_light_mask = BitSet::from_u64(block_light_mask);
+        data.empty_sky_light_mask = BitSet::from_u64(empty_sky_light_mask);
+        data.empty_block_light_mask = BitSet::from_u64(empty_block_light_mask);
+        Ok(data)
     }
 }
 
