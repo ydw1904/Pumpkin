@@ -210,13 +210,15 @@ impl GoalSelector {
     }
 
     /// Adds the reach of every registered goal; `None` if one is unaudited or busy.
+    /// Without a `full` selector pass only running goals get callbacks.
     pub(in crate::entity) fn tick_reach(
         selector: &Self,
         mob: &dyn Mob,
+        full: bool,
         reach: &mut GoalReach,
     ) -> Option<()> {
         for entry in Self::snapshot(selector).iter() {
-            if !entry.registered.load(Relaxed) {
+            if !entry.registered.load(Relaxed) || !(full || entry.running.load(Relaxed)) {
                 continue;
             }
             let borrowed = entry.borrow(BorrowKind::Reach)?;
@@ -861,7 +863,12 @@ mod tests {
         mob.0.server_ai_step(&mob, &mob);
         std::thread::scope(|scope| -> Result<(), Box<dyn std::error::Error>> {
             let report = scope.spawn(|| {
-                GoalSelector::tick_reach(&mob.0.goals_selector, &mob, &mut GoalReach::default())
+                GoalSelector::tick_reach(
+                    &mob.0.goals_selector,
+                    &mob,
+                    true,
+                    &mut GoalReach::default(),
+                )
             });
             entered_rx.recv_timeout(THREAD_DEADLINE)?;
             let clear = scope.spawn(|| mob.0.clear_ai_goals(&mob));

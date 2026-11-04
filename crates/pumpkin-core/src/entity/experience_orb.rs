@@ -343,11 +343,16 @@ impl EntityBase for ExperienceOrbEntity {
             ),
             entities: Self::ORB_MERGE_DISTANCE,
             players: Self::MAX_FOLLOW_DIST,
+            typed_entities: Vec::new(),
+            kind: entity.entity_type,
             block_reads: 1.0,
             route: None,
             changes_blocks: false,
             global: false,
             links,
+            sight: Vec::new(),
+            spans_contacts: false,
+            knockback: 0.0,
         };
         reach.scan_contact_blocks(&world);
         Some(reach)

@@ -5148,6 +5148,25 @@ impl LivingEntity {
         }
         percent.clamp(0.0, MAX_VISIBILITY_PERCENT)
     }
+
+    /// Upper bound of [`Self::visibility_percent`] for any targeting type: sneaking,
+    /// invisibility and the items that hide only lower it.
+    #[must_use]
+    pub fn max_visibility_percent(&self) -> f64 {
+        use pumpkin_data::data_component_impl::MobVisibilityImpl;
+
+        let equipment = self
+            .entity_equipment
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        equipment
+            .equipment
+            .values()
+            .filter_map(|stack| stack.get_data_component::<MobVisibilityImpl>())
+            .map(|visibility| f64::from(visibility.visibility).max(1.0))
+            .product::<f64>()
+            .min(MAX_VISIBILITY_PERCENT)
+    }
 }
 
 /// Upper clamp of `visibility_percent`.

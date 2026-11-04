@@ -5,7 +5,8 @@ use crate::entity::living::{LivingEntity, MAX_VISIBILITY_PERCENT};
 use crate::world::World;
 use std::sync::Arc;
 
-const MIN_DISTANCE: f64 = 2.0;
+/// Shortest range a visibility-scaled test allows.
+pub(crate) const MIN_DISTANCE: f64 = 2.0;
 
 pub type PredicateFn = dyn Fn(&LivingEntity, &World) -> bool + Send + Sync;
 

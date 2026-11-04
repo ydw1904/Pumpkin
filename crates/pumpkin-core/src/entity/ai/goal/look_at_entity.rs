@@ -5,7 +5,6 @@ use crate::entity::ai::target_match::{SearchArea, TargetMatch};
 use crate::entity::ai::target_predicate::TargetPredicate;
 use crate::entity::mob::Mob;
 use crate::entity::predicate::EntityPredicate;
-use pumpkin_data::data_component_impl::MobVisibilityImpl;
 use pumpkin_data::entity::EntityType;
 use std::sync::{Arc, Weak};
 
@@ -105,14 +104,14 @@ impl LookAtEntityGoal {
 }
 
 impl Goal for LookAtEntityGoal {
-    fn tick_reach(&self, _mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+    fn tick_reach(&self, mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
         let range = f64::from(self.range);
         let looks_at_players = self.target_match.is_player();
         Some(GoalReach {
             entities: if looks_at_players { 0.0 } else { range },
             // The player search is unbounded, only the visibility-scaled range limits it.
             players: if looks_at_players {
-                range * f64::from(MobVisibilityImpl::MAX_VISIBILITY)
+                mob.get_entity().world.load().player_search.reach(range)
             } else {
                 0.0
             },

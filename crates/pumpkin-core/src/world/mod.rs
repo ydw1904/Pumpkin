@@ -281,6 +281,8 @@ pub struct World {
     pub entities: ArcSwap<Vec<Arc<dyn EntityBase>>>,
     pub(crate) entity_index: Arc<EntityIndex>,
     island_schedule: std::sync::Mutex<entity_islands::Schedule>,
+    /// How far target searches can find players during this tick's entity ticks.
+    pub(crate) player_search: entity_islands::PlayerSearch,
     /// Lookup-only entities (e.g. multipart-mob hitboxes): findable by id, never ticked or saved.
     pub lookup_only_entities: ArcSwap<Vec<Arc<dyn EntityBase>>>,
     /// The server's scoreboard, which every dimension shares like vanilla.
@@ -518,6 +520,7 @@ impl World {
             entities: ArcSwap::new(Arc::new(Vec::new())),
             entity_index: Arc::default(),
             island_schedule: std::sync::Mutex::default(),
+            player_search: entity_islands::PlayerSearch::default(),
             lookup_only_entities: ArcSwap::new(Arc::new(Vec::new())),
             scoreboard: server
                 .upgrade()
@@ -1879,6 +1882,7 @@ impl World {
                 .should_plan(tickable.len());
         let islands = if plan_islands {
             let islands = (|| {
+                self.player_search.refresh(&players);
                 let reports: Vec<_> = tickable
                     .par_iter()
                     .map(|(entity, _)| {
@@ -1899,7 +1903,13 @@ impl World {
                     .iter()
                     .map(|entity| entity.get_entity())
                     .filter(|entity| !ticking.contains(&entity.entity_id))
-                    .map(|entity| (entity.entity_id, entity.bounding_box.load()))
+                    .map(|entity| {
+                        (
+                            entity.entity_id,
+                            entity.bounding_box.load(),
+                            entity.entity_type,
+                        )
+                    })
                     .collect();
                 let player_bodies: Vec<_> = players
                     .iter()
@@ -5342,6 +5352,20 @@ impl World {
     pub fn get_entities_at_box(&self, aabb: &BoundingBox) -> Vec<Arc<dyn EntityBase>> {
         self.entity_index
             .query(self.entities.load_full(), *aabb)
+            .inspect(|entity| entity_islands::check_reached(entity.get_entity().entity_id))
+            .collect()
+    }
+
+    /// Non-player entities at a box whose type passes `filter`. Only those count as reached,
+    /// which a typed tick reach relies on.
+    pub fn get_entities_of_types_at_box(
+        &self,
+        aabb: &BoundingBox,
+        filter: impl Fn(&'static EntityType) -> bool,
+    ) -> Vec<Arc<dyn EntityBase>> {
+        self.entity_index
+            .query(self.entities.load_full(), *aabb)
+            .filter(|entity| filter(entity.get_entity().entity_type))
             .inspect(|entity| entity_islands::check_reached(entity.get_entity().entity_id))
             .collect()
     }

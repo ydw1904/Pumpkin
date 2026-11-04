@@ -1,3 +1,4 @@
+use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::mob::Mob;
 use std::{any::TypeId, ops::BitOr, ptr};
 
@@ -124,20 +125,39 @@ pub trait Goal: Send + Sync {
 pub struct GoalReach {
     pub entities: f64,
     pub players: f64,
+    /// Searches that only touch entities of the matched types.
+    pub typed: Vec<(f64, TargetMatch)>,
     /// Highest speed modifier it passes to navigation.
     pub speed: f64,
     pub changes_blocks: bool,
+    /// Block reads beyond the navigation search range.
+    pub block_reads: f64,
     /// Entities and players touched at any distance.
     pub links: Vec<i32>,
+    /// Linked entities and players it checks the line of sight to.
+    pub sight: Vec<i32>,
+    /// It can target an attacker that reaches the mob during the tick, so its block reads span
+    /// the entities that reach the mob or that it reaches.
+    pub spans_contacts: bool,
+    /// Horizontal distance from the body at which it can knock entities back.
+    pub knockback: f64,
+    /// Speed it can add to the mob's velocity, on each axis, before the mob moves.
+    pub impulse: f64,
 }
 
 impl GoalReach {
     pub fn add(&mut self, other: Self) {
         self.entities = self.entities.max(other.entities);
         self.players = self.players.max(other.players);
+        self.typed.extend(other.typed);
         self.speed = self.speed.max(other.speed);
         self.changes_blocks |= other.changes_blocks;
+        self.block_reads = self.block_reads.max(other.block_reads);
         self.links.extend(other.links);
+        self.sight.extend(other.sight);
+        self.spans_contacts |= other.spans_contacts;
+        self.knockback = self.knockback.max(other.knockback);
+        self.impulse = self.impulse.max(other.impulse);
     }
 }
 

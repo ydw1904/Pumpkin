@@ -33,7 +33,9 @@ use crate::world::game_event::notified_area;
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::damage::DamageType;
-use pumpkin_data::data_component_impl::{DamageTypeImpl, EquipmentSlot, EquippableImpl};
+use pumpkin_data::data_component_impl::{
+    DamageTypeImpl, EquipmentSlot, EquippableImpl, KineticWeaponImpl,
+};
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
@@ -467,6 +469,20 @@ impl MobEntity {
         }
     }
 
+    /// Vanilla `Mob.serverAiStep`: every other tick only the running goals tick.
+    const fn runs_full_selectors(tick_count: i32, entity_id: i32) -> bool {
+        (tick_count + entity_id) % 2 == 0 || tick_count <= 1
+    }
+
+    /// Whether the selectors start and stop goals in the upcoming tick, which counts one more.
+    fn next_tick_runs_full_selectors(&self) -> bool {
+        let entity = &self.living_entity.entity;
+        Self::runs_full_selectors(
+            entity.tick_count.load(Relaxed).wrapping_add(1),
+            entity.entity_id,
+        )
+    }
+
     /// Vanilla `Mob.serverAiStep`: sensing, goals, navigation and controls.
     pub fn server_ai_step(&self, mob: &dyn Mob, caller: &dyn EntityBase) {
         self.living_entity.no_action_time.fetch_add(1, Relaxed);
@@ -480,12 +496,12 @@ impl MobEntity {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .tick();
 
-        if (tick_count + entity_id) % 2 != 0 && tick_count > 1 {
-            GoalSelector::tick_goals(&self.target_selector, mob, false);
-            GoalSelector::tick_goals(&self.goals_selector, mob, false);
-        } else {
+        if Self::runs_full_selectors(tick_count, entity_id) {
             GoalSelector::tick(&self.target_selector, mob);
             GoalSelector::tick(&self.goals_selector, mob);
+        } else {
+            GoalSelector::tick_goals(&self.target_selector, mob, false);
+            GoalSelector::tick_goals(&self.goals_selector, mob, false);
         }
 
         let navigation_target = {
@@ -1036,6 +1052,14 @@ impl MobEntity {
             .clone()
     }
 
+    fn get_target_id(&self) -> Option<i32> {
+        self.target
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map(|target| target.get_entity().entity_id)
+    }
+
     fn set_mob_flag(&self, flag: u8, value: bool) {
         let old_b = self.mob_flags.load(Ordering::Relaxed);
 
@@ -1068,12 +1092,13 @@ impl MobEntity {
             && self.breeding_cooldown.load(Relaxed) <= 0
     }
 
-    pub fn is_in_attack_range(&self, target: &dyn EntityBase) -> bool {
-        // `Math.sqrt(2.04F) - 0.6F`, with Java's float literals widened to double.
-        const DEFAULT_ATTACK_REACH: f64 = 0.828_285_648_512_600_4;
+    /// Vanilla `Mob.DEFAULT_ATTACK_REACH`: `Math.sqrt(2.04F) - 0.6F`, with Java's float literals
+    /// widened to double. The attack box grows the mob's box by this much horizontally.
+    pub const DEFAULT_ATTACK_REACH: f64 = 0.828_285_648_512_600_4;
 
+    pub fn is_in_attack_range(&self, target: &dyn EntityBase) -> bool {
         // TODO: Implement DataComponent lookup for ATTACK_RANGE when components are ready
-        let max_range = DEFAULT_ATTACK_REACH;
+        let max_range = Self::DEFAULT_ATTACK_REACH;
         let min_range = 0.0;
 
         let target_hitbox = target.get_entity().bounding_box.load();
@@ -1258,6 +1283,21 @@ impl MobEntity {
         }
 
         was_hurt
+    }
+
+    /// The main hand holds nothing whose hits act beyond the target: an enchantment, which can
+    /// run any post-attack effect, a mace's smash or a kinetic weapon's stabs.
+    #[must_use]
+    pub fn hits_only_its_target(&self) -> bool {
+        let equipment = self
+            .living_entity
+            .entity_equipment
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let weapon = equipment.get(&EquipmentSlot::MAIN_HAND);
+        !weapon.has_enchantments()
+            && weapon.item.id != Item::MACE.id
+            && weapon.get_data_component::<KineticWeaponImpl>().is_none()
     }
 
     /// Vanilla `MaceItem.hurtEnemy` for a mob that smashes with a mace.
@@ -1605,6 +1645,20 @@ pub(crate) fn game_event_listener_links(
 }
 
 impl MobEntity {
+    /// What the goals and the item pickup can touch next tick, if every goal is audited.
+    fn goal_reach(&self, mob: &dyn Mob) -> Option<GoalReach> {
+        let mut goals = GoalReach::default();
+        let full = self.next_tick_runs_full_selectors();
+        GoalSelector::tick_reach(&self.goals_selector, mob, full, &mut goals)?;
+        GoalSelector::tick_reach(&self.target_selector, mob, full, &mut goals)?;
+        if mob.can_pick_up_loot(None) {
+            // `pick_up_nearby_items` at the end of the living tick.
+            let pickup = mob.get_pickup_reach();
+            goals.entities = goals.entities.max(pickup.x.max(pickup.y).max(pickup.z));
+        }
+        Some(goals)
+    }
+
     /// What this mob can touch next tick, if its species and goals are audited.
     pub fn audited_reach(&self, mob: &dyn Mob) -> Option<AuditedReach> {
         let living = &self.living_entity;
@@ -1633,9 +1687,7 @@ impl MobEntity {
             return None;
         }
 
-        let mut goals = GoalReach::default();
-        GoalSelector::tick_reach(&self.goals_selector, mob, &mut goals)?;
-        GoalSelector::tick_reach(&self.target_selector, mob, &mut goals)?;
+        let mut goals = self.goal_reach(mob)?;
 
         let (route, path_length) = {
             let navigator = self
@@ -1669,8 +1721,10 @@ impl MobEntity {
         let fluid_push = super::max_fluid_push_speed(world.dimension.fast_lava);
         let velocity = entity.velocity.load();
         let spawns = mob.audited_spawn_distance();
-        let horizontal = velocity.x.hypot(velocity.z) + acceleration + fluid_push + spawns;
+        let horizontal =
+            velocity.x.hypot(velocity.z) + goals.impulse + acceleration + fluid_push + spawns;
         let vertical = velocity.y.abs()
+            + goals.impulse
             + living.get_jump_velocity(1.0)
             + living.get_attribute_value(&Attributes::GRAVITY)
             + SURFACE_UPWARD_ACCELERATION
@@ -1694,12 +1748,22 @@ impl MobEntity {
             motion: (horizontal, vertical),
             entities: goals.entities,
             players: goals.players,
+            typed_entities: goals.typed,
+            kind: entity.entity_type,
             // Searches also check the nodes next to their furthest ones.
-            block_reads: path_length + 1.0,
+            block_reads: (path_length + 1.0).max(goals.block_reads),
             route,
             changes_blocks: goals.changes_blocks,
             global: false,
             links,
+            // Attack goals check the sight to the target.
+            sight: goals
+                .sight
+                .into_iter()
+                .chain(self.get_target_id())
+                .collect(),
+            spans_contacts: goals.spans_contacts,
+            knockback: goals.knockback,
         };
         reach.scan_contact_blocks(&world);
         Some(reach)

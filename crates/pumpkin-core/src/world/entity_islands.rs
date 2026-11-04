@@ -2,11 +2,10 @@
 //! order on its own thread, which gives the same result as ticking the whole list in order.
 
 use std::collections::VecDeque;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::Relaxed};
 
 use rayon::prelude::*;
-
-#[cfg(debug_assertions)]
-use std::sync::Arc;
 
 use pumpkin_data::{Block, attributes::Attributes, entity::EntityType, tag, tag::Taggable};
 use pumpkin_util::math::{
@@ -19,6 +18,10 @@ use pumpkin_config::world::EntityIslandsConfig;
 use pumpkin_world::chunk::CHUNK_WIDTH;
 
 use crate::block::blocks::redstone::SIGNAL_MAX;
+use crate::entity::ai::target_match::TargetMatch;
+use crate::entity::ai::target_predicate::MIN_DISTANCE as MIN_TARGET_DISTANCE;
+use crate::entity::living::MAX_VISIBILITY_PERCENT;
+use crate::entity::player::Player;
 use crate::entity::{DelayedLeash, EntityBase, PUSH_STRENGTH, tnt::TNTEntity};
 use crate::plugin::api::events::entity::{
     entity_breed::EntityBreedEvent, entity_target::EntityTargetEvent,
@@ -154,6 +157,59 @@ pub fn plugins_observe_entity_ticks(server: &Server) -> bool {
         || plugins.has_handlers::<EntityToggleSitEvent>()
 }
 
+/// How far target searches can find players this tick. Planning refreshes it before the reports.
+pub struct PlayerSearch {
+    /// Highest visibility factor a player's equipment can give, as `f64` bits.
+    visibility: AtomicU64,
+    /// Some player is neither in creative nor in spectator mode.
+    attackable: AtomicBool,
+}
+
+impl Default for PlayerSearch {
+    fn default() -> Self {
+        Self {
+            visibility: AtomicU64::new(MAX_VISIBILITY_PERCENT.to_bits()),
+            attackable: AtomicBool::new(true),
+        }
+    }
+}
+
+impl PlayerSearch {
+    pub(crate) fn refresh(&self, players: &[Arc<Player>]) {
+        let visible = players.iter().filter(|player| !player.is_spectator());
+        let visibility = visible
+            .clone()
+            .map(|player| player.living_entity.max_visibility_percent())
+            .fold(0.0, f64::max);
+        self.visibility.store(visibility.to_bits(), Relaxed);
+        self.attackable.store(
+            visible.into_iter().any(|player| !player.is_creative()),
+            Relaxed,
+        );
+    }
+
+    /// Farthest a player passes a visibility-scaled range test of `range`.
+    #[must_use]
+    pub fn reach(&self, range: f64) -> f64 {
+        let visibility = f64::from_bits(self.visibility.load(Relaxed));
+        if visibility > 0.0 {
+            (range * visibility).max(MIN_TARGET_DISTANCE)
+        } else {
+            0.0
+        }
+    }
+
+    /// [`Self::reach`] for a combat search, which skips creative players.
+    #[must_use]
+    pub fn attackable_reach(&self, range: f64) -> f64 {
+        if self.attackable.load(Relaxed) {
+            self.reach(range)
+        } else {
+            0.0
+        }
+    }
+}
+
 /// What one entity can read or change next tick.
 #[derive(Clone, Debug)]
 pub struct TickReach {
@@ -163,12 +219,21 @@ pub struct TickReach {
     pub entities: BoundingBox,
     /// Touches players whose body overlaps this.
     pub players: BoundingBox,
+    /// Touches entities of the matched types whose body overlaps the box.
+    pub typed_entities: Vec<(BoundingBox, TargetMatch)>,
+    /// The entity's type, for other entities' typed searches. `None` matches every search,
+    /// for entities that can spawn or turn into other types during the tick.
+    pub kind: Option<&'static EntityType>,
     pub block_reads: BoundingBox,
     pub block_writes: Option<BoundingBox>,
     /// Can act anywhere in the world.
     pub global: bool,
     /// Entities and players touched at any distance.
     pub links: Vec<i32>,
+    /// Links whose eyes it checks the line of sight to: block reads also span their bodies.
+    pub sight: Vec<i32>,
+    /// Can target an attacker found during the tick: block reads also span its contacts.
+    pub spans_contacts: bool,
 }
 
 impl TickReach {
@@ -181,10 +246,14 @@ impl TickReach {
             body,
             entities: body,
             players: body,
+            typed_entities: Vec::new(),
+            kind: None,
             block_reads: block_writes,
             block_writes: Some(block_writes),
             global: false,
             links,
+            sight: Vec::new(),
+            spans_contacts: false,
         }
     }
 }
@@ -197,12 +266,22 @@ pub struct AuditedReach {
     pub motion: (f64, f64),
     pub entities: f64,
     pub players: f64,
+    /// Searches that only touch entities of the matched types.
+    pub typed_entities: Vec<(f64, TargetMatch)>,
+    /// Audited entities spawn and turn into no type that a typed search matches.
+    pub kind: &'static EntityType,
     pub block_reads: f64,
     /// Area where block changes make it recompute its path.
     pub route: Option<BoundingBox>,
     pub changes_blocks: bool,
     pub global: bool,
     pub links: Vec<i32>,
+    /// Links whose eyes it checks the line of sight to.
+    pub sight: Vec<i32>,
+    /// Can target an attacker found during the tick and check the sight to it.
+    pub spans_contacts: bool,
+    /// Horizontal distance from its body at which it can knock entities back, 0 for none.
+    pub knockback: f64,
 }
 
 impl AuditedReach {
@@ -441,10 +520,13 @@ pub fn links_of(entity: &dyn EntityBase) -> Vec<i32> {
     links
 }
 
+/// An entity that doesn't tick this tick: id, body and type.
+pub type IdleEntity = (i32, BoundingBox, &'static EntityType);
+
 /// Turns reports into reaches.
 ///
 /// Audited bodies grow by the pushes they can receive, and by
-/// `knockback_reach` within reach of an unaudited entity.
+/// `knockback_reach` within reach of an unaudited entity or the hits of an earlier audited one.
 /// Returns `None` when the tick needs serial execution or planning exceeds its budget.
 #[must_use]
 pub fn resolve(reports: Vec<EntityReach>, config: &EntityIslandsConfig) -> Option<Vec<TickReach>> {
@@ -497,7 +579,16 @@ fn resolve_bounded(
                     } else {
                         0.0
                     };
+                let knockback = audited.knockback;
                 let reach = finish(audited, extra);
+                // Like its pushes, its hits only throw entities that move after it.
+                if knockback > 0.0 {
+                    threats.insert(
+                        threats.boxes.len(),
+                        reach.body.expand(knockback, 0.0, knockback),
+                        &mut budget,
+                    )?;
+                }
                 // Travel precedes pushing. Later audited turns can only change this body's
                 // velocity for the next tick, so they do not grow its current movement bound.
                 pushers.insert(pushers.boxes.len(), reach.body, &mut budget)?;
@@ -699,10 +790,18 @@ fn finish(audited: AuditedReach, extra: f64) -> TickReach {
         body,
         entities: around(audited.entities),
         players,
+        typed_entities: audited
+            .typed_entities
+            .into_iter()
+            .map(|(distance, target)| (around(distance), target))
+            .collect(),
+        kind: Some(audited.kind),
         block_reads,
         block_writes,
         global: audited.global,
         links: audited.links,
+        sight: audited.sight,
+        spans_contacts: audited.spans_contacts,
     }
 }
 
@@ -739,7 +838,7 @@ pub(crate) fn plan(
     ids: &[i32],
     reports: Vec<EntityReach>,
     checks: &[BlockWriteCheck],
-    idle_entities: &[(i32, BoundingBox)],
+    idle_entities: &[IdleEntity],
     players: &[(i32, BoundingBox)],
     config: &EntityIslandsConfig,
 ) -> Option<Islands> {
@@ -814,7 +913,7 @@ pub(crate) fn plan(
 #[must_use]
 pub fn partition(
     nodes: &[(i32, TickReach)],
-    idle_entities: &[(i32, BoundingBox)],
+    idle_entities: &[IdleEntity],
     players: &[(i32, BoundingBox)],
 ) -> Option<Islands> {
     if nodes.iter().any(|(_, reach)| reach.global) {
@@ -854,8 +953,11 @@ fn merge(parts: Vec<Islands>) -> Islands {
 }
 
 /// Everything a reach can touch, as one box.
-const fn total_bounds(reach: &TickReach) -> BoundingBox {
+fn total_bounds(reach: &TickReach) -> BoundingBox {
     let mut bounds = union(&union(&reach.body, &reach.entities), &reach.players);
+    for (area, _) in &reach.typed_entities {
+        bounds = union(&bounds, area);
+    }
     bounds = union(&bounds, &reach.block_reads);
     if let Some(writes) = reach.block_writes {
         bounds = union(&bounds, &writes);
@@ -875,7 +977,7 @@ struct Group {
 fn groups<'a>(
     nodes: &[(i32, BoundingBox)],
     links: impl Fn(usize) -> &'a [i32],
-    idle_entities: &[(i32, BoundingBox)],
+    idle_entities: &[IdleEntity],
     players: &[(i32, BoundingBox)],
 ) -> Vec<Group> {
     let whole = || {
@@ -910,7 +1012,7 @@ fn groups<'a>(
         }
         slots.insert(*id, slot);
     }
-    for (offset, (id, body)) in idle_entities.iter().enumerate() {
+    for (offset, (id, body, _)) in idle_entities.iter().enumerate() {
         if add(&mut sets, first_idle + offset, body).is_none() {
             return whole();
         }
@@ -956,9 +1058,160 @@ fn groups<'a>(
     groups
 }
 
+/// The bodies of a group's nodes, idle entities and players.
+struct Bodies<'a> {
+    /// Nodes, then idle entities.
+    grid: &'a Grid,
+    kinds: &'a [Option<&'static EntityType>],
+    slots: &'a FxHashMap<i32, usize>,
+    players: &'a [(i32, BoundingBox)],
+    first_player: usize,
+}
+
+impl Bodies<'_> {
+    fn of(&self, id: i32) -> Option<BoundingBox> {
+        let slot = *self.slots.get(&id)?;
+        if slot < self.first_player {
+            Some(self.grid.boxes[slot])
+        } else {
+            self.players
+                .get(slot - self.first_player)
+                .map(|(_, body)| *body)
+        }
+    }
+
+    /// Visits the grid slots `reach`'s entity and typed searches can touch.
+    fn reached_by(
+        &self,
+        query: &mut Query,
+        reach: &TickReach,
+        budget: &mut PlanningBudget,
+        mut visit: impl FnMut(usize),
+    ) -> Option<()> {
+        self.grid
+            .for_each_overlapping(query, &reach.entities, budget, &mut visit)?;
+        for (area, target) in &reach.typed_entities {
+            self.grid
+                .for_each_overlapping(query, area, budget, |member| {
+                    if self.kinds[member].is_none_or(|kind| target.matches(kind)) {
+                        visit(member);
+                    }
+                })?;
+        }
+        Some(())
+    }
+}
+
+/// Each node's block reads. A sight line runs between two bodies, so the box spanning both
+/// holds it. A node that spans its contacts also spans the entities it reaches, those that
+/// reach it, and their links.
+fn read_areas(
+    nodes: &[&(i32, TickReach)],
+    bodies: &Bodies,
+    budget: &mut PlanningBudget,
+) -> Option<Vec<BoundingBox>> {
+    let reaches: Vec<&TickReach> = nodes.iter().map(|(_, reach)| reach).collect();
+    let flagged: Vec<usize> = (0..reaches.len())
+        .filter(|&slot| reaches[slot].spans_contacts)
+        .collect();
+    let mut contacts: Vec<Vec<usize>> = vec![Vec::new(); reaches.len()];
+    if !flagged.is_empty() {
+        let mut flagged_grid = Grid::default();
+        let mut flagged_kinds = Vec::with_capacity(flagged.len());
+        let mut flagged_slots = FxHashMap::default();
+        for (index, &slot) in flagged.iter().enumerate() {
+            flagged_grid.insert(index, reaches[slot].body, budget)?;
+            flagged_kinds.push(reaches[slot].kind);
+            flagged_slots.insert(nodes[slot].0, index);
+        }
+        let flagged_bodies = Bodies {
+            grid: &flagged_grid,
+            kinds: &flagged_kinds,
+            slots: &flagged_slots,
+            players: &[],
+            first_player: flagged.len(),
+        };
+        let mut query = Query::new(flagged.len());
+        for (slot, reach) in reaches.iter().enumerate() {
+            let mut found = Vec::new();
+            flagged_bodies.reached_by(&mut query, reach, budget, |index| found.push(index))?;
+            found.extend(reach.links.iter().filter_map(|id| flagged_slots.get(id)));
+            for index in found {
+                if flagged[index] != slot {
+                    contacts[flagged[index]].push(slot);
+                }
+            }
+        }
+        let mut query = Query::new(bodies.grid.boxes.len());
+        for &slot in &flagged {
+            let mut found = Vec::new();
+            bodies.reached_by(&mut query, reaches[slot], budget, |member| {
+                found.push(member);
+            })?;
+            contacts[slot].extend(found.into_iter().filter(|&member| member != slot));
+        }
+    }
+    let mut areas = Vec::with_capacity(reaches.len());
+    for (slot, reach) in reaches.iter().enumerate() {
+        let mut spanned: Vec<BoundingBox> =
+            reach.sight.iter().filter_map(|id| bodies.of(*id)).collect();
+        for &member in &contacts[slot] {
+            spanned.push(bodies.grid.boxes[member]);
+            if let Some(other) = reaches.get(member) {
+                spanned.extend(other.links.iter().filter_map(|id| bodies.of(*id)));
+            }
+        }
+        budget.spend(spanned.len())?;
+        areas.push(
+            spanned
+                .iter()
+                .fold(reach.block_reads, |reads, body| union(&reads, body)),
+        );
+    }
+    Some(areas)
+}
+
+/// Joins each block writer with the nodes reading blocks it can change.
+fn union_block_conflicts(
+    sets: &mut DisjointSets,
+    reads: Vec<BoundingBox>,
+    writers: Vec<(usize, BoundingBox)>,
+    budget: &mut PlanningBudget,
+) -> Option<()> {
+    let mut block_grid = Grid::default();
+    for (slot, reads) in reads.into_iter().enumerate() {
+        block_grid.insert(slot, reads, budget)?;
+    }
+    let mut query = Query::new(sets.len());
+    for (slot, writes) in writers {
+        block_grid.union_overlapping(sets, &mut query, slot, &writes, budget)?;
+    }
+    Some(())
+}
+
+/// Joins `slot` with the bodies in `grid` whose kind its typed searches match.
+fn union_typed(
+    grid: &Grid,
+    kinds: &[Option<&'static EntityType>],
+    sets: &mut DisjointSets,
+    query: &mut Query,
+    slot: usize,
+    reach: &TickReach,
+    budget: &mut PlanningBudget,
+) -> Option<()> {
+    for (area, target) in &reach.typed_entities {
+        grid.for_each_overlapping(query, area, budget, |member| {
+            if kinds[member].is_none_or(|kind| target.matches(kind)) {
+                sets.union(slot, member);
+            }
+        })?;
+    }
+    Some(())
+}
+
 fn partition_group(
     nodes: &[(i32, TickReach)],
-    idle_entities: &[(i32, BoundingBox)],
+    idle_entities: &[IdleEntity],
     players: &[(i32, BoundingBox)],
     group: &Group,
 ) -> Option<Islands> {
@@ -972,17 +1225,20 @@ fn partition_group(
     let mut sets = DisjointSets::new(group.nodes.len() + group.idle_entities.len() + players.len());
     let mut slots: FxHashMap<i32, usize> = FxHashMap::default();
     let bodies = (0..group.nodes.len())
-        .map(|slot| (node(slot).0, node(slot).1.body))
+        .map(|slot| (node(slot).0, node(slot).1.body, node(slot).1.kind))
         .chain(
             group
                 .idle_entities
                 .iter()
-                .map(|&index| idle_entities[index]),
+                .map(|&index| idle_entities[index])
+                .map(|(id, body, kind)| (id, body, Some(kind))),
         );
     let mut entity_grid = Grid::default();
-    for (slot, (id, body)) in bodies.enumerate() {
+    let mut kinds = Vec::with_capacity(group.nodes.len() + group.idle_entities.len());
+    for (slot, (id, body, kind)) in bodies.enumerate() {
         slots.insert(id, slot);
         entity_grid.insert(slot, body, &mut budget)?;
+        kinds.push(kind);
     }
     let first_player = group.nodes.len() + group.idle_entities.len();
     for (offset, (id, _)) in players.iter().enumerate() {
@@ -993,6 +1249,15 @@ fn partition_group(
     for slot in 0..group.nodes.len() {
         let reach = &node(slot).1;
         entity_grid.union_overlapping(&mut sets, &mut query, slot, &reach.entities, &mut budget)?;
+        union_typed(
+            &entity_grid,
+            &kinds,
+            &mut sets,
+            &mut query,
+            slot,
+            reach,
+            &mut budget,
+        )?;
         budget.spend(players.len())?;
         for (offset, (_, body)) in players.iter().enumerate() {
             if overlaps(&reach.players, body) {
@@ -1010,14 +1275,16 @@ fn partition_group(
         .filter_map(|slot| node(slot).1.block_writes.map(|writes| (slot, writes)))
         .collect();
     if !writers.is_empty() {
-        let mut block_grid = Grid::default();
-        for slot in 0..group.nodes.len() {
-            block_grid.insert(slot, node(slot).1.block_reads, &mut budget)?;
-        }
-        let mut query = Query::new(sets.len());
-        for (slot, writes) in writers {
-            block_grid.union_overlapping(&mut sets, &mut query, slot, &writes, &mut budget)?;
-        }
+        let reaches: Vec<_> = (0..group.nodes.len()).map(node).collect();
+        let bodies = Bodies {
+            grid: &entity_grid,
+            kinds: &kinds,
+            slots: &slots,
+            players: &players,
+            first_player,
+        };
+        let reads = read_areas(&reaches, &bodies, &mut budget)?;
+        union_block_conflicts(&mut sets, reads, writers, &mut budget)?;
     }
 
     let mut island_of_root: FxHashMap<usize, usize> = FxHashMap::default();
@@ -1407,7 +1674,7 @@ mod tests {
     )]
     fn islands(
         nodes: &[(i32, TickReach)],
-        idle_entities: &[(i32, BoundingBox)],
+        idle_entities: &[IdleEntity],
         players: &[(i32, BoundingBox)],
     ) -> Vec<Vec<usize>> {
         partition(nodes, idle_entities, players)
@@ -1431,10 +1698,14 @@ mod tests {
                 body,
                 entities: area,
                 players: area,
+                typed_entities: Vec::new(),
+                kind: Some(&EntityType::PIG),
                 block_reads: body,
                 block_writes: None,
                 global: false,
                 links: Vec::new(),
+                sight: Vec::new(),
+                spans_contacts: false,
             },
         )
     }
@@ -1490,6 +1761,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one randomized fixture checked against a brute-force reference"
+    )]
     fn partition_matches_pairwise_connected_components() {
         use rand::{RngExt, SeedableRng, rngs::StdRng};
 
@@ -1526,20 +1801,26 @@ mod tests {
                             body,
                             entities: body.expand(0.5, 0.5, 0.5),
                             players: body.expand(4.0, 4.0, 4.0),
+                            typed_entities: Vec::new(),
+                            kind: Some(&EntityType::PIG),
                             block_reads: reads,
                             block_writes: (id % 4 == 0).then(|| bounds(&mut random)),
                             global: false,
                             links: if id % 7 == 0 { vec![1000] } else { Vec::new() },
+                            sight: Vec::new(),
+                            spans_contacts: false,
                         },
                     )
                 })
                 .collect();
-            let idle: Vec<_> = (100..104).map(|id| (id, bounds(&mut random))).collect();
+            let idle: Vec<_> = (100..104)
+                .map(|id| (id, bounds(&mut random), &EntityType::PIG))
+                .collect();
             let players: Vec<_> = (200..203).map(|id| (id, bounds(&mut random))).collect();
             let bodies: Vec<_> = nodes
                 .iter()
                 .map(|(id, reach)| (*id, reach.body))
-                .chain(idle.iter().copied())
+                .chain(idle.iter().map(|(id, body, _)| (*id, *body)))
                 .chain(players.iter().copied())
                 .collect();
             // The extra vertex represents an external link shared by several nodes.
@@ -1655,26 +1936,26 @@ mod tests {
     #[tokio::test]
     async fn unaudited_living_motion_joins_entities_at_the_destination()
     -> Result<(), Box<dyn std::error::Error>> {
-        use crate::entity::{Entity, mob::zombie::zombie::ZombieEntity};
+        use crate::entity::{Entity, mob::zombie::drowned::DrownedEntity};
 
         let folder = tempfile::tempdir()?;
         let world = crate::entity::ai::test_support::world(&folder);
-        let zombie = ZombieEntity::new(Entity::new(
+        let drowned = DrownedEntity::new(Entity::new(
             world.clone(),
             Vector3::new(0.0, 64.0, 0.0),
-            &EntityType::ZOMBIE,
+            &EntityType::DROWNED,
         ));
-        assert!(zombie.audited_reach().is_none());
+        assert!(drowned.audited_reach().is_none());
         let config = EntityIslandsConfig::default();
         for speed in [0.0, -96.0, 96.0] {
-            zombie
+            drowned
                 .get_entity()
                 .velocity
                 .store(Vector3::new(speed, 0.0, 0.0));
-            let reaches = resolve(vec![EntityReach::of(zombie.as_ref(), &config)], &config)
+            let reaches = resolve(vec![EntityReach::of(drowned.as_ref(), &config)], &config)
                 .ok_or("unexpected serial fallback")?;
             let nodes = [
-                (zombie.get_entity().entity_id, reaches[0].clone()),
+                (drowned.get_entity().entity_id, reaches[0].clone()),
                 node(-1, 96.0, 0.0),
                 node(-2, -96.0, 0.0),
             ];
@@ -1705,7 +1986,10 @@ mod tests {
     fn idle_entities_players_and_links_bridge_islands() {
         let nodes = [node(10, 0.0, 1.0), node(11, 4.0, 1.0)];
         assert_eq!(islands(&nodes, &[], &[]), [vec![0], vec![1]]);
-        assert_eq!(islands(&nodes, &[(20, cube(2.0, 1.0))], &[]), [vec![0, 1]]);
+        assert_eq!(
+            islands(&nodes, &[(20, cube(2.0, 1.0), &EntityType::PIG)], &[]),
+            [vec![0, 1]]
+        );
         assert_eq!(islands(&nodes, &[], &[(30, cube(2.0, 1.0))]), [vec![0, 1]]);
         let mut linked = nodes;
         linked[0].1.links.push(40);
@@ -1764,6 +2048,72 @@ mod tests {
     }
 
     #[test]
+    fn typed_searches_join_only_the_kinds_they_match() {
+        let golems = TargetMatch::Type(&EntityType::IRON_GOLEM);
+        let mut nodes = [node(10, 0.0, 0.0), node(11, 10.0, 0.0)];
+        nodes[0].1.typed_entities = vec![(cube(0.0, 1.0).expand(16.0, 16.0, 16.0), golems)];
+        assert_eq!(islands(&nodes, &[], &[]), [vec![0], vec![1]]);
+        let idle_pig = [(20, cube(5.0, 1.0), &EntityType::PIG)];
+        assert_eq!(islands(&nodes, &idle_pig, &[]), [vec![0], vec![1]]);
+        // An idle golem in the search box joins nothing else.
+        let idle_golem = [(20, cube(5.0, 1.0), &EntityType::IRON_GOLEM)];
+        assert_eq!(islands(&nodes, &idle_golem, &[]), [vec![0], vec![1]]);
+        nodes[1].1.kind = Some(&EntityType::IRON_GOLEM);
+        assert_eq!(islands(&nodes, &[], &[]), [vec![0, 1]]);
+        // An unaudited entity can turn into anything during its tick.
+        nodes[1].1.kind = None;
+        assert_eq!(islands(&nodes, &[], &[]), [vec![0, 1]]);
+    }
+
+    #[test]
+    fn sight_lines_meet_block_writes_between_the_bodies() {
+        let mut nodes = [node(10, 0.0, 0.0), node(11, 40.0, 0.0), node(12, 20.0, 0.0)];
+        nodes[0].1.links.push(11);
+        nodes[2].1.block_writes = Some(nodes[2].1.body.expand(2.0, 2.0, 2.0));
+        assert_eq!(islands(&nodes, &[], &[]), [vec![0, 1], vec![2]]);
+        nodes[0].1.sight.push(11);
+        assert_eq!(islands(&nodes, &[], &[]), [vec![0, 1, 2]]);
+        // An attacker that reaches the mob from afar, which the mob doesn't link in advance.
+        let mut nodes = [node(10, 0.0, 0.0), node(11, 40.0, 0.0), node(12, 20.0, 0.0)];
+        nodes[1].1.links.push(10);
+        nodes[2].1.block_writes = Some(nodes[2].1.body.expand(2.0, 2.0, 2.0));
+        assert_eq!(islands(&nodes, &[], &[]), [vec![0, 1], vec![2]]);
+        nodes[0].1.spans_contacts = true;
+        assert_eq!(islands(&nodes, &[], &[]), [vec![0, 1, 2]]);
+    }
+
+    #[test]
+    fn audited_hits_throw_entities_that_move_after_them() -> Result<(), &'static str> {
+        let config = EntityIslandsConfig::default();
+        let attacker = || match audited(0.0) {
+            EntityReach::Audited(mut reach) => {
+                reach.knockback = 1.0;
+                EntityReach::Audited(reach)
+            }
+            conservative @ EntityReach::Conservative(_) => conservative,
+        };
+        let still = finish(
+            match audited(1.5) {
+                EntityReach::Audited(reach) => reach,
+                EntityReach::Conservative(_) => return Err("fixture is audited"),
+            },
+            0.0,
+        );
+        let before = resolve(vec![audited(1.5), attacker()], &config).ok_or("serial")?;
+        assert_box(&before[0].body, &still.body);
+        let after = resolve(vec![attacker(), audited(1.5)], &config).ok_or("serial")?;
+        assert_box(
+            &after[1].body,
+            &still.body.expand(
+                config.knockback_reach,
+                config.knockback_reach,
+                config.knockback_reach,
+            ),
+        );
+        Ok(())
+    }
+
+    #[test]
     fn a_global_entity_serializes_the_tick() {
         let mut nodes = [node(10, 0.0, 0.0), node(11, 300.0, 0.0)];
         nodes[1].1.global = true;
@@ -1780,11 +2130,16 @@ mod tests {
             motion: (0.25, 0.5),
             entities: 0.0,
             players: 0.0,
+            typed_entities: Vec::new(),
+            kind: &EntityType::PIG,
             block_reads: 0.0,
             route: None,
             changes_blocks: false,
             global: false,
             links: Vec::new(),
+            sight: Vec::new(),
+            spans_contacts: false,
+            knockback: 0.0,
         })
     }
 
