@@ -728,45 +728,85 @@ fn grown_body(audited: &AuditedReach, extra: f64) -> BoundingBox {
         .expand(horizontal + extra, vertical + extra, horizontal + extra)
 }
 
-fn finish(audited: AuditedReach, extra: f64) -> TickReach {
-    let body = grown_body(&audited, extra);
-    let around = |distance: f64| body.expand(distance, distance, distance);
-    // Player pickup range in `World::tick`.
-    let players = body.expand(
-        audited.players.max(1.0),
-        audited.players.max(0.5),
-        audited.players.max(1.0),
-    );
-    let changes_blocks = audited.changes_blocks || extra > SCAN_SLACK;
-    let block_writes = changes_blocks.then(|| around(BLOCK_UPDATE_REACH));
-    let mut block_reads = around(if changes_blocks {
-        audited.block_reads.max(BLOCK_UPDATE_REACH)
-    } else {
-        audited.block_reads
-    });
-    if let Some(route) = audited.route {
-        block_reads = union(&block_reads, &route);
+/// The boxes [`finish`] gives an audited reach.
+struct FinishedAreas {
+    body: BoundingBox,
+    entities: BoundingBox,
+    players: BoundingBox,
+    block_reads: BoundingBox,
+    block_writes: Option<BoundingBox>,
+}
+
+impl FinishedAreas {
+    fn of(audited: &AuditedReach, extra: f64) -> Self {
+        let body = grown_body(audited, extra);
+        let around = |distance: f64| body.expand(distance, distance, distance);
+        // Player pickup range in `World::tick`.
+        let players = body.expand(
+            audited.players.max(1.0),
+            audited.players.max(0.5),
+            audited.players.max(1.0),
+        );
+        let changes_blocks = audited.changes_blocks || extra > SCAN_SLACK;
+        let block_writes = changes_blocks.then(|| around(BLOCK_UPDATE_REACH));
+        let mut block_reads = around(if changes_blocks {
+            audited.block_reads.max(BLOCK_UPDATE_REACH)
+        } else {
+            audited.block_reads
+        });
+        if let Some(route) = audited.route {
+            block_reads = union(&block_reads, &route);
+        }
+        // Searches follow water columns down to the bottom of the world.
+        block_reads.min.y = f64::NEG_INFINITY;
+        block_reads.max.y = f64::INFINITY;
+        Self {
+            body,
+            entities: around(audited.entities),
+            players,
+            block_reads,
+            block_writes,
+        }
     }
-    // Searches follow water columns down to the bottom of the world.
-    block_reads.min.y = f64::NEG_INFINITY;
-    block_reads.max.y = f64::INFINITY;
+
+    fn around(&self, distance: f64) -> BoundingBox {
+        self.body.expand(distance, distance, distance)
+    }
+}
+
+fn finish(audited: AuditedReach, extra: f64) -> TickReach {
+    let areas = FinishedAreas::of(&audited, extra);
     TickReach {
-        body,
-        entities: around(audited.entities),
-        players,
+        body: areas.body,
+        entities: areas.entities,
+        players: areas.players,
         typed_entities: audited
             .typed_entities
             .into_iter()
-            .map(|(distance, target)| (around(distance), target))
+            .map(|(distance, target)| (areas.around(distance), target))
             .collect(),
         kind: audited.kind,
-        block_reads,
-        block_writes,
+        block_reads: areas.block_reads,
+        block_writes: areas.block_writes,
         global: audited.global,
         links: audited.links,
         sight: audited.sight,
         spans_contacts: audited.spans_contacts,
     }
+}
+
+/// [`total_bounds`] of the [`finish`]ed reach, without building it.
+fn finished_bounds(audited: &AuditedReach, extra: f64) -> BoundingBox {
+    let areas = FinishedAreas::of(audited, extra);
+    let mut bounds = union(&union(&areas.body, &areas.entities), &areas.players);
+    for (distance, _) in &audited.typed_entities {
+        bounds = union(&bounds, &areas.around(*distance));
+    }
+    bounds = union(&bounds, &areas.block_reads);
+    if let Some(writes) = areas.block_writes {
+        bounds = union(&bounds, &writes);
+    }
+    bounds
 }
 
 const fn union(a: &BoundingBox, b: &BoundingBox) -> BoundingBox {
@@ -819,9 +859,7 @@ pub(crate) fn plan(
         .map(|(id, report)| {
             let bounds = match report {
                 EntityReach::Conservative(reach) => total_bounds(reach),
-                EntityReach::Audited(audited) => {
-                    total_bounds(&finish(audited.clone(), grouped_extra))
-                }
+                EntityReach::Audited(audited) => finished_bounds(audited, grouped_extra),
             };
             (*id, bounds)
         })
