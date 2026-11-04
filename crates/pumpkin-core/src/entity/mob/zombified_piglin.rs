@@ -13,6 +13,7 @@ use pumpkin_data::sound::Sound;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
 
+use crate::entity::ai::goal::GoalReach;
 use crate::entity::ai::goal::reset_universal_anger::ResetUniversalAngerGoal;
 use crate::entity::ai::pathfinder::node::PathType;
 use crate::entity::ai::util::goal_utils;
@@ -28,7 +29,7 @@ use crate::entity::{
     mob::{
         Mob, MobEntity, MobMetadata,
         equipment::RegionalDifficulty,
-        neutral::{NeutralData, NeutralMob},
+        neutral::{self, NeutralData, NeutralMob},
         spawn::{EntitySpawnReason, SpawnGroupData},
         zombie::ZombieEntityBase,
     },
@@ -267,6 +268,62 @@ impl Mob for ZombifiedPiglinEntity {
 
     fn additional_tick_movement(&self) -> f64 {
         self.entity.reinforcement_reach()
+    }
+
+    fn has_audited_tick(&self) -> bool {
+        true
+    }
+
+    // Hits in other entities' turns join them to this reach, so it covers those calls too.
+    fn audited_spawn_distance(&self) -> f64 {
+        self.entity.reinforcement_reach()
+    }
+
+    // `custom_server_ai_step` adds the attacking bonus before the mob moves. Only the universal
+    // anger an earlier goal or island member starts can anger the mob before that check.
+    fn audited_movement_speed(&self) -> f64 {
+        let living = &self.entity.mob_entity.living_entity;
+        let can_gain_bonus = !self.entity.is_baby()
+            && !living
+                .has_attribute_modifier(&Attributes::MOVEMENT_SPEED, SPEED_MODIFIER_ATTACKING_ID)
+            && (self.is_angry()
+                || self
+                    .get_entity()
+                    .world
+                    .load()
+                    .level_info
+                    .load()
+                    .game_rules
+                    .universal_anger);
+        if can_gain_bonus {
+            living.get_attribute_value_with(
+                &Attributes::MOVEMENT_SPEED,
+                &Self::speed_modifier_attacking(),
+            )
+        } else {
+            living.get_attribute_value(&Attributes::MOVEMENT_SPEED)
+        }
+    }
+
+    fn audited_species_reach(&self, _speed: f64) -> GoalReach {
+        let mut reach = GoalReach::default();
+        let world = self.get_entity().world.load();
+        // `update_persistent_anger` looks the grudge target up by UUID wherever it is.
+        if let Some(uuid) = self.get_persistent_anger_target() {
+            reach.links.extend(
+                neutral::find_by_uuid(&world, uuid).map(|target| target.get_entity().entity_id),
+            );
+        }
+        // A target set this tick restarts the alert timer, so only a current one can alert.
+        if self.entity.mob_entity.get_target().is_some()
+            && self.ticks_until_next_alert.load(Ordering::Relaxed) <= 0
+        {
+            reach.typed.push((
+                goal_utils::alert_range(&self.entity.mob_entity),
+                goal_utils::same_class(self.get_entity().entity_type),
+            ));
+        }
+        reach
     }
 
     /// Vanilla `ZombifiedPiglin.setTarget`: a first target restarts the anger sound and alert

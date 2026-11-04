@@ -1,4 +1,4 @@
-use super::Goal;
+use super::{Goal, GoalReach};
 use crate::entity::ai::util::goal_utils;
 use crate::entity::mob::Mob;
 use pumpkin_data::entity::EntityType;
@@ -31,6 +31,27 @@ impl ResetUniversalAngerGoal {
 }
 
 impl Goal for ResetUniversalAngerGoal {
+    fn tick_reach(&self, mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        let mut reach = GoalReach::default();
+        // A player's hit earlier in the tick can start it, so it doesn't wait for the state.
+        if self.alert_others
+            && mob
+                .get_entity()
+                .world
+                .load()
+                .level_info
+                .load()
+                .game_rules
+                .universal_anger
+        {
+            reach.typed.push((
+                goal_utils::alert_range(mob.get_mob_entity()),
+                goal_utils::same_class(mob.get_entity().entity_type),
+            ));
+        }
+        Some(reach)
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         mob.get_entity()
             .world

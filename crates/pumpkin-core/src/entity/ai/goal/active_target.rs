@@ -250,10 +250,6 @@ impl ActiveTargetGoal {
 
 impl Goal for ActiveTargetGoal {
     fn tick_reach(&self, mob: &dyn Mob, running: bool) -> Option<GoalReach> {
-        // A grudge target is found by UUID at any distance.
-        if self.condition == TargetCondition::AngryAt {
-            return None;
-        }
         let mob_entity = mob.get_mob_entity();
         let follow_range = self.track_target_goal.follow_range(mob_entity);
         let mut reach = GoalReach {
@@ -266,8 +262,24 @@ impl Goal for ActiveTargetGoal {
             sight: self.track_target_goal.target_mob_id().into_iter().collect(),
             ..GoalReach::default()
         };
+        let world = mob.get_entity().world.load();
         let searches = !running
-            && (self.condition != TargetCondition::NoDaylight || !mob_entity.is_in_daylight());
+            && match self.condition {
+                TargetCondition::NoDaylight => !mob_entity.is_in_daylight(),
+                // Only a grudge, or the universal anger an earlier goal or island member can
+                // start this tick, lets the search run.
+                TargetCondition::AngryAt => {
+                    self.condition.allows_search(mob)
+                        || world.level_info.load().game_rules.universal_anger
+                }
+                _ => true,
+            };
+        if searches && let Some(uuid) = self.condition.grudge_target(mob) {
+            // The grudge target is looked up by UUID wherever it is.
+            reach
+                .links
+                .extend(find_by_uuid(&world, uuid).map(|target| target.get_entity().entity_id));
+        }
         if searches {
             // Sight checks on the candidates in the search box.
             reach.block_reads = follow_range;

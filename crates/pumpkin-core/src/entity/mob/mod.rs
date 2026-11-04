@@ -1734,7 +1734,7 @@ impl MobEntity {
         };
 
         // `Mob.setSpeed` also sets the forward input to the speed.
-        let speed = living.get_attribute_value(&Attributes::MOVEMENT_SPEED) * goals.speed.max(1.0);
+        let speed = mob.audited_movement_speed() * goals.speed.max(1.0);
         goals.add(mob.audited_species_reach(speed));
         let block_friction = LivingEntity::compute_modified_friction(
             *LEAST_SLIPPERINESS,
@@ -1809,6 +1809,13 @@ pub trait Mob: EntityBase + Send + Sync {
     /// How far outside its box the species' tick code spawns entities this tick.
     fn audited_spawn_distance(&self) -> f64 {
         0.0
+    }
+
+    /// Highest movement speed attribute value the mob can move with this tick.
+    fn audited_movement_speed(&self) -> f64 {
+        self.get_mob_entity()
+            .living_entity
+            .get_attribute_value(&Attributes::MOVEMENT_SPEED)
     }
 
     /// What damage taken in another entity's turn can make the mob touch beyond its body.
