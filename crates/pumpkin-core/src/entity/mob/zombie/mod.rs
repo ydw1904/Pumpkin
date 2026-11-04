@@ -321,11 +321,13 @@ impl ZombieEntityBase {
     pub fn handle_attributes(&self, mob: &dyn Mob, difficulty_modifier: f32, conversion: bool) {
         let living = &self.mob_entity.living_entity;
         let rng = game_random();
-        // Vanilla `randomizeReinforcementsChance`.
-        living.set_attribute_base(
-            &Attributes::SPAWN_REINFORCEMENTS,
-            rng.random::<f64>() * f64::from(0.1f32),
-        );
+        // Vanilla `randomizeReinforcementsChance`, which `ZombifiedPiglin` overrides without a roll.
+        let reinforcements = if living.entity.entity_type == &EntityType::ZOMBIFIED_PIGLIN {
+            0.0
+        } else {
+            rng.random::<f64>() * f64::from(0.1f32)
+        };
+        living.set_attribute_base(&Attributes::SPAWN_REINFORCEMENTS, reinforcements);
         let knockback_resistance = rng.random::<f64>() * f64::from(0.05f32);
         living.update_attribute(&Attributes::KNOCKBACK_RESISTANCE, |attribute| {
             attribute.add_or_replace_permanent_modifier(Modifier {

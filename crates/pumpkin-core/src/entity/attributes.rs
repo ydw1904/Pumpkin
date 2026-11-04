@@ -78,12 +78,33 @@ impl AttributeInstance {
             return f64::from_bits(self.cached_value.load(Ordering::Relaxed));
         }
 
+        let value = self.compute(&self.modifiers);
+        self.cached_value.store(value.to_bits(), Ordering::Relaxed);
+        self.dirty.store(false, Ordering::Relaxed);
+
+        value
+    }
+
+    /// The value this instance would have with `extra` added or replacing its namesake.
+    #[must_use]
+    pub fn value_with(&self, extra: &Modifier) -> f64 {
+        let mut modifiers: Vec<Modifier> = self
+            .modifiers
+            .iter()
+            .filter(|modifier| modifier.id != extra.id)
+            .cloned()
+            .collect();
+        modifiers.push(extra.clone());
+        self.compute(&modifiers)
+    }
+
+    fn compute(&self, modifiers: &[Modifier]) -> f64 {
         let mut value = self.base_value;
 
         let mut add_sum = 0.0;
         let mut mul_base = 0.0;
         let mut mul_total = 1.0;
-        for m in &self.modifiers {
+        for m in modifiers {
             match m.operation {
                 ModifierOperation::Add => add_sum += m.amount,
                 ModifierOperation::MultiplyBase => mul_base += m.amount,
@@ -98,11 +119,12 @@ impl AttributeInstance {
         if value.is_nan() || value.is_infinite() {
             value = self.base_value;
         }
-
-        self.cached_value.store(value.to_bits(), Ordering::Relaxed);
-        self.dirty.store(false, Ordering::Relaxed);
-
         value
+    }
+
+    #[must_use]
+    pub fn has_modifier(&self, id: &str) -> bool {
+        self.modifiers.iter().any(|modifier| modifier.id == id)
     }
 
     pub fn add_or_replace_modifier(&mut self, modifier: Modifier) {

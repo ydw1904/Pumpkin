@@ -1345,6 +1345,33 @@ impl LivingEntity {
             .map_or(attribute.default_value, AttributeInstance::value)
     }
 
+    #[must_use]
+    pub fn has_attribute_modifier(&self, attribute: &Attributes, id: &str) -> bool {
+        self.attributes
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&attribute.id)
+            .is_some_and(|instance| instance.has_modifier(id))
+    }
+
+    /// The value of `attribute` if `modifier` were added to it.
+    #[must_use]
+    pub fn get_attribute_value_with(
+        &self,
+        attribute: &Attributes,
+        modifier: &crate::entity::attributes::Modifier,
+    ) -> f64 {
+        let value = self
+            .attributes
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&attribute.id)
+            .map(|instance| instance.value_with(modifier));
+        value.unwrap_or_else(|| {
+            AttributeInstance::new(self.get_attribute_base(attribute)).value_with(modifier)
+        })
+    }
+
     /// Returns the base attribute value for `attribute` for this entity's type.
     pub fn get_attribute_base(&self, attribute: &Attributes) -> f64 {
         // Check the local base value first (could be modified)
