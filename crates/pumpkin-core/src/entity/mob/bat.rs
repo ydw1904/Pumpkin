@@ -27,6 +27,8 @@ const SOUND_VOLUME: f32 = 0.1;
 const CLOSE_TARGET_DISTANCE_SQ: f64 = 4.0;
 /// A new hanging target is at most this many blocks away on each horizontal axis.
 const TARGET_RANGE: f64 = 6.0;
+/// Forward input a flying bat sets each tick.
+const BAT_FORWARD_INPUT: f32 = 0.5;
 
 pub struct BatEntity {
     pub mob_entity: MobEntity,
@@ -167,6 +169,14 @@ impl BatEntity {
 
             let yaw = (new_velo.z.atan2(new_velo.x) as f32).to_degrees() - 90.0;
             let yaw_diff = pumpkin_util::math::wrap_degrees(yaw - entity.yaw.load());
+            // Vanilla `zza`.
+            let living = &self.mob_entity.living_entity;
+            let input = living.movement_input.load();
+            living.movement_input.store(Vector3::new(
+                input.x,
+                input.y,
+                f64::from(BAT_FORWARD_INPUT),
+            ));
             entity.yaw.store(entity.yaw.load() + yaw_diff);
         }
         drop(hanging_pos);
