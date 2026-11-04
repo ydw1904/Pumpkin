@@ -288,6 +288,34 @@ pub(super) fn generate(
     result
 }
 
+/// Vanilla `ItemCommands.applyModifier`: runs an item modifier over a copy of `stack` and limits
+/// the result to its stack size.
+pub(super) fn modify(
+    functions: &[DynamicLootFunction],
+    stack: &ItemStack,
+    params: &LootContextParameters<'_>,
+) -> ItemStack {
+    let mut generator = Generator {
+        params,
+        rng: RandomGenerator::Gameplay(game_random()),
+        visited: HashSet::new(),
+        has_silk_touch: false,
+        has_shears: false,
+    };
+    let mut result = Stack {
+        stack: stack.clone(),
+        count: i32::from(stack.item_count),
+    };
+    generator.apply(&mut result, &[Functions::Dynamic(functions)]);
+    if result.is_empty() {
+        return ItemStack::EMPTY.clone();
+    }
+    let count = result
+        .count
+        .min(i32::from(result.stack.get_max_stack_size()));
+    result.stack.copy_with_count(count as u8)
+}
+
 struct Generator<'a, 'b> {
     params: &'a LootContextParameters<'b>,
     rng: RandomGenerator,

@@ -524,6 +524,18 @@ pub fn evaluate_predicate_value(
     )
 }
 
+/// Applies an item modifier, a function or a list of them in their JSON form, to a copy of
+/// `stack`.
+#[must_use]
+pub fn apply_item_modifier(
+    modifier: &serde_json::Value,
+    stack: &ItemStack,
+    params: &LootContextParameters<'_>,
+) -> ItemStack {
+    let functions = pumpkin_util::loot_table::parser::parse_functions(modifier);
+    generation::modify(&functions, stack, params)
+}
+
 #[must_use]
 pub fn get_loot_table(key: &str) -> Option<LootTableHandle> {
     let full_key = if key.contains(':') {
