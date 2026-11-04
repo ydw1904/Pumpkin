@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use pumpkin_data::game_rules::{GameRule, GameRuleRegistry, GameRuleValue};
-use pumpkin_protocol::java::client::play::{CGameEvent, GameEvent};
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
@@ -99,13 +98,9 @@ impl CommandExecutor for SetBoolExecutor {
                 }
             }
         }
-        // `MinecraftServer.onGameRuleChanged`.
-        if self.0 == GameRule::LimitedCrafting {
-            context.server().broadcast_packet_all(&CGameEvent::new(
-                GameEvent::LimitedCrafting,
-                if arg_value { 1.0 } else { 0.0 },
-            ));
-        }
+        context
+            .server()
+            .on_bool_game_rule_changed(&self.0, arg_value);
 
         let value_component = TextComponent::text(arg_value.to_string());
         context.source.send_feedback(

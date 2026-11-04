@@ -4472,8 +4472,13 @@ impl Player {
             PermissionLvl::Three => EntityStatus::PermissionLevelAdmins,
             PermissionLvl::Four => EntityStatus::PermissionLevelOwners,
         };
-        // The player may not have a tracking entry yet after changing dimensions.
-        // Permission levels belong to this connection, not to tracking clients.
+        self.send_own_entity_status(status);
+    }
+
+    /// Sends an entity event about the player to its own connection only. The player may not
+    /// have a tracking entry yet after changing dimensions, and permission levels and debug info
+    /// belong to this connection, not to tracking clients.
+    pub fn send_own_entity_status(&self, status: EntityStatus) {
         if let ClientPlatform::Java(java) = self.client.as_ref() {
             let packet = pumpkin_protocol::java::client::play::CEntityStatus::new(
                 self.living_entity.entity.entity_id,

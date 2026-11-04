@@ -1055,8 +1055,10 @@ impl World {
     }
 
     pub fn set_game_rule(&self, rule: &GameRule, value: GameRuleValue<i64, bool>) {
-        let limited_crafting = (*rule == GameRule::LimitedCrafting)
-            .then_some(matches!(value, GameRuleValue::Bool(true)));
+        let bool_value = match value {
+            GameRuleValue::Bool(value) => Some(value),
+            GameRuleValue::Int(_) => None,
+        };
         let current_info = self.level_info.load();
         let mut new_info = (**current_info).clone();
         match (new_info.game_rules.get_mut(rule), value) {
@@ -1070,13 +1072,10 @@ impl World {
         }
         self.level_info.store(Arc::new(new_info));
         // `MinecraftServer.onGameRuleChanged`.
-        if let Some(limited) = limited_crafting
+        if let Some(value) = bool_value
             && let Some(server) = self.server.upgrade()
         {
-            server.broadcast_packet_all(&CGameEvent::new(
-                GameEvent::LimitedCrafting,
-                if limited { 1.0 } else { 0.0 },
-            ));
+            server.on_bool_game_rule_changed(rule, value);
         }
         // Vanilla sends every clock to every player when the rule changes.
         if *rule == GameRule::AdvanceTime
@@ -3757,6 +3756,8 @@ impl World {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone();
+        let level_info = self.level_info.load_full();
+        let game_rules = &level_info.game_rules;
         // Send the login packet for our new player
         client
             .send_packet(&CLogin::new(
@@ -3784,9 +3785,9 @@ impl World {
                     .simulation_distance
                     .get()
                     .into(), // TODO: sim view dinstance
-                false,
-                true,
-                self.level_info.load().game_rules.limited_crafting,
+                game_rules.reduced_debug_info,
+                !game_rules.immediate_respawn,
+                game_rules.limited_crafting,
                 PlayerSpawnData::new(
                     self.dimension.clone(),
                     biome::hash_seed(self.level.seed.0), // seed

@@ -30,9 +30,11 @@ use pumpkin_world::dimension::into_level;
 use pumpkin_world::world::WorldPortalExt;
 use tracing::{debug, error, info, warn};
 
+use pumpkin_data::entity::EntityStatus;
+use pumpkin_data::game_rules::GameRule;
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_protocol::java::client::login::CEncryptionRequest;
-use pumpkin_protocol::java::client::play::{CChangeDifficulty, CTabList};
+use pumpkin_protocol::java::client::play::{CChangeDifficulty, CGameEvent, CTabList, GameEvent};
 use pumpkin_protocol::{ClientPacket, java::client::config::CPluginMessage};
 use pumpkin_util::Difficulty;
 use pumpkin_util::text::TextComponent;
@@ -1080,6 +1082,29 @@ impl Server {
     pub fn broadcast_packet_all<P: ClientPacket>(&self, packet: &P) {
         for world in self.worlds.load().iter() {
             world.broadcast_packet_all(packet);
+        }
+    }
+
+    /// The client-synced part of vanilla `MinecraftServer.onGameRuleChanged` for boolean rules.
+    pub fn on_bool_game_rule_changed(&self, rule: &GameRule, value: bool) {
+        match rule {
+            GameRule::ReducedDebugInfo => self.for_each_player(|player| {
+                player.send_own_entity_status(if value {
+                    EntityStatus::ReducedDebugInfo
+                } else {
+                    EntityStatus::FullDebugInfo
+                });
+            }),
+            GameRule::LimitedCrafting | GameRule::ImmediateRespawn => {
+                let event = if *rule == GameRule::LimitedCrafting {
+                    GameEvent::LimitedCrafting
+                } else {
+                    // Vanilla `IMMEDIATE_RESPAWN`; 1 skips the death screen.
+                    GameEvent::EnabledRespawnScreen
+                };
+                self.broadcast_packet_all(&CGameEvent::new(event, if value { 1.0 } else { 0.0 }));
+            }
+            _ => {}
         }
     }
 
