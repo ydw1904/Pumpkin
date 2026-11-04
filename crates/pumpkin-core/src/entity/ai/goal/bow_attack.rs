@@ -6,7 +6,7 @@ use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_util::Hand;
 use std::sync::Arc;
 
-use crate::entity::ai::goal::{Controls, Goal};
+use crate::entity::ai::goal::{Controls, Goal, GoalReach};
 use crate::entity::ai::pathfinder::NavigatorGoal;
 use crate::entity::mob::Mob;
 use crate::entity::projectile::arrow::{ArrowEntity, ArrowPickup};
@@ -153,6 +153,15 @@ impl BowAttackGoal {
 }
 
 impl Goal for BowAttackGoal {
+    fn tick_reach(&self, _mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        // It aims at the mob's linked target, and the arrow spawns inside the mob. The arrow's
+        // own tick reaches the rest.
+        Some(GoalReach {
+            speed: self.speed,
+            ..GoalReach::default()
+        })
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         mob.get_mob_entity().get_target().is_some() && Self::is_holding_bow(mob)
     }

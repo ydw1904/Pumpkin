@@ -73,6 +73,11 @@ impl Mob for SkeletonEntity {
         &self.entity.mob_entity
     }
 
+    // Converting spawns a stray.
+    fn has_audited_tick(&self) -> bool {
+        !self.freezing_tracker.converts_next_tick()
+    }
+
     // Vanilla `Skeleton.tick` runs the freezing tracker before the rest of the tick.
     fn mob_tick(&self, _caller: &dyn EntityBase) {
         let mob_entity = &self.entity.mob_entity;

@@ -171,13 +171,16 @@ impl AvoidEntityGoal {
 impl Goal for AvoidEntityGoal {
     fn tick_reach(&self, _mob: &dyn Mob, _running: bool) -> Option<super::GoalReach> {
         Some(super::GoalReach {
-            entities: self.flee_distance,
+            // The threat search box holds players, so its distance bounds them too.
             players: if self.flee_from.matches(&EntityType::PLAYER) {
                 self.flee_distance
             } else {
                 0.0
             },
+            typed: vec![(self.flee_distance, self.flee_from)],
             speed: self.fast_speed,
+            // `get_pos_away` reads blocks around its candidates.
+            block_reads: f64::from(HORIZONTAL_RANGE) + 1.0,
             links: self
                 .target
                 .iter()

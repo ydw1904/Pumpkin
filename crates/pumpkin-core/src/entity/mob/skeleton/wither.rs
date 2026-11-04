@@ -58,6 +58,10 @@ impl Mob for WitherSkeletonEntity {
         &self.entity.mob_entity
     }
 
+    fn has_audited_tick(&self) -> bool {
+        true
+    }
+
     fn on_attack(&self, target: &dyn EntityBase) {
         if let Some(living) = target.get_living_entity() {
             living.add_effect_with_source(
