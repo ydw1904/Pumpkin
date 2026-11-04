@@ -145,12 +145,8 @@ fn fill_blocks(
                 world.get_block_state(pos),
             )
         })
-        .map(|(pos, _)| *pos)
-        .collect::<Vec<_>>();
-    world
-        .level
-        .light_engine
-        .update_lighting(&world.level, &light_checks);
+        .map(|(pos, _)| *pos);
+    world.level.light_engine.check_blocks(light_checks);
 
     if !strict {
         for (pos, old_state) in &placed {

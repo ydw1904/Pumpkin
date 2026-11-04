@@ -395,7 +395,7 @@ fn clone(
 
 /// Checks the light of every changed block whose light properties changed.
 fn update_light(world: &World, changed: &[(BlockPos, BlockStateId)]) {
-    let light_checks: Vec<BlockPos> = changed
+    let light_checks = changed
         .iter()
         .filter(|(pos, old_state)| {
             LightEngine::has_different_light_properties(
@@ -403,12 +403,8 @@ fn update_light(world: &World, changed: &[(BlockPos, BlockStateId)]) {
                 world.get_block_state(pos),
             )
         })
-        .map(|(pos, _)| *pos)
-        .collect();
-    world
-        .level
-        .light_engine
-        .update_lighting(&world.level, &light_checks);
+        .map(|(pos, _)| *pos);
+    world.level.light_engine.check_blocks(light_checks);
 }
 
 /// Vanilla `LevelTicks.copyAreaFrom`: the block ticks scheduled inside `area` are scheduled

@@ -1463,6 +1463,9 @@ impl Server {
             }
             self.handle_console_inputs();
             self.flush_pending_block_updates();
+            for world in self.worlds.load().iter() {
+                world.schedule_light_updates();
+            }
             Self::resume_player_flushes(&suspended);
         });
     }

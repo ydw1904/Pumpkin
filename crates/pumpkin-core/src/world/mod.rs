@@ -659,7 +659,7 @@ impl World {
         }
         self.unload_chunk_pois(&unloaded);
         for pos in newly_loaded {
-            self.level.light_engine.check_pending(&self.level, pos);
+            self.level.light_engine.check_pending(pos);
             self.register_chunk_pois(pos);
             self.add_world_gen_chunk_entities(pos);
         }
@@ -723,7 +723,15 @@ impl World {
         dx <= radius && dz <= radius
     }
 
+    /// Starts updating the light changed during this tick on another thread, like vanilla
+    /// `ThreadedLevelLightEngine.tryScheduleUpdate` while the server waits for the next tick.
+    pub fn schedule_light_updates(&self) {
+        let level = self.level.clone();
+        rayon::spawn(move || level.light_engine.run_queued_checks(&level));
+    }
+
     pub async fn shutdown(&self) {
+        self.level.light_engine.run_queued_checks(&self.level);
         let entities = self.entities.load_full();
         self.save_entities_by_chunk(&entities, self.level.live_entity_chunk_positions())
             .await;
@@ -1747,6 +1755,9 @@ impl World {
     pub fn tick(self: &Arc<Self>, server: &Arc<Server>) {
         let start = std::time::Instant::now();
 
+        // Light changed by the last tick is updated before this one starts, like vanilla's light
+        // thread usually manages between two ticks.
+        self.level.light_engine.run_queued_checks(&self.level);
         self.flush_block_updates();
         self.flush_synced_block_events();
         // Vanilla `processPacketsAndTick` handles queued player packets before the level tick
@@ -6490,9 +6501,7 @@ impl World {
                 old_state, new_state,
             )
         {
-            self.level
-                .light_engine
-                .update_lighting_at(&self.level, *position);
+            self.level.light_engine.check_block(*position);
         }
 
         replaced_block_state_id

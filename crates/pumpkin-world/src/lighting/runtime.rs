@@ -19,6 +19,20 @@ pub struct DynamicLightEngine {
     /// once the chunk is loaded. Vanilla's light engine already reaches lit chunks that aren't
     /// full, but Pumpkin's runtime light only sees loaded chunks.
     pending_checks: Mutex<FxHashMap<Vector2<i32>, FxHashSet<BlockPos>>>,
+    /// Block checks queued since the last light update, like the `checkBlock` tasks vanilla
+    /// `ThreadedLevelLightEngine` hands to its light thread.
+    queued_checks: Mutex<QueuedChecks>,
+    /// Held while queued checks run, so batches run one at a time like on vanilla's single
+    /// light executor.
+    running: Mutex<()>,
+}
+
+/// Positions to check in the order they were queued, each once like vanilla's
+/// `blockNodesToCheck` set.
+#[derive(Default)]
+struct QueuedChecks {
+    order: Vec<BlockPos>,
+    seen: FxHashSet<BlockPos>,
 }
 
 /// Light access through the level's loaded chunks.
@@ -139,31 +153,65 @@ impl DynamicLightEngine {
             min_y,
             max_y,
             pending_checks: Mutex::default(),
+            queued_checks: Mutex::default(),
+            running: Mutex::new(()),
         }
     }
 
-    /// Checks the light that couldn't reach `chunk` before it was loaded, like vanilla would
-    /// have when the change happened.
-    pub fn check_pending(&self, level: &Arc<Level>, chunk: Vector2<i32>) {
+    /// Queues the light that couldn't reach `chunk` before it was loaded, like vanilla would
+    /// have checked it when the change happened.
+    pub fn check_pending(&self, chunk: Vector2<i32>) {
         let positions = self
             .pending_checks
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(&chunk);
         if let Some(positions) = positions {
-            self.update_lighting(level, &positions.into_iter().collect::<Vec<_>>());
+            self.check_blocks(positions);
         }
     }
 
-    /// Updates block and sky light after the block at `pos` changed, like vanilla
-    /// `LevelLightEngine.checkBlock` followed by `runLightUpdates`.
-    pub fn update_lighting_at(&self, level: &Arc<Level>, pos: BlockPos) {
-        self.update_lighting(level, &[pos]);
+    /// Vanilla `ThreadedLevelLightEngine.checkBlock`: queues a light check for a changed block.
+    /// The light changes once [`Self::run_queued_checks`] runs.
+    pub fn check_block(&self, pos: BlockPos) {
+        self.check_blocks([pos]);
+    }
+
+    /// Queues light checks for several changed blocks.
+    pub fn check_blocks(&self, positions: impl IntoIterator<Item = BlockPos>) {
+        let mut queued = self
+            .queued_checks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for pos in positions {
+            if queued.seen.insert(pos) {
+                queued.order.push(pos);
+            }
+        }
+    }
+
+    /// Runs the queued light checks in one batch, like vanilla's light thread does in
+    /// `ThreadedLevelLightEngine.runUpdate`. Waits for a batch that is already running.
+    pub fn run_queued_checks(&self, level: &Arc<Level>) {
+        let _running = self
+            .running
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let positions = std::mem::take(
+            &mut *self
+                .queued_checks
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        )
+        .order;
+        if !positions.is_empty() {
+            self.update_lighting(level, &positions);
+        }
     }
 
     /// Updates light after several blocks changed, checking all of them before propagating like
     /// vanilla does for the block checks queued between two light updates.
-    pub fn update_lighting(&self, level: &Arc<Level>, positions: &[BlockPos]) {
+    fn update_lighting(&self, level: &Arc<Level>, positions: &[BlockPos]) {
         if let Some(value) = level.lighting_config.fixed_level() {
             for pos in positions {
                 self.set_block_light_level(level, pos, value).ok();
@@ -212,7 +260,7 @@ impl DynamicLightEngine {
         // A chunk that got loaded meanwhile won't be announced again.
         for chunk in chunks {
             if level.is_chunk_loaded(&chunk) {
-                self.check_pending(level, chunk);
+                self.check_pending(chunk);
             }
         }
     }
@@ -417,9 +465,8 @@ mod tests {
         let chunk = lit_chunk(origin.x, origin.y);
         chunk.set_block_absolute_y(15, 64, 8, Block::GLOWSTONE.default_state.id);
         level.loaded_chunks.insert(origin, chunk);
-        level
-            .light_engine
-            .update_lighting_at(&level, BlockPos::new(15, 64, 8));
+        level.light_engine.check_block(BlockPos::new(15, 64, 8));
+        level.light_engine.run_queued_checks(&level);
 
         let across = BlockPos::new(16, 64, 8);
         level
@@ -429,7 +476,8 @@ mod tests {
             level.light_engine.get_block_light_level(&level, &across),
             Some(0)
         );
-        level.light_engine.check_pending(&level, neighbor);
+        level.light_engine.check_pending(neighbor);
+        level.light_engine.run_queued_checks(&level);
         assert_eq!(
             level.light_engine.get_block_light_level(&level, &across),
             Some(14)
