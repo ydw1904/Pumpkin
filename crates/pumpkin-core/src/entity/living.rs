@@ -3608,6 +3608,11 @@ impl LivingEntity {
 
     /// Vanilla `getLastDamageSource`: the last damage type and the entity id of its causing
     /// entity (0 when none), forgotten after 40 ticks.
+    /// The attacker of the last damage, without expiring it like `get_last_damage_source`.
+    pub(crate) fn last_damage_attacker_id(&self) -> i32 {
+        self.last_damage_attacker.load(Relaxed)
+    }
+
     pub fn get_last_damage_source(&self) -> Option<(DamageType, i32)> {
         let stamp = self.last_damage_stamp.load(Ordering::Relaxed);
         let mut last = self

@@ -343,6 +343,22 @@ impl AxolotlHuntGoal {
 }
 
 impl Goal for AxolotlHuntGoal {
+    fn tick_reach(&self, mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        let mut reach = self.inner.tick_reach(mob, running)?;
+        // Stopping supports the player whose damage was last on the old target. An attacker
+        // that damages it earlier in the tick links its own owner.
+        if running && let Some(target) = &self.target {
+            reach.links.push(target.get_entity().entity_id);
+            reach.links.extend(
+                target
+                    .get_living_entity()
+                    .map(LivingEntity::last_damage_attacker_id)
+                    .filter(|id| *id != 0),
+            );
+        }
+        Some(reach)
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         // `StartAttacking` belongs to the idle activity, which does not run while playing dead.
         !as_axolotl(mob).is_some_and(AxolotlEntity::is_playing_dead) && self.inner.can_start(mob)
@@ -440,6 +456,10 @@ impl LookControlTrait for AxolotlLookControl {
 struct PlayDeadGoal;
 
 impl Goal for PlayDeadGoal {
+    fn tick_reach(&self, _mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        Some(GoalReach::default())
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         as_axolotl(mob).is_some_and(|axolotl| axolotl.play_dead_ticks.load(Ordering::Relaxed) > 0)
     }
@@ -508,6 +528,14 @@ impl TryFindLiquidGoal {
 }
 
 impl Goal for TryFindLiquidGoal {
+    fn tick_reach(&self, _mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        // `find_liquid` reads blocks within the path search range.
+        Some(GoalReach {
+            speed: SPEED_MULTIPLIER_ON_LAND,
+            ..GoalReach::default()
+        })
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         let entity = mob.get_entity();
         if mob.get_mob_entity().get_target().is_some()
@@ -640,6 +668,10 @@ impl Animal for AxolotlEntity {
 }
 
 impl Mob for AxolotlEntity {
+    fn has_audited_tick(&self) -> bool {
+        true
+    }
+
     /// Vanilla `Axolotl.checkSpawnObstruction`.
     fn check_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
         crate::entity::mob::is_unobstructed(self, level)
