@@ -77,11 +77,6 @@ impl MobCounts {
     }
 
     #[inline]
-    pub fn remove(&self, category: &'static MobCategory) {
-        self.0[category.id].fetch_sub(1, Relaxed);
-    }
-
-    #[inline]
     pub fn can_spawn(&self, category: &'static MobCategory) -> bool {
         self.0[category.id].load(Relaxed) < category.max
     }
@@ -188,20 +183,6 @@ impl LocalMobCapCalculator {
         }
     }
 
-    pub fn remove_mob(
-        &self,
-        chunk_pos: Vector2<i32>,
-        world: &World,
-        category: &'static MobCategory,
-    ) {
-        let players = self.get_players_near(world, chunk_pos);
-        for &player in players.iter() {
-            if let Some(count) = self.player_mob_counts.get(&player) {
-                count.remove(category);
-            }
-        }
-    }
-
     pub fn can_spawn(
         &self,
         category: &'static MobCategory,
@@ -267,18 +248,6 @@ impl PotentialCalculator {
         }
     }
 
-    pub fn remove_charge(&self, pos: &BlockPos, charge: f64) {
-        if charge != 0.0 {
-            let mut charges = self
-                .0
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if let Some(idx) = charges.iter().position(|c| c.0 == *pos && c.1 == charge) {
-                charges.swap_remove(idx);
-            }
-        }
-    }
-
     pub fn get_potential_energy_change(&self, pos: &BlockPos, charge: f64) -> f64 {
         if charge == 0.0 {
             return 0.0;
@@ -341,60 +310,6 @@ impl SpawnState {
 
     pub const fn set_spawnable_chunk_count(&mut self, count: i32) {
         self.spawnable_chunk_count = count;
-    }
-
-    pub fn add_entity(&self, world: &World, entity: &dyn EntityBase) {
-        if let Some(mob) = entity.get_mob()
-            && (mob.get_mob_entity().persistence_required.load(Relaxed)
-                || mob.requires_custom_persistence())
-        {
-            return;
-        }
-        let base_entity = entity.get_entity();
-        let entity_type = base_entity.entity_type;
-        if entity_type.category == &MobCategory::MISC {
-            return;
-        }
-        let entity_pos = base_entity.block_pos.load();
-        let biome = base_entity.current_biome.load();
-        if let Some(cost) = biome.spawn_costs.get(entity_type.resource_name) {
-            self.spawn_potential.add_charge(&entity_pos, cost.charge);
-        }
-        if entity.get_mob().is_some() || entity_type.mob {
-            self.local_mob_cap_calculator.add_mob(
-                base_entity.chunk_pos.load(),
-                world,
-                entity_type.category,
-            );
-        }
-        self.mob_category_counts.add(entity_type.category);
-    }
-
-    pub fn remove_entity(&self, world: &World, entity: &dyn EntityBase) {
-        if let Some(mob) = entity.get_mob()
-            && (mob.get_mob_entity().persistence_required.load(Relaxed)
-                || mob.requires_custom_persistence())
-        {
-            return;
-        }
-        let base_entity = entity.get_entity();
-        let entity_type = base_entity.entity_type;
-        if entity_type.category == &MobCategory::MISC {
-            return;
-        }
-        let entity_pos = base_entity.block_pos.load();
-        let biome = base_entity.current_biome.load();
-        if let Some(cost) = biome.spawn_costs.get(entity_type.resource_name) {
-            self.spawn_potential.remove_charge(&entity_pos, cost.charge);
-        }
-        if entity.get_mob().is_some() || entity_type.mob {
-            self.local_mob_cap_calculator.remove_mob(
-                base_entity.chunk_pos.load(),
-                world,
-                entity_type.category,
-            );
-        }
-        self.mob_category_counts.remove(entity_type.category);
     }
 
     pub fn new(

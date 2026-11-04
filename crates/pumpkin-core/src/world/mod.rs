@@ -564,7 +564,6 @@ impl World {
         }
     }
 
-    #[expect(clippy::too_many_lines)]
     pub fn update_active_chunks(self: &Arc<Self>) {
         let sim_dist = self.server.upgrade().map_or(10, |s| {
             s.advanced_config.networking.java.simulation_distance.get()
@@ -656,7 +655,6 @@ impl World {
                 migrations.push(pos);
             }
         }
-        let spawnable_chunks = active_chunks.spawn_candidates.len() as i32;
         drop(active_chunks);
         drop(tracker);
         self.update_forced_entity_chunks(&forced_added, &forced_removed);
@@ -670,12 +668,6 @@ impl World {
             self.register_chunk_pois(pos);
             self.add_world_gen_chunk_entities(pos);
         }
-
-        self.spawn_state.store(Arc::new(SpawnState::new(
-            spawnable_chunks,
-            &self.entities,
-            self,
-        )));
     }
 
     pub fn get_lighting_config(&self) -> LightingEngineConfig {
@@ -2472,6 +2464,14 @@ impl World {
             }
         }
 
+        // Vanilla `ServerChunkCache.tickChunks` counts the mobs after scheduled ticks and raids
+        // ran. Until the next count only natural spawns change it (`SpawnState.afterSpawn`).
+        self.spawn_state.store(Arc::new(SpawnState::new(
+            active_chunks.spawn_candidates.len() as i32,
+            &self.entities,
+            self,
+        )));
+
         for pos in tick_data.precipitation {
             gameplay::with_owner(
                 || {
@@ -2972,7 +2972,7 @@ impl World {
             is_thundering,
         );
         for entity in entities {
-            self.spawn_counted_entity(entity);
+            self.spawn_entity_non_save(entity);
         }
     }
 
@@ -5900,15 +5900,8 @@ impl World {
         removed_player
     }
 
-    pub fn spawn_entity_non_save(&self, entity: Arc<dyn EntityBase>) {
-        self.spawn_state.load().add_entity(self, entity.as_ref());
-        self.spawn_counted_entity(entity);
-    }
-
-    /// [`Self::spawn_entity_non_save`] for a natural spawn, which `SpawnState::after_spawn`
-    /// already counted.
     #[expect(clippy::needless_pass_by_value)]
-    fn spawn_counted_entity(&self, entity: Arc<dyn EntityBase>) {
+    pub fn spawn_entity_non_save(&self, entity: Arc<dyn EntityBase>) {
         gameplay::register_entity(entity.get_entity().entity_id, || entity.rng_owner_base());
         self.entity_tracker.add_entity(&entity, self);
 
@@ -6103,7 +6096,6 @@ impl World {
         // unload (see `save_entities_by_chunk`), never at spawn, so it can't be both live and
         // serialized at once (which would double it on the next reload).
         gameplay::register_entity(base_entity.entity_id, || entity.rng_owner_base());
-        self.spawn_state.load().add_entity(self, entity.as_ref());
         self.entity_tracker.add_entity(&entity, self);
 
         self.entities.rcu(|current_entities| {
@@ -6173,7 +6165,6 @@ impl World {
             }
         }
 
-        self.spawn_state.load().remove_entity(self, entity);
         self.entity_tracker.remove_entity(entity, self);
         self.entities.rcu(|current_entities| {
             let mut new_entities = (**current_entities).clone();
@@ -6256,7 +6247,6 @@ impl World {
                 base.removed.store(true, Ordering::Release);
             }
             self.entity_tracker.remove_entity(entity.as_ref(), self);
-            self.spawn_state.load().remove_entity(self, entity.as_ref());
             if let Some(mob) = entity.get_mob() {
                 mob.get_mob_entity().finish_removal(mob);
             }
