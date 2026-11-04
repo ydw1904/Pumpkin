@@ -2,7 +2,10 @@ use pumpkin_data::noise_router::{Axis, WrapperType};
 use pumpkin_util::math::vector3::Vector3;
 
 use crate::{
-    biome::multi_noise::{NoiseValuePoint, to_long},
+    biome::{
+        CachedFlatLeaf,
+        multi_noise::{NoiseValuePoint, to_long},
+    },
     generation::biome_coords,
 };
 
@@ -44,6 +47,10 @@ pub struct MultiNoiseSampler<'a> {
     component_stack: Option<Box<[ChunkNoiseFunctionComponent<'a>]>>,
     volume: Option<DensityVolume>,
     buffers: Option<[SampledParameter; 6]>,
+    /// The biome tree search's `lastResult` hint. It's kept per sampler rather than per
+    /// thread so a chunk's biomes don't depend on what the thread generated before it: on an
+    /// exact distance tie the search keeps the hinted leaf.
+    pub(crate) last_biome_leaf: Option<CachedFlatLeaf>,
 }
 
 impl<'a> MultiNoiseSampler<'a> {
@@ -201,6 +208,7 @@ impl<'a> MultiNoiseSampler<'a> {
             component_stack: None,
             volume: None,
             buffers: None,
+            last_biome_leaf: None,
         }
     }
 

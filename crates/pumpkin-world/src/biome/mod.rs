@@ -1,6 +1,5 @@
 use rustc_hash::FxHashSet;
 use sha2::{Digest, Sha256};
-use std::cell::RefCell;
 use std::sync::LazyLock;
 
 use pumpkin_data::chunk::{Biome, BiomeTree, NETHER_BIOME_SOURCE, OVERWORLD_BIOME_SOURCE};
@@ -48,7 +47,9 @@ struct FlatBiomeTree {
 }
 
 #[derive(Clone, Copy)]
-struct CachedFlatLeaf {
+pub(crate) struct CachedFlatLeaf {
+    /// The search only accepts nodes strictly closer than this leaf, so a leaf from another
+    /// dimension's tree would beat every node of this one.
     kind: FlatTreeKind,
     node_idx: usize,
     point: [i32; 7],
@@ -214,17 +215,6 @@ static OVERWORLD_FLAT_TREE: LazyLock<FlatBiomeTree> =
 static NETHER_FLAT_TREE: LazyLock<FlatBiomeTree> =
     LazyLock::new(|| FlatBiomeTree::from_tree(&NETHER_BIOME_SOURCE));
 
-thread_local! {
-    /// A shortcut; check if last used biome is what we should use.
-    ///
-    /// Keyed by the tree the leaf came from. `BiomeTree::get` seeds its search distance from
-    /// this leaf and only accepts strictly closer nodes, so a leaf cached from one dimension's
-    /// tree would otherwise beat every node of another's and be returned unchanged. Vanilla
-    /// stores `lastResult` on the `RTree` itself rather than sharing one across all of them.
-    static LAST_FLAT_LEAF: RefCell<Option<CachedFlatLeaf>> =
-        const { RefCell::new(None) };
-}
-
 pub trait BiomeSupplier {
     fn biome(&self, x: i32, y: i32, z: i32, noise: &mut MultiNoiseSampler<'_>) -> &'static Biome;
 }
@@ -262,8 +252,7 @@ impl BiomeSupplier for MultiNoiseBiomeSupplier {
             FlatTreeKind::Overworld => &*OVERWORLD_FLAT_TREE,
             FlatTreeKind::Nether => &*NETHER_FLAT_TREE,
         };
-        LAST_FLAT_LEAF
-            .with_borrow_mut(|last_result| flat_tree.get(self.flat_kind, &point_list, last_result))
+        flat_tree.get(self.flat_kind, &point_list, &mut noise.last_biome_leaf)
     }
 }
 
