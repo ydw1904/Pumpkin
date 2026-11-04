@@ -24,6 +24,7 @@ use crate::entity::{
     ai::target_match::TargetMatch,
 };
 use crate::plugin::api::events::entity::entity_target::TargetReason;
+use crate::world::entity_islands::HurtReach;
 use crate::world::{World, natural_spawner};
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::data_component_impl::EquipmentSlot;
@@ -392,6 +393,25 @@ impl ZombieEntityBase {
         }
     }
 
+    /// Where a hit in another entity's turn can make this zombie spawn a reinforcement.
+    #[must_use]
+    pub fn reinforcement_hurt_reach(&self) -> Option<HurtReach> {
+        self.may_call_reinforcements().then(|| HurtReach {
+            area: self
+                .mob_entity
+                .living_entity
+                .entity
+                .bounding_box
+                .load()
+                .expand(
+                    REINFORCEMENT_REACH,
+                    REINFORCEMENT_REACH,
+                    REINFORCEMENT_REACH,
+                ),
+            changes_blocks: false,
+        })
+    }
+
     /// Vanilla `Zombie.hurtServer` after the damage landed: on hard difficulty a hurt zombie
     /// with a target, or hurt by a living entity, sometimes calls another of its type for help.
     pub fn call_reinforcements(&self, attacker: Option<&dyn EntityBase>) {
@@ -750,5 +770,57 @@ pub fn zombie_xp_reward(xp_reward: u32, is_baby: bool) -> u32 {
         (f64::from(xp_reward) * 2.5) as u32
     } else {
         xp_reward
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entity::{
+        Entity, ai::test_support::world, mob::Mob, mob::zombie::zombie::ZombieEntity,
+    };
+    use pumpkin_util::math::{boundingbox::BoundingBox, vector3::Vector3};
+
+    #[tokio::test]
+    async fn a_hit_on_hard_reaches_the_farthest_reinforcement()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let folder = tempfile::tempdir()?;
+        let world = world(&folder);
+        let zombie = ZombieEntity::new(Entity::new(
+            world.clone(),
+            Vector3::new(0.5, 64.0, 0.5),
+            &EntityType::ZOMBIE,
+        ));
+        zombie
+            .get_mob_entity()
+            .living_entity
+            .set_attribute_base(&Attributes::SPAWN_REINFORCEMENTS, 0.1);
+        world.level_info.rcu(|info| {
+            let mut info = (**info).clone();
+            info.difficulty = Difficulty::Normal;
+            info
+        });
+        let normal = zombie.hurt_reach();
+        world.level_info.rcu(|info| {
+            let mut info = (**info).clone();
+            info.difficulty = Difficulty::Hard;
+            info
+        });
+        let hard = zombie.hurt_reach().ok_or("no hurt reach on hard")?;
+        world.level.shutdown().await;
+        assert!(normal.is_none());
+        // `call_reinforcements` offsets each axis by up to the range from the block it stands
+        // in, then checks for players around the spawn.
+        let range = f64::from(REINFORCEMENT_RANGE_MAX);
+        let spawn = Vector3::new(-range, 64.0 + range, range);
+        let checked = BoundingBox::new(spawn, spawn).expand(
+            REINFORCEMENT_PLAYER_DISTANCE,
+            REINFORCEMENT_PLAYER_DISTANCE,
+            REINFORCEMENT_PLAYER_DISTANCE,
+        );
+        assert!(hard.area.min.x <= checked.min.x && hard.area.max.z >= checked.max.z);
+        assert!(hard.area.max.y >= checked.max.y);
+        assert!(!hard.changes_blocks);
+        Ok(())
     }
 }

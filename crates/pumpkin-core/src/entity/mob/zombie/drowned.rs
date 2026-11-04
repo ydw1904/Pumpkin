@@ -238,6 +238,10 @@ impl Mob for DrownedEntity {
         true
     }
 
+    fn hurt_reach(&self) -> Option<crate::world::entity_islands::HurtReach> {
+        self.entity.reinforcement_hurt_reach()
+    }
+
     fn additional_tick_movement(&self) -> f64 {
         self.entity.reinforcement_reach()
     }

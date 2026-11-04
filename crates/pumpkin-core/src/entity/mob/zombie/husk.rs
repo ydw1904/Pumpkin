@@ -176,6 +176,10 @@ impl Mob for HuskEntity {
         true
     }
 
+    fn hurt_reach(&self) -> Option<crate::world::entity_islands::HurtReach> {
+        self.entity.reinforcement_hurt_reach()
+    }
+
     // Hits in other entities' turns join them to this reach, so it covers those calls too.
     fn audited_spawn_distance(&self) -> f64 {
         self.entity.reinforcement_reach()

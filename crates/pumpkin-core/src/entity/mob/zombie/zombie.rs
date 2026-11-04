@@ -115,6 +115,10 @@ impl Mob for ZombieEntity {
         true
     }
 
+    fn hurt_reach(&self) -> Option<crate::world::entity_islands::HurtReach> {
+        self.entity.reinforcement_hurt_reach()
+    }
+
     // Converting spawns another type.
     fn has_audited_tick(&self) -> bool {
         !self.entity.converts_next_tick()
