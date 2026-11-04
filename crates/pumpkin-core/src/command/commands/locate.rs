@@ -277,9 +277,15 @@ impl CommandExecutor for LocateStructureExecutor {
         for radius in 0..=STRUCTURE_SEARCH_RADIUS {
             let mut found_something = false;
             for (set, keys) in &random_spread_scans {
-                if let Some((pos, key)) =
-                    find_structure_start_in_ring(origin, set, keys, radius, &world_gen)
-                {
+                // `/locate` passes `createReference = false`.
+                if let Some((pos, key)) = find_structure_start_in_ring(
+                    origin,
+                    set,
+                    keys,
+                    radius,
+                    &world_gen,
+                    &mut |_, _, _| true,
+                ) {
                     found_something = true;
                     keep_nearest(pos, key);
                 }

@@ -726,19 +726,15 @@ impl VillagerEntity {
     fn create_explorer_map(&self, destination: &str, given: &ItemStack) -> Option<ItemStack> {
         use pumpkin_data::data_component::DataComponent;
         use pumpkin_data::data_component_impl::{DataComponentImpl, ItemNameImpl};
-        use pumpkin_data::structures::StructureSet;
-        use pumpkin_world::generation::generator::structure_finder::find_nearest_structure_start;
-
-        let (structure_set, structure, name, icon_type) = explorer_map_target(destination)?;
+        let (_, structure, name, icon_type) = explorer_map_target(destination)?;
 
         let world = self.get_entity().world.load().clone();
-        let generator = world.level.world_gen();
-        let (target, _) = find_nearest_structure_start(
+        // The trades' `exploration_map` modifiers keep `skip_existing_chunks` at its default.
+        let target = world.find_nearest_map_structure(
+            &[structure.to_name()],
             self.get_entity().block_pos.load(),
-            StructureSet::get(structure_set)?,
-            &[structure],
             100,
-            &generator,
+            true,
         )?;
         let decoration_type = pumpkin_data::map_decoration::MapDecorationType::from_id(
             u32::try_from(icon_type).ok()?,

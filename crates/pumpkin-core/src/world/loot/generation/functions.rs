@@ -464,8 +464,10 @@ impl Generator<'_, '_> {
     }
 
     /// `ExplorationMapFunction`: turns the map into an exploration map of the nearest structure
-    /// of the destination. Structures aren't marked as found, so `skip_existing_chunks` has no
-    /// effect.
+    /// of the destination. With `skip_existing_chunks`, each map claims its structure so later
+    /// maps lead elsewhere. Vanilla's `claimStructureAt`, which first claims a destination
+    /// structure the loot origin is inside, isn't ported: chunk structure references don't
+    /// record their start chunk.
     fn exploration_map(&self, json: &Value, stack: &mut Stack) {
         if stack.is_empty() {
             return;
@@ -494,9 +496,17 @@ impl Generator<'_, '_> {
             .get("search_radius")
             .and_then(Value::as_i64)
             .map_or(DEFAULT_SEARCH_RADIUS, |radius| radius as i32);
+        let skip_known_structures = json
+            .get("skip_existing_chunks")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
         let origin = BlockPos::containing_vec(origin);
-        let Some(target) = world.find_nearest_map_structure(&structures, origin, search_radius)
-        else {
+        let Some(target) = world.find_nearest_map_structure(
+            &structures,
+            origin,
+            search_radius,
+            skip_known_structures,
+        ) else {
             return;
         };
         crate::world::map::make_exploration_map(world, &mut stack.stack, target, zoom, decoration);

@@ -135,6 +135,8 @@ pub struct Server {
     pub scoreboard: Arc<std::sync::Mutex<crate::world::scoreboard::Scoreboard>>,
     /// Manages all maps on the server
     pub map_manager: MapManager,
+    /// How many exploration maps lead to each structure start.
+    pub structure_references: crate::world::structure_references::StructureReferences,
     /// The default gamemode when a player joins the server (reset every restart)
     pub defaultgamemode: std::sync::Mutex<DefaultGamemode>,
     /// Manages player data storage
@@ -352,6 +354,14 @@ impl Server {
             ),
             scoreboard: Arc::new(std::sync::Mutex::new(load_scoreboard(&world_path))),
             map_manager: MapManager::new(world_path.clone()),
+            structure_references: crate::world::structure_references::StructureReferences::load(
+                read_saved_data(
+                    &world_path,
+                    "pumpkin",
+                    crate::world::structure_references::SAVED_DATA_PATH,
+                )
+                .as_ref(),
+            ),
             defaultgamemode,
             player_data_storage,
             command_storage: std::sync::Mutex::new(load_command_storage(&world_path)),
@@ -693,6 +703,15 @@ impl Server {
             }
         }
         self.map_manager.save(data_version);
+        if let Err(err) = write_saved_data(
+            &world_path,
+            "pumpkin",
+            crate::world::structure_references::SAVED_DATA_PATH,
+            self.structure_references.to_saved_data(),
+            data_version,
+        ) {
+            error!("Failed to save structure_references.dat: {err}");
+        }
         // Vanilla `CommandStorage`: one `command_storage.dat` per namespace.
         let mut storage_by_namespace: FxHashMap<&str, NbtCompound> = FxHashMap::default();
         let command_storage = self

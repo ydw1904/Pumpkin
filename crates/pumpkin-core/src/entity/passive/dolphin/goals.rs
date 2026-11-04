@@ -140,6 +140,7 @@ impl Goal for DolphinSwimToTreasureGoal {
             tag::WorldgenStructure::MINECRAFT_DOLPHIN_LOCATED.0,
             origin,
             DOLPHIN_SEARCH_RADIUS,
+            false,
         ) {
             self.treasure_pos = Some(pos);
             world.send_entity_status(

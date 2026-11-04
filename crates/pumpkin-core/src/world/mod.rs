@@ -43,6 +43,7 @@ pub mod random_sequences;
 #[cfg(test)]
 mod spawn_tests;
 pub mod stopwatches;
+pub mod structure_references;
 pub mod time;
 pub mod villager_poi;
 
@@ -3284,13 +3285,14 @@ impl World {
     }
 
     /// `ServerLevel.findNearestMapStructure` for random-spread structures: the nearest start of
-    /// any of `structures`, searched ring by ring out to `max_search_radius` regions.
-    #[must_use]
+    /// any of `structures`, searched ring by ring out to `max_search_radius` regions. With
+    /// `create_reference`, starts an earlier map claimed are skipped and the found one is claimed.
     pub fn find_nearest_map_structure(
         &self,
         structures: &[impl AsRef<str>],
         origin: BlockPos,
         max_search_radius: i32,
+        create_reference: bool,
     ) -> Option<BlockPos> {
         use pumpkin_data::structures::{StructureKeys, StructureSet};
         use pumpkin_world::generation::generator::structure_finder::find_nearest_structure_start_in_sets;
@@ -3317,11 +3319,21 @@ impl World {
             .iter()
             .map(|(index, keys)| (&StructureSet::ALL[*index], keys.as_slice()))
             .collect();
+        let server = self.server.upgrade();
+        let dimension = self.dimension.minecraft_name;
         find_nearest_structure_start_in_sets(
             origin,
             &searches,
             max_search_radius,
             &self.level.world_gen(),
+            &mut |structure, chunk_x, chunk_z| {
+                !create_reference
+                    || server.as_ref().is_none_or(|server| {
+                        server
+                            .structure_references
+                            .try_add_reference(dimension, structure, chunk_x, chunk_z)
+                    })
+            },
         )
         .map(|(pos, _)| pos)
     }

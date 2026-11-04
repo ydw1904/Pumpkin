@@ -142,18 +142,29 @@ pub fn find_nearest_structure_start(
     generator: &WorldGenerator,
 ) -> Option<(BlockPos, pumpkin_data::structures::StructureKeys)> {
     (0..=max_search_radius).find_map(|radius| {
-        find_structure_start_in_ring(origin, structure_set, target_structures, radius, generator)
+        find_structure_start_in_ring(
+            origin,
+            structure_set,
+            target_structures,
+            radius,
+            generator,
+            &mut |_, _, _| true,
+        )
     })
 }
 
 /// Vanilla `ChunkGenerator.findNearestMapStructure` over several random-spread sets: each ring
 /// asks every set for its first start and keeps the nearest before moving outward.
+///
+/// `try_reference` is vanilla's `createReference` check: it gets each start found, by its
+/// structure and chunk, and a start it turns down is skipped.
 #[must_use]
 pub fn find_nearest_structure_start_in_sets(
     origin: BlockPos,
     searches: &[(&StructureSet, &[pumpkin_data::structures::StructureKeys])],
     max_search_radius: i32,
     generator: &WorldGenerator,
+    try_reference: &mut dyn FnMut(pumpkin_data::structures::StructureKeys, i32, i32) -> bool,
 ) -> Option<(BlockPos, pumpkin_data::structures::StructureKeys)> {
     (0..=max_search_radius).find_map(|radius| {
         searches
@@ -165,6 +176,7 @@ pub fn find_nearest_structure_start_in_sets(
                     target_structures,
                     radius,
                     generator,
+                    try_reference,
                 )
             })
             .min_by_key(|(pos, _)| {
@@ -178,8 +190,8 @@ pub fn find_nearest_structure_start_in_sets(
 /// One ring of vanilla `ChunkGenerator.getNearestGeneratedStructure` for a random-spread set.
 ///
 /// Returns the first candidate in vanilla's scan order whose chunk really starts one of
-/// `target_structures`, and which one. Like vanilla, that is not always the nearest candidate
-/// of the ring.
+/// `target_structures` that `try_reference` accepts, and which one. Like vanilla, that is not
+/// always the nearest candidate of the ring.
 #[must_use]
 pub fn find_structure_start_in_ring(
     origin: BlockPos,
@@ -187,6 +199,7 @@ pub fn find_structure_start_in_ring(
     target_structures: &[pumpkin_data::structures::StructureKeys],
     radius: i32,
     generator: &WorldGenerator,
+    try_reference: &mut dyn FnMut(pumpkin_data::structures::StructureKeys, i32, i32) -> bool,
 ) -> Option<(BlockPos, pumpkin_data::structures::StructureKeys)> {
     use crate::{
         biome::BiomeSupplier,
@@ -284,7 +297,7 @@ pub fn find_structure_start_in_ring(
             .find(|&key| start_for(key, chunk_x, chunk_z).is_some()) else {
                 continue;
             };
-            if target_structures.contains(&key) {
+            if target_structures.contains(&key) && try_reference(key, chunk_x, chunk_z) {
                 return Some((
                     get_locate_pos(&structure_set.placement, chunk_x, chunk_z),
                     key,
