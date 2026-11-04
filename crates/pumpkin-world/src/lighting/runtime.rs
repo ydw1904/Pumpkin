@@ -25,6 +25,16 @@ pub struct DynamicLightEngine {
     /// Held while queued checks run, so batches run one at a time like on vanilla's single
     /// light executor.
     running: Mutex<()>,
+    /// Sections whose light changed since the last [`Self::take_changed_sections`], like the
+    /// `sectionsAffectedByLightUpdates` vanilla reports to `ChunkHolder.sectionLightChanged`.
+    changed_sections: Mutex<FxHashMap<Vector2<i32>, ChangedLightSections>>,
+}
+
+/// The section Y coordinates of a chunk whose sky or block light changed.
+#[derive(Default, Debug)]
+pub struct ChangedLightSections {
+    pub sky: FxHashSet<i32>,
+    pub block: FxHashSet<i32>,
 }
 
 /// Positions to check in the order they were queued, each once like vanilla's
@@ -42,6 +52,8 @@ struct LevelLightStorage<'a> {
     max_y: i32,
     /// Positions light couldn't reach because their chunk isn't loaded.
     unloaded: RefCell<Vec<BlockPos>>,
+    /// Sections around every position whose light was set, by layer.
+    changed: FxHashSet<(LightLayer, i32, i32, i32)>,
 }
 
 impl LightStorage for LevelLightStorage<'_> {
@@ -77,6 +89,17 @@ impl LightStorage for LevelLightStorage<'_> {
     }
 
     fn set_level(&mut self, layer: LightLayer, pos: BlockPos, level: u8) {
+        // Vanilla `SectionPos.aroundAndAtBlockPos`: a change at a section edge also affects the
+        // neighbouring section.
+        let (x, y, z) = (pos.0.x, pos.0.y, pos.0.z);
+        for section_x in (x - 1) >> 4..=(x + 1) >> 4 {
+            for section_y in (y - 1) >> 4..=(y + 1) >> 4 {
+                for section_z in (z - 1) >> 4..=(z + 1) >> 4 {
+                    self.changed
+                        .insert((layer, section_x, section_y, section_z));
+                }
+            }
+        }
         let (chunk_pos, relative) = pos.chunk_and_chunk_relative_position();
         self.level.read_chunk_sync(&chunk_pos, |chunk| {
             let local_y = (relative.y - chunk.section.min_y) as usize;
@@ -155,6 +178,7 @@ impl DynamicLightEngine {
             pending_checks: Mutex::default(),
             queued_checks: Mutex::default(),
             running: Mutex::new(()),
+            changed_sections: Mutex::default(),
         }
     }
 
@@ -209,6 +233,16 @@ impl DynamicLightEngine {
         }
     }
 
+    /// Returns and clears the sections whose light changed, by chunk.
+    pub fn take_changed_sections(&self) -> FxHashMap<Vector2<i32>, ChangedLightSections> {
+        std::mem::take(
+            &mut *self
+                .changed_sections
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        )
+    }
+
     /// Updates light after several blocks changed, checking all of them before propagating like
     /// vanilla does for the block checks queued between two light updates.
     fn update_lighting(&self, level: &Arc<Level>, positions: &[BlockPos]) {
@@ -225,6 +259,7 @@ impl DynamicLightEngine {
             min_y: self.min_y,
             max_y: self.max_y,
             unloaded: RefCell::default(),
+            changed: FxHashSet::default(),
         };
 
         let mut block_light = LayerLightEngine::new(LightLayer::Block);
@@ -239,6 +274,20 @@ impl DynamicLightEngine {
                 sky_light.check_node(&mut storage, pos);
             }
             sky_light.run_updates(&mut storage);
+        }
+
+        if !storage.changed.is_empty() {
+            let mut changed_sections = self
+                .changed_sections
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            for (layer, x, y, z) in storage.changed {
+                let sections = changed_sections.entry(Vector2::new(x, z)).or_default();
+                match layer {
+                    LightLayer::Sky => sections.sky.insert(y),
+                    LightLayer::Block => sections.block.insert(y),
+                };
+            }
         }
 
         let unloaded = storage.unloaded.into_inner();

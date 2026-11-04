@@ -1630,6 +1630,25 @@ impl Player {
             .add_passenger(vehicle.clone(), self.clone());
     }
 
+    /// Vanilla `ChunkMap.isChunkOnTrackedBorder`: the client holds the chunk but not all of its
+    /// neighbours.
+    pub fn is_chunk_on_tracked_border(&self, chunk: Vector2<i32>) -> bool {
+        let watched = self.watched_section.load();
+        let sender = self
+            .chunk_sender
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let tracked = |x: i32, z: i32| {
+            watched.is_within_distance(x, z) && sender.is_chunk_ready(&Vector2::new(x, z))
+        };
+        if !tracked(chunk.x, chunk.y) {
+            return false;
+        }
+        (-1..=1).any(|dx| {
+            (-1..=1).any(|dz| (dx != 0 || dz != 0) && !tracked(chunk.x + dx, chunk.y + dz))
+        })
+    }
+
     pub fn clean_up_chunk_tickets(&self, level: &Arc<pumpkin_world::level::Level>) {
         let mut lock = level
             .chunk_loading

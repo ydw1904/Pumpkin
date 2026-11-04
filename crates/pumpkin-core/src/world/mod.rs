@@ -63,7 +63,10 @@ use crate::{
         r#type::{load_entity_from_nbt, load_static_entity_from_nbt, self_and_passengers},
     },
     error::PumpkinError,
-    net::{ClientPlatform, bedrock::BedrockClient, java::JavaClient},
+    net::{
+        ClientPlatform, bedrock::BedrockClient, java::JavaClient,
+        java::chunk_data::light::changed_light_data,
+    },
     plugin::{
         block::block_break::BlockBreakEvent,
         player::{
@@ -110,8 +113,8 @@ use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::bedrock::client::set_actor_data::{CSetActorData, PropertySyncData};
 use pumpkin_protocol::bedrock::client::start_game::{CStartGame, ServerTelemetryData};
 use pumpkin_protocol::java::client::play::{
-    CBlockUpdate, CDisguisedChatMessage, CExplosion, CRespawn, CSetBlockDestroyStage, CWorldEvent,
-    PlayerSpawnData,
+    CBlockUpdate, CDisguisedChatMessage, CExplosion, CLightUpdate, CRespawn, CSetBlockDestroyStage,
+    CWorldEvent, PlayerSpawnData,
 };
 use pumpkin_protocol::java::client::play::{CPlayerSpawnPosition, CSystemChatMessage};
 use pumpkin_protocol::java::client::play::{CSetEntityMetadata, Metadata};
@@ -1762,6 +1765,7 @@ impl World {
         // Light changed by the last tick is updated before this one starts, like vanilla's light
         // thread usually manages between two ticks.
         self.level.light_engine.run_queued_checks(&self.level);
+        self.broadcast_light_changes();
         self.flush_block_updates();
         self.flush_synced_block_events();
         // Vanilla `processPacketsAndTick` handles queued player packets before the level tick
@@ -2135,6 +2139,45 @@ impl World {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         for (pos, state_id) in changes {
             guard.insert(*pos, *state_id);
+        }
+    }
+
+    /// The light half of vanilla `ChunkHolder.broadcastChanges`: sends the sections whose light
+    /// changed to the players that see the chunk at the border of their view. Other players'
+    /// clients light the chunk themselves.
+    fn broadcast_light_changes(&self) {
+        let changed = self.level.light_engine.take_changed_sections();
+        if changed.is_empty() {
+            return;
+        }
+        let players = self.players.load();
+        for (chunk_pos, sections) in changed {
+            let recipients: Vec<&Arc<Player>> = players
+                .iter()
+                .filter(|player| player.is_chunk_on_tracked_border(chunk_pos))
+                .collect();
+            if recipients.is_empty() {
+                continue;
+            }
+            let Some(chunk) = self
+                .level
+                .loaded_chunks
+                .get(&chunk_pos)
+                .map(|chunk| chunk.value().clone())
+            else {
+                continue;
+            };
+            let light_data = match changed_light_data(&chunk, &sections) {
+                Ok(light_data) => light_data,
+                Err(err) => {
+                    error!("Failed to write light update for chunk {chunk_pos:?}: {err}");
+                    continue;
+                }
+            };
+            Self::broadcast_java_grouped(
+                &CLightUpdate::new(VarInt(chunk_pos.x), VarInt(chunk_pos.y), light_data),
+                Self::collect_java_recipients_by_version(recipients.into_iter()),
+            );
         }
     }
 

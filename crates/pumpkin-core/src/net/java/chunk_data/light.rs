@@ -5,6 +5,7 @@ use pumpkin_protocol::ser::WritingError;
 use pumpkin_util::version::JavaMinecraftVersion;
 use pumpkin_world::chunk::ChunkData;
 use pumpkin_world::chunk::format::LightContainer;
+use pumpkin_world::lighting::runtime::ChangedLightSections;
 
 pub trait ChunkLightExt {
     fn from_chunk(chunk: &ChunkData, version: JavaMinecraftVersion) -> Result<Self, WritingError>
@@ -211,5 +212,76 @@ pub fn light_data_from_chunk(
             sky_light_arrays,
             block_light_arrays,
         })
+    }
+}
+
+/// Vanilla `ClientboundLightUpdatePacketData` for the sections in `changed` only.
+pub fn changed_light_data(
+    chunk: &ChunkData,
+    changed: &ChangedLightSections,
+) -> Result<LightData, WritingError> {
+    let light_engine = chunk
+        .light_engine
+        .lock()
+        .map_err(|_| WritingError::Message("light_engine lock poisoned".into()))?;
+    let min_section = chunk.section.min_y >> 4;
+    let mut data = LightData::default();
+    let mut sky_light_mask = 0u64;
+    let mut block_light_mask = 0u64;
+    let mut empty_sky_light_mask = 0u64;
+    let mut empty_block_light_mask = 0u64;
+    // Light section 0 is the one below the world, like in the chunk packet.
+    for (index, (sky, block)) in light_engine
+        .sky_light
+        .iter()
+        .zip(light_engine.block_light.iter())
+        .enumerate()
+    {
+        let section_y = min_section + index as i32;
+        let bit = 1 << (index + 1);
+        if changed.sky.contains(&section_y) {
+            push_section(
+                sky,
+                bit,
+                &mut sky_light_mask,
+                &mut empty_sky_light_mask,
+                &mut data.sky_light_arrays,
+            );
+        }
+        if changed.block.contains(&section_y) {
+            push_section(
+                block,
+                bit,
+                &mut block_light_mask,
+                &mut empty_block_light_mask,
+                &mut data.block_light_arrays,
+            );
+        }
+    }
+    data.sky_light_mask = BitSet::from_u64(sky_light_mask);
+    data.block_light_mask = BitSet::from_u64(block_light_mask);
+    data.empty_sky_light_mask = BitSet::from_u64(empty_sky_light_mask);
+    data.empty_block_light_mask = BitSet::from_u64(empty_block_light_mask);
+    Ok(data)
+}
+
+/// Vanilla `prepareSectionData`: an all-dark section goes in the empty mask, any other is sent.
+fn push_section(
+    section: &LightContainer,
+    bit: u64,
+    mask: &mut u64,
+    empty_mask: &mut u64,
+    arrays: &mut Vec<Vec<u8>>,
+) {
+    match section {
+        LightContainer::Empty(0) => *empty_mask |= bit,
+        LightContainer::Empty(value) => {
+            *mask |= bit;
+            arrays.push(vec![*value << 4 | *value; LightContainer::ARRAY_SIZE]);
+        }
+        LightContainer::Full(data) => {
+            *mask |= bit;
+            arrays.push(data.to_vec());
+        }
     }
 }

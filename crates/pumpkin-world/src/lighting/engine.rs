@@ -14,7 +14,7 @@ pub const MAX_LEVEL: u8 = 15;
 const MIN_OPACITY: u8 = 1;
 const PROPAGATION_DIRECTIONS: [BlockDirection; 6] = BlockDirection::all();
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum LightLayer {
     Sky,
     Block,
