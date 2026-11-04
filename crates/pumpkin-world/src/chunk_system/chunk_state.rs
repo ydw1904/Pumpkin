@@ -326,7 +326,15 @@ impl Chunk {
         // Move the light data instead of cloning it
         // By taking ownership of proto_chunk, we can move the light data directly
         // This prevents keeping duplicate lighting data in memory
-        let light_data = proto_chunk.light;
+        let mut light_data = proto_chunk.light;
+        // Light from neighbours lit later can have filled in sections compacted at lighting.
+        for section in light_data
+            .sky_light
+            .iter_mut()
+            .chain(light_data.block_light.iter_mut())
+        {
+            section.compact();
+        }
 
         // Convert pending block entities from structure generation to actual block entities
         let mut pending_block_entities = FxHashMap::default();

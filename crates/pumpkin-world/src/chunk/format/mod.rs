@@ -411,10 +411,10 @@ impl ChunkData {
                     // short array from disk is dropped instead of stored.
                     block_lights[index] = block_light
                         .filter(|data| data.len() == LightContainer::ARRAY_SIZE)
-                        .map_or(LightContainer::Empty(0), LightContainer::Full);
+                        .map_or(LightContainer::Empty(0), LightContainer::from_saved);
                     sky_lights[index] = sky_light
                         .filter(|data| data.len() == LightContainer::ARRAY_SIZE)
-                        .map_or(LightContainer::Empty(0), LightContainer::Full);
+                        .map_or(LightContainer::Empty(0), LightContainer::from_saved);
 
                     if let Some(bs_compound) = section_compound.get_compound("block_states") {
                         let data = bs_compound
@@ -606,11 +606,8 @@ impl ChunkData {
     pub fn internal_to_bytes(&self) -> Bytes {
         use pumpkin_nbt::tag::NbtTag;
 
-        fn extract_light_ref(light: Option<&LightContainer>) -> Option<&[u8]> {
-            match light {
-                Some(LightContainer::Full(data)) => Some(data.as_ref()),
-                _ => None,
-            }
+        fn extract_light_ref(light: Option<&LightContainer>) -> Option<std::borrow::Cow<'_, [u8]>> {
+            light.and_then(LightContainer::saved_data)
         }
 
         let is_light_correct = self
@@ -959,18 +956,16 @@ impl ChunkData {
             block_lock[i].write_pump_binary(&mut out);
             biome_lock[i].write_pump_binary(&mut out);
 
-            let bl = match light_lock.block_light.get(i) {
-                Some(LightContainer::Full(data)) if data.len() == LightContainer::ARRAY_SIZE => {
-                    Some(data.as_ref())
-                }
-                _ => None,
-            };
-            let sl = match light_lock.sky_light.get(i) {
-                Some(LightContainer::Full(data)) if data.len() == LightContainer::ARRAY_SIZE => {
-                    Some(data.as_ref())
-                }
-                _ => None,
-            };
+            let bl = light_lock
+                .block_light
+                .get(i)
+                .and_then(LightContainer::saved_data)
+                .filter(|data| data.len() == LightContainer::ARRAY_SIZE);
+            let sl = light_lock
+                .sky_light
+                .get(i)
+                .and_then(LightContainer::saved_data)
+                .filter(|data| data.len() == LightContainer::ARRAY_SIZE);
             let mut light_flags = 0u8;
             if bl.is_some() {
                 light_flags |= 1;
@@ -980,10 +975,10 @@ impl ChunkData {
             }
             out.put_u8(light_flags);
             if let Some(data) = bl {
-                out.extend_from_slice(data);
+                out.extend_from_slice(&data);
             }
             if let Some(data) = sl {
-                out.extend_from_slice(data);
+                out.extend_from_slice(&data);
             }
         }
 
@@ -1176,7 +1171,7 @@ impl ChunkData {
                 }
                 let data: Box<[u8]> = buf[..LightContainer::ARRAY_SIZE].into();
                 buf.advance(LightContainer::ARRAY_SIZE);
-                LightContainer::Full(data)
+                LightContainer::from_saved(data)
             } else {
                 LightContainer::Empty(0)
             };
@@ -1188,7 +1183,7 @@ impl ChunkData {
                 }
                 let data: Box<[u8]> = buf[..LightContainer::ARRAY_SIZE].into();
                 buf.advance(LightContainer::ARRAY_SIZE);
-                LightContainer::Full(data)
+                LightContainer::from_saved(data)
             } else {
                 LightContainer::Empty(0)
             };
@@ -1661,6 +1656,38 @@ impl LightContainer {
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         matches!(self, Self::Empty(_))
+    }
+
+    /// A section read from a save, compacted like [`Self::compact`].
+    #[must_use]
+    pub fn from_saved(data: Box<[u8]>) -> Self {
+        let mut light = Self::Full(data);
+        light.compact();
+        light
+    }
+
+    /// Keeps a section that holds one value everywhere as that value instead of 2 KiB.
+    pub fn compact(&mut self) {
+        if let Self::Full(data) = self
+            && let Some(&first) = data.first()
+            && first >> 4 == first & 0x0F
+            && data.iter().all(|&byte| byte == first)
+        {
+            *self = Self::Empty(first & 0x0F);
+        }
+    }
+
+    /// The nibble array to save, or `None` for an all-dark section, which is saved without one.
+    #[must_use]
+    pub fn saved_data(&self) -> Option<std::borrow::Cow<'_, [u8]>> {
+        match self {
+            Self::Full(data) => Some(std::borrow::Cow::Borrowed(data)),
+            Self::Empty(0) => None,
+            Self::Empty(value) => Some(std::borrow::Cow::Owned(vec![
+                *value << 4 | *value;
+                Self::ARRAY_SIZE
+            ])),
+        }
     }
 
     /// Whether every position holds `value`.

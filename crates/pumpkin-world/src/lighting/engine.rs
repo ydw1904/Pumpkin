@@ -604,6 +604,17 @@ impl LightEngine {
             .propagate_block_light_sources(&storage, chunk_x, chunk_z);
         self.block_light.pull_light_in(&storage, chunk_x, chunk_z);
         self.block_light.run_updates(&mut storage);
+
+        // Most sections end up with one value, full sky light above the terrain or darkness
+        // below it, and need no 2 KiB array for that.
+        let light = &mut cache.get_center_chunk_mut().light;
+        for section in light
+            .sky_light
+            .iter_mut()
+            .chain(light.block_light.iter_mut())
+        {
+            section.compact();
+        }
     }
 
     /// Checks if a block state has an empty shape for light occlusion, matching vanilla `LightEngine.isEmptyShape`.
