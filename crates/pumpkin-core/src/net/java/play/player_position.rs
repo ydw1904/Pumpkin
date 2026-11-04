@@ -47,6 +47,38 @@ impl JavaClient {
         true
     }
 
+    /// Vanilla `handleMovePlayer` runs `doCheckFallDamage` for every movement packet, including
+    /// the ones without a position, so a packet that only reports landing still ends the fall.
+    pub(super) fn check_fall_damage(player: &Player, height_difference: f64, on_ground: bool) {
+        // Only process fall damage if player is alive
+        if !player
+            .abilities
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .flying
+            && player.living_entity.health.load() > 0.0
+            && !player.living_entity.dead.load(Ordering::Relaxed)
+        {
+            player.living_entity.fall(
+                player,
+                height_difference,
+                on_ground,
+                player.gamemode.load() == GameMode::Creative,
+            );
+        }
+    }
+
+    /// Vanilla `handleMovePlayer` drops movement while the player rides something or a
+    /// teleport is unconfirmed, before any fall check.
+    pub(super) fn accepts_movement(player: &Player) -> bool {
+        !player.get_entity().has_vehicle()
+            && player
+                .awaiting_teleport
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .is_none()
+    }
+
     #[expect(clippy::too_many_lines)]
     pub fn handle_position(
         &self,
@@ -149,18 +181,7 @@ impl JavaClient {
                     );
                 }
 
-                // Only process fall damage if player is alive
-                if !player.abilities.lock().unwrap_or_else(std::sync::PoisonError::into_inner).flying
-                    && player.living_entity.health.load() > 0.0
-                    && !player.living_entity.dead.load(Ordering::Relaxed)
-                {
-                    player.living_entity.fall(
-                        player.as_ref(),
-                        height_difference,
-                        packet.collision & FLAG_ON_GROUND != 0,
-                        player.gamemode.load() == GameMode::Creative,
-                    );
-                }
+                Self::check_fall_damage(player, height_difference, packet.collision & FLAG_ON_GROUND != 0);
                 chunker::update_position(player);
                 let delta = Vector3::new(
                     pos.x - last_pos.x,
@@ -310,18 +331,11 @@ impl JavaClient {
                 }
 
                 world.send_to_tracking_players(entity, &CHeadRot::new(entity_id.into(), yaw as u8));
-                // Only process fall damage if player is alive
-                if !player.abilities.lock().unwrap_or_else(std::sync::PoisonError::into_inner).flying
-                    && player.living_entity.health.load() > 0.0
-                    && !player.living_entity.dead.load(Ordering::Relaxed)
-                {
-                    player.living_entity.fall(
-                        player.as_ref(),
-                        height_difference,
-                        (packet.collision & FLAG_ON_GROUND) != 0,
-                        player.gamemode.load() == GameMode::Creative,
-                    );
-                }
+                Self::check_fall_damage(
+                    player,
+                    height_difference,
+                    (packet.collision & FLAG_ON_GROUND) != 0,
+                );
                 chunker::update_position(player);
                 let delta = Vector3::new(
                     pos.x - last_pos.x,

@@ -19,6 +19,9 @@ impl JavaClient {
         }
         let entity = &player.get_entity();
         entity.on_ground.store(rotation.ground, Ordering::Relaxed);
+        if Self::accepts_movement(player) {
+            Self::check_fall_damage(player, 0.0, rotation.ground);
+        }
         entity.set_rotation(
             wrap_degrees(rotation.yaw) % 360.0,
             wrap_degrees(rotation.pitch),
