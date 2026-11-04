@@ -37,6 +37,49 @@ async function darkFloor (r) {
   await h.ticks(20)
 }
 
+// Reinforcements: a caller certain to call, hit on hard. The roofed floor stays within 24
+// blocks of the bot, where nothing spawns naturally, so every mob of the kind on it was called.
+async function reinforcements (kind, prefix) {
+  await darkFloor(FLOOR)
+  h.cmd('difficulty hard')
+  await clearMobs()
+  const spawnedAt = {}
+  const listener = (e) => { if (e.name === kind && !spawnedAt[e.id]) spawnedAt[e.id] = e.position.clone() }
+  bot.on('entitySpawn', listener)
+  const caller = await summon(kind, 0, 2, 'NoAI:1b,Tags:["caller"]')
+  h.cmd('attribute @e[tag=caller,limit=1] minecraft:spawn_reinforcements base set 1')
+  h.cmd(`item replace entity ${bot.username} hotbar.0 with stick`)
+  bot.setQuickBarSlot(0)
+  await h.ticks(40)
+  const called = () => mobs(kind).filter(e => e.id !== caller.id && Math.abs(e.position.y - (Y + 1)) < 0.5)
+  // A call can find no spot on the small floor; the charge only drops when one spawns.
+  for (let i = 0; i < 3 && called().length === 0; i++) {
+    h.cmd('gamerule spawn_mobs true')
+    await h.ticks(2)
+    bot.attack(caller)
+    await h.ticks(2)
+    h.cmd('gamerule spawn_mobs false')
+    await h.waitFor(() => called().length > 0, 1500)
+  }
+  h.result(prefix + '.count', called().length)
+  const first = called()[0]
+  if (first) {
+    const p = spawnedAt[first.id] || first.position
+    h.result(prefix + '.block_corner', Number.isInteger(p.x) && Number.isInteger(p.z))
+    const d = Math.hypot(p.x - bot.entity.position.x, p.z - bot.entity.position.z)
+    h.result(prefix + '.outside_7', d >= 7)
+    // Its target is the attacker: it walks over even though the bot is invisible.
+    await h.ticks(100)
+    const d2 = Math.hypot(first.position.x - bot.entity.position.x, first.position.z - bot.entity.position.z)
+    h.result(prefix + '.approaches', d2 < d - 2)
+  }
+  bot.removeListener('entitySpawn', listener)
+  await clearMobs()
+  h.cmd('difficulty normal')
+  h.cmd(`fill ${X - FLOOR} ${Y + 4} ${Z - FLOOR} ${X + FLOOR} ${Y + 4} ${Z + FLOOR} air`)
+  h.cmd(`fill ${X - FLOOR} ${Y} ${Z - FLOOR} ${X + FLOOR} ${Y} ${Z + FLOOR} air`)
+}
+
 h.start(async () => {
   await h.arena(X, Y, Z, 8)
   h.cmd('time set midnight')
@@ -48,44 +91,8 @@ h.start(async () => {
   h.cmd(`effect give ${bot.username} regeneration infinite 255 true`)
   await h.ticks(10)
 
-  // Reinforcements: a caller certain to call, hit on hard. The roofed floor stays within 24
-  // blocks of the bot, where nothing spawns naturally, so every zombie on it was called.
-  await darkFloor(FLOOR)
-  h.cmd('difficulty hard')
-  await clearMobs()
-  const spawnedAt = {}
-  bot.on('entitySpawn', (e) => { if (e.name === 'zombie' && !spawnedAt[e.id]) spawnedAt[e.id] = e.position.clone() })
-  const caller = await summon('zombie', 0, 2, 'NoAI:1b,Tags:["caller"]')
-  h.cmd('attribute @e[tag=caller,limit=1] minecraft:spawn_reinforcements base set 1')
-  h.cmd(`item replace entity ${bot.username} hotbar.0 with stick`)
-  bot.setQuickBarSlot(0)
-  await h.ticks(40)
-  const called = () => mobs('zombie').filter(e => e.id !== caller.id && Math.abs(e.position.y - (Y + 1)) < 0.5)
-  // A call can find no spot on the small floor; the charge only drops when one spawns.
-  for (let i = 0; i < 3 && called().length === 0; i++) {
-    h.cmd('gamerule spawn_mobs true')
-    await h.ticks(2)
-    bot.attack(caller)
-    await h.ticks(2)
-    h.cmd('gamerule spawn_mobs false')
-    await h.waitFor(() => called().length > 0, 1500)
-  }
-  h.result('reinforcement.count', called().length)
-  const first = called()[0]
-  if (first) {
-    const p = spawnedAt[first.id] || first.position
-    h.result('reinforcement.block_corner', Number.isInteger(p.x) && Number.isInteger(p.z))
-    const d = Math.hypot(p.x - bot.entity.position.x, p.z - bot.entity.position.z)
-    h.result('reinforcement.outside_7', d >= 7)
-    // Its target is the attacker: it walks over even though the bot is invisible.
-    await h.ticks(100)
-    const d2 = Math.hypot(first.position.x - bot.entity.position.x, first.position.z - bot.entity.position.z)
-    h.result('reinforcement.approaches', d2 < d - 2)
-  }
-  await clearMobs()
-  h.cmd('difficulty normal')
-  h.cmd(`fill ${X - FLOOR} ${Y + 4} ${Z - FLOOR} ${X + FLOOR} ${Y + 4} ${Z + FLOOR} air`)
-  h.cmd(`fill ${X - FLOOR} ${Y} ${Z - FLOOR} ${X + FLOOR} ${Y} ${Z + FLOOR} air`)
+  await reinforcements('zombie', 'reinforcement')
+  await reinforcements('zombified_piglin', 'reinforcement.piglin')
   await h.arena(X, Y, Z, 8)
 
   // Hurt-by alerts: a zombie wakes its subclasses, but not the zombified piglin it excepts.
@@ -114,6 +121,31 @@ h.start(async () => {
   h.result('alert.husk_wakes_zombie', aggressive(zombie))
   h.result('alert.husk_wakes_husk', aggressive(otherHusk))
   await clearMobs()
+
+  // A zombified piglin only wakes zombified piglins.
+  const piglin = await summon('zombified_piglin', 0, 2, still)
+  const otherPiglin = await summon('zombified_piglin', -3, 7, still)
+  const piglinZombie = await summon('zombie', 3, 7, still)
+  await h.ticks(20)
+  bot.attack(piglin)
+  await h.ticks(40)
+  h.result('alert.piglin_wakes_piglin', aggressive(otherPiglin))
+  h.result('alert.piglin_wakes_zombie', aggressive(piglinZombie))
+  await clearMobs()
+
+  // Skeletons have no float goal: one dropped into deep water sinks.
+  h.cmd(`fill ${X + 4} ${Y + 1} ${Z - 2} ${X + 8} ${Y + 8} ${Z + 2} glass hollow`)
+  h.cmd(`fill ${X + 5} ${Y + 2} ${Z - 1} ${X + 7} ${Y + 7} ${Z + 1} water`)
+  await h.ticks(20)
+  h.cmd(`summon skeleton ${X + 6.5} ${Y + 6} ${Z + 0.5} {PersistenceRequired:1b,Silent:1b}`)
+  let sinker
+  await h.waitFor(() => (sinker = mobs('skeleton')[0]), 5000)
+  h.result('skeleton.in_water', h.blockName(X + 6, Y + 4, Z))
+  await h.ticks(200)
+  // A floating skeleton bobs at the surface, a sinking one rests on the bottom.
+  h.result('skeleton.depth', sinker ? Math.floor(sinker.position.y - Y) : null)
+  await clearMobs()
+  h.cmd(`fill ${X + 4} ${Y + 1} ${Z - 2} ${X + 8} ${Y + 8} ${Z + 2} air`)
 
   // Flee sun: a burning skeleton finds the shade under a roof next to it.
   h.cmd(`gamemode creative ${bot.username}`)
