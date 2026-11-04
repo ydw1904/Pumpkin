@@ -56,7 +56,7 @@ impl Goal for ResetUniversalAngerGoal {
         if !self.alert_others {
             return;
         }
-        for other in goal_utils::nearby_same_type(mob) {
+        for other in goal_utils::nearby_same_class(mob) {
             if let Some(other_neutral) = other.get_mob().and_then(Mob::as_neutral) {
                 other_neutral.forget_current_target_and_refresh_universal_anger();
             }

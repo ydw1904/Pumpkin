@@ -1,8 +1,10 @@
+use pumpkin_data::entity::EntityType;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 
 use crate::entity::ai::pathfinder::pathfinding_context::PathfindingContext;
+use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::mob::Mob;
 use crate::world::World;
 
@@ -74,9 +76,29 @@ pub fn is_solid(world: &World, pos: &BlockPos) -> bool {
 
 const ALERT_RANGE_Y: f64 = 10.0;
 
-/// Nearby mobs of the same type that are free to take over `mob`'s grievance.
+/// Vanilla `Zombie` and the classes that extend it.
+const ZOMBIE_CLASS: &[&EntityType] = &[
+    &EntityType::ZOMBIE,
+    &EntityType::DROWNED,
+    &EntityType::HUSK,
+    &EntityType::ZOMBIE_VILLAGER,
+    &EntityType::ZOMBIFIED_PIGLIN,
+];
+
+/// The types vanilla `getEntitiesOfClass(mob.getClass(), ..)` finds for a mob of `entity_type`.
+/// Of the mobs that alert others, only the zombie's class has subclasses.
+#[must_use]
+pub fn same_class(entity_type: &'static EntityType) -> TargetMatch {
+    if entity_type == &EntityType::ZOMBIE {
+        TargetMatch::AnyOf(ZOMBIE_CLASS)
+    } else {
+        TargetMatch::Type(entity_type)
+    }
+}
+
+/// Nearby mobs of `mob`'s class (see [`same_class`]) that are free to take over its grievance.
 /// Anchored on a unit cube at the mob's feet, so a wide hitbox does not widen the call.
-pub fn nearby_same_type(mob: &dyn Mob) -> Vec<std::sync::Arc<dyn crate::entity::EntityBase>> {
+pub fn nearby_same_class(mob: &dyn Mob) -> Vec<std::sync::Arc<dyn crate::entity::EntityBase>> {
     use crate::entity::predicate::EntityPredicate;
     use pumpkin_data::attributes::Attributes;
     use pumpkin_util::math::boundingbox::BoundingBox;
@@ -92,8 +114,9 @@ pub fn nearby_same_type(mob: &dyn Mob) -> Vec<std::sync::Arc<dyn crate::entity::
     let search_box =
         BoundingBox::new(pos, pos.add_raw(1.0, 1.0, 1.0)).expand(within, ALERT_RANGE_Y, within);
 
+    let class = same_class(entity.entity_type);
     world
-        .get_entities_of_types_at_box(&search_box, |entity_type| entity_type == entity.entity_type)
+        .get_entities_of_types_at_box(&search_box, |entity_type| class.matches(entity_type))
         .into_iter()
         .filter(|other| {
             let other_entity = other.get_entity();
@@ -103,7 +126,7 @@ pub fn nearby_same_type(mob: &dyn Mob) -> Vec<std::sync::Arc<dyn crate::entity::
         .collect()
 }
 
-/// How far from its body [`nearby_same_type`] reaches: the unit cube at the mob's feet grown
+/// How far from its body [`nearby_same_class`] reaches: the unit cube at the mob's feet grown
 /// by the follow range, and by the alert height vertically.
 #[must_use]
 pub fn alert_range(mob_entity: &crate::entity::mob::MobEntity) -> f64 {

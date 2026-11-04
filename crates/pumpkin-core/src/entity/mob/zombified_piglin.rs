@@ -88,7 +88,7 @@ impl ZombifiedPiglinEntity {
         }
 
         if self.has_line_of_sight(target.get_entity()) {
-            for other in goal_utils::nearby_same_type(self) {
+            for other in goal_utils::nearby_same_class(self) {
                 let Some(other_mob) = other.get_mob() else {
                     continue;
                 };
