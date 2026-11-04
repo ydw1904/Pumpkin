@@ -1,4 +1,4 @@
-use super::{Controls, Goal, to_goal_ticks};
+use super::{Controls, Goal, GoalReach, to_goal_ticks};
 use crate::entity::EntityBase;
 use crate::entity::mob::Mob;
 use pumpkin_util::math::vector3::Vector3;
@@ -22,7 +22,24 @@ impl LeapAtTargetGoal {
     }
 }
 
+/// Vanilla `LeapAtTargetGoal.start`: the horizontal leap speed, before a fifth of the old velocity.
+const LEAP_SPEED: f64 = 0.4;
+
 impl Goal for LeapAtTargetGoal {
+    fn tick_reach(&self, _mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        // Starting reads the mob's own target and sets its velocity, which keeps a fifth of the
+        // old one.
+        Some(GoalReach {
+            impulse: LEAP_SPEED,
+            links: self
+                .target
+                .iter()
+                .map(|target| target.get_entity().entity_id)
+                .collect(),
+            ..GoalReach::default()
+        })
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         if mob.get_controlling_passenger().is_some() {
             return false;
@@ -83,9 +100,9 @@ impl Goal for LeapAtTargetGoal {
         let delta = if dist_xz_sq > 1.0E-7 {
             let dist_xz = dist_xz_sq.sqrt();
             Vector3::new(
-                (dx / dist_xz) * 0.4 + movement.x * 0.2,
+                (dx / dist_xz) * LEAP_SPEED + movement.x * 0.2,
                 f64::from(self.yd),
-                (dz / dist_xz) * 0.4 + movement.z * 0.2,
+                (dz / dist_xz) * LEAP_SPEED + movement.z * 0.2,
             )
         } else {
             Vector3::new(dx, f64::from(self.yd), dz)
@@ -100,5 +117,49 @@ impl Goal for LeapAtTargetGoal {
 
     fn controls(&self) -> Controls {
         self.goal_control
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entity::Entity;
+    use crate::entity::ai::test_support::world;
+    use crate::entity::mob::spider::SpiderEntity;
+    use crate::entity::passive::cow::CowEntity;
+    use pumpkin_data::entity::EntityType;
+
+    #[tokio::test]
+    async fn a_leap_stays_within_the_audited_motion() -> Result<(), Box<dyn std::error::Error>> {
+        let folder = tempfile::tempdir()?;
+        let world = world(&folder);
+        let spider = SpiderEntity::new(Entity::new(
+            world.clone(),
+            Vector3::new(0.5, 64.0, 0.5),
+            &EntityType::SPIDER,
+        ));
+        let cow = CowEntity::new(Entity::new(
+            world.clone(),
+            Vector3::new(3.5, 64.0, 0.5),
+            &EntityType::COW,
+        ));
+        let mob = spider.get_mob_entity();
+        mob.set_target(Some(cow));
+        mob.living_entity
+            .entity
+            .on_ground
+            .store(true, Ordering::Relaxed);
+        let reach = mob
+            .audited_reach(spider.as_ref())
+            .ok_or("missing spider reach")?;
+        let mut goal = LeapAtTargetGoal::new(0.4);
+        // The start roll passes one time in three.
+        assert!((0..200).any(|_| goal.can_start(spider.as_ref())));
+        goal.start(spider.as_ref());
+        let velocity = mob.living_entity.entity.velocity.load();
+        world.level.shutdown().await;
+        assert!(velocity.x.hypot(velocity.z) <= reach.motion.0);
+        assert!(velocity.y.abs() <= reach.motion.1);
+        Ok(())
     }
 }

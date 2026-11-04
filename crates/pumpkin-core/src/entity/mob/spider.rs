@@ -209,6 +209,10 @@ impl Mob for SpiderEntity {
         &self.mob_entity
     }
 
+    fn has_audited_tick(&self) -> bool {
+        true
+    }
+
     fn mob_metadata(&self) -> Option<MobMetadata> {
         Some(spider_metadata(&self.mob_entity))
     }

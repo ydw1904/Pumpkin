@@ -1,4 +1,4 @@
-use super::{Controls, Goal};
+use super::{Controls, Goal, GoalReach};
 use crate::entity::ai::goal::melee_attack::MeleeAttackGoal;
 use crate::entity::mob::Mob;
 use crate::plugin::api::events::entity::entity_target::TargetReason;
@@ -18,6 +18,10 @@ impl SpiderAttackGoal {
 }
 
 impl Goal for SpiderAttackGoal {
+    fn tick_reach(&self, mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        self.melee_attack_goal.tick_reach(mob, running)
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         self.melee_attack_goal.can_start(mob) && !mob.is_vehicle()
     }
