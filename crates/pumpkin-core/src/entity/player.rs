@@ -276,14 +276,14 @@ use pumpkin_protocol::codec::var_ulong::VarULong;
 use pumpkin_protocol::java::client::play::{
     Animation, CAcknowledgeBlockChange, CActionBar, CAwardStats, CBlockUpdate, CChangeDifficulty,
     CCloseContainer, CCombatDeath, CCustomPayload, CDisguisedChatMessage, CEntityAnimation,
-    CEntityPositionSync, CEntityVelocity, CGameEvent, CHurtAnimation, CItemCooldown, CMapItemData,
-    COpenBook, COpenMountScreen, COpenScreen, COpenSignEditor, CParticle, CPlayServerLinks,
-    CPlayerAbilities, CPlayerInfoUpdate, CPlayerPosition, CPlayerSpawnPosition, CRespawn,
-    CSetCamera, CSetContainerContent, CSetContainerProperty, CSetContainerSlot, CSetCursorItem,
-    CSetExperience, CSetHealth, CSetPlayerInventory, CSetSelectedSlot, CSoundEffect, CStopSound,
-    CSubtitle, CSystemChatMessage, CTabList, CTitleAnimation, CTitleText, CUnloadChunk,
-    CUpdateMobEffect, CUpdateTime, GameEvent, MapIcon, MapPatch, PlayerAction, PlayerInfoFlags,
-    PlayerSpawnData, PreviousMessage, Statistic,
+    CEntityPositionSync, CEntityVelocity, CGameEvent, CHurtAnimation, CItemCooldown, COpenBook,
+    COpenMountScreen, COpenScreen, COpenSignEditor, CParticle, CPlayServerLinks, CPlayerAbilities,
+    CPlayerInfoUpdate, CPlayerPosition, CPlayerSpawnPosition, CRespawn, CSetCamera,
+    CSetContainerContent, CSetContainerProperty, CSetContainerSlot, CSetCursorItem, CSetExperience,
+    CSetHealth, CSetPlayerInventory, CSetSelectedSlot, CSoundEffect, CStopSound, CSubtitle,
+    CSystemChatMessage, CTabList, CTitleAnimation, CTitleText, CUnloadChunk, CUpdateMobEffect,
+    CUpdateTime, GameEvent, PlayerAction, PlayerInfoFlags, PlayerSpawnData, PreviousMessage,
+    Statistic,
 };
 use pumpkin_protocol::java::server::play::{
     SClickSlot, SContainerButtonClick, SRenameItem, SlotActionType,
@@ -6434,103 +6434,55 @@ impl Player {
         }
     }
 
+    /// `MapItem.inventoryTick` for every map the player carries (`Inventory.tick`, then the
+    /// equipment), then `ServerPlayer.synchronizeSpecialItemUpdates` for every slot.
     pub fn tick_maps(&self, server: &Server) {
-        use pumpkin_data::data_component_impl::{MapDecorationsImpl, MapIdImpl};
+        use pumpkin_data::data_component_impl::{EquipmentType, MapIdImpl};
 
-        for hand in Hand::all() {
-            let stack = self.inventory().get_stack_in_hand(hand);
+        let inventory = self.inventory();
+        let selected = inventory.get_selected_slot() as usize;
+        let mut stacks: Vec<(ItemStack, bool)> = inventory
+            .main_inventory
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .enumerate()
+            .filter(|(_, stack)| !stack.is_empty())
+            .map(|(slot, stack)| (stack.clone(), slot == selected))
+            .collect();
+        let mut equipment: Vec<(usize, ItemStack, bool)> = {
+            let entity_equipment = inventory
+                .entity_equipment
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            inventory
+                .equipment_slots
+                .iter()
+                .map(|(index, slot)| {
+                    (
+                        *index,
+                        entity_equipment.get(slot),
+                        slot.slot_type() == EquipmentType::Hand,
+                    )
+                })
+                .filter(|(_, stack, _)| !stack.is_empty())
+                .collect()
+        };
+        equipment.sort_by_key(|(index, _, _)| *index);
+        stacks.extend(equipment.into_iter().map(|(_, stack, hand)| (stack, hand)));
 
-            if crate::world::map::is_map_item(stack.item)
-                && let Some(map_id_comp) = stack.get_data_component::<MapIdImpl>()
+        for (stack, in_hand) in &stacks {
+            if crate::world::map::is_map_item(stack.item) {
+                crate::world::map::inventory_tick(server, self, stack, *in_hand);
+            }
+        }
+        for (stack, _) in &stacks {
+            if let Some(map_id) = stack.get_data_component::<MapIdImpl>().map(|id| id.id)
+                && let Some(map) = server.map_manager.get_map(map_id)
             {
-                let map_id = map_id_comp.id;
-                if let Some(map_data_arc) = server.map_manager.get_map(map_id)
-                    && let Ok(mut map_data) = map_data_arc.try_lock()
-                {
-                    let in_map_dimension =
-                        self.world().dimension.minecraft_name == map_data.dimension.minecraft_name;
-                    // `MapItemSavedData.tickCarriedBy`: markers the item carries join the map.
-                    if let Some(static_decorations) =
-                        stack.get_data_component::<MapDecorationsImpl>()
-                    {
-                        map_data.add_static_decorations(
-                            static_decorations,
-                            self.world().get_world_age(),
-                        );
-                    }
-                    // `MapItem.inventoryTick` and `MapItem.update`.
-                    if !map_data.locked && in_map_dimension {
-                        map_data.update(self);
-                    }
-
-                    let tick_count = self.tick_counter.load(Ordering::Relaxed);
-                    if map_data.dirty || tick_count % 10 == 0 {
-                        let scale = 1 << map_data.scale;
-                        let pos = self.position();
-                        let dx = pos.x - map_data.center_x as f64;
-                        let dz = pos.z - map_data.center_z as f64;
-
-                        let raw_x = dx / scale as f64 * 2.0;
-                        let raw_z = dz / scale as f64 * 2.0;
-                        let is_off_map = !(-127.0..=127.0).contains(&raw_x)
-                            || !(-127.0..=127.0).contains(&raw_z);
-
-                        let icon_x = raw_x.clamp(-128.0, 127.0) as i8;
-                        let icon_z = raw_z.clamp(-128.0, 127.0) as i8;
-
-                        let yaw = self.living_entity.entity.yaw.load();
-                        let icon_direction = map_data
-                            .calculate_rotation(self.world().get_world_age(), f64::from(yaw));
-
-                        let decoration_type = if is_off_map {
-                            &pumpkin_data::map_decoration::MapDecorationType::PLAYER_OFF_MAP
-                        } else {
-                            &pumpkin_data::map_decoration::MapDecorationType::PLAYER
-                        };
-
-                        let mut icons = Vec::new();
-                        // Vanilla only marks holders in the map's dimension on tracking maps.
-                        if map_data.tracking_position && in_map_dimension {
-                            icons.push(MapIcon {
-                                icon_type: VarInt(decoration_type.id as i32),
-                                x: icon_x,
-                                z: icon_z,
-                                direction: icon_direction,
-                                display_name: None,
-                            });
-                        }
-                        icons.extend(map_data.decorations.iter().map(|decoration| {
-                            MapIcon {
-                                icon_type: VarInt(decoration.icon_type),
-                                x: decoration.x,
-                                z: decoration.z,
-                                direction: decoration.direction,
-                                display_name: decoration
-                                    .display_name
-                                    .as_ref()
-                                    .map(|name| TextComponent::text(name.clone())),
-                            }
-                        }));
-
-                        let data = map_data.dirty.then(|| MapPatch {
-                            columns: 128,
-                            rows: 128,
-                            x: 0,
-                            z: 0,
-                            data: &*map_data.colors,
-                        });
-
-                        self.try_send_client_packet(&CMapItemData {
-                            map_id: VarInt(map_id),
-                            scale: map_data.scale,
-                            tracking_position: map_data.tracking_position,
-                            locked: map_data.locked,
-                            icons: Some(&icons),
-                            data,
-                        });
-                        map_data.dirty = false;
-                    }
-                }
+                map.lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .send_update(map_id, self);
             }
         }
     }
