@@ -10,6 +10,7 @@ use pumpkin_util::{
 };
 
 use crate::generation::feature::features::spring_feature::BlockWrapper;
+use crate::generation::update_shape::fluid_state;
 use crate::{
     block::BlockStateCodec, generation::proto_chunk::GenerationCache, world::WorldPortalExt,
 };
@@ -257,9 +258,9 @@ impl GeodeFeature {
                         let offset = dir.to_offset();
                         let adjacent = point_inside.add(offset.x, offset.y, offset.z);
                         let adjacent_state = GenerationCache::get_block_state(chunk, &adjacent.0);
-                        let fluid = Fluid::from_state_id(adjacent_state)
-                            .or_else(|| adjacent_state.is_waterlogged().then_some(&Fluid::WATER));
-                        if let Some(fluid) = fluid
+                        // Air has the empty fluid, which vanilla never schedules.
+                        let (fluid, _) = fluid_state(adjacent_state);
+                        if fluid.id != Fluid::EMPTY.id
                             && let Some(adjacent_chunk) =
                                 chunk.get_chunk_mut(adjacent.0.x >> 4, adjacent.0.z >> 4)
                         {
