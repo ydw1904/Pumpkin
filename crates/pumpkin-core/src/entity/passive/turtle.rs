@@ -112,6 +112,10 @@ impl Animal for TurtleEntity {
 }
 
 impl Mob for TurtleEntity {
+    fn has_audited_tick(&self) -> bool {
+        true
+    }
+
     /// Vanilla `Turtle.getWalkTargetValue`; turtles here never head home, so water always counts.
     fn get_walk_target_value(&self, level: &dyn CreatureSpawnLevel, pos: &BlockPos) -> f32 {
         if level.fluid(pos).has_tag(&tag::Fluid::MINECRAFT_WATER)

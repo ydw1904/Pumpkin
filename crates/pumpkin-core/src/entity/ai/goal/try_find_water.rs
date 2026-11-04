@@ -3,9 +3,12 @@ use std::sync::atomic::Ordering;
 use pumpkin_data::tag::{self, Tag, Taggable};
 use pumpkin_util::math::position::BlockPos;
 
-use super::{Controls, Goal};
+use super::{Controls, Goal, GoalReach};
 use crate::entity::mob::Mob;
 use crate::world::World;
+
+/// Speed of the move towards the water `start` finds.
+const SPEED: f64 = 1.0;
 
 pub struct TryFindWaterGoal {
     fluid_tag: &'static Tag,
@@ -51,6 +54,14 @@ impl TryFindWaterGoal {
 }
 
 impl Goal for TryFindWaterGoal {
+    fn tick_reach(&self, _mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        // `start` reads the blocks of `find_water_range`, within the path search range.
+        Some(GoalReach {
+            speed: SPEED,
+            ..GoalReach::default()
+        })
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         let entity = mob.get_entity();
         if !entity.on_ground.load(Ordering::Relaxed) {
@@ -90,7 +101,7 @@ impl Goal for TryFindWaterGoal {
                     f64::from(pos.0.x),
                     f64::from(pos.0.y),
                     f64::from(pos.0.z),
-                    1.0,
+                    SPEED,
                 );
         }
     }

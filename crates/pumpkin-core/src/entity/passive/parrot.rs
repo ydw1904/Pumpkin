@@ -94,6 +94,11 @@ impl ParrotEntity {
 }
 
 impl Mob for ParrotEntity {
+    // `mob_ai_step` only slows a fall after the parrot moved.
+    fn has_audited_tick(&self) -> bool {
+        true
+    }
+
     fn mob_is_pushable(&self) -> bool {
         true
     }
