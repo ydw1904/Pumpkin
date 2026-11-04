@@ -1607,6 +1607,20 @@ fn has_game_event_listener(mob: &dyn Mob) -> bool {
     listens
 }
 
+/// The ids and bodies of the mobs with game event listeners, in entity list order.
+pub(crate) fn game_event_listeners(world: &World) -> Vec<(i32, BoundingBox)> {
+    world
+        .entities
+        .load()
+        .iter()
+        .filter(|entity| entity.get_mob().is_some_and(has_game_event_listener))
+        .map(|entity| {
+            let entity = entity.get_entity();
+            (entity.entity_id, entity.bounding_box.load())
+        })
+        .collect()
+}
+
 /// Links the listener mobs that an entity's game events can reach from anywhere in `moved`:
 /// the splash of entering water, plus step, swim and flap when its movement emits events.
 pub(crate) fn game_event_listener_links(
@@ -1635,6 +1649,16 @@ pub(crate) fn game_event_listener_links(
         notified_area(moved.min, radius).min,
         notified_area(moved.max, radius).max,
     );
+    // Island planning lists the listeners once instead of searching around every entity.
+    if let Some(listeners) = world.game_event_listeners.load().as_ref() {
+        links.extend(
+            listeners
+                .iter()
+                .filter(|(_, body)| area.intersects(body))
+                .map(|(id, _)| *id),
+        );
+        return;
+    }
     links.extend(
         world
             .entity_index

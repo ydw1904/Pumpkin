@@ -78,7 +78,7 @@ use crate::{
 };
 pub use active_chunks::ActiveChunks;
 use active_chunks::{ActiveChunkTracker, ActivePlayerArea};
-use arc_swap::ArcSwap;
+use arc_swap::{ArcSwap, ArcSwapOption};
 use border::Worldborder;
 use bytes::BufMut;
 pub use explosion::{
@@ -286,6 +286,11 @@ pub struct World {
     island_schedule: std::sync::Mutex<entity_islands::Schedule>,
     /// How far target searches can find players during this tick's entity ticks.
     pub(crate) player_search: entity_islands::PlayerSearch,
+    /// The mobs with game event listeners while island planning gathers the tick reaches.
+    pub(crate) game_event_listeners: ArcSwapOption<Vec<(i32, BoundingBox)>>,
+    /// Whether each chunk section holds a block that changes on contact, while island planning
+    /// runs.
+    pub(crate) contact_sections: ArcSwapOption<dashmap::DashMap<(i32, i32, i32), bool>>,
     /// Lookup-only entities (e.g. multipart-mob hitboxes): findable by id, never ticked or saved.
     pub lookup_only_entities: ArcSwap<Vec<Arc<dyn EntityBase>>>,
     /// The server's scoreboard, which every dimension shares like vanilla.
@@ -524,6 +529,8 @@ impl World {
             entity_index: Arc::default(),
             island_schedule: std::sync::Mutex::default(),
             player_search: entity_islands::PlayerSearch::default(),
+            game_event_listeners: ArcSwapOption::empty(),
+            contact_sections: ArcSwapOption::empty(),
             lookup_only_entities: ArcSwap::new(Arc::new(Vec::new())),
             scoreboard: server
                 .upgrade()
@@ -1879,6 +1886,10 @@ impl World {
         let islands = if plan_islands {
             let islands = (|| {
                 self.player_search.refresh(&players);
+                self.game_event_listeners.store(Some(Arc::new(
+                    crate::entity::mob::game_event_listeners(self),
+                )));
+                self.contact_sections.store(Some(Arc::default()));
                 let reports: Vec<_> = tickable
                     .par_iter()
                     .map(|(entity, _)| {
@@ -1928,6 +1939,8 @@ impl World {
                     .sort_by_key(|island| std::cmp::Reverse(island.len()));
                 Some(islands)
             })();
+            self.game_event_listeners.store(None);
+            self.contact_sections.store(None);
             let parallel = self
                 .island_schedule
                 .lock()

@@ -320,18 +320,41 @@ impl AuditedReach {
                         CHUNK_WIDTH as i32 - 1,
                         CHUNK_WIDTH as i32 - 1,
                     );
-                    for x in min.x.max(start.x)..=max.x.min(end.x) {
-                        for y in min.y.max(start.y)..=max.y.min(end.y) {
-                            for z in min.z.max(start.z)..=max.z.min(end.z) {
-                                let block = world.get_block(&BlockPos::new(x, y, z));
-                                if block.id == Block::END_GATEWAY.id {
-                                    self.global = true;
-                                } else if changes_on_contact(block) {
-                                    self.changes_blocks = true;
+                    // `World::get_block` for each block of the section, reading the chunk once.
+                    // An unloaded chunk reads as air.
+                    let (global, changes) = world
+                        .level
+                        .read_chunk_sync(&Vector2::new(x, z), |chunk| {
+                            let (mut global, mut changes) = (false, false);
+                            for x in min.x.max(start.x)..=max.x.min(end.x) {
+                                for y in min.y.max(start.y)..=max.y.min(end.y) {
+                                    for z in min.z.max(start.z)..=max.z.min(end.z) {
+                                        let pos = BlockPos::new(x, y, z);
+                                        let (_, relative) = pos.chunk_and_chunk_relative_position();
+                                        let block = world
+                                            .is_in_build_limit(pos)
+                                            .then(|| {
+                                                chunk.section.get_block_absolute_y(
+                                                    relative.x as usize,
+                                                    relative.y,
+                                                    relative.z as usize,
+                                                )
+                                            })
+                                            .flatten()
+                                            .map_or(&Block::AIR, Block::from_state_id);
+                                        if block.id == Block::END_GATEWAY.id {
+                                            global = true;
+                                        } else if changes_on_contact(block) {
+                                            changes = true;
+                                        }
+                                    }
                                 }
                             }
-                        }
-                    }
+                            (global, changes)
+                        })
+                        .unwrap_or_default();
+                    self.global |= global;
+                    self.changes_blocks |= changes;
                 }
             }
         }
@@ -699,6 +722,19 @@ fn contact_may_change_blocks(
 }
 
 fn contact_section_may_change_blocks(world: &World, x: i32, y: i32, z: i32) -> bool {
+    // Island planning checks each section once for all reports.
+    if let Some(sections) = world.contact_sections.load().as_ref() {
+        if let Some(changes) = sections.get(&(x, y, z)) {
+            return *changes;
+        }
+        let changes = scan_contact_section(world, x, y, z);
+        sections.insert((x, y, z), changes);
+        return changes;
+    }
+    scan_contact_section(world, x, y, z)
+}
+
+fn scan_contact_section(world: &World, x: i32, y: i32, z: i32) -> bool {
     world
         .level
         .read_chunk_sync(&Vector2::new(x, z), |chunk| {
