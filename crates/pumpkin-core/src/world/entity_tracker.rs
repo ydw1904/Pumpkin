@@ -2,7 +2,7 @@ use std::sync::atomic::{
     AtomicBool, AtomicU32,
     Ordering::{self, Relaxed},
 };
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use bytes::BufMut;
 use crossbeam::atomic::AtomicCell;
@@ -79,6 +79,8 @@ pub struct TrackedEntity {
     teleport_delay: AtomicU32,
     was_on_ground: AtomicBool,
     was_riding: AtomicBool,
+    /// Vanilla `ServerEntity.lastPassengers`, as entity ids.
+    last_passengers: Mutex<Vec<i32>>,
     bedrock_pos: AtomicCell<Vector3<f64>>,
     /// Packed pitch, yaw, head yaw.
     bedrock_rot: AtomicCell<[u8; 3]>,
@@ -126,6 +128,7 @@ impl TrackedEntity {
             teleport_delay: AtomicU32::new(0),
             was_on_ground: AtomicBool::new(on_ground),
             was_riding: AtomicBool::new(false),
+            last_passengers: Mutex::new(Vec::new()),
             bedrock_pos: AtomicCell::new(bedrock_pos),
             bedrock_rot: AtomicCell::new(rot),
         }
@@ -156,6 +159,7 @@ impl TrackedEntity {
     /// Vanilla `ServerEntity.sendChanges`. Non-player entities only.
     pub fn send_changes(&self, world: &World) {
         let entity = self.entity.get_entity();
+        self.send_passengers_if_changed(entity, world);
         self.send_bedrock_move(entity, world);
         let tick = self.tick_count.fetch_add(1, Relaxed);
         let needs_sync = entity.velocity_dirty.swap(false, Ordering::SeqCst);
@@ -207,6 +211,30 @@ impl TrackedEntity {
         if head_yaw != entity.last_sent_head_yaw.load(Relaxed) {
             self.send_to_tracking_players(&CHeadRot::new(VarInt(self.entity_id), head_yaw), world);
             entity.last_sent_head_yaw.store(head_yaw, Relaxed);
+        }
+    }
+
+    fn send_passengers_if_changed(&self, entity: &Entity, world: &World) {
+        // A busy lock means the list is changing; the next tick compares it again.
+        let Ok(passengers) = entity.passengers.try_lock() else {
+            return;
+        };
+        let passenger_ids: Vec<i32> = passengers
+            .iter()
+            .map(|p| p.get_entity().entity_id)
+            .collect();
+        drop(passengers);
+        let mut last = self
+            .last_passengers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if *last != passenger_ids {
+            let ids: Vec<VarInt> = passenger_ids.iter().copied().map(VarInt).collect();
+            self.send_to_tracking_players(
+                &CSetPassengers::new(VarInt(self.entity_id), &ids),
+                world,
+            );
+            *last = passenger_ids;
         }
     }
 

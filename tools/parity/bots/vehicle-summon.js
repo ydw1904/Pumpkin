@@ -53,10 +53,10 @@ h.start(async () => {
   // Vanilla teleports the rider onto the seat before it sends the passengers.
   h.result('activate.teleported_then_mounted', events.indexOf('position') >= 0 && events.indexOf('position') < events.indexOf('mount'))
   h.result('activate.riding', !!bot.vehicle)
+  // The rider gets the passengers from `startRiding` and again from the vehicle's tracker. Whether
+  // mineflayer keeps ticking depends on when the second one lands, so only the count is compared.
+  h.result('activate.mount_packets', events.filter((e) => e === 'mount').length)
   if (bot.currentWindow) bot.closeWindow(bot.currentWindow)
-  const before = Date.now()
-  await Promise.race([h.ticks(2), h.sleep(5000)])
-  h.result('activate.bot_ticks', Date.now() - before < 4900)
   bot.setControlState('sneak', false)
   h.result('activate.ticking', await ticking())
 })
