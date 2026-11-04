@@ -8,6 +8,7 @@ use crossbeam::atomic::AtomicCell;
 use pumpkin_data::BlockDirection;
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::Sound;
@@ -304,6 +305,14 @@ impl EntityBase for ItemFrameEntity {
             let world = self.entity.world.load();
             crate::world::map::tick_framed(server, &world, &self.get_item(), &self.map_frame());
         }
+    }
+
+    /// Vanilla `BlockAttachedEntity.kill` with `ItemFrame.onKilled`.
+    fn kill(&self, caller: &dyn EntityBase) {
+        self.remove_framed_map(&self.get_item());
+        self.entity.remove();
+        self.entity
+            .emit_own_game_event(caller, GameEvent::EntityDie);
     }
 
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
