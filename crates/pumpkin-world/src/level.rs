@@ -51,9 +51,7 @@ use tokio_util::task::TaskTracker;
 
 pub type SyncChunk = Arc<ChunkData>;
 pub type SyncEntityChunk = Arc<ChunkEntityData>;
-/// The loaded chunks. Every block read looks a chunk up here, so it hashes with Fx instead of
-/// `SipHash`.
-pub type ChunkMap = DashMap<Vector2<i32>, SyncChunk, rustc_hash::FxBuildHasher>;
+pub use crate::chunk_map::ChunkMap;
 pub type ChunkPosSet = dashmap::DashSet<Vector2<i32>, rustc_hash::FxBuildHasher>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1053,7 +1051,7 @@ impl Level {
         coordinates: &Vector2<i32>,
         f: F,
     ) -> Option<R> {
-        self.loaded_chunks.get(coordinates).map(|x| f(x.value()))
+        self.loaded_chunks.read(coordinates, f)
     }
 
     pub fn read_entity_chunk_sync<R, F: Fn(&SyncEntityChunk) -> R>(

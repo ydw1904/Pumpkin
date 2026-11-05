@@ -6,6 +6,7 @@ use pumpkin_data::{Block, dimension::Dimension};
 pub mod biome;
 pub mod block;
 pub mod chunk;
+pub mod chunk_map;
 pub mod chunk_system;
 pub mod clip;
 pub mod cylindrical_chunk_iterator;
