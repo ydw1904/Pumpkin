@@ -105,6 +105,7 @@ pub mod tnt;
 pub mod r#type;
 pub mod util;
 pub mod vehicle;
+pub mod vibration;
 
 pub use lightning::LightningBoltEntity;
 

@@ -132,6 +132,12 @@ impl ProjectileOwner {
         }
     }
 
+    /// Vanilla `Projectile.getOwner`'s reference.
+    #[must_use]
+    pub const fn owner(&self) -> &EntityReference {
+        &self.owner
+    }
+
     /// Vanilla `Projectile.ownedBy`.
     #[must_use]
     pub fn owned_by(&self, entity: &Entity) -> bool {

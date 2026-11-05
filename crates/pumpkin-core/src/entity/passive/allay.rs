@@ -53,7 +53,7 @@ pub struct AllayEntity {
     duplication_cooldown: AtomicI64,
     inventory: Mutex<ItemStack>,
     jukebox_pos: AtomicCell<Option<BlockPos>>,
-    vibration: Mutex<vibration::VibrationData>,
+    vibration: Mutex<crate::entity::vibration::VibrationData>,
     noteblock_chunk: Mutex<Option<chunk_loading::NoteBlockChunk>>,
 }
 
@@ -79,7 +79,7 @@ impl AllayEntity {
             duplication_cooldown: AtomicI64::new(0),
             inventory: Mutex::new(ItemStack::EMPTY.clone()),
             jukebox_pos: AtomicCell::new(None),
-            vibration: Mutex::new(vibration::VibrationData::default()),
+            vibration: Mutex::new(crate::entity::vibration::VibrationData::default()),
             noteblock_chunk: Mutex::new(None),
         })
     }
@@ -617,7 +617,7 @@ impl Mob for AllayEntity {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = nbt
             .get_compound("listener")
-            .map(vibration::VibrationData::read_nbt)
+            .map(crate::entity::vibration::VibrationData::read_nbt)
             .unwrap_or_default();
     }
 
