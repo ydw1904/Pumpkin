@@ -2627,6 +2627,81 @@ impl World {
             self,
         )));
 
+        // Vanilla `ServerChunkCache.tickChunks` spawns in every spawning chunk before it ticks
+        // the block ticking chunks (precipitation, then random ticks).
+        let spawn_state = self.spawn_state.load();
+        let (spawn_mobs, spawn_monsters, peaceful) = {
+            let lock = self.level_info.load();
+            (
+                lock.game_rules.spawn_mobs,
+                lock.game_rules.spawn_monsters,
+                lock.difficulty == Difficulty::Peaceful,
+            )
+        };
+        // Vanilla `spawnPersistent` follows game time, so `/time set` and a stopped daylight
+        // cycle don't shift or stop the 400-tick schedule.
+        let spawn_passives = self.get_world_age() % 400 == 0;
+        let spawn_enemies = !peaceful && spawn_monsters && spawn_mobs;
+        let spawn_passives = spawn_passives && spawn_mobs;
+
+        let spawn_list = Arc::new(natural_spawner::get_filtered_spawning_categories(
+            &spawn_state,
+            spawn_mobs,
+            spawn_enemies,
+            spawn_passives,
+        ));
+
+        // Vanilla `ChunkMap.collectSpawningChunks` takes
+        // the spawn candidates that tick and have a player within 128 blocks, and ticks them even
+        // when no category can spawn, for thunder and inhabited time.
+        let players = self.players.load();
+        let mut spawning_chunks: Vec<_> = active_chunks
+            .spawn_candidates
+            .par_iter()
+            .filter(|pos| {
+                self.level.is_chunk_ticking_ready(pos)
+                    && natural_spawner::any_player_close_enough_for_spawning(&players, **pos)
+            })
+            .filter_map(|pos| {
+                self.level
+                    .read_chunk_sync(pos, std::clone::Clone::clone)
+                    .map(|chunk| (*pos, chunk))
+            })
+            .collect();
+        drop(players);
+
+        game_random().shuffle(&mut spawning_chunks);
+
+        let decided: Vec<_> = spawning_chunks
+            .par_iter()
+            .with_min_len(8)
+            .map(|(pos, chunk)| {
+                chunk.inhabited_time.fetch_add(1, Relaxed);
+                let entity_ticking = active_chunks.entity_ticking.contains(pos);
+                let spawns = gameplay::with_owner(
+                    || format!("chunk@{},{}", pos.x, pos.y),
+                    || {
+                        self.tick_spawning_chunk(
+                            *pos,
+                            chunk,
+                            entity_ticking,
+                            &spawn_list,
+                            &spawn_state,
+                        )
+                    },
+                );
+                (*pos, spawns)
+            })
+            .collect();
+        // Vanilla ticks the spawning chunks one after another, so each sees the mobs the
+        // chunks before it spawned against the local mob cap.
+        for (pos, spawns) in decided {
+            gameplay::with_owner(
+                || format!("chunk@{},{}", pos.x, pos.y),
+                || spawn_state.commit(self, pos, spawns),
+            );
+        }
+
         for pos in tick_data.precipitation {
             gameplay::with_owner(
                 || {
@@ -2637,7 +2712,7 @@ impl World {
             );
         }
 
-        // 3. Parallel Random Ticks via Rayon. Chunks tick in parallel, but each chunk's samples
+        // Parallel random ticks. Chunks tick in parallel, but each chunk's samples
         // run in order on one thread, like vanilla's `ServerLevel.tickChunk`.
         let world = self.clone();
         tick_data
@@ -2688,80 +2763,6 @@ impl World {
                     }
                 }
             });
-
-        // 4. Calculate Spawn List (Sequential setup)
-        let spawn_state = self.spawn_state.load();
-        let (spawn_mobs, spawn_monsters, peaceful) = {
-            let lock = self.level_info.load();
-            (
-                lock.game_rules.spawn_mobs,
-                lock.game_rules.spawn_monsters,
-                lock.difficulty == Difficulty::Peaceful,
-            )
-        };
-        // Vanilla `spawnPersistent` follows game time, so `/time set` and a stopped daylight
-        // cycle don't shift or stop the 400-tick schedule.
-        let spawn_passives = self.get_world_age() % 400 == 0;
-        let spawn_enemies = !peaceful && spawn_monsters && spawn_mobs;
-        let spawn_passives = spawn_passives && spawn_mobs;
-
-        let spawn_list = Arc::new(natural_spawner::get_filtered_spawning_categories(
-            &spawn_state,
-            spawn_mobs,
-            spawn_enemies,
-            spawn_passives,
-        ));
-
-        // 5. Parallel Chunk Spawners via Rayon. Vanilla `ChunkMap.collectSpawningChunks` takes
-        // the spawn candidates that tick and have a player within 128 blocks, and ticks them even
-        // when no category can spawn, for thunder and inhabited time.
-        let players = self.players.load();
-        let mut spawning_chunks: Vec<_> = active_chunks
-            .spawn_candidates
-            .par_iter()
-            .filter(|pos| {
-                self.level.is_chunk_ticking_ready(pos)
-                    && natural_spawner::any_player_close_enough_for_spawning(&players, **pos)
-            })
-            .filter_map(|pos| {
-                self.level
-                    .read_chunk_sync(pos, std::clone::Clone::clone)
-                    .map(|chunk| (*pos, chunk))
-            })
-            .collect();
-        drop(players);
-
-        game_random().shuffle(&mut spawning_chunks);
-
-        let decided: Vec<_> = spawning_chunks
-            .par_iter()
-            .with_min_len(8)
-            .map(|(pos, chunk)| {
-                chunk.inhabited_time.fetch_add(1, Relaxed);
-                let entity_ticking = active_chunks.entity_ticking.contains(pos);
-                let spawns = gameplay::with_owner(
-                    || format!("chunk@{},{}", pos.x, pos.y),
-                    || {
-                        self.tick_spawning_chunk(
-                            *pos,
-                            chunk,
-                            entity_ticking,
-                            &spawn_list,
-                            &spawn_state,
-                        )
-                    },
-                );
-                (*pos, spawns)
-            })
-            .collect();
-        // Vanilla ticks the spawning chunks one after another, so each sees the mobs the
-        // chunks before it spawned against the local mob cap.
-        for (pos, spawns) in decided {
-            gameplay::with_owner(
-                || format!("chunk@{},{}", pos.x, pos.y),
-                || spawn_state.commit(self, pos, spawns),
-            );
-        }
 
         // Vanilla `ServerChunkCache.tickChunks` ticks custom spawners after the chunks.
         if spawn_mobs && self.dimension == Dimension::OVERWORLD {
