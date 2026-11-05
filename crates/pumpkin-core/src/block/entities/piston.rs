@@ -1,5 +1,6 @@
+use std::cell::Cell;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::block_properties::{Axis, PistonHeadLikeProperties, PistonType};
@@ -19,6 +20,43 @@ const PUSH_OFFSET: f64 = 0.01;
 /// The top of the box above a honey block that `moveStuckEntities` carries entities in.
 const STICKY_TOP_HEIGHT: f64 = 1.500_001_000_000_000_1;
 
+thread_local! {
+    /// Vanilla `PistonMovingBlockEntity.NOCLIP`: the direction of the piston move this thread is
+    /// running, whose moving blocks don't collide with the entity they push.
+    static NOCLIP: Cell<Option<BlockDirection>> = const { Cell::new(None) };
+}
+
+/// Moving blocks alive in any world. Their shapes reach into the next block, so collision
+/// searches only look past an entity's own blocks while there are some.
+static MOVING_BLOCKS: AtomicUsize = AtomicUsize::new(0);
+
+/// Counts a [`PistonBlockEntity`] in [`MOVING_BLOCKS`] while it lives.
+pub struct MovingBlockCount(());
+
+impl MovingBlockCount {
+    pub fn new() -> Self {
+        MOVING_BLOCKS.fetch_add(1, Ordering::Relaxed);
+        Self(())
+    }
+}
+
+impl Default for MovingBlockCount {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Drop for MovingBlockCount {
+    fn drop(&mut self) {
+        MOVING_BLOCKS.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
+/// Whether any moving piston block might exist.
+pub fn any_moving_blocks() -> bool {
+    MOVING_BLOCKS.load(Ordering::Relaxed) > 0
+}
+
 pub struct PistonBlockEntity {
     pub position: BlockPos,
     pub pushed_block_state: &'static BlockState,
@@ -28,6 +66,7 @@ pub struct PistonBlockEntity {
     pub last_ticked: AtomicCell<i64>,
     pub extending: bool,
     pub source: bool,
+    pub count: MovingBlockCount,
 }
 
 impl PistonBlockEntity {
@@ -78,6 +117,49 @@ impl PistonBlockEntity {
         };
         props.facing = PistonProps::from_state_id(self.pushed_block_state.id).facing;
         BlockState::from_id(props.to_state_id(&Block::PISTON_HEAD))
+    }
+
+    /// Vanilla `getCollisionShape` for entities, relative to the block's position.
+    pub fn collision_shapes(&self) -> Vec<BoundingBox> {
+        let progress = self.current_progress.load();
+        let moved_block = Block::from_state_id(self.pushed_block_state.id);
+        let mut shapes: Vec<BoundingBox> = Vec::new();
+        if !self.extending
+            && self.source
+            && (moved_block == &Block::PISTON || moved_block == &Block::STICKY_PISTON)
+        {
+            let mut props = PistonProps::from_state_id(self.pushed_block_state.id);
+            props.extended = true;
+            shapes.extend(
+                BlockState::from_id(props.to_state_id(moved_block)).get_block_collision_shapes(),
+            );
+        }
+        if progress < 1.0 && NOCLIP.get() == Some(self.movement_direction()) {
+            return shapes;
+        }
+        let state = if self.source {
+            let mut props = PistonHeadLikeProperties::default(&Block::PISTON_HEAD);
+            props.facing = self.facing.to_facing();
+            props.short = self.extending != (1.0 - progress < 0.25);
+            BlockState::from_id(props.to_state_id(&Block::PISTON_HEAD))
+        } else {
+            self.pushed_block_state
+        };
+        let offset = Self::dir_vec(self.facing, f64::from(self.amount_extended(progress)));
+        shapes.extend(
+            state
+                .get_block_collision_shapes()
+                .map(|shape| shape.shift(offset)),
+        );
+        shapes
+    }
+
+    /// Vanilla `moveEntityByPiston`: moves `entity` by `delta` with this piston's own moving
+    /// blocks out of the way.
+    fn move_entity_by_piston(&self, entity: &dyn EntityBase, delta: Vector3<f64>) {
+        NOCLIP.set(Some(self.movement_direction()));
+        entity.get_entity().move_by_piston(entity, delta);
+        NOCLIP.set(None);
     }
 
     /// Vanilla `moveByPositionAndProgress`.
@@ -176,7 +258,7 @@ impl PistonBlockEntity {
                 continue;
             }
             let delta = delta.min(delta_progress) + PUSH_OFFSET;
-            base.move_by_piston(entity.as_ref(), Self::dir_vec(movement, delta));
+            self.move_entity_by_piston(entity.as_ref(), Self::dir_vec(movement, delta));
             if !self.extending && self.source {
                 self.fix_entity_within_piston_base(entity.as_ref(), movement, delta_progress);
             }
@@ -203,7 +285,7 @@ impl PistonBlockEntity {
             Self::get_movement(block, opposite, entity_aabb.intersection(&block)) + PUSH_OFFSET;
         if (delta - delta_intersected).abs() < PUSH_OFFSET {
             let delta = delta.min(delta_progress) + PUSH_OFFSET;
-            base.move_by_piston(entity, Self::dir_vec(opposite, delta));
+            self.move_entity_by_piston(entity, Self::dir_vec(opposite, delta));
         }
     }
 
@@ -240,7 +322,7 @@ impl PistonBlockEntity {
             {
                 continue;
             }
-            base.move_by_piston(entity.as_ref(), Self::dir_vec(movement, delta_progress));
+            self.move_entity_by_piston(entity.as_ref(), Self::dir_vec(movement, delta_progress));
         }
     }
 
@@ -340,6 +422,7 @@ impl BlockEntity for PistonBlockEntity {
             last_ticked: 0.into(),
             extending,
             source,
+            count: MovingBlockCount::new(),
         }
     }
 

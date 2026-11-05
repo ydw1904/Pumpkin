@@ -2995,6 +2995,20 @@ impl World {
         let max = bounding_box.max_block_pos();
         let pos_iter = BlockPos::iterate(min, max);
 
+        let mut push_shapes = |pos: BlockPos, shapes: &mut dyn Iterator<Item = BoundingBox>| {
+            let mut collided = false;
+            for shape in shapes {
+                let shape = shape.at_pos(pos);
+                if shape.intersects(&bounding_box) {
+                    collided = true;
+                    collisions.push(shape);
+                }
+            }
+            if collided {
+                positions.push((collisions.len(), pos));
+            }
+        };
+
         for pos in pos_iter {
             let state = self.get_block_state(&pos);
 
@@ -3002,21 +3016,60 @@ impl World {
                 continue;
             }
 
-            let mut collided = false;
-            for shape in Self::entity_collision_shapes(entity, state, &pos) {
-                let shape = shape.at_pos(pos);
-                if shape.intersects(&bounding_box) {
-                    collided = true;
-                    collisions.push(shape);
-                }
-            }
+            let piston_shapes = if Block::from_state_id(state.id) == &Block::MOVING_PISTON {
+                self.moving_piston_collision_shapes(&pos)
+            } else {
+                Vec::new()
+            };
+            push_shapes(
+                pos,
+                &mut Self::entity_collision_shapes(entity, state, &pos).chain(piston_shapes),
+            );
+        }
 
-            if collided {
-                positions.push((collisions.len(), pos));
+        // Vanilla `BlockCollisions` also reads the blocks around the box, keeping moving pistons
+        // on its faces and edges, since a moving block's shape reaches into the next block.
+        if crate::block::entities::piston::any_moving_blocks() {
+            let outer_min =
+                BlockPos::floored_v(bounding_box.min.add_raw(-1.0E-7, -1.0E-7, -1.0E-7))
+                    .offset(Vector3::new(-1, -1, -1));
+            let outer_max = BlockPos::floored_v(bounding_box.max.add_raw(1.0E-7, 1.0E-7, 1.0E-7))
+                .offset(Vector3::new(1, 1, 1));
+            for pos in BlockPos::iterate(outer_min, outer_max) {
+                let p = pos.0;
+                if (min.0.x..=max.0.x).contains(&p.x)
+                    && (min.0.y..=max.0.y).contains(&p.y)
+                    && (min.0.z..=max.0.z).contains(&p.z)
+                {
+                    continue;
+                }
+                let edges = usize::from(p.x == outer_min.0.x || p.x == outer_max.0.x)
+                    + usize::from(p.y == outer_min.0.y || p.y == outer_max.0.y)
+                    + usize::from(p.z == outer_min.0.z || p.z == outer_max.0.z);
+                if edges == 3 || self.get_block(&pos) != &Block::MOVING_PISTON {
+                    continue;
+                }
+                push_shapes(
+                    pos,
+                    &mut self.moving_piston_collision_shapes(&pos).into_iter(),
+                );
             }
         }
 
         (collisions, positions)
+    }
+
+    /// Vanilla `MovingPistonBlock.getCollisionShape`: the moving block's shapes, from its block
+    /// entity.
+    fn moving_piston_collision_shapes(&self, pos: &BlockPos) -> Vec<BoundingBox> {
+        self.get_block_entity(pos)
+            .and_then(|block_entity| {
+                block_entity
+                    .as_any()
+                    .downcast_ref::<crate::block::entities::piston::PistonBlockEntity>()
+                    .map(crate::block::entities::piston::PistonBlockEntity::collision_shapes)
+            })
+            .unwrap_or_default()
     }
 
     pub fn find_free_position(

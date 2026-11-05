@@ -1,7 +1,10 @@
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
-use crate::block::entities::{has_block_block_entity, piston::PistonBlockEntity};
+use crate::block::entities::{
+    has_block_block_entity,
+    piston::{MovingBlockCount, PistonBlockEntity},
+};
 use crate::entity::EntityBase;
 use pumpkin_data::BlockId;
 use pumpkin_data::{
@@ -239,6 +242,7 @@ impl PistonBlock {
             last_ticked: 0.into(),
             extending: false,
             source: true,
+            count: MovingBlockCount::new(),
         }));
 
         world.update_neighbors_at(pos, &Block::MOVING_PISTON, None);
@@ -441,6 +445,7 @@ fn move_piston(
                 last_ticked: 0.into(),
                 extending: extend,
                 source: false,
+                count: MovingBlockCount::new(),
             }));
         }
         affected_block_states.push(block_state);
@@ -473,6 +478,7 @@ fn move_piston(
             last_ticked: 0.into(),
             extending: true,
             source: true,
+            count: MovingBlockCount::new(),
         }));
     }
 
