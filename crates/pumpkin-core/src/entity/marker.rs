@@ -25,6 +25,10 @@ impl MarkerEntity {
 }
 
 impl EntityBase for MarkerEntity {
+    fn is_ignored_by_pistons(&self) -> bool {
+        true
+    }
+
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
         let data = self
             .data

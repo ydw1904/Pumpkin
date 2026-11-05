@@ -451,6 +451,11 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         true
     }
 
+    /// Vanilla `getPistonPushReaction() == PushReaction.IGNORE_ENTITY`.
+    fn is_ignored_by_pistons(&self) -> bool {
+        false
+    }
+
     /// Whether the entity is immune from explosion knockback and damage
     fn is_immune_to_explosion(&self) -> bool {
         false
@@ -1618,6 +1623,10 @@ pub struct Entity {
     pub synched_data: synched_entity_data::SynchedEntityData,
     /// Multiplies movement for one tick before being reset
     pub movement_multiplier: AtomicCell<Vector3<f64>>,
+    /// Vanilla `pistonDeltas`: how far pistons moved the entity on each axis this game tick.
+    piston_deltas: AtomicCell<[f64; 3]>,
+    /// Vanilla `pistonDeltasGameTime`.
+    piston_deltas_game_time: std::sync::atomic::AtomicI64,
     /// Vanilla `needsSync`: tracker resyncs position and velocity of entities
     pub velocity_dirty: AtomicBool,
     /// Set when an Entity is to be removed but could still be referenced
@@ -1872,6 +1881,8 @@ impl Entity {
             first_tick: AtomicBool::new(true),
             synched_data: Self::define_synched_data(),
             movement_multiplier: AtomicCell::new(Vector3::default()),
+            piston_deltas: AtomicCell::new([0.0; 3]),
+            piston_deltas_game_time: std::sync::atomic::AtomicI64::new(0),
             velocity_dirty: AtomicBool::new(true),
             removed: AtomicBool::new(false),
             last_sent_yaw: AtomicU8::new(0),
@@ -3322,6 +3333,125 @@ impl Entity {
             return;
         }
         self.emit_movement(caller, final_move, &effect_pos, effect_state);
+    }
+
+    /// Vanilla `Entity.move` with `MoverType.PISTON`.
+    pub fn move_by_piston(&self, caller: &dyn EntityBase, delta: Vector3<f64>) {
+        if self.no_physics.load(Ordering::Relaxed) {
+            self.move_pos(delta);
+            self.horizontal_collision.store(false, Ordering::Relaxed);
+            self.vertical_collision.store(false, Ordering::Relaxed);
+            return;
+        }
+        let delta = self.limit_piston_movement(delta);
+        if delta == Vector3::default() {
+            return;
+        }
+        self.move_keeping_velocity(caller, delta, false);
+    }
+
+    /// Vanilla `Entity.move` for physics that keep their own velocity, unlike
+    /// [`Self::move_entity`]: velocity only changes where the move collides and by the block
+    /// speed factor. Pistons don't slow down in cobwebs (`stuck_slows` false).
+    #[expect(clippy::float_cmp)]
+    pub fn move_keeping_velocity(
+        &self,
+        caller: &dyn EntityBase,
+        mut delta: Vector3<f64>,
+        stuck_slows: bool,
+    ) {
+        let movement_multiplier = self.movement_multiplier.swap(Vector3::default());
+        if movement_multiplier.length_squared() > 1.0e-7 {
+            if stuck_slows {
+                delta = delta.multiply(
+                    movement_multiplier.x,
+                    movement_multiplier.y,
+                    movement_multiplier.z,
+                );
+            }
+            self.velocity.store(Vector3::default());
+        }
+
+        let movement = self.adjust_movement_for_collisions(delta, caller);
+        self.move_pos(movement);
+
+        if let Some(living) = caller.get_living_entity() {
+            let on_ground = self.on_ground.load(Ordering::SeqCst);
+            living.fall(caller, movement.y, on_ground, false);
+        }
+
+        let (effect_pos, effect_block, effect_state) = self.get_block_with_y_offset(0.2);
+        if self.is_removed() {
+            return;
+        }
+        // Vanilla `restituteMovementAfterCollisions`.
+        let x_collision = delta.x != movement.x;
+        let z_collision = delta.z != movement.z;
+        if x_collision || z_collision {
+            let velocity = self.velocity.load();
+            self.velocity.store(Vector3::new(
+                if x_collision { 0.0 } else { velocity.x },
+                velocity.y,
+                if z_collision { 0.0 } else { velocity.z },
+            ));
+        }
+        if delta.y != 0.0 && delta.y != movement.y {
+            self.world
+                .load()
+                .block_registry
+                .update_entity_movement_after_fall_on(effect_block, caller);
+        }
+        self.emit_movement(caller, movement, &effect_pos, effect_state);
+
+        let speed_factor = f64::from(caller.get_block_speed_factor());
+        let velocity = self.velocity.load();
+        self.velocity.store(Vector3::new(
+            velocity.x * speed_factor,
+            velocity.y,
+            velocity.z * speed_factor,
+        ));
+    }
+
+    /// Vanilla `limitPistonMovement`: pistons move an entity at most 0.51 per axis per game
+    /// tick, however many of them push it.
+    fn limit_piston_movement(&self, delta: Vector3<f64>) -> Vector3<f64> {
+        const MAX_PISTON_DELTA: f64 = 0.51;
+        if delta.length_squared() <= 1.0e-7 {
+            return delta;
+        }
+        let game_time = self.world.load().get_world_age();
+        let mut deltas = if self
+            .piston_deltas_game_time
+            .swap(game_time, Ordering::Relaxed)
+            == game_time
+        {
+            self.piston_deltas.load()
+        } else {
+            [0.0; 3]
+        };
+        let (axis, amount) = if delta.x != 0.0 {
+            (0, delta.x)
+        } else if delta.y != 0.0 {
+            (1, delta.y)
+        } else if delta.z != 0.0 {
+            (2, delta.z)
+        } else {
+            return Vector3::default();
+        };
+        let total = (amount + deltas[axis]).clamp(-MAX_PISTON_DELTA, MAX_PISTON_DELTA);
+        let amount = total - deltas[axis];
+        deltas[axis] = total;
+        self.piston_deltas.store(deltas);
+        if amount.abs() <= f64::from(1.0E-5f32) {
+            return Vector3::default();
+        }
+        let mut limited = Vector3::default();
+        match axis {
+            0 => limited.x = amount,
+            1 => limited.y = amount,
+            _ => limited.z = amount,
+        }
+        limited
     }
 
     /// The emission part of vanilla `Entity.move` for movement the client already resolved,

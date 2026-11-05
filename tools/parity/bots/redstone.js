@@ -209,4 +209,27 @@ h.start(async () => {
   await h.serverTicks(SETTLE_TICKS)
   requireScene(props(X - 4, pistonY, Z + 14).extended === true, 'slime piston must extend')
   h.result('slime_push', [h.blockName(X - 2, pistonY, Z + 14), h.blockName(X - 2, pistonY, Z + 15), h.blockName(X - 3, pistonY, Z + 15), h.blockName(X - 3, pistonY, Z + 13), h.blockName(X - 2, pistonY, Z + 13)].join(','))
+
+  // A slime block pushed up launches what stands on it; a honey block pushed sideways carries it.
+  h.cmd(`setblock ${X + 10} ${y + 1} ${Z - 10} piston[facing=up]`)
+  h.cmd(`setblock ${X + 10} ${y + 2} ${Z - 10} slime_block`)
+  h.cmd(`setblock ${X + 6} ${y + 1} ${Z - 10} piston[facing=east]`)
+  h.cmd(`setblock ${X + 7} ${y + 1} ${Z - 10} honey_block`)
+  h.cmd(`summon armor_stand ${X + 10.5} ${y + 3} ${Z - 9.5}`)
+  h.cmd(`summon armor_stand ${X + 7.5} ${y + 2} ${Z - 9.5}`)
+  await h.serverTicks(SETTLE_TICKS)
+  const stand = (x) => Object.values(bot.entities).find(e => e.name === 'armor_stand' && Math.abs(e.position.x - x) < 0.2)
+  const launched = stand(X + 10.5)
+  const carried = stand(X + 7.5)
+  requireScene(launched && carried, 'armor stands must stand on the slime and honey blocks')
+  const startY = launched.position.y
+  let maxY = startY
+  const track = (e) => { if (e === launched) maxY = Math.max(maxY, e.position.y) }
+  bot.on('entityMoved', track)
+  h.cmd(`setblock ${X + 10} ${y} ${Z - 10} redstone_block`)
+  h.cmd(`setblock ${X + 5} ${y + 1} ${Z - 10} redstone_block`)
+  await h.serverTicks(SETTLE_TICKS)
+  bot.removeListener('entityMoved', track)
+  h.result('slime_launch_height', Math.round(maxY - startY))
+  h.result('honey_carry_x', (carried.position.x - (X + 7.5)).toFixed(1))
 })

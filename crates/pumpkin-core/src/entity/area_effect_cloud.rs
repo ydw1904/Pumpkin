@@ -370,6 +370,10 @@ impl AreaEffectCloudEntity {
 }
 
 impl EntityBase for AreaEffectCloudEntity {
+    fn is_ignored_by_pistons(&self) -> bool {
+        true
+    }
+
     fn init_data_tracker(&self) {
         let (radius, waiting) = {
             let state = self.state();

@@ -398,6 +398,40 @@ impl BoundingBox {
         }
     }
 
+    /// Vanilla `AABB.minmax`: the smallest box holding both boxes.
+    #[must_use]
+    pub const fn union(&self, other: &Self) -> Self {
+        Self {
+            min: Vector3::new(
+                self.min.x.min(other.min.x),
+                self.min.y.min(other.min.y),
+                self.min.z.min(other.min.z),
+            ),
+            max: Vector3::new(
+                self.max.x.max(other.max.x),
+                self.max.y.max(other.max.y),
+                self.max.z.max(other.max.z),
+            ),
+        }
+    }
+
+    /// Vanilla `AABB.intersect`: the overlap of both boxes.
+    #[must_use]
+    pub const fn intersection(&self, other: &Self) -> Self {
+        Self {
+            min: Vector3::new(
+                self.min.x.max(other.min.x),
+                self.min.y.max(other.min.y),
+                self.min.z.max(other.min.z),
+            ),
+            max: Vector3::new(
+                self.max.x.min(other.max.x),
+                self.max.y.min(other.max.y),
+                self.max.z.min(other.max.z),
+            ),
+        }
+    }
+
     /// Stretches this bounding box along each axis by a given vector.
     ///
     /// # Arguments

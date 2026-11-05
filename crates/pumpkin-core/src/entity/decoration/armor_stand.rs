@@ -232,6 +232,10 @@ impl ArmorStandEntity {
 }
 
 impl EntityBase for ArmorStandEntity {
+    fn is_ignored_by_pistons(&self) -> bool {
+        self.is_marker()
+    }
+
     fn can_be_seen_by_anyone(&self) -> bool {
         !self.is_invisible() && !self.is_marker()
     }

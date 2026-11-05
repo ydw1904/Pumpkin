@@ -749,6 +749,10 @@ impl EntityBase for BlockDisplayEntity {
         false
     }
 
+    fn is_ignored_by_pistons(&self) -> bool {
+        true
+    }
+
     fn can_hit(&self) -> bool {
         false
     }
@@ -906,6 +910,10 @@ impl EntityBase for ItemDisplayEntity {
 
     fn is_pushed_by_fluids(&self) -> bool {
         false
+    }
+
+    fn is_ignored_by_pistons(&self) -> bool {
+        true
     }
 
     fn can_hit(&self) -> bool {
@@ -1244,6 +1252,10 @@ impl EntityBase for TextDisplayEntity {
 
     fn is_pushed_by_fluids(&self) -> bool {
         false
+    }
+
+    fn is_ignored_by_pistons(&self) -> bool {
+        true
     }
 
     fn can_hit(&self) -> bool {

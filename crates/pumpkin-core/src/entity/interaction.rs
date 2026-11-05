@@ -143,6 +143,10 @@ impl InteractionEntity {
 }
 
 impl EntityBase for InteractionEntity {
+    fn is_ignored_by_pistons(&self) -> bool {
+        true
+    }
+
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
         nbt.put_float(
             "width",
