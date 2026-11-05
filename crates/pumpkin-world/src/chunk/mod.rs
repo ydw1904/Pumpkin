@@ -76,6 +76,10 @@ pub struct ChunkData {
     pub block_ticks: ChunkTickScheduler<&'static Block>,
     pub fluid_ticks: ChunkTickScheduler<&'static Fluid>,
     pub pending_block_entities: std::sync::Mutex<FxHashMap<BlockPos, NbtCompound>>,
+    /// Lock order: a `Level::loaded_chunks` guard, then `light_engine`, then `heightmap`, then
+    /// `section`. The runtime light batch and the tick lock this inside `read_chunk_sync`, so
+    /// never hold it (or `heightmap` or `section`) while inserting into or removing from
+    /// `loaded_chunks`, as the chunk scheduler does.
     pub light_engine: std::sync::Mutex<ChunkLight>,
     pub light_populated: AtomicBool,
     pub status: ChunkStatus,
