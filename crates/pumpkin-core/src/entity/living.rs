@@ -3139,6 +3139,9 @@ impl LivingEntity {
                 .and_then(EntityBase::get_mob)
                 .is_none_or(|mob| mob.killed_entity(&*dyn_self));
             let should_drop_loot = perished && dyn_self.should_drop_loot();
+            if perished && let Some(mob) = dyn_self.get_mob() {
+                mob.drop_before_death_loot();
+            }
             if should_drop_loot {
                 self.drop_loot(&*dyn_self, &params);
             }
@@ -4848,24 +4851,7 @@ impl EntityBase for LivingEntity {
                     });
                 }
 
-                if let Some(stew) = item
-                    .get_data_component::<pumpkin_data::data_component_impl::SuspiciousStewEffectsImpl>()
-                {
-                    for entry in stew.effects.iter() {
-                        if let Some(effect_type) = StatusEffect::from_minecraft_name(&entry.effect)
-                        {
-                            self.add_effect(Effect {
-                                effect_type,
-                                duration: entry.duration,
-                                amplifier: 0,
-                                ambient: false,
-                                show_particles: true,
-                                show_icon: true,
-                                blend: false,
-                            });
-                        }
-                    }
-                }
+                self.apply_suspicious_stew_effects(item);
 
                 if let Some(player) = caller.get_player() {
                     player.trigger_advancement(
@@ -5044,7 +5030,7 @@ impl LivingEntity {
         super_factor + efficiency * (1.0 - super_factor)
     }
 
-    fn play_consume_sound(&self, caller: &dyn EntityBase, item: &ItemStack) {
+    pub(crate) fn play_consume_sound(&self, caller: &dyn EntityBase, item: &ItemStack) {
         let Some(consumable) = item.get_data_component::<ConsumableImpl>() else {
             return;
         };
@@ -5073,11 +5059,33 @@ impl LivingEntity {
 
     /// Applies data-driven `apply_effects` consume effects after an item completes use.
     /// Vanilla: `Consumable.onConsume` invokes every configured effect server-side.
-    fn apply_consumable_effects(&self, caller: &dyn EntityBase, item: &ItemStack) {
+    pub(crate) fn apply_consumable_effects(&self, caller: &dyn EntityBase, item: &ItemStack) {
         let Some(consumable) = item.get_data_component::<ConsumableImpl>() else {
             return;
         };
         self.apply_consume_effects(caller, &consumable.effects);
+    }
+
+    /// Vanilla `SuspiciousStewEffects.onConsume`.
+    pub(crate) fn apply_suspicious_stew_effects(&self, item: &ItemStack) {
+        let Some(stew) = item
+            .get_data_component::<pumpkin_data::data_component_impl::SuspiciousStewEffectsImpl>()
+        else {
+            return;
+        };
+        for entry in stew.effects.iter() {
+            if let Some(effect_type) = StatusEffect::from_minecraft_name(&entry.effect) {
+                self.add_effect(Effect {
+                    effect_type,
+                    duration: entry.duration,
+                    amplifier: 0,
+                    ambient: false,
+                    show_particles: true,
+                    show_icon: true,
+                    blend: false,
+                });
+            }
+        }
     }
 
     /// Vanilla: `ConsumeEffect.apply` for each effect in the list.

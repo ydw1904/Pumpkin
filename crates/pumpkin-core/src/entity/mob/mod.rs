@@ -2509,6 +2509,12 @@ pub trait Mob: EntityBase + Send + Sync {
 
     fn drop_inventory(&self) {}
 
+    /// The species part of vanilla `dropAllDeathLoot` that runs before the shared drops.
+    fn drop_before_death_loot(&self) {}
+
+    /// Vanilla `Mob.onOffspringSpawnedFromEgg`, run on the parent after the baby joined the world.
+    fn on_offspring_spawned_from_egg(&self, _spawner: &Player, _offspring: &dyn EntityBase) {}
+
     /// The species part of vanilla `dropCustomDeathLoot`, after the equipment drops.
     fn drop_custom_death_loot(&self) {}
 

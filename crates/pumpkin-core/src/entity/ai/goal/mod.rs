@@ -60,6 +60,7 @@ pub mod skeleton_trap;
 pub mod spear_use;
 pub mod spider_attack;
 pub mod step_and_destroy_block;
+pub mod stroll_through_village;
 pub mod swim;
 pub mod teleport_towards_player;
 pub mod tempt;
