@@ -1,7 +1,7 @@
 use super::ParrotEntity;
 use crate::entity::{
     EntityBase,
-    ai::goal::{Controls, Goal},
+    ai::goal::{Controls, Goal, GoalReach},
     mob::Mob,
     passive::tamable::TamableAnimal,
 };
@@ -23,6 +23,11 @@ impl LandOnShoulderGoal {
 }
 
 impl Goal for LandOnShoulderGoal {
+    // The owner is in `ParrotEntity::tick_links`.
+    fn tick_reach(&self, _mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        Some(GoalReach::default())
+    }
+
     fn can_start(&mut self, _mob: &dyn Mob) -> bool {
         let Some(parrot) = self.parrot.upgrade() else {
             return false;

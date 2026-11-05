@@ -112,7 +112,7 @@ impl FollowOwnerGoal {
         if !mob.can_fly_to_owner()
             && world
                 .get_block(&pos.down())
-            .has_tag(&tag::Block::MINECRAFT_LEAVES)
+                .has_tag(&tag::Block::MINECRAFT_LEAVES)
         {
             return false;
         }

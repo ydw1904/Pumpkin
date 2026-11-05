@@ -6131,6 +6131,7 @@ impl Player {
 
         // Stop elytra flight and reset sneaking when switching to spectator mode
         if gamemode == GameMode::Spectator {
+            self.release_shoulders();
             let entity = self.get_entity();
             if entity.is_fall_flying() {
                 entity.set_fall_flying(false);

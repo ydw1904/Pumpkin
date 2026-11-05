@@ -1,9 +1,8 @@
-mod jukebox;
 #[cfg(test)]
 #[path = "parrot/tests.rs"]
 mod regression_tests;
 mod shoulder;
-use std::sync::{Arc, Weak, atomic::Ordering};
+use std::sync::{Arc, LazyLock, Weak, atomic::Ordering};
 
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::BlockState;
@@ -22,13 +21,22 @@ use rand::RngExt;
 use crate::entity::{
     Entity, EntityBase,
     ai::goal::{
-        escape_danger::EscapeDangerGoal, follow_mob::FollowMobGoal, follow_owner::FollowOwnerGoal,
-        look_at_entity::LookAtEntityGoal, sit_when_ordered_to::SitWhenOrderedToGoal,
-        swim::SwimGoal, water_avoiding_random_flying::WaterAvoidingRandomFlyingGoal,
+        GoalReach, escape_danger::EscapeDangerGoal, follow_mob::FollowMobGoal,
+        follow_owner::FollowOwnerGoal, look_at_entity::LookAtEntityGoal,
+        sit_when_ordered_to::SitWhenOrderedToGoal, swim::SwimGoal,
+        water_avoiding_random_flying::WaterAvoidingRandomFlyingGoal,
     },
+    ai::target_match::TargetMatch,
     mob::{Mob, MobEntity},
     player::Player,
 };
+
+/// How far vanilla `Parrot.imitateNearbyMobs` looks for mobs.
+const IMITATION_RANGE: f64 = 20.0;
+
+/// The keys of [`IMITATIONS`], for the island reach of the imitation search.
+static IMITATED_TYPES: LazyLock<Vec<&'static EntityType>> =
+    LazyLock::new(|| IMITATIONS.iter().map(|(kind, _)| *kind).collect());
 
 /// Duration in ticks of the poison a parrot gets from eating a cookie, matching
 /// vanilla `Parrot.mobInteract`.
@@ -44,8 +52,6 @@ pub struct ParrotEntity {
     variant: AtomicCell<ParrotVariant>,
     flap_speed: AtomicCell<f32>,
     next_flap: AtomicCell<f32>,
-    jukebox: AtomicCell<Option<BlockPos>>,
-    party: std::sync::atomic::AtomicBool,
 }
 
 impl ParrotEntity {
@@ -57,7 +63,11 @@ impl ParrotEntity {
         let candidates: Vec<_> = e
             .world
             .load()
-            .get_entities_at_box(&e.bounding_box.load().expand(20.0, 20.0, 20.0))
+            .get_entities_at_box(&e.bounding_box.load().expand(
+                IMITATION_RANGE,
+                IMITATION_RANGE,
+                IMITATION_RANGE,
+            ))
             .into_iter()
             .filter(|m| {
                 m.get_mob().is_some()
@@ -132,8 +142,6 @@ impl ParrotEntity {
             variant: AtomicCell::new(ParrotVariant::DEFAULT),
             flap_speed: AtomicCell::new(0.0),
             next_flap: AtomicCell::new(1.0),
-            jukebox: AtomicCell::new(None),
-            party: std::sync::atomic::AtomicBool::new(false),
         };
         let mob_arc = Arc::new(parrot);
         let mob_weak: Weak<dyn Mob> = {
@@ -144,7 +152,10 @@ impl ParrotEntity {
         {
             let goal_selector = &mob_arc.mob_entity.goals_selector;
 
-            goal_selector.add_goal(0, EscapeDangerGoal::tamable(1.25, &tag::DamageType::MINECRAFT_PANIC_CAUSES));
+            goal_selector.add_goal(
+                0,
+                EscapeDangerGoal::tamable(1.25, &tag::DamageType::MINECRAFT_PANIC_CAUSES),
+            );
             goal_selector.add_goal(0, Box::new(SwimGoal::default()));
             goal_selector.add_goal(
                 1,
@@ -252,12 +263,6 @@ impl Mob for ParrotEntity {
                 .no_ai(self.get_mob_entity().is_no_ai()),
         )
     }
-    fn for_each_game_event_listener(
-        &self,
-        visit: &mut dyn FnMut(&dyn crate::world::game_event::GameEventListener),
-    ) {
-        visit(&jukebox::JukeboxListener(self));
-    }
     fn can_push_entity(&self, other: &dyn EntityBase) -> bool {
         other.get_player().is_none()
     }
@@ -267,8 +272,27 @@ impl Mob for ParrotEntity {
     fn get_ambient_sound(&self) -> Option<Sound> {
         Some(Self::ambient(&self.get_entity().world.load()))
     }
-    fn has_global_tick_reach(&self) -> bool {
+    // `mob_ai_step` slows a fall after the parrot moved and listens for nearby mobs to imitate.
+    fn has_audited_tick(&self) -> bool {
         true
+    }
+    fn audited_species_reach(&self, _speed: f64) -> GoalReach {
+        GoalReach {
+            typed: vec![(
+                IMITATION_RANGE,
+                TargetMatch::AnyOf(IMITATED_TYPES.as_slice()),
+            )],
+            ..GoalReach::default()
+        }
+    }
+    /// The owner's goals (follow, sit, land on the shoulder) read and change it at any distance.
+    fn tick_links(&self) -> Vec<i32> {
+        use super::tamable::TamableAnimal;
+        self.get_owner()
+            .and_then(|id| self.get_entity().world.load().get_player_by_uuid(id))
+            .map(|owner| owner.entity_id())
+            .into_iter()
+            .collect()
     }
     fn as_tamable(&self) -> Option<&dyn super::tamable::TamableAnimal> {
         Some(self)
@@ -355,17 +379,8 @@ impl Mob for ParrotEntity {
     }
 
     fn mob_ai_step(&self) {
-        if let Some(pos) = self.jukebox.load() {
-            let e = self.get_entity();
-            if pos.to_centered_f64().squared_distance_to_vec(&e.pos.load()) >= 3.46 * 3.46
-                || e.world.load().get_block(&pos).id != pumpkin_data::Block::JUKEBOX.id
-            {
-                self.party.store(false, Ordering::Relaxed);
-                self.jukebox.store(None);
-            }
-        } else {
-            self.party.store(false, Ordering::Relaxed);
-        }
+        // Dancing is client side: only the client's `LevelRenderer` calls
+        // `setRecordPlayingNearby`, so the server's jukebox field stays null.
         if self.get_random().random_range(0..400) == 0 {
             Self::imitate_nearby(self);
         }

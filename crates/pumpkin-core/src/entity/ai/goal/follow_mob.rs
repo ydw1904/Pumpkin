@@ -1,6 +1,7 @@
-use super::{Controls, Goal, to_goal_ticks};
+use super::{Controls, Goal, GoalReach, to_goal_ticks};
 use crate::entity::EntityBase;
 use crate::entity::ai::pathfinder::NavigatorGoal;
+use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::mob::Mob;
 use pumpkin_util::math::vector3::Vector3;
 use std::sync::Arc;
@@ -32,6 +33,22 @@ impl FollowMobGoal {
 }
 
 impl Goal for FollowMobGoal {
+    fn tick_reach(&self, _mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        // A goal that stops this tick can search again at once. The followed mob can walk away
+        // while it is followed, and its look control is read.
+        Some(GoalReach {
+            speed: self.speed_modifier,
+            typed: vec![(self.area_size, TargetMatch::Mob)],
+            links: self
+                .following_mob
+                .iter()
+                .filter(|_| running)
+                .map(|following| following.get_entity().entity_id)
+                .collect(),
+            ..GoalReach::default()
+        })
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         let entity = mob.get_entity();
         let world = entity.world.load();

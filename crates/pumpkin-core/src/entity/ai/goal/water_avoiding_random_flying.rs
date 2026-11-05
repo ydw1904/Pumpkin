@@ -1,8 +1,11 @@
-use super::{Controls, Goal, to_goal_ticks};
+use super::{Controls, Goal, GoalReach, to_goal_ticks};
 use crate::entity::ai::pathfinder::NavigatorGoal;
 use crate::entity::ai::util::{air_and_water_random_pos, hover_random_pos};
 use crate::entity::mob::Mob;
 use pumpkin_util::math::vector3::Vector3;
+
+/// Range of the parrot's search for land when it is in water.
+const LAND_SEARCH_RANGE: i32 = 15;
 
 pub struct WaterAvoidingRandomFlyingGoal {
     goal_control: Controls,
@@ -38,7 +41,11 @@ impl WaterAvoidingRandomFlyingGoal {
         let world = entity.world.load();
         let pos = entity.pos.load();
         let mut target = if entity.is_in_water() {
-            crate::entity::ai::util::land_random_pos::get_pos(mob, 15, 15)
+            crate::entity::ai::util::land_random_pos::get_pos(
+                mob,
+                LAND_SEARCH_RANGE,
+                LAND_SEARCH_RANGE,
+            )
         } else {
             None
         };
@@ -101,14 +108,23 @@ impl WaterAvoidingRandomFlyingGoal {
 }
 
 impl Goal for WaterAvoidingRandomFlyingGoal {
+    fn tick_reach(&self, _mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        Some(GoalReach {
+            speed: self.speed,
+            // `LandRandomPos.getPos(mob, 15, 15)` out of water.
+            block_reads: f64::from(LAND_SEARCH_RANGE) + 1.0,
+            ..GoalReach::default()
+        })
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
-        if self.perch_in_trees
-            && mob
-                .get_mob_entity()
-                .living_entity
-                .no_action_time
-                .load(std::sync::atomic::Ordering::Relaxed)
-                >= 100
+        // Vanilla `RandomStrollGoal.canUse` with `checkNoActionTime`.
+        if mob
+            .get_mob_entity()
+            .living_entity
+            .no_action_time
+            .load(std::sync::atomic::Ordering::Relaxed)
+            >= 100
         {
             return false;
         }

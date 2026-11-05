@@ -100,6 +100,8 @@ impl TridentItem {
             &CEntityVelocity::new(entity.entity_id.into(), velocity),
         );
         let stack = player.inventory().get_stack_in_hand(hand);
+        // Vanilla `Player.startAutoSpinAttack` drops the shoulder parrots first.
+        player.release_shoulders();
         player
             .living_entity
             .start_auto_spin_attack(SPIN_ATTACK_TICKS, SPIN_ATTACK_DAMAGE, stack);
