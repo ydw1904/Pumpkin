@@ -1,23 +1,27 @@
-use pumpkin_util::random::gameplay::game_random;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicI32, AtomicU8, Ordering};
 use std::sync::{Arc, Weak};
 use uuid::Uuid;
 
+use pumpkin_data::BlockDirection;
+use pumpkin_data::dye_color::DyeColor;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::sound::Sound;
+use pumpkin_data::tracked_data;
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 
 use crate::entity::ai::behavior::fleeing::{self, Flee};
 use crate::entity::ai::behavior::hunting::{self, Hunt};
 use crate::entity::ai::target_match::TargetMatch;
+use crate::entity::ai::target_predicate::TargetPredicate;
+use crate::entity::mob::spellcaster::{
+    Spell, SpellTarget, SpellcasterCastingSpellGoal, SpellcasterState, SpellcasterUseSpellGoal,
+};
+use crate::entity::passive::sheep::SheepEntity;
 use crate::entity::{
     Entity, EntityBase,
-    ai::goal::{
-        Controls, Goal, look_at_entity::LookAtEntityGoal, swim::SwimGoal,
-        wander_around::WanderAroundGoal,
-    },
+    ai::goal::{look_at_entity::LookAtEntityGoal, swim::SwimGoal, wander_around::WanderAroundGoal},
     mob::{
         Mob, MobEntity,
         patrol::{LongDistancePatrolGoal, PatrolData, PatrollingMonster},
@@ -31,6 +35,7 @@ use crate::entity::{
     projectile::evoker_fangs::EvokerFangsEntity,
     r#type::from_type,
 };
+use crate::world::game_event::GameEventContext;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -71,48 +76,77 @@ const EVOKER_HUNTS: &[Hunt] = &[
 pub struct EvokerEntity {
     pub mob_entity: MobEntity,
     pub raider_data: RaiderData,
-    spell_casting_tick_count: AtomicI32,
-    current_spell: AtomicU8,
-    wololo_target_id: Arc<Mutex<Option<i32>>>,
+    spellcaster: Arc<SpellcasterState>,
 }
 
 impl EvokerEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `SpellcasterIllager.defineSynchedData`, so the default isn't sent.
+        entity
+            .synched_data
+            .define(tracked_data::evoker::DATA_SPELL_CASTING_ID, 0i8);
         let mob_entity = MobEntity::new(entity);
         let evoker = Self {
             mob_entity,
             raider_data: RaiderData::default(),
-            spell_casting_tick_count: AtomicI32::new(0),
-            current_spell: AtomicU8::new(IllagerSpell::None as u8),
-            wololo_target_id: Arc::new(Mutex::new(None)),
+            spellcaster: Arc::new(SpellcasterState::new(
+                tracked_data::evoker::DATA_SPELL_CASTING_ID,
+                Sound::EntityEvokerCastSpell,
+            )),
         };
         let mob_arc = Arc::new(evoker);
-        let mob_weak: Weak<Self> = Arc::downgrade(&mob_arc);
-        let mob_interface_weak: Weak<dyn Mob> = {
-            let mob_dyn: Arc<dyn Mob> = mob_arc.clone();
-            Arc::downgrade(&mob_dyn)
+        let mob_weak: Weak<dyn Mob> = {
+            let mob_arc: Arc<dyn Mob> = mob_arc.clone();
+            Arc::downgrade(&mob_arc)
         };
 
         {
             let goal_selector = &mob_arc.mob_entity.goals_selector;
+            let spellcaster = &mob_arc.spellcaster;
+            let wololo_target = SpellTarget::default();
 
-            // `PatrollingMonster` and `Raider.registerGoals` run first.
+            // `PatrollingMonster` and `Raider` register theirs first.
             goal_selector.add_goal(4, Box::new(LongDistancePatrolGoal::new(0.7, 0.595)));
             goal_selector.add_goal(1, Box::new(ObtainRaidLeaderBannerGoal));
             goal_selector.add_goal(3, Box::new(PathfindToRaidGoal::default()));
             goal_selector.add_goal(4, Box::new(RaiderMoveThroughVillageGoal::new(1.05)));
             goal_selector.add_goal(5, Box::new(RaiderCelebrationGoal));
+
             goal_selector.add_goal(0, Box::new(SwimGoal::default()));
-            goal_selector.add_goal(1, Box::new(EvokerCastingSpellGoal::new(mob_weak.clone())));
+            goal_selector.add_goal(
+                1,
+                Box::new(
+                    SpellcasterCastingSpellGoal::new(spellcaster.clone())
+                        .looking_at_without_target(wololo_target.clone()),
+                ),
+            );
             fleeing::apply(goal_selector, EVOKER_FLEES);
-            goal_selector.add_goal(4, Box::new(EvokerSummonSpellGoal::new(mob_weak.clone())));
-            goal_selector.add_goal(5, Box::new(EvokerAttackSpellGoal::new(mob_weak.clone())));
-            goal_selector.add_goal(6, Box::new(EvokerWololoSpellGoal::new(mob_weak)));
+            goal_selector.add_goal(
+                4,
+                Box::new(SpellcasterUseSpellGoal::new(
+                    spellcaster.clone(),
+                    EvokerSummonSpell::new(),
+                )),
+            );
+            goal_selector.add_goal(
+                5,
+                Box::new(SpellcasterUseSpellGoal::new(
+                    spellcaster.clone(),
+                    EvokerAttackSpell,
+                )),
+            );
+            goal_selector.add_goal(
+                6,
+                Box::new(SpellcasterUseSpellGoal::new(
+                    spellcaster.clone(),
+                    EvokerWololoSpell::new(wololo_target),
+                )),
+            );
             goal_selector.add_goal(8, Box::new(WanderAroundGoal::new(0.6)));
             goal_selector.add_goal(
                 9,
                 Box::new(LookAtEntityGoal::new(
-                    mob_interface_weak,
+                    mob_weak,
                     &EntityType::PLAYER,
                     3.0,
                     1.0,
@@ -128,32 +162,6 @@ impl EvokerEntity {
 
         mob_arc
     }
-
-    pub fn is_casting_spell(&self) -> bool {
-        self.spell_casting_tick_count.load(Ordering::Relaxed) > 0
-    }
-
-    pub fn set_is_casting_spell(&self, spell: IllagerSpell) {
-        self.current_spell.store(spell as u8, Ordering::Relaxed);
-        let entity = &self.mob_entity.living_entity.entity;
-        entity.set_synced_data(
-            pumpkin_data::tracked_data::evoker::SPELL_CASTING_ID,
-            spell as u8 as i8,
-        );
-    }
-
-    pub fn get_current_spell(&self) -> IllagerSpell {
-        IllagerSpell::from_u8(self.current_spell.load(Ordering::Relaxed))
-    }
-
-    pub fn get_spell_casting_time(&self) -> i32 {
-        self.spell_casting_tick_count.load(Ordering::Relaxed)
-    }
-
-    pub fn set_spell_casting_time(&self, ticks: i32) {
-        self.spell_casting_tick_count
-            .store(ticks, Ordering::Relaxed);
-    }
 }
 
 impl Mob for EvokerEntity {
@@ -167,26 +175,20 @@ impl Mob for EvokerEntity {
 
     fn mob_write_nbt(&self, nbt: &mut NbtCompound) {
         self.write_raider_nbt(nbt);
-        nbt.put_int("SpellTicks", self.get_spell_casting_time());
+        self.spellcaster.write_nbt(nbt);
     }
 
     fn mob_read_nbt(&self, nbt: &NbtCompound) {
         self.read_raider_nbt(nbt);
-        if let Some(ticks) = nbt.get_int("SpellTicks") {
-            self.set_spell_casting_time(ticks);
-        }
+        self.spellcaster.read_nbt(nbt);
     }
 
     fn get_mob_entity(&self) -> &MobEntity {
         &self.mob_entity
     }
 
-    fn mob_tick(&self, _caller: &dyn EntityBase) {
-        let ticks = self.spell_casting_tick_count.load(Ordering::Relaxed);
-        if ticks > 0 {
-            self.spell_casting_tick_count
-                .store(ticks - 1, Ordering::Relaxed);
-        }
+    fn custom_server_ai_step(&self, _caller: &dyn EntityBase) {
+        self.spellcaster.tick();
     }
 }
 
@@ -206,435 +208,319 @@ impl Raider for EvokerEntity {
     }
 }
 
-pub struct EvokerCastingSpellGoal {
-    evoker: Weak<EvokerEntity>,
-}
+/// Vanilla `Evoker.EvokerAttackSpellGoal`: a row or two rings of fangs.
+struct EvokerAttackSpell;
 
-impl EvokerCastingSpellGoal {
-    #[must_use]
-    pub const fn new(evoker: Weak<EvokerEntity>) -> Self {
-        Self { evoker }
-    }
-}
-
-impl Goal for EvokerCastingSpellGoal {
-    fn can_start(&mut self, _mob: &dyn Mob) -> bool {
-        let Some(evoker) = self.evoker.upgrade() else {
-            return false;
-        };
-        evoker.is_casting_spell()
-    }
-
-    fn should_continue(&mut self, _mob: &dyn Mob) -> bool {
-        let Some(evoker) = self.evoker.upgrade() else {
-            return false;
-        };
-        evoker.is_casting_spell()
-    }
-
-    fn start(&mut self, _mob: &dyn Mob) {
-        if let Some(evoker) = self.evoker.upgrade() {
-            evoker
-                .mob_entity
-                .living_entity
-                .entity
-                .velocity
-                .store(Vector3::new(0.0, 0.0, 0.0));
-        }
-    }
-
-    fn stop(&mut self, _mob: &dyn Mob) {
-        if let Some(evoker) = self.evoker.upgrade() {
-            evoker.set_is_casting_spell(IllagerSpell::None);
-        }
-    }
-
-    fn controls(&self) -> Controls {
-        Controls::MOVE | Controls::LOOK
-    }
-}
-
-pub struct EvokerAttackSpellGoal {
-    evoker: Weak<EvokerEntity>,
-    warmup_delay: i32,
-    next_attack_tick: i32,
-}
-
-impl EvokerAttackSpellGoal {
-    #[must_use]
-    pub const fn new(evoker: Weak<EvokerEntity>) -> Self {
-        Self {
-            evoker,
-            warmup_delay: 0,
-            next_attack_tick: 0,
-        }
-    }
-}
-
-impl Goal for EvokerAttackSpellGoal {
-    fn can_start(&mut self, _mob: &dyn Mob) -> bool {
-        let Some(evoker) = self.evoker.upgrade() else {
-            return false;
-        };
-        if evoker.is_casting_spell() {
-            return false;
-        }
-        let entity = &evoker.mob_entity.living_entity.entity;
-        if entity.tick_count.load(Ordering::Relaxed) < self.next_attack_tick {
-            return false;
-        }
-        let target = evoker.mob_entity.get_target();
-        target.is_some()
-    }
-
-    fn should_continue(&mut self, _mob: &dyn Mob) -> bool {
-        self.warmup_delay > 0
-    }
-
-    fn start(&mut self, _mob: &dyn Mob) {
-        self.warmup_delay = 20;
-        if let Some(evoker) = self.evoker.upgrade() {
-            evoker.set_spell_casting_time(40);
-            let age = evoker
-                .mob_entity
-                .living_entity
-                .entity
-                .tick_count
-                .load(Ordering::Relaxed);
-            self.next_attack_tick = age + 100;
-            evoker.set_is_casting_spell(IllagerSpell::Fangs);
-            evoker
-                .mob_entity
-                .living_entity
-                .entity
-                .play_sound(Sound::EntityEvokerPrepareAttack);
-        }
-    }
-
-    fn tick(&mut self, _mob: &dyn Mob) {
-        self.warmup_delay -= 1;
-        if self.warmup_delay == 0 {
-            let Some(evoker) = self.evoker.upgrade() else {
-                return;
-            };
-            let target = evoker.mob_entity.get_target();
-            let Some(target) = target else {
-                return;
-            };
-
-            let evoker_ent = &evoker.mob_entity.living_entity.entity;
-            evoker_ent.play_sound(Sound::EntityEvokerCastSpell);
-
-            let evoker_pos = evoker_ent.pos.load();
-            let target_pos = target.get_entity().pos.load();
-
-            let dx = target_pos.x - evoker_pos.x;
-            let dz = target_pos.z - evoker_pos.z;
-            let angle_towards_target = (dz.atan2(dx)) as f32;
-
-            let min_y = evoker_pos.y.min(target_pos.y);
-            let dist_sq = evoker_pos.squared_distance_to_vec(&target_pos);
-            let world = evoker_ent.world.load();
-
-            if dist_sq < 81.0 {
-                // Close range: concentric rings around Evoker
-                for i in 0..5 {
-                    let angle = angle_towards_target + (i as f32) * std::f32::consts::PI * 0.4;
-                    let spawn_x = evoker_pos.x + (angle.cos() as f64) * 1.5;
-                    let spawn_z = evoker_pos.z + (angle.sin() as f64) * 1.5;
-                    let pos = Vector3::new(spawn_x, min_y, spawn_z);
-
-                    let entity = Entity::from_uuid(
-                        Uuid::new_v4(),
-                        world.clone(),
-                        pos,
-                        &EntityType::EVOKER_FANGS,
-                    );
-                    let fangs =
-                        Arc::new(EvokerFangsEntity::new(entity, 0, angle, Some(evoker_ent)));
-                    world.spawn_entity(fangs);
-                }
-
-                for i in 0..8 {
-                    let angle = angle_towards_target
-                        + (i as f32) * std::f32::consts::PI * 2.0 / 8.0
-                        + 1.256_637_1;
-                    let spawn_x = evoker_pos.x + (angle.cos() as f64) * 2.5;
-                    let spawn_z = evoker_pos.z + (angle.sin() as f64) * 2.5;
-                    let pos = Vector3::new(spawn_x, min_y, spawn_z);
-
-                    let entity = Entity::from_uuid(
-                        Uuid::new_v4(),
-                        world.clone(),
-                        pos,
-                        &EntityType::EVOKER_FANGS,
-                    );
-                    let fangs =
-                        Arc::new(EvokerFangsEntity::new(entity, 3, angle, Some(evoker_ent)));
-                    world.spawn_entity(fangs);
-                }
-            } else {
-                // Long range: line of fangs towards target
-                for i in 0..16 {
-                    let reach = 1.25 * ((i + 1) as f64);
-                    let spawn_x = evoker_pos.x + (angle_towards_target.cos() as f64) * reach;
-                    let spawn_z = evoker_pos.z + (angle_towards_target.sin() as f64) * reach;
-                    let pos = Vector3::new(spawn_x, min_y, spawn_z);
-
-                    let entity = Entity::from_uuid(
-                        Uuid::new_v4(),
-                        world.clone(),
-                        pos,
-                        &EntityType::EVOKER_FANGS,
-                    );
-                    let fangs = Arc::new(EvokerFangsEntity::new(
-                        entity,
-                        i as u32,
-                        angle_towards_target,
-                        Some(evoker_ent),
-                    ));
-                    world.spawn_entity(fangs);
-                }
-            }
-        }
-    }
-}
-
-pub struct EvokerSummonSpellGoal {
-    evoker: Weak<EvokerEntity>,
-    warmup_delay: i32,
-    next_attack_tick: i32,
-}
-
-impl EvokerSummonSpellGoal {
-    #[must_use]
-    pub const fn new(evoker: Weak<EvokerEntity>) -> Self {
-        Self {
-            evoker,
-            warmup_delay: 0,
-            next_attack_tick: 0,
-        }
-    }
-}
-
-impl Goal for EvokerSummonSpellGoal {
-    fn can_start(&mut self, _mob: &dyn Mob) -> bool {
-        let Some(evoker) = self.evoker.upgrade() else {
-            return false;
-        };
-        if evoker.is_casting_spell() {
-            return false;
-        }
-        let entity = &evoker.mob_entity.living_entity.entity;
-        if entity.tick_count.load(Ordering::Relaxed) < self.next_attack_tick {
-            return false;
-        }
-        let target = evoker.mob_entity.get_target();
-        if target.is_none() {
-            return false;
-        }
-
-        // Count nearby Vexes
-        let bb = entity.bounding_box.load().expand(16.0, 16.0, 16.0);
-        let world = entity.world.load();
-        let nearby = world.get_entities_at_box(&bb);
-        let vex_count = nearby
-            .iter()
-            .filter(|e| *e.get_entity().entity_type == EntityType::VEX)
-            .count();
-
-        let max_allowed = (game_random().random::<u8>() % 8 + 1) as usize;
-        vex_count < max_allowed
-    }
-
-    fn should_continue(&mut self, _mob: &dyn Mob) -> bool {
-        self.warmup_delay > 0
-    }
-
-    fn start(&mut self, _mob: &dyn Mob) {
-        self.warmup_delay = 20;
-        if let Some(evoker) = self.evoker.upgrade() {
-            evoker.set_spell_casting_time(100);
-            let age = evoker
-                .mob_entity
-                .living_entity
-                .entity
-                .tick_count
-                .load(Ordering::Relaxed);
-            self.next_attack_tick = age + 340;
-            evoker.set_is_casting_spell(IllagerSpell::SummonVex);
-            evoker
-                .mob_entity
-                .living_entity
-                .entity
-                .play_sound(Sound::EntityEvokerPrepareSummon);
-        }
-    }
-
-    fn tick(&mut self, _mob: &dyn Mob) {
-        self.warmup_delay -= 1;
-        if self.warmup_delay == 0 {
-            let Some(evoker) = self.evoker.upgrade() else {
-                return;
-            };
-            let evoker_ent = &evoker.mob_entity.living_entity.entity;
-            evoker_ent.play_sound(Sound::EntityEvokerCastSpell);
-
-            let world = evoker_ent.world.load_full();
-            let evoker_pos = evoker_ent.block_pos.load();
-            let evoker_team = (evoker.as_ref() as &dyn EntityBase).get_team_name();
-
-            for _ in 0..3 {
-                let rng = evoker.get_random();
-                let x = -2 + rng.random_range(0..5);
-                let z = -2 + rng.random_range(0..5);
-                let pos = evoker_pos.offset(Vector3::new(x, 1, z));
-                let spawn_pos = Vector3::new(
-                    f64::from(pos.0.x) + 0.5,
-                    f64::from(pos.0.y),
-                    f64::from(pos.0.z) + 0.5,
-                );
-                let vex = from_type(&EntityType::VEX, spawn_pos, &world, Uuid::new_v4());
-                finalize_spawn(&vex, &world, EntitySpawnReason::MobSummoned, None);
-                if let Some(vex) = vex.cast_any().downcast_ref::<VexEntity>() {
-                    vex.set_owner(evoker_ent);
-                    vex.set_bound_origin(Some(pos));
-                    vex.set_limited_life(20 * (30 + rng.random_range(0..90)));
-                }
-                if let Some(team) = &evoker_team {
-                    vex.get_entity().join_team(team);
-                }
-                world.spawn_entity(vex);
-            }
-        }
-    }
-}
-
-pub struct EvokerWololoSpellGoal {
-    evoker: Weak<EvokerEntity>,
-    warmup_delay: i32,
-    next_attack_tick: i32,
-}
-
-impl EvokerWololoSpellGoal {
-    #[must_use]
-    pub const fn new(evoker: Weak<EvokerEntity>) -> Self {
-        Self {
-            evoker,
-            warmup_delay: 0,
-            next_attack_tick: 0,
-        }
-    }
-}
-
-impl Goal for EvokerWololoSpellGoal {
-    fn can_start(&mut self, _mob: &dyn Mob) -> bool {
-        let Some(evoker) = self.evoker.upgrade() else {
-            return false;
-        };
-        if evoker.is_casting_spell() {
-            return false;
-        }
-        let entity = &evoker.mob_entity.living_entity.entity;
-        if entity.tick_count.load(Ordering::Relaxed) < self.next_attack_tick {
-            return false;
-        }
-        let target = evoker.mob_entity.get_target();
-        if target.is_some() {
-            return false;
-        }
-
-        // Find blue sheep within 16 blocks
-        let bb = entity.bounding_box.load().expand(16.0, 4.0, 16.0);
-        let world = entity.world.load();
-        let candidates = world.get_entities_at_box(&bb);
-
-        for cand in candidates {
-            if *cand.get_entity().entity_type == EntityType::SHEEP
-                && let Some(sheep) = cand
-                    .cast_any()
-                    .downcast_ref::<crate::entity::passive::sheep::SheepEntity>()
+impl EvokerAttackSpell {
+    /// Vanilla `createSpellEntity`: fangs on the first sturdy floor from `max_y` down to one
+    /// block below `min_y`.
+    fn create_spell_entity(
+        mob: &dyn Mob,
+        x: f64,
+        z: f64,
+        min_y: f64,
+        max_y: f64,
+        angle: f32,
+        delay_ticks: u32,
+    ) {
+        let entity = mob.get_entity();
+        let world = entity.world.load_full();
+        let mut pos = BlockPos::floored(x, max_y, z);
+        let mut top_offset = 0.0;
+        let mut success = false;
+        loop {
+            let below = pos.down();
+            if world
+                .get_block_state(&below)
+                .is_side_solid(BlockDirection::Up)
             {
-                // Blue color is 11 in Minecraft
-                if sheep.get_color() == 11 {
-                    *evoker
-                        .wololo_target_id
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner) =
-                        Some(cand.get_entity().entity_id);
-                    return true;
+                let state = world.get_block_state(&pos);
+                if !state.is_air()
+                    && let Some(top) = state
+                        .get_block_collision_shapes_at(&pos)
+                        .map(|shape| shape.max.y)
+                        .reduce(f64::max)
+                {
+                    top_offset = top;
                 }
+                success = true;
+                break;
+            }
+            pos = below;
+            if pos.0.y < min_y.floor() as i32 - 1 {
+                break;
             }
         }
 
+        if success {
+            let fangs_pos = Vector3::new(x, f64::from(pos.0.y) + top_offset, z);
+            let fangs = Arc::new(EvokerFangsEntity::new(
+                Entity::from_uuid(
+                    Uuid::new_v4(),
+                    world.clone(),
+                    fangs_pos,
+                    &EntityType::EVOKER_FANGS,
+                ),
+                delay_ticks,
+                angle.to_degrees(),
+                Some(entity),
+            ));
+            world.spawn_entity(fangs);
+            world.emit_game_event_with_context(
+                GameEvent::EntityPlace.name(),
+                fangs_pos,
+                &GameEventContext {
+                    source_entity: Some(mob),
+                },
+            );
+        }
+    }
+}
+
+impl Spell for EvokerAttackSpell {
+    fn casting_time(&self) -> i32 {
+        40
+    }
+
+    fn casting_interval(&self) -> i32 {
+        100
+    }
+
+    fn prepare_sound(&self) -> Option<Sound> {
+        Some(Sound::EntityEvokerPrepareAttack)
+    }
+
+    fn spell(&self) -> IllagerSpell {
+        IllagerSpell::Fangs
+    }
+
+    fn perform_spell_casting(&mut self, mob: &dyn Mob) {
+        let Some(target) = mob.get_mob_entity().get_target() else {
+            return;
+        };
+        let pos = mob.get_entity().pos.load();
+        let target_pos = target.get_entity().pos.load();
+        let min_y = target_pos.y.min(pos.y);
+        let max_y = target_pos.y.max(pos.y) + 1.0;
+        let angle_towards_target = (target_pos.z - pos.z).atan2(target_pos.x - pos.x) as f32;
+        let fang = |angle: f32, distance: f64, delay_ticks: u32| {
+            Self::create_spell_entity(
+                mob,
+                f64::from(pumpkin_util::math::cos(angle)).mul_add(distance, pos.x),
+                f64::from(pumpkin_util::math::sin(angle)).mul_add(distance, pos.z),
+                min_y,
+                max_y,
+                angle,
+                delay_ticks,
+            );
+        };
+        if pos.squared_distance_to_vec(&target_pos) < 9.0 {
+            for i in 0..5 {
+                fang(
+                    angle_towards_target + i as f32 * std::f32::consts::PI * 0.4,
+                    1.5,
+                    0,
+                );
+            }
+            for i in 0..8 {
+                fang(
+                    angle_towards_target
+                        + i as f32 * std::f32::consts::PI * 2.0 / 8.0
+                        + (std::f64::consts::PI * 2.0 / 5.0) as f32,
+                    2.5,
+                    3,
+                );
+            }
+        } else {
+            for i in 0..16u32 {
+                fang(angle_towards_target, 1.25 * f64::from(i + 1), i);
+            }
+        }
+    }
+}
+
+/// Vanilla `Evoker.EvokerSummonSpellGoal`: three vexes, unless enough are already near.
+struct EvokerSummonSpell {
+    vex_count_targeting: TargetPredicate,
+}
+
+impl EvokerSummonSpell {
+    fn new() -> Self {
+        Self {
+            vex_count_targeting: TargetPredicate::create_non_attackable()
+                .set_base_max_distance(16.0)
+                .ignore_visibility()
+                .ignore_distance_scaling_factor(),
+        }
+    }
+}
+
+impl Spell for EvokerSummonSpell {
+    fn can_use(&mut self, mob: &dyn Mob) -> bool {
+        let entity = mob.get_entity();
+        let world = entity.world.load();
+        let bounding_box = entity.bounding_box.load().expand(16.0, 16.0, 16.0);
+        let vexes = world
+            .get_entities_of_types_at_box(&bounding_box, |entity_type| {
+                entity_type == &EntityType::VEX
+            })
+            .iter()
+            .filter(|vex| {
+                self.vex_count_targeting
+                    .test(&world, Some(mob), vex.as_ref())
+            })
+            .count();
+        mob.get_random().random_range(0..8) + 1 > vexes
+    }
+
+    fn casting_time(&self) -> i32 {
+        100
+    }
+
+    fn casting_interval(&self) -> i32 {
+        340
+    }
+
+    fn prepare_sound(&self) -> Option<Sound> {
+        Some(Sound::EntityEvokerPrepareSummon)
+    }
+
+    fn spell(&self) -> IllagerSpell {
+        IllagerSpell::SummonVex
+    }
+
+    fn perform_spell_casting(&mut self, mob: &dyn Mob) {
+        let evoker = mob.get_entity();
+        let world = evoker.world.load_full();
+        let evoker_pos = evoker.block_pos.load();
+        let evoker_team = mob.get_team_name();
+
+        for _ in 0..3 {
+            let rng = mob.get_random();
+            let x = -2 + rng.random_range(0..5);
+            let z = -2 + rng.random_range(0..5);
+            let pos = evoker_pos.offset(Vector3::new(x, 1, z));
+            let spawn_pos = Vector3::new(
+                f64::from(pos.0.x) + 0.5,
+                f64::from(pos.0.y),
+                f64::from(pos.0.z) + 0.5,
+            );
+            let vex = from_type(&EntityType::VEX, spawn_pos, &world, Uuid::new_v4());
+            finalize_spawn(&vex, &world, EntitySpawnReason::MobSummoned, None);
+            if let Some(vex) = vex.cast_any().downcast_ref::<VexEntity>() {
+                vex.set_owner(evoker);
+                vex.set_bound_origin(Some(pos));
+                vex.set_limited_life(20 * (30 + rng.random_range(0..90)));
+            }
+            if let Some(team) = &evoker_team {
+                vex.get_entity().join_team(team);
+            }
+            world.spawn_entity(vex);
+            world.emit_game_event_with_context(
+                GameEvent::EntityPlace.name(),
+                pos.to_centered_f64(),
+                &GameEventContext {
+                    source_entity: Some(mob),
+                },
+            );
+        }
+    }
+}
+
+/// Vanilla `Evoker.EvokerWololoSpellGoal`: turns a blue sheep red while there is no target.
+struct EvokerWololoSpell {
+    wololo_target: SpellTarget,
+    wololo_targeting: TargetPredicate,
+}
+
+impl EvokerWololoSpell {
+    fn new(wololo_target: SpellTarget) -> Self {
+        Self {
+            wololo_target,
+            wololo_targeting: TargetPredicate::create_non_attackable().set_base_max_distance(16.0),
+        }
+    }
+
+    fn target(&self) -> std::sync::MutexGuard<'_, Option<Arc<dyn EntityBase>>> {
+        self.wololo_target
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+fn is_blue_sheep(entity: &dyn EntityBase) -> bool {
+    entity
+        .cast_any()
+        .downcast_ref::<SheepEntity>()
+        .is_some_and(|sheep| sheep.get_color() == DyeColor::Blue as u8)
+}
+
+impl Spell for EvokerWololoSpell {
+    fn needs_target(&self) -> bool {
         false
     }
 
-    fn should_continue(&mut self, _mob: &dyn Mob) -> bool {
-        self.warmup_delay > 0
-    }
-
-    fn start(&mut self, _mob: &dyn Mob) {
-        self.warmup_delay = 40;
-        if let Some(evoker) = self.evoker.upgrade() {
-            evoker.set_spell_casting_time(60);
-            let age = evoker
-                .mob_entity
-                .living_entity
-                .entity
-                .tick_count
-                .load(Ordering::Relaxed);
-            self.next_attack_tick = age + 140;
-            evoker.set_is_casting_spell(IllagerSpell::Wololo);
-            evoker
-                .mob_entity
-                .living_entity
-                .entity
-                .play_sound(Sound::EntityEvokerPrepareWololo);
+    fn can_use(&mut self, mob: &dyn Mob) -> bool {
+        let entity = mob.get_entity();
+        let world = entity.world.load();
+        if !world.level_info.load().game_rules.mob_griefing {
+            return false;
         }
-    }
-
-    fn stop(&mut self, _mob: &dyn Mob) {
-        if let Some(evoker) = self.evoker.upgrade() {
-            *evoker
-                .wololo_target_id
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        let bounding_box = entity.bounding_box.load().expand(16.0, 4.0, 16.0);
+        let sheep: Vec<_> = world
+            .get_entities_of_types_at_box(&bounding_box, |entity_type| {
+                entity_type == &EntityType::SHEEP
+            })
+            .into_iter()
+            .filter(|sheep| {
+                is_blue_sheep(sheep.as_ref())
+                    && self
+                        .wololo_targeting
+                        .test(&world, Some(mob), sheep.as_ref())
+            })
+            .collect();
+        if sheep.is_empty() {
+            return false;
         }
+        let index = mob.get_random().random_range(0..sheep.len());
+        *self.target() = Some(sheep[index].clone());
+        true
     }
 
-    fn tick(&mut self, _mob: &dyn Mob) {
-        self.warmup_delay -= 1;
-        if self.warmup_delay == 0 {
-            let Some(evoker) = self.evoker.upgrade() else {
-                return;
-            };
-            let evoker_ent = &evoker.mob_entity.living_entity.entity;
-            evoker_ent.play_sound(Sound::EntityEvokerCastSpell);
+    fn can_continue(&self, _mob: &dyn Mob) -> bool {
+        self.target().is_some()
+    }
 
-            let target_id = *evoker
-                .wololo_target_id
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let Some(target_id) = target_id else {
-                return;
-            };
+    fn on_stop(&mut self, _mob: &dyn Mob) {
+        *self.target() = None;
+    }
 
-            let world = evoker_ent.world.load();
-            let bb = evoker_ent.bounding_box.load().expand(16.0, 4.0, 16.0);
-            let candidates = world.get_entities_at_box(&bb);
+    fn cast_warmup_time(&self) -> i32 {
+        40
+    }
 
-            for cand in candidates {
-                if cand.get_entity().entity_id == target_id
-                    && let Some(sheep) = cand
-                        .cast_any()
-                        .downcast_ref::<crate::entity::passive::sheep::SheepEntity>()
-                {
-                    // Convert color to Red (14)
-                    sheep.set_color(14);
-                    break;
-                }
-            }
+    fn casting_time(&self) -> i32 {
+        60
+    }
+
+    fn casting_interval(&self) -> i32 {
+        140
+    }
+
+    fn prepare_sound(&self) -> Option<Sound> {
+        Some(Sound::EntityEvokerPrepareWololo)
+    }
+
+    fn spell(&self) -> IllagerSpell {
+        IllagerSpell::Wololo
+    }
+
+    fn perform_spell_casting(&mut self, _mob: &dyn Mob) {
+        if let Some(target) = self.target().as_ref()
+            && target.get_entity().is_alive()
+            && let Some(sheep) = target.cast_any().downcast_ref::<SheepEntity>()
+        {
+            sheep.set_color(DyeColor::Red as u8);
         }
     }
 }

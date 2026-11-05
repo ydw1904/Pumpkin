@@ -148,6 +148,49 @@ h.start(async () => {
   h.result('illusioner.shoots', await h.waitFor(() => mobs('arrow').length > 0, 15000))
   await reset()
 
+  // Evoker: the summon and fangs spells land 20 ticks after the casting flag changes, and vexes
+  // more than 16 blocks away don't count against a summon. Eight far NoAI vexes would block it
+  // otherwise. A walled pen keeps the fleeing evoker in.
+  {
+    const EX = X + 80
+    h.cmd(`fill ${EX - 12} ${Y} ${Z - 12} ${EX + 12} ${Y} ${Z + 12} stone`)
+    h.cmd(`fill ${EX - 12} ${Y + 1} ${Z - 12} ${EX + 12} ${Y + 3} ${Z + 12} glass hollow`)
+    h.cmd(`fill ${EX - 11} ${Y + 1} ${Z - 11} ${EX + 11} ${Y + 3} ${Z + 11} air`)
+    h.cmd(`fill ${EX - 12} ${Y + 3} ${Z - 12} ${EX + 12} ${Y + 3} ${Z + 12} air`)
+    h.cmd(`tp ${bot.username} ${EX + 0.5} ${Y + 1} ${Z - 9.5}`)
+    await h.waitFor(() => Math.abs(bot.entity.position.x - (EX + 0.5)) < 1, 5000)
+    await h.waitFor(() => h.blockName(EX + 12, Y, Z + 12) === 'stone', 10000)
+    await reset()
+    h.cmd(`effect give ${bot.username} resistance infinite 255 true`)
+    for (let i = 0; i < 8; i++) await summonAt('vex', EX + 14.5, Y + 6, Z + 14.5, 'NoAI:1b')
+    const evoker = await summonAt('evoker', EX + 0.5, Y + 1, Z + 0.5)
+    const delays = {}
+    let castAt = null; let spell = 0; let tick = 0
+    const known = new Set(Object.keys(bot.entities))
+    const sample = () => {
+      tick++
+      const s = evoker.metadata[SPELL] || 0
+      if (s && s !== spell) castAt = tick
+      spell = s
+      for (const [id, e] of Object.entries(bot.entities)) {
+        if (known.has(id)) continue
+        known.add(id)
+        const kind = e.name === 'vex' ? 'summon' : e.name === 'evoker_fangs' ? 'fangs' : null
+        if (kind && castAt !== null && delays[kind] === undefined) delays[kind] = tick - castAt
+      }
+    }
+    bot.on('physicsTick', sample)
+    await h.waitFor(() => delays.summon !== undefined && delays.fangs !== undefined, 40000)
+    bot.removeListener('physicsTick', sample)
+    h.result('evoker.summons_past_far_vexes', delays.summon !== undefined)
+    // About 20 ticks; the old 40 tick warmup is well past 30.
+    h.result('evoker.summon_within_30', delays.summon !== undefined && delays.summon < 30)
+    h.result('evoker.fangs_within_30', delays.fangs !== undefined && delays.fangs < 30)
+    await reset()
+    h.cmd(`tp ${bot.username} ${X + 0.5} ${Y + 1} ${Z + 0.5}`)
+    await h.waitFor(() => Math.abs(bot.entity.position.x - (X + 0.5)) < 1, 5000)
+  }
+
   // Johnny: a vindicator saved as Johnny goes after any living thing, here a pig. A summoned
   // name alone doesn't count, since vanilla reads the name before the Johnny flag.
   h.cmd(`gamemode creative ${bot.username}`)

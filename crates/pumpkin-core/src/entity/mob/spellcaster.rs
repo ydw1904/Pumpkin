@@ -1,13 +1,13 @@
 //! Vanilla `SpellcasterIllager`: the casting state and the two goals every spell runs through.
-//! The evoker still keeps its own copy in `evoker.rs`.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, AtomicU8, Ordering};
+use std::sync::{Arc, Mutex};
 
 use pumpkin_data::sound::Sound;
 use pumpkin_data::tracked_data::TrackedData;
 use pumpkin_nbt::compound::NbtCompound;
 
+use crate::entity::EntityBase;
 use crate::entity::ai::goal::{Controls, Goal};
 use crate::entity::mob::Mob;
 use crate::entity::mob::evoker::IllagerSpell;
@@ -69,15 +69,29 @@ impl SpellcasterState {
     }
 }
 
+/// An entity a spell remembers between its goal callbacks, like the evoker's wololo sheep.
+pub type SpellTarget = Arc<Mutex<Option<Arc<dyn EntityBase>>>>;
+
 /// Vanilla `SpellcasterCastingSpellGoal`: stands still and watches the target while casting.
 pub struct SpellcasterCastingSpellGoal {
     state: Arc<SpellcasterState>,
+    look_fallback: Option<SpellTarget>,
 }
 
 impl SpellcasterCastingSpellGoal {
     #[must_use]
     pub const fn new(state: Arc<SpellcasterState>) -> Self {
-        Self { state }
+        Self {
+            state,
+            look_fallback: None,
+        }
+    }
+
+    /// Vanilla `EvokerCastingSpellGoal`: watches `fallback` while there is no target.
+    #[must_use]
+    pub fn looking_at_without_target(mut self, fallback: SpellTarget) -> Self {
+        self.look_fallback = Some(fallback);
+        self
     }
 }
 
@@ -96,7 +110,15 @@ impl Goal for SpellcasterCastingSpellGoal {
 
     fn tick(&mut self, mob: &dyn Mob) {
         let mob_entity = mob.get_mob_entity();
-        if let Some(target) = mob_entity.get_target() {
+        let target = mob_entity.get_target().or_else(|| {
+            self.look_fallback.as_ref().and_then(|fallback| {
+                fallback
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clone()
+            })
+        });
+        if let Some(target) = target {
             mob_entity
                 .look_control
                 .lock()
@@ -116,12 +138,28 @@ impl Goal for SpellcasterCastingSpellGoal {
 
 /// One spell for [`SpellcasterUseSpellGoal`], the abstract methods of vanilla's goal.
 pub trait Spell: Send + Sync {
+    /// Whether the spell needs a living target. The wololo spell instead needs none.
+    fn needs_target(&self) -> bool {
+        true
+    }
+
     /// Checked after the shared `canUse` conditions pass.
     fn can_use(&mut self, _mob: &dyn Mob) -> bool {
         true
     }
 
+    /// Vanilla `canContinueToUse` apart from the warmup check.
+    fn can_continue(&self, mob: &dyn Mob) -> bool {
+        has_living_target(mob)
+    }
+
     fn on_start(&mut self, _mob: &dyn Mob) {}
+
+    fn on_stop(&mut self, _mob: &dyn Mob) {}
+
+    fn cast_warmup_time(&self) -> i32 {
+        CAST_WARMUP_TIME
+    }
 
     fn casting_time(&self) -> i32;
 
@@ -154,12 +192,20 @@ impl<S: Spell> SpellcasterUseSpellGoal<S> {
     }
 }
 
+fn has_living_target(mob: &dyn Mob) -> bool {
+    mob.get_mob_entity()
+        .get_target()
+        .is_some_and(|target| target.get_entity().is_alive())
+}
+
 impl<S: Spell> Goal for SpellcasterUseSpellGoal<S> {
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
-        let Some(target) = mob.get_mob_entity().get_target() else {
-            return false;
+        let target_ok = if self.spell.needs_target() {
+            has_living_target(mob)
+        } else {
+            mob.get_mob_entity().get_target().is_none()
         };
-        if !target.get_entity().is_alive()
+        if !target_ok
             || self.state.is_casting_spell()
             || mob.get_entity().tick_count.load(Ordering::Relaxed) < self.next_attack_tick_count
         {
@@ -169,14 +215,11 @@ impl<S: Spell> Goal for SpellcasterUseSpellGoal<S> {
     }
 
     fn should_continue(&mut self, mob: &dyn Mob) -> bool {
-        mob.get_mob_entity()
-            .get_target()
-            .is_some_and(|target| target.get_entity().is_alive())
-            && self.attack_warmup_delay > 0
+        self.spell.can_continue(mob) && self.attack_warmup_delay > 0
     }
 
     fn start(&mut self, mob: &dyn Mob) {
-        self.attack_warmup_delay = self.get_tick_count(CAST_WARMUP_TIME);
+        self.attack_warmup_delay = self.get_tick_count(self.spell.cast_warmup_time());
         self.state
             .spell_casting_tick_count
             .store(self.spell.casting_time(), Ordering::Relaxed);
@@ -190,6 +233,10 @@ impl<S: Spell> Goal for SpellcasterUseSpellGoal<S> {
         }
         self.state.set_is_casting_spell(mob, self.spell.spell());
         self.spell.on_start(mob);
+    }
+
+    fn stop(&mut self, mob: &dyn Mob) {
+        self.spell.on_stop(mob);
     }
 
     fn tick(&mut self, mob: &dyn Mob) {
