@@ -361,8 +361,8 @@ pub trait DataAccessor: Send + Sync {
 }
 
 /// Saves an entity's NBT, adding a player's held item as `SelectedItem`, matching
-/// vanilla's `NbtPredicate.getEntityTagWithSelectedItem` used by `data get entity`
-/// and the `nbt=` selector option.
+/// vanilla's `NbtPredicate.getEntityTagToCompare` used by `data get entity`, the `nbt=`
+/// selector option and entity `nbt` predicates.
 #[must_use]
 pub fn entity_nbt_with_selected_item(entity: &dyn EntityBase) -> NbtCompound {
     let mut nbt = NbtCompound::new();

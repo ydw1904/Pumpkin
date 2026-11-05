@@ -212,8 +212,8 @@ fn entity_matches(
                 let Some(expected_tag) = json_to_nbt(expected) else {
                     return false;
                 };
-                let mut actual_nbt = NbtCompound::new();
-                entity.write_nbt(&mut actual_nbt);
+                let actual_nbt =
+                    crate::command::commands::data::entity_nbt_with_selected_item(entity);
                 matches_nbt(&expected_tag, &NbtTag::Compound(actual_nbt))
             }
             "components" => expected.as_object().is_some_and(|components| {
