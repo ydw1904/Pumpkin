@@ -59,6 +59,11 @@ fn with_original_components(
         result_item(result).unwrap_or(input.item),
     );
     stack.patch.clone_from(&input.patch);
+    // Vanilla `TransmuteResult.apply` puts the result's own components over the copied ones.
+    for (component, value) in result.components {
+        stack.patch.retain(|(existing, _)| existing != component);
+        stack.patch.push((*component, Some(value.clone_dyn())));
+    }
     stack
 }
 

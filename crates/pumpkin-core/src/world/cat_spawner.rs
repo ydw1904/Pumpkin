@@ -12,8 +12,9 @@ use uuid::Uuid;
 use crate::entity::EntityBase;
 use crate::entity::mob::spawn::finalize_spawn;
 use crate::entity::r#type::from_type;
-use crate::world::villager_poi::{Occupancy, VillagePoiType};
 use crate::world::{World, natural_spawner};
+use pumpkin_data::poi_type::PoiType;
+use pumpkin_world::poi::Occupancy;
 
 /// Vanilla `CatSpawner.TICK_DELAY`.
 const TICK_DELAY: i32 = 1200;
@@ -106,15 +107,16 @@ impl CatSpawner {
 
     fn spawn_in_village(world: &Arc<World>, spawn_pos: BlockPos) {
         let occupied_homes = world
-            .villager_poi
+            .portal_poi
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .count_in_range(
+            .get_records_in_range(
+                &|poi_type| poi_type == PoiType::Home,
                 spawn_pos,
                 VILLAGE_RADIUS,
-                |poi_type| poi_type == VillagePoiType::Home,
                 Occupancy::IsOccupied,
-            );
+            )
+            .len();
         if occupied_homes > MIN_OCCUPIED_HOMES
             && Self::count_cats(world, spawn_pos, f64::from(VILLAGE_RADIUS)) < MAX_VILLAGE_CATS
         {

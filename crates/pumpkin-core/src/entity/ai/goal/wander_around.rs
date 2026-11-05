@@ -6,6 +6,8 @@ use pumpkin_util::math::vector3::Vector3;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+type PositionProvider = fn(&dyn Mob) -> Option<Vector3<f64>>;
+
 pub const DEFAULT_INTERVAL: i32 = 120;
 pub const PROBABILITY: f32 = 0.001;
 
@@ -19,6 +21,8 @@ pub struct WanderAroundGoal {
     shared_trigger: Option<Arc<AtomicBool>>,
     water_avoiding_probability: Option<f32>,
     gate: Option<MobFilter>,
+    position: Option<PositionProvider>,
+    entity_reach: f64,
 }
 
 impl WanderAroundGoal {
@@ -38,6 +42,8 @@ impl WanderAroundGoal {
             shared_trigger: None,
             water_avoiding_probability: None,
             gate: None,
+            position: None,
+            entity_reach: 0.0,
         }
     }
 
@@ -58,6 +64,13 @@ impl WanderAroundGoal {
     #[must_use]
     pub const fn gated_by(mut self, gate: MobFilter) -> Self {
         self.gate = Some(gate);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_position(mut self, position: PositionProvider, entity_reach: f64) -> Self {
+        self.position = Some(position);
+        self.entity_reach = entity_reach;
         self
     }
 
@@ -85,6 +98,9 @@ impl WanderAroundGoal {
     }
 
     fn get_position(&self, mob: &dyn Mob) -> Option<Vector3<f64>> {
+        if let Some(position) = self.position {
+            return position(mob);
+        }
         let Some(probability) = self.water_avoiding_probability else {
             return default_random_pos::get_pos(mob, 10, 7);
         };
@@ -102,6 +118,7 @@ impl Goal for WanderAroundGoal {
     fn tick_reach(&self, _mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
         Some(GoalReach {
             speed: self.speed,
+            entities: self.entity_reach,
             ..GoalReach::default()
         })
     }

@@ -7,6 +7,7 @@ use pumpkin_data::chunk::Biome;
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::item::{BedrockItem, BedrockItemVersion};
 use pumpkin_data::packet::CURRENT_MC_VERSION;
+use pumpkin_data::poi_type::PoiType;
 use pumpkin_protocol::bedrock::client::item_registry::{CItemRegistry, ItemData};
 use pumpkin_protocol::bedrock::client::level_event::{CLevelEvent, LevelEvent};
 use pumpkin_protocol::bedrock::client::{
@@ -15,6 +16,7 @@ use pumpkin_protocol::bedrock::client::{
 use pumpkin_protocol::bedrock::network_item::NetworkItemDescriptor;
 use pumpkin_protocol::codec::data_component::data_to_proto_sound;
 use pumpkin_world::generation::proto_chunk::{GenerationCache, ProtoChunk, StructureEntity};
+use pumpkin_world::poi::{PoiStorage, SectionPos};
 use rayon::prelude::*;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::{Arc, RwLock, Weak};
@@ -37,6 +39,7 @@ pub mod loot;
 pub mod map;
 mod neighbor_updater;
 mod player_spawn_finder;
+pub mod poi_scan;
 pub mod portal;
 pub mod raid;
 pub mod random_sequences;
@@ -45,7 +48,6 @@ mod spawn_tests;
 pub mod stopwatches;
 pub mod structure_references;
 pub mod time;
-pub mod villager_poi;
 
 use crate::block::blocks::bubble_column;
 use crate::block::{HandlePrecipitationArgs, RandomTickArgs};
@@ -206,7 +208,6 @@ use uuid::Uuid;
 use weather::Weather;
 
 const MAX_LIGHT_LEVEL: u8 = 15;
-const POI_TYPE_LIGHTNING_ROD: &str = "minecraft:lightning_rod";
 const LIGHTNING_ROD_SEARCH_RADIUS: i32 = 128;
 
 fn bedrock_chest_block_actor(state_id: BlockStateId, position: BlockPos) -> Option<NbtCompound> {
@@ -317,8 +318,6 @@ pub struct World {
     /// Held while a portal destination is searched for and built, so entities arriving at
     /// once share one new portal, as vanilla's single-threaded `PortalForcer` makes them.
     pub portal_forcer: tokio::sync::Mutex<()>,
-    /// Villager job sites and their current owners.
-    pub villager_poi: std::sync::Mutex<villager_poi::VillagerPoiStorage>,
     /// Active raids in this world.
     pub raids: std::sync::Mutex<raid::Raids>,
     /// Vanilla `PhantomSpawner`; only ticked in the overworld.
@@ -548,7 +547,6 @@ impl World {
             unsent_block_changes: std::sync::Mutex::new(HashMap::new()),
             portal_poi: std::sync::Mutex::new(portal_poi),
             portal_forcer: tokio::sync::Mutex::new(()),
-            villager_poi: std::sync::Mutex::new(villager_poi::VillagerPoiStorage::default()),
             raids: std::sync::Mutex::new(raids),
             phantom_spawner: std::sync::Mutex::default(),
             patrol_spawner: std::sync::Mutex::default(),
@@ -633,7 +631,6 @@ impl World {
             }
         }
         let mut newly_loaded = Vec::new();
-        let mut unloaded = std::collections::HashSet::new();
         for change in self.level.loaded_chunk_changes() {
             match change {
                 pumpkin_world::level::LoadedChunkChange::Loaded(pos) => {
@@ -648,7 +645,6 @@ impl World {
                 pumpkin_world::level::LoadedChunkChange::Unloaded(pos) => {
                     if !self.level.is_chunk_loaded(&pos) {
                         tracker.loaded_block_ticking_chunks.remove(&pos);
-                        unloaded.insert(pos);
                     }
                 }
             }
@@ -669,11 +665,28 @@ impl World {
             self.post_process_generation(pos);
             self.migrate_pending_block_entities(pos);
         }
-        self.unload_chunk_pois(&unloaded);
         for pos in newly_loaded {
             self.level.light_engine.check_pending(pos);
             self.register_chunk_pois(pos);
             self.add_world_gen_chunk_entities(pos);
+        }
+    }
+
+    /// Vanilla `PoiManager.checkConsistencyWithBlocks` for a chunk that just became full:
+    /// registers the POIs of its blocks, keeping the tickets of records that still match.
+    pub(crate) fn register_chunk_pois(&self, chunk_pos: Vector2<i32>) {
+        let Some(sections) = self
+            .level
+            .read_chunk_sync(&chunk_pos, |chunk| poi_scan::collect_chunk(chunk))
+        else {
+            return;
+        };
+        let mut storage = self
+            .portal_poi
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for (section, found) in sections {
+            storage.refresh_section(section, &found);
         }
     }
 
@@ -755,7 +768,6 @@ impl World {
         self.save_raids();
 
         // Save portal POI to disk
-        self.save_village_poi_tickets();
         let save_result = self
             .portal_poi
             .lock()
@@ -2163,7 +2175,7 @@ impl World {
     ///
     /// Call [`flush_block_updates`](Self::flush_block_updates) afterward to send the packets.
     pub fn queue_block_updates(&self, changes: &[(BlockPos, BlockStateId)]) {
-        self.update_village_pois(changes.iter().copied());
+        self.update_pois_from_stored(changes);
         let mut guard = self
             .unsent_block_changes
             .lock()
@@ -3123,13 +3135,29 @@ impl World {
         center
     }
 
+    pub fn sections_to_village(&self, section: SectionPos) -> i32 {
+        self.portal_poi
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .sections_to_village(section)
+    }
+
+    pub fn is_close_to_village(&self, pos: &BlockPos, section_distance: i32) -> bool {
+        section_distance <= PoiStorage::MAX_VILLAGE_DISTANCE
+            && self.sections_to_village(SectionPos::of(pos)) <= section_distance
+    }
+
+    pub fn is_village(&self, pos: &BlockPos) -> bool {
+        self.is_close_to_village(pos, 1)
+    }
+
     fn find_lightning_rod(&self, center: BlockPos) -> Option<BlockPos> {
         let (rod, _) = self
             .portal_poi
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .find_closest_where(center, LIGHTNING_ROD_SEARCH_RADIUS, |poi_type, rod_pos| {
-                poi_type == POI_TYPE_LIGHTNING_ROD
+                PoiType::from_name(poi_type) == Some(PoiType::LightningRod)
                     && rod_pos.squared_distance(&center)
                         <= LIGHTNING_ROD_SEARCH_RADIUS * LIGHTNING_ROD_SEARCH_RADIUS
                     && rod_pos.0.y
@@ -6507,26 +6535,50 @@ impl World {
             .flatten()
     }
 
-    /// Keeps the lightning rod POIs that `find_lightning_rod` searches in step with the block.
-    fn update_lightning_rod_poi(&self, position: &BlockPos, old_block: &Block, new_block: &Block) {
-        let is_rod = |block| {
-            pumpkin_data::tag::Taggable::has_tag(
-                block,
-                &pumpkin_data::tag::Block::MINECRAFT_LIGHTNING_RODS,
-            )
-        };
-        let (was_rod, now_rod) = (is_rod(old_block), is_rod(new_block));
-        if was_rod == now_rod {
+    /// Everything `set_block_state` does after the chunk write: callbacks, neighbour updates,
+    /// client sync, POI and lighting.
+    fn update_poi(
+        &self,
+        position: &BlockPos,
+        old_state_id: BlockStateId,
+        new_state_id: BlockStateId,
+    ) {
+        let old = PoiType::from_state_id(old_state_id.as_u16());
+        let new = PoiType::from_state_id(new_state_id.as_u16());
+        if old == new {
             return;
         }
         let mut poi = self
             .portal_poi
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if was_rod {
+        if old.is_some() {
             poi.remove(position);
-        } else {
-            poi.add_with_free_tickets(*position, POI_TYPE_LIGHTNING_ROD, 0);
+        }
+        if let Some(poi_type) = new {
+            poi.add_poi(*position, poi_type);
+        }
+    }
+
+    /// [`Self::update_poi`] for writes that only know the new state: the old type comes from
+    /// the POI storage.
+    fn update_pois_from_stored(&self, changes: &[(BlockPos, BlockStateId)]) {
+        let mut poi = self
+            .portal_poi
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for (position, state_id) in changes {
+            let new = PoiType::from_state_id(state_id.as_u16());
+            let old = poi.get_type(position);
+            if old == new {
+                continue;
+            }
+            if old.is_some() {
+                poi.remove(position);
+            }
+            if let Some(poi_type) = new {
+                poi.add_poi(*position, poi_type);
+            }
         }
     }
 
@@ -6616,10 +6668,7 @@ impl World {
                 );
             }
 
-            self.update_village_pois([(*position, block_state_id)]);
-            if is_new_block {
-                self.update_lightning_rod_poi(position, old_block, new_block);
-            }
+            self.update_poi(position, replaced_block_state_id, block_state_id);
         }
 
         let old_state = replaced_block_state_id.to_state();
@@ -8598,7 +8647,6 @@ impl World {
     /// Writes the POI data, then drops the regions no loaded chunk is in so the POIs of
     /// every region ever visited don't stay in memory.
     pub fn save_poi(&self) {
-        self.save_village_poi_tickets();
         let mut portal_poi = self
             .portal_poi
             .lock()
@@ -9026,9 +9074,16 @@ impl WorldPortalExt for WorldPortal {
 
     fn spawn_structure_entities(&self, chunk: &mut ProtoChunk, entities: Vec<StructureEntity>) {
         for entity in entities {
+            let finalize = entity.finalize;
             if let Some(entity) = self.0.create_structure_entity(entity)
                 && self.0.fire_entity_spawn_event(entity.as_ref())
             {
+                // The world can't see the biomes of a chunk still being generated, so the parts
+                // of `finalizeSpawn` that read them use the chunk's own.
+                if finalize && let Some(mob) = entity.get_mob() {
+                    let pos = entity.get_entity().block_pos.load().0;
+                    mob.finalize_spawn_in_biome(chunk.get_terrain_gen_biome(pos.x, pos.y, pos.z));
+                }
                 chunk.add_entity(natural_spawner::world_gen_entity_nbt(&entity));
             }
         }

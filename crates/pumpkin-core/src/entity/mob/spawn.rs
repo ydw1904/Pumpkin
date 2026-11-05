@@ -6,7 +6,7 @@ use std::sync::Arc;
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::effect::StatusEffect;
-use pumpkin_data::entity_variant::HorseVariant;
+use pumpkin_data::entity_variant::{HorseVariant, RabbitVariant};
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use time::{Month, OffsetDateTime};
@@ -48,6 +48,10 @@ pub enum SpawnGroupData {
     Fox {
         variant: FoxVariant,
         size: u32,
+    },
+    Rabbit {
+        variant: RabbitVariant,
+        group_size: u32,
     },
     /// Vanilla `ZombieGroupData`: whether the group spawns as babies, and whether those may
     /// ride a chicken.

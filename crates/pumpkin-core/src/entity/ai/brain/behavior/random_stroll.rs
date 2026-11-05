@@ -29,6 +29,25 @@ pub fn stroll(speed_modifier: f32) -> OneShot {
 }
 
 #[must_use]
+pub fn swim(speed_modifier: f32) -> OneShot {
+    OneShot::new(
+        "RandomStroll",
+        vec![(types::WALK_TARGET.id(), MemoryStatus::ValueAbsent)],
+        move |tick| {
+            if !tick.mob.get_entity().is_in_water() {
+                return false;
+            }
+            let target = get_target_swim_pos(tick.mob);
+            tick.state.set_optional(
+                types::WALK_TARGET,
+                target.map(|pos| WalkTarget::from_vec(pos, speed_modifier, 0)),
+            );
+            true
+        },
+    )
+}
+
+#[must_use]
 pub fn fly(speed_modifier: f32) -> OneShot {
     OneShot::new(
         "RandomStroll",

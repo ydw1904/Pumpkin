@@ -1,8 +1,6 @@
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Weak};
 
-use crate::entity::ai::goal::climb_on_top_of_powder_snow::ClimbOnTopOfPowderSnowGoal;
-
 use pumpkin_data::BlockState;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::sound::Sound;
@@ -15,13 +13,15 @@ use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::{
     Entity, EntityBase,
     ai::goal::{
-        look_around::RandomLookAroundGoal, look_at_entity::LookAtEntityGoal,
-        melee_attack::MeleeAttackGoal, swim::SwimGoal, wander_around::WanderAroundGoal,
+        climb_on_top_of_powder_snow::ClimbOnTopOfPowderSnowGoal, look_around::RandomLookAroundGoal,
+        look_at_entity::LookAtEntityGoal, melee_attack::MeleeAttackGoal, swim::SwimGoal,
+        wander_around::WanderAroundGoal,
     },
     mob::{Mob, MobEntity},
 };
 
 const ENDERMITE_HUNTS: &[Hunt] = &[Hunt::new(2, TargetMatch::Type(&EntityType::PLAYER), true)];
+const MAX_LIFETIME: i32 = 2400;
 
 pub struct EndermiteEntity {
     pub mob_entity: MobEntity,
@@ -88,8 +88,20 @@ impl Mob for EndermiteEntity {
             return;
         }
 
-        let life = self.lifetime.fetch_add(1, Ordering::Relaxed) + 1;
-        if life >= 2400 {
+        entity.body_yaw.store(entity.yaw.load());
+    }
+
+    fn post_tick(&self) {
+        let entity = &self.mob_entity.living_entity.entity;
+        if !entity.is_alive() {
+            return;
+        }
+
+        if !self.mob_entity.persistence_required.load(Ordering::Relaxed) {
+            self.lifetime.fetch_add(1, Ordering::Relaxed);
+        }
+        // Vanilla `Endermite.aiStep` only spawns its portal particles on the client.
+        if self.lifetime.load(Ordering::Relaxed) >= MAX_LIFETIME {
             entity.remove();
         }
     }

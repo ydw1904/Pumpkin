@@ -22,7 +22,7 @@ use crate::entity::passive::wandering_trader::WanderingTraderEntity;
 use crate::entity::{Entity, EntityBase};
 use crate::world::World;
 use crate::world::natural_spawner;
-use crate::world::villager_poi::POI_TYPE_MEETING;
+use pumpkin_data::poi_type::PoiType;
 
 const DEFAULT_TICK_DELAY: i32 = 1200;
 pub const DEFAULT_SPAWN_DELAY: i32 = 24_000;
@@ -232,7 +232,7 @@ impl WanderingTraderSpawner {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .find_closest_matching(player_pos, SPAWN_RADIUS, |poi_type| {
-                poi_type == POI_TYPE_MEETING
+                PoiType::from_name(poi_type) == Some(PoiType::Meeting)
             })
             .map(|(position, _)| position)
     }

@@ -14,6 +14,8 @@
 //! - Transmute recipes (upgrading items)
 //! - Special recipes (like decorated pots)
 
+use pumpkin_data::data_component::DataComponent;
+use pumpkin_data::data_component_impl::DataComponentImpl;
 use std::any::Any;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
@@ -61,6 +63,8 @@ pub struct RecipeResult {
     pub kept: KeptInput,
     /// The id of the matched recipe, when it has one.
     pub recipe_id: Option<String>,
+    /// Components the recipe sets on its result.
+    pub components: &'static [(DataComponent, &'static dyn DataComponentImpl)],
 }
 
 impl RecipeResult {
@@ -85,6 +89,9 @@ impl RecipeResult {
         let item = pumpkin_data::item::Item::from_registry_key(key)
             .unwrap_or(&pumpkin_data::item::Item::AIR);
         let mut stack = ItemStack::new(self.count, item);
+        for (component, value) in self.components {
+            stack.patch.push((*component, Some(value.clone_dyn())));
+        }
         if let Some(sherds) = self.pot_decorations {
             let sherd_names = sherds
                 .into_iter()
@@ -226,6 +233,7 @@ fn recipe_matches(
                 item_id: result.id.to_string(),
                 count: result.count,
                 pot_decorations: None,
+                components: result.components,
                 ..Default::default()
             })
         }
@@ -255,6 +263,7 @@ fn recipe_matches(
                 item_id: result.id.to_string(),
                 count: result.count,
                 pot_decorations: None,
+                components: result.components,
                 ..Default::default()
             })
         }

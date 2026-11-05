@@ -461,6 +461,7 @@ impl Mob for FoxEntity {
                 Sound::EntityFoxScreech,
                 self.sound_source(),
                 FOX_SCREECH_VOLUME,
+                self.mob_entity.living_entity.get_pitch(),
             ),
             Some(sound) => self.make_sound(sound),
             None => {}

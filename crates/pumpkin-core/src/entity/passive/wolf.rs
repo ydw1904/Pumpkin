@@ -306,7 +306,7 @@ impl Mob for WolfEntity {
         true
     }
 
-    fn on_die(&self) {
+    fn on_die(&self, _source: Option<&dyn EntityBase>) {
         self.is_wet.store(false, Ordering::Relaxed);
         self.reset_shake();
     }

@@ -6,7 +6,8 @@ use crate::block::blocks::doors::DoorBlock;
 use crate::entity::ai::pathfinder::path::Path;
 use crate::entity::ai::util::{default_random_pos, land_random_pos};
 use crate::entity::mob::Mob;
-use crate::world::villager_poi::Occupancy;
+use pumpkin_data::tag::{PointOfInterestType, Taggable};
+use pumpkin_world::poi::Occupancy;
 
 /// How many visited POIs vanilla remembers before forgetting the oldest.
 const MAX_VISITED: usize = 15;
@@ -99,12 +100,12 @@ impl Goal for MoveThroughVillageGoal {
 
         let find_village_poi = |center: BlockPos| {
             world
-                .villager_poi
+                .portal_poi
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .find(
-                    |_| true,
-                    |poi| self.has_not_visited(poi),
+                .find_closest(
+                    &|poi_type| poi_type.has_tag(&PointOfInterestType::MINECRAFT_VILLAGE),
+                    &|poi| self.has_not_visited(poi),
                     center,
                     POI_SEARCH_RADIUS,
                     Occupancy::IsOccupied,

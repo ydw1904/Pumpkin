@@ -23,14 +23,13 @@ use uuid::Uuid;
 use crate::entity::mob::spawn::SpawnGroupData;
 use crate::entity::mob::zombie::ZombieEntityBase;
 use crate::entity::mob::{Mob, MobEntity};
-use crate::entity::passive::villager::VillagerEntity;
-use crate::entity::passive::villager::data::{
-    GossipType, VillagerData, VillagerType, villager_type_by_biome,
-};
+use crate::entity::passive::villager::data::{VillagerData, VillagerType};
+use crate::entity::passive::villager::{ReputationEventType, VillagerEntity, breeding};
 use crate::entity::player::Player;
 use crate::entity::player::advancement::trigger::AdvancementTrigger;
 use crate::entity::{Entity, EntityBase};
 use crate::world::World;
+use pumpkin_data::villager::VillagerProfession;
 
 /// Blocks that make a zombie villager's cure tick down faster: iron bars and beds.
 fn speeds_up_conversion(block: &Block) -> bool {
@@ -109,7 +108,9 @@ impl ZombieVillagerEntity {
     fn finalize_villager_type(&self, world: &World, pos: &BlockPos) {
         if !self.villager_data_finalized.load(Ordering::Relaxed) {
             let data = self.get_villager_data();
-            self.set_villager_data(data.with_type(villager_type_by_biome(world.get_biome(pos))));
+            self.set_villager_data(data.with_type(breeding::villager_type_for_biome(
+                world.get_biome(pos).registry_id,
+            )));
             self.villager_data_finalized.store(true, Ordering::Relaxed);
         }
     }
@@ -235,10 +236,7 @@ impl ZombieVillagerEntity {
             .clone();
         nbt.put_int("Xp", self.villager_xp.load(Ordering::Relaxed));
         villager.mob_read_nbt(&nbt);
-        villager.villager_data_finalized.store(
-            self.villager_data_finalized.load(Ordering::Relaxed),
-            Ordering::Relaxed,
-        );
+        villager.set_villager_data_finalized(self.villager_data_finalized.load(Ordering::Relaxed));
         villager.set_villager_data(data);
         villager.finalize_spawn(
             &world,
@@ -248,19 +246,7 @@ impl ZombieVillagerEntity {
 
         if let Some(starter) = self.conversion_starter.load() {
             // Vanilla's `ZOMBIE_VILLAGER_CURED` reputation event.
-            let mut gossips = villager
-                .gossips
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let entries = gossips.entry(starter).or_default();
-            for (gossip_type, amount) in [
-                (GossipType::MajorPositive, 20),
-                (GossipType::MinorPositive, 25),
-            ] {
-                let value = entries.entry(gossip_type).or_default();
-                *value = (*value + amount).min(gossip_type.max_value());
-            }
-            drop(gossips);
+            villager.on_reputation_event_from(ReputationEventType::ZombieVillagerCured, starter);
 
             if let Some(player) = world.get_player_by_uuid(starter) {
                 player.trigger_advancement(AdvancementTrigger::CuredZombieVillager);
@@ -297,6 +283,16 @@ impl Mob for ZombieVillagerEntity {
         self.finalize_villager_type(world, &self.get_entity().block_pos.load());
         self.mob_entity
             .finalize_zombie_spawn(self, world, group_data)
+    }
+
+    /// Runs right after `finalize_spawn` for mobs placed by world generation, which
+    /// finalized the type with a biome the world couldn't see yet.
+    fn finalize_spawn_in_biome(&self, biome: &'static pumpkin_data::chunk::Biome) {
+        let data = self.get_villager_data();
+        self.set_villager_data(
+            data.with_type(breeding::villager_type_for_biome(biome.registry_id)),
+        );
+        self.villager_data_finalized.store(true, Ordering::Relaxed);
     }
 
     /// Vanilla `applyImplicitComponent` for `villager/variant`.
@@ -415,7 +411,7 @@ impl Mob for ZombieVillagerEntity {
     fn mob_write_nbt(&self, nbt: &mut NbtCompound) {
         self.mob_entity.mob_write_nbt(nbt);
 
-        nbt.put_compound("VillagerData", self.get_villager_data().to_nbt());
+        nbt.put_compound("VillagerData", self.get_villager_data().write_nbt());
         nbt.put_bool(
             "VillagerDataFinalized",
             self.villager_data_finalized.load(Ordering::Relaxed),
@@ -455,10 +451,10 @@ impl Mob for ZombieVillagerEntity {
         let villager_data_nbt = nbt.get_compound("VillagerData");
         if nbt.get_bool("VillagerDataFinalized").unwrap_or(false) || villager_data_nbt.is_some() {
             self.villager_data_finalized.store(true, Ordering::Relaxed);
-            self.set_villager_data(villager_data_nbt.map_or_else(
-                VillagerEntity::default_villager_data,
-                VillagerData::from_nbt,
-            ));
+            let default = VillagerData::new(VillagerType::Plains, VillagerProfession::None, 1);
+            self.set_villager_data(
+                villager_data_nbt.map_or(default, |nbt| VillagerData::read_nbt(nbt, default)),
+            );
         }
 
         if let Some(xp) = nbt.get_int("Xp") {

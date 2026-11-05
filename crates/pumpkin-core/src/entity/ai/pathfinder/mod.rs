@@ -685,7 +685,7 @@ impl PathNavigation {
         self.compute_path_to_targets(entity, &[BlockPos::floored_v(destination)], reach_range)
     }
 
-    fn compute_path_to_targets(
+    pub fn compute_path_to_targets(
         &mut self,
         entity: &LivingEntity,
         targets: &[BlockPos],

@@ -52,20 +52,73 @@ pub fn get_pos_weighted(
     )
 }
 
+/// Vanilla `LandRandomPos.getPosTowards`.
+#[must_use]
+pub fn get_pos_towards(
+    mob: &dyn Mob,
+    horizontal_dist: i32,
+    vertical_dist: i32,
+    towards_pos: Vector3<f64>,
+) -> Option<Vector3<f64>> {
+    let direction = towards_pos - mob.get_entity().pos.load();
+    get_pos_in_direction(
+        mob,
+        0.0,
+        f64::from(horizontal_dist),
+        vertical_dist,
+        direction,
+    )
+}
+
+/// Vanilla `LandRandomPos.getPosAway(mob, horizontalDist, verticalDist, avoidPos)`.
+#[must_use]
+pub fn get_pos_away(
+    mob: &dyn Mob,
+    horizontal_dist: i32,
+    vertical_dist: i32,
+    avoid_pos: Vector3<f64>,
+) -> Option<Vector3<f64>> {
+    get_pos_away_between(
+        mob,
+        0.0,
+        f64::from(horizontal_dist),
+        vertical_dist,
+        avoid_pos,
+    )
+}
+
 /// Vanilla `LandRandomPos.getPosAway` with a minimum distance: a spot between the two
 /// horizontal distances, within 90 degrees of the direction away from `avoid_pos`.
-pub fn get_pos_away(
+pub fn get_pos_away_between(
     mob: &dyn Mob,
     min_horizontal_dist: f64,
     max_horizontal_dist: f64,
     vertical_dist: i32,
     avoid_pos: Vector3<f64>,
 ) -> Option<Vector3<f64>> {
-    let rng = mob.get_random();
     let mut dir_away = mob.get_entity().pos.load() - avoid_pos;
     if dir_away.length() == 0.0 {
+        let rng = mob.get_random();
         dir_away = Vector3::new(rng.random::<f64>() - 0.5, 0.0, rng.random::<f64>() - 0.5);
     }
+    get_pos_in_direction(
+        mob,
+        min_horizontal_dist,
+        max_horizontal_dist,
+        vertical_dist,
+        dir_away,
+    )
+}
+
+/// Vanilla `LandRandomPos.getPosInDirection`.
+fn get_pos_in_direction(
+    mob: &dyn Mob,
+    min_horizontal_dist: f64,
+    max_horizontal_dist: f64,
+    vertical_dist: i32,
+    dir: Vector3<f64>,
+) -> Option<Vector3<f64>> {
+    let rng = mob.get_random();
     let restrict = goal_utils::mob_restricted(mob, max_horizontal_dist);
     let world = mob.get_entity().world.load_full();
     let block_pos = mob.get_entity().block_pos.load();
@@ -79,8 +132,8 @@ pub fn get_pos_away(
                 max_horizontal_dist,
                 vertical_dist,
                 0,
-                dir_away.x,
-                dir_away.z,
+                dir.x,
+                dir.z,
                 f64::from(std::f32::consts::FRAC_PI_2),
             )?;
             let pos = toward_direction(mob, &world, max_horizontal_dist, restrict, direction, rng)?;

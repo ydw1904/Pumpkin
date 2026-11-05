@@ -25,7 +25,8 @@ use crate::entity::r#type::from_type;
 use crate::world::World;
 use crate::world::bossbar::{Bossbar, BossbarColor, BossbarDivisions};
 use crate::world::natural_spawner::is_spawn_position_ok;
-use crate::world::villager_poi::Occupancy;
+use pumpkin_data::tag::{PointOfInterestType, Taggable};
+use pumpkin_world::poi::Occupancy;
 
 const RAID_NAME: &str = "event.minecraft.raid";
 const RAIDERS_REMAINING: &str = "event.minecraft.raid.raiders_remaining";
@@ -1147,10 +1148,18 @@ impl Raids {
             return None;
         }
         let pois = world
-            .villager_poi
+            .portal_poi
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .village_pois_in_range(raid_position, 64, Occupancy::IsOccupied);
+            .get_records_in_range(
+                &|poi_type| poi_type.has_tag(&PointOfInterestType::MINECRAFT_VILLAGE),
+                raid_position,
+                64,
+                Occupancy::IsOccupied,
+            )
+            .into_iter()
+            .map(|record| record.pos)
+            .collect::<Vec<_>>();
         let raid_center = if pois.is_empty() {
             raid_position
         } else {

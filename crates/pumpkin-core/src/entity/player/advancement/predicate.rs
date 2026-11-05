@@ -2438,6 +2438,31 @@ mod tests {
     }
 
     #[test]
+    fn location_structure_condition_does_not_match_everywhere() {
+        for structures in [json!("minecraft:fortress"), json!(["minecraft:fortress"])] {
+            let predicate = LocationPredicate::from_value(&json!({
+                "player": {
+                    "type": "minecraft:entity_properties",
+                    "entity": "this",
+                    "predicate": { "minecraft:location": { "structures": structures } }
+                }
+            }));
+            assert!(predicate.structure.is_some());
+            assert!(!predicate.matches(
+                (0.0, 64.0, 0.0),
+                Some("plains"),
+                Some("minecraft:overworld"),
+                None,
+                None,
+                None,
+                None,
+                None,
+                &|_| false,
+            ));
+        }
+    }
+
+    #[test]
     fn typed_criterion_conditions_parsing() {
         let cond = CriterionConditions::parse(
             "minecraft:inventory_changed",

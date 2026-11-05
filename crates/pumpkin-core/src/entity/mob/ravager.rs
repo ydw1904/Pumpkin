@@ -261,7 +261,7 @@ impl Mob for RavagerEntity {
                 }
             }
             if !destroyed_block && entity.on_ground.load(Ordering::Relaxed) {
-                living.jump();
+                living.jump(self);
             }
         }
 

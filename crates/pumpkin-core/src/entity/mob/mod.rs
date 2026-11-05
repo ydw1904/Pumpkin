@@ -30,6 +30,7 @@ use crate::world::World;
 use crate::world::brightness::DAYLIGHT_BRIGHTNESS;
 use crate::world::entity_islands::{self, AuditedReach, HurtReach};
 use crate::world::game_event::notified_area;
+use crate::world::natural_spawner::is_valid_spawn_floor;
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::damage::DamageType;
@@ -43,7 +44,7 @@ use pumpkin_data::item_stack::{DamageResult, ItemStack};
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::tracked_data;
-use pumpkin_data::{Block, BlockDirection, BlockId, BlockState};
+use pumpkin_data::{Block, BlockId, BlockState};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::bedrock::server::ActorEventID;
 use pumpkin_util::Difficulty;
@@ -62,6 +63,7 @@ pub mod bat;
 pub mod blaze;
 pub mod breeze;
 pub mod cave_spider;
+pub mod conversion;
 pub mod conversion_tracker;
 pub mod creaking;
 pub mod creeper;
@@ -152,6 +154,7 @@ pub struct MobEntity {
     pub body_rotation_control: std::sync::Mutex<BodyRotationControl>,
     brain: std::sync::Mutex<Option<Brain>>,
     brain_memory_clear_requested: AtomicBool,
+    brain_refresh_requested: AtomicBool,
     removal_cleanup_done: AtomicBool,
     pub position_target: AtomicCell<BlockPos>,
     pub position_target_range: AtomicI32,
@@ -300,6 +303,7 @@ impl MobEntity {
             body_rotation_control: std::sync::Mutex::new(BodyRotationControl::default()),
             brain: std::sync::Mutex::new(None),
             brain_memory_clear_requested: AtomicBool::new(false),
+            brain_refresh_requested: AtomicBool::new(false),
             removal_cleanup_done: AtomicBool::new(false),
             position_target: AtomicCell::new(BlockPos::ZERO),
             position_target_range: AtomicI32::new(-1),
@@ -679,6 +683,21 @@ impl MobEntity {
         to.living_entity
             .fall_distance
             .store(from.living_entity.fall_distance.load());
+        to_entity.fall_flying.store(
+            from_entity.fall_flying.load(Ordering::Relaxed),
+            Ordering::Relaxed,
+        );
+        to.living_entity.last_hurt_by_player_memory_time.store(
+            from.living_entity
+                .last_hurt_by_player_memory_time
+                .load(Ordering::Relaxed),
+            Ordering::Relaxed,
+        );
+        let leash_holder = from_entity
+            .leashed_to
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
         if keep_equipment {
             let mut from_equipment = from
                 .living_entity
@@ -724,6 +743,29 @@ impl MobEntity {
         for effect in effects {
             to.living_entity.add_effect(effect);
         }
+        if from.living_entity.is_baby() {
+            converted_mob.spawn_as_baby();
+        }
+        let from_body = world.get_entity_by_id(from_entity.entity_id);
+        if let (Some(from_ageable), Some(to_ageable)) = (
+            from_body
+                .as_ref()
+                .and_then(|body| body.get_mob())
+                .and_then(Mob::as_ageable),
+            converted_mob.as_ageable(),
+        ) {
+            to_ageable.set_age(from_ageable.get_age());
+            let from_data = from_ageable.get_ageable_data();
+            let to_data = to_ageable.get_ageable_data();
+            to_data.forced_age.store(
+                from_data.forced_age.load(Ordering::Relaxed),
+                Ordering::Relaxed,
+            );
+            to_data.forced_age_timer.store(
+                from_data.forced_age_timer.load(Ordering::Relaxed),
+                Ordering::Relaxed,
+            );
+        }
         if preserve_can_pick_up_loot {
             to.set_can_pick_up_loot(from.can_pick_up_loot());
         }
@@ -735,13 +777,30 @@ impl MobEntity {
         if let Some(custom_name) = &**from_entity.custom_name.load() {
             to_entity.set_custom_name(custom_name.clone());
         }
+        let custom_data = from_entity
+            .custom_data
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        *to_entity
+            .custom_data
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = custom_data;
         to_entity.set_custom_name_visible(from_entity.custom_name_visible.load(Ordering::Relaxed));
         to_entity.fire_ticks.store(
             from_entity.fire_ticks.load(Ordering::Relaxed),
             Ordering::Relaxed,
         );
         to_entity.set_invulnerable(from_entity.invulnerable.load(Ordering::Relaxed));
+        to.living_entity.hurt_cooldown.store(
+            from.living_entity.hurt_cooldown.load(Ordering::Relaxed),
+            Ordering::Relaxed,
+        );
         to_entity.set_has_no_gravity(from_entity.has_no_gravity());
+        to_entity.portal_cooldown.store(
+            from_entity.portal_cooldown.load(Ordering::Relaxed),
+            Ordering::Relaxed,
+        );
         to_entity.set_silent(from_entity.is_silent());
         to_entity
             .scoreboard_tags
@@ -795,6 +854,9 @@ impl MobEntity {
                     .riding_cooldown
                     .store(0, Ordering::Relaxed);
                 to_entity.add_passenger(converted.clone(), rider);
+            }
+            if let Some(holder) = leash_holder {
+                to_entity.attach_leash(holder);
             }
         }
         from_entity.remove();
@@ -981,10 +1043,17 @@ impl MobEntity {
         });
     }
 
+    pub fn request_refresh_brain(&self) {
+        self.brain_refresh_requested.store(true, Ordering::Release);
+    }
+
     pub fn tick_brain(&self, mob: &dyn Mob) {
         let world = self.living_entity.entity.world.load_full();
         let time = world.get_world_age();
         self.with_brain(mob, |brain| brain.tick(&world, mob, time));
+        if self.brain_refresh_requested.swap(false, Ordering::AcqRel) {
+            self.refresh_brain(mob);
+        }
     }
 
     pub fn write_mob_nbt(&self, mob: &dyn Mob, nbt: &mut NbtCompound) {
@@ -1161,17 +1230,16 @@ impl MobEntity {
     }
 
     pub fn check_mob_spawn_rules(
+        entity_type: &'static EntityType,
         world: &World,
         pos: &BlockPos,
         reason: spawn::EntitySpawnReason,
     ) -> bool {
-        reason.is_spawner()
-            || world
-                .get_block_state(&pos.down())
-                .is_side_solid(BlockDirection::Up)
+        reason.is_spawner() || is_valid_spawn_floor(world.get_block_state(&pos.down()), entity_type)
     }
 
     pub fn check_monster_spawn_rules(
+        entity_type: &'static EntityType,
         world: &World,
         pos: &BlockPos,
         is_thundering: bool,
@@ -1187,10 +1255,11 @@ impl MobEntity {
             return false;
         }
 
-        Self::check_mob_spawn_rules(world, pos, reason)
+        Self::check_mob_spawn_rules(entity_type, world, pos, reason)
     }
 
     pub fn check_any_light_monster_spawn_rules(
+        entity_type: &'static EntityType,
         world: &World,
         pos: &BlockPos,
         reason: spawn::EntitySpawnReason,
@@ -1199,16 +1268,17 @@ impl MobEntity {
             return false;
         }
 
-        Self::check_mob_spawn_rules(world, pos, reason)
+        Self::check_mob_spawn_rules(entity_type, world, pos, reason)
     }
 
     pub fn check_surface_monsters_spawn_rules(
+        entity_type: &'static EntityType,
         world: &World,
         pos: &BlockPos,
         is_thundering: bool,
         reason: spawn::EntitySpawnReason,
     ) -> bool {
-        Self::check_monster_spawn_rules(world, pos, is_thundering, reason)
+        Self::check_monster_spawn_rules(entity_type, world, pos, is_thundering, reason)
             && (reason.is_spawner() || world.can_see_sky(pos))
     }
 
@@ -2148,24 +2218,11 @@ pub trait Mob: EntityBase + Send + Sync {
         self.mob_metadata().map(|m| m.to_bedrock_actor_data())
     }
 
-    fn get_job_site(&self) -> Option<BlockPos> {
-        None
-    }
-
-    /// The potential job site a running vanilla `GoToPotentialJobSite` walks to.
-    fn get_potential_job_site_walk_target(&self) -> Option<BlockPos> {
-        None
-    }
-
     fn get_trading_player(&self) -> Option<Arc<Player>> {
         None
     }
 
     fn clear_trading_player(&self) {}
-
-    fn get_home(&self) -> Option<BlockPos> {
-        None
-    }
 
     fn get_path_aware_entity(&self) -> Option<&dyn PathAwareEntity> {
         None
@@ -2287,6 +2344,18 @@ pub trait Mob: EntityBase + Send + Sync {
         crate::entity::breath::MAX_AIR
     }
 
+    fn mob_decrease_air_supply(&self, current: i32) -> i32 {
+        let oxygen_bonus = self
+            .get_mob_entity()
+            .living_entity
+            .get_attribute_value(&Attributes::OXYGEN_BONUS);
+        if oxygen_bonus <= 0.0 || self.get_random().random::<f64>() < 1.0 / (oxygen_bonus + 1.0) {
+            current.wrapping_sub(1)
+        } else {
+            current
+        }
+    }
+
     fn mob_increase_air_supply(&self, current: i32) -> i32 {
         current
             .wrapping_add(crate::entity::breath::AIR_RECOVERY_RATE)
@@ -2294,6 +2363,10 @@ pub trait Mob: EntityBase + Send + Sync {
     }
 
     fn mob_is_pushed_by_fluids(&self) -> bool {
+        true
+    }
+
+    fn pushes_entities(&self) -> bool {
         true
     }
 
@@ -2328,6 +2401,19 @@ pub trait Mob: EntityBase + Send + Sync {
     fn before_mob_ai_step(&self) {}
 
     fn mob_ai_step(&self) {}
+
+    fn tick_jump_control(&self, jump: bool) {
+        self.get_mob_entity()
+            .living_entity
+            .jumping
+            .store(jump, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    fn jump_power_multiplier(&self) -> f32 {
+        1.0
+    }
+
+    fn on_jump_from_ground(&self) {}
 
     fn travel_in_water(&self, caller: &dyn EntityBase, gravity: f64, falling: bool) {
         self.get_mob_entity()
@@ -2436,7 +2522,14 @@ pub trait Mob: EntityBase + Send + Sync {
         true
     }
 
+    fn ignores_block_triggers(&self) -> bool {
+        false
+    }
+
     fn on_removed(&self) {}
+
+    /// Runs when the mob dies, before the death effects, where vanilla subclasses override `die`.
+    fn on_die(&self, _source: Option<&dyn EntityBase>) {}
 
     fn get_preferred_weapon_type(&self) -> Option<&'static pumpkin_data::tag::Tag> {
         None
@@ -2528,9 +2621,6 @@ pub trait Mob: EntityBase + Send + Sync {
         None
     }
 
-    /// The species part of vanilla `LivingEntity.die`, run before the shared death flow.
-    fn on_die(&self) {}
-
     /// Vanilla `Entity.killedEntity`: this mob dealt the killing blow to `victim`. Returns whether
     /// the victim perished and should still drop its loot and experience.
     fn killed_entity(&self, _victim: &dyn EntityBase) -> bool {
@@ -2597,13 +2687,18 @@ pub trait Mob: EntityBase + Send + Sync {
 
     fn make_sound(&self, sound: pumpkin_data::sound::Sound) {
         let custom_sound = self.as_custom_sound();
-        self.get_mob_entity().living_entity.make_sound(
+        let living_entity = &self.get_mob_entity().living_entity;
+        living_entity.make_sound(
             sound,
             custom_sound.map_or_else(
                 || self.sound_source(),
                 crate::entity::custom_sound::CustomSound::sound_category,
             ),
             custom_sound.map_or(1.0, crate::entity::custom_sound::CustomSound::sound_volume),
+            custom_sound.map_or_else(
+                || living_entity.get_pitch(),
+                crate::entity::custom_sound::CustomSound::voice_pitch,
+            ),
         );
     }
 
@@ -2715,6 +2810,10 @@ pub trait Mob: EntityBase + Send + Sync {
         // `finalize_spawn_base` rolls the loot pickup and spawn equipment.
         self.finalize_spawn_super(group_data)
     }
+
+    /// The part of `finalize_spawn` that reads the biome, for spawns made while the chunk is
+    /// still being generated and `World::get_biome` cannot see it.
+    fn finalize_spawn_in_biome(&self, _biome: &'static pumpkin_data::chunk::Biome) {}
 
     fn finalize_spawn_super(
         &self,
@@ -3425,14 +3524,6 @@ impl<T: Mob + Send + 'static> EntityBase for T {
             || self
                 .get_mob_entity()
                 .brain_has_memory_value(crate::entity::ai::brain::memory::types::IS_PANICKING.id())
-    }
-
-    fn get_job_site_pos(&self) -> Option<pumpkin_util::math::position::BlockPos> {
-        <T as Mob>::get_job_site(self)
-    }
-
-    fn get_home_pos(&self) -> Option<pumpkin_util::math::position::BlockPos> {
-        <T as Mob>::get_home(self)
     }
 
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {

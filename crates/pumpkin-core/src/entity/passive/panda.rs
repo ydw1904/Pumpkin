@@ -531,7 +531,7 @@ impl PandaEntity {
                 && !panda_entity.is_in_water()
                 && panda.can_perform_action()
             {
-                panda.mob_entity.living_entity.jump();
+                panda.mob_entity.living_entity.jump(panda);
             }
         }
 

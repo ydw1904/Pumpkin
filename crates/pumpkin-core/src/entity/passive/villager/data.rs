@@ -1,4 +1,3 @@
-use pumpkin_data::biome::Biome;
 use pumpkin_data::item::Item;
 pub use pumpkin_data::villager::{VillagerProfession, VillagerType};
 use pumpkin_nbt::compound::NbtCompound;
@@ -28,6 +27,22 @@ pub enum GossipType {
     MinorPositive = 2,
     MajorPositive = 3,
     Trading = 4,
+}
+
+const NEXT_LEVEL_XP_THRESHOLDS: [i32; 5] = [0, 10, 70, 150, 250];
+
+#[must_use]
+pub const fn can_level_up(current_level: i32) -> bool {
+    current_level >= 1 && current_level < 5
+}
+
+#[must_use]
+pub const fn get_max_xp_per_level(level: i32) -> i32 {
+    if can_level_up(level) {
+        NEXT_LEVEL_XP_THRESHOLDS[level as usize]
+    } else {
+        0
+    }
 }
 
 impl GossipType {
@@ -86,13 +101,12 @@ impl GossipType {
         }
     }
 
-    /// Vanilla `GossipType.decayPerTransfer`: how much a gossip weakens when passed on.
     #[must_use]
     pub const fn decay_per_transfer(self) -> i32 {
         match self {
             Self::MajorNegative => 10,
-            Self::MinorNegative | Self::MajorPositive | Self::Trading => 20,
             Self::MinorPositive => 5,
+            Self::MinorNegative | Self::MajorPositive | Self::Trading => 20,
         }
     }
 
@@ -110,24 +124,7 @@ impl GossipType {
 
 #[cfg(test)]
 mod tests {
-    use super::{GossipType, NbtCompound, VillagerData, VillagerProfession, VillagerType};
-
-    #[test]
-    fn villager_data_reads_vanilla_and_legacy_nbt() {
-        let expected = VillagerData::new(VillagerType::Taiga, VillagerProfession::Librarian, 3);
-
-        let mut vanilla = NbtCompound::new();
-        vanilla.put_string("type", "minecraft:taiga".to_string());
-        vanilla.put_string("profession", "minecraft:librarian".to_string());
-        vanilla.put_int("level", 3);
-        assert_eq!(VillagerData::from_nbt(&vanilla), expected);
-
-        let mut legacy = NbtCompound::new();
-        legacy.put_int("Type", VillagerType::Taiga as i32);
-        legacy.put_int("Profession", VillagerProfession::Librarian as i32);
-        legacy.put_int("Level", 3);
-        assert_eq!(VillagerData::from_nbt(&legacy), expected);
-    }
+    use super::GossipType;
 
     #[test]
     fn gossip_types_use_vanilla_names_and_values() {
@@ -181,6 +178,12 @@ impl VillagerData {
     }
 
     #[must_use]
+    pub const fn with_type(mut self, r#type: VillagerType) -> Self {
+        self.r#type = VarInt(r#type as i32);
+        self
+    }
+
+    #[must_use]
     pub fn type_enum(&self) -> VillagerType {
         VillagerType::from_i32(self.r#type.0).unwrap_or(VillagerType::Plains)
     }
@@ -190,9 +193,30 @@ impl VillagerData {
         VillagerProfession::from_i32(self.profession.0).unwrap_or(VillagerProfession::None)
     }
 
-    /// Vanilla `VillagerData.CODEC`: `type` and `profession` as ids, and `level`.
     #[must_use]
-    pub fn to_nbt(&self) -> NbtCompound {
+    pub fn read_nbt(nbt: &NbtCompound, current: Self) -> Self {
+        let r#type = nbt
+            .get_string("type")
+            .and_then(VillagerType::from_name)
+            .or_else(|| nbt.get_int("Type").and_then(VillagerType::from_i32))
+            .unwrap_or_else(|| current.type_enum());
+        let profession = nbt
+            .get_string("profession")
+            .and_then(VillagerProfession::from_name)
+            .or_else(|| {
+                nbt.get_int("Profession")
+                    .and_then(VillagerProfession::from_i32)
+            })
+            .unwrap_or_else(|| current.profession_enum());
+        let level = nbt
+            .get_int("level")
+            .or_else(|| nbt.get_int("Level"))
+            .unwrap_or(current.level.0);
+        Self::new(r#type, profession, level)
+    }
+
+    #[must_use]
+    pub fn write_nbt(&self) -> NbtCompound {
         let mut nbt = NbtCompound::new();
         nbt.put_string("type", format!("minecraft:{}", self.type_enum().to_name()));
         nbt.put_string(
@@ -201,56 +225,5 @@ impl VillagerData {
         );
         nbt.put_int("level", self.level.0);
         nbt
-    }
-
-    /// Reads vanilla's format; worlds saved by older Pumpkin versions used `Type`, `Profession`
-    /// and `Level` with numeric ids.
-    #[must_use]
-    pub fn from_nbt(nbt: &NbtCompound) -> Self {
-        let r#type = nbt
-            .get_string("type")
-            .and_then(VillagerType::from_name)
-            .or_else(|| nbt.get_int("Type").and_then(VillagerType::from_i32))
-            .unwrap_or(VillagerType::Plains);
-        let profession = nbt
-            .get_string("profession")
-            .and_then(VillagerProfession::from_name)
-            .or_else(|| {
-                nbt.get_int("Profession")
-                    .and_then(VillagerProfession::from_i32)
-            })
-            .unwrap_or(VillagerProfession::None);
-        let level = nbt
-            .get_int("level")
-            .or_else(|| nbt.get_int("Level"))
-            .unwrap_or(1);
-        Self::new(r#type, profession, level)
-    }
-
-    #[must_use]
-    pub const fn with_type(mut self, r#type: VillagerType) -> Self {
-        self.r#type = VarInt(r#type as i32);
-        self
-    }
-}
-
-/// Vanilla `VillagerType.byBiome`: biomes missing from its map give plains villagers.
-#[must_use]
-pub fn villager_type_by_biome(biome: &Biome) -> VillagerType {
-    match biome.registry_id {
-        "badlands" | "desert" | "eroded_badlands" | "wooded_badlands" => VillagerType::Desert,
-        "bamboo_jungle" | "jungle" | "sparse_jungle" => VillagerType::Jungle,
-        "savanna_plateau" | "savanna" | "windswept_savanna" => VillagerType::Savanna,
-        "deep_frozen_ocean" | "frozen_ocean" | "frozen_river" | "ice_spikes" | "snowy_beach"
-        | "snowy_taiga" | "snowy_plains" | "grove" | "snowy_slopes" | "frozen_peaks"
-        | "jagged_peaks" => VillagerType::Snow,
-        "swamp" | "mangrove_swamp" => VillagerType::Swamp,
-        "old_growth_spruce_taiga"
-        | "old_growth_pine_taiga"
-        | "windswept_gravelly_hills"
-        | "windswept_hills"
-        | "taiga"
-        | "windswept_forest" => VillagerType::Taiga,
-        _ => VillagerType::Plains,
     }
 }

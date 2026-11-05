@@ -244,7 +244,7 @@ impl Goal for SpearUseGoal {
         if state.tick_and_check_engagement() {
             mob_entity.living_entity.clear_active_hand();
             let distance = target_dist_sq.sqrt();
-            state.away_pos = land_random_pos::get_pos_away(
+            state.away_pos = land_random_pos::get_pos_away_between(
                 mob,
                 (MIN_COOLDOWN_DISTANCE + mount_distance - distance).max(0.0),
                 (MAX_COOLDOWN_DISTANCE + mount_distance - distance).max(1.0),
@@ -282,7 +282,7 @@ impl Goal for SpearUseGoal {
             );
             if target_dist_sq < self.target_in_range_radius_sq || Self::is_navigation_done(mob) {
                 let distance = target_dist_sq.sqrt();
-                state.away_pos = land_random_pos::get_pos_away(
+                state.away_pos = land_random_pos::get_pos_away_between(
                     mob,
                     MIN_REPOSITION_DISTANCE + mount_distance - distance,
                     MAX_REPOSITION_DISTANCE + mount_distance - distance,
