@@ -16,8 +16,8 @@ use crate::block::{
 };
 use crate::entity::decoration::armor_stand::ArmorStandEntity;
 use crate::entity::item::ItemEntity;
+use crate::entity::living::LivingEntity;
 use crate::entity::passive::armadillo::{self, ArmadilloEntity};
-use crate::entity::passive::sheep::SheepEntity;
 use crate::entity::projectile::ThrownItemEntity;
 use crate::entity::projectile::arrow::{ArrowEntity, ArrowPickup};
 use crate::entity::projectile::egg::EggEntity;
@@ -380,7 +380,7 @@ impl DispenserBlock {
             // Spawn eggs
             Self::dispense_spawn_egg(ctx, item);
         } else if item.item.id == Item::SHEARS.id {
-            // Shears harvest full beehives and shear sheep
+            // Shears harvest full beehives and shear mobs
             Self::dispense_shears(ctx, item);
         } else if item.item.id == Item::BRUSH.id {
             // Brushes brush scutes off armadillos
@@ -1023,14 +1023,18 @@ impl DispenserBlock {
         let target_box = BoundingBox::from_block(&target);
 
         for entity in ctx.world.get_entities_at_box(&target_box) {
-            let Some(sheep) = entity.cast_any().downcast_ref::<SheepEntity>() else {
+            // Vanilla `LivingEntity.isAlive` also needs health left.
+            let alive = entity
+                .get_living_entity()
+                .map_or_else(|| entity.get_entity().is_alive(), LivingEntity::is_alive);
+            let Some(shearable) = entity.get_mob().and_then(|mob| mob.as_shearable()) else {
                 continue;
             };
-            if !sheep.ready_for_shearing() || !entity.get_entity().is_alive() {
+            if !alive || !shearable.ready_for_shearing() {
                 continue;
             }
 
-            sheep.shear(SoundCategory::Blocks, tool);
+            shearable.shear(SoundCategory::Blocks, tool);
             ctx.world
                 .emit_game_event(GameEvent::Shear.name(), target.to_centered_f64());
 

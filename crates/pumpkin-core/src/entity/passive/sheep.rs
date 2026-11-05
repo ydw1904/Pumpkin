@@ -21,6 +21,7 @@ use crate::entity::{
     mob::{Mob, MobEntity, spawn::SpawnGroupData},
     passive::animal::{Animal, get_dye_color_from_item},
     player::Player,
+    shearable::Shearable,
 };
 use crate::world::World;
 use crate::world::loot::{LootContextParameters, generate_loot_from_handle};
@@ -218,11 +219,22 @@ impl SheepEntity {
         })
     }
 
-    pub fn ready_for_shearing(&self) -> bool {
+    pub fn set_sheared(&self, sheared: bool) {
+        let byte = if sheared {
+            self.get_packed_byte() | 0x10
+        } else {
+            self.get_packed_byte() & !0x10
+        };
+        self.set_packed_and_sync(byte);
+    }
+}
+
+impl Shearable for SheepEntity {
+    fn ready_for_shearing(&self) -> bool {
         !self.is_sheared() && !self.is_baby()
     }
 
-    pub fn shear(&self, category: SoundCategory, tool: &ItemStack) {
+    fn shear(&self, category: SoundCategory, tool: &ItemStack) {
         let entity = self.get_entity();
         let world = entity.world.load();
         let pos = entity.pos.load();
@@ -256,15 +268,6 @@ impl SheepEntity {
             }
         }
         self.set_sheared(true);
-    }
-
-    pub fn set_sheared(&self, sheared: bool) {
-        let byte = if sheared {
-            self.get_packed_byte() | 0x10
-        } else {
-            self.get_packed_byte() & !0x10
-        };
-        self.set_packed_and_sync(byte);
     }
 }
 
@@ -376,6 +379,10 @@ impl Mob for SheepEntity {
 
     fn get_mob_entity(&self) -> &MobEntity {
         &self.mob_entity
+    }
+
+    fn as_shearable(&self) -> Option<&dyn Shearable> {
+        Some(self)
     }
 
     fn on_eating_grass(&self) {

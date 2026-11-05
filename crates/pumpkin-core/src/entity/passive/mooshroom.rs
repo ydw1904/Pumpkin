@@ -40,6 +40,7 @@ use crate::entity::{
     mob::{Mob, MobEntity},
     passive::animal::Animal,
     player::Player,
+    shearable::Shearable,
 };
 use crate::item::items::bucket::{create_filled_result, fill_bucket_stack};
 use crate::world::game_event::GameEventContext;
@@ -180,49 +181,6 @@ impl MooshroomEntity {
         }
     }
 
-    pub fn shear(&self, category: SoundCategory, tool: &ItemStack) {
-        let entity = self.get_entity();
-        let world = entity.world.load_full();
-        world.play_sound(Sound::EntityMooshroomShear, category, &entity.pos.load());
-        convert_to(
-            self,
-            &EntityType::COW,
-            ConversionParams::single(false, false),
-            |_| {
-                let pos = entity.pos.load();
-                world.spawn_particle(
-                    Vector3::new(pos.x, entity.get_y(0.5), pos.z),
-                    Vector3::new(0.0, 0.0, 0.0),
-                    0.0,
-                    1,
-                    Particle::Explosion,
-                );
-                let Some(table) = world.get_loot_table(SHEAR_MOOSHROOM_LOOT_TABLE) else {
-                    return;
-                };
-                let params = LootContextParameters {
-                    world: Some(&world),
-                    position: Some(pos),
-                    this_entity: Some(self),
-                    tool: Some(tool.clone()),
-                    ..Default::default()
-                };
-                let drop_pos = Vector3::new(pos.x, entity.get_y(1.0), pos.z);
-                for stack in generate_loot_from_handle(&table, self.get_random().random(), &params)
-                {
-                    for _ in 0..stack.item_count {
-                        let item_entity = ItemEntity::new(
-                            Entity::new(world.clone(), drop_pos, &EntityType::ITEM),
-                            stack.copy_with_count(1),
-                        );
-                        item_entity.set_pickup_delay(0);
-                        world.spawn_entity(Arc::new(item_entity));
-                    }
-                }
-            },
-        );
-    }
-
     fn milk_stew(&self, player: &Player, item_stack: &mut ItemStack) {
         let (stew, sound) = self.take_stew_effects().map_or_else(
             || {
@@ -342,6 +300,55 @@ impl Animal for MooshroomEntity {
     }
 }
 
+impl Shearable for MooshroomEntity {
+    fn shear(&self, category: SoundCategory, tool: &ItemStack) {
+        let entity = self.get_entity();
+        let world = entity.world.load_full();
+        world.play_sound(Sound::EntityMooshroomShear, category, &entity.pos.load());
+        convert_to(
+            self,
+            &EntityType::COW,
+            ConversionParams::single(false, false),
+            |_| {
+                let pos = entity.pos.load();
+                world.spawn_particle(
+                    Vector3::new(pos.x, entity.get_y(0.5), pos.z),
+                    Vector3::new(0.0, 0.0, 0.0),
+                    0.0,
+                    1,
+                    Particle::Explosion,
+                );
+                let Some(table) = world.get_loot_table(SHEAR_MOOSHROOM_LOOT_TABLE) else {
+                    return;
+                };
+                let params = LootContextParameters {
+                    world: Some(&world),
+                    position: Some(pos),
+                    this_entity: Some(self),
+                    tool: Some(tool.clone()),
+                    ..Default::default()
+                };
+                let drop_pos = Vector3::new(pos.x, entity.get_y(1.0), pos.z);
+                for stack in generate_loot_from_handle(&table, self.get_random().random(), &params)
+                {
+                    for _ in 0..stack.item_count {
+                        let item_entity = ItemEntity::new(
+                            Entity::new(world.clone(), drop_pos, &EntityType::ITEM),
+                            stack.copy_with_count(1),
+                        );
+                        item_entity.set_pickup_delay(0);
+                        world.spawn_entity(Arc::new(item_entity));
+                    }
+                }
+            },
+        );
+    }
+
+    fn ready_for_shearing(&self) -> bool {
+        !self.is_baby()
+    }
+}
+
 impl Mob for MooshroomEntity {
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
         self.play_entity_sound(
@@ -422,6 +429,10 @@ impl Mob for MooshroomEntity {
 
     fn get_mob_entity(&self) -> &MobEntity {
         &self.mob_entity
+    }
+
+    fn as_shearable(&self) -> Option<&dyn Shearable> {
+        Some(self)
     }
 
     fn mob_init_data_tracker(&self) {

@@ -20,14 +20,16 @@ use crate::entity::{
         look_around::RandomLookAroundGoal, look_at_entity::LookAtEntityGoal,
         ranged_attack::RangedAttackGoal, wander_around::WanderAroundGoal,
     },
-    item::ItemEntity,
     mob::{Mob, MobEntity, RangedAttackMob},
     player::Player,
     projectile::snowball::SnowballEntity,
+    shearable::{Shearable, drop_from_shearing_loot_table},
 };
 use crate::world::game_event::GameEventContext;
 
 const SNOW_GOLEM_HUNTS: &[Hunt] = &[Hunt::new(1, TargetMatch::Enemy, true)];
+
+const SNOW_GOLEM_SHEAR_LOOT_TABLE: &str = "minecraft:shearing/snow_golem";
 
 /// Vanilla `AbstractGolem.getAmbientSoundInterval`.
 const AMBIENT_SOUND_INTERVAL: i32 = 120;
@@ -149,6 +151,10 @@ impl Mob for SnowGolemEntity {
         &self.mob_entity
     }
 
+    fn as_shearable(&self) -> Option<&dyn Shearable> {
+        Some(self)
+    }
+
     fn is_sensitive_to_water(&self) -> bool {
         true
     }
@@ -198,7 +204,7 @@ impl Mob for SnowGolemEntity {
     }
 
     fn mob_interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
-        if item_stack.get_item() == &Item::SHEARS && self.has_pumpkin() {
+        if item_stack.get_item() == &Item::SHEARS && self.ready_for_shearing() {
             let entity = self.get_entity();
             let world = entity.world.load();
             if let Some(server) = world.server.upgrade() {
@@ -213,20 +219,40 @@ impl Mob for SnowGolemEntity {
                     return false;
                 }
             }
-            self.set_has_pumpkin(false);
-            let pos = entity.pos.load();
-            world.play_sound(Sound::EntitySnowGolemShear, SoundCategory::Players, &pos);
-            let item_entity = Arc::new(ItemEntity::new(
-                Entity::new(world.clone(), pos, &EntityType::ITEM),
-                ItemStack::new(1, &Item::CARVED_PUMPKIN),
-            ));
-            world.spawn_entity(item_entity);
-            if player.gamemode.load() != pumpkin_util::GameMode::Creative {
-                let _ = item_stack.damage_item(1);
-            }
+            self.shear(SoundCategory::Players, item_stack);
+            world.emit_game_event_with_context(
+                GameEvent::Shear.name(),
+                entity.pos.load(),
+                &GameEventContext {
+                    source_entity: Some(player.as_ref()),
+                },
+            );
+            let _ = player.damage_item_stack(item_stack, 1);
             return true;
         }
         false
+    }
+}
+
+impl Shearable for SnowGolemEntity {
+    fn shear(&self, sound_category: SoundCategory, tool: &ItemStack) {
+        let entity = self.get_entity();
+        entity.world.load().play_sound(
+            Sound::EntitySnowGolemShear,
+            sound_category,
+            &entity.pos.load(),
+        );
+        self.set_has_pumpkin(false);
+        drop_from_shearing_loot_table(
+            self,
+            SNOW_GOLEM_SHEAR_LOOT_TABLE,
+            tool,
+            entity.get_eye_height(),
+        );
+    }
+
+    fn ready_for_shearing(&self) -> bool {
+        self.has_pumpkin()
     }
 }
 
