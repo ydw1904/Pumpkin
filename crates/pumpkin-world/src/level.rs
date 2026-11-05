@@ -51,6 +51,10 @@ use tokio_util::task::TaskTracker;
 
 pub type SyncChunk = Arc<ChunkData>;
 pub type SyncEntityChunk = Arc<ChunkEntityData>;
+/// The loaded chunks. Every block read looks a chunk up here, so it hashes with Fx instead of
+/// `SipHash`.
+pub type ChunkMap = DashMap<Vector2<i32>, SyncChunk, rustc_hash::FxBuildHasher>;
+pub type ChunkPosSet = dashmap::DashSet<Vector2<i32>, rustc_hash::FxBuildHasher>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LoadedChunkChange {
@@ -84,10 +88,10 @@ pub struct Level {
 
     // Chunks that are paired with chunk watchers. When a chunk is no longer watched, it is removed
     // from the loaded chunks map and sent to the underlying ChunkIO
-    pub loaded_chunks: Arc<DashMap<Vector2<i32>, SyncChunk>>,
+    pub loaded_chunks: Arc<ChunkMap>,
     pub(crate) loaded_chunk_changes: Arc<SegQueue<LoadedChunkChange>>,
     loaded_entity_chunks: Arc<DashMap<Vector2<i32>, SyncEntityChunk>>,
-    pub chunks_with_scheduled_ticks: Arc<dashmap::DashSet<Vector2<i32>>>,
+    pub chunks_with_scheduled_ticks: Arc<ChunkPosSet>,
     pub chunk_loading: Mutex<ChunkLoading>,
 
     chunk_watchers: Arc<DashMap<Vector2<i32>, usize>>,
@@ -309,10 +313,10 @@ impl Level {
             chunk_saver,
             entity_saver,
             schedule_tick_counts: AtomicU64::new(0),
-            loaded_chunks: Arc::new(DashMap::new()),
+            loaded_chunks: Arc::new(ChunkMap::default()),
             loaded_chunk_changes: Arc::new(SegQueue::new()),
             loaded_entity_chunks: Arc::new(DashMap::new()),
-            chunks_with_scheduled_ticks: Arc::new(dashmap::DashSet::new()),
+            chunks_with_scheduled_ticks: Arc::new(ChunkPosSet::default()),
             chunk_loading: Mutex::new(ChunkLoading::new(level_channel.clone())),
             chunk_watchers: Arc::new(DashMap::new()),
             tasks: TaskTracker::new(),
