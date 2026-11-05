@@ -27,6 +27,8 @@ use crate::entity::{
 
 /// Vanilla `Turtle.getAmbientSoundInterval`.
 const AMBIENT_SOUND_INTERVAL: i32 = 200;
+const TURTLE_GROW_LOOT_TABLE: &str = "minecraft:gameplay/turtle_grow";
+
 /// Vanilla `Turtle.TurtleRandomStrollGoal` interval.
 const RANDOM_STROLL_INTERVAL: i32 = 100;
 
@@ -124,6 +126,21 @@ impl TurtleEntity {
 impl AgeableMob for TurtleEntity {
     fn get_ageable_data(&self) -> &AgeableData {
         &self.ageable_data
+    }
+
+    fn age_boundary_reached(&self) {
+        if !self.mob_entity.living_entity.is_baby()
+            && self
+                .get_entity()
+                .world
+                .load()
+                .level_info
+                .load()
+                .game_rules
+                .mob_drops
+        {
+            crate::entity::mob::drop_from_gift_loot_table(self, TURTLE_GROW_LOOT_TABLE);
+        }
     }
 }
 

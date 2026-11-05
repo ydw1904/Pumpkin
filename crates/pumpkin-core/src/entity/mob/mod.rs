@@ -1540,6 +1540,44 @@ pub fn monster_walk_target_value(level: &dyn CreatureSpawnLevel, pos: &BlockPos)
     -level.pathfinding_cost_from_light_levels(pos)
 }
 
+/// Vanilla `Mob.dropFromGiftLootTable` with `spawnAtLocation`; false when nothing dropped.
+pub fn drop_from_gift_loot_table<M: Mob>(mob: &M, loot_table: &str) -> bool {
+    use crate::plugin::api::events::entity::entity_drop_item::EntityDropItemEvent;
+    use crate::world::loot::{LootContextParameters, generate_loot_from_handle};
+
+    let entity = mob.get_entity();
+    let world = entity.world.load_full();
+    let Some(table) = world.get_loot_table(loot_table) else {
+        return false;
+    };
+    let params = LootContextParameters {
+        world: Some(&world),
+        position: Some(entity.pos.load()),
+        this_entity: Some(mob),
+        ..Default::default()
+    };
+    let drops = generate_loot_from_handle(&table, mob.get_random().random(), &params);
+    let mut dropped = false;
+    for stack in drops {
+        let mut drop_event = EntityDropItemEvent::new(
+            entity.entity_id,
+            format!("minecraft:{}", stack.item.registry_key),
+            stack.item_count,
+        );
+        if let Some(server) = world.server.upgrade() {
+            server
+                .plugin_manager
+                .fire_blocking(&server, &mut drop_event);
+        }
+        if drop_event.cancelled {
+            continue;
+        }
+        entity.spawn_at_location(stack);
+        dropped = true;
+    }
+    dropped
+}
+
 /// Vanilla `EntityGetter.isUnobstructed(entity)`: no living entity that blocks building, other
 /// than one riding with `mob`, overlaps its bounding box.
 pub fn is_unobstructed<M: Mob + ?Sized>(mob: &M, level: &dyn CreatureSpawnLevel) -> bool {
@@ -3783,6 +3821,33 @@ mod lifecycle_tests {
         assert!(bound.min.x <= grown.min.x && bound.max.x >= grown.max.x);
         assert!(bound.min.z <= grown.min.z && bound.max.z >= grown.max.z);
         assert!(bound.max.y >= grown.max.y);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn turtle_drops_its_grow_loot_when_it_grows_up() -> Result<(), Box<dyn std::error::Error>>
+    {
+        use crate::entity::{ageable::AgeableMob, passive::turtle::TurtleEntity};
+
+        let folder = tempfile::tempdir()?;
+        let world = world(&folder);
+        let turtle = TurtleEntity::new(Entity::new(
+            world.clone(),
+            Vector3::new(0.5, 64.0, 0.5),
+            &EntityType::TURTLE,
+        ));
+        turtle.set_age(-1);
+        turtle.ageable_ai_step();
+        // `gameplay/turtle_grow` drops exactly one scute.
+        let drops = world
+            .entities
+            .load()
+            .iter()
+            .filter(|entity| entity.get_item_entity().is_some())
+            .count();
+        world.level.shutdown().await;
+        assert!(!turtle.is_baby());
+        assert_eq!(drops, 1);
         Ok(())
     }
 
