@@ -5,6 +5,7 @@ use pumpkin_util::math::vector3::Vector3;
 use std::sync::atomic::Ordering::Relaxed;
 
 use super::{Controls, Goal, GoalReach};
+use crate::entity::ageable::AgeableMob;
 use crate::entity::ai::goal::follow_owner::FollowOwnerGoal;
 use crate::entity::ai::goal::revenge::MobFilter;
 use crate::entity::ai::goal::try_find_water::TryFindWaterGoal;
@@ -24,6 +25,8 @@ pub struct EscapeDangerGoal {
     running: bool,
     calm_while_mob_controlled: bool,
     panic_causes: &'static tag::Tag,
+    /// Vanilla `PolarBear`'s panic function: babies panic at a different tag.
+    baby_panic_causes: Option<&'static tag::Tag>,
     stop_when: Option<MobFilter>,
     /// Vanilla `TamableAnimalPanicGoal`: a panicking pet still teleports to its far owner.
     teleports_to_owner: bool,
@@ -39,6 +42,7 @@ impl EscapeDangerGoal {
             running: false,
             calm_while_mob_controlled: false,
             panic_causes: &tag::DamageType::MINECRAFT_PANIC_CAUSES,
+            baby_panic_causes: None,
             stop_when: None,
             teleports_to_owner: false,
         })
@@ -69,6 +73,13 @@ impl EscapeDangerGoal {
         goal
     }
 
+    /// Babies panic at `panic_causes` instead.
+    #[must_use]
+    pub fn babies_panicking_at(mut self: Box<Self>, panic_causes: &'static tag::Tag) -> Box<Self> {
+        self.baby_panic_causes = Some(panic_causes);
+        self
+    }
+
     /// Horses don't panic while they count as mob controlled.
     #[must_use]
     pub fn mount(speed: f64) -> Box<Self> {
@@ -88,7 +99,13 @@ impl EscapeDangerGoal {
         mob.get_mob_entity()
             .living_entity
             .get_last_damage_type()
-            .is_some_and(|damage_type| damage_type.has_tag(self.panic_causes))
+            .is_some_and(|damage_type| {
+                let causes = self
+                    .baby_panic_causes
+                    .filter(|_| mob.as_ageable().is_some_and(AgeableMob::is_baby))
+                    .unwrap_or(self.panic_causes);
+                damage_type.has_tag(causes)
+            })
     }
 
     /// Nearest water within 5 blocks horizontally, only when the mob is not stuck in a block.
