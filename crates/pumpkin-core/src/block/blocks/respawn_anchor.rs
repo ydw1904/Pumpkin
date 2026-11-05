@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use pumpkin_data::block_properties::RespawnAnchorLikeProperties;
 use pumpkin_data::damage::DamageType;
+use pumpkin_data::entity::EntityType;
 use pumpkin_data::fluid::FluidState;
 use pumpkin_data::item::Item;
 use pumpkin_data::sound::{Sound, SoundCategory};
@@ -10,18 +11,31 @@ use pumpkin_data::{Block, BlockDirection, tag};
 use pumpkin_data::{BlockState, translation};
 use pumpkin_macros::pumpkin_block;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::math::vector3::Vector3;
 use pumpkin_world::world::BlockFlags;
 
 use crate::block::registry::BlockActionResult;
 use crate::block::{
     BlockBehaviour, GetComparatorOutputArgs, NormalUseArgs, PathComputationType, UseWithItemArgs,
 };
-use crate::entity::EntityBase;
+use crate::entity::{EntityBase, dismount_helper};
 use crate::world::World;
 use crate::world::explosion::{Explosion, ExplosionDamageCalculator};
 
 /// Vanilla `RespawnAnchorBlock.MAX_CHARGES`.
 const MAX_CHARGES: u8 = 4;
+
+/// Vanilla `RespawnAnchorBlock.RESPAWN_HORIZONTAL_OFFSETS`, as `(x, z)`.
+const RESPAWN_HORIZONTAL_OFFSETS: [(i32, i32); 8] = [
+    (0, -1),
+    (-1, 0),
+    (0, 1),
+    (1, 0),
+    (-1, -1),
+    (1, -1),
+    (-1, 1),
+    (1, 1),
+];
 
 #[pumpkin_block("minecraft:respawn_anchor")]
 pub struct RespawnAnchorBlock;
@@ -45,6 +59,42 @@ impl RespawnAnchorBlock {
             DamageType::BAD_RESPAWN_POINT,
         );
     }
+
+    /// Vanilla `RespawnAnchorBlock.findStandUpPosition`: a safe spot first, then any.
+    pub fn find_stand_up_position(
+        entity_type: &'static EntityType,
+        world: &World,
+        pos: &BlockPos,
+    ) -> Option<Vector3<f64>> {
+        find_stand_up_position(entity_type, world, pos, true)
+            .or_else(|| find_stand_up_position(entity_type, world, pos, false))
+    }
+}
+
+/// Vanilla `RESPAWN_OFFSETS`: the horizontal offsets at the anchor's level, then one below,
+/// then one above, then straight above.
+fn find_stand_up_position(
+    entity_type: &'static EntityType,
+    world: &World,
+    pos: &BlockPos,
+    check_dangerous: bool,
+) -> Option<Vector3<f64>> {
+    [0, -1, 1]
+        .into_iter()
+        .flat_map(|dy| {
+            RESPAWN_HORIZONTAL_OFFSETS
+                .iter()
+                .map(move |&(dx, dz)| (dx, dy, dz))
+        })
+        .chain([(0, 1, 0)])
+        .find_map(|(dx, dy, dz)| {
+            dismount_helper::find_safe_dismount_location(
+                entity_type,
+                world,
+                &pos.offset(Vector3::new(dx, dy, dz)),
+                check_dangerous,
+            )
+        })
 }
 
 /// Vanilla `RespawnAnchorBlock.isWaterThatWouldFlow`.
