@@ -4,7 +4,8 @@ use std::sync::{
 };
 
 use super::BlockEntity;
-use crate::block::entities::sign::Text;
+use crate::block::entities::sign::{Text, resolve_sign_lines, write_allow_op_features};
+use crate::world::World;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
 use std::sync::Mutex;
@@ -13,6 +14,8 @@ pub struct HangingSignBlockEntity {
     pub front_text: Text,
     pub back_text: Text,
     pub is_waxed: AtomicBool,
+    /// See `SignBlockEntity::allow_op_features`.
+    pub allow_op_features: bool,
     position: BlockPos,
     pub currently_editing_player: Arc<Mutex<Option<uuid::Uuid>>>,
 }
@@ -46,11 +49,22 @@ impl BlockEntity for HangingSignBlockEntity {
             front_text,
             back_text,
             is_waxed: AtomicBool::new(is_waxed),
+            allow_op_features: nbt.get_bool("allow_op_features").unwrap_or(false),
             currently_editing_player: Arc::new(Mutex::new(None)),
         }
     }
 
+    fn loaded_in_world(&self, world: &Arc<World>) {
+        resolve_sign_lines(
+            world,
+            &self.position,
+            self.allow_op_features,
+            [&self.front_text, &self.back_text],
+        );
+    }
+
     fn write_nbt(&self, nbt: &mut NbtCompound) {
+        write_allow_op_features(nbt, self.allow_op_features);
         nbt.put("front_text", self.front_text.clone());
         nbt.put("back_text", self.back_text.clone());
         nbt.put_bool("is_waxed", self.is_waxed.load(Ordering::Relaxed));
@@ -58,6 +72,7 @@ impl BlockEntity for HangingSignBlockEntity {
 
     fn chunk_data_nbt(&self) -> Option<NbtCompound> {
         let mut nbt = NbtCompound::new();
+        write_allow_op_features(&mut nbt, self.allow_op_features);
         nbt.put("front_text", self.front_text.clone());
         nbt.put("back_text", self.back_text.clone());
         nbt.put_bool("is_waxed", self.is_waxed.load(Ordering::Relaxed));
@@ -107,6 +122,7 @@ impl HangingSignBlockEntity {
         Self {
             position,
             is_waxed: AtomicBool::new(false),
+            allow_op_features: false,
             front_text: if is_front {
                 Text::from_messages(messages.clone())
             } else {
@@ -125,6 +141,7 @@ impl HangingSignBlockEntity {
         Self {
             position,
             is_waxed: AtomicBool::new(false),
+            allow_op_features: false,
             front_text: Text::default(),
             back_text: Text::default(),
             currently_editing_player: Arc::new(Mutex::new(None)),

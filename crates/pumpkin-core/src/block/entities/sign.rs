@@ -4,6 +4,9 @@ use std::sync::{
 };
 
 use super::BlockEntity;
+use crate::command::CommandSource;
+use crate::command::text_resolution;
+use crate::world::World;
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::text::TextComponent;
@@ -15,6 +18,9 @@ pub struct SignBlockEntity {
     pub front_text: SignText,
     pub back_text: SignText,
     pub is_waxed: AtomicBool,
+    /// Vanilla `allowOpFeatures`: the sign's text is resolved on load and its click commands
+    /// run. Only set through NBT.
+    pub allow_op_features: bool,
     position: BlockPos,
     pub currently_editing_player: Arc<Mutex<Option<uuid::Uuid>>>,
 }
@@ -39,6 +45,42 @@ fn message_to_nbt(message: &str) -> NbtTag {
         component.0.to_nbt_tag()
     } else {
         NbtTag::String(message.into())
+    }
+}
+
+/// Vanilla `SignBlockEntity.resolveLine`: a line that fails to resolve stays as it is.
+fn resolve_line(source: &CommandSource, line: &str) -> Box<str> {
+    let component = TextComponent::from_nbt(&message_to_nbt(line));
+    text_resolution::resolve(source, &component).map_or_else(
+        |_| line.into(),
+        |resolved| message_from_nbt(&resolved.0.to_nbt_tag()),
+    )
+}
+
+/// Vanilla `SignBlockEntity.loadAdditional`: with `allow_op_features` both sides are resolved
+/// for a source named "Sign".
+pub(crate) fn resolve_sign_lines(
+    world: &Arc<World>,
+    position: &BlockPos,
+    allow_op_features: bool,
+    sides: [&SignText; 2],
+) {
+    if !allow_op_features {
+        return;
+    }
+    let Some(server) = world.server.upgrade() else {
+        return;
+    };
+    let source = CommandSource::for_block(world.clone(), server, position, "Sign", None);
+    for side in sides {
+        side.resolve_lines(&source);
+    }
+}
+
+/// Writes `allow_op_features` the way vanilla `saveAdditional` does: only when set.
+pub(crate) fn write_allow_op_features(nbt: &mut NbtCompound, allow_op_features: bool) {
+    if allow_op_features {
+        nbt.put_bool("allow_op_features", true);
     }
 }
 
@@ -185,6 +227,21 @@ impl SignText {
         Self::new(messages, None, DyeColor::Black, false)
     }
 
+    /// Vanilla `SignText.Mutable.modifyLines`: resolves the lines and the filtered lines.
+    fn resolve_lines(&self, source: &CommandSource) {
+        for lines in [&self.messages, &self.filtered_messages] {
+            // Resolved unlocked: an NBT component can read this sign.
+            let current = lines
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone();
+            let resolved = current.map(|line| resolve_line(source, &line));
+            *lines
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = resolved;
+        }
+    }
+
     #[must_use]
     pub fn has_glowing_text(&self) -> bool {
         self.has_glowing_text.load(Ordering::Relaxed)
@@ -298,11 +355,22 @@ impl BlockEntity for SignBlockEntity {
             front_text,
             back_text,
             is_waxed: AtomicBool::new(is_waxed),
+            allow_op_features: nbt.get_bool("allow_op_features").unwrap_or(false),
             currently_editing_player: Arc::new(Mutex::new(None)),
         }
     }
 
+    fn loaded_in_world(&self, world: &Arc<World>) {
+        resolve_sign_lines(
+            world,
+            &self.position,
+            self.allow_op_features,
+            [&self.front_text, &self.back_text],
+        );
+    }
+
     fn write_nbt(&self, nbt: &mut NbtCompound) {
+        write_allow_op_features(nbt, self.allow_op_features);
         nbt.put("front_text", self.front_text.clone());
         nbt.put("back_text", self.back_text.clone());
         nbt.put_bool("is_waxed", self.is_waxed.load(Ordering::Relaxed));
@@ -310,6 +378,7 @@ impl BlockEntity for SignBlockEntity {
 
     fn chunk_data_nbt(&self) -> Option<NbtCompound> {
         let mut nbt = NbtCompound::new();
+        write_allow_op_features(&mut nbt, self.allow_op_features);
         nbt.put("front_text", self.front_text.clone());
         nbt.put("back_text", self.back_text.clone());
         nbt.put_bool("is_waxed", self.is_waxed.load(Ordering::Relaxed));
@@ -422,6 +491,7 @@ impl SignBlockEntity {
         Self {
             position,
             is_waxed: AtomicBool::new(false),
+            allow_op_features: false,
             front_text: if is_front {
                 SignText::from_messages(messages.clone())
             } else {
@@ -441,6 +511,7 @@ impl SignBlockEntity {
         Self {
             position,
             is_waxed: AtomicBool::new(false),
+            allow_op_features: false,
             front_text: SignText::default(),
             back_text: SignText::default(),
             currently_editing_player: Arc::new(Mutex::new(None)),
@@ -497,6 +568,14 @@ impl<'a> SignEntityRef<'a> {
         match self {
             Self::Sign(s) => s.is_waxed.load(Ordering::Relaxed),
             Self::Hanging(s) => s.is_waxed.load(Ordering::Relaxed),
+        }
+    }
+
+    #[must_use]
+    pub const fn allow_op_features(&self) -> bool {
+        match self {
+            Self::Sign(s) => s.allow_op_features,
+            Self::Hanging(s) => s.allow_op_features,
         }
     }
 
