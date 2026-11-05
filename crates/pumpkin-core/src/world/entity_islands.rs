@@ -2174,25 +2174,25 @@ mod tests {
     #[tokio::test]
     async fn unaudited_living_motion_joins_entities_at_the_destination()
     -> Result<(), Box<dyn std::error::Error>> {
-        use crate::entity::{Entity, passive::wolf::WolfEntity};
+        use crate::entity::{Entity, passive::polar_bear::PolarBearEntity};
 
         let folder = tempfile::tempdir()?;
         let world = crate::entity::ai::test_support::world(&folder);
-        let wolf = WolfEntity::new(Entity::new(
+        let bear = PolarBearEntity::new(Entity::new(
             world.clone(),
             Vector3::new(0.0, 64.0, 0.0),
-            &EntityType::WOLF,
+            &EntityType::POLAR_BEAR,
         ));
-        assert!(wolf.audited_reach().is_none());
+        assert!(bear.audited_reach().is_none());
         let config = EntityIslandsConfig::default();
         for speed in [0.0, -96.0, 96.0] {
-            wolf.get_entity()
+            bear.get_entity()
                 .velocity
                 .store(Vector3::new(speed, 0.0, 0.0));
-            let reaches = resolve(vec![EntityReach::of(wolf.as_ref(), &config)], &config)
+            let reaches = resolve(vec![EntityReach::of(bear.as_ref(), &config)], &config)
                 .ok_or("unexpected serial fallback")?;
             let nodes = [
-                (wolf.get_entity().entity_id, reaches[0].clone()),
+                (bear.get_entity().entity_id, reaches[0].clone()),
                 node(-1, 96.0, 0.0),
                 node(-2, -96.0, 0.0),
             ];

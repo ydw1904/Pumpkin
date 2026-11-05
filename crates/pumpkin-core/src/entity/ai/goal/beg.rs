@@ -1,4 +1,4 @@
-use super::{Controls, Goal};
+use super::{Controls, Goal, GoalReach};
 use crate::entity::EntityBase;
 use crate::entity::ai::target_predicate::TargetPredicate;
 use crate::entity::mob::Mob;
@@ -54,6 +54,29 @@ impl BegGoal {
 }
 
 impl Goal for BegGoal {
+    fn tick_reach(&self, mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        let player: Vec<i32> = self
+            .player
+            .iter()
+            .map(|player| player.entity_id())
+            .collect();
+        let mut reach = GoalReach {
+            links: player,
+            ..GoalReach::default()
+        };
+        if !running {
+            // The search checks the sight to every player in range.
+            reach.players = mob
+                .get_entity()
+                .world
+                .load()
+                .player_search
+                .reach(self.look_distance);
+            reach.block_reads = reach.players;
+        }
+        Some(reach)
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         let mob_entity = mob.get_mob_entity();
         let world = mob_entity.living_entity.entity.world.load();

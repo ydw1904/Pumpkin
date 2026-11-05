@@ -1,4 +1,4 @@
-use super::{Controls, Goal};
+use super::{Controls, Goal, GoalReach};
 use crate::entity::EntityBase;
 use crate::entity::mob::Mob;
 use crate::entity::passive::tamable::TELEPORT_WHEN_DISTANCE_IS_SQ;
@@ -26,6 +26,11 @@ impl SitWhenOrderedToGoal {
 }
 
 impl Goal for SitWhenOrderedToGoal {
+    // Reads the owner, a link, and stops the navigation.
+    fn tick_reach(&self, _mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        Some(GoalReach::default())
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         let ordered = mob.ordered_to_sit();
         if !ordered && !mob.is_tamed() {

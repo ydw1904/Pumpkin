@@ -1,5 +1,5 @@
 use super::track_target::TrackTargetGoal;
-use super::{Controls, Goal};
+use super::{Controls, Goal, GoalReach};
 use crate::entity::EntityBase;
 use crate::entity::ai::target_predicate::TargetPredicate;
 use crate::entity::mob::Mob;
@@ -27,6 +27,29 @@ impl OwnerHurtTargetGoal {
 }
 
 impl Goal for OwnerHurtTargetGoal {
+    // The owner's attacker or victim can change in any entity's turn, and starting checks the
+    // sight to it, which no bound covers. A pet that can't start only keeps its target.
+    fn tick_reach(&self, mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        if mob.is_tamed()
+            && !mob.ordered_to_sit()
+            && mob.get_owner_uuid().is_some_and(|uuid| {
+                mob.get_entity()
+                    .world
+                    .load()
+                    .get_player_by_uuid(uuid)
+                    .is_some()
+            })
+        {
+            return None;
+        }
+        let target: Vec<i32> = self.track_target_goal.target_mob_id().into_iter().collect();
+        Some(GoalReach {
+            links: target.clone(),
+            sight: target,
+            ..GoalReach::default()
+        })
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         if !mob.is_tamed() || mob.ordered_to_sit() {
             return false;

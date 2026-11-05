@@ -1,18 +1,22 @@
+use crossbeam::atomic::AtomicCell;
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Weak,
-    atomic::{AtomicU8, Ordering},
+    atomic::{AtomicBool, AtomicU8, Ordering},
 };
 
 use pumpkin_data::BlockState;
 use pumpkin_data::damage::DamageType;
-use pumpkin_data::entity::EntityType;
+use pumpkin_data::entity::{EntityStatus, EntityType};
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::sound::Sound;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::wolf_sound_variant::WolfSoundVariant;
 use pumpkin_data::wolf_variant::WolfVariant;
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_protocol::bedrock::server::ActorEventID;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_util::math::position::BlockPos;
 
@@ -70,7 +74,19 @@ pub struct WolfEntity {
     pub tamable_data: TamableData,
     pub ageable_data: crate::entity::ageable::AgeableData,
     pub neutral_data: NeutralData,
+    /// Vanilla `isWet`: got wet and hasn't shaken it off yet.
+    is_wet: AtomicBool,
+    is_shaking: AtomicBool,
+    /// Vanilla `shakeAnim` and `shakeAnimO`, which time the shake.
+    shake_anim: AtomicCell<f32>,
+    shake_anim_o: AtomicCell<f32>,
 }
+
+/// Vanilla `Wolf.getSoundVolume`.
+const WOLF_SOUND_VOLUME: f32 = 0.4;
+/// `shakeAnim` gained per tick; the shake ends once it passes `SHAKE_END`.
+const SHAKE_STEP: f32 = 0.05;
+const SHAKE_END: f32 = 2.0;
 
 impl WolfEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
@@ -83,6 +99,10 @@ impl WolfEntity {
             tamable_data: TamableData::default(),
             ageable_data: crate::entity::ageable::AgeableData::default(),
             neutral_data: NeutralData::default(),
+            is_wet: AtomicBool::new(false),
+            is_shaking: AtomicBool::new(false),
+            shake_anim: AtomicCell::new(0.0),
+            shake_anim_o: AtomicCell::new(0.0),
         };
         let mob_arc = Arc::new(wolf);
         let mob_weak: Weak<dyn Mob> = {
@@ -96,8 +116,14 @@ impl WolfEntity {
             // Goal selector (matching Vanilla registerGoals):
             // 1: SwimGoal (FloatGoal)
             goal_selector.add_goal(1, Box::new(SwimGoal::default()));
-            // 1: EscapeDangerGoal (TamableAnimalPanicGoal)
-            goal_selector.add_goal(1, EscapeDangerGoal::new(1.5));
+            // 1: TamableAnimalPanicGoal
+            goal_selector.add_goal(
+                1,
+                EscapeDangerGoal::tamable(
+                    1.5,
+                    &tag::DamageType::MINECRAFT_PANIC_ENVIRONMENTAL_CAUSES,
+                ),
+            );
             // 2: SitWhenOrderedToGoal
             goal_selector.add_goal(2, Box::new(SitWhenOrderedToGoal::new()));
             // 3: WolfAvoidEntityGoal (Llama)
@@ -150,6 +176,58 @@ impl WolfEntity {
         self.set_mob_target(None, TargetReason::ForgotTarget);
     }
 
+    fn reset_shake(&self) {
+        self.is_shaking.store(false, Ordering::Relaxed);
+        self.shake_anim.store(0.0);
+        self.shake_anim_o.store(0.0);
+    }
+
+    /// The server part of vanilla `Wolf.aiStep` and `Wolf.tick`: a wet wolf that stands still on
+    /// the ground shakes itself dry, unless it gets wet again first.
+    fn tick_shake(&self) {
+        let entity = self.get_entity();
+        let world = entity.world.load();
+        if self.is_wet.load(Ordering::Relaxed)
+            && !self.is_shaking.load(Ordering::Relaxed)
+            && self.is_navigator_idle()
+            && entity.on_ground.load(Ordering::Relaxed)
+        {
+            self.reset_shake();
+            self.is_shaking.store(true, Ordering::Relaxed);
+            world.send_entity_status(entity, EntityStatus::ShakeWetness, ActorEventID::None);
+        }
+        if !entity.is_alive() {
+            return;
+        }
+        if entity.is_in_water_or_rain() {
+            self.is_wet.store(true, Ordering::Relaxed);
+            if self.is_shaking.load(Ordering::Relaxed) {
+                world.send_entity_status(
+                    entity,
+                    EntityStatus::CancelShakeWetness,
+                    ActorEventID::None,
+                );
+                self.reset_shake();
+            }
+        } else if self.is_shaking.load(Ordering::Relaxed) {
+            if self.shake_anim.load() == 0.0 {
+                let pitch = {
+                    let rng = self.get_random();
+                    (rng.random::<f32>() - rng.random::<f32>()).mul_add(0.2, 1.0)
+                };
+                self.play_entity_sound(Sound::EntityWolfShake, WOLF_SOUND_VOLUME, pitch);
+                entity.emit_own_game_event(self, GameEvent::EntityAction);
+            }
+            let previous = self.shake_anim.load();
+            self.shake_anim_o.store(previous);
+            self.shake_anim.store(previous + SHAKE_STEP);
+            if previous >= SHAKE_END {
+                self.is_wet.store(false, Ordering::Relaxed);
+                self.reset_shake();
+            }
+        }
+    }
+
     pub fn get_tame_flags(&self) -> u8 {
         let mut flags = 0u8;
         if self.is_in_sitting_pose() {
@@ -188,8 +266,32 @@ impl NeutralMob for WolfEntity {
 }
 
 impl Mob for WolfEntity {
-    fn on_damage(&self, _damage_type: DamageType, _source: Option<&dyn EntityBase>) {
-        self.order_to_sit(false);
+    /// Vanilla `Wolf.hurtServer`: any hurt it isn't invulnerable to makes it stand up, even one
+    /// the hurt cooldown then blocks.
+    fn pre_damage_with_context(
+        &self,
+        damage_type: DamageType,
+        _source: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
+    ) -> bool {
+        if !self.get_entity().is_invulnerable_to(&damage_type, cause) {
+            self.order_to_sit(false);
+        }
+        true
+    }
+
+    fn post_tick(&self) {
+        self.tick_shake();
+    }
+
+    // Shaking only touches the wolf; owner teleports come from its goals.
+    fn has_audited_tick(&self) -> bool {
+        true
+    }
+
+    fn on_die(&self) {
+        self.is_wet.store(false, Ordering::Relaxed);
+        self.reset_shake();
     }
 
     fn can_shear_equipment(&self, player: &Player) -> bool {

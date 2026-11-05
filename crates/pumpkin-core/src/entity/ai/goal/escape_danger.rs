@@ -5,6 +5,7 @@ use pumpkin_util::math::vector3::Vector3;
 use std::sync::atomic::Ordering::Relaxed;
 
 use super::{Controls, Goal, GoalReach};
+use crate::entity::ai::goal::follow_owner::FollowOwnerGoal;
 use crate::entity::ai::goal::revenge::MobFilter;
 use crate::entity::ai::goal::try_find_water::TryFindWaterGoal;
 use crate::entity::ai::util::default_random_pos;
@@ -24,6 +25,8 @@ pub struct EscapeDangerGoal {
     calm_while_mob_controlled: bool,
     panic_causes: &'static tag::Tag,
     stop_when: Option<MobFilter>,
+    /// Vanilla `TamableAnimalPanicGoal`: a panicking pet still teleports to its far owner.
+    teleports_to_owner: bool,
 }
 
 impl EscapeDangerGoal {
@@ -37,6 +40,7 @@ impl EscapeDangerGoal {
             calm_while_mob_controlled: false,
             panic_causes: &tag::DamageType::MINECRAFT_PANIC_CAUSES,
             stop_when: None,
+            teleports_to_owner: false,
         })
     }
 
@@ -54,6 +58,15 @@ impl EscapeDangerGoal {
     pub fn stopping_when(mut self: Box<Self>, filter: MobFilter) -> Box<Self> {
         self.stop_when = Some(filter);
         self
+    }
+
+    /// Vanilla `TamableAnimalPanicGoal`, panicking at `panic_causes`.
+    #[must_use]
+    pub fn tamable(speed: f64, panic_causes: &'static tag::Tag) -> Box<Self> {
+        let mut goal = Self::new(speed);
+        goal.panic_causes = panic_causes;
+        goal.teleports_to_owner = true;
+        goal
     }
 
     /// Horses don't panic while they count as mob controlled.
@@ -130,8 +143,14 @@ impl Goal for EscapeDangerGoal {
             || entity.touching_lava.load(Relaxed)
             || living.has_effect(&StatusEffect::POISON)
             || living.has_effect(&StatusEffect::WITHER);
+        let teleport = (self.teleports_to_owner && may_flee)
+            .then(|| FollowOwnerGoal::reachable_owner(mob))
+            .flatten()
+            .filter(|owner| FollowOwnerGoal::should_try_teleport_to_owner(mob, owner))
+            .map(|owner| FollowOwnerGoal::owner_teleport_area(mob, &owner));
         Some(GoalReach {
             speed: if may_flee { self.speed } else { 0.0 },
+            teleport,
             ..GoalReach::default()
         })
     }
@@ -179,6 +198,15 @@ impl Goal for EscapeDangerGoal {
     fn stop(&mut self, _mob: &dyn Mob) {
         self.target = None;
         self.running = false;
+    }
+
+    fn tick(&mut self, mob: &dyn Mob) {
+        if self.teleports_to_owner
+            && let Some(owner) = FollowOwnerGoal::reachable_owner(mob)
+            && FollowOwnerGoal::should_try_teleport_to_owner(mob, &owner)
+        {
+            FollowOwnerGoal::try_teleport_to_owner(mob, &owner);
+        }
     }
 
     fn controls(&self) -> Controls {

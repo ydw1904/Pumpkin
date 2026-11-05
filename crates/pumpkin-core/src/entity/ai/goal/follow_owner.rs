@@ -1,13 +1,21 @@
-use super::{Controls, Goal};
+use super::{Controls, Goal, GoalReach};
 use crate::entity::ai::pathfinder::NavigatorGoal;
 use crate::entity::ai::pathfinder::node::PathType;
+use crate::entity::ai::pathfinder::pathfinding_context::PathfindingContext;
 use crate::entity::mob::Mob;
 use crate::entity::player::Player;
+use pumpkin_data::tag::{self, Taggable};
+use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use std::sync::Arc;
 
 const TELEPORT_DISTANCE_SQ: f64 = 144.0;
+const TELEPORT_ATTEMPTS: usize = 10;
+/// Teleports land at most this many blocks from the owner on each horizontal axis...
+const TELEPORT_SPREAD: i32 = 3;
+/// ...and at least this many on one of them.
+const TELEPORT_MIN_OFFSET: i32 = 2;
 
 pub struct FollowOwnerGoal {
     speed_modifier: f64,
@@ -64,73 +72,112 @@ impl FollowOwnerGoal {
         mob_pos.squared_distance_to_vec(&owner_pos)
     }
 
-    fn should_try_teleport_to_owner(mob: &dyn Mob, owner: &Player) -> bool {
+    /// Vanilla `TamableAnimal.shouldTryTeleportToOwner`.
+    pub(crate) fn should_try_teleport_to_owner(mob: &dyn Mob, owner: &Player) -> bool {
         let dist_sq = Self::distance_to_owner_sq(mob, owner);
         dist_sq >= TELEPORT_DISTANCE_SQ
     }
 
-    fn try_teleport_to_owner(mob: &dyn Mob, owner: &Player) {
-        let owner_pos = owner.living_entity.entity.pos.load();
+    /// Vanilla `TamableAnimal.tryToTeleportToOwner`: ten tries at a spot two or three blocks
+    /// from the owner's block.
+    pub(crate) fn try_teleport_to_owner(mob: &dyn Mob, owner: &Player) {
+        let target = owner.living_entity.entity.block_pos.load();
+        for _ in 0..TELEPORT_ATTEMPTS {
+            let (dx, dz) = {
+                let rng = mob.get_random();
+                (
+                    rng.random_range(-TELEPORT_SPREAD..=TELEPORT_SPREAD),
+                    rng.random_range(-TELEPORT_SPREAD..=TELEPORT_SPREAD),
+                )
+            };
+            if dx.abs() < TELEPORT_MIN_OFFSET && dz.abs() < TELEPORT_MIN_OFFSET {
+                continue;
+            }
+            let dy = mob.get_random().random_range(-1..=1);
+            if Self::maybe_teleport_to(mob, target.add(dx, dy, dz)) {
+                return;
+            }
+        }
+    }
+
+    /// Vanilla `TamableAnimal.maybeTeleportTo` and `canTeleportTo`.
+    fn maybe_teleport_to(mob: &dyn Mob, pos: BlockPos) -> bool {
         let mob_entity = &mob.get_mob_entity().living_entity.entity;
         let world = mob_entity.world.load_full();
-
-        let offsets: [(i32, i32, i32); 10] = {
-            let rng = mob.get_random();
-            std::array::from_fn(|_| {
-                (
-                    rng.random_range(-3..=3),
-                    rng.random_range(-1..=1),
-                    rng.random_range(-3..=3),
-                )
-            })
-        };
-
-        for (dx, dy, dz) in offsets {
-            if dx.abs() < 2 && dz.abs() < 2 {
-                continue;
-            }
-
-            let target_x = owner_pos.x.floor() as i32 + dx;
-            let target_y = owner_pos.y.floor() as i32 + dy;
-            let target_z = owner_pos.z.floor() as i32 + dz;
-
-            let below = BlockPos(Vector3::new(target_x, target_y - 1, target_z));
-            let block_below = world.get_block_state(&below);
-            if !block_below.is_solid() {
-                continue;
-            }
-
-            let at = BlockPos(Vector3::new(target_x, target_y, target_z));
-            let above = BlockPos(Vector3::new(target_x, target_y + 1, target_z));
-            let block_at = world.get_block_state(&at);
-            let block_above = world.get_block_state(&above);
-            if !block_at.is_air() || !block_above.is_air() {
-                continue;
-            }
-
-            mob_entity.teleport(
-                Vector3::new(
-                    target_x as f64 + 0.5,
-                    f64::from(target_y),
-                    target_z as f64 + 0.5,
-                ),
-                None,
-                None,
-                &world,
-            );
-
-            let mut navigator = mob
-                .get_mob_entity()
-                .navigator
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            navigator.stop();
-            return;
+        let own_block = mob_entity.block_pos.load();
+        let mut context = PathfindingContext::new(own_block.0, world.clone());
+        if context.get_land_node_type(pos.0) != PathType::Walkable {
+            return false;
         }
+        // Wolves and cats can't fly to their owner.
+        if world
+            .get_block(&pos.down())
+            .has_tag(&tag::Block::MINECRAFT_LEAVES)
+        {
+            return false;
+        }
+        let delta = pos.0 - own_block.0;
+        let moved = mob_entity.bounding_box.load().shift(delta.to_f64());
+        if !world.is_space_empty(moved) {
+            return false;
+        }
+        mob_entity.teleport(
+            Vector3::new(
+                f64::from(pos.0.x) + 0.5,
+                f64::from(pos.0.y),
+                f64::from(pos.0.z) + 0.5,
+            ),
+            None,
+            None,
+            &world,
+        );
+        mob.get_mob_entity().steered().navigator().stop();
+        true
+    }
+
+    /// Where `try_teleport_to_owner` can put the body.
+    pub(crate) fn owner_teleport_area(mob: &dyn Mob, owner: &Player) -> BoundingBox {
+        let target = owner.living_entity.entity.block_pos.load().0.to_f64();
+        let dimensions = mob.get_entity().entity_dimension.load();
+        let half_width = f64::from(dimensions.width) / 2.0;
+        let spread = f64::from(TELEPORT_SPREAD);
+        BoundingBox::new(
+            Vector3::new(
+                target.x - spread + 0.5 - half_width,
+                target.y - 1.0,
+                target.z - spread + 0.5 - half_width,
+            ),
+            Vector3::new(
+                target.x + spread + 0.5 + half_width,
+                target.y + 1.0 + f64::from(dimensions.height),
+                target.z + spread + 0.5 + half_width,
+            ),
+        )
+    }
+
+    /// The owner, when nothing stops the pet from going to it.
+    pub(crate) fn reachable_owner(mob: &dyn Mob) -> Option<Arc<Player>> {
+        let owner = Self::find_owner(mob)?;
+        (!Self::unable_to_move_to_owner(mob, Some(&owner))).then_some(owner)
     }
 }
 
 impl Goal for FollowOwnerGoal {
+    fn tick_reach(&self, mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        let mut reach = GoalReach {
+            speed: self.speed_modifier,
+            ..GoalReach::default()
+        };
+        // A goal that starts this tick ticks at once with its timer at zero.
+        if (!running || self.time_to_recalc_path <= 1)
+            && let Some(owner) = Self::reachable_owner(mob)
+            && Self::should_try_teleport_to_owner(mob, &owner)
+        {
+            reach.teleport = Some(Self::owner_teleport_area(mob, &owner));
+        }
+        Some(reach)
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         let Some(owner) = Self::find_owner(mob) else {
             return false;

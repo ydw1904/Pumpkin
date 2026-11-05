@@ -78,7 +78,10 @@ impl CatEntity {
             // Goal 1: SwimGoal (FloatGoal)
             goal_selector.add_goal(1, Box::new(SwimGoal::default()));
             // Goal 1: TamableAnimalPanicGoal (EscapeDangerGoal)
-            goal_selector.add_goal(1, EscapeDangerGoal::new(1.5));
+            goal_selector.add_goal(
+                1,
+                EscapeDangerGoal::tamable(1.5, &tag::DamageType::MINECRAFT_PANIC_CAUSES),
+            );
             // Goal 2: SitWhenOrderedToGoal
             goal_selector.add_goal(2, Box::new(SitWhenOrderedToGoal::new()));
             // TODO: CatRelaxOnOwnerGoal at 3, CatLieOnBlockGoal at 5, CatSitOnBlockGoal at 7.
