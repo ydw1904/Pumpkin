@@ -1495,7 +1495,6 @@ impl Server {
                 self.tick_players_and_network();
             }
             self.handle_console_inputs();
-            self.flush_pending_block_updates();
             for world in self.worlds.load().iter() {
                 world.schedule_light_updates();
             }
@@ -1535,12 +1534,6 @@ impl Server {
             if let Some(done) = input.done {
                 let _ = done.send(());
             }
-        }
-    }
-
-    fn flush_pending_block_updates(&self) {
-        for world in self.worlds.load().iter() {
-            world.flush_block_updates();
         }
     }
 

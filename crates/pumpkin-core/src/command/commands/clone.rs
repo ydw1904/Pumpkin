@@ -376,8 +376,6 @@ fn clone(
     }
 
     copy_block_ticks(from_world, to_world, &from, offset);
-    from_world.flush_block_updates();
-    to_world.flush_block_updates();
 
     if count == 0 {
         return Err(ERROR_FAILED.create_without_context());

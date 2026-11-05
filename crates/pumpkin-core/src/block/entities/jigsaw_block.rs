@@ -153,7 +153,6 @@ impl JigsawBlockEntity {
         }
         placer.finalize();
         world.queue_block_updates(&placer.changed_positions);
-        world.flush_block_updates();
         world.spawn_structure_entities(entities);
     }
 }

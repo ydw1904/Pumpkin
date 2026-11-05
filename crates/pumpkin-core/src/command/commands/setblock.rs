@@ -168,7 +168,6 @@ impl CommandExecutor for SetBlockExecutor {
             world.update_neighbours_on_block_set(&pos, old_state);
         }
 
-        world.flush_block_updates();
         context.source.send_feedback(
             TextComponent::translate_cross(
                 translation::java::COMMANDS_SETBLOCK_SUCCESS,

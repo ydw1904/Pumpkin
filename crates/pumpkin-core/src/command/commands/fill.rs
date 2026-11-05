@@ -153,7 +153,6 @@ fn fill_blocks(
             world.update_neighbours_on_block_set(pos, *old_state);
         }
     }
-    world.flush_block_updates();
 
     if count == 0 {
         return Err(ERROR_FAILED.create_without_context());

@@ -242,7 +242,6 @@ impl CommandExecutor for PlaceTemplateExecutor {
                 }
             }
         }
-        world.flush_block_updates();
         world.spawn_structure_entities(entities);
 
         context.source.send_feedback(
@@ -373,7 +372,6 @@ impl CommandExecutor for PlaceJigsawExecutor {
         context
             .world()
             .queue_block_updates(&placer.changed_positions);
-        context.world().flush_block_updates();
         context.world().spawn_structure_entities(entities);
 
         context.source.send_feedback(
@@ -656,7 +654,6 @@ impl CommandExecutor for PlaceStructureExecutor {
         context
             .world()
             .queue_block_updates(&placer.changed_positions);
-        context.world().flush_block_updates();
         // Vanilla `StructureStart.placeInChunk` places into the level, so the entities join it.
         context.world().spawn_structure_entities(entities);
 
@@ -777,7 +774,6 @@ impl CommandExecutor for PlaceFeatureExecutor {
         context
             .world()
             .queue_block_updates(&placer.changed_positions);
-        context.world().flush_block_updates();
 
         context.source.send_feedback(
             pumpkin_macros::translate_cross!(

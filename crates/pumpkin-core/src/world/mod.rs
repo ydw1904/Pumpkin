@@ -1926,7 +1926,6 @@ impl World {
         // thread usually manages between two ticks.
         self.level.light_engine.run_queued_checks(&self.level);
         self.broadcast_light_changes();
-        self.flush_block_updates();
         // Vanilla `processPacketsAndTick` handles queued player packets before the level tick
         // advances time and runs scheduled ticks, so a player's action lands a tick earlier than
         // it would with the rest of `Player::tick`.
@@ -1945,6 +1944,10 @@ impl World {
         let t_chunks = std::time::Instant::now();
         self.tick_chunks();
         let chunk_elapsed = t_chunks.elapsed();
+        // Vanilla `tickChunks` ends with `broadcastChangedChunks`, so block changes from the last
+        // tick's entities, commands and packets go out here, after the spawn packets the same
+        // changes caused (`ChunkMap.addEntity` pairs at once).
+        self.flush_block_updates();
         // Vanilla `ServerChunkCache.tick` runs `ChunkMap.tick` after ticking chunks and before
         // entities and players tick, so a change made by a packet is seen for a tick even if
         // the player's tick undoes it.
@@ -2271,7 +2274,7 @@ impl World {
     /// and structure placement bypass [`set_block_state`](Self::set_block_state), so this also
     /// registers their POIs, as vanilla does for every block change.
     ///
-    /// Call [`flush_block_updates`](Self::flush_block_updates) afterward to send the packets.
+    /// The packets go out with the next tick's [`flush_block_updates`](Self::flush_block_updates).
     pub fn queue_block_updates(&self, changes: &[(BlockPos, BlockStateId)]) {
         self.update_pois_from_stored(changes);
         let mut guard = self
