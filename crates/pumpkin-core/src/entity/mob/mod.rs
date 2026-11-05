@@ -451,6 +451,22 @@ impl MobEntity {
         world: Uuid,
         sequence: u64,
     ) {
+        // Every mob in the world hears of every collision change, so skip the queue when
+        // nothing is waiting in it and the navigator is free.
+        if self.pending_navigation_updates.is_empty() {
+            let navigator = match self.navigator.try_lock() {
+                Ok(navigator) => Some(navigator),
+                Err(std::sync::TryLockError::Poisoned(error)) => Some(error.into_inner()),
+                Err(std::sync::TryLockError::WouldBlock) => None,
+            };
+            if let Some(mut navigator) = navigator {
+                // Changes other threads queued meanwhile still go after this one.
+                let queued = self.pending_navigation_updates.len();
+                self.apply_navigation_update(&mut navigator, position, world, sequence);
+                self.apply_queued_navigation_updates(&mut navigator, queued);
+                return;
+            }
+        }
         self.pending_navigation_updates
             .push((position, world, sequence));
         self.process_navigation_updates();
@@ -470,19 +486,33 @@ impl MobEntity {
 
     fn apply_navigation_updates(&self, navigator: &mut Navigator) {
         // A search can enqueue more changes; leave those for the next owner boundary.
-        for _ in 0..self.pending_navigation_updates.len() {
+        self.apply_queued_navigation_updates(navigator, self.pending_navigation_updates.len());
+    }
+
+    fn apply_queued_navigation_updates(&self, navigator: &mut Navigator, count: usize) {
+        for _ in 0..count {
             let Some((position, world, sequence)) = self.pending_navigation_updates.pop() else {
                 break;
             };
-            if self.living_entity.entity.world.load().uuid == world
-                && navigator.get_path().is_some_and(|path| {
-                    path.world_change
-                        .is_none_or(|(path_world, seen)| path_world == world && seen < sequence)
-                })
-                && navigator.should_recompute_path(&self.living_entity, position)
-            {
-                navigator.recompute_path(&self.living_entity);
-            }
+            self.apply_navigation_update(navigator, position, world, sequence);
+        }
+    }
+
+    fn apply_navigation_update(
+        &self,
+        navigator: &mut Navigator,
+        position: BlockPos,
+        world: Uuid,
+        sequence: u64,
+    ) {
+        // The path check comes first: it is cheaper than loading the world.
+        if navigator.get_path().is_some_and(|path| {
+            path.world_change
+                .is_none_or(|(path_world, seen)| path_world == world && seen < sequence)
+        }) && self.living_entity.entity.world.load().uuid == world
+            && navigator.should_recompute_path(&self.living_entity, position)
+        {
+            navigator.recompute_path(&self.living_entity);
         }
     }
 
