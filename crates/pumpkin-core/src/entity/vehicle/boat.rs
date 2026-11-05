@@ -7,8 +7,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 use crossbeam::atomic::AtomicCell;
+use pumpkin_data::data_component_impl::CustomNameImpl;
 use pumpkin_data::entity::{EntityStatus, EntityType};
 use pumpkin_data::game_event::GameEvent;
+use pumpkin_data::item::Item;
 use pumpkin_data::sound::Sound;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::translation;
@@ -418,6 +420,11 @@ impl BoatEntity {
         }
     }
 
+    /// Vanilla `getDropItem`: every boat drops the item of its own name.
+    fn drop_item(&self) -> Option<&'static Item> {
+        Item::from_registry_key(self.vehicle.entity.entity_type.resource_name)
+    }
+
     pub fn open_inventory(&self, player: &Arc<Player>) -> bool {
         if let BoatKind::Chest(boat) = &self.kind {
             let custom_name = self.vehicle.entity.custom_name.load().as_ref().clone();
@@ -751,16 +758,24 @@ impl EntityBase for BoatEntity {
 
         let damaged = self.vehicle.damage_with_context(amount, source);
 
-        if let BoatKind::Chest(boat) = &self.kind
-            && will_break
-            && self.vehicle.entity.is_removed()
-        {
-            let world = self.vehicle.entity.world.load();
+        if will_break && self.vehicle.entity.is_removed() {
+            let entity = &self.vehicle.entity;
+            let world = entity.world.load();
             if world.level_info.load().game_rules.entity_drops {
-                let position = self.vehicle.entity.block_pos.load();
-                boat.inventory().unpack_loot(&self.vehicle.entity, None);
-                let inventory: Arc<dyn Inventory> = boat.inventory().clone();
-                world.scatter_inventory(&position, &inventory);
+                if let BoatKind::Chest(boat) = &self.kind {
+                    let position = entity.block_pos.load();
+                    boat.inventory().unpack_loot(entity, None);
+                    let inventory: Arc<dyn Inventory> = boat.inventory().clone();
+                    world.scatter_inventory(&position, &inventory);
+                }
+                // Vanilla `VehicleEntity.destroy`; a creative player's hit only discards it.
+                if !is_creative && let Some(item) = self.drop_item() {
+                    let mut stack = ItemStack::new(1, item);
+                    if let Some(name) = entity.custom_name.load().as_ref().clone() {
+                        stack.set_data_component(CustomNameImpl { name });
+                    }
+                    entity.spawn_at_location(stack);
+                }
             }
         }
         damaged
