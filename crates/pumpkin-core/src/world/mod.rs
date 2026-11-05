@@ -1125,12 +1125,22 @@ impl World {
         }
     }
 
+    /// Vanilla `ServerLevel.blockEvent` for the block at `pos`. Like vanilla's set of block
+    /// events, an event that is already queued isn't queued again.
     pub fn add_synced_block_event(&self, pos: BlockPos, r#type: u8, data: u8) {
+        let event = BlockEvent {
+            pos,
+            block: self.get_block(&pos).id,
+            r#type,
+            data,
+        };
         let mut queue = self
             .synced_block_event_queue
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        queue.push(BlockEvent { pos, r#type, data });
+        if !queue.contains(&event) {
+            queue.push(event);
+        }
     }
 
     /// Whether this world is running its weather, scheduled ticks, chunk ticks or block events.
@@ -1139,16 +1149,9 @@ impl World {
         self.handling_tick.load(Relaxed)
     }
 
+    /// Vanilla `runBlockEvents`: runs queued block events until none are left, including the
+    /// ones the events themselves queue.
     pub fn flush_synced_block_events(self: &Arc<Self>) {
-        // THIS IS IMPORTANT
-        // it prevents deadlocks and also removes the need to wait for a lock when adding a new synced block
-        let events = {
-            let mut queue = self
-                .synced_block_event_queue
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            std::mem::take(&mut *queue)
-        };
         let active_chunks = self
             .active_chunks
             .read()
@@ -1157,39 +1160,20 @@ impl World {
 
         // Vanilla `runBlockEvents` holds events outside block ticking chunks for a later tick.
         let mut to_reschedule = Vec::new();
-        for event in events {
-            if !active_chunks
-                .block_ticking
-                .contains(&event.pos.chunk_position())
-            {
-                to_reschedule.push(event);
-                continue;
-            }
-            let block = self.get_block(&event.pos);
-            if !self.block_registry.on_synced_block_event(
-                block,
-                self,
-                &event.pos,
-                event.r#type,
-                event.data,
-            ) {
-                continue;
-            }
-            let chunk_pos = event.pos.chunk_position();
-            self.broadcast_to_chunk_editioned(
-                chunk_pos,
-                &CBlockEvent::new(
-                    event.pos,
-                    event.r#type,
-                    event.data,
-                    VarInt(block.id.as_u16() as i32),
-                ),
-                &CBedrockBlockEvent {
-                    block_position: event.pos,
-                    event_type: event.r#type.into(),
-                    event_value: event.data.into(),
-                },
+        loop {
+            // Taken out of the lock so events can queue more events.
+            let events = std::mem::take(
+                &mut *self
+                    .synced_block_event_queue
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
             );
+            if events.is_empty() {
+                break;
+            }
+            for event in events {
+                self.run_block_event(&event, &active_chunks, &mut to_reschedule);
+            }
         }
         if !to_reschedule.is_empty() {
             self.synced_block_event_queue
@@ -1197,6 +1181,48 @@ impl World {
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .splice(0..0, to_reschedule);
         }
+    }
+
+    fn run_block_event(
+        self: &Arc<Self>,
+        event: &BlockEvent,
+        active_chunks: &ActiveChunks,
+        to_reschedule: &mut Vec<BlockEvent>,
+    ) {
+        if !active_chunks
+            .block_ticking
+            .contains(&event.pos.chunk_position())
+        {
+            to_reschedule.push(event.clone());
+            return;
+        }
+        // Vanilla `doBlockEvent`: only the block that queued the event runs it.
+        let block = self.get_block(&event.pos);
+        if block.id != event.block
+            || !self.block_registry.on_synced_block_event(
+                block,
+                self,
+                &event.pos,
+                event.r#type,
+                event.data,
+            )
+        {
+            return;
+        }
+        self.broadcast_to_chunk_editioned(
+            event.pos.chunk_position(),
+            &CBlockEvent::new(
+                event.pos,
+                event.r#type,
+                event.data,
+                VarInt(block.id.as_u16() as i32),
+            ),
+            &CBedrockBlockEvent {
+                block_position: event.pos,
+                event_type: event.r#type.into(),
+                event_value: event.data.into(),
+            },
+        );
     }
 
     /// Keyed by encode version: always `CURRENT_MC_VERSION`, older clients are converted
@@ -1789,10 +1815,6 @@ impl World {
         self.level.light_engine.run_queued_checks(&self.level);
         self.broadcast_light_changes();
         self.flush_block_updates();
-        // Vanilla runs the block events at the end of the previous tick's handling phase.
-        self.handling_tick.store(true, Relaxed);
-        self.flush_synced_block_events();
-        self.handling_tick.store(false, Relaxed);
         // Vanilla `processPacketsAndTick` handles queued player packets before the level tick
         // advances time and runs scheduled ticks, so a player's action lands a tick earlier than
         // it would with the rest of `Player::tick`.
@@ -1811,11 +1833,14 @@ impl World {
         let t_chunks = std::time::Instant::now();
         self.tick_chunks();
         let chunk_elapsed = t_chunks.elapsed();
-        self.handling_tick.store(false, Relaxed);
         // Vanilla `ServerChunkCache.tick` runs `ChunkMap.tick` after ticking chunks and before
         // entities and players tick, so a change made by a packet is seen for a tick even if
         // the player's tick undoes it.
         self.entity_tracker.update_all(self);
+        // Vanilla `runBlockEvents` ends the handling phase, so a piston powered by a scheduled
+        // tick moves in that tick and its moving blocks tick with the block entities.
+        self.flush_synced_block_events();
+        self.handling_tick.store(false, Relaxed);
 
         let players = self.players.load();
         let player_count = players.len();
