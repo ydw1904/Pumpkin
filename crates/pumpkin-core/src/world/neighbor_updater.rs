@@ -37,11 +37,15 @@ impl UpdateKind {
 }
 
 struct QueuedUpdate<W> {
-    world: W,
+    /// `None` for the world that started the cascade, which outlives it, so most updates don't
+    /// touch the world's shared reference count.
+    world: Option<W>,
     kind: UpdateKind,
 }
 
 struct UpdateStack<W> {
+    /// Identifies the world that started the cascade, see [`world_id`].
+    root: usize,
     remaining: Vec<QueuedUpdate<W>>,
     staged: Vec<QueuedUpdate<W>>,
     submitted: usize,
@@ -50,8 +54,9 @@ struct UpdateStack<W> {
 }
 
 impl<W: Clone> UpdateStack<W> {
-    const fn new(limit: usize) -> Self {
+    const fn new(root: usize, limit: usize) -> Self {
         Self {
+            root,
             remaining: Vec::new(),
             staged: Vec::new(),
             submitted: 0,
@@ -60,7 +65,7 @@ impl<W: Clone> UpdateStack<W> {
         }
     }
 
-    fn stage(&mut self, world: &W, kinds: impl Iterator<Item = UpdateKind>) {
+    fn stage(&mut self, world: &W, world_id: usize, kinds: impl Iterator<Item = UpdateKind>) {
         for kind in kinds {
             if self.submitted >= self.limit {
                 if !self.gave_up {
@@ -75,7 +80,7 @@ impl<W: Clone> UpdateStack<W> {
             }
             self.submitted += 1;
             self.staged.push(QueuedUpdate {
-                world: world.clone(),
+                world: (world_id != self.root).then(|| world.clone()),
                 kind,
             });
         }
@@ -174,22 +179,27 @@ pub(super) fn shape_update(
     );
 }
 
+fn world_id(world: &Arc<World>) -> usize {
+    Arc::as_ptr(world).addr()
+}
+
 fn cascade_in_progress() -> bool {
     PENDING_UPDATES.with(|pending| pending.borrow().is_some())
 }
 
 fn submit(world: &Arc<World>, updates: impl Iterator<Item = UpdateKind>) {
+    let id = world_id(world);
     if cascade_in_progress() {
         PENDING_UPDATES.with(|pending| {
             if let Some(stack) = pending.borrow_mut().as_mut() {
-                stack.stage(world, updates);
+                stack.stage(world, id, updates);
             }
         });
         return;
     }
 
-    let mut stack = UpdateStack::new(MAX_CHAINED_UPDATES);
-    stack.stage(world, updates);
+    let mut stack = UpdateStack::new(id, MAX_CHAINED_UPDATES);
+    stack.stage(world, id, updates);
     stack.promote_staged();
 
     PENDING_UPDATES.with(|pending| {
@@ -197,12 +207,12 @@ fn submit(world: &Arc<World>, updates: impl Iterator<Item = UpdateKind>) {
     });
 
     let _guard = CascadeGuard;
-    run_cascade();
+    run_cascade(world);
 }
 
-fn run_cascade() {
-    while let Some(update) = pop_update() {
-        execute(update);
+fn run_cascade(root: &Arc<World>) {
+    while let Some(QueuedUpdate { world, kind }) = pop_update() {
+        execute(world.as_ref().unwrap_or(root), kind);
         PENDING_UPDATES.with(|pending| {
             if let Some(stack) = pending.borrow_mut().as_mut() {
                 stack.promote_staged();
@@ -220,8 +230,7 @@ fn pop_update() -> Option<QueuedUpdate<Arc<World>>> {
     })
 }
 
-fn execute(update: QueuedUpdate<Arc<World>>) {
-    let QueuedUpdate { world, kind } = update;
+fn execute(world: &Arc<World>, kind: UpdateKind) {
     match kind {
         UpdateKind::Neighbor {
             position,
@@ -267,6 +276,8 @@ mod tests {
 
     const OVERWORLD: &str = "overworld";
     const NETHER: &str = "nether";
+    const OVERWORLD_ID: usize = 1;
+    const NETHER_ID: usize = 2;
 
     fn neighbor_at(x: i32) -> UpdateKind {
         UpdateKind::Neighbor {
@@ -286,14 +297,19 @@ mod tests {
     }
 
     fn remaining_worlds(stack: &UpdateStack<&'static str>) -> Vec<&'static str> {
-        stack.remaining.iter().map(|update| update.world).collect()
+        stack
+            .remaining
+            .iter()
+            .map(|update| update.world.unwrap_or(OVERWORLD))
+            .collect()
     }
 
     #[test]
     fn staged_updates_are_popped_in_submission_order() {
-        let mut stack = UpdateStack::new(MAX_CHAINED_UPDATES);
+        let mut stack = UpdateStack::new(OVERWORLD_ID, MAX_CHAINED_UPDATES);
         stack.stage(
             &OVERWORLD,
+            OVERWORLD_ID,
             [neighbor_at(1), neighbor_at(2), neighbor_at(3)].into_iter(),
         );
         stack.promote_staged();
@@ -310,12 +326,20 @@ mod tests {
 
     #[test]
     fn updates_staged_while_running_are_handled_before_the_rest() {
-        let mut stack = UpdateStack::new(MAX_CHAINED_UPDATES);
-        stack.stage(&OVERWORLD, [neighbor_at(1), neighbor_at(2)].into_iter());
+        let mut stack = UpdateStack::new(OVERWORLD_ID, MAX_CHAINED_UPDATES);
+        stack.stage(
+            &OVERWORLD,
+            OVERWORLD_ID,
+            [neighbor_at(1), neighbor_at(2)].into_iter(),
+        );
         stack.promote_staged();
         stack.remaining.pop();
 
-        stack.stage(&OVERWORLD, [neighbor_at(10), neighbor_at(11)].into_iter());
+        stack.stage(
+            &OVERWORLD,
+            OVERWORLD_ID,
+            [neighbor_at(10), neighbor_at(11)].into_iter(),
+        );
         stack.promote_staged();
 
         assert_eq!(remaining_positions(&stack), vec![2, 11, 10]);
@@ -323,19 +347,23 @@ mod tests {
 
     #[test]
     fn updates_stay_bound_to_the_world_that_staged_them() {
-        let mut stack = UpdateStack::new(MAX_CHAINED_UPDATES);
-        stack.stage(&OVERWORLD, [neighbor_at(1), neighbor_at(2)].into_iter());
+        let mut stack = UpdateStack::new(OVERWORLD_ID, MAX_CHAINED_UPDATES);
+        stack.stage(
+            &OVERWORLD,
+            OVERWORLD_ID,
+            [neighbor_at(1), neighbor_at(2)].into_iter(),
+        );
         stack.promote_staged();
 
         assert_eq!(
-            stack
-                .remaining
-                .pop()
-                .map(|update| (update.world, update.kind.position().0.x)),
+            stack.remaining.pop().map(|update| (
+                update.world.unwrap_or(OVERWORLD),
+                update.kind.position().0.x
+            )),
             Some((OVERWORLD, 1)),
         );
 
-        stack.stage(&NETHER, std::iter::once(neighbor_at(10)));
+        stack.stage(&NETHER, NETHER_ID, std::iter::once(neighbor_at(10)));
         stack.promote_staged();
 
         assert_eq!(remaining_positions(&stack), vec![2, 10]);
@@ -344,13 +372,15 @@ mod tests {
 
     #[test]
     fn updates_chained_past_the_budget_are_skipped() {
-        let mut stack = UpdateStack::new(2);
+        let mut stack = UpdateStack::new(OVERWORLD_ID, 2);
         stack.stage(
             &OVERWORLD,
+            OVERWORLD_ID,
             [neighbor_at(1), neighbor_at(2), neighbor_at(3)].into_iter(),
         );
         stack.stage(
             &OVERWORLD,
+            OVERWORLD_ID,
             std::iter::once(UpdateKind::Shape {
                 position: BlockPos(Vector3::new(4, 0, 0)),
                 direction: BlockDirection::Up,
@@ -370,7 +400,7 @@ mod tests {
     fn panic_does_not_leave_a_cascade_running() {
         let result = std::panic::catch_unwind(|| {
             PENDING_UPDATES.with(|pending| {
-                *pending.borrow_mut() = Some(UpdateStack::new(MAX_CHAINED_UPDATES));
+                *pending.borrow_mut() = Some(UpdateStack::new(OVERWORLD_ID, MAX_CHAINED_UPDATES));
             });
             let _guard = CascadeGuard;
             panic!("block callback panicked");
