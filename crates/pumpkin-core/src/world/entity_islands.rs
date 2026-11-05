@@ -28,6 +28,7 @@ use crate::plugin::api::events::entity::{
     entity_target::EntityTargetEvent, entity_teleport::EntityTeleportEvent,
     entity_toggle_sit::EntityToggleSitEvent, pig_zombie_anger::PigZombieAngerEvent,
 };
+use crate::plugin::api::events::world::generic_game::GenericGameEvent;
 use crate::server::Server;
 use crate::world::World;
 
@@ -146,8 +147,8 @@ impl Schedule {
 
 /// A plugin listens to an event an entity tick can fire.
 ///
-/// Targeting, breeding, anger, a sit order dropped on damage, a teleport or a block an enderman
-/// takes. Its handler may touch anything, so the tick runs in list order.
+/// Targeting, breeding, anger, a sit order dropped on damage, a teleport, a block an enderman
+/// takes or a game event. Its handler may touch anything, so the tick runs in list order.
 #[must_use]
 pub fn plugins_observe_entity_ticks(server: &Server) -> bool {
     let plugins = &server.plugin_manager;
@@ -157,6 +158,7 @@ pub fn plugins_observe_entity_ticks(server: &Server) -> bool {
         || plugins.has_handlers::<EntityToggleSitEvent>()
         || plugins.has_handlers::<EntityTeleportEvent>()
         || plugins.has_handlers::<EntityChangeBlockEvent>()
+        || plugins.has_handlers::<GenericGameEvent>()
 }
 
 /// How far target searches can find players this tick. Planning refreshes it before the reports.
