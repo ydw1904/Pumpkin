@@ -1577,7 +1577,7 @@ impl MobEntity {
 
         let world = entity.world.load();
         if world.level_info.load().difficulty == Difficulty::Peaceful
-            && !is_allowed_in_peaceful(entity.entity_type)
+            && !entity.entity_type.allowed_in_peaceful
         {
             entity.remove();
             return;
@@ -1674,56 +1674,6 @@ const MONSTERS: &[&EntityType] = &[
 
 pub(crate) fn is_monster(entity_type: &EntityType) -> bool {
     MONSTERS.iter().any(|monster| monster.id == entity_type.id)
-}
-
-/// The entity types vanilla `EntityTypes` builds with `notInPeaceful()`.
-const NOT_IN_PEACEFUL: &[&EntityType] = &[
-    &EntityType::BLAZE,
-    &EntityType::BOGGED,
-    &EntityType::BREEZE,
-    &EntityType::CAVE_SPIDER,
-    &EntityType::CREAKING,
-    &EntityType::CREEPER,
-    &EntityType::DROWNED,
-    &EntityType::ELDER_GUARDIAN,
-    &EntityType::ENDERMAN,
-    &EntityType::ENDERMITE,
-    &EntityType::EVOKER,
-    &EntityType::GHAST,
-    &EntityType::GIANT,
-    &EntityType::GUARDIAN,
-    &EntityType::HOGLIN,
-    &EntityType::HUSK,
-    &EntityType::ILLUSIONER,
-    &EntityType::MAGMA_CUBE,
-    &EntityType::PARCHED,
-    &EntityType::PHANTOM,
-    &EntityType::PIGLIN_BRUTE,
-    &EntityType::PILLAGER,
-    &EntityType::RAVAGER,
-    &EntityType::SILVERFISH,
-    &EntityType::SKELETON,
-    &EntityType::SLIME,
-    &EntityType::SPIDER,
-    &EntityType::STRAY,
-    &EntityType::VEX,
-    &EntityType::VINDICATOR,
-    &EntityType::WARDEN,
-    &EntityType::WITCH,
-    &EntityType::WITHER,
-    &EntityType::WITHER_SKELETON,
-    &EntityType::ZOGLIN,
-    &EntityType::ZOMBIE,
-    &EntityType::ZOMBIE_VILLAGER,
-    &EntityType::ZOMBIFIED_PIGLIN,
-];
-
-/// Vanilla `EntityType.isAllowedInPeaceful`.
-#[must_use]
-pub fn is_allowed_in_peaceful(entity_type: &EntityType) -> bool {
-    !NOT_IN_PEACEFUL
-        .iter()
-        .any(|not_allowed| not_allowed.id == entity_type.id)
 }
 
 /// Vanilla `Monster.getWalkTargetValue`: monsters prefer the dark.

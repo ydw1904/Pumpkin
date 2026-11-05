@@ -52,6 +52,8 @@ pub struct EntityType {
     pub summonable: bool,
     /// Whether this entity is immune to fire damage.
     pub fire_immune: bool,
+    /// Vanilla `EntityType.isAllowedInPeaceful`: false for types built with `notInPeaceful()`.
+    pub allowed_in_peaceful: bool,
     /// Whether this entity is saved to the world file.
     pub saveable: bool,
     /// Mob category controlling this entity's spawn cap and persistence.
@@ -300,6 +302,7 @@ impl ToTokens for NamedEntityType<'_> {
         let saveable = entity.saveable;
         let summonable = entity.summonable;
         let fire_immune = entity.fire_immune;
+        let allowed_in_peaceful = entity.allowed_in_peaceful;
         let eye_height = entity.eye_height;
         assert!(
             !(entity.mob.is_none() && name != "player"),
@@ -400,6 +403,7 @@ impl ToTokens for NamedEntityType<'_> {
                 limit_per_chunk: #limit_per_chunk,
                 summonable: #summonable,
                 fire_immune: #fire_immune,
+                allowed_in_peaceful: #allowed_in_peaceful,
                 category: &#spawn_category,
                 can_spawn_far_from_player: #can_spawn_far_from_player,
                 client_tracking_range: #client_tracking_range,
@@ -509,6 +513,7 @@ pub fn build() -> TokenStream {
             pub limit_per_chunk: i32,
             pub summonable: bool,
             pub fire_immune: bool,
+            pub allowed_in_peaceful: bool,
             pub category: &'static MobCategory,
             pub can_spawn_far_from_player: bool,
             pub client_tracking_range: u32,

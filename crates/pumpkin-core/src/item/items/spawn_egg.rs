@@ -49,8 +49,7 @@ impl ItemMetadata for SpawnEggItem {
 }
 
 fn is_disallowed_in_peaceful(entity_type: &EntityType, world: &World) -> bool {
-    !crate::entity::mob::is_allowed_in_peaceful(entity_type)
-        && world.level_info.load().difficulty == Difficulty::Peaceful
+    !entity_type.allowed_in_peaceful && world.level_info.load().difficulty == Difficulty::Peaceful
 }
 
 /// Vanilla's `EntityTypes.OP_ONLY_CUSTOM_DATA`: types whose `entity_data` only a server
