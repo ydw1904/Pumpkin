@@ -5318,7 +5318,7 @@ impl Entity {
         drop(passengers);
         // Vanilla `ServerPlayer.startRiding` puts the player on the seat right away and teleports
         // the client there.
-        if let Some(rider) = player_rider
+        if let Some(rider) = &player_rider
             && let Some(vehicle) = rider.get_entity().get_vehicle()
         {
             position_rider(vehicle.as_ref(), rider.as_ref());
@@ -5339,13 +5339,33 @@ impl Entity {
             },
         };
 
-        let world = self.world.load();
-        let chunk_pos = self.chunk_pos.load();
-        world.broadcast_to_chunk_editioned(
-            chunk_pos,
-            &CSetPassengers::new(VarInt(self.entity_id), &passenger_ids),
+        let passengers_packet = CSetPassengers::new(VarInt(self.entity_id), &passenger_ids);
+        self.broadcast_passenger_change(
+            player_rider.as_deref().and_then(EntityBase::get_player),
+            &passengers_packet,
             &be_link,
         );
+    }
+
+    /// Sends a passenger change of this vehicle. Like vanilla `ServerPlayer.startRiding` and
+    /// `removeVehicle`, a Java player rider gets it right away; other Java players get it from
+    /// the vehicle's tracker (`ServerEntity.sendChanges`), which doesn't run for player vehicles.
+    fn broadcast_passenger_change(
+        &self,
+        player_rider: Option<&Player>,
+        passengers_packet: &CSetPassengers,
+        be_link: &pumpkin_protocol::bedrock::client::CSetActorLink,
+    ) {
+        let world = self.world.load();
+        let chunk_pos = self.chunk_pos.load();
+        if self.entity_type == &EntityType::PLAYER {
+            world.broadcast_to_chunk_editioned(chunk_pos, passengers_packet, be_link);
+            return;
+        }
+        if let Some(player) = player_rider {
+            player.try_send_client_packet(passengers_packet);
+        }
+        world.broadcast_to_chunk_bedrock(chunk_pos, be_link);
     }
 
     pub fn add_passenger_silently(
@@ -5391,17 +5411,18 @@ impl Entity {
             .passengers
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(index) = passengers
+        let removed = passengers
             .iter()
             .position(|passenger| passenger.get_entity().entity_id == passenger_id)
-        {
-            let passenger = passengers.remove(index);
-            *passenger
-                .get_entity()
-                .vehicle
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
-        }
+            .map(|index| {
+                let passenger = passengers.remove(index);
+                *passenger
+                    .get_entity()
+                    .vehicle
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+                passenger
+            });
 
         let passenger_ids: Vec<VarInt> = passengers
             .iter()
@@ -5420,8 +5441,8 @@ impl Entity {
             },
         };
 
-        self.world.load().broadcast_to_chunk_editioned(
-            self.chunk_pos.load(),
+        self.broadcast_passenger_change(
+            removed.as_deref().and_then(EntityBase::get_player),
             &CSetPassengers::new(VarInt(self.entity_id), &passenger_ids),
             &be_unlink,
         );
@@ -5530,7 +5551,6 @@ impl Entity {
             );
             passenger_entity.send_bedrock_actor_data(&rider_meta);
 
-            // Send CSetPassengers directly to the dismounting player before broadcasting it.
             let world = self.world.load();
             let passengers_packet = CSetPassengers::new(VarInt(self.entity_id), &passenger_ids);
             let be_unlink = pumpkin_protocol::bedrock::client::CSetActorLink {
@@ -5543,17 +5563,7 @@ impl Entity {
                     vehicle_angular_velocity: 0.0,
                 },
             };
-            if let Some(player) = passenger.get_player() {
-                player.try_enqueue_packet_editioned(&passengers_packet, &be_unlink);
-                world.broadcast_to_chunk_except_editioned(
-                    chunk_pos,
-                    &[player.get_entity().entity_uuid],
-                    &passengers_packet,
-                    &be_unlink,
-                );
-            } else {
-                world.broadcast_to_chunk_editioned(chunk_pos, &passengers_packet, &be_unlink);
-            }
+            self.broadcast_passenger_change(passenger.get_player(), &passengers_packet, &be_unlink);
 
             if !reposition {
                 return;
