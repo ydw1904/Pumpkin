@@ -55,6 +55,25 @@ pub struct GlobalStructureCache {
     structure_starts: OnceLock<DashMap<(StructureKeys, i32, i32), CachedStructureStart>>,
 }
 
+/// The process-wide pool that runs every world's ring search, built on first use.
+///
+/// Global Rayon workers may block on a search result, so the search must never run on that
+/// pool. One shared pool keeps every world (extra dimensions, test worlds) from building a
+/// full-width pool of its own. `None` if the pool could not be built.
+fn stronghold_pool() -> Option<&'static rayon::ThreadPool> {
+    static POOL: OnceLock<Option<rayon::ThreadPool>> = OnceLock::new();
+    POOL.get_or_init(|| {
+        rayon::ThreadPoolBuilder::new()
+            .thread_name(|i| format!("Stronghold-Rings-{i}"))
+            .build()
+            .inspect_err(|err| {
+                tracing::warn!("Failed to build the stronghold ring pool, computing inline: {err}");
+            })
+            .ok()
+    })
+    .as_ref()
+}
+
 struct StrongholdJob {
     seed: i64,
     placement: &'static ConcentricRingsStructurePlacement,
@@ -90,8 +109,8 @@ impl GlobalStructureCache {
         }
     }
 
-    /// Creates a cache whose stronghold ring positions are computed on a background thread
-    /// once [`Self::ensure_strongholds_generated`] is first called.
+    /// Creates a cache whose stronghold ring positions are computed on the shared stronghold
+    /// pool once [`Self::ensure_strongholds_generated`] is first called.
     #[must_use]
     pub fn with_background_strongholds(
         seed: i64,
@@ -115,32 +134,7 @@ impl GlobalStructureCache {
         };
         self.stronghold_job_started.call_once(|| {
             let (seed, placement) = (job.seed, job.placement);
-            let target = self.stronghold_chunks.clone();
-            let router = job.multi_noise.clone();
-            let spawned = std::thread::Builder::new()
-                .name("Stronghold-Rings".to_string())
-                .spawn(move || {
-                    let compute = || Self::calculate_strongholds(seed, placement, &router);
-                    // Global Rayon workers may block on this result, so the search must never
-                    // run on that pool: use a private pool, or this thread alone if none can be built.
-                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        rayon::ThreadPoolBuilder::new()
-                            .thread_name(|i| format!("Stronghold-Rings-{i}"))
-                            .build()
-                            .map_or_else(
-                                |_| {
-                                    Self::calculate_strongholds_sequential(seed, placement, &router)
-                                },
-                                |pool| pool.install(compute),
-                            )
-                    }));
-                    if result.is_err() {
-                        tracing::error!("Stronghold ring calculation panicked");
-                    }
-                    let _ = target.set(result.ok());
-                });
-            if let Err(err) = spawned {
-                tracing::warn!("Failed to spawn stronghold ring thread, computing inline: {err}");
+            let Some(pool) = stronghold_pool() else {
                 // Sequential: the caller may be a pool worker that would otherwise steal a job
                 // re-entering this `call_once`.
                 let _ = self
@@ -150,7 +144,19 @@ impl GlobalStructureCache {
                         placement,
                         &job.multi_noise,
                     )));
-            }
+                return;
+            };
+            let target = self.stronghold_chunks.clone();
+            let router = job.multi_noise.clone();
+            pool.spawn(move || {
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    Self::calculate_strongholds(seed, placement, &router)
+                }));
+                if result.is_err() {
+                    tracing::error!("Stronghold ring calculation panicked");
+                }
+                let _ = target.set(result.ok());
+            });
         });
     }
 

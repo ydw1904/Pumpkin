@@ -12,5 +12,11 @@ pub fn into_level(
     base_directory: PathBuf,
     seed: i64,
 ) -> Arc<Level> {
-    Level::from_root_folder(level_config, base_directory, seed, dimension)
+    let level = Level::from_root_folder(level_config, base_directory, seed, dimension);
+    // Vanilla's ServerLevel constructor starts the ring search. Bare levels (tests)
+    // only start it when a lookup first needs it.
+    if let Some(cache) = level.world_gen().global_structure_cache() {
+        cache.ensure_strongholds_generated();
+    }
+    level
 }
