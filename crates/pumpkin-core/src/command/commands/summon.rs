@@ -2,6 +2,7 @@ use pumpkin_data::translation;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::difficulty::Difficulty;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
 use uuid::Uuid;
@@ -68,8 +69,12 @@ impl CommandExecutor for SummonExecutor {
         let entity = nbt.map_or_else(
             || from_type(entity_type, pos, world, Uuid::new_v4()),
             |nbt| {
-                let entity = load_entity(entity_type, pos, nbt, world);
-                entity.get_entity().set_pos(pos);
+                // Vanilla `loadEntityRecursive` reads the NBT at its `Pos`, or the origin, and
+                // only then moves the entities, so a turtle summoned with NBT gets home 0,0,0.
+                let entity = load_entity(entity_type, Vector3::default(), nbt, world);
+                for entity in self_and_passengers(&entity) {
+                    entity.get_entity().set_pos(pos);
+                }
                 entity
             },
         );

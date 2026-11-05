@@ -67,4 +67,29 @@ h.start(async () => {
   await h.serverTicks(100)
   state('breed.100')
   h.cmd('kill @e[type=turtle]')
+
+  // Any NBT skips finalizeSpawn and reads the home at the origin; without NBT the home is where
+  // the turtle was summoned.
+  await reset()
+  h.cmd(`summon turtle ${X + 0.5} ${Y + 1} ${Z + 0.5} {PersistenceRequired:1b}`)
+  await h.waitFor(() => turtles().length === 1, 5000)
+  h.result('home.with_nbt', await homePos())
+  await reset()
+  h.cmd(`summon turtle ${X + 0.5} ${Y + 1} ${Z + 0.5}`)
+  await h.waitFor(() => turtles().length === 1, 5000)
+  h.result('home.without_nbt', await homePos())
+  h.cmd('kill @e[type=turtle]')
 })
+
+const chat = []
+bot.on('message', (m) => chat.push(m.toString()))
+
+// The home relative to the arena centre.
+async function homePos () {
+  const c0 = chat.length
+  const reply = () => chat.slice(c0).find((m) => m.includes('entity data') || m.includes('No entity'))
+  bot.chat('/data get entity @e[type=turtle,limit=1] home_pos')
+  if (!await h.waitFor(() => reply() !== undefined, 5000)) return '<no reply>'
+  const nums = (reply().replace(/^.*data: /, '').match(/-?\d+/g) || []).map(Number)
+  return nums.length === 3 ? `${nums[0] - X},${nums[1] - Y},${nums[2] - Z}` : reply()
+}

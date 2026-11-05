@@ -10,7 +10,7 @@ pub struct EntityBreedEvent {
     /// The ID of the parent 2 entity.
     pub mother_id: i32,
 
-    /// The ID of the child entity.
+    /// The ID of the child entity, 0 for turtles, which get an egg to lay instead.
     pub child_id: i32,
 
     /// Experience the parents drop. Modifiable.

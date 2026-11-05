@@ -30,6 +30,8 @@ use crate::entity::{EntityBase, ageable::AgeableMob};
 use crate::world::World;
 use crate::world::game_event::GameEventContext;
 
+/// The `EntityBreedEvent` child of a turtle breeding, which lays an egg instead.
+const NO_CHILD_ID: i32 = 0;
 /// Vanilla `Turtle.TurtleRandomStrollGoal` interval.
 const RANDOM_STROLL_INTERVAL: i32 = 100;
 /// Vanilla `TurtleLayEggGoal`: the turtle lays only this close to home.
@@ -107,10 +109,19 @@ fn navigation_done(mob: &dyn Mob) -> bool {
 
 /// Vanilla `TurtleBreedGoal.breed`: the turtle gets an egg instead of a baby.
 fn turtle_breed(mob: &dyn Mob, mate: &dyn EntityBase) {
-    let (first, second) = BreedGoal::love_causes(mob, mate);
-    BreedGoal::award_love_cause(mob, first.or(second));
-    if let Some(turtle) = as_turtle(mob) {
-        turtle.set_has_egg(true);
+    // Plugins see the breeding like other animals', with no child yet.
+    let experience = mob.approve_breeding(
+        mate.get_entity().entity_id,
+        NO_CHILD_ID,
+        mob.get_random().random_range(1..8),
+    );
+    // Cancelled: love mode still ends with the usual cooldown, as for other animals.
+    if experience.is_some() {
+        let (first, second) = BreedGoal::love_causes(mob, mate);
+        BreedGoal::award_love_cause(mob, first.or(second));
+        if let Some(turtle) = as_turtle(mob) {
+            turtle.set_has_egg(true);
+        }
     }
     let mob_entity = mob.get_mob_entity();
     mob_entity
@@ -121,8 +132,10 @@ fn turtle_breed(mob: &dyn Mob, mate: &dyn EntityBase) {
     mate.reset_love();
     let entity = mob.get_entity();
     let world = entity.world.load_full();
-    if world.level_info.load().game_rules.mob_drops {
-        let experience = mob.get_random().random_range(1..8);
+    if world.level_info.load().game_rules.mob_drops
+        && let Some(Ok(experience)) = experience.map(u32::try_from)
+        && experience > 0
+    {
         ExperienceOrbEntity::spawn(&world, entity.pos.load(), experience);
     }
 }
