@@ -256,8 +256,17 @@ pub(super) async fn test_falling_anvil_lands_and_preserves_block(
         .start_sequence()
         .then_idle(14)
         .then_execute(move |helper| async move {
+            // A 2-block fall chips the anvil 10% of the time, like vanilla causeFallDamage.
+            let landed = BlockPos::new(1, 1, 1);
+            if helper
+                .assert_block_present(&landed, &Block::ANVIL)
+                .await
+                .is_ok()
+            {
+                return Ok(());
+            }
             helper
-                .assert_block_present(&BlockPos::new(1, 1, 1), &Block::ANVIL)
+                .assert_block_present(&landed, &Block::CHIPPED_ANVIL)
                 .await
         })
         .then_succeed();
