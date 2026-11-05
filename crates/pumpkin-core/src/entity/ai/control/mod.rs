@@ -44,6 +44,11 @@ pub trait LookControlTrait: Control {
         max_pitch_change: f32,
     );
 
+    /// Vanilla `LookControl.getWantedX/Y/Z`, while `isLookingAtTarget`.
+    fn wanted_look(&self) -> Option<Vector3<f64>> {
+        None
+    }
+
     fn look_at(&mut self, mob: &dyn Mob, x: f64, y: f64, z: f64) {
         self.look_at_with_range(
             x,

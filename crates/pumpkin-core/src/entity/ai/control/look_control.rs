@@ -119,4 +119,8 @@ impl LookControlTrait for LookControl {
     ) {
         Self::look_at_with_range(self, x, y, z, max_yaw_change, max_pitch_change);
     }
+
+    fn wanted_look(&self) -> Option<Vector3<f64>> {
+        (self.look_at_timer > 0).then_some(self.position)
+    }
 }

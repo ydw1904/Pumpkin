@@ -2,6 +2,8 @@ use super::{Controls, Goal, GoalReach, to_goal_ticks};
 use crate::entity::ai::util::{default_random_pos, land_random_pos};
 use crate::entity::{ai::pathfinder::NavigatorGoal, mob::Mob};
 use pumpkin_util::math::vector3::Vector3;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub const DEFAULT_INTERVAL: i32 = 120;
 pub const PROBABILITY: f32 = 0.001;
@@ -12,6 +14,8 @@ pub struct WanderAroundGoal {
     target: Option<Vector3<f64>>,
     interval: i32,
     force_trigger: bool,
+    /// A `trigger` its mob can set from outside the selector.
+    shared_trigger: Option<Arc<AtomicBool>>,
     water_avoiding_probability: Option<f32>,
 }
 
@@ -29,6 +33,7 @@ impl WanderAroundGoal {
             target: None,
             interval,
             force_trigger: false,
+            shared_trigger: None,
             water_avoiding_probability: None,
         }
     }
@@ -43,6 +48,20 @@ impl WanderAroundGoal {
     /// Run once on the next check, ignoring the interval.
     pub const fn trigger(&mut self) {
         self.force_trigger = true;
+    }
+
+    /// Lets the mob `trigger` this goal through `handle`.
+    #[must_use]
+    pub fn with_trigger(mut self, handle: Arc<AtomicBool>) -> Self {
+        self.shared_trigger = Some(handle);
+        self
+    }
+
+    /// Vanilla `Goal.setFlags`.
+    #[must_use]
+    pub const fn with_controls(mut self, controls: Controls) -> Self {
+        self.goal_control = controls;
+        self
     }
 
     pub const fn set_interval(&mut self, interval: i32) {
@@ -77,6 +96,13 @@ impl Goal for WanderAroundGoal {
             return false;
         }
 
+        if self
+            .shared_trigger
+            .as_ref()
+            .is_some_and(|handle| handle.swap(false, Ordering::Relaxed))
+        {
+            self.force_trigger = true;
+        }
         if !self.force_trigger {
             // TODO: also bail out on a long no-action time, which needs the despawn bookkeeping.
             if mob

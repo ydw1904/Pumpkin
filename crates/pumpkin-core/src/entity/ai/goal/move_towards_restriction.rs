@@ -23,6 +23,13 @@ impl MoveTowardsRestrictionGoal {
             wanted_z: 0.0,
         }
     }
+
+    /// Vanilla `Goal.setFlags`.
+    #[must_use]
+    pub const fn with_controls(mut self, controls: Controls) -> Self {
+        self.goal_control = controls;
+        self
+    }
 }
 
 impl Goal for MoveTowardsRestrictionGoal {
