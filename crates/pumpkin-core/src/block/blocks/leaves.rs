@@ -75,9 +75,9 @@ impl BlockBehaviour for LeavesBlock {
             );
         }
 
-        let neighbor_block = args.world.get_block(args.neighbor_position);
         let distance_from_neighbor =
-            get_distance_at(neighbor_block, args.neighbor_state_id).saturating_add(1);
+            get_distance_at(args.neighbor_state_id.to_block(), args.neighbor_state_id)
+                .saturating_add(1);
 
         if distance_from_neighbor != 1 || current_props.distance != distance_from_neighbor {
             args.world

@@ -246,9 +246,12 @@ impl PistonBlock {
         }));
 
         world.update_neighbors_at(pos, &Block::MOVING_PISTON, None);
-        world
-            .block_registry
-            .update_neighbors(world, pos, BlockFlags::NOTIFY_LISTENERS);
+        world.block_registry.update_neighbors(
+            world,
+            pos,
+            world.get_block_state_id(pos),
+            BlockFlags::NOTIFY_LISTENERS,
+        );
         if sticky {
             let pull_pos = pos.offset_dir(dir.to_offset(), 2);
             let (block, state) = world.get_block_and_state(&pull_pos);
@@ -501,7 +504,7 @@ fn move_piston(
         );
         world
             .block_registry
-            .update_neighbors(world, pos, BlockFlags::NOTIFY_LISTENERS);
+            .update_neighbors(world, pos, air_state, BlockFlags::NOTIFY_LISTENERS);
         world.block_registry.prepare(
             world,
             pos,

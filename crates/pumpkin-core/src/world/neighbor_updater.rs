@@ -144,12 +144,30 @@ pub(super) fn update_shape(
     let neighbor_position = position.offset(direction.to_offset());
     // captures the source state when an update is submitted
     let neighbor_state_id = world.get_block_state_id(&neighbor_position);
+    shape_update(
+        world,
+        position,
+        direction,
+        &neighbor_position,
+        neighbor_state_id,
+        flags,
+    );
+}
+
+pub(super) fn shape_update(
+    world: &Arc<World>,
+    position: &BlockPos,
+    direction: BlockDirection,
+    neighbor_position: &BlockPos,
+    neighbor_state_id: BlockStateId,
+    flags: BlockFlags,
+) {
     submit(
         world,
         std::iter::once(UpdateKind::Shape {
             position: *position,
             direction,
-            neighbor_position,
+            neighbor_position: *neighbor_position,
             neighbor_state_id,
             flags,
         }),

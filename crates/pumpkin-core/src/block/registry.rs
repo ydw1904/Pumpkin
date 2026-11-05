@@ -1474,11 +1474,19 @@ impl BlockRegistry {
         state_id
     }
 
-    pub fn update_neighbors(&self, world: &Arc<World>, position: &BlockPos, flags: BlockFlags) {
+    /// Vanilla `BlockBehaviour.updateNeighbourShapes`: tells the neighbours that the block at
+    /// `position` is now `state_id`.
+    pub fn update_neighbors(
+        &self,
+        world: &Arc<World>,
+        position: &BlockPos,
+        state_id: BlockStateId,
+        flags: BlockFlags,
+    ) {
         for direction in BlockDirection::abstract_block_update_order() {
             let pos = position.offset(direction.to_offset());
 
-            world.replace_with_state_for_neighbor_update(&pos, direction.opposite(), flags);
+            world.neighbor_shape_changed(&pos, direction.opposite(), position, state_id, flags);
         }
     }
 

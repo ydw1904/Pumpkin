@@ -6815,8 +6815,12 @@ impl World {
                     replaced_block_state_id,
                     neighbour_update_flags,
                 );
-                self.block_registry
-                    .update_neighbors(self, position, neighbour_update_flags);
+                self.block_registry.update_neighbors(
+                    self,
+                    position,
+                    block_state_id,
+                    neighbour_update_flags,
+                );
                 self.block_registry.prepare(
                     self,
                     position,
@@ -7843,6 +7847,26 @@ impl World {
         flags: BlockFlags,
     ) {
         neighbor_updater::update_shape(self, block_pos, direction, flags);
+    }
+
+    /// Vanilla `Level.neighborShapeChanged`: the shape update for `block_pos` when its neighbour
+    /// in `direction` became `neighbor_state_id`.
+    pub fn neighbor_shape_changed(
+        self: &Arc<Self>,
+        block_pos: &BlockPos,
+        direction: BlockDirection,
+        neighbor_pos: &BlockPos,
+        neighbor_state_id: BlockStateId,
+        flags: BlockFlags,
+    ) {
+        neighbor_updater::shape_update(
+            self,
+            block_pos,
+            direction,
+            neighbor_pos,
+            neighbor_state_id,
+            flags,
+        );
     }
 
     fn execute_shape_update(
