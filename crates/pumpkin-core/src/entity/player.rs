@@ -5609,6 +5609,12 @@ impl Player {
         {
             return false;
         }
+        // Vanilla `Player.isInvulnerableTo`: the `freeze_damage` game rule.
+        if damage_type.has_tag(&tag::DamageType::MINECRAFT_IS_FREEZING)
+            && !self.world().level_info.load().game_rules.freeze_damage
+        {
+            return false;
+        }
         if self
             .abilities
             .lock()

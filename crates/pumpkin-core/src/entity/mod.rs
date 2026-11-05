@@ -4091,10 +4091,9 @@ impl Entity {
             && new_frozen_ticks >= Self::MAX_FROZEN_TICKS
             && self.tick_count.load(Ordering::Relaxed) % Self::FREEZE_DAMAGE_INTERVAL == 0
         {
+            // The `freeze_damage` game rule only spares players (`Player.isInvulnerableTo`).
             let world = self.world.load_full();
-            if world.level_info.load().game_rules.freeze_damage
-                && let Some(entity) = world.get_entity_by_id(self.entity_id)
-            {
+            if let Some(entity) = world.get_entity_by_id(self.entity_id) {
                 entity.damage(entity.as_ref(), 1.0, DamageType::FREEZE);
             }
         }
