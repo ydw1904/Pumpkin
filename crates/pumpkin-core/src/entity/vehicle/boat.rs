@@ -24,6 +24,10 @@ use pumpkin_protocol::java::client::play::Metadata;
 use pumpkin_util::math::vector3::Vector3;
 
 use crate::entity::vehicle::vehicle::VehicleEntity;
+use crate::plugin::{
+    api::events::vehicle::vehicle_update::VehicleUpdateEvent, server::packet::PacketSentEvent,
+};
+use crate::world::entity_islands::{self, AuditedReach};
 
 const FRONT_SEAT_OFFSET: f32 = 0.2;
 const BACK_SEAT_OFFSET: f32 = -0.6;
@@ -157,6 +161,35 @@ impl BoatEntity {
 }
 
 impl EntityBase for BoatEntity {
+    /// The tick only counts down its own wobble and underwater time: it never moves the boat,
+    /// reads blocks or touches its passengers, which stay linked.
+    fn audited_reach(&self) -> Option<AuditedReach> {
+        let entity = &self.vehicle.entity;
+        // Plugins see every tick through these events.
+        if entity.world.load().server.upgrade().is_some_and(|server| {
+            server.plugin_manager.has_handlers::<VehicleUpdateEvent>()
+                || server.plugin_manager.has_handlers::<PacketSentEvent>()
+        }) {
+            return None;
+        }
+        Some(AuditedReach {
+            bounding_box: entity.bounding_box.load(),
+            motion: (0.0, 0.0),
+            entities: 0.0,
+            players: 0.0,
+            typed_entities: Vec::new(),
+            kind: Some(entity.entity_type),
+            block_reads: 0.0,
+            route: None,
+            changes_blocks: false,
+            global: false,
+            links: entity_islands::links_of(self),
+            sight: Vec::new(),
+            spans_contacts: false,
+            knockback: 0.0,
+        })
+    }
+
     fn passenger_attachment_point(
         &self,
         passenger: &dyn EntityBase,
