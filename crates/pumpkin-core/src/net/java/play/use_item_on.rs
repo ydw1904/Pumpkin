@@ -141,20 +141,8 @@ impl JavaClient {
                         ("lit".to_string(), props.r#lit.to_string())
                     });
 
-                let mut is_smokey = false;
-                for dy in 1..=5 {
-                    let check_pos = BlockPos::new(position.0.x, position.0.y - dy, position.0.z);
-                    let b = world.get_block(&check_pos);
-                    if b == &pumpkin_data::Block::CAMPFIRE
-                        || b == &pumpkin_data::Block::SOUL_CAMPFIRE
-                    {
-                        is_smokey = true;
-                        break;
-                    }
-                    if !world.get_block_state(&check_pos).is_air() {
-                        break;
-                    }
-                }
+                let is_smokey =
+                    crate::block::blocks::campfire::CampfireBlock::is_smokey_pos(&world, &position);
 
                 let biome = Some(world.get_biome(&position).registry_id.to_string());
 
@@ -213,18 +201,8 @@ impl JavaClient {
                 ("lit".to_string(), props.r#lit.to_string())
             });
 
-            let mut is_smokey = false;
-            for dy in 1..=5 {
-                let check_pos = BlockPos::new(position.0.x, position.0.y - dy, position.0.z);
-                let b = world.get_block(&check_pos);
-                if b == &pumpkin_data::Block::CAMPFIRE || b == &pumpkin_data::Block::SOUL_CAMPFIRE {
-                    is_smokey = true;
-                    break;
-                }
-                if !world.get_block_state(&check_pos).is_air() {
-                    break;
-                }
-            }
+            let is_smokey =
+                crate::block::blocks::campfire::CampfireBlock::is_smokey_pos(&world, &position);
 
             let biome = Some(world.get_biome(&position).registry_id.to_string());
 

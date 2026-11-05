@@ -871,21 +871,8 @@ pub(super) fn matches_location(
                 if !loaded {
                     return false;
                 }
-                let is_smokey = (1..=5).any(|dy| {
-                    let check_pos = BlockPos::new(position.0.x, position.0.y - dy, position.0.z);
-                    let state = world.get_block_state(&check_pos);
-                    let block = state.id.to_block();
-                    (block == &pumpkin_data::Block::CAMPFIRE
-                        || block == &pumpkin_data::Block::SOUL_CAMPFIRE)
-                        && block
-                            .properties(state.id)
-                            .and_then(|p| {
-                                p.to_props()
-                                    .into_iter()
-                                    .find(|prop| prop.key_str() == "lit")
-                            })
-                            .is_some_and(|prop| prop.value_str() == "true")
-                });
+                let is_smokey =
+                    crate::block::blocks::campfire::CampfireBlock::is_smokey_pos(world, &position);
                 expected.as_bool().is_some_and(|exp| is_smokey == exp)
             }
             "dimension" => expected.as_str().is_some_and(|name| {

@@ -1,7 +1,12 @@
 use super::BlockEntity;
+use crate::block::blocks::campfire::CampfireBlock;
+use crate::entity::EntityBase;
 use crate::entity::ageable::AgeableMob;
+use crate::entity::mob::Mob;
 use crate::entity::passive::bee::BeeEntity;
+use crate::entity::player::Player;
 use crate::entity::r#type::load_entity;
+use crate::plugin::api::events::entity::entity_target::TargetReason;
 use crate::world::World;
 use pumpkin_data::HorizontalFacingExt;
 use pumpkin_data::block_properties::HorizontalFacing;
@@ -15,6 +20,11 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
+
+/// Vanilla `emptyAllLivingFromHive`: released bees this close to the player target it.
+const PLAYER_TARGET_DISTANCE_SQ: f64 = 16.0;
+/// Vanilla `emptyAllLivingFromHive`: a sedated bee's `setStayOutOfHiveCountdown`.
+const SEDATED_STAY_OUT_TICKS: i32 = 400;
 
 pub struct BeehiveBlockEntity {
     pub position: BlockPos,
@@ -144,37 +154,92 @@ impl BeehiveBlockEntity {
         }
     }
 
-    /// Vanilla `releaseAllOccupants` with `BeeReleaseStatus.BEE_RELEASED`: bees stay in when
-    /// the environment keeps them in or the hive's front is blocked.
-    pub fn release_all_occupants(&self, world: &Arc<World>, facing: HorizontalFacing) {
-        let pos = self.position;
-        if world.bees_stay_in_hive(&pos) {
+    /// Vanilla `isEmpty`.
+    pub fn is_empty(&self) -> bool {
+        self.bees
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .is_none_or(Vec::is_empty)
+    }
+
+    /// Vanilla `emptyAllLivingFromHive`: released bees within four blocks of the player go for
+    /// it, unless smoke sedates the hive.
+    pub fn empty_all_living_from_hive(
+        &self,
+        world: &Arc<World>,
+        facing: HorizontalFacing,
+        player: Option<&Arc<Player>>,
+        emergency: bool,
+    ) {
+        let released = self.release_all_occupants(world, facing, emergency);
+        let Some(player) = player else {
             return;
+        };
+        for entity in released {
+            let Some(bee) = entity.cast_any().downcast_ref::<BeeEntity>() else {
+                continue;
+            };
+            if player
+                .position()
+                .squared_distance_to_vec(&entity.get_entity().pos.load())
+                > PLAYER_TARGET_DISTANCE_SQ
+            {
+                continue;
+            }
+            if CampfireBlock::is_smokey_pos(world, &self.position) {
+                bee.cannot_enter_hive_ticks
+                    .store(SEDATED_STAY_OUT_TICKS, Ordering::Relaxed);
+            } else {
+                bee.set_mob_target(Some(player.clone()), TargetReason::ClosestPlayer);
+            }
         }
-        let front = pos.offset(facing.to_block_direction().to_offset());
-        if !world.get_block_state(&front).collision_shapes.is_empty() {
-            return;
+    }
+
+    /// Vanilla `releaseAllOccupants`. Unless it is an emergency, bees stay in when the
+    /// environment keeps them in or the hive's front is blocked.
+    pub fn release_all_occupants(
+        &self,
+        world: &Arc<World>,
+        facing: HorizontalFacing,
+        emergency: bool,
+    ) -> Vec<Arc<dyn EntityBase>> {
+        let pos = self.position;
+        let mut released = Vec::new();
+        if !emergency {
+            if world.bees_stay_in_hive(&pos) {
+                return released;
+            }
+            let front = pos.offset(facing.to_block_direction().to_offset());
+            if !world.get_block_state(&front).collision_shapes.is_empty() {
+                return released;
+            }
         }
         let mut bees = self
             .bees
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let Some(occupants) = bees.as_mut() else {
-            return;
+            return released;
         };
-        occupants.retain(|occupant| !Self::release_occupant(world, pos, facing, occupant));
+        occupants.retain(|occupant| {
+            let Some(entity) = Self::release_occupant(world, pos, facing, occupant) else {
+                return true;
+            };
+            released.push(entity);
+            false
+        });
+        released
     }
 
-    /// Vanilla `releaseOccupant` and `Occupant.createEntity`; true when the bee left.
+    /// Vanilla `releaseOccupant` and `Occupant.createEntity`; the bee when it left.
     fn release_occupant(
         world: &Arc<World>,
         pos: BlockPos,
         facing: HorizontalFacing,
         occupant: &NbtTag,
-    ) -> bool {
-        let Some(occupant) = occupant.extract_compound() else {
-            return false;
-        };
+    ) -> Option<Arc<dyn EntityBase>> {
+        let occupant = occupant.extract_compound()?;
         let mut entity_nbt = occupant
             .get_compound("entity_data")
             .cloned()
@@ -182,14 +247,11 @@ impl BeehiveBlockEntity {
         for tag in IGNORED_BEE_TAGS {
             entity_nbt.child_tags.remove(tag);
         }
-        let Some(entity_type) = entity_nbt
+        let entity_type = entity_nbt
             .get_string("id")
-            .and_then(|id| EntityType::from_name(id.strip_prefix("minecraft:").unwrap_or(id)))
-        else {
-            return false;
-        };
+            .and_then(|id| EntityType::from_name(id.strip_prefix("minecraft:").unwrap_or(id)))?;
         if !entity_type.has_tag(&tag::EntityType::MINECRAFT_BEEHIVE_INHABITORS) {
-            return false;
+            return None;
         }
         let entity = load_entity(entity_type, pos.to_centered_f64(), &entity_nbt, world);
         let base = entity.get_entity();
@@ -220,6 +282,6 @@ impl BeehiveBlockEntity {
         }
         world.play_block_sound(Sound::BlockBeehiveExit, SoundCategory::Blocks, pos);
         world.emit_game_event(GameEvent::BlockChange.name(), pos.to_f64());
-        world.spawn_entity(entity)
+        world.spawn_entity(entity.clone()).then_some(entity)
     }
 }

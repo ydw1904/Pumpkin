@@ -1,3 +1,4 @@
+use pumpkin_data::tag::Taggable;
 use pumpkin_data::{
     Block, BlockDirection, BlockState, BlockStateId, Enchantment,
     block_properties::CampfireLikeProperties,
@@ -8,7 +9,10 @@ use pumpkin_data::{
     recipes::{CookingRecipeKind, get_cooking_recipe_with_ingredient},
 };
 use pumpkin_macros::pumpkin_block_from_tag;
+use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::tick::TickPriority;
+
+use crate::world::World;
 
 use crate::block::entities::campfire::CampfireBlockEntity;
 use crate::{
@@ -24,6 +28,48 @@ use std::sync::Arc;
 
 #[pumpkin_block_from_tag("minecraft:campfires")]
 pub struct CampfireBlock;
+
+/// Vanilla `CampfireBlock.SMOKE_DISTANCE`.
+const SMOKE_DISTANCE: i32 = 5;
+
+impl CampfireBlock {
+    /// Vanilla `CampfireBlock.isSmokeyPos`: a lit campfire up to five blocks below, with smoke
+    /// stopped by a block whose collision reaches into the middle `SHAPE_VIRTUAL_POST` column
+    /// unless that block stands right on the campfire.
+    #[must_use]
+    pub fn is_smokey_pos(world: &World, pos: &BlockPos) -> bool {
+        for i in 1..=SMOKE_DISTANCE {
+            let pos_to_check = pos.down_height(i);
+            let state = world.get_block_state(&pos_to_check);
+            if Self::is_lit_campfire(state) {
+                return true;
+            }
+            // `Block.column(4.0, 0.0, 16.0)`.
+            let smoke_blocked = state.get_block_collision_shapes().any(|shape| {
+                shape.min.x < 0.625
+                    && shape.max.x > 0.375
+                    && shape.min.z < 0.625
+                    && shape.max.z > 0.375
+                    && shape.min.y < 1.0
+                    && shape.max.y > 0.0
+            });
+            if smoke_blocked {
+                return Self::is_lit_campfire(world.get_block_state(&pos_to_check.down()));
+            }
+        }
+        false
+    }
+
+    /// Vanilla `CampfireBlock.isLitCampfire`.
+    #[must_use]
+    pub fn is_lit_campfire(state: &BlockState) -> bool {
+        state
+            .id
+            .to_block()
+            .has_tag(&pumpkin_data::tag::Block::MINECRAFT_CAMPFIRES)
+            && CampfireLikeProperties::from_state_id(state.id).lit
+    }
+}
 
 impl BlockBehaviour for CampfireBlock {
     fn placed(&self, args: PlacedArgs<'_>) {
