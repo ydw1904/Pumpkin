@@ -1,6 +1,7 @@
 // Raids: a village made with commands (beds, a bell and villagers who claim them), Bad Omen
 // turning into Raid Omen only in the village, the raid starting when Raid Omen runs out, the raid
-// bar, the raiders of each wave on Normal, the wave cooldown, victory and Hero of the Village.
+// bar, how many raiders of each type a wave on Normal has, the wave cooldown, victory and Hero
+// of the Village.
 const { make } = require('./survival-lib')
 const h = make('Raider', 1200000)
 const { bot, Vec3, sleep } = h
@@ -40,11 +41,34 @@ const effectNames = () => Object.keys(bot.entity.effects || {}).map(id => (bot.r
 const hasEffect = (name) => effectNames().split(',').includes(name)
 const RAIDERS = ['pillager', 'vindicator', 'evoker', 'witch', 'ravager']
 const raiders = () => Object.values(bot.entities).filter(e => RAIDERS.includes(e.name) && e.position.distanceTo(new Vec3(X, Y, Z)) < 100)
-const census = () => {
+const counts = () => {
   const c = {}
   for (const e of raiders()) c[e.name] = (c[e.name] || 0) + 1
-  return RAIDERS.filter(n => c[n]).map(n => `${n}x${c[n]}`).join(',') || 'none'
+  return c
 }
+// Vanilla `Raid.RaiderType` counts on Normal for waves 1-5: the default count plus
+// `getPotentialBonusSpawns` (pillagers and vindicators 0-1, witches 0-1 after wave 2 but not in
+// wave 4), and the pillager riding wave 5's ravager. The bonus rolls come from the raid's own
+// random, so only the ranges are compared.
+const NORMAL_WAVES = [
+  { pillager: [4, 5], vindicator: [0, 1] },
+  { pillager: [3, 4], vindicator: [2, 3] },
+  { pillager: [3, 4], vindicator: [0, 1], witch: [0, 1], ravager: [1, 1] },
+  { pillager: [4, 5], vindicator: [1, 2], witch: [3, 3] },
+  { pillager: [5, 6], vindicator: [4, 5], evoker: [1, 1], witch: [0, 1], ravager: [1, 1] }
+]
+const waveMatches = (wave, c) => {
+  const expected = NORMAL_WAVES[wave - 1]
+  if (!expected) return false
+  return RAIDERS.every(n => {
+    const [min, max] = expected[n] || [0, 0]
+    const got = c[n] || 0
+    return got >= min && got <= max
+  })
+}
+// Where each raider was first seen, which is where the wave spawned it.
+const firstSeen = new Map()
+bot.on('entitySpawn', (e) => { if (RAIDERS.includes(e.name)) firstSeen.set(e.id, e.position.clone()) })
 
 h.start(async () => {
   h.cmd('difficulty normal')
@@ -91,11 +115,16 @@ h.start(async () => {
     const spawned = await h.waitFor(() => raiders().length > 0, 40000)
     if (!spawned) { h.result(`wave${wave}`, 'none'); break }
     await h.ticks(20)
-    h.result(`wave${wave}`, census())
+    const c = counts()
+    console.log(`wave${wave} census ${JSON.stringify(c)}`)
+    h.result(`wave${wave}_counts_like_vanilla`, waveMatches(wave, c))
     const leader = raiders().find(e => (e.equipment || [])[5] && e.equipment[5].name === 'white_banner')
     h.result(`wave${wave}_leader_banner`, Boolean(leader))
-    const near = raiders().map(e => Math.round(Math.hypot(e.position.x - X, e.position.z - Z)))
-    h.result(`wave${wave}_within_16`, near.every(d => d <= 16))
+    const spawnedAt = raiders().map(e => firstSeen.get(e.id) || e.position)
+    const near = spawnedAt.map(p => Math.round(Math.hypot(p.x - X, p.z - Z)))
+    console.log(`wave${wave} spawn distances ${near.join(',')}`)
+    // Waves land on the arena's edge or walls, 13-18 blocks out on both servers.
+    h.result(`wave${wave}_spawned_within_20`, near.every(d => d <= 20))
     // The player kills one raider (the captain in the first wave), the rest are killed by command.
     const captain = wave === 1 ? ',nbt={equipment:{head:{id:"minecraft:white_banner"}}}' : ''
     advancements.length = 0

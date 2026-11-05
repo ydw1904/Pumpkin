@@ -1,4 +1,5 @@
-use pumpkin_util::random::gameplay::game_random;
+use pumpkin_util::random::legacy_rand::LegacyRand;
+use pumpkin_util::random::{RandomImpl, get_seed};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -128,6 +129,8 @@ pub struct Raid {
     pub heroes_of_the_village: HashSet<Uuid>,
     pub players_in_raid: HashSet<Uuid>,
     pub wave_spawn_pos: Option<BlockPos>,
+    /// Vanilla `Raid.random`: the raid's own `RandomSource.create()`, not a level or entity one.
+    random: LegacyRand,
 }
 
 impl Raid {
@@ -164,6 +167,7 @@ impl Raid {
             heroes_of_the_village: HashSet::new(),
             players_in_raid: HashSet::new(),
             wave_spawn_pos: None,
+            random: LegacyRand::from_seed(get_seed()),
         }
     }
 
@@ -367,6 +371,7 @@ impl Raid {
     }
 
     fn get_potential_bonus_spawns(
+        random: &mut LegacyRand,
         raider_type: RaiderType,
         wave: i32,
         difficulty: Difficulty,
@@ -377,7 +382,7 @@ impl Raid {
         let bonus_spawns = match raider_type {
             RaiderType::Vindicator | RaiderType::Pillager => {
                 if is_easy {
-                    game_random().random_range(0..2)
+                    random.next_bounded_i32(2)
                 } else if is_normal {
                     1
                 } else {
@@ -394,7 +399,7 @@ impl Raid {
             RaiderType::Ravager => i32::from(!is_easy && is_bonus_wave),
         };
         if bonus_spawns > 0 {
-            game_random().random_range(0..=bonus_spawns)
+            random.next_bounded_i32(bonus_spawns + 1)
         } else {
             0
         }
@@ -411,6 +416,7 @@ impl Raid {
         for raider_type in RaiderType::VALUES {
             let num_spawns = self.get_default_num_spawns(raider_type, group_number, is_bonus_group)
                 + Self::get_potential_bonus_spawns(
+                    &mut self.random,
                     raider_type,
                     group_number,
                     difficulty,
@@ -688,8 +694,8 @@ impl Raid {
     }
 
     /// Vanilla `Raid.playSound`: each player hears the horn from 13 blocks towards the raid.
-    fn play_sound(&self, world: &World, sound_origin: BlockPos) {
-        let seed = game_random().random::<i64>();
+    fn play_sound(&mut self, world: &World, sound_origin: BlockPos) {
+        let seed = self.random.next_i64();
         let raid_loc = sound_origin.to_centered_f64();
         for player in world.players.load().iter() {
             let player_loc = player.get_entity().pos.load();
@@ -744,19 +750,19 @@ impl Raid {
 
     /// Vanilla `Raid.findRandomSpawnPos`: further out the more of the countdown is left, and
     /// inside the village only in its last seconds.
-    fn find_random_spawn_pos(&self, world: &Arc<World>, max_tries: i32) -> Option<BlockPos> {
+    fn find_random_spawn_pos(&mut self, world: &Arc<World>, max_tries: i32) -> Option<BlockPos> {
         let seconds_remaining = self.raid_cooldown_ticks / 20;
         let how_far = 0.22 * seconds_remaining as f32 - 0.24;
-        let rng = game_random();
-        let start_angle = rng.random::<f32>() * std::f32::consts::TAU;
+        let rng = &mut self.random;
+        let start_angle = rng.next_f32() * std::f32::consts::TAU;
         for i in 0..max_tries {
             let angle = start_angle + std::f32::consts::PI * i as f32 / 8.0;
             let spawn_x = self.center.0.x
                 + (angle.cos() * 32.0 * how_far).floor() as i32
-                + rng.random_range(0..3) * how_far.floor() as i32;
+                + rng.next_bounded_i32(3) * how_far.floor() as i32;
             let spawn_z = self.center.0.z
                 + (angle.sin() * 32.0 * how_far).floor() as i32
-                + rng.random_range(0..3) * how_far.floor() as i32;
+                + rng.next_bounded_i32(3) * how_far.floor() as i32;
             // `getHeight(WORLD_SURFACE)` is the first block above the surface.
             let spawn_y =
                 world.get_heightmap_height(ChunkHeightmapType::WorldSurface, spawn_x, spawn_z) + 1;
