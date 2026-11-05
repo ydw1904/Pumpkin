@@ -494,6 +494,42 @@ pub fn test_condition(condition: LootCondition, params: &LootContextParameters<'
     check_condition(condition, false, false, params, &mut rng)
 }
 
+/// Evaluates a `DataComponentPredicate` of an item predicate argument, such as
+/// `enchantments~[...]`, like the `predicates` of a loot item predicate.
+#[must_use]
+pub fn item_sub_predicate(
+    stack: &pumpkin_data::item_stack::ItemStack,
+    name: &str,
+    value: &pumpkin_nbt::tag::NbtTag,
+) -> bool {
+    let predicate = serde_json::json!({ "predicates": { name: nbt_to_json(value) } });
+    predicates::item_matches(stack, &predicate)
+}
+
+/// The JSON form of an SNBT value, for predicates written in commands.
+fn nbt_to_json(tag: &pumpkin_nbt::tag::NbtTag) -> serde_json::Value {
+    use pumpkin_nbt::tag::NbtTag;
+    match tag {
+        NbtTag::End => serde_json::Value::Null,
+        NbtTag::Byte(v) => (*v).into(),
+        NbtTag::Short(v) => (*v).into(),
+        NbtTag::Int(v) => (*v).into(),
+        NbtTag::Long(v) => (*v).into(),
+        NbtTag::Float(v) => f64::from(*v).into(),
+        NbtTag::Double(v) => (*v).into(),
+        NbtTag::String(v) => v.to_string().into(),
+        NbtTag::ByteArray(v) => v.iter().map(|&b| serde_json::Value::from(b)).collect(),
+        NbtTag::IntArray(v) => v.iter().map(|&i| serde_json::Value::from(i)).collect(),
+        NbtTag::LongArray(v) => v.iter().map(|&l| serde_json::Value::from(l)).collect(),
+        NbtTag::List(list) => list.iter().map(nbt_to_json).collect(),
+        NbtTag::Compound(compound) => compound
+            .child_tags
+            .iter()
+            .map(|(key, value)| (key.to_string(), nbt_to_json(value)))
+            .collect(),
+    }
+}
+
 #[must_use]
 pub fn evaluate_predicate_value(
     value: &serde_json::Value,

@@ -1079,7 +1079,7 @@ fn count_items(context: &CommandContext, kind: ItemSource) -> Result<i32, Comman
     let predicate = ItemPredicateArgumentType::get(context, "item_predicate")?;
     Ok(slot_items(context, kind)?
         .iter()
-        .filter(|stack| predicate.test(stack))
+        .filter(|stack| predicate.test_with(stack, &crate::world::loot::item_sub_predicate))
         .map(|stack| i32::from(stack.item_count))
         .sum())
 }

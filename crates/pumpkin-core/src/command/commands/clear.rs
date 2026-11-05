@@ -122,7 +122,7 @@ fn test_and_clear(
     slot_lock: &mut ItemStack,
     is_done: &mut bool,
 ) {
-    if item.test(slot_lock) {
+    if item.test_with(slot_lock, &crate::world::loot::item_sub_predicate) {
         let item_count = slot_lock.item_count as i32;
         if *max == MAX_NO_CLEAR_BUT_SIMULATE {
             *count += item_count;

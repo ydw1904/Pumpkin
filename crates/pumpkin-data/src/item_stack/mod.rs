@@ -158,6 +158,19 @@ impl ItemStack {
         }
     }
 
+    /// The stack's value of a component, from its patch or else the item's defaults.
+    #[must_use]
+    pub fn get_component(&self, to_get_id: DataComponent) -> Option<&dyn DataComponentImpl> {
+        if let Some((_, component)) = self.patch.iter().find(|(id, _)| *id == to_get_id) {
+            return component.as_deref();
+        }
+        self.item
+            .components
+            .iter()
+            .find(|(id, _)| *id == to_get_id)
+            .map(|(_, component)| *component)
+    }
+
     #[must_use]
     pub fn get_data_component<T: DataComponentImpl + 'static>(&self) -> Option<&T> {
         let to_get_id = &T::get_enum();
