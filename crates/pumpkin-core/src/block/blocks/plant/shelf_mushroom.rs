@@ -10,9 +10,8 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::world::{BlockAccessor, BlockFlags};
 
 use crate::block::{
-    BlockBehaviour, BlockIsReplacing, BonemealArgs, CanPlaceAtArgs, GetStateForNeighborUpdateArgs,
-    OnPlaceArgs, PathComputationType, UpdateEntityMovementAfterFallOnArgs,
-    bounce_entity_after_fall,
+    BlockBehaviour, BlockIsReplacing, BonemealArgs, BounceOnArgs, CanPlaceAtArgs,
+    GetStateForNeighborUpdateArgs, OnPlaceArgs, PathComputationType,
 };
 use crate::entity::EntityBase;
 
@@ -111,14 +110,14 @@ impl BlockBehaviour for ShelfMushroomBlock {
         }
     }
 
-    fn update_entity_movement_after_fall_on(&self, args: UpdateEntityMovementAfterFallOnArgs<'_>) {
-        bounce_entity_after_fall(args.entity, 0.8);
+    /// Vanilla `ShelfMushroomBlock.bounceOn`.
+    fn bounce_on(&self, args: BounceOnArgs<'_>) {
         let entity = args.entity.get_entity();
         if entity.entity_type != &EntityType::ITEM && entity.entity_type != &EntityType::TNT {
-            entity.world.load().play_sound(
+            args.world.play_block_sound(
                 Sound::BlockShelfMushroomBounce,
                 SoundCategory::Blocks,
-                &entity.pos.load(),
+                *args.position,
             );
         }
     }

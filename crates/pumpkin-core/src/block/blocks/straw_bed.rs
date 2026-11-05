@@ -11,8 +11,6 @@ use pumpkin_util::GameMode;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::world::BlockFlags;
 
-use crate::block::UpdateEntityMovementAfterFallOnArgs;
-use crate::block::bounce_entity_after_fall;
 use crate::block::registry::BlockActionResult;
 use crate::block::{
     BlockBehaviour, BrokenArgs, CanPlaceAtArgs, GetStateForNeighborUpdateArgs, NormalUseArgs,
@@ -41,10 +39,6 @@ impl BlockBehaviour for StrawBedBlock {
                     .replaceable();
         }
         true
-    }
-
-    fn update_entity_movement_after_fall_on(&self, args: UpdateEntityMovementAfterFallOnArgs<'_>) {
-        bounce_entity_after_fall(args.entity, 0.66);
     }
 
     fn on_place(&self, args: OnPlaceArgs<'_>) -> BlockStateId {

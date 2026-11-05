@@ -2081,17 +2081,34 @@ impl LivingEntity {
     }
 
     fn get_effective_gravity(&self, caller: &dyn EntityBase) -> f64 {
+        self.effective_gravity(caller, self.entity.velocity.load().y)
+    }
+
+    /// Vanilla `LivingEntity.getEffectiveGravity` while moving at `velocity_y`.
+    pub(crate) fn effective_gravity(&self, caller: &dyn EntityBase, velocity_y: f64) -> f64 {
         let final_gravity = if self.entity.has_no_gravity() {
             0.0
         } else {
             caller.get_gravity()
         };
 
-        if self.entity.velocity.load().y <= 0.0 && self.has_effect(&StatusEffect::SLOW_FALLING) {
+        if velocity_y <= 0.0 && self.has_effect(&StatusEffect::SLOW_FALLING) {
             final_gravity.min(0.01)
         } else {
             final_gravity
         }
+    }
+
+    /// Vanilla `LivingEntity.getAirDrag`.
+    pub(crate) fn air_drag(&self, caller: &dyn EntityBase) -> f64 {
+        Self::compute_modified_friction(
+            if caller.is_flutterer() {
+                0.91
+            } else {
+                super::AIR_DRAG
+            },
+            self.get_attribute_value(&Attributes::AIR_DRAG_MODIFIER) as f32,
+        )
     }
 
     pub fn swing_hand(&self) {

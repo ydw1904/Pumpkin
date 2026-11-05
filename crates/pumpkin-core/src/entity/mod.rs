@@ -128,6 +128,9 @@ pub const MAX_SCOREBOARD_TAGS: usize = 1024;
 
 /// Vanilla `Entity.getAirDrag`: a float, even though velocity is a double.
 pub(crate) const AIR_DRAG: f32 = 0.98;
+/// Vanilla `Entity.getBlockBounciness` scales a block's restitution by this for entities that
+/// are not living.
+const NON_LIVING_BOUNCINESS_FACTOR: f32 = 0.8;
 
 /// Push strength per axis in `Entity.push`.
 pub(crate) const PUSH_STRENGTH: f64 = 0.05f32 as f64;
@@ -3352,6 +3355,7 @@ impl Entity {
 
             self.velocity.store(Vector3::default());
         }
+        let current_velocity = self.velocity.load();
 
         let final_move = self.adjust_movement_for_collisions(motion, caller);
 
@@ -3367,15 +3371,28 @@ impl Entity {
         }
 
         let (effect_pos, effect_block, effect_state) = self.get_block_with_y_offset(0.2);
-        if motion.y != final_move.y {
-            let world = self.world.load();
-            world
-                .block_registry
-                .update_entity_movement_after_fall_on(effect_block, caller);
-        }
-
         if self.is_removed() {
             return;
+        }
+        if let Some(restituted) = self.restitute_movement_after_collisions(
+            caller,
+            effect_block,
+            current_velocity,
+            motion,
+            final_move,
+        ) {
+            // Vanilla scales only the horizontal velocity by the block speed factor.
+            let mut velocity = self.velocity.load();
+            if motion.x != final_move.x {
+                velocity.x = restituted.x * velocity_multiplier;
+            }
+            if motion.z != final_move.z {
+                velocity.z = restituted.z * velocity_multiplier;
+            }
+            if motion.y != final_move.y {
+                velocity.y = restituted.y;
+            }
+            self.velocity.store(velocity);
         }
         self.emit_movement(caller, final_move, &effect_pos, effect_state);
     }
@@ -3398,7 +3415,6 @@ impl Entity {
     /// Vanilla `Entity.move` for physics that keep their own velocity, unlike
     /// [`Self::move_entity`]: velocity only changes where the move collides and by the block
     /// speed factor. Pistons don't slow down in cobwebs (`stuck_slows` false).
-    #[expect(clippy::float_cmp)]
     pub fn move_keeping_velocity(
         &self,
         caller: &dyn EntityBase,
@@ -3433,22 +3449,14 @@ impl Entity {
         if self.is_removed() {
             return;
         }
-        // Vanilla `restituteMovementAfterCollisions`.
-        let x_collision = delta.x != movement.x;
-        let z_collision = delta.z != movement.z;
-        if x_collision || z_collision {
-            let velocity = self.velocity.load();
-            self.velocity.store(Vector3::new(
-                if x_collision { 0.0 } else { velocity.x },
-                velocity.y,
-                if z_collision { 0.0 } else { velocity.z },
-            ));
-        }
-        if delta.y != 0.0 && delta.y != movement.y {
-            self.world
-                .load()
-                .block_registry
-                .update_entity_movement_after_fall_on(effect_block, caller);
+        if let Some(velocity) = self.restitute_movement_after_collisions(
+            caller,
+            effect_block,
+            self.velocity.load(),
+            delta,
+            movement,
+        ) {
+            self.velocity.store(velocity);
         }
         self.emit_movement(caller, movement, &effect_pos, effect_state);
 
@@ -3459,6 +3467,93 @@ impl Entity {
             velocity.y,
             velocity.z * speed_factor,
         ));
+    }
+
+    /// Vanilla `restituteMovementAfterCollisions`: the velocity after a move by `delta` that
+    /// collided and only went `movement`, from `current`, the velocity before it. `None` when
+    /// nothing collided. Bounces off `effect_block` below unless the entity sneaks.
+    fn restitute_movement_after_collisions(
+        &self,
+        caller: &dyn EntityBase,
+        effect_block: &'static Block,
+        current: Vector3<f64>,
+        delta: Vector3<f64>,
+        movement: Vector3<f64>,
+    ) -> Option<Vector3<f64>> {
+        let x_collision = delta.x != movement.x;
+        let z_collision = delta.z != movement.z;
+        let vertical_collision = delta.y != movement.y;
+        if !x_collision && !z_collision && !vertical_collision {
+            return None;
+        }
+        let living = caller.get_living_entity();
+        let suppressing_bounce = self.is_sneaking();
+        let mut restitution = if suppressing_bounce {
+            0.0
+        } else {
+            living.map_or(0.0, |living| {
+                living.get_attribute_value(&pumpkin_data::attributes::Attributes::BOUNCINESS)
+            })
+        };
+        let mut after_bounce = current;
+        if x_collision {
+            after_bounce.x = -current.x * restitution;
+        }
+        if z_collision {
+            after_bounce.z = -current.z * restitution;
+        }
+        let mut bounced = restitution > 0.0 && (x_collision || z_collision);
+        if vertical_collision {
+            let gravity = living.map_or_else(
+                || {
+                    if self.has_no_gravity() {
+                        0.0
+                    } else {
+                        caller.get_gravity()
+                    }
+                },
+                |living| living.effective_gravity(caller, current.y),
+            );
+            if delta.y < 0.0 {
+                restitution = if -current.y > gravity
+                    && !suppressing_bounce
+                    && !effect_block.has_tag(&tag::Block::MINECRAFT_SUPPRESSES_BOUNCE)
+                {
+                    restitution.max(Self::block_bounciness(effect_block, living.is_some()))
+                } else {
+                    0.0
+                };
+            }
+            let (gravity_compensation, effective_drag) = if restitution > 0.0 {
+                bounced = true;
+                let portion_with_movement = movement.y / current.y;
+                let air_drag = living.map_or(f64::from(AIR_DRAG), |living| living.air_drag(caller));
+                (
+                    portion_with_movement * gravity,
+                    pumpkin_util::math::lerp(portion_with_movement, 1.0, air_drag),
+                )
+            } else {
+                (0.0, 1.0)
+            };
+            after_bounce.y = (gravity_compensation - current.y) * effective_drag * restitution;
+        }
+        if bounced {
+            let world = self.world.load();
+            let (pos, block, _) = self.get_block_with_y_offset(0.500_001);
+            world.block_registry.bounce_on(&world, block, &pos, caller);
+            self.emit_own_game_event(caller, GameEvent::Bounce);
+        }
+        Some(after_bounce)
+    }
+
+    /// Vanilla `getBlockBounciness`: entities that are not living bounce less.
+    fn block_bounciness(block: &Block, is_living: bool) -> f64 {
+        let bounciness = block.get_bounce_restitution();
+        f64::from(if is_living {
+            bounciness
+        } else {
+            bounciness * NON_LIVING_BOUNCINESS_FACTOR
+        })
     }
 
     /// Vanilla `limitPistonMovement`: pistons move an entity at most 0.51 per axis per game

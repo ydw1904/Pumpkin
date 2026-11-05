@@ -174,10 +174,9 @@ use crate::block::blocks::wither_skull::WitherSkeletonSkullBlock;
 use crate::block::fluid::lava::FlowingLava;
 use crate::block::fluid::water::FlowingWater;
 use crate::block::{
-    BlockBehaviour, BlockHitResult, BlockMetadata, BonemealArgs, FluidMetadata,
+    BlockBehaviour, BlockHitResult, BlockMetadata, BonemealArgs, BounceOnArgs, FluidMetadata,
     GetInsideCollisionShapeArgs, GetScreenHandlerFactoryArgs, OnEntityCollisionArgs,
     OnEntityStepArgs, OnLandedUponArgs, OnProjectileHitArgs, PathComputationType,
-    UpdateEntityMovementAfterFallOnArgs, stop_vertical_movement_after_fall,
 };
 use crate::entity::EntityBase;
 use crate::entity::player::Player;
@@ -1322,13 +1321,19 @@ impl BlockRegistry {
         }
     }
 
-    pub fn update_entity_movement_after_fall_on(&self, block: &Block, entity: &dyn EntityBase) {
+    pub fn bounce_on(
+        &self,
+        world: &Arc<World>,
+        block: &Block,
+        position: &BlockPos,
+        entity: &dyn EntityBase,
+    ) {
         if let Some(pumpkin_block) = self.get_pumpkin_block(block.id) {
-            pumpkin_block.update_entity_movement_after_fall_on(
-                UpdateEntityMovementAfterFallOnArgs { entity },
-            );
-        } else {
-            stop_vertical_movement_after_fall(entity);
+            pumpkin_block.bounce_on(BounceOnArgs {
+                world,
+                position,
+                entity,
+            });
         }
     }
 
