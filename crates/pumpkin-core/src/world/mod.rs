@@ -202,7 +202,7 @@ pub mod weather;
 pub use environment::EnvironmentAttributes;
 pub use pumpkin_data::environment_attribute::{Activity, MoonPhase};
 
-use crate::world::natural_spawner::{SpawnState, spawn_for_chunk};
+use crate::world::natural_spawner::{ChunkSpawns, SpawnState, spawn_for_chunk};
 use pumpkin_config::lighting::LightingEngineConfig;
 use pumpkin_world::chunk::ChunkHeightmapType::{self, MotionBlocking, WorldSurface};
 use uuid::Uuid;
@@ -2733,22 +2733,35 @@ impl World {
 
         game_random().shuffle(&mut spawning_chunks);
 
-        let world = self.clone();
-        spawning_chunks.par_chunks(8).for_each(|batch| {
-            let world = world.clone();
-            let s_list = spawn_list.clone();
-            let s_state = spawn_state.clone();
-            for (pos, chunk) in batch {
+        let decided: Vec<_> = spawning_chunks
+            .par_iter()
+            .with_min_len(8)
+            .map(|(pos, chunk)| {
                 chunk.inhabited_time.fetch_add(1, Relaxed);
                 let entity_ticking = active_chunks.entity_ticking.contains(pos);
-                gameplay::with_owner(
+                let spawns = gameplay::with_owner(
                     || format!("chunk@{},{}", pos.x, pos.y),
                     || {
-                        world.tick_spawning_chunk(*pos, chunk, entity_ticking, &s_list, &s_state);
+                        self.tick_spawning_chunk(
+                            *pos,
+                            chunk,
+                            entity_ticking,
+                            &spawn_list,
+                            &spawn_state,
+                        )
                     },
                 );
-            }
-        });
+                (*pos, spawns)
+            })
+            .collect();
+        // Vanilla ticks the spawning chunks one after another, so each sees the mobs the
+        // chunks before it spawned against the local mob cap.
+        for (pos, spawns) in decided {
+            gameplay::with_owner(
+                || format!("chunk@{},{}", pos.x, pos.y),
+                || spawn_state.commit(self, pos, spawns),
+            );
+        }
 
         // Vanilla `ServerChunkCache.tickChunks` ticks custom spawners after the chunks.
         if spawn_mobs && self.dimension == Dimension::OVERWORLD {
@@ -3158,7 +3171,7 @@ impl World {
         entity_ticking: bool,
         spawn_list: &Vec<&'static MobCategory>,
         spawn_state: &Arc<SpawnState>,
-    ) {
+    ) -> ChunkSpawns {
         let (is_raining, is_thundering) = (self.is_raining(), self.is_thundering());
 
         // Vanilla `tickThunder`, only in entity ticking chunks.
@@ -3171,19 +3184,16 @@ impl World {
         }
 
         if spawn_list.is_empty() || !self.can_spawn_entities_in_chunk(chunk_pos) {
-            return;
+            return ChunkSpawns::default();
         }
-        let entities = spawn_for_chunk(
+        spawn_for_chunk(
             self,
             chunk_pos,
             chunk,
             spawn_state,
             spawn_list,
             is_thundering,
-        );
-        for entity in entities {
-            self.spawn_entity_non_save(entity);
-        }
+        )
     }
 
     /// Vanilla `ServerLevel.canSpawnEntitiesInChunk`: the chunk's entities can tick and the chunk

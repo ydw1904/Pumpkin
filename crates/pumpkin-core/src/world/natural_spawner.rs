@@ -7,9 +7,8 @@ use crate::entity::r#type::{
 };
 use crate::world::World;
 use arc_swap::ArcSwap;
-use crossbeam::atomic::AtomicCell;
 use dashmap::DashMap;
-use pumpkin_data::biome::Spawner;
+use pumpkin_data::biome::{SpawnCosts, Spawner};
 use pumpkin_data::chunk::Biome;
 use pumpkin_data::dimension::Dimension;
 use pumpkin_data::entity::{EntityType, MobCategory, SpawnLocation};
@@ -37,6 +36,11 @@ use std::sync::atomic::{AtomicI32, Ordering::Relaxed};
 use uuid::Uuid;
 
 const MAGIC_NUMBER: i32 = 17 * 17;
+/// The cost of a mob its biome sets none for: no charge, so it always fits the spawn potential.
+static NO_SPAWN_COST: SpawnCosts = SpawnCosts {
+    energy_budget: f64::INFINITY,
+    charge: 0.0,
+};
 
 const MOB_CATEGORY_COUNT: usize = 8;
 
@@ -204,7 +208,7 @@ impl LocalMobCapCalculator {
 }
 
 #[derive(Debug, Clone)]
-struct PointCharge(BlockPos, f64);
+pub struct PointCharge(BlockPos, f64);
 
 impl PointCharge {
     /// Change in spawn potential this charge adds at `pos`.
@@ -248,7 +252,14 @@ impl PotentialCalculator {
         }
     }
 
-    pub fn get_potential_energy_change(&self, pos: &BlockPos, charge: f64) -> f64 {
+    /// Vanilla `PotentialCalculator.getPotentialEnergyChange`, with `extra` charges added after
+    /// this calculator's own.
+    pub fn get_potential_energy_change(
+        &self,
+        pos: &BlockPos,
+        charge: f64,
+        extra: &[PointCharge],
+    ) -> f64 {
         if charge == 0.0 {
             return 0.0;
         }
@@ -257,11 +268,27 @@ impl PotentialCalculator {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        for i in charges.iter() {
+        for i in charges.iter().chain(extra) {
             sum += i.get_potential_change(pos);
         }
         sum * charge
     }
+}
+
+/// A mob a chunk decided to spawn, waiting for [`SpawnState::commit`].
+struct PendingSpawn {
+    entity: Arc<dyn EntityBase>,
+    pos: BlockPos,
+    cost: &'static SpawnCosts,
+}
+
+/// The mobs one chunk decided to spawn. Chunks decide in parallel against the counts the tick
+/// started with, and [`SpawnState::commit`] spawns them in vanilla's chunk order.
+#[derive(Default)]
+pub struct ChunkSpawns {
+    /// The charges of `spawns`, which this chunk's later spawn checks include.
+    charges: Vec<PointCharge>,
+    spawns: Vec<PendingSpawn>,
 }
 
 pub struct SpawnState {
@@ -269,7 +296,6 @@ pub struct SpawnState {
     pub mob_category_counts: MobCounts,
     spawn_potential: PotentialCalculator,
     local_mob_cap_calculator: LocalMobCapCalculator,
-    last_checked: AtomicCell<Option<(BlockPos, &'static EntityType, f64)>>,
 }
 
 impl Clone for SpawnState {
@@ -279,7 +305,6 @@ impl Clone for SpawnState {
             mob_category_counts: self.mob_category_counts.clone(),
             spawn_potential: self.spawn_potential.clone(),
             local_mob_cap_calculator: self.local_mob_cap_calculator.clone(),
-            last_checked: AtomicCell::new(self.last_checked.load()),
         }
     }
 }
@@ -291,7 +316,6 @@ impl fmt::Debug for SpawnState {
             .field("mob_category_counts", &self.mob_category_counts)
             .field("spawn_potential", &self.spawn_potential)
             .field("local_mob_cap_calculator", &self.local_mob_cap_calculator)
-            .field("last_checked", &self.last_checked)
             .finish()
     }
 }
@@ -304,7 +328,6 @@ impl SpawnState {
             mob_category_counts: MobCounts::default(),
             spawn_potential: PotentialCalculator::default(),
             local_mob_cap_calculator: LocalMobCapCalculator::default(),
-            last_checked: AtomicCell::new(None),
         }
     }
 
@@ -364,7 +387,6 @@ impl SpawnState {
             mob_category_counts: MobCounts(category_counts.map(AtomicI32::new)),
             spawn_potential: PotentialCalculator(std::sync::Mutex::new(charges)),
             local_mob_cap_calculator: local_mob_cap,
-            last_checked: AtomicCell::new(None),
         }
     }
 
@@ -384,54 +406,36 @@ impl SpawnState {
             .can_spawn(category, world, chunk_pos)
     }
 
-    pub fn can_spawn(
+    /// Vanilla `SpawnState.canSpawn`, which also counts the mobs `chunk` decided on so far.
+    /// Returns the biome's spawn cost for the mob, which [`Self::commit`] checks again.
+    fn can_spawn(
         &self,
         entity_type: &'static EntityType,
         pos: &BlockPos,
         world: &Arc<World>,
-    ) -> bool {
-        let biome = world.level.get_rough_biome(pos);
-        biome
+        chunk: &ChunkSpawns,
+    ) -> Option<&'static SpawnCosts> {
+        let cost = world
+            .level
+            .get_rough_biome(pos)
             .spawn_costs
             .get(entity_type.resource_name)
-            .map_or_else(
-                || {
-                    self.last_checked.store(Some((*pos, entity_type, 0.0)));
-                    true
-                },
-                |cost| {
-                    self.last_checked
-                        .store(Some((*pos, entity_type, cost.charge)));
-                    self.spawn_potential
-                        .get_potential_energy_change(pos, cost.charge)
-                        <= cost.energy_budget
-                },
-            )
+            .unwrap_or(&NO_SPAWN_COST);
+        (self
+            .spawn_potential
+            .get_potential_energy_change(pos, cost.charge, &chunk.charges)
+            <= cost.energy_budget)
+            .then_some(cost)
     }
 
-    pub fn after_spawn(
+    /// Vanilla `SpawnState.afterSpawn`.
+    fn after_spawn(
         &self,
         entity_type: &'static EntityType,
         pos: &BlockPos,
+        charge: f64,
         world: &Arc<World>,
     ) {
-        let charge = if let Some((l_pos, l_type, l_charge)) = self.last_checked.load()
-            && l_pos.eq(pos)
-            && l_type == entity_type
-        {
-            Some(l_charge)
-        } else {
-            None
-        };
-
-        let charge = charge.unwrap_or_else(|| {
-            let biome = world.level.get_rough_biome(pos);
-            biome
-                .spawn_costs
-                .get(entity_type.resource_name)
-                .map_or(0.0, |cost| cost.charge)
-        });
-
         self.spawn_potential.add_charge(pos, charge);
         self.mob_category_counts.add(entity_type.category);
         self.local_mob_cap_calculator.add_mob(
@@ -439,6 +443,36 @@ impl SpawnState {
             world,
             entity_type.category,
         );
+    }
+
+    /// Spawns the mobs `chunk` decided on as vanilla's sequential `spawnForChunk` would after
+    /// the chunks before it: each category passes the local mob cap again and each mob its
+    /// spawn potential, now counting what those chunks spawned.
+    pub fn commit(&self, world: &Arc<World>, chunk_pos: Vector2<i32>, chunk: ChunkSpawns) {
+        let mut category_allowed: Option<(&'static MobCategory, bool)> = None;
+        for spawn in chunk.spawns {
+            let entity_type = spawn.entity.get_entity().entity_type;
+            let category = entity_type.category;
+            let allowed = match category_allowed {
+                Some((checked, allowed)) if checked.id == category.id => allowed,
+                _ => {
+                    let allowed = self.can_spawn_for_category_local(world, category, chunk_pos);
+                    category_allowed = Some((category, allowed));
+                    allowed
+                }
+            };
+            if !allowed
+                || self.spawn_potential.get_potential_energy_change(
+                    &spawn.pos,
+                    spawn.cost.charge,
+                    &[],
+                ) > spawn.cost.energy_budget
+            {
+                continue;
+            }
+            world.spawn_entity_non_save(spawn.entity);
+            self.after_spawn(entity_type, &spawn.pos, spawn.cost.charge, world);
+        }
     }
 }
 
@@ -479,24 +513,26 @@ pub fn spawn_for_chunk(
     spawn_state: &SpawnState,
     spawn_list: &Vec<&'static MobCategory>,
     is_thundering: bool,
-) -> Vec<Arc<dyn EntityBase>> {
-    let mut entities = Vec::new();
+) -> ChunkSpawns {
+    let mut spawns = ChunkSpawns::default();
     for category in spawn_list {
+        // The counts only grow until `commit`, so a category that fails here fails there too.
         if spawn_state.can_spawn_for_category_local(world, category, chunk_pos) {
             let random_pos = get_random_pos_within(world.min_y, &chunk_pos, chunk);
             if random_pos.0.y > world.min_y {
-                entities.extend(spawn_category_for_position(
+                spawn_category_for_position(
                     category,
                     world,
                     random_pos,
                     &chunk_pos,
                     spawn_state,
+                    &mut spawns,
                     is_thundering,
-                ));
+                );
             }
         }
     }
-    entities
+    spawns
 }
 
 pub fn get_random_pos_within(
@@ -836,13 +872,13 @@ pub fn spawn_category_for_position(
     pos: BlockPos,
     chunk_pos: &Vector2<i32>,
     spawn_state: &SpawnState,
+    spawns: &mut ChunkSpawns,
     is_thundering: bool,
-) -> Vec<Arc<dyn EntityBase>> {
-    let mut batch_buffer = Vec::new();
+) {
     let y_start = pos.0.y;
     let state = world.get_block_state(&pos);
     if state.is_solid_block() || state.is_full_cube() {
-        return batch_buffer;
+        return;
     }
 
     let mut cluster_size = 0;
@@ -920,7 +956,8 @@ pub fn spawn_category_for_position(
                     spawner,
                     player_distance_sq,
                     is_thundering,
-                ) && spawn_state.can_spawn(entity_type, &check_pos, world)
+                ) && let Some(cost) =
+                    spawn_state.can_spawn(entity_type, &check_pos, world, spawns)
                 {
                     let spawn_pos_f64 = Vector3::new(xx, f64::from(y_start), zz);
                     let entity = from_type(entity_type, spawn_pos_f64, world, Uuid::new_v4());
@@ -949,10 +986,16 @@ pub fn spawn_category_for_position(
                         let max_group_size_reached = entity
                             .get_mob()
                             .is_some_and(|mob| mob.is_max_group_size_reached(group_size));
-                        batch_buffer.push(entity);
-                        spawn_state.after_spawn(entity_type, &check_pos, world);
+                        if cost.charge != 0.0 {
+                            spawns.charges.push(PointCharge(check_pos, cost.charge));
+                        }
+                        spawns.spawns.push(PendingSpawn {
+                            entity,
+                            pos: check_pos,
+                            cost,
+                        });
                         if cluster_size >= entity_type.limit_per_chunk {
-                            return batch_buffer;
+                            return;
                         }
 
                         if max_group_size_reached {
@@ -965,7 +1008,6 @@ pub fn spawn_category_for_position(
             ll += 1;
         }
     }
-    batch_buffer
 }
 
 #[must_use]
