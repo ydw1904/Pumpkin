@@ -2639,7 +2639,9 @@ impl World {
                 lock.difficulty == Difficulty::Peaceful,
             )
         };
-        let spawn_passives = self.get_time_of_day() % 400 == 0;
+        // Vanilla `spawnPersistent` follows game time, so `/time set` and a stopped daylight
+        // cycle don't shift or stop the 400-tick schedule.
+        let spawn_passives = self.get_world_age() % 400 == 0;
         let spawn_enemies = !peaceful && spawn_monsters && spawn_mobs;
         let spawn_passives = spawn_passives && spawn_mobs;
 
