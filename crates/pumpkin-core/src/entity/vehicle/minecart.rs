@@ -33,7 +33,8 @@ use pumpkin_util::math::vector3::Vector3;
 
 use crate::entity::vehicle::vehicle::VehicleEntity;
 use crate::plugin::{
-    api::events::vehicle::vehicle_update::VehicleUpdateEvent, server::packet::PacketSentEvent,
+    api::events::vehicle::{vehicle_move::VehicleMoveEvent, vehicle_update::VehicleUpdateEvent},
+    server::packet::PacketSentEvent,
 };
 use crate::world::entity_islands::{self, AuditedReach};
 use chest::ChestMinecart;
@@ -148,6 +149,7 @@ impl MinecartEntity {
         // Plugins see every tick through these events.
         if world.server.upgrade().is_some_and(|server| {
             server.plugin_manager.has_handlers::<VehicleUpdateEvent>()
+                || server.plugin_manager.has_handlers::<VehicleMoveEvent>()
                 || server.plugin_manager.has_handlers::<PacketSentEvent>()
         }) {
             return None;
@@ -892,10 +894,12 @@ impl EntityBase for MinecartEntity {
     }
 
     fn move_entity(&self, caller: &dyn EntityBase, motion: Vector3<f64>) {
-        let to_position = self.vehicle.entity.pos.load().add(&motion);
-        self.vehicle.entity.move_entity(caller, motion);
-        let entity_id = self.vehicle.entity.entity_id;
-        let world = self.vehicle.entity.world.load().clone();
+        let entity = &self.vehicle.entity;
+        let from = entity.pos.load();
+        let to_position = from.add(&motion);
+        entity.move_entity(caller, motion);
+        let entity_id = entity.entity_id;
+        let world = entity.world.load().clone();
         if let Some(dyn_self) = world.get_entity_by_id(entity_id) {
             let should_continue = dyn_self.push_entities(caller);
             if should_continue {
@@ -903,6 +907,11 @@ impl EntityBase for MinecartEntity {
                 let back_motion = to_position.sub(&current_pos);
                 dyn_self.get_entity().move_entity(caller, back_motion);
             }
+        }
+        let to = entity.pos.load();
+        let allowed = super::vehicle::fire_vehicle_move(entity, from, to);
+        if allowed != to {
+            entity.set_pos(allowed);
         }
     }
 

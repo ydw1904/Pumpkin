@@ -43,7 +43,7 @@ use crate::plugin::{
         vehicle::{
             vehicle_damage::VehicleDamageEvent, vehicle_destroy::VehicleDestroyEvent,
             vehicle_enter::VehicleEnterEvent, vehicle_exit::VehicleExitEvent,
-            vehicle_update::VehicleUpdateEvent,
+            vehicle_move::VehicleMoveEvent, vehicle_update::VehicleUpdateEvent,
         },
     },
     server::packet::PacketSentEvent,
@@ -491,6 +491,7 @@ impl EntityBase for BoatEntity {
         if world.server.upgrade().is_some_and(|server| {
             let plugins = &server.plugin_manager;
             plugins.has_handlers::<VehicleUpdateEvent>()
+                || plugins.has_handlers::<VehicleMoveEvent>()
                 || plugins.has_handlers::<PacketSentEvent>()
                 || plugins.has_handlers::<EntityMountEvent>()
                 || plugins.has_handlers::<VehicleEnterEvent>()
@@ -647,7 +648,13 @@ impl EntityBase for BoatEntity {
             let velocity = entity.velocity.load();
             // Vanilla `checkFallDamage`, which only keeps the speed: boats take no fall damage.
             self.last_yd.store(velocity.y);
+            let from = entity.pos.load();
             entity.move_entity(caller, velocity);
+            let to = entity.pos.load();
+            let allowed = super::vehicle::fire_vehicle_move(entity, from, to);
+            if allowed != to {
+                entity.set_pos(allowed);
+            }
         }
 
         // Vanilla applies the block effects twice.

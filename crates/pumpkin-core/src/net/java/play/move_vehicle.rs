@@ -1,5 +1,7 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
+use crate::entity::vehicle::vehicle::fire_vehicle_move;
+use pumpkin_protocol::java::client::play::CMoveVehicle;
 
 impl JavaClient {
     pub fn handle_move_vehicle(&self, player: &Arc<Player>, packet: &SMoveVehicle) {
@@ -8,7 +10,7 @@ impl JavaClient {
             .store(true, Ordering::Relaxed);
         let entity = player.get_entity();
         let last_pos = entity.pos.load();
-        let pos = Vector3::new(packet.x, packet.y, packet.z);
+        let mut pos = Vector3::new(packet.x, packet.y, packet.z);
         let vehicle = entity
             .vehicle
             .lock()
@@ -18,6 +20,18 @@ impl JavaClient {
             let vehicle_entity = vehicle.get_entity();
             let old_pos = vehicle_entity.pos.load();
             let old_y = old_pos.y;
+            let allowed = fire_vehicle_move(vehicle_entity, old_pos, pos);
+            if allowed != pos {
+                // Like a rejected move: the client's vehicle goes back where the server has it.
+                pos = allowed;
+                self.try_send_packet(&CMoveVehicle::new(
+                    pos.x,
+                    pos.y,
+                    pos.z,
+                    packet.yaw,
+                    packet.pitch,
+                ));
+            }
             vehicle_entity.set_pos(pos);
             vehicle_entity.set_rotation(packet.yaw, packet.pitch);
             vehicle_entity

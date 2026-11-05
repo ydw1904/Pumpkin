@@ -3,11 +3,28 @@ use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicI32, Ordering};
 
 use crate::entity::Entity;
+use crate::plugin::api::events::vehicle::vehicle_move::VehicleMoveEvent;
 use pumpkin_protocol::java::client::play::Metadata;
+use pumpkin_util::math::vector3::Vector3;
 
 use crate::entity::EntityBase;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_util::GameMode;
+
+/// Fires `VehicleMoveEvent` for `vehicle` moving from `from` to `to`, and returns where the
+/// vehicle may go: `from` when a plugin cancels the move, else the event's `to`. A vehicle
+/// that didn't move fires nothing.
+pub fn fire_vehicle_move(vehicle: &Entity, from: Vector3<f64>, to: Vector3<f64>) -> Vector3<f64> {
+    if from == to {
+        return to;
+    }
+    let Some(server) = vehicle.world.load().server.upgrade() else {
+        return to;
+    };
+    let mut event = VehicleMoveEvent::new(vehicle.entity_id, from, to);
+    server.plugin_manager.fire_blocking(&server, &mut event);
+    if event.cancelled { from } else { event.to }
+}
 
 pub struct VehicleEntity {
     pub entity: Entity,
@@ -66,22 +83,6 @@ impl VehicleEntity {
             );
         if let Some(server) = self.entity.world.load().server.upgrade() {
             server.plugin_manager.fire(&server, &mut create_event).await;
-        }
-    }
-
-    pub async fn move_vehicle(
-        &self,
-        from: pumpkin_util::math::vector3::Vector3<f64>,
-        to: pumpkin_util::math::vector3::Vector3<f64>,
-    ) {
-        let mut move_event =
-            crate::plugin::api::events::vehicle::vehicle_move::VehicleMoveEvent::new(
-                self.entity.entity_id,
-                from,
-                to,
-            );
-        if let Some(server) = self.entity.world.load().server.upgrade() {
-            server.plugin_manager.fire(&server, &mut move_event).await;
         }
     }
 
