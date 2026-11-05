@@ -2336,7 +2336,11 @@ impl LivingEntity {
     /// `getFrictionInfluencedSpeed`.
     pub(crate) fn friction_influenced_speed(speed: f64, block_friction: f64) -> f64 {
         if block_friction > Self::FRICTION_SPEED_THRESHOLD {
-            speed * 0.216_000_02 / block_friction.powi(3)
+            // Vanilla works in floats here.
+            let block_friction = block_friction as f32;
+            f64::from(
+                speed as f32 * (0.216_000_02 / (block_friction * block_friction * block_friction)),
+            )
         } else {
             speed
         }
@@ -2397,7 +2401,8 @@ impl LivingEntity {
                 super::player::Player::get_off_ground_speed,
             )
         };
-        let friction = block_friction * air_drag;
+        // Vanilla multiplies the block friction and the air drag as floats.
+        let friction = f64::from(block_friction as f32 * air_drag as f32);
 
         self.entity
             .update_velocity_from_input(self.movement_input.load(), speed);
