@@ -1,6 +1,6 @@
 use std::sync::{
-    Mutex as StdMutex,
-    atomic::{AtomicBool, AtomicU32, Ordering},
+    Arc, Mutex as StdMutex,
+    atomic::{AtomicBool, AtomicI64, AtomicU32, Ordering},
 };
 
 use pumpkin_nbt::compound::NbtCompound;
@@ -8,8 +8,12 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::text::TextComponent;
 
 use super::BlockEntity;
+use crate::world::World;
 
-// todo: CustomName, LastExecution
+/// Vanilla `BaseCommandBlock.NO_LAST_EXECUTION`.
+pub const NO_LAST_EXECUTION: i64 = -1;
+
+// todo: CustomName
 pub struct CommandBlockEntity {
     pub position: BlockPos,
     pub powered: AtomicBool,
@@ -22,6 +26,8 @@ pub struct CommandBlockEntity {
     pub success_count: AtomicU32,
     /// Vanilla `BaseCommandBlock.updateLastExecution`: run at most once per tick.
     pub update_last_execution: AtomicBool,
+    /// Vanilla `BaseCommandBlock.lastExecution`: the game time of the last run.
+    pub last_execution: AtomicI64,
 }
 
 impl CommandBlockEntity {
@@ -39,6 +45,7 @@ impl CommandBlockEntity {
             track_output: AtomicBool::new(track_output),
             success_count: AtomicU32::new(0),
             update_last_execution: AtomicBool::new(true),
+            last_execution: AtomicI64::new(NO_LAST_EXECUTION),
         }
     }
 
@@ -65,10 +72,12 @@ impl CommandBlockEntity {
         }
         nbt.put_bool("powered", self.powered.load(Ordering::SeqCst));
         nbt.put_bool("TrackOutput", track_output);
-        nbt.put_bool(
-            "UpdateLastExecution",
-            self.update_last_execution.load(Ordering::SeqCst),
-        );
+        let update_last_execution = self.update_last_execution.load(Ordering::SeqCst);
+        nbt.put_bool("UpdateLastExecution", update_last_execution);
+        let last_execution = self.last_execution.load(Ordering::SeqCst);
+        if update_last_execution && last_execution != NO_LAST_EXECUTION {
+            nbt.put_long("LastExecution", last_execution);
+        }
         nbt.put_int(
             "SuccessCount",
             self.success_count.load(Ordering::SeqCst).cast_signed(),
@@ -101,8 +110,13 @@ impl BlockEntity for CommandBlockEntity {
         let track_output = AtomicBool::new(tracks_output);
         let success_count =
             AtomicU32::new(nbt.get_int("SuccessCount").unwrap_or(0).cast_unsigned());
-        let update_last_execution =
-            AtomicBool::new(nbt.get_bool("UpdateLastExecution").unwrap_or(true));
+        let updates_last_execution = nbt.get_bool("UpdateLastExecution").unwrap_or(true);
+        let last_execution = AtomicI64::new(if updates_last_execution {
+            nbt.get_long("LastExecution").unwrap_or(NO_LAST_EXECUTION)
+        } else {
+            NO_LAST_EXECUTION
+        });
+        let update_last_execution = AtomicBool::new(updates_last_execution);
 
         Self {
             position,
@@ -114,7 +128,32 @@ impl BlockEntity for CommandBlockEntity {
             track_output,
             success_count,
             update_last_execution,
+            last_execution,
             dirty: AtomicBool::new(false),
+        }
+    }
+
+    /// The `setAutomatic` call in vanilla `CommandBlockEntity.loadAdditional`: turning `auto`
+    /// on schedules the first tick of an unpowered impulse or repeating block.
+    fn loaded_in_world(&self, world: &Arc<World>) {
+        let was_auto = world
+            .get_block_entity(&self.position)
+            .is_some_and(|previous| {
+                previous
+                    .as_any()
+                    .downcast_ref::<Self>()
+                    .is_some_and(|previous| previous.auto.load(Ordering::Relaxed))
+            });
+        if !was_auto
+            && self.auto.load(Ordering::Relaxed)
+            && !self.powered.load(Ordering::Relaxed)
+            && world.get_block(&self.position) != &pumpkin_data::Block::CHAIN_COMMAND_BLOCK
+        {
+            crate::block::blocks::command::CommandBlock::schedule_automatic_tick(
+                world,
+                self,
+                &self.position,
+            );
         }
     }
 

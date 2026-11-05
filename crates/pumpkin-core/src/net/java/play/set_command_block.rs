@@ -81,6 +81,10 @@ impl JavaClient {
                 .update_last_execution
                 .load(Ordering::SeqCst)
                 .into(),
+            last_execution: old_command_block
+                .last_execution
+                .load(Ordering::SeqCst)
+                .into(),
         });
         world.add_block_entity(command_block.clone());
 
@@ -93,13 +97,7 @@ impl JavaClient {
                 && block_type == Block::REPEATING_COMMAND_BLOCK
                 && (powered || command.is_automatic()));
         if schedule {
-            CommandBlock::mark_condition_met(&world, &command_block, &pos);
-            world.schedule_block_tick(
-                &block_type,
-                pos,
-                1,
-                pumpkin_world::tick::TickPriority::Normal,
-            );
+            CommandBlock::schedule_automatic_tick(&world, &command_block, &pos);
         }
 
         if !command.command.is_empty() {

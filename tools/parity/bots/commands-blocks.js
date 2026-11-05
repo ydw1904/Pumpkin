@@ -199,6 +199,72 @@ h.start(async () => {
   await run('time rate 1')
   await run('time set 6000')
 
+  // Command blocks: `auto` loaded from NBT, chains, one run per game tick and the saved fields.
+  await run('scoreboard objectives add cb dummy', 2)
+  await run('gamerule command_block_output false', 2)
+  const cbScore = async (holder) => {
+    const r = await run(`scoreboard players get ${holder} cb`, 2)
+    const m = r.match(/success\([^,]*,(-?\d+),/)
+    return m ? m[1] : 'unset'
+  }
+  const cy = y + 8
+  const add = (holder) => `Command:"scoreboard players add ${holder} cb 1"`
+  h.cmd(`setblock ${X - 8} ${cy} ${Z + 8} repeating_command_block{auto:1b,${add('#rep')}}`)
+  await h.ticks(20)
+  h.cmd(`setblock ${X - 8} ${cy} ${Z + 8} air`)
+  await h.ticks(2)
+  h.result('cb_repeating_auto', Number(await cbScore('#rep')) >= 10 ? 'runs' : 'stopped')
+  h.cmd(`setblock ${X - 8} ${cy} ${Z + 6} repeating_command_block{${add('#merge')}}`)
+  await h.ticks(5)
+  h.result('cb_repeating_no_auto', await cbScore('#merge'))
+  await run(`data merge block ${X - 8} ${cy} ${Z + 6} {auto:1b}`, 10)
+  h.cmd(`setblock ${X - 8} ${cy} ${Z + 6} air`)
+  await h.ticks(2)
+  h.result('cb_data_merge_auto', Number(await cbScore('#merge')) >= 3 ? 'runs' : 'stopped')
+  h.cmd(`setblock ${X - 6} ${cy} ${Z + 8} command_block{auto:1b,${add('#imp')}}`)
+  await h.ticks(10)
+  h.result('cb_impulse_auto', await cbScore('#imp'))
+  h.cmd(`setblock ${X - 4} ${cy} ${Z + 8} chain_command_block{auto:1b,${add('#chn')}}`)
+  await h.ticks(10)
+  h.result('cb_chain_alone', await cbScore('#chn'))
+  // An impulse block running into a chain block, and two chain blocks facing each other.
+  h.cmd(`setblock ${X - 1} ${cy} ${Z + 8} chain_command_block[facing=east]{auto:1b,${add('#ic2')}}`)
+  h.cmd(`setblock ${X - 2} ${cy} ${Z + 8} command_block[facing=east]{auto:1b,${add('#ic1')}}`)
+  await h.ticks(10)
+  h.result('cb_impulse_chain', `${await cbScore('#ic1')}/${await cbScore('#ic2')}`)
+  const loop = async (key, nbt) => {
+    h.cmd(`setblock ${X + 2} ${cy} ${Z + 8} chain_command_block[facing=east]{auto:1b,${nbt}${add('#' + key)}}`)
+    h.cmd(`setblock ${X + 3} ${cy} ${Z + 8} chain_command_block[facing=west]{auto:1b,${nbt}${add('#' + key)}}`)
+    h.cmd(`setblock ${X + 1} ${cy} ${Z + 8} command_block[facing=east]{auto:1b,${add('#start')}}`)
+    await h.ticks(10)
+    h.result(`cb_${key}`, await cbScore('#' + key))
+    h.cmd(`fill ${X + 1} ${cy} ${Z + 8} ${X + 3} ${cy} ${Z + 8} air`)
+    await h.ticks(2)
+  }
+  await run('gamerule max_command_sequence_length 10', 2)
+  await loop('chain_loop', '')
+  await loop('chain_loop_no_update', 'UpdateLastExecution:0b,')
+  await run('gamerule max_command_sequence_length 65536', 2)
+  const field = (x, path) => run(`data get block ${x} ${cy} ${Z + 8} ${path}`, 2)
+  for (const path of ['auto', 'TrackOutput', 'UpdateLastExecution', 'SuccessCount', 'conditionMet', 'powered']) {
+    h.result(`cb_field_${path}`, await field(X - 6, path))
+  }
+  h.result('cb_field_LastExecution', await run(`execute if data block ${X - 6} ${cy} ${Z + 8} LastExecution`, 2))
+  h.result('cb_field_chain_auto', await field(X - 4, 'auto'))
+  // /setblock beside a powered block doesn't update the command block; a neighbour change does.
+  h.cmd(`setblock ${X + 6} ${cy} ${Z + 8} redstone_block`)
+  await h.ticks(2)
+  h.cmd(`setblock ${X + 7} ${cy} ${Z + 8} command_block{${add('#setpow')}}`)
+  await h.ticks(10)
+  h.result('cb_setblock_beside_power', await cbScore('#setpow'))
+  h.cmd(`setblock ${X + 7} ${cy + 2} ${Z + 8} command_block{${add('#neigh')}}`)
+  await h.ticks(2)
+  h.cmd(`setblock ${X + 8} ${cy + 2} ${Z + 8} redstone_block`)
+  await h.ticks(10)
+  h.result('cb_neighbour_power', await cbScore('#neigh'))
+  h.cmd(`fill ${X - 8} ${cy} ${Z + 6} ${X + 8} ${cy + 2} ${Z + 8} air`)
+  await h.ticks(5)
+
   // Forceloaded chunks: /fill works across a forceloaded 4x4 chunk area once it loads. The time
   // is logged; a debug build of Pumpkin takes a few seconds where a release build is as fast as
   // vanilla.

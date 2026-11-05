@@ -1,7 +1,7 @@
 use std::sync::{Arc, atomic::Ordering};
 
 use super::redstone::block_receives_redstone_power;
-use crate::block::entities::{BlockEntity, command_block::CommandBlockEntity};
+use crate::block::entities::command_block::{CommandBlockEntity, NO_LAST_EXECUTION};
 use crate::command::CommandSender;
 use crate::entity::EntityBase;
 use crate::{
@@ -19,7 +19,7 @@ use pumpkin_data::{Block, BlockId, BlockState, BlockStateId, FacingExt, Rotation
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_protocol::java::client::play::CBlockEntityData;
-use pumpkin_util::{GameMode, math::position::BlockPos};
+use pumpkin_util::{GameMode, math::position::BlockPos, text::TextComponent};
 use pumpkin_world::tick::TickPriority;
 use tracing::warn;
 
@@ -113,89 +113,149 @@ impl CommandBlock {
         world.schedule_block_tick(block, *pos, 1, TickPriority::Normal);
     }
 
-    fn execute(
-        server: &Arc<Server>,
-        world: Arc<World>,
-        block_entity: Arc<dyn BlockEntity>,
-        command: &str,
+    /// Vanilla `CommandBlockEntity.scheduleTick`.
+    pub(crate) fn schedule_automatic_tick(
+        world: &World,
+        command_block: &CommandBlockEntity,
+        pos: &BlockPos,
     ) {
-        let command_blocks_work = { world.level_info.load().game_rules.command_blocks_work };
-        if !command_blocks_work {
+        let block = world.get_block(pos);
+        if !matches!(
+            block.id,
+            BlockId::COMMAND_BLOCK
+                | BlockId::CHAIN_COMMAND_BLOCK
+                | BlockId::REPEATING_COMMAND_BLOCK
+        ) {
             return;
         }
+        Self::mark_condition_met(world, command_block, pos);
+        world.schedule_block_tick(block, *pos, 1, TickPriority::Normal);
+    }
 
-        let Ok(command_entity) = Arc::downcast::<CommandBlockEntity>(block_entity) else {
-            warn!("Failed to downcast block entity to CommandBlockEntity");
-            return;
-        };
+    /// Vanilla `BaseCommandBlock.performCommand`. Returns false when the block already ran at
+    /// this game time.
+    fn perform_command(
+        server: &Arc<Server>,
+        world: &Arc<World>,
+        command_entity: &Arc<CommandBlockEntity>,
+    ) -> bool {
+        let game_time = world.get_world_age();
+        if command_entity.last_execution.load(Ordering::Acquire) == game_time {
+            return false;
+        }
+        let command = command_entity
+            .command
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        if command.eq_ignore_ascii_case("Searge") {
+            *command_entity
+                .last_output
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                Some(TextComponent::text("#itzlipofutzli"));
+            command_entity.success_count.store(1, Ordering::Release);
+            return true;
+        }
 
         command_entity.success_count.store(0, Ordering::Release);
-        if !command.is_empty() {
-            let source = CommandSender::CommandBlock(command_entity, world).into_source(server);
-
+        if world.level_info.load().game_rules.command_blocks_work && !command.is_empty() {
+            *command_entity
+                .last_output
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+            let source = CommandSender::CommandBlock(command_entity.clone(), world.clone())
+                .into_source(server);
             server
                 .command_dispatcher
                 .load()
-                .handle_command(&source, command);
+                .handle_command(&source, &command);
         }
+
+        let last_execution = if command_entity.update_last_execution.load(Ordering::Acquire) {
+            game_time
+        } else {
+            NO_LAST_EXECUTION
+        };
+        command_entity
+            .last_execution
+            .store(last_execution, Ordering::Release);
+        true
     }
 
-    fn chain_execute(server: &Arc<Server>, world: &Arc<World>, start: BlockPos) {
-        let mut i = u16::MAX;
+    /// Vanilla `CommandBlock.execute`.
+    fn execute(
+        server: &Arc<Server>,
+        world: &Arc<World>,
+        pos: BlockPos,
+        command_entity: &Arc<CommandBlockEntity>,
+        facing: Facing,
+    ) {
+        let command_set = !command_entity
+            .command
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_empty();
+        if command_set {
+            Self::perform_command(server, world, command_entity);
+        } else {
+            command_entity.success_count.store(0, Ordering::Release);
+        }
+        Self::execute_chain(server, world, pos, facing);
+    }
+
+    /// Vanilla `CommandBlock.executeChain`.
+    fn execute_chain(server: &Arc<Server>, world: &Arc<World>, start: BlockPos, facing: Facing) {
+        let max_length = world
+            .level_info
+            .load()
+            .game_rules
+            .max_command_sequence_length;
+        let mut max_iterations = max_length;
         let mut pos = start;
+        let mut direction = facing;
 
-        while i > 0 {
-            let command_blocks_work = { world.level_info.load().game_rules.command_blocks_work };
-            if !command_blocks_work {
-                return;
+        loop {
+            let more = max_iterations > 0;
+            max_iterations -= 1;
+            if !more {
+                break;
             }
+            pos = pos.offset(direction.to_block_direction().to_offset());
             let (block, state_id) = world.get_block_and_state_id(&pos);
-
-            if block.id != Block::CHAIN_COMMAND_BLOCK.id {
+            if block.id != BlockId::CHAIN_COMMAND_BLOCK {
                 break;
             }
-            let Some(block_entity) = world.get_block_entity(&pos) else {
-                warn!("Missing command block entity");
-                break;
-            };
-
-            let Some(command_entity) = block_entity.as_any().downcast_ref::<CommandBlockEntity>()
+            let Some(command_entity) = world
+                .get_block_entity(&pos)
+                .and_then(|entity| Arc::downcast::<CommandBlockEntity>(entity).ok())
             else {
-                warn!("Block entity at {} is not a command block", pos);
                 break;
             };
-            let powered = command_entity.powered.load(Ordering::Relaxed);
-            let auto = command_entity.auto.load(Ordering::Relaxed);
             let props = CommandBlockLikeProperties::from_state_id(state_id);
 
-            if powered || auto {
-                let condition_met = Self::mark_condition_met(world, command_entity, &pos);
-                if condition_met {
-                    let command = command_entity
-                        .command
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .clone();
-                    let Some(entity) = world.get_block_entity(&pos) else {
-                        warn!("Command block entity disappeared during execution");
+            if command_entity.powered.load(Ordering::Relaxed)
+                || command_entity.auto.load(Ordering::Relaxed)
+            {
+                if Self::mark_condition_met(world, &command_entity, &pos) {
+                    if !Self::perform_command(server, world, &command_entity) {
                         break;
-                    };
-                    Self::execute(server, world.clone(), entity, &command);
+                    }
+                    world.update_neighbour_for_output_signal(&pos, block);
                 } else if props.conditional {
                     command_entity.success_count.store(0, Ordering::Release);
                 }
             }
 
-            // Vanilla follows each chain block's own FACING, allowing chains to turn.
-            pos = pos.offset(props.facing.to_block_direction().to_offset());
+            // Each chain block's own facing, so chains can turn.
+            direction = props.facing;
+        }
 
-            i -= 1;
-            if i == 0 {
-                warn!(
-                    "Command block chain executed {} times (the maximum)!",
-                    u16::MAX
-                );
-            }
+        if max_iterations <= 0 {
+            warn!(
+                "Command Block chain tried to execute more than {} steps!",
+                max_length.max(0)
+            );
         }
     }
 }
@@ -242,11 +302,6 @@ impl BlockBehaviour for CommandBlock {
 
     fn on_neighbor_update(&self, args: OnNeighborUpdateArgs<'_>) {
         {
-            let command_blocks_work =
-                { args.world.level_info.load().game_rules.command_blocks_work };
-            if !command_blocks_work {
-                return;
-            }
             if let Some(block_entity) = args.world.get_block_entity(args.position) {
                 if block_entity.resource_location() != CommandBlockEntity::ID {
                     return;
@@ -270,20 +325,11 @@ impl BlockBehaviour for CommandBlock {
     }
 
     fn on_scheduled_tick(&self, args: OnScheduledTickArgs<'_>) {
-        let command_blocks_work = { args.world.level_info.load().game_rules.command_blocks_work };
-        if !command_blocks_work {
-            return;
-        }
-        let Some(block_entity) = args.world.get_block_entity(args.position) else {
-            return;
-        };
-        if block_entity.resource_location() != CommandBlockEntity::ID {
-            return;
-        }
-
-        let Some(command_entity) = block_entity.as_any().downcast_ref::<CommandBlockEntity>()
+        let Some(command_entity) = args
+            .world
+            .get_block_entity(args.position)
+            .and_then(|entity| Arc::downcast::<CommandBlockEntity>(entity).ok())
         else {
-            warn!("Block entity at {} is not a command block", args.position);
             return;
         };
         let Some(server) = args.world.server.upgrade() else {
@@ -291,46 +337,41 @@ impl BlockBehaviour for CommandBlock {
         };
 
         let block = args.world.get_block(args.position);
-        let state_id = args.world.get_block_state_id(args.position);
-        let props = CommandBlockLikeProperties::from_state_id(state_id);
+        let props =
+            CommandBlockLikeProperties::from_state_id(args.world.get_block_state_id(args.position));
         let was_condition_met = command_entity.condition_met.load(Ordering::Acquire);
 
-        let should_execute = if block == &Block::REPEATING_COMMAND_BLOCK {
-            // Vanilla computes the next condition before using the condition captured
-            // for this tick.
-            Self::mark_condition_met(args.world, command_entity, args.position);
-            was_condition_met
+        if block == &Block::REPEATING_COMMAND_BLOCK {
+            Self::mark_condition_met(args.world, &command_entity, args.position);
+            if was_condition_met {
+                Self::execute(
+                    &server,
+                    args.world,
+                    *args.position,
+                    &command_entity,
+                    props.facing,
+                );
+            } else if props.conditional {
+                command_entity.success_count.store(0, Ordering::Release);
+            }
+            if command_entity.powered.load(Ordering::Relaxed)
+                || command_entity.auto.load(Ordering::Relaxed)
+            {
+                args.world
+                    .schedule_block_tick(block, *args.position, 1, TickPriority::Normal);
+            }
         } else if block == &Block::COMMAND_BLOCK {
-            was_condition_met
-        } else {
-            // Sequence command blocks execute only as part of a chain.
-            false
-        };
-
-        if should_execute {
-            let command = command_entity
-                .command
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .clone();
-            let world = args.world.clone();
-            let position = *args.position;
-            let facing = props.facing;
-            Self::execute(&server, world.clone(), block_entity.clone(), &command);
-            Self::chain_execute(
-                &server,
-                &world,
-                position.offset(facing.to_block_direction().to_offset()),
-            );
-        } else if props.conditional {
-            command_entity.success_count.store(0, Ordering::Release);
-        }
-
-        let is_auto = command_entity.auto.load(Ordering::Relaxed);
-        let can_run = command_entity.powered.load(Ordering::Relaxed) || is_auto;
-        if block == &Block::REPEATING_COMMAND_BLOCK && can_run {
-            args.world
-                .schedule_block_tick(block, *args.position, 1, TickPriority::Normal);
+            if was_condition_met {
+                Self::execute(
+                    &server,
+                    args.world,
+                    *args.position,
+                    &command_entity,
+                    props.facing,
+                );
+            } else if props.conditional {
+                command_entity.success_count.store(0, Ordering::Release);
+            }
         }
 
         args.world
