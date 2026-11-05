@@ -61,6 +61,21 @@ h.start(async () => {
   h.cmd('kill @e[type=zombie]')
   await h.ticks(40)
 
+  // A zombified piglin only stops sleep while it is angry at the player.
+  h.cmd(`summon zombified_piglin ${X - 3.5} ${Y + 1} ${Z + 0.5} {NoAI:1b,PersistenceRequired:1b}`)
+  await h.ticks(10)
+  await use(X + 2, Y + 1, Z)
+  h.result('calm_piglin_click', take())
+  h.result('calm_piglin_sleeping', bot.isSleeping)
+  if (bot.isSleeping) {
+    await bot.wake().catch(e => h.result('wake_error', e.message))
+    await h.waitFor(() => !bot.isSleeping, 5000)
+  }
+  h.cmd('kill @e[type=zombified_piglin]')
+  h.cmd('time set 18000')
+  await h.ticks(40)
+  take()
+
   h.cmd('weather rain')
   await h.ticks(10)
   await bot.sleep(h.block(X + 2, Y + 1, Z)).catch(e => h.result('sleep_error', e.message))
