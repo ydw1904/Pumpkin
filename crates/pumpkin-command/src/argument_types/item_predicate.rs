@@ -334,6 +334,9 @@ fn read_test(reader: &mut StringReader) -> Result<ComponentTest, CommandSyntaxEr
     let start = reader.cursor();
     let id = <pumpkin_util::identifier::Identifier as crate::argument_types::FromStringReader>::from_reader(reader)?
         .to_string();
+    // Unknown component and predicate errors point after the id, like vanilla's
+    // `ResourceLookupRule`.
+    let id_end = reader.cursor();
     let name = id.strip_prefix("minecraft:").unwrap_or(&id).to_string();
     reader.skip_whitespace();
     let kind = match reader.peek() {
@@ -344,7 +347,7 @@ fn read_test(reader: &mut StringReader) -> Result<ComponentTest, CommandSyntaxEr
             if name == COUNT {
                 ComponentTestKind::Count(Some(value))
             } else {
-                let component = component_or_error(reader, start, &id)?;
+                let component = component_or_error(reader, id_end, &id)?;
                 if read_data(component, &value).is_none() {
                     reader.set_cursor(start);
                     return Err(ERROR_MALFORMED_COMPONENT.create(
@@ -366,25 +369,25 @@ fn read_test(reader: &mut StringReader) -> Result<ComponentTest, CommandSyntaxEr
                 ComponentTestKind::Predicate(predicate, value)
             } else if DataComponent::try_from_name(&name).is_some() {
                 // A component without a predicate type only checks that it exists.
-                ComponentTestKind::Exists(component_or_error(reader, start, &id)?)
+                ComponentTestKind::Exists(component_or_error(reader, id_end, &id)?)
             } else {
-                reader.set_cursor(start);
+                reader.set_cursor(id_end);
                 return Err(ERROR_UNKNOWN_PREDICATE.create(reader, TextComponent::text(id)));
             }
         }
         _ if name == COUNT => ComponentTestKind::Count(None),
-        _ => ComponentTestKind::Exists(component_or_error(reader, start, &id)?),
+        _ => ComponentTestKind::Exists(component_or_error(reader, id_end, &id)?),
     };
     Ok(ComponentTest { negated, kind })
 }
 
 fn component_or_error(
     reader: &mut StringReader,
-    start: usize,
+    id_end: usize,
     id: &str,
 ) -> Result<DataComponent, CommandSyntaxError> {
     DataComponent::try_from_name(id).ok_or_else(|| {
-        reader.set_cursor(start);
+        reader.set_cursor(id_end);
         ERROR_UNKNOWN_COMPONENT.create(reader, TextComponent::text(id.to_string()))
     })
 }
