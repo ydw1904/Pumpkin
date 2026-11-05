@@ -537,7 +537,7 @@ impl CommandExecutor for LootExecutor {
                         TextComponent::text(pos.0.z.to_string()),
                     )
                 })?;
-                let inventory = block_entity.get_inventory().ok_or_else(|| {
+                let inventory = block_entity.get_container().ok_or_else(|| {
                     ERROR_NOT_CONTAINER.create_without_context(
                         TextComponent::text(pos.0.x.to_string()),
                         TextComponent::text(pos.0.y.to_string()),
@@ -571,7 +571,7 @@ impl CommandExecutor for LootExecutor {
                         TextComponent::text(pos.0.z.to_string()),
                     )
                 })?;
-                let inventory = block_entity.get_inventory().ok_or_else(|| {
+                let inventory = block_entity.get_container().ok_or_else(|| {
                     ERROR_NOT_CONTAINER.create_without_context(
                         TextComponent::text(pos.0.x.to_string()),
                         TextComponent::text(pos.0.y.to_string()),

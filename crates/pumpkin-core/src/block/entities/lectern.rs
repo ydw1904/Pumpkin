@@ -79,6 +79,11 @@ impl BlockEntity for LecternBlockEntity {
         Some(self)
     }
 
+    /// Vanilla `LecternBlockEntity` isn't a `Container`.
+    fn get_container(self: Arc<Self>) -> Option<Arc<dyn Inventory>> {
+        None
+    }
+
     fn is_comparator_dirty(&self) -> bool {
         self.comparator_dirty.load(Ordering::Relaxed)
     }

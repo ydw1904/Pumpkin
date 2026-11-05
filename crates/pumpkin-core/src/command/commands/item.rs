@@ -174,7 +174,7 @@ impl ItemAccessor {
         context
             .world()
             .get_block_entity(pos)
-            .and_then(BlockEntity::get_inventory)
+            .and_then(BlockEntity::get_container)
             .ok_or_else(|| {
                 error.create_without_context(
                     TextComponent::text(pos.0.x.to_string()),
@@ -465,7 +465,7 @@ impl CommandExecutor for ModifyExecutor {
             let inventory = context
                 .world()
                 .get_block_entity(&pos)
-                .and_then(BlockEntity::get_inventory)
+                .and_then(BlockEntity::get_container)
                 .ok_or_else(|| {
                     ERROR_NOT_CONTAINER.create_without_context(
                         TextComponent::text(pos.0.x.to_string()),

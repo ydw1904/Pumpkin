@@ -1047,7 +1047,7 @@ fn slot_items(
             let inventory = context
                 .world()
                 .get_block_entity(&pos)
-                .and_then(BlockEntity::get_inventory)
+                .and_then(BlockEntity::get_container)
                 .ok_or_else(|| {
                     ERROR_SOURCE_NOT_A_CONTAINER.create_without_context(
                         TextComponent::text(pos.0.x.to_string()),

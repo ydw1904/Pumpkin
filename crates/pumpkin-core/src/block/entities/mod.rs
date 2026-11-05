@@ -137,6 +137,12 @@ pub trait BlockEntity: Any + Send + Sync {
         None
     }
 
+    /// The inventory when the block entity is a vanilla `Container`, the one hoppers, droppers
+    /// and the `/item` and `/loot` commands reach.
+    fn get_container(self: Arc<Self>) -> Option<Arc<dyn Inventory>> {
+        self.get_inventory()
+    }
+
     /// Copies the block entity's state on the item stack dropped for it.
     fn collect_item_components(&self, _stack: &mut ItemStack) {}
 

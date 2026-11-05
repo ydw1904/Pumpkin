@@ -67,7 +67,7 @@ pub fn block_container(world: &World, pos: &BlockPos) -> Option<Arc<dyn Inventor
     if is_chest_block_entity(entity.as_ref()) {
         chest_container(world, pos, true)
     } else {
-        entity.get_inventory()
+        entity.get_container()
     }
 }
 
