@@ -18,6 +18,55 @@ use crate::world::{World, game_event::GameEventContext};
 
 const PARTICLE_SEND_DISTANCE: f64 = 32.0;
 
+/// Vanilla `VibrationSystem.getGameEventFrequency`, 0 for events without one.
+#[must_use]
+pub const fn game_event_frequency(event: GameEvent) -> i32 {
+    match event {
+        GameEvent::Step | GameEvent::Swim | GameEvent::Flap | GameEvent::Resonate1 => 1,
+        GameEvent::ProjectileLand
+        | GameEvent::HitGround
+        | GameEvent::Splash
+        | GameEvent::Bounce
+        | GameEvent::Resonate2 => 2,
+        GameEvent::ItemInteractFinish
+        | GameEvent::ProjectileShoot
+        | GameEvent::InstrumentPlay
+        | GameEvent::Resonate3 => 3,
+        GameEvent::EntityAction
+        | GameEvent::ElytraGlide
+        | GameEvent::Unequip
+        | GameEvent::Resonate4 => 4,
+        GameEvent::EntityDismount | GameEvent::Equip | GameEvent::Resonate5 => 5,
+        GameEvent::EntityInteract
+        | GameEvent::Shear
+        | GameEvent::EntityMount
+        | GameEvent::Resonate6 => 6,
+        GameEvent::EntityDamage | GameEvent::Resonate7 => 7,
+        GameEvent::Drink | GameEvent::Eat | GameEvent::Resonate8 => 8,
+        GameEvent::ContainerClose
+        | GameEvent::BlockClose
+        | GameEvent::BlockDeactivate
+        | GameEvent::BlockDetach
+        | GameEvent::Resonate9 => 9,
+        GameEvent::ContainerOpen
+        | GameEvent::BlockOpen
+        | GameEvent::BlockActivate
+        | GameEvent::BlockAttach
+        | GameEvent::PrimeFuse
+        | GameEvent::NoteBlockPlay
+        | GameEvent::Resonate10 => 10,
+        GameEvent::BlockChange | GameEvent::Resonate11 => 11,
+        GameEvent::BlockDestroy | GameEvent::FluidPickup | GameEvent::Resonate12 => 12,
+        GameEvent::BlockPlace | GameEvent::FluidPlace | GameEvent::Resonate13 => 13,
+        GameEvent::EntityPlace
+        | GameEvent::LightningStrike
+        | GameEvent::Teleport
+        | GameEvent::Resonate14 => 14,
+        GameEvent::EntityDie | GameEvent::Explode | GameEvent::Resonate15 => 15,
+        _ => 0,
+    }
+}
+
 /// Vanilla `VibrationInfo`.
 #[derive(Clone)]
 pub struct VibrationInfo {
@@ -192,14 +241,16 @@ impl VibrationData {
         self.candidate.take()
     }
 
-    /// Vanilla `VibrationSelector.addCandidate`.
-    // TODO: vanilla breaks distance ties with `VibrationSystem.getGameEventFrequency`.
+    /// Vanilla `VibrationSelector.addCandidate`: the closest vibration of the tick wins, then the
+    /// highest frequency.
     pub fn add_candidate(&mut self, vibration: VibrationInfo, time: i64) {
-        if self
-            .candidate
-            .as_ref()
-            .is_none_or(|(previous, tick)| *tick == time && vibration.distance < previous.distance)
-        {
+        if self.candidate.as_ref().is_none_or(|(previous, tick)| {
+            *tick == time
+                && (vibration.distance < previous.distance
+                    || (vibration.distance == previous.distance
+                        && game_event_frequency(vibration.event)
+                            > game_event_frequency(previous.event)))
+        }) {
             self.candidate = Some((vibration, time));
         }
     }
@@ -331,5 +382,20 @@ mod tests {
             vec![1, 172, 2, 62, 184, 81, 236, 12]
         );
         Ok(())
+    }
+
+    #[test]
+    fn equally_close_vibrations_pick_the_higher_frequency() {
+        let at = Vector3::new(0.0, 64.0, 0.0);
+        let mut data = VibrationData::default();
+        data.add_candidate(VibrationInfo::new(GameEvent::BlockPlace, 4.0, at, None), 7);
+        data.add_candidate(VibrationInfo::new(GameEvent::Step, 4.0, at, None), 7);
+        data.add_candidate(VibrationInfo::new(GameEvent::Explode, 4.0, at, None), 7);
+        // A closer one of a later tick doesn't replace it.
+        data.add_candidate(VibrationInfo::new(GameEvent::EntityDie, 1.0, at, None), 8);
+        assert!(
+            data.take_candidate()
+                .is_some_and(|(event, tick)| event.event == GameEvent::Explode && tick == 7)
+        );
     }
 }

@@ -137,7 +137,7 @@ impl SculkShriekerBlock {
         if !Self::try_summon_warden(world, pos, warning_level) {
             Self::play_warden_reply_sound(world, pos, warning_level);
         }
-        WardenEntity::apply_darkness_around(world, pos.to_centered_f64(), DARKNESS_RADIUS);
+        WardenEntity::apply_darkness_around(world, pos.to_centered_f64(), None, DARKNESS_RADIUS);
     }
 
     fn try_summon_warden(world: &Arc<World>, pos: &BlockPos, warning_level: i32) -> bool {

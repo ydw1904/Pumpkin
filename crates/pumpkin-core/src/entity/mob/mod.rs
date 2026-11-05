@@ -3275,6 +3275,21 @@ pub trait Mob: EntityBase + Send + Sync {
         self.get_mob_entity().living_entity.is_pushable()
     }
 
+    /// See [`EntityBase::next_step`].
+    fn mob_next_step(&self) -> f32 {
+        self.get_entity().next_step()
+    }
+
+    /// See [`EntityBase::can_ride`].
+    fn mob_can_ride(&self) -> bool {
+        self.get_entity().can_ride()
+    }
+
+    /// Vanilla `ignoreExplosion`, see [`EntityBase::is_immune_to_explosion`].
+    fn mob_ignores_explosion(&self) -> bool {
+        false
+    }
+
     fn can_push_entity(&self, _other: &dyn EntityBase) -> bool {
         true
     }
@@ -3310,6 +3325,18 @@ impl<T: Mob + Send + 'static> EntityBase for T {
 
     fn play_step_sound(&self, pos: &BlockPos, state: &BlockState) {
         self.mob_play_step_sound(pos, state);
+    }
+
+    fn next_step(&self) -> f32 {
+        self.mob_next_step()
+    }
+
+    fn can_ride(&self) -> bool {
+        self.mob_can_ride()
+    }
+
+    fn is_immune_to_explosion(&self) -> bool {
+        self.mob_ignores_explosion()
     }
 
     fn is_flapping(&self) -> bool {

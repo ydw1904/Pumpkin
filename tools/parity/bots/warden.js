@@ -65,6 +65,36 @@ h.start(async () => {
   // A creative player can't be targeted, so the warden drops it and calms down.
   h.cmd(`gamemode creative ${bot.username}`)
   h.result('calmed', await h.waitFor(() => anger() < 80, 15000))
+
+  // Darkness every 6 seconds reaches survival players, but not the warden's allies.
+  h.cmd('team add allies')
+  h.cmd(`team join allies ${bot.username}`)
+  h.cmd('team join allies @e[type=warden]')
+  h.cmd(`effect clear ${bot.username} darkness`)
+  h.cmd(`gamemode survival ${bot.username}`)
+  await h.ticks(10)
+  effects.clear()
+  await h.serverTicks(140)
+  h.result('darkness.allied', set(effects))
+  h.cmd('team leave @e[type=warden]')
+  await h.serverTicks(140)
+  h.result('darkness.not_allied', set(effects))
+  h.cmd(`gamemode creative ${bot.username}`)
+  h.cmd('kill @e[type=warden]')
+  await h.ticks(20)
+
+  // A boat takes pushable mobs that touch it, but a warden can't ride.
+  h.cmd(`summon oak_boat ${X + 0.5} ${Y + 1} ${Z + 4.5}`)
+  h.cmd(`summon warden ${X + 0.5} ${Y + 1} ${Z + 4.5} {NoAI:1b}`)
+  await h.serverTicks(40)
+  const boat = Object.values(bot.entities).find(e => e.name === 'oak_boat')
+  h.result('boat.passengers', boat ? (boat.passengers || []).length : 'no boat')
+  h.cmd('kill @e[type=!player]')
   h.result('finished', 'ok')
   process.exit(0)
+})
+
+const effects = new Set()
+bot._client.on('entity_effect', (p) => {
+  if (p.entityId === bot.entity.id) effects.add(p.effectId)
 })

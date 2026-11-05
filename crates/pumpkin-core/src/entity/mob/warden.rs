@@ -57,6 +57,8 @@ const HURT_TARGET_DISTANCE: f64 = 5.0;
 const DIGGING_HEIGHT: f32 = 1.0;
 /// Vanilla `EntityDimensions.fixed` eye height.
 const FIXED_EYE_HEIGHT_RATIO: f32 = 0.85;
+/// Vanilla `Warden.nextStep`: a step sound every 0.55 blocks walked.
+const STEP_DISTANCE: f32 = 0.55;
 
 type PendingBrainUpdate = Box<dyn FnOnce(&WardenEntity, &mut BrainState) + Send>;
 
@@ -80,6 +82,7 @@ impl WardenEntity {
             .get_mut()
             .unwrap_or_else(PoisonError::into_inner);
         navigator.set_can_float(true);
+        navigator.set_xz_step_cost(true);
         for (path_type, malus) in [
             (PathType::UnpassableRail, 0.0),
             (PathType::DamageOther, 8.0),
@@ -428,12 +431,22 @@ impl WardenEntity {
             && delta.y * delta.y < vertical * vertical
     }
 
-    pub fn apply_darkness_around(world: &World, position: Vector3<f64>, radius: f64) {
+    /// Vanilla `Warden.applyDarknessAround` through `MobEffectUtil.addEffectToPlayersAround`.
+    pub fn apply_darkness_around(
+        world: &World,
+        position: Vector3<f64>,
+        source: Option<&dyn EntityBase>,
+        radius: f64,
+    ) {
         for player in world.get_nearby_players(position, radius) {
             if !matches!(
                 player.gamemode.load(),
                 GameMode::Survival | GameMode::Adventure
-            ) {
+            ) || source.is_some_and(|source| source.is_allied_to(player.as_ref()))
+                // `closerThan` is strict.
+                || player.get_entity().pos.load().squared_distance_to_vec(&position)
+                    >= radius * radius
+            {
                 continue;
             }
             let current = player.living_entity.get_effect(&StatusEffect::DARKNESS);
@@ -451,7 +464,9 @@ impl WardenEntity {
                 show_icon: false,
                 blend: true,
             };
-            player.living_entity.add_effect(darkness);
+            player
+                .living_entity
+                .add_effect_with_source(darkness, source);
         }
     }
 
@@ -552,6 +567,18 @@ impl Mob for WardenEntity {
 
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
         self.play_entity_sound(Sound::EntityWardenStep, 10.0, 1.0);
+    }
+
+    fn mob_next_step(&self) -> f32 {
+        self.get_entity().move_dist.load() + STEP_DISTANCE
+    }
+
+    fn mob_can_ride(&self) -> bool {
+        false
+    }
+
+    fn mob_ignores_explosion(&self) -> bool {
+        self.is_digging_or_emerging()
     }
 
     fn check_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
@@ -672,7 +699,7 @@ impl Mob for WardenEntity {
             self.run_pending_brain_updates(brain);
             let tick_count = entity.tick_count.load(Ordering::Relaxed);
             if (tick_count + entity.entity_id) % DARKNESS_INTERVAL == 0 {
-                Self::apply_darkness_around(&world, entity.pos.load(), DARKNESS_RADIUS);
+                Self::apply_darkness_around(&world, entity.pos.load(), Some(self), DARKNESS_RADIUS);
             }
             if tick_count % ANGERMANAGEMENT_TICK_DELAY == 0 {
                 self.anger()

@@ -39,6 +39,8 @@ pub struct PathFinder {
     max_visited_nodes: usize,
     open_set: BinaryHeap,
     neighbors_buf: Vec<Node>,
+    /// See [`PathNavigationTrait::set_xz_step_cost`].
+    pub xz_step_cost: bool,
 }
 
 impl PathFinder {
@@ -48,6 +50,16 @@ impl PathFinder {
             max_visited_nodes,
             open_set: BinaryHeap::new(),
             neighbors_buf: Vec::with_capacity(32),
+            xz_step_cost: false,
+        }
+    }
+
+    /// Vanilla `PathFinder.distance`: what a step between neighbours costs.
+    fn distance(xz_step_cost: bool, from: &Node, to: &Node) -> f32 {
+        if xz_step_cost {
+            from.distance_to_xz_node(to)
+        } else {
+            from.distance_to_node(to)
         }
     }
 
@@ -112,6 +124,7 @@ impl PathFinder {
 
         let mut count = 0usize;
         let mut reached_targets: Vec<usize> = Vec::new();
+        let xz_step_cost = self.xz_step_cost;
         let max_visited_nodes_adjusted =
             (self.max_visited_nodes as f32 * max_visited_nodes_multiplier) as usize;
 
@@ -151,7 +164,7 @@ impl PathFinder {
                     if neighbor.closed {
                         continue;
                     }
-                    let distance = current.distance_to_node(&neighbor);
+                    let distance = Self::distance(xz_step_cost, &current, &neighbor);
                     neighbor.walked_dist = current.walked_dist + distance;
                     let tentative_g = current.g + distance + neighbor.cost_malus;
 
@@ -435,6 +448,8 @@ pub trait PathNavigationTrait: Send + Sync {
     fn set_can_open_doors(&mut self, can_open: bool);
     fn set_can_pass_doors(&mut self, can_pass: bool);
     fn set_can_float(&mut self, can_float: bool);
+    /// Vanilla `Warden`'s `PathFinder.distance` override: steps cost their horizontal length.
+    fn set_xz_step_cost(&mut self, xz_step_cost: bool);
     fn can_float(&self) -> bool;
     fn can_navigate_ground(&self) -> bool;
     fn set_required_path_length(&mut self, length: f32);
@@ -482,6 +497,7 @@ pub struct PathNavigation {
     pub avoid_sun: bool,
     pub can_path_to_targets_below_surface: bool,
     path_finder: Option<PathFinder>,
+    xz_step_cost: bool,
     update_pathfinder_max_visited_nodes: bool,
     pub is_idle: AtomicBool,
 }
@@ -532,6 +548,7 @@ impl PathNavigation {
             avoid_sun: false,
             can_path_to_targets_below_surface: false,
             path_finder: None,
+            xz_step_cost: false,
             update_pathfinder_max_visited_nodes: false,
             is_idle: AtomicBool::new(true),
         }
@@ -556,6 +573,14 @@ impl PathNavigation {
     pub fn stop(&mut self) {
         self.finish();
         self.path = None;
+    }
+
+    /// See [`PathNavigationTrait::set_xz_step_cost`].
+    pub const fn set_xz_step_cost(&mut self, xz_step_cost: bool) {
+        self.xz_step_cost = xz_step_cost;
+        if let Some(finder) = &mut self.path_finder {
+            finder.xz_step_cost = xz_step_cost;
+        }
     }
 
     /// Ends navigation at a finished path but, like vanilla `PathNavigation.tick`, keeps the
@@ -695,12 +720,15 @@ impl PathNavigation {
 
         let max_path_length = self.mob_max_follow_range(entity);
         // Vanilla sizes the search from the base follow range until the first update request.
+        let xz_step_cost = self.xz_step_cost;
         let finder = self.path_finder.get_or_insert_with(|| {
-            PathFinder::new(
+            let mut finder = PathFinder::new(
                 (entity.get_attribute_base(&Attributes::FOLLOW_RANGE)
                     * f64::from(MAX_VISITED_NODES_MULTIPLIER))
                 .floor() as usize,
-            )
+            );
+            finder.xz_step_cost = xz_step_cost;
+            finder
         });
         if self.update_pathfinder_max_visited_nodes {
             finder.set_max_visited_nodes(
@@ -1363,6 +1391,10 @@ impl PathNavigationTrait for GroundPathNavigation {
         self.inner.can_float = can_float;
     }
 
+    fn set_xz_step_cost(&mut self, xz_step_cost: bool) {
+        self.inner.set_xz_step_cost(xz_step_cost);
+    }
+
     fn can_float(&self) -> bool {
         self.inner.can_float
     }
@@ -1634,6 +1666,10 @@ impl PathNavigationTrait for FlyingPathNavigation {
 
     fn set_can_float(&mut self, can_float: bool) {
         self.inner.can_float = can_float;
+    }
+
+    fn set_xz_step_cost(&mut self, xz_step_cost: bool) {
+        self.inner.set_xz_step_cost(xz_step_cost);
     }
 
     fn can_float(&self) -> bool {
@@ -1927,6 +1963,10 @@ impl PathNavigationTrait for WaterBoundPathNavigation {
 
     fn set_can_float(&mut self, _can_float: bool) {}
 
+    fn set_xz_step_cost(&mut self, xz_step_cost: bool) {
+        self.inner.set_xz_step_cost(xz_step_cost);
+    }
+
     fn can_float(&self) -> bool {
         true
     }
@@ -2172,6 +2212,10 @@ impl PathNavigationTrait for WallClimberNavigation {
 
     fn set_can_float(&mut self, can_float: bool) {
         self.inner.set_can_float(can_float);
+    }
+
+    fn set_xz_step_cost(&mut self, xz_step_cost: bool) {
+        self.inner.set_xz_step_cost(xz_step_cost);
     }
 
     fn can_float(&self) -> bool {
@@ -2455,6 +2499,10 @@ impl PathNavigationTrait for AmphibiousPathNavigation {
     }
 
     fn set_can_float(&mut self, _can_float: bool) {}
+
+    fn set_xz_step_cost(&mut self, xz_step_cost: bool) {
+        self.inner.set_xz_step_cost(xz_step_cost);
+    }
 
     fn can_float(&self) -> bool {
         true

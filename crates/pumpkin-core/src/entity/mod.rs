@@ -712,7 +712,12 @@ pub trait EntityBase: Send + Sync + std::any::Any {
 
     /// Vanilla `nextStep`: the `move_dist` at which the next step sound and event happen.
     fn next_step(&self) -> f32 {
-        (self.get_entity().move_dist.load() as i32 + 1) as f32
+        self.get_entity().next_step()
+    }
+
+    /// Vanilla `canRide`: whether it may board a vehicle without force.
+    fn can_ride(&self) -> bool {
+        self.get_entity().can_ride()
     }
 
     /// Vanilla `playStepSound`.
@@ -1047,7 +1052,7 @@ pub trait EntityBase: Send + Sync + std::any::Any {
                             && !is_other_minecart
                             && !other.is_passenger()
                             && other.is_pushable()
-                            && other.get_entity().riding_cooldown.load(Relaxed) == 0
+                            && other.can_ride()
                             && let Some(self_arc) = world.get_entity_by_id(self_entity.entity_id)
                         {
                             self_entity.add_passenger(self_arc, other.clone());
@@ -4212,6 +4217,18 @@ impl Entity {
     }
     pub fn is_sneaking(&self) -> bool {
         self.sneaking.load(Ordering::Relaxed)
+    }
+
+    /// The base `Entity.nextStep`: every whole block walked.
+    #[must_use]
+    pub fn next_step(&self) -> f32 {
+        (self.move_dist.load() as i32 + 1) as f32
+    }
+
+    /// The base `Entity.canRide`.
+    #[must_use]
+    pub fn can_ride(&self) -> bool {
+        !self.is_sneaking() && self.riding_cooldown.load(Relaxed) == 0
     }
 
     #[must_use]
