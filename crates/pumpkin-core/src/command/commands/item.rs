@@ -12,7 +12,7 @@ use pumpkin_util::text::hover::HoverEvent;
 
 use crate::block::entities::BlockEntity;
 use crate::command::argument_builder::{
-    ArgumentBuilder, RequiredArgumentBuilder, argument, command, literal,
+    ArgumentBuilder, LiteralArgumentBuilder, RequiredArgumentBuilder, argument, command, literal,
 };
 use crate::command::argument_types::argument_type::JavaClientArgumentType;
 use crate::command::argument_types::client_parsed::ClientParsed;
@@ -208,9 +208,21 @@ impl ItemAccessor {
     }
 }
 
-/// Vanilla `ItemProvider.of`: hands out the items once, in order.
+/// Vanilla `ItemCommands.ItemDistributor`: how `replace`, `fill` and `override` hand out the
+/// items to the target slots.
+#[derive(Clone, Copy)]
+enum Distributor {
+    /// `ItemProvider.of`: each item once, in order.
+    Replace,
+    /// `ItemProvider.cycle`: the items over and over.
+    Fill,
+    /// `ItemProvider.of(...).orElseProvide(EMPTY)`: each item once, then empty stacks.
+    Override,
+}
+
 struct ItemProvider<'a> {
     items: &'a [ItemStack],
+    distributor: Distributor,
     next: usize,
 }
 
@@ -220,11 +232,22 @@ impl ItemProvider<'_> {
     }
 
     const fn has_next(&self) -> bool {
-        self.next < self.items.len()
+        match self.distributor {
+            Distributor::Replace => self.next < self.items.len(),
+            Distributor::Fill => !self.items.is_empty(),
+            Distributor::Override => true,
+        }
     }
 
     fn next(&mut self) -> ItemStack {
-        let stack = self.items[self.next].clone();
+        let stack = match self.distributor {
+            Distributor::Fill => self.items[self.next % self.items.len()].clone(),
+            Distributor::Replace | Distributor::Override => self
+                .items
+                .get(self.next)
+                .unwrap_or(ItemStack::EMPTY)
+                .clone(),
+        };
         self.next += 1;
         stack
     }
@@ -234,11 +257,16 @@ impl ItemProvider<'_> {
 fn set_items(
     context: &CommandContext,
     target: &ItemAccessor,
+    distributor: Distributor,
     items: &[ItemStack],
     known_item: Option<&ItemStack>,
 ) -> CommandExecutorResult {
     let slots = SlotsArgumentType::get(context, "slots")?;
-    let mut items = ItemProvider { items, next: 0 };
+    let mut items = ItemProvider {
+        items,
+        distributor,
+        next: 0,
+    };
     // `SlotSelector.tracking`: slots offered an item.
     let mut selected = 0;
     let known_name = known_item.map(item_display_name);
@@ -350,9 +378,10 @@ fn entity_replace_message(
     })
 }
 
-/// `/item replace <target> <slots> with <item> [<count>]`.
+/// `/item replace|fill|override <target> <slots> with <item> [<count>]`.
 struct WithExecutor {
     block: bool,
+    distributor: Distributor,
     has_count: bool,
 }
 
@@ -367,13 +396,20 @@ impl CommandExecutor for WithExecutor {
         };
         check_stack_size(&stack, count)?;
         stack.item_count = count as u8;
-        set_items(context, &target, std::slice::from_ref(&stack), Some(&stack))
+        set_items(
+            context,
+            &target,
+            self.distributor,
+            std::slice::from_ref(&stack),
+            Some(&stack),
+        )
     }
 }
 
-/// `/item replace <target> <slots> from <source> <sourceSlots> [<modifier>]`.
+/// `/item replace|fill|override <target> <slots> from <source> <sourceSlots> [<modifier>]`.
 struct FromExecutor {
     block: bool,
+    distributor: Distributor,
     source_block: bool,
     has_modifier: bool,
 }
@@ -401,7 +437,7 @@ impl CommandExecutor for FromExecutor {
                 )),
             );
         }
-        set_items(context, &target, &items, None)
+        set_items(context, &target, self.distributor, &items, None)
     }
 }
 
@@ -604,9 +640,10 @@ fn modify_node(block: bool) -> RequiredArgumentBuilder {
         .then(slots_argument("slots").then(modifier_argument().executes(ModifyExecutor { block })))
 }
 
-fn from_node(block: bool, source_block: bool) -> RequiredArgumentBuilder {
+fn from_node(block: bool, distributor: Distributor, source_block: bool) -> RequiredArgumentBuilder {
     let from = |has_modifier| FromExecutor {
         block,
+        distributor,
         source_block,
         has_modifier,
     };
@@ -618,30 +655,38 @@ fn from_node(block: bool, source_block: bool) -> RequiredArgumentBuilder {
 }
 
 /// Vanilla `ItemCommands.wrapSetItems`.
-fn set_items_node(block: bool) -> RequiredArgumentBuilder {
+fn set_items_node(block: bool, distributor: Distributor) -> RequiredArgumentBuilder {
     accessor_argument("target", block).then(
         slots_argument("slots")
             .then(
                 literal("from")
-                    .then(literal("entity").then(from_node(block, false)))
-                    .then(literal("block").then(from_node(block, true))),
+                    .then(literal("entity").then(from_node(block, distributor, false)))
+                    .then(literal("block").then(from_node(block, distributor, true))),
             )
             .then(
                 literal("with").then(
                     argument("item", ItemStackArgumentType)
                         .executes(WithExecutor {
                             block,
+                            distributor,
                             has_count: false,
                         })
                         .then(argument("count", IntegerArgumentType::new(1, 99)).executes(
                             WithExecutor {
                                 block,
+                                distributor,
                                 has_count: true,
                             },
                         )),
                 ),
             ),
     )
+}
+
+fn set_items_literal(name: &'static str, distributor: Distributor) -> LiteralArgumentBuilder {
+    literal(name)
+        .then(literal("entity").then(set_items_node(false, distributor)))
+        .then(literal("block").then(set_items_node(true, distributor)))
 }
 
 pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistry) {
@@ -654,11 +699,9 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
     dispatcher.register(
         command("item", DESCRIPTION)
             .requires(PERMISSION)
-            .then(
-                literal("replace")
-                    .then(literal("entity").then(set_items_node(false)))
-                    .then(literal("block").then(set_items_node(true))),
-            )
+            .then(set_items_literal("replace", Distributor::Replace))
+            .then(set_items_literal("fill", Distributor::Fill))
+            .then(set_items_literal("override", Distributor::Override))
             .then(
                 literal("modify")
                     .then(literal("entity").then(modify_node(false)))
