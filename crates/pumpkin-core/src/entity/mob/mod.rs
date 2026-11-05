@@ -92,6 +92,7 @@ pub mod silverfish;
 pub mod skeleton;
 pub mod slime;
 pub mod spawn;
+pub mod spellcaster;
 pub mod spider;
 pub mod sun_burn;
 pub mod vex;
