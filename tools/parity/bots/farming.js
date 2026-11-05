@@ -40,10 +40,11 @@ const MEAL = [
   ['sugar_cane', 'sand', 'sugar_cane', true],
   ['cactus', 'sand', 'cactus', true],
   ['bamboo_sapling', 'dirt', 'bamboo_sapling', true],
-  ['red_mushroom', 'mycelium', 'red_mushroom', false],
-  ['crimson_fungus', 'crimson_nylium', 'crimson_fungus', false],
   ['pink_petals', 'grass_block', 'pink_petals', true],
-  ['sunflower', 'grass_block', 'sunflower', true]
+  ['sunflower', 'grass_block', 'sunflower', true],
+  // Last: a huge mushroom or fungus can grow over the plants next to it.
+  ['red_mushroom', 'mycelium', 'red_mushroom', false],
+  ['crimson_fungus', 'crimson_nylium', 'crimson_fungus', false]
 ]
 
 h.start(async () => {
