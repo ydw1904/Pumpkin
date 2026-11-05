@@ -1,4 +1,7 @@
+use std::sync::Arc;
+
 use pumpkin_data::block_properties::{CaveVinesLikeProperties, CaveVinesPlantLikeProperties};
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
@@ -13,8 +16,63 @@ use crate::block::{
     BlockBehaviour, BlockMetadata, BonemealArgs, CanPlaceAtArgs, GetStateForNeighborUpdateArgs,
     NormalUseArgs, OnPlaceArgs, OnScheduledTickArgs, RandomTickArgs,
 };
+use crate::entity::EntityBase;
+use crate::world::World;
+use crate::world::game_event::GameEventContext;
 
 pub struct CaveVinesBlock;
+
+/// Vanilla `CaveVines.hasGlowBerries`.
+#[must_use]
+pub fn has_glow_berries(block: &Block, state_id: BlockStateId) -> bool {
+    if block == &Block::CAVE_VINES {
+        CaveVinesLikeProperties::from_state_id(state_id).berries
+    } else if block == &Block::CAVE_VINES_PLANT {
+        CaveVinesPlantLikeProperties::from_state_id(state_id).berries
+    } else {
+        false
+    }
+}
+
+/// Vanilla `CaveVines.use`: picks the glow berries at `pos`, if it has any.
+pub fn use_berries(world: &Arc<World>, pos: &BlockPos, source: &dyn EntityBase) -> bool {
+    let (block, state_id) = world.get_block_and_state_id(pos);
+    let picked = if block == &Block::CAVE_VINES {
+        let mut props = CaveVinesLikeProperties::from_state_id(state_id);
+        if !props.berries {
+            return false;
+        }
+        props.berries = false;
+        props.to_state_id(block)
+    } else if block == &Block::CAVE_VINES_PLANT {
+        let mut props = CaveVinesPlantLikeProperties::from_state_id(state_id);
+        if !props.berries {
+            return false;
+        }
+        props.berries = false;
+        props.to_state_id(block)
+    } else {
+        return false;
+    };
+    world.drop_stack(pos, ItemStack::new(1, &Item::GLOW_BERRIES));
+    let pitch = game_random().random_range(0.8f32..1.2f32);
+    world.play_sound_fine(
+        Sound::BlockCaveVinesPickBerries,
+        SoundCategory::Blocks,
+        &pos.to_centered_f64(),
+        1.0,
+        pitch,
+    );
+    world.set_block_state(pos, picked, BlockFlags::NOTIFY_LISTENERS);
+    world.emit_game_event_with_context(
+        GameEvent::BlockChange.name(),
+        pos.to_centered_f64(),
+        &GameEventContext {
+            source_entity: Some(source),
+        },
+    );
+    true
+}
 
 impl BlockMetadata for CaveVinesBlock {
     fn ids() -> Box<[BlockId]> {
@@ -139,51 +197,11 @@ impl BlockBehaviour for CaveVinesBlock {
     }
 
     fn normal_use(&self, args: NormalUseArgs<'_>) -> BlockActionResult {
-        let state_id = args.world.get_block_state_id(args.position);
-        if args.block == &Block::CAVE_VINES {
-            let mut props = CaveVinesLikeProperties::from_state_id(state_id);
-            if props.berries {
-                props.berries = false;
-                args.world
-                    .drop_stack(args.position, ItemStack::new(1, &Item::GLOW_BERRIES));
-                let pitch = game_random().random_range(0.8f32..1.2f32);
-                args.world.play_sound_fine(
-                    Sound::BlockCaveVinesPickBerries,
-                    SoundCategory::Blocks,
-                    &args.position.to_centered_f64(),
-                    1.0,
-                    pitch,
-                );
-                args.world.set_block_state(
-                    args.position,
-                    props.to_state_id(args.block),
-                    BlockFlags::NOTIFY_ALL,
-                );
-                return BlockActionResult::SuccessServer;
-            }
-        } else if args.block == &Block::CAVE_VINES_PLANT {
-            let mut props = CaveVinesPlantLikeProperties::from_state_id(state_id);
-            if props.berries {
-                props.berries = false;
-                args.world
-                    .drop_stack(args.position, ItemStack::new(1, &Item::GLOW_BERRIES));
-                let pitch = game_random().random_range(0.8f32..1.2f32);
-                args.world.play_sound_fine(
-                    Sound::BlockCaveVinesPickBerries,
-                    SoundCategory::Blocks,
-                    &args.position.to_centered_f64(),
-                    1.0,
-                    pitch,
-                );
-                args.world.set_block_state(
-                    args.position,
-                    props.to_state_id(args.block),
-                    BlockFlags::NOTIFY_ALL,
-                );
-                return BlockActionResult::SuccessServer;
-            }
+        if use_berries(args.world, args.position, args.player.as_ref()) {
+            BlockActionResult::SuccessServer
+        } else {
+            BlockActionResult::Pass
         }
-        BlockActionResult::Pass
     }
 
     fn is_valid_bonemeal_target(&self, args: BonemealArgs<'_>) -> bool {
