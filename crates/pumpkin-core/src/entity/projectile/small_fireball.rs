@@ -70,6 +70,7 @@ impl EntityBase for SmallFireballEntity {
             INITIAL_ACCELERATION_POWER,
             HURTING_INERTIA,
             HURTING_LIQUID_INERTIA,
+            true,
         );
     }
 

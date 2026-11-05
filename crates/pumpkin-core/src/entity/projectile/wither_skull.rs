@@ -200,6 +200,7 @@ impl EntityBase for WitherSkullEntity {
             self.acceleration_power(),
             inertia,
             HURTING_LIQUID_INERTIA,
+            false,
         );
     }
 

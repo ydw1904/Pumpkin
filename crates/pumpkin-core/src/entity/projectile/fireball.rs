@@ -219,6 +219,7 @@ impl EntityBase for FireballEntity {
             self.get_acceleration_power(),
             HURTING_INERTIA,
             HURTING_LIQUID_INERTIA,
+            true,
         );
     }
 

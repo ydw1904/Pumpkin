@@ -67,6 +67,7 @@ impl EntityBase for DragonFireballEntity {
             INITIAL_ACCELERATION_POWER,
             HURTING_INERTIA,
             HURTING_LIQUID_INERTIA,
+            false,
         );
     }
 

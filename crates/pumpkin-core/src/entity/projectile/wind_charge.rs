@@ -148,6 +148,7 @@ impl EntityBase for WindChargeEntity {
             0.0,
             WIND_CHARGE_INERTIA,
             WIND_CHARGE_INERTIA,
+            false,
         );
 
         if let Some(cooldown) = self.deflect_cooldown() {

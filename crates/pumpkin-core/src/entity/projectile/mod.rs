@@ -181,13 +181,14 @@ impl ThrownItemEntity {
 
     /// Vanilla `AbstractHurtingProjectile.tick`: no gravity or drag, but `acceleration_power`
     /// along the flight and `inertia` (`liquid_inertia` in water) instead. Leaving the loaded
-    /// chunks discards the projectile.
+    /// chunks discards the projectile. `should_burn` keeps it alight, like vanilla `shouldBurn`.
     pub fn process_hurting_tick(
         &self,
         caller: &dyn EntityBase,
         acceleration_power: f64,
         inertia: f32,
         liquid_inertia: f32,
+        should_burn: bool,
     ) {
         let entity = self.get_entity();
         let movement = entity.velocity.load();
@@ -213,7 +214,28 @@ impl ThrownItemEntity {
         self.owner.check_left_owner(entity);
         entity.update_last_pos();
         rotate_towards_movement(entity, HURTING_ROTATION_SPEED);
+        Self::tick_hurting_fire(entity, should_burn);
         self.move_and_hit(caller);
+    }
+
+    /// The fire part of vanilla `Entity.baseTick` (a projectile takes no fire damage), then
+    /// `igniteForSeconds(1.0F)` when the projectile burns. Paper doesn't fire a combust event
+    /// for this, so neither does Pumpkin.
+    fn tick_hurting_fire(entity: &Entity, should_burn: bool) {
+        let fire_ticks = entity.fire_ticks.load(Ordering::Relaxed);
+        if fire_ticks > 0 {
+            if entity.is_fire_immune() {
+                entity.extinguish();
+            } else {
+                entity.fire_ticks.store(fire_ticks - 1, Ordering::Relaxed);
+            }
+        }
+        entity.set_on_fire(entity.fire_ticks.load(Ordering::Relaxed) > 0);
+        if should_burn && !entity.is_fire_immune() {
+            entity
+                .fire_ticks
+                .fetch_max(HURTING_BURN_TICKS, Ordering::Relaxed);
+        }
     }
 
     /// Moves the projectile by its velocity, then hits the first block or entity on the way.
@@ -367,6 +389,8 @@ pub const HURTING_LIQUID_INERTIA: f32 = 0.8;
 
 /// The rotation speed `AbstractHurtingProjectile.tick` turns with.
 const HURTING_ROTATION_SPEED: f32 = 0.2;
+/// Vanilla `igniteForSeconds(1.0F)` in `AbstractHurtingProjectile.tick`.
+const HURTING_BURN_TICKS: i32 = 20;
 
 /// Vanilla `ProjectileUtil.rotateTowardsMovement`: turns `speed` of the way from the current
 /// rotation towards the flight direction.
