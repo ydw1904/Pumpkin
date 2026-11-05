@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::track_target::TrackTargetGoal;
-use super::{Controls, Goal, to_goal_ticks};
+use super::{Controls, Goal, GoalReach, to_goal_ticks};
 use crate::entity::EntityBase;
 use crate::entity::ai::target_predicate::TargetPredicate;
 use crate::entity::mob::Mob;
@@ -14,6 +14,8 @@ use pumpkin_data::attributes::Attributes;
 
 const STARE_CLOSE_DISTANCE_SQ: f64 = 16.0;
 const TELEPORT_FAR_DISTANCE_SQ: f64 = 256.0;
+/// Ticks a far target goes unseen before the enderman teleports towards it.
+const TELEPORT_DELAY: i32 = 30;
 
 pub struct TeleportTowardsPlayerGoal {
     enderman: Arc<EndermanEntity>,
@@ -67,6 +69,51 @@ impl TeleportTowardsPlayerGoal {
 }
 
 impl Goal for TeleportTowardsPlayerGoal {
+    fn tick_reach(&self, mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        let ids: Vec<i32> = self
+            .target_player
+            .iter()
+            .chain(&self.committed_target)
+            .map(|target| target.get_entity().entity_id)
+            .collect();
+        let mut reach = GoalReach {
+            // The stare check traces from the player's eyes.
+            sight: ids.clone(),
+            links: ids,
+            ..GoalReach::default()
+        };
+        let world = mob.get_entity().world.load();
+        if !running {
+            // The search checks the stare of every player in range.
+            reach.players = world
+                .player_search
+                .attackable_reach(self.target_predicate.max_distance());
+            reach.block_reads = reach.players;
+            return Some(reach);
+        }
+        // Only a committed target, or the mob's own one, gets the teleports of `tick`, which
+        // never runs on the tick that starts the goal.
+        if self.target_player.is_none()
+            && let Some(target) = self
+                .committed_target
+                .clone()
+                .or_else(|| mob.get_mob_entity().get_target())
+        {
+            let dist_sq = mob
+                .get_entity()
+                .pos
+                .load()
+                .squared_distance_to_vec(&target.get_entity().pos.load());
+            if dist_sq < STARE_CLOSE_DISTANCE_SQ
+                || (dist_sq > TELEPORT_FAR_DISTANCE_SQ
+                    && self.unseen_ticks >= to_goal_ticks(TELEPORT_DELAY))
+            {
+                reach.teleport = Some(self.enderman.teleport_area(1));
+            }
+        }
+        Some(reach)
+    }
+
     fn can_start(&mut self, _mob: &dyn Mob) -> bool {
         let Some(player) = self.find_staring_player() else {
             return false;
@@ -159,6 +206,9 @@ impl Goal for TeleportTowardsPlayerGoal {
         let Some(target) = target else {
             return;
         };
+        if mob.get_entity().has_vehicle() {
+            return;
+        }
 
         let entity = &mob.get_mob_entity().living_entity.entity;
         let pos = entity.pos.load();
@@ -173,9 +223,13 @@ impl Goal for TeleportTowardsPlayerGoal {
             }
             self.unseen_ticks = 0;
         } else if dist_sq > TELEPORT_FAR_DISTANCE_SQ {
+            // Vanilla `teleportTime++ >= adjustedTickDelay(30)`: a failed teleport retries on
+            // the next tick.
+            let waited = self.unseen_ticks;
             self.unseen_ticks += 1;
-            if self.unseen_ticks >= to_goal_ticks(30) {
-                self.enderman.teleport_towards(target.as_ref());
+            if waited >= to_goal_ticks(TELEPORT_DELAY)
+                && self.enderman.teleport_towards(target.as_ref())
+            {
                 self.unseen_ticks = 0;
             }
         }

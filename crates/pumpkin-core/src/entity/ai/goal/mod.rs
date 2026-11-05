@@ -1,5 +1,6 @@
 use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::mob::Mob;
+use pumpkin_util::math::boundingbox::BoundingBox;
 use std::{any::TypeId, ops::BitOr, ptr};
 
 pub mod active_target;
@@ -143,6 +144,10 @@ pub struct GoalReach {
     pub knockback: f64,
     /// Speed it can add to the mob's velocity, on each axis, before the mob moves.
     pub impulse: f64,
+    /// Distance from the body at which it emits game events, like the block it places.
+    pub game_events: f64,
+    /// Area its teleports can put the mob's body in.
+    pub teleport: Option<BoundingBox>,
 }
 
 impl GoalReach {
@@ -158,6 +163,11 @@ impl GoalReach {
         self.spans_contacts |= other.spans_contacts;
         self.knockback = self.knockback.max(other.knockback);
         self.impulse = self.impulse.max(other.impulse);
+        self.game_events = self.game_events.max(other.game_events);
+        self.teleport = match (self.teleport, other.teleport) {
+            (Some(a), Some(b)) => Some(crate::world::entity_islands::union(&a, &b)),
+            (a, b) => a.or(b),
+        };
     }
 }
 

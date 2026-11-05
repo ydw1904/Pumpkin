@@ -1,27 +1,37 @@
+use crate::entity::breath::DROWNING_INTERVAL;
+use crate::entity::mob::AuditedTeleport;
 use crate::entity::r#type::CreatureSpawnLevel;
+use crate::world::World;
+use crate::world::brightness::DAYLIGHT_BRIGHTNESS;
 use crate::world::entity_islands::HurtReach;
+use crate::world::game_event::GameEventContext;
+use pumpkin_data::game_rules::{GameRule, GameRuleValue};
+use pumpkin_world::chunk::ChunkHeightmapType::MotionBlocking;
 use std::sync::{
     Arc, Weak,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicI32, Ordering},
 };
 
 use crate::entity::ai::behavior::hunting::{self, Hunt};
 use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::attributes::Modifier;
 use crate::entity::attributes::ModifierOperation;
-use pumpkin_data::{BlockStateId, attributes::Attributes};
+use crate::plugin::api::events::entity::entity_target::TargetReason;
+use pumpkin_data::{Block, BlockStateId, attributes::Attributes};
 
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::{
     damage::DamageType,
     data_component_impl::EquipmentSlot,
-    entity::EntityType,
-    particle::Particle,
+    entity::{EntityStatus, EntityType},
+    game_event::GameEvent,
     sound::{Sound, SoundCategory},
     tag,
     tag::Taggable,
+    world::WorldEvent,
 };
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
+use pumpkin_protocol::bedrock::server::ActorEventID;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_util::math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3};
 use pumpkin_world::generation::structure::template::PaletteEntry;
@@ -46,12 +56,19 @@ use crate::entity::{
 };
 
 const SPEED_BOOST: f64 = 0.15;
-/// `teleport_randomly` moves at most this far on each horizontal axis.
+/// Vanilla `Enderman.MAX_TELEPORT_RADIUS`: `teleport_randomly` moves at most this far on each
+/// horizontal axis.
 const RANDOM_TELEPORT_RANGE: f64 = 32.0;
+/// `teleport_randomly` aims at most this far above the enderman.
+const RANDOM_TELEPORT_RISE: i32 = 31;
+/// Vanilla `Enderman.MIN_DEAGGRESSION_TIME`: ticks after a target change before daylight can
+/// send the enderman away.
+const MIN_DEAGGRESSION_TIME: i32 = 600;
+/// Vanilla `Entity.checkBelowWorld`: the void hurts this far below the world.
+const OUT_OF_WORLD_DEPTH: i32 = 64;
 const ENDERMAN_SPEED_BOOST_ID: &str = "minecraft:attacking";
 
 pub const ENDERMAN_EYE_HEIGHT: f64 = 2.55;
-pub const ENDERMAN_BODY_Y_OFFSET: f64 = 1.45;
 pub const PLAYER_EYE_HEIGHT: f64 = 1.62;
 
 fn is_projectile_damage(dt: DamageType) -> bool {
@@ -73,6 +90,8 @@ pub struct EndermanEntity {
     creepy: AtomicBool,
     provoked: AtomicBool,
     speed_boosted: AtomicBool,
+    /// Vanilla `targetChangeTime`: the tick count of the last target set, 0 without a target.
+    target_change_time: AtomicI32,
 }
 
 impl EndermanEntity {
@@ -85,6 +104,7 @@ impl EndermanEntity {
             creepy: AtomicBool::new(false),
             provoked: AtomicBool::new(false),
             speed_boosted: AtomicBool::new(false),
+            target_change_time: AtomicI32::new(0),
         };
         let mob_arc = Arc::new(entity);
         let mob_weak: Weak<dyn Mob> = {
@@ -125,14 +145,18 @@ impl EndermanEntity {
         mob_arc
     }
 
+    /// Vanilla `Enderman.teleport()`.
     pub fn teleport_randomly(&self) -> bool {
         let entity = &self.mob_entity.living_entity.entity;
+        if !entity.is_alive() {
+            return false;
+        }
         let pos = entity.pos.load();
         let (x, y, z) = {
             let rng = self.get_random();
             (
                 pos.x + (rng.random_range(0.0..1.0) - 0.5) * 2.0 * RANDOM_TELEPORT_RANGE,
-                pos.y + (rng.random_range(0i32..64) - 32) as f64,
+                pos.y + f64::from(rng.random_range(0i32..64) - 32),
                 pos.z + (rng.random_range(0.0..1.0) - 0.5) * 2.0 * RANDOM_TELEPORT_RANGE,
             )
         };
@@ -140,88 +164,144 @@ impl EndermanEntity {
         self.teleport_to(x, y, z)
     }
 
+    /// Vanilla `Enderman.teleportTowards`.
     pub fn teleport_towards(&self, target: &dyn EntityBase) -> bool {
         let entity = &self.mob_entity.living_entity.entity;
         let pos = entity.pos.load();
-        let target_pos = target.get_entity().pos.load();
-
-        let dx = pos.x - target_pos.x;
-        let dy = (pos.y + ENDERMAN_BODY_Y_OFFSET) - (target_pos.y + PLAYER_EYE_HEIGHT);
-        let dz = pos.z - target_pos.z;
-        let dist = (dx * dx + dy * dy + dz * dz).sqrt();
-
-        if dist < 1e-6 {
-            return false;
-        }
-
-        let nx = dx / dist;
-        let ny = dy / dist;
-        let nz = dz / dist;
+        let target = target.get_entity();
+        let target_pos = target.pos.load();
+        let dir = Vector3::new(
+            pos.x - target_pos.x,
+            pos.y + f64::from(entity.height()) * 0.5 - target.get_eye_y(),
+            pos.z - target_pos.z,
+        );
+        // `Vec3.normalize` leaves a near-zero vector at zero.
+        let length = dir.length();
+        let dir = if length < 1.0E-5 {
+            Vector3::default()
+        } else {
+            dir * (1.0 / length)
+        };
         let (x, y, z) = {
             let rng = self.get_random();
             (
-                pos.x + (rng.random_range(0.0..1.0) - 0.5) * 8.0 - nx * 16.0,
-                pos.y + (rng.random_range(0i32..16) - 8) as f64 - ny * 16.0,
-                pos.z + (rng.random_range(0.0..1.0) - 0.5) * 8.0 - nz * 16.0,
+                pos.x + (rng.random_range(0.0..1.0) - 0.5) * 8.0 - dir.x * 16.0,
+                pos.y + f64::from(rng.random_range(0i32..16) - 8) - dir.y * 16.0,
+                pos.z + (rng.random_range(0.0..1.0) - 0.5) * 8.0 - dir.z * 16.0,
             )
         };
 
         self.teleport_to(x, y, z)
     }
 
+    /// Vanilla `Enderman.teleport(x, y, z)`.
     pub fn teleport_to(&self, x: f64, y: f64, z: f64) -> bool {
         let entity = &self.mob_entity.living_entity.entity;
-        let origin = entity.pos.load();
-        let world = entity.world.load();
-
-        let min_y = f64::from(world.dimension.min_y);
-        let max_y = f64::from(world.dimension.min_y + world.dimension.height - 1);
-        let mut target_y = y.clamp(min_y, max_y);
-
-        let block_x = x.floor() as i32;
-        let mut block_y = target_y.floor() as i32;
-        let block_z = z.floor() as i32;
-        let ground_pos = loop {
-            let below_pos = BlockPos::new(block_x, block_y - 1, block_z);
-            let below_state = world.get_block_state(&below_pos);
-            if below_state.is_solid() {
-                break Some(below_pos);
-            }
-            if block_y <= world.dimension.min_y {
-                break None;
-            }
-            block_y -= 1;
-            target_y = block_y as f64;
-        };
-        let Some(ground_pos) = ground_pos else {
+        if entity.has_vehicle() {
             return false;
-        };
+        }
+        let origin = entity.pos.load();
+        if !self.random_teleport(x, y, z) {
+            return false;
+        }
+        let world = entity.world.load();
+        world.emit_game_event_with_context(
+            GameEvent::Teleport.name(),
+            origin,
+            &GameEventContext {
+                source_entity: Some(self),
+            },
+        );
+        if !entity.is_silent() {
+            let old_block = BlockPos::containing_vec(origin);
+            let new_block = entity.block_pos.load();
+            // `BlockUtil.clampedPackDifferenceInPosition` with radius 127 on every axis.
+            let clamped = BlockPos::new(
+                old_block.0.x + (new_block.0.x - old_block.0.x).clamp(-127, 127),
+                old_block.0.y + (new_block.0.y - old_block.0.y).clamp(-127, 127),
+                old_block.0.z + (new_block.0.z - old_block.0.z).clamp(-127, 127),
+            );
+            world.sync_world_event(
+                WorldEvent::ParticlesEndermanTeleport,
+                old_block,
+                old_block.pack_difference_in_position(&clamped, 127, 127, 127),
+            );
+            world.play_sound(
+                Sound::EntityEndermanTeleport,
+                SoundCategory::Hostile,
+                &origin,
+            );
+            self.play_entity_sound(Sound::EntityEndermanTeleport, 1.0, 1.0);
+        }
+        true
+    }
 
+    /// Vanilla `LivingEntity.randomTeleport` with `Enderman.canRandomlyTeleportTo` and the
+    /// `enderman_does_not_teleport_to` tag: moves down to a block entities can stand on.
+    fn random_teleport(&self, x: f64, y: f64, z: f64) -> bool {
+        let entity = &self.mob_entity.living_entity.entity;
+        let world = entity.world.load();
+        let (x, z) = {
+            let border = world
+                .worldborder
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let half = border.new_diameter / 2.0;
+            let margin = f64::from(1.0E-5f32);
+            (
+                x.clamp(border.center_x - half, border.center_x + half - margin),
+                z.clamp(border.center_z - half, border.center_z + half - margin),
+            )
+        };
+        let mut pos = BlockPos::containing(x, y, z);
+        // `Level.hasChunkAt`.
         if world
-            .get_fluid(&ground_pos)
+            .level
+            .read_chunk_sync(&pos.chunk_position(), |_| ())
+            .is_none()
+        {
+            return false;
+        }
+        let mut y = y;
+        while pos.0.y > world.get_bottom_y() {
+            pos = pos.down();
+            let below = world.get_block(&pos);
+            if below.has_tag(&tag::Block::MINECRAFT_ENTITIES_CAN_TELEPORT_TO) {
+                return self.check_position_and_teleport(x, y, z, below);
+            }
+            y -= 1.0;
+        }
+        false
+    }
+
+    /// Vanilla `LivingEntity.checkPositionAndTeleport`.
+    fn check_position_and_teleport(&self, x: f64, y: f64, z: f64, below: &Block) -> bool {
+        let is_invalid =
+            |block: &Block| block.has_tag(&tag::Block::MINECRAFT_ENDERMAN_DOES_NOT_TELEPORT_TO);
+        if is_invalid(below) {
+            return false;
+        }
+        let entity = &self.mob_entity.living_entity.entity;
+        let world = entity.world.load();
+        let bb = BoundingBox::new_from_pos(x, y, z, &entity.entity_dimension.load());
+        if !world.is_space_empty(bb) || world.contains_any_liquid(bb) {
+            return false;
+        }
+        if BlockPos::iterate(bb.min_block_pos(), bb.max_block_pos())
+            .any(|pos| is_invalid(world.get_block(&pos)))
+        {
+            return false;
+        }
+        // `Enderman.canRandomlyTeleportTo`.
+        if world
+            .get_fluid(&BlockPos::containing(x, y, z).down())
             .has_tag(&tag::Fluid::MINECRAFT_WATER)
         {
             return false;
         }
 
-        let bb = BoundingBox::new_from_pos(x, target_y, z, &entity.entity_dimension.load());
-        if !world.is_space_empty(bb) || world.contains_any_liquid(bb) {
-            return false;
-        }
-
-        let new_pos = Vector3::new(x, target_y, z);
-
-        for pos in &[origin, new_pos] {
-            world.spawn_particle(
-                *pos,
-                Vector3::new(0.0, 0.0, 0.0),
-                0.0,
-                128,
-                Particle::Portal,
-            );
-            world.play_sound(Sound::EntityEndermanTeleport, SoundCategory::Hostile, pos);
-        }
-
+        let origin = entity.pos.load();
+        let new_pos = Vector3::new(x, y, z);
         if let Some(server) = world.server.upgrade() {
             let mut event =
                 crate::plugin::api::events::entity::entity_teleport::EntityTeleportEvent::new(
@@ -236,10 +316,40 @@ impl EndermanEntity {
         }
 
         entity.teleport(new_pos, None, None, &world);
-
+        world.send_entity_status(entity, EntityStatus::Teleport, ActorEventID::None);
         self.mob_entity.steered().navigator().stop();
-
         true
+    }
+
+    /// Vanilla `Enderman.repeatedlyTryToTeleport`.
+    fn repeatedly_try_to_teleport(&self) {
+        if self.mob_entity.living_entity.entity.has_vehicle() {
+            return;
+        }
+        for _ in 0..64 {
+            if self.teleport_randomly() {
+                return;
+            }
+        }
+    }
+
+    /// Where `teleports` chained random teleports can put the body: up to 32 blocks across and
+    /// 31 up per teleport, and down to any ground below.
+    pub fn teleport_area(&self, teleports: u32) -> BoundingBox {
+        let entity = self.get_entity();
+        let world = entity.world.load();
+        let teleports = f64::from(teleports);
+        let mut area = entity.bounding_box.load().expand(
+            RANDOM_TELEPORT_RANGE * teleports,
+            0.0,
+            RANDOM_TELEPORT_RANGE * teleports,
+        );
+        area.min.y = f64::from(world.get_bottom_y());
+        area.max.y = f64::from(RANDOM_TELEPORT_RISE)
+            .mul_add(teleports, entity.pos.load().y)
+            .min(f64::from(world.get_top_y()))
+            + f64::from(entity.height());
+        area
     }
 
     pub fn set_target(&self, target: Option<Arc<dyn EntityBase>>) {
@@ -253,6 +363,10 @@ impl EndermanEntity {
         drop(mob_target);
 
         if is_some {
+            self.target_change_time.store(
+                self.get_entity().tick_count.load(Ordering::Relaxed),
+                Ordering::Relaxed,
+            );
             self.set_creepy(true);
             // Use attribute modifier instead of direct speed arithmetic
             if !self.speed_boosted.swap(true, Ordering::Relaxed) {
@@ -273,6 +387,7 @@ impl EndermanEntity {
                 );
             }
         } else {
+            self.target_change_time.store(0, Ordering::Relaxed);
             self.set_creepy(false);
             self.set_provoked(false);
             if self.speed_boosted.swap(false, Ordering::Relaxed) {
@@ -433,45 +548,212 @@ impl Mob for EndermanEntity {
         self.set_target(target);
     }
 
-    // TODO: sunlight avoidance, carried block drop on death, ambient sound override
-
-    // `pre_damage` and `on_damage` teleport randomly, to any height of the column.
-    fn hurt_reach(&self) -> Option<HurtReach> {
-        let entity = self.get_entity();
-        let world = entity.world.load();
-        let mut area =
-            entity
-                .bounding_box
-                .load()
-                .expand(RANDOM_TELEPORT_RANGE, 0.0, RANDOM_TELEPORT_RANGE);
-        area.min.y = f64::from(world.dimension.min_y);
-        area.max.y =
-            f64::from(world.dimension.min_y + world.dimension.height) + f64::from(entity.height());
-        Some(HurtReach {
-            area,
-            changes_blocks: false,
+    fn get_ambient_sound(&self) -> Option<Sound> {
+        Some(if self.is_creepy() {
+            Sound::EntityEndermanScream
+        } else {
+            Sound::EntityEndermanAmbient
         })
     }
 
-    fn pre_damage(&self, damage_type: DamageType, _source: Option<&dyn EntityBase>) -> bool {
-        let is_projectile = is_projectile_damage(damage_type);
-        if is_projectile {
-            for _ in 0..64 {
-                if self.teleport_randomly() {
-                    return false;
-                }
-            }
-        }
-        true
+    fn requires_custom_persistence(&self) -> bool {
+        self.get_carried_block().is_some()
     }
 
-    fn on_damage(&self, _damage_type: DamageType, source: Option<&dyn EntityBase>) {
-        if source.is_some_and(|s| s.get_living_entity().is_some()) {
+    /// Vanilla `Enderman.customServerAiStep`: daylight sends a calm enderman away.
+    fn custom_server_ai_step(&self, _caller: &dyn EntityBase) {
+        let entity = self.get_entity();
+        let world = entity.world.load();
+        if !world.is_bright_outside()
+            || entity.tick_count.load(Ordering::Relaxed)
+                < self.target_change_time.load(Ordering::Relaxed) + MIN_DEAGGRESSION_TIME
+        {
             return;
         }
-        let should_teleport = self.get_random().random_range(0..10) != 0;
-        if should_teleport {
+        let brightness = light_level_dependent_magic_value(entity);
+        if brightness > DAYLIGHT_BRIGHTNESS
+            && world.can_see_sky(&entity.block_pos.load())
+            && self.get_random().random::<f32>() * 30.0 < (brightness - 0.4) * 2.0
+        {
+            self.set_mob_target(None, TargetReason::ForgotTarget);
             self.teleport_randomly();
         }
     }
+
+    /// Vanilla `Enderman.hurtServer`: projectiles and thrown potions make it teleport away, and
+    /// every hurt not caused by a living entity can teleport it, even when it takes no damage.
+    fn mob_hurt_server(
+        &self,
+        caller: &dyn EntityBase,
+        amount: f32,
+        damage_type: DamageType,
+        position: Option<Vector3<f64>>,
+        source: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
+    ) -> Option<bool> {
+        let living = &self.mob_entity.living_entity;
+        if living.entity.is_invulnerable_to(&damage_type, cause) {
+            return Some(false);
+        }
+        if is_projectile_damage(damage_type) && !living.entity.has_vehicle() {
+            self.repeatedly_try_to_teleport();
+            return Some(false);
+        }
+        // Thrown potions only hurt it through `hurt_water_sensitive_entities`, the water branch
+        // of `hurtWithCleanWater`.
+        let thrown_potion = source.is_some_and(|source| {
+            let kind = source.get_entity().entity_type;
+            kind == &EntityType::SPLASH_POTION || kind == &EntityType::LINGERING_POTION
+        });
+        let damaged =
+            living.damage_with_context(caller, amount, damage_type, position, source, cause);
+        if thrown_potion {
+            self.repeatedly_try_to_teleport();
+        } else if cause
+            .or(source)
+            .is_none_or(|attacker| attacker.get_living_entity().is_none())
+            && self.get_random().random_range(0..10) != 0
+        {
+            self.teleport_randomly();
+        }
+        Some(damaged)
+    }
+
+    fn has_audited_tick(&self) -> bool {
+        true
+    }
+
+    /// The look-for-player goal, daylight and the water or rain hurt at the end of the tick each
+    /// teleport it at most once, each from where the one before put it. Hurts from what it
+    /// touches can come once per block, so those ticks run alone.
+    fn audited_teleport(
+        &self,
+        moved: &BoundingBox,
+        goal_teleport: Option<BoundingBox>,
+    ) -> AuditedTeleport {
+        if self.may_be_hurt_by_surroundings(moved) {
+            return AuditedTeleport::Unbounded;
+        }
+        let mut teleports = u32::from(goal_teleport.is_some());
+        if self.may_teleport_from_daylight(teleports > 0) {
+            teleports += 1;
+        }
+        // A teleport can put it in the rain or next to water.
+        if teleports > 0 || may_be_wet(&self.get_entity().world.load(), moved) {
+            teleports += 1;
+        }
+        if teleports == 0 {
+            AuditedTeleport::None
+        } else {
+            AuditedTeleport::Within(self.teleport_area(teleports))
+        }
+    }
+
+    // A hit teleports it once, from where it stands.
+    fn hurt_reach(&self) -> Option<HurtReach> {
+        Some(HurtReach {
+            area: self.teleport_area(1),
+            changes_blocks: false,
+        })
+    }
+}
+
+impl EndermanEntity {
+    /// `custom_server_ai_step` can teleport it this tick. `moved_before` means a teleport earlier
+    /// in the tick can change the light and sky it sees.
+    fn may_teleport_from_daylight(&self, moved_before: bool) -> bool {
+        let entity = self.get_entity();
+        let world = entity.world.load();
+        if !world.is_bright_outside() {
+            return false;
+        }
+        // Dropping the target this tick resets the change time.
+        let tick = entity.tick_count.load(Ordering::Relaxed) + 1;
+        if self.mob_entity.get_target().is_none()
+            && tick < self.target_change_time.load(Ordering::Relaxed) + MIN_DEAGGRESSION_TIME
+        {
+            return false;
+        }
+        moved_before
+            || (light_level_dependent_magic_value(entity) > DAYLIGHT_BRIGHTNESS
+                && world.can_see_sky(&entity.block_pos.load()))
+    }
+
+    /// Whether something it can touch this tick in `moved` can hurt it without a living
+    /// attacker: fire, lava, freezing, drowning, a fall, a wall, cramming, the void or a
+    /// damaging block.
+    fn may_be_hurt_by_surroundings(&self, moved: &BoundingBox) -> bool {
+        let living = &self.mob_entity.living_entity;
+        let entity = &living.entity;
+        let world = entity.world.load();
+        let fall = moved.max.y - entity.bounding_box.load().max.y;
+        if entity.fire_ticks.load(Ordering::Relaxed) > 0
+            || entity.frozen_ticks.load(Ordering::Relaxed) > 0
+            || entity.air_supply.load(Ordering::Relaxed) <= 1 - DROWNING_INTERVAL
+            || living.fall_distance.load() + fall
+                >= living.get_attribute_value(&Attributes::SAFE_FALL_DISTANCE)
+            || entity.is_in_wall()
+            || moved.min.y < f64::from(world.get_bottom_y() - OUT_OF_WORLD_DEPTH)
+        {
+            return true;
+        }
+        if let GameRuleValue::Int(max_cramming) = world.get_game_rule(&GameRule::MaxEntityCramming)
+            && max_cramming > 0
+            && world.get_all_at_box(moved).len() as i64 > max_cramming
+        {
+            return true;
+        }
+        // Blocks it walks in or steps on.
+        let contact = moved.expand_towards(0.0, -1.0, 0.0);
+        BlockPos::iterate(contact.min_block_pos(), contact.max_block_pos()).any(|pos| {
+            let block = world.get_block(&pos);
+            HURTING_BLOCKS.iter().any(|hurting| hurting.id == block.id)
+                || world.get_fluid(&pos).has_tag(&tag::Fluid::MINECRAFT_LAVA)
+        })
+    }
+}
+
+/// Blocks whose contact, step or landing callbacks hurt it.
+const HURTING_BLOCKS: [&Block; 11] = [
+    &Block::FIRE,
+    &Block::SOUL_FIRE,
+    &Block::CAMPFIRE,
+    &Block::SOUL_CAMPFIRE,
+    &Block::MAGMA_BLOCK,
+    &Block::CACTUS,
+    &Block::SWEET_BERRY_BUSH,
+    &Block::WITHER_ROSE,
+    &Block::POINTED_DRIPSTONE,
+    &Block::POWDER_SNOW,
+    &Block::LAVA_CAULDRON,
+];
+
+/// Whether water or rain can reach a body in `moved` at the end of the tick, when vanilla
+/// `aiStep` hurts water-sensitive mobs.
+fn may_be_wet(world: &World, moved: &BoundingBox) -> bool {
+    let (min, max) = (moved.min_block_pos().0, moved.max_block_pos().0);
+    if world.is_raining()
+        && (min.x..=max.x).any(|x| {
+            (min.z..=max.z).any(|z| world.get_heightmap_height(MotionBlocking, x, z) < max.y)
+        })
+    {
+        return true;
+    }
+    BlockPos::iterate(moved.min_block_pos(), moved.max_block_pos())
+        .any(|pos| world.get_fluid(&pos).has_tag(&tag::Fluid::MINECRAFT_WATER))
+}
+
+/// Vanilla `Entity.getLightLevelDependentMagicValue`: the light at the eyes, 0 in an unloaded
+/// column.
+fn light_level_dependent_magic_value(entity: &Entity) -> f32 {
+    let world = entity.world.load();
+    let eye = BlockPos::containing_vec(entity.get_eye_pos());
+    if world
+        .level
+        .read_chunk_sync(&eye.chunk_position(), |_| ())
+        .is_none()
+    {
+        return 0.0;
+    }
+    world.get_light_level_dependent_magic_value(&eye)
 }

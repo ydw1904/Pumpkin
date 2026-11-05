@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
-use super::{Goal, to_goal_ticks};
+use super::{Goal, GoalReach, to_goal_ticks};
 use crate::entity::mob::Mob;
 use crate::entity::mob::enderman::EndermanEntity;
+use crate::world::game_event::GameEventContext;
 use pumpkin_data::BlockStateId;
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
 use pumpkin_world::world::BlockFlags;
@@ -18,7 +20,31 @@ impl PickUpBlockGoal {
     }
 }
 
+/// How far from the body the enderman's block goals read, change and announce blocks: the block
+/// they pick lies within two blocks of its feet, and placing checks the entities in that block.
+pub(super) fn enderman_block_reach(mob: &dyn Mob) -> GoalReach {
+    let world = mob.get_entity().world.load();
+    if !world.level_info.load().game_rules.mob_griefing {
+        return GoalReach::default();
+    }
+    GoalReach {
+        entities: ENDERMAN_BLOCK_REACH,
+        players: ENDERMAN_BLOCK_REACH,
+        changes_blocks: true,
+        block_reads: ENDERMAN_BLOCK_REACH,
+        game_events: ENDERMAN_BLOCK_REACH,
+        ..GoalReach::default()
+    }
+}
+
+/// Farthest the picked block lies from the enderman's body, plus its neighbours.
+const ENDERMAN_BLOCK_REACH: f64 = 4.0;
+
 impl Goal for PickUpBlockGoal {
+    fn tick_reach(&self, mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        Some(enderman_block_reach(mob))
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         if self.enderman.get_carried_block().is_some() {
             return false;
@@ -90,8 +116,14 @@ impl Goal for PickUpBlockGoal {
             return;
         }
 
-        // TODO: Emit game event (BLOCK_DESTROY)
         world.set_block_state(&target_pos, BlockStateId::AIR, BlockFlags::NOTIFY_ALL);
+        world.emit_game_event_with_context(
+            GameEvent::BlockDestroy.name(),
+            target_pos.to_centered_f64(),
+            &GameEventContext {
+                source_entity: Some(self.enderman.as_ref()),
+            },
+        );
         self.enderman.set_carried_block(Some(default_state_id));
     }
 }

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use super::{Controls, Goal};
+use super::{Controls, Goal, GoalReach};
 use crate::entity::EntityBase;
 use crate::entity::mob::Mob;
 use crate::entity::mob::enderman::{EndermanEntity, PLAYER_EYE_HEIGHT};
@@ -20,6 +20,18 @@ impl ChasePlayerGoal {
 }
 
 impl Goal for ChasePlayerGoal {
+    // Only reads the mob's target, whose sight the attack goals already check.
+    fn tick_reach(&self, _mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        Some(GoalReach {
+            links: self
+                .target
+                .iter()
+                .map(|target| target.get_entity().entity_id)
+                .collect(),
+            ..GoalReach::default()
+        })
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         let mob_entity = mob.get_mob_entity();
         let target = mob_entity.get_target();

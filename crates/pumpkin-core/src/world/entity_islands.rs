@@ -24,7 +24,8 @@ use crate::entity::living::MAX_VISIBILITY_PERCENT;
 use crate::entity::player::Player;
 use crate::entity::{DelayedLeash, EntityBase, PUSH_STRENGTH, tnt::TNTEntity};
 use crate::plugin::api::events::entity::{
-    entity_breed::EntityBreedEvent, entity_target::EntityTargetEvent,
+    entity_breed::EntityBreedEvent, entity_change_block::EntityChangeBlockEvent,
+    entity_target::EntityTargetEvent, entity_teleport::EntityTeleportEvent,
     entity_toggle_sit::EntityToggleSitEvent, pig_zombie_anger::PigZombieAngerEvent,
 };
 use crate::server::Server;
@@ -143,8 +144,10 @@ impl Schedule {
     }
 }
 
-/// A plugin listens to an event an entity tick can fire: targeting, breeding, anger, or a
-/// sit order dropped on damage. Its handler may touch anything, so the tick runs in list order.
+/// A plugin listens to an event an entity tick can fire.
+///
+/// Targeting, breeding, anger, a sit order dropped on damage, a teleport or a block an enderman
+/// takes. Its handler may touch anything, so the tick runs in list order.
 #[must_use]
 pub fn plugins_observe_entity_ticks(server: &Server) -> bool {
     let plugins = &server.plugin_manager;
@@ -152,6 +155,8 @@ pub fn plugins_observe_entity_ticks(server: &Server) -> bool {
         || plugins.has_handlers::<EntityBreedEvent>()
         || plugins.has_handlers::<PigZombieAngerEvent>()
         || plugins.has_handlers::<EntityToggleSitEvent>()
+        || plugins.has_handlers::<EntityTeleportEvent>()
+        || plugins.has_handlers::<EntityChangeBlockEvent>()
 }
 
 /// How far target searches can find players this tick. Planning refreshes it before the reports.
@@ -282,6 +287,71 @@ pub struct AuditedReach {
 }
 
 impl AuditedReach {
+    /// A reach that can act anywhere, so the tick runs alone.
+    #[must_use]
+    pub const fn global(bounding_box: BoundingBox) -> Self {
+        Self {
+            bounding_box,
+            motion: (0.0, 0.0),
+            entities: 0.0,
+            players: 0.0,
+            typed_entities: Vec::new(),
+            kind: None,
+            block_reads: 0.0,
+            route: None,
+            changes_blocks: true,
+            global: true,
+            links: Vec::new(),
+            sight: Vec::new(),
+            spans_contacts: false,
+            knockback: 0.0,
+        }
+    }
+
+    /// Covers a body teleported anywhere into `area`, which then moves and acts on from there.
+    pub fn add_teleport(&mut self, world: &World, area: &BoundingBox) {
+        let (horizontal, vertical) = self.motion;
+        let reached = area
+            .expand(
+                horizontal + SCAN_SLACK,
+                vertical + SCAN_SLACK,
+                horizontal + SCAN_SLACK,
+            )
+            .expand_towards(0.0, -1.0, 0.0);
+        self.scan_teleport_contacts(world, &reached);
+        self.bounding_box = union(&self.bounding_box, area);
+    }
+
+    /// Flags what a body in `area` can touch: block contacts there change blocks if any loaded
+    /// section of it holds such a block, and an end gateway can send it anywhere.
+    fn scan_teleport_contacts(&mut self, world: &World, area: &BoundingBox) {
+        let (min, max) = (area.min_block_pos().0, area.max_block_pos().0);
+        let bottom = get_section_cord(world.get_bottom_y());
+        let top = get_section_cord(world.get_top_y());
+        for x in get_section_cord(min.x)..=get_section_cord(max.x) {
+            for z in get_section_cord(min.z)..=get_section_cord(max.z) {
+                // Teleports never land in unloaded chunks.
+                if world
+                    .level
+                    .read_chunk_sync(&Vector2::new(x, z), |_| ())
+                    .is_none()
+                {
+                    continue;
+                }
+                for y in get_section_cord(min.y).max(bottom)..=get_section_cord(max.y).min(top) {
+                    if !contact_section_may_change_blocks(world, x, y, z) {
+                        continue;
+                    }
+                    self.changes_blocks = true;
+                    if section_holds(world, x, y, z, |block| block.id == Block::END_GATEWAY.id) {
+                        self.global = true;
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
     /// Flags blocks it can touch that change or teleport on contact.
     pub fn scan_contact_blocks(&mut self, world: &World) {
         let area = self
@@ -504,6 +574,16 @@ pub fn links_of(entity: &dyn EntityBase) -> Vec<i32> {
     }
     if let Some(mob) = entity.get_mob() {
         links.extend(mob.tick_links());
+        // `NeutralMob::restore_persistent_target` looks the saved grudge up by UUID.
+        if let Some(neutral) = mob.as_neutral()
+            && neutral.get_neutral_data().restore_target.load(Relaxed)
+            && let Some(uuid) = neutral.get_persistent_anger_target()
+        {
+            links.extend(
+                crate::entity::mob::neutral::find_by_uuid(&base.world.load(), uuid)
+                    .map(|target| target.get_entity().entity_id),
+            );
+        }
         if let Some(target) = mob.get_mob_entity().get_target() {
             links.push(target.get_entity().entity_id);
         }
@@ -772,6 +852,13 @@ fn contact_section_may_change_blocks(world: &World, x: i32, y: i32, z: i32) -> b
 }
 
 fn scan_contact_section(world: &World, x: i32, y: i32, z: i32) -> bool {
+    section_holds(world, x, y, z, |block| {
+        block.id == Block::END_GATEWAY.id || changes_on_contact(block)
+    })
+}
+
+/// Whether the section's palette holds a matching block. Unloaded sections may hold anything.
+fn section_holds(world: &World, x: i32, y: i32, z: i32, matches: impl Fn(&Block) -> bool) -> bool {
     world
         .level
         .read_chunk_sync(&Vector2::new(x, z), |chunk| {
@@ -785,10 +872,7 @@ fn scan_contact_section(world: &World, x: i32, y: i32, z: i32) -> bool {
                 .ok()
                 .and_then(|index| blocks.get(index))
                 .is_none_or(|palette| {
-                    palette.contains_matching(|state| {
-                        let block = Block::from_state_id(state);
-                        block.id == Block::END_GATEWAY.id || changes_on_contact(block)
-                    })
+                    palette.contains_matching(|state| matches(Block::from_state_id(state)))
                 })
         })
         .unwrap_or(true)
@@ -882,7 +966,7 @@ fn finished_bounds(audited: &AuditedReach, extra: f64) -> BoundingBox {
     bounds
 }
 
-const fn union(a: &BoundingBox, b: &BoundingBox) -> BoundingBox {
+pub(crate) const fn union(a: &BoundingBox, b: &BoundingBox) -> BoundingBox {
     BoundingBox::new(
         pumpkin_util::math::vector3::Vector3::new(
             a.min.x.min(b.min.x),

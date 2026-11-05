@@ -1,9 +1,12 @@
 use std::sync::Arc;
 
-use super::{Goal, to_goal_ticks};
+use super::pick_up_block::enderman_block_reach;
+use super::{Goal, GoalReach, to_goal_ticks};
 use crate::entity::mob::Mob;
 use crate::entity::mob::enderman::EndermanEntity;
+use crate::world::game_event::GameEventContext;
 use pumpkin_data::block_properties::is_air;
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::{Block, BlockState};
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
@@ -20,6 +23,10 @@ impl PlaceBlockGoal {
 }
 
 impl Goal for PlaceBlockGoal {
+    fn tick_reach(&self, mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
+        Some(enderman_block_reach(mob))
+    }
+
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         if self.enderman.get_carried_block().is_none() {
             return false;
@@ -97,6 +104,13 @@ impl Goal for PlaceBlockGoal {
         }
 
         world_clone.set_block_state(&target_pos, block_state_id, BlockFlags::NOTIFY_ALL);
+        world_clone.emit_game_event_with_context(
+            GameEvent::BlockPlace.name(),
+            target_pos.to_centered_f64(),
+            &GameEventContext {
+                source_entity: Some(self.enderman.as_ref()),
+            },
+        );
         self.enderman.set_carried_block(None);
     }
 }

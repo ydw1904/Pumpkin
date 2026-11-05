@@ -1700,6 +1700,10 @@ impl MobEntity {
     }
 
     /// What this mob can touch next tick, if its species and goals are audited.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "One pass over the movement, teleport and goal bounds of the tick"
+    )]
     pub fn audited_reach(&self, mob: &dyn Mob) -> Option<AuditedReach> {
         let living = &self.living_entity;
         let entity = &living.entity;
@@ -1776,14 +1780,24 @@ impl MobEntity {
 
         let mut links = entity_islands::links_of(mob);
         links.extend(goals.links);
-        let moved = entity
+        let mut moved = entity
             .bounding_box
             .load()
             .expand(horizontal, vertical, horizontal);
+        let teleport = match mob.audited_teleport(&moved, goals.teleport) {
+            AuditedTeleport::None => None,
+            AuditedTeleport::Within(area) => Some(area),
+            AuditedTeleport::Unbounded => {
+                return Some(AuditedReach::global(entity.bounding_box.load()));
+            }
+        };
+        if let Some(area) = teleport {
+            moved = entity_islands::union(&moved, &area.expand(horizontal, vertical, horizontal));
+        }
         game_event_listener_links(
             &world,
             mob.movement_emission().emits_events(),
-            &moved,
+            &moved.expand(goals.game_events, goals.game_events, goals.game_events),
             &mut links,
         );
         let mut reach = AuditedReach {
@@ -1810,8 +1824,20 @@ impl MobEntity {
             knockback: goals.knockback,
         };
         reach.scan_contact_blocks(&world);
+        if let Some(area) = teleport {
+            reach.add_teleport(&world, &area);
+        }
         Some(reach)
     }
+}
+
+/// Where a species' own tick code can teleport the mob this tick.
+pub enum AuditedTeleport {
+    None,
+    /// Anywhere its body fits inside the box.
+    Within(BoundingBox),
+    /// Too far or too often to bound: the tick runs alone.
+    Unbounded,
 }
 
 pub trait Mob: EntityBase + Send + Sync {
@@ -1822,6 +1848,16 @@ pub trait Mob: EntityBase + Send + Sync {
     /// Whether the species' own tick code stays within the reach `MobEntity` computes.
     fn has_audited_tick(&self) -> bool {
         false
+    }
+
+    /// Where the species' own tick code can teleport the mob this tick, given the box `moved`
+    /// its movement stays in and the area its goals can teleport it into.
+    fn audited_teleport(
+        &self,
+        _moved: &BoundingBox,
+        goal_teleport: Option<BoundingBox>,
+    ) -> AuditedTeleport {
+        goal_teleport.map_or(AuditedTeleport::None, AuditedTeleport::Within)
     }
 
     /// How far outside its box the species' tick code spawns entities this tick.
