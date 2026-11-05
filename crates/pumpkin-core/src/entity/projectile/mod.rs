@@ -159,8 +159,6 @@ impl ThrownItemEntity {
     /// Process a tick for projectile movement and collisions
     pub fn process_tick(&self, caller: &dyn EntityBase) {
         let entity = self.get_entity();
-        let world = entity.world.load();
-
         self.owner.check_left_owner(entity);
         entity.update_last_pos();
 
@@ -178,6 +176,51 @@ impl ThrownItemEntity {
         // Store velocity
         entity.velocity.store(velocity);
 
+        self.move_and_hit(caller);
+    }
+
+    /// Vanilla `AbstractHurtingProjectile.tick`: no gravity or drag, but `acceleration_power`
+    /// along the flight and `inertia` (`liquid_inertia` in water) instead. Leaving the loaded
+    /// chunks discards the projectile.
+    pub fn process_hurting_tick(
+        &self,
+        caller: &dyn EntityBase,
+        acceleration_power: f64,
+        inertia: f32,
+        liquid_inertia: f32,
+    ) {
+        let entity = self.get_entity();
+        let movement = entity.velocity.load();
+        let inertia = if entity.touching_water.load(Ordering::Relaxed) {
+            liquid_inertia
+        } else {
+            inertia
+        };
+        // `Vec3.normalize` is zero for a vector shorter than 1.0E-5.
+        let length = movement.length();
+        let direction = if length < 1.0E-5 {
+            Vector3::default()
+        } else {
+            movement * (1.0 / length)
+        };
+        entity
+            .velocity
+            .store((movement + direction * acceleration_power) * f64::from(inertia));
+        if !entity.world.load().is_loaded(&entity.block_pos.load()) {
+            entity.remove();
+            return;
+        }
+        self.owner.check_left_owner(entity);
+        entity.update_last_pos();
+        rotate_towards_movement(entity, HURTING_ROTATION_SPEED);
+        self.move_and_hit(caller);
+    }
+
+    /// Moves the projectile by its velocity, then hits the first block or entity on the way.
+    fn move_and_hit(&self, caller: &dyn EntityBase) {
+        let entity = self.get_entity();
+        let world = entity.world.load();
+        let velocity = entity.velocity.load();
         let start_pos = entity.pos.load();
         let delta = velocity;
 
@@ -315,6 +358,45 @@ impl ThrownItemEntity {
     const fn get_gravity(&self) -> f64 {
         self.gravity
     }
+}
+
+/// Vanilla `AbstractHurtingProjectile.getInertia`, kept per tick outside fluids.
+pub const HURTING_INERTIA: f32 = 0.95;
+/// Vanilla `AbstractHurtingProjectile.getLiquidInertia`.
+pub const HURTING_LIQUID_INERTIA: f32 = 0.8;
+
+/// The rotation speed `AbstractHurtingProjectile.tick` turns with.
+const HURTING_ROTATION_SPEED: f32 = 0.2;
+
+/// Vanilla `ProjectileUtil.rotateTowardsMovement`: turns `speed` of the way from the current
+/// rotation towards the flight direction.
+// Vanilla's `Mth.lerp` rounds after the multiply and after the add, so no `mul_add` here.
+#[allow(clippy::suboptimal_flops)]
+pub(crate) fn rotate_towards_movement(entity: &Entity, speed: f32) {
+    let movement = entity.velocity.load();
+    if movement.length_squared() == 0.0 {
+        return;
+    }
+    let horizontal = movement.horizontal_length();
+    let to_degrees = 180.0 / f64::from(std::f32::consts::PI);
+    let yaw = (movement.z.atan2(movement.x) * to_degrees) as f32 + 90.0;
+    let pitch = (horizontal.atan2(movement.y) * to_degrees) as f32 - 90.0;
+    let mut old_yaw = entity.yaw.load();
+    let mut old_pitch = entity.pitch.load();
+    while pitch - old_pitch < -180.0 {
+        old_pitch -= 360.0;
+    }
+    while pitch - old_pitch >= 180.0 {
+        old_pitch += 360.0;
+    }
+    while yaw - old_yaw < -180.0 {
+        old_yaw -= 360.0;
+    }
+    while yaw - old_yaw >= 180.0 {
+        old_yaw += 360.0;
+    }
+    entity.yaw.store(old_yaw + speed * (yaw - old_yaw));
+    entity.pitch.store(old_pitch + speed * (pitch - old_pitch));
 }
 
 /// Ray intersection algorithm for AABBs, returning a t value

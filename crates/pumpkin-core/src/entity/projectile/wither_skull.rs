@@ -1,30 +1,71 @@
 use crate::entity::projectile::owner::ProjectileOwner;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-use pumpkin_data::{damage::DamageType, effect::StatusEffect, potion::Effect, tracked_data};
+use pumpkin_data::{
+    Block, damage::DamageType, effect::StatusEffect, fluid::FluidState, potion::Effect,
+    tracked_data,
+};
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::{Difficulty, math::vector3::Vector3};
 
 use crate::{
     entity::{
         Entity, EntityBase,
+        boss::wither::WitherEntity,
         living::LivingEntity,
-        projectile::{ProjectileHit, ThrownItemEntity},
+        projectile::{
+            HURTING_INERTIA, HURTING_LIQUID_INERTIA, ProjectileHit, ThrownItemEntity,
+            fireball::INITIAL_ACCELERATION_POWER,
+        },
     },
     server::Server,
-    world::ExplosionInteraction,
+    world::{
+        ExplosionInteraction, World,
+        explosion::{DefaultExplosionDamageCalculator, Explosion, ExplosionDamageCalculator},
+    },
 };
 
 const GRAVITY: f64 = 0.0;
+/// Vanilla `WitherSkull.getInertia` for a dangerous skull; others keep the default.
+const DANGEROUS_INERTIA: f32 = 0.73;
+const EXPLOSION_POWER: f32 = 1.0;
+/// The most a block the wither can break resists a dangerous skull's blast.
+const DANGEROUS_MAX_RESISTANCE: f32 = 0.8;
+
+/// Vanilla `WitherSkull.getBlockExplosionResistance` for a dangerous skull.
+struct DangerousSkullExplosion;
+
+impl ExplosionDamageCalculator for DangerousSkullExplosion {
+    fn get_block_explosion_resistance(
+        &self,
+        explosion: &Explosion,
+        world: &World,
+        pos: &BlockPos,
+        block: &Block,
+        fluid: &FluidState,
+    ) -> Option<f32> {
+        let resistance = DefaultExplosionDamageCalculator
+            .get_block_explosion_resistance(explosion, world, pos, block, fluid)?;
+        Some(if WitherEntity::can_destroy(block, block.default_state) {
+            resistance.min(DANGEROUS_MAX_RESISTANCE)
+        } else {
+            resistance
+        })
+    }
+}
 
 pub struct WitherSkullEntity {
     pub thrown: ThrownItemEntity,
     pub dangerous: AtomicBool,
+    acceleration_power: AtomicU64,
 }
 
 impl WitherSkullEntity {
     #[must_use]
-    pub const fn new(entity: Entity) -> Self {
+    pub fn new(entity: Entity) -> Self {
+        Self::define_synched_data(&entity);
         let thrown = ThrownItemEntity {
             entity,
             owner: ProjectileOwner::none(),
@@ -36,31 +77,40 @@ impl WitherSkullEntity {
         Self {
             thrown,
             dangerous: AtomicBool::new(false),
+            acceleration_power: AtomicU64::new(INITIAL_ACCELERATION_POWER.to_bits()),
         }
     }
 
+    /// Vanilla `WitherSkull(level, mob, direction)`: the shooter's rotation, flying along
+    /// `direction` at the initial acceleration power.
     #[must_use]
-    pub fn new_shot(
-        entity: Entity,
-        shooter: &Entity,
-        dangerous: bool,
-        direction: Vector3<f64>,
-    ) -> Self {
+    pub fn new_shot(entity: Entity, shooter: &Entity, direction: Vector3<f64>) -> Self {
+        Self::define_synched_data(&entity);
         let thrown = ThrownItemEntity::new(entity, shooter, GRAVITY);
-        let speed = 0.95;
-        let vel = direction.normalize().multiply(speed, speed, speed);
-        thrown.entity.velocity.store(vel);
-
-        let len = vel.horizontal_length();
-        thrown.entity.set_rotation(
-            vel.x.atan2(vel.z) as f32 * 57.295_776,
-            vel.y.atan2(len) as f32 * 57.295_776,
-        );
+        thrown
+            .entity
+            .velocity
+            .store(direction.normalize() * INITIAL_ACCELERATION_POWER);
+        thrown
+            .entity
+            .set_rotation(shooter.yaw.load(), shooter.pitch.load());
 
         Self {
             thrown,
-            dangerous: AtomicBool::new(dangerous),
+            dangerous: AtomicBool::new(false),
+            acceleration_power: AtomicU64::new(INITIAL_ACCELERATION_POWER.to_bits()),
         }
+    }
+
+    /// Vanilla `WitherSkull.defineSynchedData`.
+    fn define_synched_data(entity: &Entity) {
+        entity
+            .synched_data
+            .define(tracked_data::wither_skull::DATA_DANGEROUS, false);
+    }
+
+    fn acceleration_power(&self) -> f64 {
+        f64::from_bits(self.acceleration_power.load(Ordering::Relaxed))
     }
 
     #[must_use]
@@ -116,10 +166,16 @@ impl EntityBase for WitherSkullEntity {
     }
 
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
+        nbt.put_double("acceleration_power", self.acceleration_power());
         nbt.put_bool("dangerous", self.is_dangerous());
     }
 
     fn read_custom_nbt(&self, nbt: &NbtCompound) {
+        let power = nbt
+            .get_double("acceleration_power")
+            .unwrap_or(INITIAL_ACCELERATION_POWER);
+        self.acceleration_power
+            .store(power.to_bits(), Ordering::Relaxed);
         if let Some(dangerous) = nbt.get_bool("dangerous") {
             self.dangerous.store(dangerous, Ordering::Relaxed);
         }
@@ -134,7 +190,17 @@ impl EntityBase for WitherSkullEntity {
     }
 
     fn tick(&self, caller: &dyn EntityBase, _server: &Server) {
-        self.thrown.process_tick(caller);
+        let inertia = if self.is_dangerous() {
+            DANGEROUS_INERTIA
+        } else {
+            HURTING_INERTIA
+        };
+        self.thrown.process_hurting_tick(
+            caller,
+            self.acceleration_power(),
+            inertia,
+            HURTING_LIQUID_INERTIA,
+        );
     }
 
     fn get_entity(&self) -> &Entity {
@@ -183,6 +249,15 @@ impl EntityBase for WitherSkullEntity {
         }
 
         let hit_pos = hit.hit_pos();
-        world.explode(Some(self), hit_pos, 1.0, ExplosionInteraction::Mob);
+        let calculator: Option<Arc<dyn ExplosionDamageCalculator>> = self
+            .is_dangerous()
+            .then(|| Arc::new(DangerousSkullExplosion) as Arc<dyn ExplosionDamageCalculator>);
+        world.explode_with_calculator(
+            Some(self),
+            hit_pos,
+            EXPLOSION_POWER,
+            ExplosionInteraction::Mob,
+            calculator,
+        );
     }
 }

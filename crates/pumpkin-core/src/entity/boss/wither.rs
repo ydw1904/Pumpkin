@@ -272,7 +272,7 @@ impl WitherEntity {
             head_pos,
             &EntityType::WITHER_SKULL,
         );
-        let skull = WitherSkullEntity::new_shot(skull_entity, entity, false, direction);
+        let skull = WitherSkullEntity::new_shot(skull_entity, entity, direction);
         if dangerous {
             skull.set_dangerous(true);
         }
