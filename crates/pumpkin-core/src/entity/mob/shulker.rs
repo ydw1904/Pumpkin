@@ -3,15 +3,21 @@ use std::sync::atomic::{AtomicI32, AtomicU8, Ordering};
 use std::sync::{Arc, Weak};
 
 use crossbeam::atomic::AtomicCell;
-use pumpkin_data::BlockDirection;
+use pumpkin_data::attributes::Attributes;
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::sound::{Sound, SoundCategory};
+use pumpkin_data::tag::{self, Taggable};
+use pumpkin_data::world::WorldEvent;
+use pumpkin_data::{Block, BlockDirection};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_protocol::java::client::play::CEntityPositionSync;
+use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_world::generation::update_shape::is_face_full;
 
 use crate::entity::ai::behavior::hunting::{self, Hunt};
 use crate::entity::ai::goal::look_around::RandomLookAroundGoal;
@@ -22,11 +28,30 @@ use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::mob::{Mob, MobEntity};
 use crate::entity::projectile::shulker_bullet::ShulkerBulletEntity;
 use crate::entity::{Entity, EntityBase};
+use crate::world::game_event::GameEventContext;
 
 const DEFAULT_ATTACH_FACE: BlockDirection = BlockDirection::Down;
 const NO_COLOR: u8 = 16;
 const PEEK_PER_TICK: f32 = 0.05;
 const MAX_TELEPORT_DISTANCE: i32 = 8;
+const TELEPORT_ATTEMPTS: usize = 5;
+
+/// Vanilla `Shulker.getProgressAabb`: the shell of `size` at `position`, opened by `progress`
+/// towards `direction`.
+fn progress_aabb(
+    size: f64,
+    direction: BlockDirection,
+    progress: f64,
+    position: Vector3<f64>,
+) -> BoundingBox {
+    let step = direction.to_offset().to_f64() * (progress * size);
+    BoundingBox::new(
+        Vector3::new(-size * 0.5, 0.0, -size * 0.5),
+        Vector3::new(size * 0.5, size, size * 0.5),
+    )
+    .expand_towards(step.x, step.y, step.z)
+    .shift(position)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Axis {
@@ -185,31 +210,50 @@ impl ShulkerEntity {
         true
     }
 
+    /// Vanilla `Shulker.findAttachableSurface`.
     fn find_attachable_face(&self, pos: &BlockPos) -> Option<BlockDirection> {
-        let entity = &self.mob_entity.living_entity.entity;
-        let world = entity.world.load();
-        for dir in BlockDirection::all() {
-            let neighbour = pos.offset_direction(dir);
-            let state = world.get_block_state(&neighbour);
-            if state.is_solid() {
-                return Some(dir);
-            }
-        }
-        None
+        BlockDirection::all()
+            .into_iter()
+            .find(|&face| self.can_stay_at(pos, face))
     }
 
+    /// Vanilla `Shulker.canStayAt`: `pos` is free, the block towards `face` has a full face
+    /// towards it and the fully opened shell fits.
     fn can_stay_at(&self, pos: &BlockPos, face: BlockDirection) -> bool {
-        let entity = &self.mob_entity.living_entity.entity;
-        let world = entity.world.load();
-
-        let own_state = world.get_block_state(pos);
-        if !own_state.is_air() {
+        if self.is_position_blocked(pos) {
             return false;
         }
+        let living = &self.mob_entity.living_entity;
+        let world = living.entity.world.load();
+        let opposite = face.opposite();
+        // `loadedAndEntityCanStandOnFace`: unloaded blocks read as air.
+        let support = pos.offset_direction(face);
+        if !is_face_full(world.get_block_state_id(&support), support.0, opposite) {
+            return false;
+        }
+        let scale = f64::from(living.get_attribute_value(&Attributes::SCALE) as f32);
+        let fully_opened = progress_aabb(
+            scale,
+            opposite,
+            1.0,
+            Vector3::new(
+                f64::from(pos.0.x) + 0.5,
+                f64::from(pos.0.y),
+                f64::from(pos.0.z) + 0.5,
+            ),
+        )
+        .expand_all(-1.0E-6);
+        world.no_collision(self, &fully_opened)
+    }
 
-        let neighbour = pos.offset_direction(face);
-        let state = world.get_block_state(&neighbour);
-        state.is_solid()
+    /// Vanilla `Shulker.isPositionBlocked`: anything but air, except a moving piston in its
+    /// own block.
+    fn is_position_blocked(&self, pos: &BlockPos) -> bool {
+        let entity = &self.mob_entity.living_entity.entity;
+        let state = entity.world.load().get_block_state(pos);
+        !state.is_air()
+            && (Block::from_state_id(state.id) != &Block::MOVING_PISTON
+                || *pos != entity.block_pos.load())
     }
 
     fn find_new_attachment(&self) {
@@ -221,70 +265,95 @@ impl ShulkerEntity {
         }
     }
 
+    /// Vanilla `Shulker.teleportSomewhere`.
     pub fn teleport_somewhere(&self) -> bool {
         let entity = &self.mob_entity.living_entity.entity;
-        let base_pos = entity.block_pos.load();
+        if self.mob_entity.is_no_ai() || !entity.is_alive() {
+            return false;
+        }
+        let old_pos = entity.block_pos.load();
         let world = entity.world.load();
 
-        let candidates: Vec<(i32, i32, i32)> = {
-            let rng = game_random();
-            (0..20)
-                .map(|_| {
-                    (
-                        rng.random_range(-MAX_TELEPORT_DISTANCE..=MAX_TELEPORT_DISTANCE),
-                        rng.random_range(-MAX_TELEPORT_DISTANCE..=MAX_TELEPORT_DISTANCE),
-                        rng.random_range(-MAX_TELEPORT_DISTANCE..=MAX_TELEPORT_DISTANCE),
-                    )
-                })
-                .collect()
-        };
-
-        for (dx, dy, dz) in candidates {
-            let candidate = BlockPos::new(base_pos.0.x + dx, base_pos.0.y + dy, base_pos.0.z + dz);
-
-            let candidate_state = world.get_block_state(&candidate);
-            if !candidate_state.is_air() {
+        for _ in 0..TELEPORT_ATTEMPTS {
+            let offset = {
+                let rng = self.get_random();
+                Vector3::new(
+                    rng.random_range(-MAX_TELEPORT_DISTANCE..=MAX_TELEPORT_DISTANCE),
+                    rng.random_range(-MAX_TELEPORT_DISTANCE..=MAX_TELEPORT_DISTANCE),
+                    rng.random_range(-MAX_TELEPORT_DISTANCE..=MAX_TELEPORT_DISTANCE),
+                )
+            };
+            let target = old_pos.offset(offset);
+            let within_border = world
+                .worldborder
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .contains(f64::from(target.0.x), f64::from(target.0.z));
+            if target.0.y <= world.get_bottom_y()
+                || !world.get_block_state(&target).is_air()
+                || !within_border
+                || !world.no_collision(self, &BoundingBox::from_block(&target).expand_all(-1.0E-6))
+            {
+                continue;
+            }
+            let Some(face) = self.find_attachable_face(&target) else {
+                continue;
+            };
+            if world
+                .get_block(&target.offset_direction(face))
+                .has_tag(&tag::Block::MINECRAFT_SHULKER_DOES_NOT_TELEPORT_TO)
+            {
                 continue;
             }
 
-            if let Some(dir) = self.find_attachable_face(&candidate) {
-                let new_pos = Vector3::new(
-                    f64::from(candidate.0.x) + 0.5,
-                    f64::from(candidate.0.y),
-                    f64::from(candidate.0.z) + 0.5,
-                );
-
-                self.set_attach_face(dir);
-                entity.set_pos(new_pos);
-
-                let chunk_pos = entity.chunk_pos.load();
-                world.broadcast_to_chunk(
-                    chunk_pos,
-                    &CEntityPositionSync::new(
-                        entity.entity_id.into(),
-                        new_pos,
-                        Vector3::new(0.0, 0.0, 0.0),
-                        entity.yaw.load(),
-                        entity.pitch.load(),
-                        entity.on_ground.load(Ordering::Relaxed),
-                    ),
-                );
-
-                entity.last_sent_pos.store(new_pos);
-
-                world.play_sound_fine(
-                    Sound::EntityShulkerTeleport,
-                    SoundCategory::Hostile,
-                    &new_pos,
-                    1.0,
-                    1.0,
-                );
-
-                self.set_raw_peek(0);
-                self.mob_entity.set_target(None);
-
-                return true;
+            // `unRide`.
+            if let Some(vehicle) = entity.get_vehicle() {
+                vehicle.get_entity().remove_passenger(entity.entity_id);
             }
+            entity.eject_passengers();
+            self.set_attach_face(face);
+            // Played where it was, before it moves.
+            self.play_entity_sound(Sound::EntityShulkerTeleport, 1.0, 1.0);
+            let new_pos = Vector3::new(
+                f64::from(target.0.x) + 0.5,
+                f64::from(target.0.y),
+                f64::from(target.0.z) + 0.5,
+            );
+            entity.set_pos(new_pos);
+            world.broadcast_to_chunk(
+                entity.chunk_pos.load(),
+                &CEntityPositionSync::new(
+                    entity.entity_id.into(),
+                    new_pos,
+                    Vector3::new(0.0, 0.0, 0.0),
+                    entity.yaw.load(),
+                    entity.pitch.load(),
+                    entity.on_ground.load(Ordering::Relaxed),
+                ),
+            );
+            entity.last_sent_pos.store(new_pos);
+            world.emit_game_event_with_context(
+                GameEvent::Teleport.name(),
+                old_pos.to_centered_f64(),
+                &GameEventContext {
+                    source_entity: Some(self),
+                },
+            );
+            world.sync_world_event(
+                WorldEvent::ParticlesShulkerTeleport,
+                old_pos,
+                old_pos.pack_difference_in_position(
+                    &entity.block_pos.load(),
+                    MAX_TELEPORT_DISTANCE,
+                    MAX_TELEPORT_DISTANCE,
+                    MAX_TELEPORT_DISTANCE,
+                ),
+            );
+            // Set directly: unlike `set_raw_peek` this plays no sound.
+            self.peek_amount.store(0, Ordering::Relaxed);
+            entity.set_synced_data(pumpkin_data::tracked_data::shulker::PEEK_ID, 0u8);
+            self.mob_entity.set_target(None);
+            return true;
         }
         false
     }
@@ -346,7 +415,7 @@ impl Mob for ShulkerEntity {
 
         let pos = entity.block_pos.load();
         let face = self.get_attach_face();
-        if !self.can_stay_at(&pos, face) {
+        if !entity.has_vehicle() && !self.can_stay_at(&pos, face) {
             self.find_new_attachment();
         }
     }
@@ -355,9 +424,10 @@ impl Mob for ShulkerEntity {
         self.on_shulker_damage();
     }
 
-    // `on_shulker_damage` can teleport it to a block around it, checking the blocks there.
+    // `on_shulker_damage` can teleport it to a block around it, checking the blocks and
+    // collidable entities there and its fully opened shell one block further.
     fn hurt_reach(&self) -> Option<crate::world::entity_islands::HurtReach> {
-        let reach = f64::from(MAX_TELEPORT_DISTANCE) + 1.0;
+        let reach = f64::from(MAX_TELEPORT_DISTANCE) + 2.0;
         Some(crate::world::entity_islands::HurtReach {
             area: self
                 .get_entity()

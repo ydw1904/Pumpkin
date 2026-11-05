@@ -96,4 +96,40 @@ impl World {
     ) -> bool {
         self.get_entity_collisions(source, *aabb).is_empty()
     }
+
+    /// Vanilla `noBorderCollision`: only checked while `source` is close to the border, whose
+    /// collision shape is the outside of the border rounded out to whole blocks.
+    fn no_border_collision(&self, source: &Entity, aabb: &BoundingBox) -> bool {
+        let border = self
+            .worldborder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let size = (aabb.max.x - aabb.min.x)
+            .abs()
+            .max((aabb.max.z - aabb.min.z).abs())
+            .max(1.0);
+        let pos = source.pos.load();
+        let half = border.new_diameter / 2.0;
+        let (min_x, max_x) = (border.center_x - half, border.center_x + half);
+        let (min_z, max_z) = (border.center_z - half, border.center_z + half);
+        // `WorldBorder.isInsideCloseToBorder`.
+        let close = border.distance_to_border(pos.x, pos.z) < size * 2.0
+            && pos.x >= min_x - size
+            && pos.x < max_x + size
+            && pos.z >= min_z - size
+            && pos.z < max_z + size;
+        !close
+            || (aabb.min.x >= min_x.floor()
+                && aabb.max.x <= max_x.ceil()
+                && aabb.min.z >= min_z.floor()
+                && aabb.max.z <= max_z.ceil())
+    }
+
+    /// Vanilla `CollisionGetter.noCollision(source, aabb)`: no block, entity or world border
+    /// collision for `source` in `aabb`.
+    pub fn no_collision(&self, source: &dyn EntityBase, aabb: &BoundingBox) -> bool {
+        self.get_block_collisions(*aabb, source).0.is_empty()
+            && self.no_entity_collision(Some(source), aabb)
+            && self.no_border_collision(source.get_entity(), aabb)
+    }
 }

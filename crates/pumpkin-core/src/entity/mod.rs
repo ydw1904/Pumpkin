@@ -5505,6 +5505,19 @@ impl Entity {
         self.remove_passenger_internal(passenger_id, true);
     }
 
+    /// Vanilla `Entity.ejectPassengers`: the last passenger first.
+    pub fn eject_passengers(&self) {
+        // Copied, so the lock is released before dismounting takes it again.
+        let passengers = self
+            .passengers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        for passenger in passengers.iter().rev() {
+            self.remove_passenger(passenger.get_entity().entity_id);
+        }
+    }
+
     pub fn remove_passenger_before_teleport(&self, passenger_id: i32) {
         self.remove_passenger_internal(passenger_id, false);
     }

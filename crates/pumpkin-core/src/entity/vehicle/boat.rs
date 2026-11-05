@@ -232,22 +232,6 @@ impl BoatEntity {
         entity.has_passenger(rider_id)
     }
 
-    /// Vanilla `Entity.ejectPassengers`: the last passenger first.
-    fn eject_passengers(&self) {
-        let passengers = self
-            .vehicle
-            .entity
-            .passengers
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
-        for passenger in passengers.iter().rev() {
-            self.vehicle
-                .entity
-                .remove_passenger(passenger.get_entity().entity_id);
-        }
-    }
-
     /// Whether the boat's version of `push` moves it and `other` apart.
     fn pushes(&self, other: &Entity) -> bool {
         let own = self.vehicle.entity.bounding_box.load();
@@ -275,7 +259,7 @@ impl BoatEntity {
                 let entity = &self.vehicle.entity;
                 let world = entity.world.load();
                 if drag_down {
-                    self.eject_passengers();
+                    self.vehicle.entity.eject_passengers();
                     world.broadcast_entity_event(
                         entity,
                         EntityStatus::BoatSink,
@@ -643,7 +627,7 @@ impl EntityBase for BoatEntity {
             self.out_of_control_ticks.store(0.0);
         }
         if self.out_of_control_ticks.load() >= TIME_TO_EJECT {
-            self.eject_passengers();
+            self.vehicle.entity.eject_passengers();
         }
 
         self.vehicle.tick();

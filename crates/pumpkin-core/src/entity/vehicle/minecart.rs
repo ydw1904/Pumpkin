@@ -321,20 +321,7 @@ impl EntityBase for MinecartEntity {
                             minecart.prime(&self.vehicle.entity, 80);
                         }
                         MinecartKind::Rideable(_) => {
-                            // Vanilla `Entity.ejectPassengers`: last passenger first. Copy the list
-                            // so the lock is released before dismounting takes it again.
-                            let passengers = self
-                                .vehicle
-                                .entity
-                                .passengers
-                                .lock()
-                                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                                .clone();
-                            for passenger in passengers.iter().rev() {
-                                self.vehicle
-                                    .entity
-                                    .remove_passenger(passenger.get_entity().entity_id);
-                            }
+                            self.vehicle.entity.eject_passengers();
                             if self.vehicle.get_hurt_time() == 0 {
                                 self.vehicle.set_hurt_dir(-self.vehicle.get_hurt_dir());
                                 self.vehicle.set_hurt_time(10);
