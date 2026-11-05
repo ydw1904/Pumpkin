@@ -8326,8 +8326,9 @@ impl EntityBase for Player {
         }
     }
 
+    /// Vanilla `LivingEntity.isPushable`: creative players are pushable too.
     fn is_pushable(&self) -> bool {
-        self.gamemode.load() != GameMode::Spectator && self.gamemode.load() != GameMode::Creative
+        self.gamemode.load() != GameMode::Spectator && self.living_entity.is_pushable()
     }
 
     fn get_name(&self) -> TextComponent {

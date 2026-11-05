@@ -1309,6 +1309,18 @@ const SHARED_QUAD_ATTACHMENT_POINTS: [Vector3<f64>; 4] = [
     Vector3::new(0.5, 0.5, 0.5),
 ];
 
+/// Vanilla `Entity.push(x, y, z)`. A player's own client pushes it, and vanilla's `needsSync`
+/// only goes to the players tracking it, so the pushed player gets no motion packet.
+fn push_velocity(entity: &Entity, dx: f64, dz: f64) {
+    let mut vel = entity.velocity.load();
+    vel.x += dx;
+    vel.z += dz;
+    entity.velocity.store(vel);
+    if entity.entity_type != &EntityType::PLAYER {
+        entity.velocity_dirty.store(true, Ordering::SeqCst);
+    }
+}
+
 /// Rotates `vector` around the Y axis.
 /// Vanilla `Entity.push(Entity)`: moves `this` and `other` apart, each only when it is pushable
 /// and carries no passengers.
@@ -1338,19 +1350,11 @@ pub(crate) fn push_apart(this: &Entity, this_pushable: bool, other: &Entity, oth
         dz *= PUSH_STRENGTH;
 
         if !this.has_passengers() && this_pushable {
-            let mut vel = this.velocity.load();
-            vel.x -= dx;
-            vel.z -= dz;
-            this.velocity.store(vel);
-            this.velocity_dirty.store(true, Ordering::SeqCst);
+            push_velocity(this, -dx, -dz);
         }
 
         if !other.has_passengers() && other_pushable {
-            let mut vel = other.velocity.load();
-            vel.x += dx;
-            vel.z += dz;
-            other.velocity.store(vel);
-            other.velocity_dirty.store(true, Ordering::SeqCst);
+            push_velocity(other, dx, dz);
         }
     }
 }
