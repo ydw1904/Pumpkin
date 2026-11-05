@@ -4794,6 +4794,9 @@ impl Player {
         } else if !initialized {
             return;
         }
+        // Set before the snapshot: it goes out through the same gated targets, and both boards
+        // stay locked, so no live update can slip in between.
+        self.scoreboard_initialized.store(true, Ordering::Release);
         match guard.as_ref() {
             Some(CustomScoreboard::Java(custom))
                 if matches!(self.client.as_ref(), ClientPlatform::Java(_)) =>
@@ -4809,7 +4812,6 @@ impl Player {
                 world_scoreboard.send_to_player(self);
             }
         }
-        self.scoreboard_initialized.store(true, Ordering::Release);
     }
 
     pub fn get_team(&self) -> Option<crate::world::scoreboard::Team> {
