@@ -136,7 +136,6 @@ impl Player {
             || flying
             || self.is_sleeping()
             || e.is_in_powder_snow()
-            || self.living_entity.is_dead_or_dying()
         {
             self.release_shoulders();
         }

@@ -6033,6 +6033,9 @@ impl Player {
         self.trigger_advancement(
             crate::entity::player::advancement::trigger::AdvancementTrigger::PlayerKilled,
         );
+        // Vanilla `ServerPlayer.die`: parrots that sat down in the last second stay on the
+        // shoulders and come back with the respawned player.
+        self.release_shoulders();
         crate::entity::mob::neutral::tell_neutral_mobs_player_died(self, &self.world());
         // Vanilla `ServerPlayer` records the containing (floored) block
         // position on death for the recovery compass.

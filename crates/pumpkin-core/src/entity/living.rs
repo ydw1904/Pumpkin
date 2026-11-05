@@ -276,8 +276,9 @@ impl LivingEntity {
 
     #[must_use]
     pub fn is_baby(&self) -> bool {
-        // Parrot.canBeABaby is false even when a command loads a negative Age.
-        self.entity.entity_type != &EntityType::PARROT && self.entity.age.load(Relaxed) < 0
+        // Ageable mobs that can't be babies, like parrots, never take a negative age: see
+        // `AgeableMob::can_be_a_baby`.
+        self.entity.age.load(Relaxed) < 0
     }
 
     #[must_use]

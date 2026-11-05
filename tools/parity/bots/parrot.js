@@ -117,4 +117,19 @@ h.start(async () => {
   h.result('cookie.dead', !p || (p.metadata[9] ?? 1) <= 0)
   h.result('cookie.left', h.inv().cookie || 0)
   h.cmd('kill @e[type=parrot]')
+
+  // Death drops the shoulder parrots only when they sat down more than 20 ticks ago; one that
+  // just landed stays on the shoulder and comes back with the respawned player.
+  h.cmd(`tp Keeper ${X + 0.5} ${Y + 1} ${Z + 0.5}`)
+  h.cmd(`fill ${X - 1} ${Y + 1} ${Z - 1} ${X + 1} ${Y + 4} ${Z + 1} glass hollow`)
+  h.cmd(`setblock ${X} ${Y + 1} ${Z} air`)
+  h.cmd(`setblock ${X} ${Y + 2} ${Z} air`)
+  h.cmd(`setblock ${X} ${Y + 3} ${Z} air`)
+  await h.ticks(10)
+  await summon(`{Owner:${ownerArray()},Variant:1}`, X + 0.5, Z + 0.5)
+  await h.waitFor(() => !parrot(), 30000)
+  h.cmd('kill Keeper')
+  await h.respawnAfterDeath()
+  await h.ticks(20)
+  h.result('death.fresh_shoulder', shoulders())
 })
