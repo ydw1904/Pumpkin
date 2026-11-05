@@ -66,7 +66,7 @@ h.start(async () => {
   h.cmd(`fill ${X + 16} ${y} ${Z - 13} ${X + 16} ${y} ${Z - 4} redstone_wire`)
   h.cmd(`setblock ${X + 16} ${y} ${Z - 3} redstone_block`)
   await h.tp(X + 0.5, Y + 1, Z - 9.5)
-  await h.ticks(30)
+  await h.serverTicks(SETTLE_TICKS)
   SOURCES.forEach(([name], i) => h.result(`comparator_${name}`, power(X - 14 + i * 2, y, Z - 12)))
   h.result('comparator_subtract', power(X + 14, y, Z - 12))
 
