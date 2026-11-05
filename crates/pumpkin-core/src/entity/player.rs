@@ -2511,24 +2511,12 @@ impl Player {
         true
     }
 
-    /// Calculates the player's respawn point based on stored spawn data.
+    /// Vanilla `ServerPlayer.findRespawnAndUseSpawnBlock`: where the player respawns from their
+    /// stored respawn point, or `None` when the bed or anchor is missing or obstructed.
     ///
-    /// Returns `Some(CalculatedRespawnPoint)` if a valid respawn point exists, `None` otherwise.
-    ///
-    /// # Behavior
-    /// - If `force` flag is set (via `/spawnpoint` command), validates the spawn position is safe
-    ///   (both the block and block above allow mob spawn).
-    /// - For beds: validates the bed block still exists and finds a valid spawn position around it.
-    /// - For respawn anchors (Nether): validates the anchor has charges and finds a valid spawn position.
-    /// - Returns `None` if the spawn block is invalid/missing (caller should send
-    ///   `NoRespawnBlockAvailable` game event and use world spawn).
-    ///
-    /// # Note
-    /// This function does NOT send any packets. The caller is responsible for
-    /// sending `NoRespawnBlockAvailable` if this returns `None`.
-    ///
-    /// Like vanilla `findRespawnPositionAndUseSpawnBlock`, a respawn anchor only loses a charge
-    /// when `consume_spawn_block` is set.
+    /// Sends no packets: the caller sends `NoRespawnBlockAvailable` when this returns `None` for
+    /// a player that had a respawn point. A respawn anchor only loses a charge when
+    /// `consume_spawn_block` is set and the point isn't forced.
     pub async fn calculate_respawn_point(
         &self,
         consume_spawn_block: bool,
@@ -2566,40 +2554,40 @@ impl Player {
             }
         }
 
+        let forced = respawn_point.force;
         let (block, state_id) = world.get_block_and_state_id(pos);
+        // Vanilla `RespawnPosAngle.of`: stand up from a bed or anchor facing it.
+        let facing_block = |position: Vector3<f64>| CalculatedRespawnPoint {
+            position,
+            yaw: respawn_look_at_yaw(position, pos),
+            pitch: 0.0,
+            dimension: respawn_point.dimension.clone(),
+        };
 
-        // If force is set (from /spawnpoint command), validate position is safe
-        if respawn_point.force {
-            // For forced spawn, check if both the block and block above allow mob spawn
-            let block_state = world.get_block_state(pos);
-            let above_state = world.get_block_state(&pos.up());
-
-            // Check if blocks are passable (non-solid or air)
-            let block_safe = block_state.is_air() || !block_state.is_solid();
-            let above_safe = above_state.is_air() || !above_state.is_solid();
-
-            if block_safe && above_safe {
-                let position = Vector3::new(
-                    f64::from(pos.0.x) + 0.5,
-                    f64::from(pos.0.y) + 0.1,
-                    f64::from(pos.0.z) + 0.5,
-                );
-                debug!(
-                    "Returning forced spawn point at {:?}, dimension: {:?}",
-                    position, respawn_point.dimension
-                );
-                return Some(CalculatedRespawnPoint {
-                    position,
-                    yaw: respawn_point.yaw,
-                    pitch: 0.0,
-                    dimension: respawn_point.dimension.clone(),
-                });
+        if block == &Block::RESPAWN_ANCHOR {
+            let anchor_props = AnchorProperties::from_state_id(state_id);
+            if (forced || anchor_props.charges > 0) && world.dimension.respawn_anchor_works {
+                let stand_up =
+                    RespawnAnchorBlock::find_stand_up_position(&EntityType::PLAYER, &world, pos);
+                if !forced && consume_spawn_block && stand_up.is_some() {
+                    let mut new_props = anchor_props;
+                    new_props.charges -= 1;
+                    world.set_block_state(
+                        pos,
+                        new_props.to_state_id(block),
+                        pumpkin_world::world::BlockFlags::NOTIFY_ALL,
+                    );
+                }
+                return stand_up.map(facing_block);
             }
-            return None;
         }
 
-        // Handle bed respawn
-        if block.has_tag(&tag::Block::MINECRAFT_BEDS) {
+        if block.has_tag(&tag::Block::MINECRAFT_BEDS)
+            && world
+                .dimension
+                .bed_rule
+                .can_set_spawn(world.is_dark_outside())
+        {
             let facing = BedProperties::from_state_id(state_id).facing;
             return BedBlock::find_stand_up_position(
                 &EntityType::PLAYER,
@@ -2608,48 +2596,27 @@ impl Player {
                 facing.to_block_direction(),
                 respawn_point.yaw,
             )
-            .map(|position| CalculatedRespawnPoint {
-                position,
-                yaw: respawn_point.yaw,
-                pitch: 0.0,
-                dimension: respawn_point.dimension.clone(),
-            });
+            .map(facing_block);
         }
 
-        // Handle respawn anchor (Nether)
-        if block == &Block::RESPAWN_ANCHOR {
-            let anchor_props = AnchorProperties::from_state_id(state_id);
-            let charges = anchor_props.charges;
-
-            // Anchor needs at least 1 charge to work
-            if charges == 0 {
-                return None;
-            }
-
-            if let Some(spawn_pos) =
-                RespawnAnchorBlock::find_stand_up_position(&EntityType::PLAYER, &world, pos)
-            {
-                if consume_spawn_block {
-                    let mut new_props = anchor_props;
-                    new_props.charges = charges - 1;
-                    world.set_block_state(
-                        pos,
-                        new_props.to_state_id(block),
-                        pumpkin_world::world::BlockFlags::NOTIFY_ALL,
-                    );
-                }
-
-                return Some(CalculatedRespawnPoint {
-                    position: spawn_pos,
-                    yaw: respawn_point.yaw,
-                    pitch: 0.0,
-                    dimension: respawn_point.dimension.clone(),
-                });
-            }
+        if !forced {
             return None;
         }
 
-        None
+        let above_pos = pos.up();
+        let (above_block, above_state) = world.get_block_and_state(&above_pos);
+        (is_possible_to_respawn_in(block, world.get_block_state(pos))
+            && is_possible_to_respawn_in(above_block, above_state))
+        .then(|| CalculatedRespawnPoint {
+            position: Vector3::new(
+                f64::from(pos.0.x) + 0.5,
+                f64::from(pos.0.y) + 0.1,
+                f64::from(pos.0.z) + 0.5,
+            ),
+            yaw: respawn_point.yaw,
+            pitch: respawn_point.pitch,
+            dimension: respawn_point.dimension.clone(),
+        })
     }
 
     pub fn sleep(&self, bed_head_pos: BlockPos) {
@@ -8714,6 +8681,27 @@ pub struct CalculatedRespawnPoint {
     pub pitch: f32,
     /// The dimension to spawn in.
     pub dimension: Dimension,
+}
+
+/// Vanilla `RespawnPosAngle.calculateLookAtYaw`.
+fn respawn_look_at_yaw(position: Vector3<f64>, look_at: &BlockPos) -> f32 {
+    let target = Vector3::new(
+        f64::from(look_at.0.x) + 0.5,
+        f64::from(look_at.0.y),
+        f64::from(look_at.0.z) + 0.5,
+    );
+    let direction = (target - position).normalize();
+    pumpkin_util::math::wrap_degrees_f64(
+        direction.z.atan2(direction.x) * 180.0 / f64::from(f32::consts::PI) - 90.0,
+    ) as f32
+}
+
+/// Vanilla `Block.isPossibleToRespawnInThis`, with the banner, pressure plate and sign overrides.
+fn is_possible_to_respawn_in(block: &Block, state: &BlockState) -> bool {
+    block.has_tag(&tag::Block::MINECRAFT_BANNERS)
+        || block.has_tag(&tag::Block::MINECRAFT_PRESSURE_PLATES)
+        || block.has_tag(&tag::Block::MINECRAFT_ALL_SIGNS)
+        || (!state.is_solid() && !state.is_liquid())
 }
 
 /// Represents the player's chat mode settings.

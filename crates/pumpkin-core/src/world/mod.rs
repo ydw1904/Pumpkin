@@ -5025,25 +5025,18 @@ impl World {
                 respawn.dimension,
             )
         } else {
-            // No valid respawn point - send notification if player had one set
-            if player
+            // Vanilla `PlayerList.respawn`: a missing respawn block, forced or not, isn't
+            // copied to the respawned player.
+            let missing_respawn_block = player
                 .respawn_point
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .is_some()
-            {
+                .take()
+                .is_some();
+            if missing_respawn_block {
                 player
                     .send_client_packet(&CGameEvent::new(GameEvent::NoRespawnBlockAvailable, 0.0))
                     .await;
-                let mut guard = player
-                    .respawn_point
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if let Some(point) = guard.as_ref()
-                    && !point.force
-                {
-                    *guard = None;
-                }
             }
 
             // Search around the world spawn for a safe position.
@@ -5269,6 +5262,30 @@ impl World {
 
         // Send teleport packet after at least the center chunk was delivered
         player.request_teleport(position, yaw, pitch);
+
+        let respawn_point = player
+            .respawn_point
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        if !alive
+            && let Some(respawn_point) = respawn_point
+            && let Some(server) = &server
+            && server
+                .get_world_from_dimension(&respawn_point.dimension)
+                .get_block(&respawn_point.position)
+                == &Block::RESPAWN_ANCHOR
+        {
+            let pos = respawn_point.position.0;
+            player.play_sound(
+                Sound::BlockRespawnAnchorDeplete as u16,
+                SoundCategory::Blocks,
+                &Vector3::new(f64::from(pos.x), f64::from(pos.y), f64::from(pos.z)),
+                1.0,
+                1.0,
+                game_random().random::<i64>(),
+            );
+        }
 
         target_world.refresh_java_player_for_bedrock(player).await;
     }
