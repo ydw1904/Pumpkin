@@ -411,7 +411,7 @@ impl SlimeEntity {
         }
     }
 
-    pub(crate) fn play_sound(&self, sound: Sound, volume: f32, pitch: f32) {
+    fn play_sound(&self, sound: Sound, volume: f32, pitch: f32) {
         let entity = self.get_entity();
         if !entity.is_silent() {
             entity.world.load().play_sound_fine(
@@ -428,7 +428,9 @@ impl SlimeEntity {
         0.4 * self.get_size() as f32
     }
 
-    pub(crate) fn get_sound_pitch(&self) -> f32 {
+    /// Vanilla `AbstractCubeMob.getSoundPitch`, used only for the jump sound; hurt and death
+    /// sounds use the regular voice pitch.
+    fn get_sound_pitch(&self) -> f32 {
         let pitch_adjuster = if self.is_tiny() { 1.4 } else { 0.8 };
         ((game_random().random::<f32>() - game_random().random::<f32>()) * 0.2 + 1.0)
             * pitch_adjuster

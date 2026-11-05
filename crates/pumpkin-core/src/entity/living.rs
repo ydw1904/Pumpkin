@@ -313,10 +313,6 @@ impl LivingEntity {
     }
 
     fn make_voice_sound(&self, caller: &dyn EntityBase, sound: Sound) {
-        if let Some(cube) = caller.get_mob().and_then(|mob| mob.as_cube_mob()) {
-            cube.play_sound(sound, cube.get_sound_volume(), cube.get_sound_pitch());
-            return;
-        }
         let custom_sound = caller.get_mob().and_then(|mob| mob.as_custom_sound());
         self.make_sound(
             sound,
