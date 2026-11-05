@@ -2,6 +2,7 @@ use crate::block::registry::BlockRegistry;
 use crate::command::commands::default_dispatcher;
 use crate::command::commands::defaultgamemode::DefaultGamemode;
 use crate::data::VanillaData;
+use crate::data::datapack::DatapackManager;
 use crate::data::player_server::ServerPlayerData;
 use crate::entity::NBTStorage;
 use crate::item::registry::ItemRegistry;
@@ -34,7 +35,9 @@ use pumpkin_data::entity::EntityStatus;
 use pumpkin_data::game_rules::GameRule;
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_protocol::java::client::login::CEncryptionRequest;
-use pumpkin_protocol::java::client::play::{CChangeDifficulty, CGameEvent, CTabList, GameEvent};
+use pumpkin_protocol::java::client::play::{
+    CChangeDifficulty, CGameEvent, CTabList, CUpdateTagsPlay, GameEvent,
+};
 use pumpkin_protocol::{ClientPacket, java::client::config::CPluginMessage};
 use pumpkin_util::Difficulty;
 use pumpkin_util::text::TextComponent;
@@ -780,7 +783,14 @@ impl Server {
             .execute_function(server, &source, "#minecraft:load");
 
         // `PlayerList.reloadResources`.
-        for player in self.get_all_players() {
+        let players = self.get_all_players();
+        let tags = DatapackManager::network_tag_keys();
+        let block_tags = self.datapack_manager.datapack_block_tags();
+        let tags_packet = CUpdateTagsPlay::new(&tags).with_block_tags(&block_tags);
+        for player in &players {
+            player.try_send_client_packet(&tags_packet);
+        }
+        for player in &players {
             player.send_initial_recipe_book();
         }
     }

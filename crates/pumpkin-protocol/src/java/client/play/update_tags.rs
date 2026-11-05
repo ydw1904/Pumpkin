@@ -4,6 +4,7 @@ use crate::packet::MultiVersionJavaPacket;
 use crate::{ClientPacket, WritingError, ser::NetworkWriteExt};
 
 use crate::codec::var_int::VarInt;
+use crate::java::client::config::write_tag_registries;
 use pumpkin_data::{
     packet::clientbound::play::UPDATE_TAGS,
     tag::{RegistryKey, get_registry_key_tags},
@@ -12,6 +13,8 @@ use pumpkin_util::version::JavaMinecraftVersion;
 
 pub struct CUpdateTagsPlay<'a> {
     pub tags: &'a [pumpkin_data::tag::RegistryKey],
+    /// Block tags from datapacks, like [`crate::java::client::config::CUpdateTags::block_tags`].
+    pub block_tags: &'a [(String, Vec<u16>)],
 }
 
 impl MultiVersionJavaPacket for CUpdateTagsPlay<'_> {
@@ -55,7 +58,16 @@ impl MultiVersionJavaPacket for CUpdateTagsPlay<'_> {
 impl<'a> CUpdateTagsPlay<'a> {
     #[must_use]
     pub const fn new(tags: &'a [RegistryKey]) -> Self {
-        Self { tags }
+        Self {
+            tags,
+            block_tags: &[],
+        }
+    }
+
+    #[must_use]
+    pub const fn with_block_tags(mut self, block_tags: &'a [(String, Vec<u16>)]) -> Self {
+        self.block_tags = block_tags;
+        self
     }
 }
 
@@ -98,33 +110,6 @@ impl ClientPacket for CUpdateTagsPlay<'_> {
             return Ok(());
         }
 
-        let valid_keys: Vec<_> = self
-            .tags
-            .iter()
-            .copied()
-            .filter(|key| key.is_valid_for_version(*version))
-            .collect();
-
-        write.write_list(&valid_keys, |p, &registry_key| {
-            p.write_string(&format!("minecraft:{}", registry_key.identifier_string()))?;
-
-            let Some(values) = get_registry_key_tags(*version, registry_key) else {
-                // no tags defined for that registry key in this version
-                // write an empty list and continue
-                p.write_var_int(&VarInt::from(0))?;
-                return Ok(());
-            };
-            p.write_var_int(&values.len().try_into().map_err(|_| {
-                WritingError::Message(format!("{} isn't representable as a VarInt", values.len()))
-            })?)?;
-
-            for (key, values) in values.entries() {
-                // This is technically a `ResourceLocation` but same thing
-                p.write_string_bounded(key, u16::MAX as usize)?;
-                p.write_list(values.1, |p, &id| p.write_var_int(&VarInt::from(id)))?;
-            }
-
-            Ok(())
-        })
+        write_tag_registries(write, self.tags, self.block_tags, *version)
     }
 }

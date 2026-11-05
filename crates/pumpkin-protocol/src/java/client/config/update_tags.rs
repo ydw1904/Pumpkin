@@ -37,55 +37,65 @@ impl<'a> CUpdateTags<'a> {
 impl ClientPacket for CUpdateTags<'_> {
     fn write_packet_data(
         &self,
-        mut write: impl Write,
+        write: impl Write,
         version: &JavaMinecraftVersion,
     ) -> Result<(), WritingError> {
-        let valid_keys: Vec<_> = self
-            .tags
-            .iter()
-            .copied()
-            .filter(|key| key.is_valid_for_version(*version))
-            .collect();
-
-        write.write_list(&valid_keys, |p, &registry_key| {
-            p.write_string(&format!("minecraft:{}", registry_key.identifier_string()))?;
-
-            let Some(values) = get_registry_key_tags(*version, registry_key) else {
-                // no tags defined for that registry key in this version
-                // write an empty list and continue
-                p.write_var_int(&VarInt::from(0))?;
-                return Ok(());
-            };
-            let extra: &[(String, Vec<u16>)] = if registry_key == RegistryKey::Block {
-                self.block_tags
-            } else {
-                &[]
-            };
-            let overridden = |key: &str| {
-                extra
-                    .iter()
-                    .any(|(name, _)| name.strip_prefix("minecraft:").unwrap_or(name) == key)
-            };
-            let builtin: Vec<_> = values
-                .entries()
-                .filter(|(key, _)| !overridden(key.strip_prefix("minecraft:").unwrap_or(key)))
-                .collect();
-            let count = builtin.len() + extra.len();
-            p.write_var_int(&count.try_into().map_err(|_| {
-                WritingError::Message(format!("{count} isn't representable as a VarInt"))
-            })?)?;
-
-            for (key, values) in builtin {
-                // This is technically a `ResourceLocation` but same thing
-                p.write_string_bounded(key, u16::MAX as usize)?;
-                p.write_list(values.1, |p, &id| p.write_var_int(&VarInt::from(id)))?;
-            }
-            for (key, ids) in extra {
-                p.write_string_bounded(key, u16::MAX as usize)?;
-                p.write_list(ids, |p, &id| p.write_var_int(&VarInt::from(id)))?;
-            }
-
-            Ok(())
-        })
+        write_tag_registries(write, self.tags, self.block_tags, *version)
     }
+}
+
+/// Writes the registries of `ClientboundUpdateTagsPacket`, for both its configuration and its
+/// play variant.
+pub fn write_tag_registries(
+    mut write: impl Write,
+    tags: &[RegistryKey],
+    block_tags: &[(String, Vec<u16>)],
+    version: JavaMinecraftVersion,
+) -> Result<(), WritingError> {
+    let valid_keys: Vec<_> = tags
+        .iter()
+        .copied()
+        .filter(|key| key.is_valid_for_version(version))
+        .collect();
+
+    write.write_list(&valid_keys, |p, &registry_key| {
+        p.write_string(&format!("minecraft:{}", registry_key.identifier_string()))?;
+
+        let Some(values) = get_registry_key_tags(version, registry_key) else {
+            // no tags defined for that registry key in this version
+            // write an empty list and continue
+            p.write_var_int(&VarInt::from(0))?;
+            return Ok(());
+        };
+        let extra: &[(String, Vec<u16>)] = if registry_key == RegistryKey::Block {
+            block_tags
+        } else {
+            &[]
+        };
+        let overridden = |key: &str| {
+            extra
+                .iter()
+                .any(|(name, _)| name.strip_prefix("minecraft:").unwrap_or(name) == key)
+        };
+        let builtin: Vec<_> = values
+            .entries()
+            .filter(|(key, _)| !overridden(key.strip_prefix("minecraft:").unwrap_or(key)))
+            .collect();
+        let count = builtin.len() + extra.len();
+        p.write_var_int(&count.try_into().map_err(|_| {
+            WritingError::Message(format!("{count} isn't representable as a VarInt"))
+        })?)?;
+
+        for (key, values) in builtin {
+            // This is technically a `ResourceLocation` but same thing
+            p.write_string_bounded(key, u16::MAX as usize)?;
+            p.write_list(values.1, |p, &id| p.write_var_int(&VarInt::from(id)))?;
+        }
+        for (key, ids) in extra {
+            p.write_string_bounded(key, u16::MAX as usize)?;
+            p.write_list(ids, |p, &id| p.write_var_int(&VarInt::from(id)))?;
+        }
+
+        Ok(())
+    })
 }

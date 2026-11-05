@@ -1,7 +1,8 @@
 // Command syntax datapacks lean on: datapack block tags in block predicates, item predicate
 // component tests, /particle options, display entity NBT (matrix transformations, partial
 // transformations, brightness), selector scores without a score, rotations given to command
-// sources (rotated as, facing), SelectedItem in player NBT and /schedule with function tags.
+// sources (rotated as, facing), SelectedItem in player NBT, /schedule with function tags and the
+// tags sent to players after a reload.
 const fs = require('fs')
 const path = require('path')
 const { make } = require('./survival-lib')
@@ -27,6 +28,13 @@ const plain = (t) => {
   return t
 }
 bot._client.on('system_chat', (p) => { if (!p.isActionBar) msgs.push(flat(plain(p.content))) })
+const tagPackets = []
+bot._client.on('tags', (p) => tagPackets.push(p))
+const blockTag = (p, name) => {
+  const block = p.tags.find(t => t.tagType === 'minecraft:block')
+  const tag = block && block.tags.find(t => t.tagName === name)
+  return tag ? tag.entries.length : 'missing'
+}
 async function run (c, wait = 2) {
   msgs.length = 0
   bot.chat('/' + c)
@@ -54,7 +62,13 @@ h.start(async () => {
   h.cmd(`gamemode creative ${bot.username}`)
   await h.ticks(10)
   await run('reload', 40)
+  tagPackets.length = 0
   await run('datapack enable "file/parity_dp"', 40)
+  // PlayerList.reloadResources sends the reloaded tags to every player.
+  const reloaded = tagPackets[tagPackets.length - 1]
+  h.result('reload_tags_sent', String(tagPackets.length))
+  h.result('reload_tags_new', reloaded ? blockTag(reloaded, 'p:stones') : 'none')
+  h.result('reload_tags_replaced', reloaded ? blockTag(reloaded, 'minecraft:logs') : 'none')
   await run('scoreboard objectives add dp dummy')
   const y = Y + 1
 

@@ -773,6 +773,22 @@ impl DatapackManager {
         collect_block_tag(packs, tag, &mut ids, &mut visited).then_some(ids)
     }
 
+    /// The registries whose tags `CUpdateTags` carries.
+    #[must_use]
+    pub fn network_tag_keys() -> Vec<pumpkin_data::tag::RegistryKey> {
+        pumpkin_data::tag::RegistryKey::NETWORK_KEYS
+            .iter()
+            .copied()
+            .filter(|&key| {
+                pumpkin_data::tag::get_registry_key_tags(
+                    pumpkin_data::packet::CURRENT_MC_VERSION,
+                    key,
+                )
+                .is_some_and(|map| !map.is_empty())
+            })
+            .collect()
+    }
+
     /// Every block tag a pack defines or extends, resolved, for `CUpdateTags`.
     #[must_use]
     pub fn datapack_block_tags(&self) -> Vec<(String, Vec<u16>)> {
