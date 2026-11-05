@@ -10,7 +10,7 @@ use crate::{
     entity::{
         Entity, EntityBase,
         projectile::{
-            ProjectileHit, ThrownItemEntity,
+            HURTING_INERTIA, HURTING_LIQUID_INERTIA, ProjectileHit, ThrownItemEntity,
             fireball::{INITIAL_ACCELERATION_POWER, fireball_damage_type},
         },
     },
@@ -55,7 +55,12 @@ impl EntityBase for SmallFireballEntity {
     }
 
     fn tick(&self, caller: &dyn EntityBase, _server: &Server) {
-        self.thrown.process_tick(caller);
+        self.thrown.process_hurting_tick(
+            caller,
+            INITIAL_ACCELERATION_POWER,
+            HURTING_INERTIA,
+            HURTING_LIQUID_INERTIA,
+        );
     }
 
     fn get_entity(&self) -> &Entity {

@@ -13,7 +13,7 @@ use pumpkin_util::math::vector3::Vector3;
 use crate::{
     entity::{
         Entity, EntityBase,
-        projectile::{ProjectileHit, ThrownItemEntity},
+        projectile::{HURTING_INERTIA, HURTING_LIQUID_INERTIA, ProjectileHit, ThrownItemEntity},
     },
     server::Server,
 };
@@ -22,8 +22,6 @@ pub const MIN_CAMERA_DISTANCE_SQUARED: f32 = 12.25;
 pub const INITIAL_ACCELERATION_POWER: f64 = 0.1;
 pub const DEFLECTION_SCALE: f64 = 0.5;
 pub const DEFAULT_EXPLOSION_POWER: f32 = 1.0;
-pub const AIR_INERTIA: f64 = 0.95;
-pub const WATER_INERTIA: f64 = 0.8;
 
 /// The damage type of vanilla `DamageSources.fireball`, which loses its attribution without an
 /// owner.
@@ -216,27 +214,12 @@ impl EntityBase for FireballEntity {
     }
 
     fn tick(&self, caller: &dyn EntityBase, _server: &Server) {
-        let entity = self.get_entity();
-        let mut velocity = entity.velocity.load();
-
-        let inertia = if entity.touching_water.load(Ordering::Relaxed) {
-            WATER_INERTIA
-        } else {
-            AIR_INERTIA
-        };
-
-        let accel = self.get_acceleration_power();
-        let speed = velocity.length();
-        if speed > 1e-6 {
-            let norm = velocity.normalize();
-            velocity = norm
-                .multiply(accel, accel, accel)
-                .add(&velocity)
-                .multiply(inertia, inertia, inertia);
-            entity.velocity.store(velocity);
-        }
-
-        self.thrown.process_tick(caller);
+        self.thrown.process_hurting_tick(
+            caller,
+            self.get_acceleration_power(),
+            HURTING_INERTIA,
+            HURTING_LIQUID_INERTIA,
+        );
     }
 
     fn get_entity(&self) -> &Entity {

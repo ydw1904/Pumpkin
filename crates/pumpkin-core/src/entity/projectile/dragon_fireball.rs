@@ -1,6 +1,7 @@
 use crate::entity::area_effect_cloud::{AreaEffectCloudEntity, CloudParticle};
-use crate::entity::projectile::fireball::{AIR_INERTIA, INITIAL_ACCELERATION_POWER, WATER_INERTIA};
+use crate::entity::projectile::fireball::INITIAL_ACCELERATION_POWER;
 use crate::entity::projectile::owner::ProjectileOwner;
+use crate::entity::projectile::{HURTING_INERTIA, HURTING_LIQUID_INERTIA};
 use crate::entity::{
     Entity, EntityBase,
     projectile::{ProjectileHit, ThrownItemEntity},
@@ -13,7 +14,7 @@ use pumpkin_data::world::WorldEvent;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 
 const SPLASH_RANGE: f64 = 4.0;
 const CLOUD_RADIUS: f32 = 3.0;
@@ -61,21 +62,12 @@ impl EntityBase for DragonFireballEntity {
     }
 
     fn tick(&self, caller: &dyn EntityBase, _server: &Server) {
-        let entity = self.get_entity();
-        let velocity = entity.velocity.load();
-        let inertia = if entity.touching_water.load(Ordering::Relaxed) {
-            WATER_INERTIA
-        } else {
-            AIR_INERTIA
-        };
-        if velocity.length() > 1e-6 {
-            let accel = INITIAL_ACCELERATION_POWER;
-            entity.velocity.store(
-                (velocity.normalize().multiply(accel, accel, accel) + velocity)
-                    .multiply(inertia, inertia, inertia),
-            );
-        }
-        self.thrown.process_tick(caller);
+        self.thrown.process_hurting_tick(
+            caller,
+            INITIAL_ACCELERATION_POWER,
+            HURTING_INERTIA,
+            HURTING_LIQUID_INERTIA,
+        );
     }
 
     fn get_entity(&self) -> &Entity {

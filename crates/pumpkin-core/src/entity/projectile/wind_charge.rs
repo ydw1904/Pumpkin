@@ -32,6 +32,9 @@ enum WindChargeKind {
     Breeze,
 }
 
+/// Vanilla `AbstractWindCharge.getInertia`.
+const WIND_CHARGE_INERTIA: f32 = 1.0;
+
 pub struct WindChargeEntity {
     kind: WindChargeKind,
     thrown_item_entity: ThrownItemEntity,
@@ -139,7 +142,13 @@ impl EntityBase for WindChargeEntity {
     }
 
     fn tick(&self, caller: &dyn EntityBase, _server: &Server) {
-        self.thrown_item_entity.process_tick(caller);
+        // Vanilla `AbstractWindCharge`: no acceleration and an inertia of 1, in and out of fluids.
+        self.thrown_item_entity.process_hurting_tick(
+            caller,
+            0.0,
+            WIND_CHARGE_INERTIA,
+            WIND_CHARGE_INERTIA,
+        );
 
         if let Some(cooldown) = self.deflect_cooldown() {
             let cooldown_ticks = cooldown.load(Ordering::Relaxed);
