@@ -1,5 +1,3 @@
-use std::sync::atomic::Ordering;
-
 use pumpkin_data::translation;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
@@ -10,6 +8,7 @@ use crate::command::argument_types::client_parsed::IdStringArgumentType;
 use crate::command::argument_types::core::string::StringArgumentType;
 use crate::command::argument_types::function::FunctionArgumentType;
 use crate::command::argument_types::time::TimeArgumentType;
+use crate::command::commands::function::get_functions;
 use crate::command::context::command_context::CommandContext;
 use crate::command::errors::command_syntax_error::CommandSyntaxError;
 use crate::command::errors::error_types::CommandErrorType;
@@ -17,6 +16,7 @@ use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
 use crate::command::suggestion::provider::{SuggestionProvider, SuggestionProviderResult};
 use crate::command::suggestion::suggestions::SuggestionsBuilder;
+use crate::server::scheduler::ScheduledCallback;
 
 const DESCRIPTION: &str = "Schedules an action or function to execute after a given duration.";
 const PERMISSION: &str = "minecraft:command.schedule";
@@ -31,7 +31,6 @@ pub const ERROR_CANT_REMOVE: CommandErrorType<1> = CommandErrorType::new(
     translation::java::COMMANDS_SCHEDULE_CLEARED_FAILURE,
 );
 
-#[expect(dead_code)]
 pub const ERROR_MACRO: CommandErrorType<0> = CommandErrorType::new(
     translation::java::COMMANDS_SCHEDULE_MACRO,
     translation::java::COMMANDS_SCHEDULE_MACRO,
@@ -71,7 +70,7 @@ impl SuggestionProvider for ScheduleSuggestionProvider {
 }
 
 fn execute_schedule(context: &CommandContext, replace: bool) -> Result<i32, CommandSyntaxError> {
-    let function_name = StringArgumentType::get(context, "function")?.to_string();
+    let function_name = FunctionArgumentType::get(context, "function")?.to_string();
     let time = TimeArgumentType::get(context, "time")?;
 
     if time == 0 {
@@ -79,17 +78,32 @@ fn execute_schedule(context: &CommandContext, replace: bool) -> Result<i32, Comm
     }
 
     let server = context.server();
-    let current_tick = server.tick_count.load(Ordering::Relaxed) as u64;
-    let tick_time = current_tick + (time as u64);
-    let is_tag = function_name.starts_with('#');
+    let functions = get_functions(server, &function_name)?;
+    let world_game_time = context.world().get_world_age();
+    let tick_time = server
+        .scheduled_functions
+        .current_game_time(world_game_time)
+        + i64::from(time);
+    let callback = if let Some(tag) = function_name.strip_prefix('#') {
+        ScheduledCallback::FunctionTag(tag.to_string())
+    } else {
+        // Vanilla `ScheduleCommand.ERROR_MACRO`: a macro has no arguments to run with later.
+        if functions
+            .iter()
+            .any(|(_, lines)| lines.iter().any(|line| line.starts_with('$')))
+        {
+            return Err(ERROR_MACRO.create_without_context());
+        }
+        ScheduledCallback::Function(function_name.clone())
+    };
+    let is_tag = matches!(callback, ScheduledCallback::FunctionTag(_));
 
-    server.scheduled_functions.schedule(
-        function_name.clone(),
-        tick_time,
-        function_name.clone(),
-        is_tag,
-        replace,
-    );
+    if replace {
+        server.scheduled_functions.remove(&function_name);
+    }
+    server
+        .scheduled_functions
+        .schedule(function_name.clone(), tick_time, callback);
 
     if is_tag {
         context.source.send_feedback(
@@ -97,7 +111,8 @@ fn execute_schedule(context: &CommandContext, replace: bool) -> Result<i32, Comm
                 translation::java::COMMANDS_SCHEDULE_CREATED_TAG,
                 translation::java::COMMANDS_SCHEDULE_CREATED_TAG,
                 [
-                    TextComponent::text(function_name),
+                    // Vanilla names the tag without its `#`.
+                    TextComponent::text(function_name.trim_start_matches('#').to_string()),
                     TextComponent::text(time.to_string()),
                     TextComponent::text(tick_time.to_string()),
                 ],
@@ -119,7 +134,8 @@ fn execute_schedule(context: &CommandContext, replace: bool) -> Result<i32, Comm
         );
     }
 
-    Ok((tick_time % (i32::MAX as u64)) as i32)
+    // Vanilla `Math.floorMod(tickTime, Integer.MAX_VALUE)`.
+    Ok(tick_time.rem_euclid(i64::from(i32::MAX)) as i32)
 }
 
 struct ScheduleExecutor {

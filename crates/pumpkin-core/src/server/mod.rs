@@ -382,7 +382,7 @@ impl Server {
             runtime: tokio::runtime::Handle::current(),
             simulation_pool,
             compute_pool,
-            scheduled_functions: Arc::new(crate::server::scheduler::ScheduledFunctionQueue::new()),
+            scheduled_functions: Arc::new(load_scheduled_functions(&world_path)),
             server_guid: game_random().random(),
             player_idle_timeout: AtomicI32::new(0),
             mojang_public_keys: ArcSwap::from_pointee(Vec::new()),
@@ -691,6 +691,15 @@ impl Server {
             data_version,
         ) {
             error!("Failed to save custom_boss_events.dat: {err}");
+        }
+        if let Err(err) = write_saved_data(
+            &world_path,
+            "minecraft",
+            crate::server::scheduler::SAVED_DATA_PATH,
+            self.scheduled_functions.to_saved_data(),
+            data_version,
+        ) {
+            error!("Failed to save scheduled_events.dat: {err}");
         }
         let next_map_id = self.map_id.load(Ordering::SeqCst);
         if next_map_id > 0 {
@@ -1579,10 +1588,16 @@ impl Server {
             .execute_function(self, &source, "#minecraft:tick");
 
         self.plugin_manager.tick_loaders(self);
-        self.scheduled_functions.tick(
-            self,
-            self.tick_count.load(std::sync::atomic::Ordering::Relaxed) as u64,
-        );
+        // Vanilla runs the schedule from the overworld's `tickTime`, after the game time advanced.
+        if let Some(overworld) = self
+            .worlds
+            .load()
+            .iter()
+            .find(|world| world.dimension.minecraft_name == Dimension::OVERWORLD.minecraft_name)
+        {
+            self.scheduled_functions
+                .tick(self, overworld.get_world_age() + 1);
+        }
 
         self.tick_clocks();
         self.sync_game_time();
@@ -1805,6 +1820,20 @@ fn load_scoreboard(world_path: &std::path::Path) -> crate::world::scoreboard::Sc
         scoreboard.load_saved_data(&data);
     }
     scoreboard
+}
+
+fn load_scheduled_functions(
+    world_path: &std::path::Path,
+) -> crate::server::scheduler::ScheduledFunctionQueue {
+    let queue = crate::server::scheduler::ScheduledFunctionQueue::new();
+    if let Some(data) = read_saved_data(
+        world_path,
+        "minecraft",
+        crate::server::scheduler::SAVED_DATA_PATH,
+    ) {
+        queue.load_saved_data(&data);
+    }
+    queue
 }
 
 fn load_command_storage(world_path: &std::path::Path) -> HashMap<String, NbtCompound> {
