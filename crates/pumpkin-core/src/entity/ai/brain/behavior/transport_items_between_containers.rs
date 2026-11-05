@@ -19,7 +19,6 @@ use crate::{
         mob::Mob,
         passive::copper_golem::{CopperGolemEntity, CopperGolemState},
     },
-    plugin::api::events::inventory::inventory_move_item::InventoryMoveItemEvent,
     world::World,
 };
 
@@ -398,39 +397,6 @@ impl TransportItemsBetweenContainers {
         }
     }
 
-    fn transfer_allowed(
-        tick: &BrainTick<'_>,
-        target: &TransportItemTarget,
-        stack: &ItemStack,
-        count: u8,
-        pickup: bool,
-    ) -> bool {
-        let entity_pos = tick.mob.get_entity().block_pos.load();
-        let (source, destination) = if pickup {
-            (target.pos, entity_pos)
-        } else {
-            (entity_pos, target.pos)
-        };
-        let mut event = InventoryMoveItemEvent::new(
-            source,
-            destination,
-            stack.item.registry_key.to_owned(),
-            u32::from(count),
-        );
-        if let Some(server) = tick.world.server.upgrade() {
-            server.plugin_manager.fire_blocking(&server, &mut event);
-        }
-        !event.cancelled
-            && tick.mob.get_mob_entity().living_entity.health.load() > 0.0
-            && !tick
-                .mob
-                .get_entity()
-                .removed
-                .load(std::sync::atomic::Ordering::Relaxed)
-            && get_chest_container(tick.world, &target.pos)
-                .is_some_and(|current| target.container.same_inventory(&current))
-    }
-
     fn do_reached_target_interaction(
         &mut self,
         tick: &mut BrainTick<'_>,
@@ -442,15 +408,7 @@ impl TransportItemsBetweenContainers {
                 let first = (0..inventory.size())
                     .map(|slot| inventory.get_stack(slot))
                     .find(|stack| !stack.is_empty());
-                if let Some(stack) = first
-                    && Self::transfer_allowed(
-                        tick,
-                        target,
-                        &stack,
-                        stack.item_count.min(TRANSPORTED_ITEM_MAX_STACK_SIZE),
-                        true,
-                    )
-                {
+                if let Some(stack) = first {
                     let mob = tick.mob.get_mob_entity();
                     // Death drops lock drop chances before equipment, so keep that order.
                     mob.set_guaranteed_drop(&EquipmentSlot::MAIN_HAND);
@@ -488,7 +446,7 @@ impl TransportItemsBetweenContainers {
             CopperGolemState::DroppingItem => {
                 let stack = tick.mob.get_mob_entity().living_entity.held_item(tick.mob);
                 let count = transferable_item_count(&stack, inventory);
-                if count == 0 || !Self::transfer_allowed(tick, target, &stack, count, false) {
+                if count == 0 {
                     self.stop_targeting_current_target(tick);
                     return;
                 }
