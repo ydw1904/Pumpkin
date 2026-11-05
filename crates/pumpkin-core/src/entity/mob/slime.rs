@@ -550,10 +550,6 @@ impl Mob for SlimeEntity {
     }
 
     fn mob_tick(&self, _caller: &dyn EntityBase) {
-        if self.get_entity().world.load().level_info.load().difficulty == Difficulty::Peaceful {
-            self.get_entity().remove();
-            return;
-        }
         self.o_squish.store(self.squish.load());
         self.squish
             .store(self.squish.load() + (self.target_squish.load() - self.squish.load()) * 0.5);

@@ -24,8 +24,8 @@ use pumpkin_data::data_component_impl::{
     WolfSoundVariantImpl, WolfVariantImpl, ZombieNautilusVariantImpl,
 };
 use pumpkin_data::dye_color::DyeColor;
+use pumpkin_data::entity::EntityType;
 use pumpkin_data::entity::entity_from_egg;
-use pumpkin_data::entity::{EntityType, MobCategory};
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -49,9 +49,7 @@ impl ItemMetadata for SpawnEggItem {
 }
 
 fn is_disallowed_in_peaceful(entity_type: &EntityType, world: &World) -> bool {
-    entity_type.category == &MobCategory::MONSTER
-        && entity_type != &EntityType::PIGLIN
-        && entity_type != &EntityType::SHULKER
+    !crate::entity::mob::is_allowed_in_peaceful(entity_type)
         && world.level_info.load().difficulty == Difficulty::Peaceful
 }
 
