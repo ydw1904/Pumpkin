@@ -643,7 +643,9 @@ impl EntityBase for BoatEntity {
             // Vanilla `checkFallDamage`, which only keeps the speed: boats take no fall damage.
             self.last_yd.store(velocity.y);
             let from = entity.pos.load();
-            entity.move_entity(caller, velocity);
+            // Vanilla `Entity.move` keeps the boat's speed and only stops it along the axes
+            // it collided on.
+            entity.move_keeping_velocity(caller, velocity, true);
             let to = entity.pos.load();
             let allowed = super::vehicle::fire_vehicle_move(entity, from, to);
             if allowed != to {

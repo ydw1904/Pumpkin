@@ -3418,7 +3418,11 @@ impl Entity {
         }
 
         let movement = self.adjust_movement_for_collisions(delta, caller);
-        self.move_pos(movement);
+        // Vanilla drops a tiny move unless it is all that the collisions left of `delta`.
+        let movement_length = movement.length_squared();
+        if movement_length > 1.0e-7 || delta.length_squared() - movement_length < 1.0e-7 {
+            self.move_pos(movement);
+        }
 
         if let Some(living) = caller.get_living_entity() {
             let on_ground = self.on_ground.load(Ordering::SeqCst);
