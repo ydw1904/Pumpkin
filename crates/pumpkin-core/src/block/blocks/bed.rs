@@ -19,7 +19,7 @@ use crate::block::{
     BlockBehaviour, BrokenArgs, CanPlaceAtArgs, GetStateForNeighborUpdateArgs, NormalUseArgs,
     OnPlaceArgs, OnStateReplacedArgs, PathComputationType, PlacedArgs,
 };
-use crate::entity::{Entity, EntityBase, player::Player};
+use crate::entity::{EntityBase, mob::Mob, player::Player};
 use crate::world::World;
 use pumpkin_data::HorizontalFacingExt;
 
@@ -60,7 +60,6 @@ const NO_SLEEP_IDS: &[u16] = &[
     EntityType::ZOMBIE_VILLAGER.id,
     EntityType::HUSK.id,
     EntityType::ENDERMAN.id,
-    EntityType::ZOMBIFIED_PIGLIN.id,
 ];
 
 #[pumpkin_block_from_tag("minecraft:beds")]
@@ -337,7 +336,7 @@ impl BedBlock {
 
         // Make sure there are no monsters nearby
         for entity in world.entities.load().iter() {
-            if !entity_prevents_sleep(entity.get_entity()) {
+            if !entity_prevents_sleep(entity.as_ref(), player.as_ref(), world) {
                 continue;
             }
 
@@ -417,6 +416,14 @@ impl BedBlock {
     }
 }
 
-fn entity_prevents_sleep(entity: &Entity) -> bool {
-    NO_SLEEP_IDS.contains(&entity.entity_type.id)
+/// Vanilla `Monster.isPreventingPlayerRest`: a zombified piglin only while angry at `player`.
+fn entity_prevents_sleep(entity: &dyn EntityBase, player: &dyn EntityBase, world: &World) -> bool {
+    let entity_type = entity.get_entity().entity_type;
+    if entity_type == &EntityType::ZOMBIFIED_PIGLIN {
+        return entity
+            .get_mob()
+            .and_then(Mob::as_neutral)
+            .is_some_and(|neutral| neutral.is_angry_at(player, world));
+    }
+    NO_SLEEP_IDS.contains(&entity_type.id)
 }
