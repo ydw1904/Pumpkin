@@ -5,6 +5,7 @@ use pumpkin_util::math::vector3::Vector3;
 use std::sync::atomic::Ordering::Relaxed;
 
 use super::{Controls, Goal, GoalReach};
+use crate::entity::ai::goal::revenge::MobFilter;
 use crate::entity::ai::goal::try_find_water::TryFindWaterGoal;
 use crate::entity::ai::util::default_random_pos;
 use crate::entity::passive::abstract_horse::AbstractHorse;
@@ -21,6 +22,8 @@ pub struct EscapeDangerGoal {
     target: Option<Vector3<f64>>,
     running: bool,
     calm_while_mob_controlled: bool,
+    panic_causes: &'static tag::Tag,
+    stop_when: Option<MobFilter>,
 }
 
 impl EscapeDangerGoal {
@@ -32,7 +35,25 @@ impl EscapeDangerGoal {
             target: None,
             running: false,
             calm_while_mob_controlled: false,
+            panic_causes: &tag::DamageType::MINECRAFT_PANIC_CAUSES,
+            stop_when: None,
         })
+    }
+
+    /// Vanilla `PanicGoal` with `#minecraft:panic_environmental_causes`: hits from players and
+    /// mobs don't count.
+    #[must_use]
+    pub fn environmental(speed: f64) -> Box<Self> {
+        let mut goal = Self::new(speed);
+        goal.panic_causes = &tag::DamageType::MINECRAFT_PANIC_ENVIRONMENTAL_CAUSES;
+        goal
+    }
+
+    /// Stops the flight and the route as soon as the mob passes `filter`, like a sitting panda.
+    #[must_use]
+    pub fn stopping_when(mut self: Box<Self>, filter: MobFilter) -> Box<Self> {
+        self.stop_when = Some(filter);
+        self
     }
 
     /// Horses don't panic while they count as mob controlled.
@@ -48,15 +69,13 @@ impl EscapeDangerGoal {
         self.running
     }
 
-    /// Only `#minecraft:panic_causes` damage makes a mob flee, and only while the source is still
+    /// Only damage in the goal's panic tag makes a mob flee, and only while the source is still
     /// remembered.
-    fn should_panic(mob: &dyn Mob) -> bool {
+    fn should_panic(&self, mob: &dyn Mob) -> bool {
         mob.get_mob_entity()
             .living_entity
             .get_last_damage_type()
-            .is_some_and(|damage_type| {
-                damage_type.has_tag(&tag::DamageType::MINECRAFT_PANIC_CAUSES)
-            })
+            .is_some_and(|damage_type| damage_type.has_tag(self.panic_causes))
     }
 
     /// Nearest water within 5 blocks horizontally, only when the mob is not stuck in a block.
@@ -105,7 +124,7 @@ impl Goal for EscapeDangerGoal {
         let living = &mob.get_mob_entity().living_entity;
         let entity = &living.entity;
         let may_flee = running
-            || Self::should_panic(mob)
+            || self.should_panic(mob)
             || entity.fire_ticks.load(Relaxed) > 0
             || entity.frozen_ticks.load(Relaxed) > 0
             || entity.touching_lava.load(Relaxed)
@@ -118,7 +137,7 @@ impl Goal for EscapeDangerGoal {
     }
 
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
-        if !Self::should_panic(mob)
+        if !self.should_panic(mob)
             || (self.calm_while_mob_controlled
                 && mob
                     .as_abstract_horse()
@@ -139,6 +158,10 @@ impl Goal for EscapeDangerGoal {
     }
 
     fn should_continue(&mut self, mob: &dyn Mob) -> bool {
+        if self.stop_when.is_some_and(|stop_when| stop_when(mob)) {
+            mob.get_mob_entity().steered().navigator().stop();
+            return false;
+        }
         !mob.is_navigator_idle()
     }
 

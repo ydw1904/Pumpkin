@@ -10,10 +10,10 @@ use std::sync::{Arc, Weak};
 
 pub struct LookAtEntityGoal {
     goal_control: Controls,
-    target: Option<Arc<dyn EntityBase>>,
+    pub(crate) target: Option<Arc<dyn EntityBase>>,
     range: f32,
     look_time: i32,
-    chance: f32,
+    pub(crate) chance: f32,
     look_forward: bool,
     target_match: TargetMatch,
     target_predicate: TargetPredicate,
@@ -103,6 +103,25 @@ impl LookAtEntityGoal {
     }
 }
 
+impl LookAtEntityGoal {
+    /// The nearest entity to look at, as vanilla `LookAtPlayerGoal.canUse` searches it.
+    pub(crate) fn find_target(&self, mob: &dyn Mob) -> Option<Arc<dyn EntityBase>> {
+        let entity = &mob.get_mob_entity().living_entity.entity;
+        let world = entity.world.load();
+        // Players anywhere, other mobs within 3 blocks of height; the conditions carry the range.
+        let mut area = SearchArea::from_eyes(entity, self.range.into(), 3.0);
+        if self.target_match.is_player() {
+            area = area.players_anywhere();
+        }
+
+        // The conditions filter the candidates instead of being applied to the nearest one.
+        let predicate = &self.target_predicate;
+        self.target_match.find_nearest(&world, &area, |candidate| {
+            predicate.test(&world, Some(mob), candidate)
+        })
+    }
+}
+
 impl Goal for LookAtEntityGoal {
     fn tick_reach(&self, mob: &dyn Mob, _running: bool) -> Option<GoalReach> {
         let range = f64::from(self.range);
@@ -141,20 +160,7 @@ impl Goal for LookAtEntityGoal {
             }
         }
 
-        let entity = &mob_entity.living_entity.entity;
-        let world = entity.world.load();
-        // Players anywhere, other mobs within 3 blocks of height; the conditions carry the range.
-        let mut area = SearchArea::from_eyes(entity, self.range.into(), 3.0);
-        if self.target_match.is_player() {
-            area = area.players_anywhere();
-        }
-
-        // The conditions filter the candidates instead of being applied to the nearest one.
-        let predicate = &self.target_predicate;
-        self.target = self.target_match.find_nearest(&world, &area, |candidate| {
-            predicate.test(&world, Some(mob), candidate)
-        });
-
+        self.target = self.find_target(mob);
         self.target.is_some()
     }
 
