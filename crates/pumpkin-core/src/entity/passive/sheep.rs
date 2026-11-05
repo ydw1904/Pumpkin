@@ -400,7 +400,8 @@ impl Mob for SheepEntity {
         _reason: crate::entity::mob::spawn::EntitySpawnReason,
         group_data: Option<SpawnGroupData>,
     ) -> Option<SpawnGroupData> {
-        let biome = world.get_biome(&self.get_entity().block_pos.load());
+        let biome =
+            crate::world::natural_spawner::spawn_biome(world, &self.get_entity().block_pos.load());
         self.set_color(self.get_random_sheep_color(biome).id());
         self.finalize_spawn_super(group_data)
     }

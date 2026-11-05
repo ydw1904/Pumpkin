@@ -236,7 +236,10 @@ impl RabbitEntity {
 
     fn get_random_rabbit_variant(&self, world: &World, pos: &BlockPos) -> RabbitVariant {
         let random_val = self.get_random().random_range(0..100);
-        random_rabbit_variant(world.get_biome(pos), random_val)
+        random_rabbit_variant(
+            crate::world::natural_spawner::spawn_biome(world, pos),
+            random_val,
+        )
     }
 
     fn wants_more_food(&self) -> bool {

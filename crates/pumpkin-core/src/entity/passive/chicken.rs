@@ -259,7 +259,8 @@ impl Mob for ChickenEntity {
         _reason: crate::entity::mob::spawn::EntitySpawnReason,
         group_data: Option<SpawnGroupData>,
     ) -> Option<SpawnGroupData> {
-        let biome = world.get_biome(&self.get_entity().block_pos.load());
+        let biome =
+            crate::world::natural_spawner::spawn_biome(world, &self.get_entity().block_pos.load());
         self.set_variant(ChickenVariant::select_for_biome(biome.registry_id));
         let sound_variants = ChickenSoundVariant::ALL;
         self.set_sound_variant(

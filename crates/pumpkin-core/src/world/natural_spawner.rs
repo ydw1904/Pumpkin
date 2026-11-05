@@ -1,6 +1,6 @@
 use crate::block::PathComputationType;
 use crate::entity::EntityBase;
-use crate::entity::mob::spawn::{PendingVehicle, finalize_spawn};
+use crate::entity::mob::spawn::{PendingVehicle, SpawnGroupData, finalize_spawn};
 use crate::entity::player::Player;
 use crate::entity::r#type::{
     CreatureSpawnLevel, check_creature_spawn_rules, check_spawn_rules, from_type,
@@ -30,6 +30,7 @@ use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::chunk::{ChunkData, ChunkHeightmapType};
 use pumpkin_world::generation::proto_chunk::GenerationCache;
 use rustc_hash::FxHashMap;
+use std::cell::Cell;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, Ordering::Relaxed};
@@ -43,6 +44,37 @@ static NO_SPAWN_COST: SpawnCosts = SpawnCosts {
 };
 
 const MOB_CATEGORY_COUNT: usize = 8;
+
+thread_local! {
+    /// The biome under a mob finalized while its chunk generates, which `World::get_biome`
+    /// can't read yet.
+    static GENERATING_SPAWN_BIOME: Cell<Option<&'static Biome>> = const { Cell::new(None) };
+}
+
+/// The biome vanilla `finalizeSpawn` reads at a spawning mob's position.
+pub fn spawn_biome(world: &World, pos: &BlockPos) -> &'static Biome {
+    GENERATING_SPAWN_BIOME
+        .get()
+        .unwrap_or_else(|| world.get_biome(pos))
+}
+
+/// `finalizeSpawn` for a mob spawned into a generating chunk, standing in `biome`.
+fn finalize_generation_spawn(
+    entity: &Arc<dyn EntityBase>,
+    world: &Arc<World>,
+    biome: &'static Biome,
+    group_data: Option<SpawnGroupData>,
+) -> Option<SpawnGroupData> {
+    GENERATING_SPAWN_BIOME.set(Some(biome));
+    let group_data = finalize_spawn(
+        entity,
+        world,
+        crate::entity::mob::spawn::EntitySpawnReason::ChunkGeneration,
+        group_data,
+    );
+    GENERATING_SPAWN_BIOME.set(None);
+    group_data
+}
 
 pub struct MobCounts([AtomicI32; MOB_CATEGORY_COUNT]);
 
@@ -648,12 +680,12 @@ pub fn spawn_mobs_for_chunk_generation(
                         mob.get_walk_target_value(&level, &check_pos) >= 0.0
                             && mob.check_spawn_obstruction(&level)
                     }) {
-                        group_data = finalize_spawn(
-                            &entity,
-                            world,
-                            crate::entity::mob::spawn::EntitySpawnReason::ChunkGeneration,
-                            group_data,
+                        let biome = cache.get_biome_for_terrain_gen(
+                            check_pos.0.x,
+                            check_pos.0.y,
+                            check_pos.0.z,
                         );
+                        group_data = finalize_generation_spawn(&entity, world, biome, group_data);
                         cache
                             .get_center_chunk_mut()
                             .add_entity(world_gen_entity_nbt(&entity));

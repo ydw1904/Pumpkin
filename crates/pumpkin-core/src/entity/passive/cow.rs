@@ -208,7 +208,8 @@ impl Mob for CowEntity {
         _reason: crate::entity::mob::spawn::EntitySpawnReason,
         group_data: Option<SpawnGroupData>,
     ) -> Option<SpawnGroupData> {
-        let biome = world.get_biome(&self.get_entity().block_pos.load());
+        let biome =
+            crate::world::natural_spawner::spawn_biome(world, &self.get_entity().block_pos.load());
         self.set_variant(CowVariant::select_for_biome(biome.registry_id));
         let sound_variants = CowSoundVariant::ALL;
         self.set_sound_variant(

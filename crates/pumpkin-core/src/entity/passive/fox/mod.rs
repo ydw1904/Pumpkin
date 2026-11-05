@@ -792,7 +792,10 @@ impl Mob for FoxEntity {
         let (variant, size) = if let Some(SpawnGroupData::Fox { variant, size }) = group_data {
             (variant, size)
         } else {
-            let biome = world.get_biome(&self.get_entity().block_pos.load());
+            let biome = crate::world::natural_spawner::spawn_biome(
+                world,
+                &self.get_entity().block_pos.load(),
+            );
             let bare = biome
                 .registry_id
                 .strip_prefix("minecraft:")
