@@ -4,6 +4,7 @@ use crate::block::blocks::command::CommandBlock;
 
 impl JavaClient {
     /// Vanilla `ServerGamePacketListenerImpl.handleSetCommandBlock`.
+    #[expect(clippy::too_many_lines)]
     pub fn handle_set_command_block(&self, player: &Arc<Player>, command: &SSetCommandBlock<'_>) {
         if !player.can_use_game_master_blocks() {
             player.send_system_message(&TextComponent::translate(
@@ -75,6 +76,13 @@ impl JavaClient {
             } else {
                 None
             }),
+            custom_name: std::sync::Mutex::new(
+                old_command_block
+                    .custom_name
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clone(),
+            ),
             track_output: track_output.into(),
             success_count: AtomicU32::new(old_command_block.success_count.load(Ordering::SeqCst)),
             update_last_execution: old_command_block

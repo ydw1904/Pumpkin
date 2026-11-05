@@ -3,6 +3,8 @@ use std::sync::{
     atomic::{AtomicBool, AtomicI64, AtomicU32, Ordering},
 };
 
+use pumpkin_data::data_component_impl::CustomNameImpl;
+use pumpkin_data::item_stack::ItemStack;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::text::TextComponent;
@@ -12,8 +14,9 @@ use crate::world::World;
 
 /// Vanilla `BaseCommandBlock.NO_LAST_EXECUTION`.
 pub const NO_LAST_EXECUTION: i64 = -1;
+/// Vanilla `BaseCommandBlock.DEFAULT_NAME`.
+const DEFAULT_NAME: &str = "@";
 
-// todo: CustomName
 pub struct CommandBlockEntity {
     pub position: BlockPos,
     pub powered: AtomicBool,
@@ -22,6 +25,8 @@ pub struct CommandBlockEntity {
     pub dirty: AtomicBool,
     pub command: StdMutex<String>,
     pub last_output: StdMutex<Option<TextComponent>>,
+    /// Vanilla `BaseCommandBlock.customName`, the command source's name when set.
+    pub custom_name: StdMutex<Option<TextComponent>>,
     pub track_output: AtomicBool,
     pub success_count: AtomicU32,
     /// Vanilla `BaseCommandBlock.updateLastExecution`: run at most once per tick.
@@ -42,11 +47,22 @@ impl CommandBlockEntity {
             dirty: AtomicBool::new(false),
             command: StdMutex::new(String::new()),
             last_output: StdMutex::new(None),
+            custom_name: StdMutex::new(None),
             track_output: AtomicBool::new(track_output),
             success_count: AtomicU32::new(0),
             update_last_execution: AtomicBool::new(true),
             last_execution: AtomicI64::new(NO_LAST_EXECUTION),
         }
+    }
+
+    /// Vanilla `BaseCommandBlock.getName`.
+    #[must_use]
+    pub fn name(&self) -> TextComponent {
+        self.custom_name
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+            .unwrap_or_else(|| TextComponent::text(DEFAULT_NAME))
     }
 
     fn write_sync_nbt(&self, nbt: &mut NbtCompound) {
@@ -59,6 +75,14 @@ impl CommandBlockEntity {
                 .to_string(),
         );
         nbt.put_bool("conditionMet", self.condition_met.load(Ordering::SeqCst));
+        if let Some(custom_name) = self
+            .custom_name
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            nbt.put("CustomName", custom_name.0.to_nbt_tag());
+        }
         let track_output = self.track_output.load(Ordering::SeqCst);
         // Vanilla `BaseCommandBlock.save` stores the output as a component, and only when tracked.
         if track_output
@@ -108,6 +132,7 @@ impl BlockEntity for CommandBlockEntity {
                 .map(TextComponent::from_nbt),
         );
         let track_output = AtomicBool::new(tracks_output);
+        let custom_name = StdMutex::new(nbt.get("CustomName").map(TextComponent::from_nbt));
         let success_count =
             AtomicU32::new(nbt.get_int("SuccessCount").unwrap_or(0).cast_unsigned());
         let updates_last_execution = nbt.get_bool("UpdateLastExecution").unwrap_or(true);
@@ -125,6 +150,7 @@ impl BlockEntity for CommandBlockEntity {
             powered,
             command,
             last_output,
+            custom_name,
             track_output,
             success_count,
             update_last_execution,
@@ -161,6 +187,27 @@ impl BlockEntity for CommandBlockEntity {
         self.write_sync_nbt(nbt);
     }
 
+    fn collect_item_components(&self, stack: &mut ItemStack) {
+        if let Some(name) = self
+            .custom_name
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+        {
+            stack.set_data_component(CustomNameImpl { name });
+        }
+    }
+
+    /// Vanilla `applyImplicitComponents`: the item's name, or none, replaces the custom name.
+    fn apply_item_components(&self, stack: &ItemStack) {
+        *self
+            .custom_name
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = stack
+            .get_data_component::<CustomNameImpl>()
+            .map(|custom_name| custom_name.name.clone());
+    }
+
     fn bedrock_block_actor_data(
         &self,
         state_id: pumpkin_data::BlockStateId,
@@ -180,10 +227,16 @@ impl BlockEntity for CommandBlockEntity {
             .as_ref()
             .map(|output| output.clone().get_text())
             .unwrap_or_default();
+        let custom_name = self
+            .custom_name
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map(|name| name.clone().get_text());
         Some(build_command_block_actor(
             self.position,
             &command,
-            None,
+            custom_name.as_deref(),
             self.auto.load(Ordering::Relaxed),
             self.condition_met.load(Ordering::Relaxed),
             conditional,

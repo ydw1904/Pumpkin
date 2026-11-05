@@ -52,6 +52,10 @@ impl<'a> WorldBlockPlacer<'a> {
     pub fn finalize(&self) {
         for nbt in &self.block_entity_nbts {
             if let Some(block_entity) = crate::block::entities::block_entity_from_nbt(nbt) {
+                // Vanilla `placeInWorld` swaps in a barrier first, so the data loads into a
+                // fresh block entity in the world: an `auto` command block starts.
+                self.world.remove_block_entity(&block_entity.get_position());
+                block_entity.loaded_in_world(self.world);
                 self.world.add_block_entity(block_entity);
             }
         }

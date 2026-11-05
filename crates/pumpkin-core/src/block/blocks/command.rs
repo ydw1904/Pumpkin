@@ -7,7 +7,7 @@ use crate::entity::EntityBase;
 use crate::{
     block::{
         BlockBehaviour, BlockMetadata, CanPlaceAtArgs, NormalUseArgs, OnNeighborUpdateArgs,
-        OnPlaceArgs, OnScheduledTickArgs, PlacedArgs, registry::BlockActionResult,
+        OnPlaceArgs, OnScheduledTickArgs, PlayerPlacedArgs, registry::BlockActionResult,
     },
     server::Server,
     world::World,
@@ -388,43 +388,38 @@ impl BlockBehaviour for CommandBlock {
         false
     }
 
-    fn placed(&self, args: PlacedArgs<'_>) {
-        let send_command_feedback = args
+    /// Vanilla `CommandBlock.setPlacedBy`: only a player placement sets up the block, and an
+    /// item with block entity data keeps that data's fields.
+    fn player_placed(&self, args: PlayerPlacedArgs<'_>) {
+        let Some(command_entity) = args
             .world
-            .level_info
-            .load()
-            .game_rules
-            .send_command_feedback;
-
-        let command_entity = if let Some(block_entity) = args.world.get_block_entity(args.position)
-            && let Ok(existing) = Arc::downcast::<CommandBlockEntity>(block_entity)
-        {
-            existing
-                .track_output
-                .store(send_command_feedback, Ordering::Relaxed);
-            if args.block.id == Block::CHAIN_COMMAND_BLOCK.id {
-                existing.auto.store(true, Ordering::Relaxed);
-            }
-            existing
-        } else {
-            let entity = Arc::new(CommandBlockEntity::new(
-                *args.position,
-                send_command_feedback,
-                args.block.id == Block::CHAIN_COMMAND_BLOCK.id,
-            ));
-            args.world.add_block_entity(entity.clone());
-            entity
+            .get_block_entity(args.position)
+            .and_then(|entity| Arc::downcast::<CommandBlockEntity>(entity).ok())
+        else {
+            return;
         };
-
-        if args.world.level_info.load().game_rules.command_blocks_work {
-            Self::update(
-                args.world,
-                args.block,
-                &command_entity,
-                args.position,
-                block_receives_redstone_power(args.world, args.position),
+        if !args.has_block_entity_data {
+            command_entity.track_output.store(
+                args.world
+                    .level_info
+                    .load()
+                    .game_rules
+                    .send_command_feedback,
+                Ordering::Relaxed,
+            );
+            // `setAutomatic`: a chain block never schedules itself.
+            command_entity.auto.store(
+                args.block.id == Block::CHAIN_COMMAND_BLOCK.id,
+                Ordering::Relaxed,
             );
         }
+        Self::update(
+            args.world,
+            args.block,
+            &command_entity,
+            args.position,
+            block_receives_redstone_power(args.world, args.position),
+        );
     }
 
     fn get_comparator_output(&self, args: crate::block::GetComparatorOutputArgs<'_>) -> Option<u8> {

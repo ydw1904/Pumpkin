@@ -911,6 +911,11 @@ impl BlockRegistry {
             }
         }
 
+        let has_block_entity_data = held_stack.as_ref().is_some_and(|stack| {
+            stack
+                .get_data_component::<pumpkin_data::data_component_impl::BlockEntityDataImpl>()
+                .is_some()
+        });
         self.player_placed(
             &world,
             placed_block,
@@ -918,6 +923,7 @@ impl BlockRegistry {
             &final_block_pos,
             face,
             player,
+            has_block_entity_data,
         );
 
         player.trigger_advancement(
@@ -1235,6 +1241,7 @@ impl BlockRegistry {
         block.default_state.id
     }
 
+    #[expect(clippy::too_many_arguments)]
     pub fn player_placed(
         &self,
         world: &Arc<World>,
@@ -1243,6 +1250,7 @@ impl BlockRegistry {
         position: &BlockPos,
         direction: BlockDirection,
         player: &Player,
+        has_block_entity_data: bool,
     ) {
         let pumpkin_block = self.get_pumpkin_block(block.id);
         if let Some(pumpkin_block) = pumpkin_block {
@@ -1253,6 +1261,7 @@ impl BlockRegistry {
                 position,
                 direction,
                 player,
+                has_block_entity_data,
             });
         }
     }

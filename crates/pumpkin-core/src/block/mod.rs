@@ -424,6 +424,8 @@ pub struct PlayerPlacedArgs<'a> {
     pub position: &'a BlockPos,
     pub direction: BlockDirection,
     pub player: &'a Player,
+    /// Whether the placed item carried `minecraft:block_entity_data`.
+    pub has_block_entity_data: bool,
 }
 
 pub struct OnLandedUponArgs<'a> {

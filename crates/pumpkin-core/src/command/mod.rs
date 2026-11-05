@@ -427,8 +427,7 @@ impl CommandSender {
                     Facing::Up | Facing::Down | Facing::East => 270.0,
                 };
 
-                // TODO: when command blocks get custom names, add a check for it
-                let name = TextComponent::text("@");
+                let name = command_entity.name();
 
                 CommandSource::new(
                     Self::CommandBlock(command_entity, world.clone()),
