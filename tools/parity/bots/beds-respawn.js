@@ -181,7 +181,12 @@ h.start(async () => {
 
   // The nether: beds explode, a charged anchor sets spawn and is used up by respawning.
   h.cmd('execute in minecraft:the_nether run forceload add 624 -16 672 16')
-  await h.ticks(40)
+  // Forced chunks load in the background, slower on a busy machine; a lamp lights up once they have.
+  for (let i = 0; i < 120 && h.blockName(X - 6, Y + 3, Z - 6) !== 'glowstone'; i++) {
+    h.cmd(`execute in minecraft:the_nether if loaded 624 64 -16 if loaded 672 64 16 if loaded 624 64 16 if loaded 672 64 -16 if loaded 648 64 0 run execute in minecraft:overworld run setblock ${X - 6} ${Y + 3} ${Z - 6} glowstone`)
+    await h.sleep(1000)
+  }
+  h.cmd(`setblock ${X - 6} ${Y + 3} ${Z - 6} air`)
   h.cmd('execute in minecraft:the_nether run fill 635 99 -5 665 99 5 stone')
   h.cmd('execute in minecraft:the_nether run fill 635 100 -5 665 106 5 air')
   await h.ticks(10)
