@@ -316,7 +316,7 @@ pub struct World {
     /// run after all worlds ticked, so they never see it set.
     handling_tick: std::sync::atomic::AtomicBool,
     /// A map of unsent block changes, keyed by block position.
-    unsent_block_changes: std::sync::Mutex<HashMap<BlockPos, BlockStateId>>,
+    unsent_block_changes: std::sync::Mutex<FxHashMap<BlockPos, BlockStateId>>,
     /// Persisted vanilla POI storage for portal and villager lookups.
     pub portal_poi: std::sync::Mutex<portal::PortalPoiStorage>,
     /// Held while a portal destination is searched for and built, so entities arriving at
@@ -549,7 +549,7 @@ impl World {
             min_y: i32::from(generation_settings.shape.min_y),
             synced_block_event_queue: std::sync::Mutex::new(Vec::new()),
             handling_tick: std::sync::atomic::AtomicBool::new(false),
-            unsent_block_changes: std::sync::Mutex::new(HashMap::new()),
+            unsent_block_changes: std::sync::Mutex::new(FxHashMap::default()),
             portal_poi: std::sync::Mutex::new(portal_poi),
             portal_forcer: tokio::sync::Mutex::new(()),
             raids: std::sync::Mutex::new(raids),
