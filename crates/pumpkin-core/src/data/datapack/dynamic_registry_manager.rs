@@ -196,6 +196,15 @@ impl DynamicRegistryManager {
     }
 
     #[must_use]
+    pub fn contains_registry(&self, registry_id: &str) -> bool {
+        let reg_guard = self
+            .registries
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        Self::find_registry(&reg_guard, registry_id).is_some()
+    }
+
+    #[must_use]
     pub fn get_raw_id(&self, registry_id: &str, entry_id: &str) -> Option<u32> {
         let reg_guard = self
             .registries

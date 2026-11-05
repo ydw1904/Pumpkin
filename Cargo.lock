@@ -3097,6 +3097,7 @@ dependencies = [
 name = "pumpkin-data"
 version = "0.2.1+26.3-26.60"
 dependencies = [
+ "arc-swap",
  "crc32c",
  "criterion",
  "flate2",
@@ -3104,6 +3105,7 @@ dependencies = [
  "pumpkin-nbt",
  "pumpkin-util",
  "reqwest",
+ "rustc-hash",
  "rustls",
  "serde",
  "serde_json",

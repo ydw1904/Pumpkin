@@ -892,7 +892,10 @@ fn make_settings(
         })
         .add_processor(StructureProcessor::ProtectedBlocks(
             crate::generation::structure::template::processor::BlockTagFilter::Static(
-                pumpkin_data::tag::Block::MINECRAFT_FEATURES_CANNOT_REPLACE.1,
+                pumpkin_data::datapack_tags::resolve(
+                    &pumpkin_data::tag::Block::MINECRAFT_FEATURES_CANNOT_REPLACE,
+                )
+                .1,
             ),
         ))
         .add_processor(StructureProcessor::LavaSubmergedBlock);

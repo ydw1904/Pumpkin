@@ -4491,15 +4491,7 @@ impl World {
         if client.version.load() < JavaMinecraftVersion::V_1_20_2
             && client.version.load() >= JavaMinecraftVersion::V_1_13
         {
-            let version = client.version.load();
-            let mut tags = Vec::new();
-            for &key in pumpkin_data::tag::RegistryKey::NETWORK_KEYS {
-                if pumpkin_data::tag::get_registry_key_tags(version, key)
-                    .is_some_and(|map| !map.is_empty())
-                {
-                    tags.push(key);
-                }
-            }
+            let tags = server.datapack_manager.network_tags();
             let packet = pumpkin_protocol::java::client::play::CUpdateTagsPlay::new(&tags);
             client.send_packet(&packet).await;
         }

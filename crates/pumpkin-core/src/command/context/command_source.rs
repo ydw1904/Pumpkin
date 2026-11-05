@@ -566,13 +566,6 @@ impl pumpkin_command::source::CommandSource for CommandSource {
         ExecutionContext::current().is_some_and(|context| context.quota_exhausted())
     }
 
-    fn block_tag(&self, tag: &str) -> Option<Vec<u16>> {
-        self.server.as_ref().map_or_else(
-            || pumpkin_command::argument_types::block_predicate::builtin_block_tag(tag),
-            |server| server.datapack_manager.resolve_block_tag(tag),
-        )
-    }
-
     fn anchor_position(&self, anchor: EntityAnchor) -> Vector3<f64> {
         let pos = self.position;
         self.entity

@@ -2,7 +2,7 @@
 // component tests, /particle options, display entity NBT (matrix transformations, partial
 // transformations, brightness), selector scores without a score, rotations given to command
 // sources (rotated as, facing), SelectedItem in player NBT, /schedule with function tags and the
-// tags sent to players after a reload, and datapack advancements (added, overriding a built-in
+// tags of every registry sent to players after a reload, and datapack advancements (added, overriding a built-in
 // one, out of the tree; reward functions; the reset sent on reload). An advancement that fails to
 // parse makes vanilla fail the whole reload, so the unit tests cover that instead.
 const fs = require('fs')
@@ -42,11 +42,12 @@ const advEntry = (packets, id) => {
   }
   return undefined
 }
-const blockTag = (p, name) => {
-  const block = p.tags.find(t => t.tagType === 'minecraft:block')
-  const tag = block && block.tags.find(t => t.tagName === name)
+const registryTag = (p, registry, name) => {
+  const tags = p.tags.find(t => t.tagType === registry)
+  const tag = tags && tags.tags.find(t => t.tagName === name)
   return tag ? tag.entries.length : 'missing'
 }
+const blockTag = (p, name) => registryTag(p, 'minecraft:block', name)
 async function run (c, wait = 2) {
   msgs.length = 0
   bot.chat('/' + c)
@@ -66,6 +67,22 @@ h.start(async () => {
   fs.writeFileSync(path.join(pack, 'data', 'p', 'tags', 'block', 'more.json'), JSON.stringify({ values: ['minecraft:granite'] }))
   fs.writeFileSync(path.join(pack, 'data', 'minecraft', 'tags', 'block', 'wool.json'), JSON.stringify({ values: ['minecraft:stone'] }))
   fs.writeFileSync(path.join(pack, 'data', 'minecraft', 'tags', 'block', 'logs.json'), JSON.stringify({ replace: true, values: ['minecraft:stone'] }))
+  // Tags of the other registries: items (also extending a vanilla tag), entity types, damage
+  // types, biomes, a registry without built-in tags, and tags with optional or missing entries.
+  for (const dir of ['item', 'entity_type', 'damage_type', 'worldgen/biome', 'wolf_variant']) {
+    fs.mkdirSync(path.join(pack, 'data', 'p', 'tags', dir), { recursive: true })
+  }
+  fs.mkdirSync(path.join(pack, 'data', 'minecraft', 'tags', 'item'), { recursive: true })
+  const tagFile = (ns, dir, name, json) => fs.writeFileSync(path.join(pack, 'data', ns, 'tags', dir, name + '.json'), JSON.stringify(json))
+  tagFile('p', 'item', 'sticks', { values: ['minecraft:stick', '#minecraft:swords'] })
+  tagFile('p', 'item', 'optional', { values: ['minecraft:stick', { id: 'minecraft:not_an_item', required: false }, { id: '#p:none', required: false }] })
+  tagFile('p', 'item', 'broken', { values: ['minecraft:stick', 'minecraft:not_an_item'] })
+  tagFile('p', 'item', 'needs_broken', { values: ['#p:broken'] })
+  tagFile('minecraft', 'item', 'swords', { values: ['minecraft:stick'] })
+  tagFile('p', 'entity_type', 'players', { values: ['minecraft:player'] })
+  tagFile('p', 'damage_type', 'falls', { values: ['minecraft:fall', 'minecraft:fly_into_wall'] })
+  tagFile('p', 'worldgen/biome', 'plains', { values: ['minecraft:plains', 'minecraft:sunflower_plains'] })
+  tagFile('p', 'wolf_variant', 'pale', { values: ['minecraft:pale'] })
   fs.writeFileSync(path.join(pack, 'data', 'p', 'function', 'mark.mcfunction'), 'scoreboard players add #mark dp 1\n')
   fs.writeFileSync(path.join(pack, 'data', 'p', 'function', 'macro.mcfunction'), '$say $(x)\n')
   fs.writeFileSync(path.join(pack, 'data', 'p', 'tags', 'function', 'marks.json'), JSON.stringify({ values: ['p:mark'] }))
@@ -104,6 +121,20 @@ h.start(async () => {
   h.result('reload_tags_sent', String(tagPackets.length))
   h.result('reload_tags_new', reloaded ? blockTag(reloaded, 'p:stones') : 'none')
   h.result('reload_tags_replaced', reloaded ? blockTag(reloaded, 'minecraft:logs') : 'none')
+  // A vanilla tag that includes the replaced one follows it.
+  h.result('reload_tags_nested_vanilla', reloaded ? blockTag(reloaded, 'minecraft:mineable/axe') : 'none')
+  for (const [key, registry, name] of [
+    ['item_new', 'minecraft:item', 'p:sticks'],
+    ['item_extended', 'minecraft:item', 'minecraft:swords'],
+    ['item_optional', 'minecraft:item', 'p:optional'],
+    ['item_broken', 'minecraft:item', 'p:broken'],
+    ['item_needs_broken', 'minecraft:item', 'p:needs_broken'],
+    ['entity_type', 'minecraft:entity_type', 'p:players'],
+    ['damage_type', 'minecraft:damage_type', 'p:falls'],
+    ['biome', 'minecraft:worldgen/biome', 'p:plains'],
+    ['wolf_variant', 'minecraft:wolf_variant', 'p:pale']
+  ]) h.result(`reload_tags_${key}`, reloaded ? String(registryTag(reloaded, registry, name)) : 'none')
+  h.result('reload_tags_registries', reloaded ? reloaded.tags.map(t => t.tagType).sort().join(',') : 'none')
   await run('scoreboard objectives add dp dummy')
   const y = Y + 1
 
@@ -146,6 +177,9 @@ h.start(async () => {
   h.result('tag_replaced_new', await run(`execute if block ${X + 1} ${y} ${Z} #minecraft:logs`))
   h.result('tag_unknown', await run(`execute if block ${X} ${y} ${Z} #p:nope`))
   h.result('tag_fill_filter', await run(`fill ${X} ${y + 1} ${Z} ${X + 2} ${y + 1} ${Z} glass replace #p:stones`))
+  h.result('tag_nested_vanilla', await run(`execute if block ${X + 1} ${y} ${Z} #minecraft:mineable/axe`))
+  h.result('tag_nested_vanilla_old', await run(`execute if block ${X + 2} ${y} ${Z} #minecraft:mineable/axe`))
+  h.result('tag_entity_type', await run('execute if entity @s[type=#p:players]'))
 
   // /schedule: function tags, macros, clearing and the returned time.
   await run('scoreboard players set #mark dp 0')
@@ -177,7 +211,11 @@ h.start(async () => {
     ['count_range', '*[count~{min:2}]'],
     ['default_component', '*[max_stack_size=64]'],
     ['unknown', '*[not_a_component]'],
-    ['tag_filter', '#swords[damage]']
+    ['tag_filter', '#swords[damage]'],
+    ['tag_extended', '#minecraft:swords[custom_data]'],
+    ['tag_new_nested', '#p:sticks[damage]'],
+    ['tag_optional', '#p:optional'],
+    ['tag_broken', '#p:broken']
   ]) h.result(`items_${key}`, await run(`execute if items entity ${bot.username} hotbar.* ${p}`))
 
   // Selected item in player NBT, the nbt= selector and data get.

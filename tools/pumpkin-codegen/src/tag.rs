@@ -143,9 +143,11 @@ fn load_datapack_registry_ids(dir: &std::path::Path) -> BTreeMap<String, u16> {
     id_map
 }
 
-fn load_datapack_tags(
-    data_dir: &std::path::Path,
-) -> BTreeMap<String, BTreeMap<String, Vec<String>>> {
+/// Resolved tags by registry, and the entries of each tag as written (vanilla `TagEntry`
+/// strings: `#` for a tag, `?` for an optional entry).
+type RegistryTags = BTreeMap<String, BTreeMap<String, Vec<String>>>;
+
+fn load_datapack_tags(data_dir: &std::path::Path) -> (RegistryTags, RegistryTags) {
     let mut raw_categories: BTreeMap<String, BTreeMap<String, Vec<String>>> = BTreeMap::new();
 
     fn walk_namespace_tags(
@@ -211,7 +213,15 @@ fn load_datapack_tags(
                                 if let Some(s) = val.as_str() {
                                     values.push(s.to_string());
                                 } else if let Some(id) = val.get("id").and_then(|i| i.as_str()) {
-                                    values.push(id.to_string());
+                                    let required = val
+                                        .get("required")
+                                        .and_then(serde_json::Value::as_bool)
+                                        .unwrap_or(true);
+                                    values.push(if required {
+                                        id.to_string()
+                                    } else {
+                                        format!("{id}?")
+                                    });
                                 }
                             }
                             raw.entry(category).or_default().insert(tag_name, values);
@@ -253,6 +263,7 @@ fn load_datapack_tags(
             if let Some(raw_values) = tag_map.get(tag_name) {
                 for v in raw_values {
                     if let Some(sub_tag) = v.strip_prefix('#') {
+                        let sub_tag = sub_tag.strip_suffix('?').unwrap_or(sub_tag);
                         let full_sub = if sub_tag.contains(':') {
                             sub_tag.to_string()
                         } else {
@@ -265,6 +276,7 @@ fn load_datapack_tags(
                             }
                         }
                     } else {
+                        let v = v.strip_suffix('?').unwrap_or(v);
                         let clean = v.strip_prefix("minecraft:").unwrap_or(v).to_string();
                         if !result.contains(&clean) {
                             result.push(clean);
@@ -284,7 +296,7 @@ fn load_datapack_tags(
         resolved_categories.insert(cat.clone(), cat_resolved);
     }
 
-    resolved_categories
+    (resolved_categories, raw_categories)
 }
 
 /// Generates the `TokenStream` for the `Tag` type, `RegistryKey` enum, tag
@@ -365,6 +377,8 @@ pub(crate) fn build() -> TokenStream {
 
     let mut latest_tag_modules = Vec::new();
     let mut latest_match_arms = Vec::new();
+    let mut raw_match_arms = Vec::new();
+    let mut entry_match_arms = Vec::new();
     let mut all_version_code = Vec::new();
     let mut version_fn_match_arms = Vec::new();
 
@@ -372,7 +386,7 @@ pub(crate) fn build() -> TokenStream {
         let datapack_data_dir = std::path::Path::new("../../assets/datapack/data");
         let datapack_base = datapack_data_dir.join("minecraft");
 
-        let tags = load_datapack_tags(&datapack_data_dir);
+        let (tags, mut raw_tags) = load_datapack_tags(datapack_data_dir);
         let is_latest = ver_folder == "26_3";
 
         let mut ver_cat_match_arms = Vec::new();
@@ -393,6 +407,8 @@ pub(crate) fn build() -> TokenStream {
 
             let mut tag_entries = Vec::new();
             let mut tag_map_entries = Vec::new();
+            let mut raw_map_entries = Vec::new();
+            let raw_map = raw_tags.remove(&key).unwrap_or_default();
 
             if !datapack_id_maps.contains_key(&key) {
                 let dir = std::path::Path::new("../../assets/datapack/data/minecraft").join(&key);
@@ -422,16 +438,37 @@ pub(crate) fn build() -> TokenStream {
                 );
 
                 if is_latest {
+                    // A `static`, so `Taggable::has_tag` can find the tag a datapack rebound.
                     tag_entries.push(quote! {
-                        pub const #tag_const_name: Tag = (&[#(#values),*], &[#(#ids),*]);
+                        pub static #tag_const_name: Tag = (&[#(#values),*], &[#(#ids),*]);
                     });
                     tag_map_entries.push(quote! { #tag_name => &#key_pascal::#tag_const_name });
+                    // Only tags that refer to other tags or hold optional entries need their
+                    // entries as written; the rest are their resolved values.
+                    if let Some(entries) = raw_map.get(&tag_name)
+                        && entries
+                            .iter()
+                            .any(|e| e.starts_with('#') || e.ends_with('?'))
+                    {
+                        raw_map_entries.push(quote! { #tag_name => &[#(#entries),*] });
+                    }
                 } else {
                     tag_map_entries.push(quote! { #tag_name => &(&[#(#values),*], &[#(#ids),*]) });
                 }
             }
 
             if is_latest {
+                let raw_dict_name = format_ident!("{}_RAW_ENTRIES", dict_name);
+                let entry_dict_name = format_ident!("{}_ENTRY_IDS", dict_name);
+                let entry_ids = datapack_id_maps
+                    .get(&key)
+                    .map(|m| {
+                        m.iter()
+                            .filter(|(name, _)| name.contains(':'))
+                            .map(|(name, id)| quote! { #name => #id })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
                 latest_tag_modules.push(quote! {
                     #[allow(non_snake_case)]
                     pub mod #key_pascal {
@@ -441,8 +478,16 @@ pub(crate) fn build() -> TokenStream {
                     static #dict_name: phf::Map<&'static str, &'static Tag> = phf::phf_map! {
                         #(#tag_map_entries),*
                     };
+                    static #raw_dict_name: phf::Map<&'static str, &'static [&'static str]> = phf::phf_map! {
+                        #(#raw_map_entries),*
+                    };
+                    static #entry_dict_name: phf::Map<&'static str, u16> = phf::phf_map! {
+                        #(#entry_ids),*
+                    };
                 });
                 latest_match_arms.push(quote! { RegistryKey::#key_pascal => &#dict_name });
+                raw_match_arms.push(quote! { RegistryKey::#key_pascal => &#raw_dict_name });
+                entry_match_arms.push(quote! { RegistryKey::#key_pascal => &#entry_dict_name });
             } else {
                 all_version_code.push(quote! {
                     static #dict_name: phf::Map<&'static str, &'static Tag> = phf::phf_map! {
@@ -505,14 +550,36 @@ pub(crate) fn build() -> TokenStream {
             }
         }
 
+        /// The entries of a built-in tag as its file lists them, for a tag that refers to other
+        /// tags or has optional entries. `None` for other tags: their entries are their values.
         #[must_use]
-        pub fn get_tag_values(tag_category: RegistryKey, tag: &str) -> Option<&'static [&'static str]> {
-            get_latest_map(tag_category).get(tag).map(|t| t.0)
+        pub fn get_builtin_tag_entries(tag_category: RegistryKey, tag: &str) -> Option<&'static [&'static str]> {
+            let map: &'static phf::Map<&'static str, &'static [&'static str]> = match tag_category {
+                #(#raw_match_arms,)*
+            };
+            map.get(tag).copied()
         }
 
+        /// The vanilla registry id of an entry of a data-driven registry, by its full id. Static
+        /// registries (blocks, items, ...) have their own lookups.
+        #[must_use]
+        pub fn get_builtin_entry_id(tag_category: RegistryKey, entry: &str) -> Option<u16> {
+            let map: &'static phf::Map<&'static str, u16> = match tag_category {
+                #(#entry_match_arms,)*
+            };
+            map.get(entry).copied()
+        }
+
+        /// The values of a tag as the loaded datapacks define it.
+        #[must_use]
+        pub fn get_tag_values(tag_category: RegistryKey, tag: &str) -> Option<&'static [&'static str]> {
+            crate::datapack_tags::get(tag_category, tag).map(|t| t.0)
+        }
+
+        /// The ids of a tag as the loaded datapacks define it.
         #[must_use]
         pub fn get_tag_ids(tag_category: RegistryKey, tag: &str) -> Option<&'static [u16]> {
-            get_latest_map(tag_category).get(tag).map(|t| t.1)
+            crate::datapack_tags::get(tag_category, tag).map(|t| t.1)
         }
 
         #[must_use]
@@ -549,7 +616,7 @@ pub(crate) fn build() -> TokenStream {
 
             #[must_use]
             fn has_tag(&self, tag: &'static Tag) -> bool {
-                tag.1.contains(&self.registry_id())
+                crate::datapack_tags::resolve(tag).1.contains(&self.registry_id())
             }
 
             #[must_use]

@@ -244,7 +244,7 @@ fn write_any_fuel_slot_display(
     Ok(())
 }
 
-fn resolve_item_tag(tag: &str, version: JavaMinecraftVersion) -> Option<Vec<&'static Item>> {
+fn resolve_item_tag(tag: &str) -> Option<Vec<&'static Item>> {
     let tag = tag.strip_prefix('#').unwrap_or(tag);
     let full_tag = if tag.contains(':') {
         Cow::Borrowed(tag)
@@ -253,15 +253,7 @@ fn resolve_item_tag(tag: &str, version: JavaMinecraftVersion) -> Option<Vec<&'st
     };
 
     let item_names =
-        pumpkin_data::tag::get_registry_key_tags(version, pumpkin_data::tag::RegistryKey::Item)
-            .and_then(|map| map.get(full_tag.as_ref()))
-            .map(|t| t.0)
-            .or_else(|| {
-                pumpkin_data::tag::get_tag_values(
-                    pumpkin_data::tag::RegistryKey::Item,
-                    full_tag.as_ref(),
-                )
-            })?;
+        pumpkin_data::tag::get_tag_values(pumpkin_data::tag::RegistryKey::Item, &full_tag)?;
 
     let mut items = Vec::new();
     for name in item_names {
@@ -288,7 +280,7 @@ fn write_ingredient_slot_display(
             }
         }
         RecipeIngredientTypes::Tagged(tag) => {
-            if let Some(items) = resolve_item_tag(tag, version) {
+            if let Some(items) = resolve_item_tag(tag) {
                 if items.len() == 1 {
                     write_item_slot_display(write, items[0], version)?;
                 } else {
@@ -334,7 +326,7 @@ fn write_ingredient_slot_display(
 fn write_ingredient_holderset(
     write: &mut impl Write,
     ingredient: &RecipeIngredientTypes,
-    version: JavaMinecraftVersion,
+    _version: JavaMinecraftVersion,
 ) -> Result<(), WritingError> {
     match ingredient {
         RecipeIngredientTypes::Simple(id) => {
@@ -349,7 +341,7 @@ fn write_ingredient_holderset(
             }
         }
         RecipeIngredientTypes::Tagged(tag) => {
-            if let Some(items) = resolve_item_tag(tag, version) {
+            if let Some(items) = resolve_item_tag(tag) {
                 write.write_var_int(&VarInt(items.len() as i32 + 1))?;
                 for item in &items {
                     write.write_var_int(&VarInt(item.id as i32))?;
@@ -451,12 +443,12 @@ fn write_transmute_result_display(
 /// The items an ingredient accepts.
 fn ingredient_items(
     ingredient: &RecipeIngredientTypes,
-    version: JavaMinecraftVersion,
+    _version: JavaMinecraftVersion,
 ) -> Vec<&'static Item> {
     let from_key = |id: &str| Item::from_registry_key(id.strip_prefix("minecraft:").unwrap_or(id));
     match ingredient {
         RecipeIngredientTypes::Simple(id) => from_key(id).into_iter().collect(),
-        RecipeIngredientTypes::Tagged(tag) => resolve_item_tag(tag, version).unwrap_or_default(),
+        RecipeIngredientTypes::Tagged(tag) => resolve_item_tag(tag).unwrap_or_default(),
         RecipeIngredientTypes::OneOf(ids) => ids.iter().filter_map(|id| from_key(id)).collect(),
     }
 }
@@ -1105,7 +1097,7 @@ fn write_dynamic_ingredient_slot_display(
             }
         }
         crate::codec::recipe::OwnedRecipeIngredient::Tagged(tag) => {
-            if let Some(items) = resolve_item_tag(tag, version) {
+            if let Some(items) = resolve_item_tag(tag) {
                 if items.len() == 1 {
                     write_item_slot_display(write, items[0], version)?;
                 } else {
@@ -1147,7 +1139,7 @@ fn write_dynamic_ingredient_slot_display(
 fn write_dynamic_ingredient_holderset(
     write: &mut impl Write,
     ingredient: &crate::codec::recipe::OwnedRecipeIngredient,
-    version: JavaMinecraftVersion,
+    _version: JavaMinecraftVersion,
 ) -> Result<(), WritingError> {
     match ingredient {
         crate::codec::recipe::OwnedRecipeIngredient::Simple(id) => {
@@ -1160,7 +1152,7 @@ fn write_dynamic_ingredient_holderset(
             }
         }
         crate::codec::recipe::OwnedRecipeIngredient::Tagged(tag) => {
-            if let Some(items) = resolve_item_tag(tag, version) {
+            if let Some(items) = resolve_item_tag(tag) {
                 write.write_var_int(&VarInt(items.len() as i32 + 1))?;
                 for item in &items {
                     write.write_var_int(&VarInt(item.id as i32))?;

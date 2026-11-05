@@ -4,17 +4,12 @@ use crate::packet::MultiVersionJavaPacket;
 use crate::{ClientPacket, WritingError, ser::NetworkWriteExt};
 
 use crate::codec::var_int::VarInt;
-use crate::java::client::config::write_tag_registries;
-use pumpkin_data::{
-    packet::clientbound::play::UPDATE_TAGS,
-    tag::{RegistryKey, get_registry_key_tags},
-};
+use crate::java::client::config::{RegistryTags, write_registry_tags, write_tag_registries};
+use pumpkin_data::packet::clientbound::play::UPDATE_TAGS;
 use pumpkin_util::version::JavaMinecraftVersion;
 
 pub struct CUpdateTagsPlay<'a> {
-    pub tags: &'a [pumpkin_data::tag::RegistryKey],
-    /// Block tags from datapacks, like [`crate::java::client::config::CUpdateTags::block_tags`].
-    pub block_tags: &'a [(String, Vec<u16>)],
+    pub registries: &'a [RegistryTags],
 }
 
 impl MultiVersionJavaPacket for CUpdateTagsPlay<'_> {
@@ -57,17 +52,8 @@ impl MultiVersionJavaPacket for CUpdateTagsPlay<'_> {
 
 impl<'a> CUpdateTagsPlay<'a> {
     #[must_use]
-    pub const fn new(tags: &'a [RegistryKey]) -> Self {
-        Self {
-            tags,
-            block_tags: &[],
-        }
-    }
-
-    #[must_use]
-    pub const fn with_block_tags(mut self, block_tags: &'a [(String, Vec<u16>)]) -> Self {
-        self.block_tags = block_tags;
-        self
+    pub const fn new(registries: &'a [RegistryTags]) -> Self {
+        Self { registries }
     }
 }
 
@@ -86,30 +72,25 @@ impl ClientPacket for CUpdateTagsPlay<'_> {
             // 1.13 - 1.13.2: 3 categories (Block, Item, Fluid)
             // 1.14 - 1.16.5: 4 categories (Block, Item, Fluid, EntityType)
             let categories = if version < &JavaMinecraftVersion::V_1_14 {
-                &[RegistryKey::Block, RegistryKey::Item, RegistryKey::Fluid][..]
+                &["minecraft:block", "minecraft:item", "minecraft:fluid"][..]
             } else {
                 &[
-                    RegistryKey::Block,
-                    RegistryKey::Item,
-                    RegistryKey::Fluid,
-                    RegistryKey::EntityType,
+                    "minecraft:block",
+                    "minecraft:item",
+                    "minecraft:fluid",
+                    "minecraft:entity_type",
                 ][..]
             };
 
-            for &key in categories {
-                let Some(values) = get_registry_key_tags(*version, key) else {
-                    write.write_var_int(&VarInt::from(0))?;
-                    continue;
-                };
-                write.write_var_int(&VarInt(values.len() as i32))?;
-                for (tag_name, tag_val) in values.entries() {
-                    write.write_string_bounded(tag_name, u16::MAX as usize)?;
-                    write.write_list(tag_val.1, |p, &id| p.write_var_int(&VarInt::from(id)))?;
+            for &category in categories {
+                match self.registries.iter().find(|r| r.registry == category) {
+                    Some(registry) => write_registry_tags(&mut write, registry)?,
+                    None => write.write_var_int(&VarInt::from(0))?,
                 }
             }
             return Ok(());
         }
 
-        write_tag_registries(write, self.tags, self.block_tags, *version)
+        write_tag_registries(write, self.registries)
     }
 }

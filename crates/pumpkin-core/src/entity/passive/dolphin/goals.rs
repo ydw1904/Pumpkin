@@ -137,7 +137,10 @@ impl Goal for DolphinSwimToTreasureGoal {
         let world = entity.world.load();
         let origin = entity.block_pos.load();
         if let Some(pos) = world.find_nearest_map_structure(
-            tag::WorldgenStructure::MINECRAFT_DOLPHIN_LOCATED.0,
+            pumpkin_data::datapack_tags::resolve(
+                &tag::WorldgenStructure::MINECRAFT_DOLPHIN_LOCATED,
+            )
+            .0,
             origin,
             DOLPHIN_SEARCH_RADIUS,
             false,

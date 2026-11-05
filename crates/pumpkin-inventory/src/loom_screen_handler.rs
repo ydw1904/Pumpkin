@@ -51,7 +51,7 @@ pub fn get_dye_color(stack: &ItemStack) -> Option<DyeColor> {
 #[must_use]
 pub fn get_selectable_patterns(pattern_stack: &ItemStack) -> Vec<String> {
     if pattern_stack.is_empty() {
-        return BannerPattern::MINECRAFT_NO_ITEM_REQUIRED
+        return pumpkin_data::datapack_tags::resolve(&BannerPattern::MINECRAFT_NO_ITEM_REQUIRED)
             .0
             .iter()
             .map(|s| {

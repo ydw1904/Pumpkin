@@ -86,9 +86,12 @@ fn add_offers_from_dynamic_trades(
         match &trade.modifier {
             DynamicTradeModifier::RandomDyes => apply_random_dye(rng, &mut output),
             DynamicTradeModifier::RandomPotion => {
-                if let Some(potion_name) =
-                    rng.choose(pumpkin_data::tag::Potion::MINECRAFT_TRADEABLE.0)
-                {
+                if let Some(potion_name) = rng.choose(
+                    pumpkin_data::datapack_tags::resolve(
+                        &pumpkin_data::tag::Potion::MINECRAFT_TRADEABLE,
+                    )
+                    .0,
+                ) {
                     apply_potion(&mut output, potion_name);
                 }
             }

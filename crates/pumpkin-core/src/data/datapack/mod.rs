@@ -18,13 +18,15 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::registry::RegistryEntryData;
+use pumpkin_data::tag::RegistryKey;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_nbt::{NbtCompound, nbt_compress::read_gzip_compound_tag};
 use pumpkin_protocol::codec::recipe::DynamicRecipe;
+use pumpkin_protocol::java::client::config::RegistryTags;
 use pumpkin_util::loot_table::DynamicLootTable;
 
 use crate::command::context::command_source::{CommandSource, ResultValueTaker};
@@ -94,7 +96,9 @@ pub struct DatapackManager {
     predicates: RwLock<HashMap<String, serde_json::Value>>,
     item_modifiers: RwLock<HashMap<String, serde_json::Value>>,
     slot_sources: RwLock<HashMap<String, serde_json::Value>>,
-    tags: RwLock<HashMap<String, HashMap<String, tag_loader::DynamicTagEntry>>>,
+    /// Tags of synchronized registries without built-in tags (`wolf_variant`, ...), which only
+    /// the client uses. The other registries' tags live in [`pumpkin_data::datapack_tags`].
+    client_only_tags: RwLock<Vec<RegistryTags>>,
 }
 
 /// A function's id and its commands as loaded.
@@ -129,7 +133,7 @@ impl DatapackManager {
             predicates: RwLock::new(HashMap::new()),
             item_modifiers: RwLock::new(HashMap::new()),
             slot_sources: RwLock::new(HashMap::new()),
-            tags: RwLock::new(HashMap::new()),
+            client_only_tags: RwLock::new(Vec::new()),
         }
     }
 
@@ -179,8 +183,7 @@ impl DatapackManager {
         let mut all_predicates: HashMap<String, serde_json::Value> = HashMap::new();
         let mut all_item_modifiers: HashMap<String, serde_json::Value> = HashMap::new();
         let mut all_slot_sources: HashMap<String, serde_json::Value> = HashMap::new();
-        let mut all_tags: HashMap<String, HashMap<String, tag_loader::DynamicTagEntry>> =
-            HashMap::new();
+        let mut all_tags = tag_loader::TagBuilders::new();
 
         let mut acc = PackContentAccumulators {
             recipes: &mut all_recipes,
@@ -274,16 +277,74 @@ impl DatapackManager {
             .slot_sources
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = all_slot_sources;
-        *self
-            .tags
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = all_tags;
+        // After the dynamic registries, so tags can hold the entries the packs add.
+        self.bind_tags(&all_tags);
         // Last, so the commands can refer to everything else the packs define.
         let all_functions = function_loader::compile_functions(all_functions, compile);
         *self
             .functions
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = all_functions;
+    }
+
+    /// Resolves the packs' tags of every registry they touch and binds them (vanilla
+    /// `TagLoader.loadTagsForExistingRegistries` and `PendingTags.apply`).
+    fn bind_tags(&self, builders: &tag_loader::TagBuilders) {
+        let mut bound = Vec::new();
+        let mut client_only = Vec::new();
+        let mut registries: Vec<_> = builders.iter().collect();
+        registries.sort_unstable_by_key(|(registry, _)| *registry);
+        for (registry, tags) in registries {
+            let Some(element) =
+                tag_loader::element_lookup(registry, &self.dynamic_registry_manager)
+            else {
+                debug!("Ignoring the tags of registry {registry}, which Pumpkin doesn't know");
+                continue;
+            };
+            let key = RegistryKey::from_string(registry);
+            let loaded = tag_loader::build_registry_tags(key, tags, &element);
+            if let Some(key) = key {
+                bound.push((key, loaded));
+            } else {
+                client_only.push(RegistryTags {
+                    registry: format!("minecraft:{registry}").into(),
+                    tags: loaded
+                        .into_iter()
+                        .map(|(name, _, ids)| (name.into(), ids.into()))
+                        .collect(),
+                });
+            }
+        }
+        pumpkin_data::datapack_tags::bind(bound);
+        *self
+            .client_only_tags
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = client_only;
+    }
+
+    /// The tags `ClientboundUpdateTagsPacket` carries (vanilla
+    /// `TagNetworkSerialization.serializeTagsToNetwork`): those of every synchronized registry.
+    #[must_use]
+    pub fn network_tags(&self) -> Vec<RegistryTags> {
+        let mut registries: Vec<RegistryTags> = RegistryKey::NETWORK_KEYS
+            .iter()
+            .map(|&key| RegistryTags {
+                registry: format!("minecraft:{}", key.identifier_string()).into(),
+                tags: pumpkin_data::datapack_tags::tags(key)
+                    .into_iter()
+                    .map(|(name, tag)| (name.into(), tag.1.into()))
+                    .collect(),
+            })
+            .collect();
+        registries.extend(
+            self.client_only_tags
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .iter()
+                .cloned(),
+        );
+        registries.retain(|registry| !registry.tags.is_empty());
+        registries
     }
 
     #[must_use]
@@ -367,38 +428,6 @@ impl DatapackManager {
         let mut names: Vec<_> = guard.keys().cloned().collect();
         names.sort_unstable();
         names
-    }
-
-    #[must_use]
-    pub fn get_tag_values(&self, category: &str, tag_id: &str) -> Option<Vec<String>> {
-        let guard = self
-            .tags
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let cat_map = guard.get(category)?;
-        let full_id = if tag_id.contains(':') {
-            tag_id.to_string()
-        } else {
-            format!("minecraft:{tag_id}")
-        };
-        cat_map
-            .get(&full_id)
-            .or_else(|| cat_map.get(tag_id))
-            .map(|e| e.values.clone())
-    }
-
-    #[must_use]
-    pub fn get_tags_for_category(&self, category: &str) -> HashMap<String, Vec<String>> {
-        let guard = self
-            .tags
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        guard.get(category).map_or_else(HashMap::new, |cat_map| {
-            cat_map
-                .iter()
-                .map(|(k, v)| (k.clone(), v.values.clone()))
-                .collect()
-        })
     }
 
     /// The advancement definitions of the enabled packs by id, the highest pack's for each.
@@ -717,107 +746,6 @@ impl DatapackManager {
     #[must_use]
     pub fn get_all_synced_registries(&self) -> Vec<pumpkin_data::registry::Registry> {
         self.dynamic_registry_manager.get_synced_registries()
-    }
-
-    #[must_use]
-    pub fn is_in_tag(&self, category: &str, tag_id: &str, entry_id: &str) -> bool {
-        let guard = self
-            .tags
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let category = category.strip_prefix("minecraft:").unwrap_or(category);
-        if let Some(cat_tags) = guard.get(category) {
-            let tag_id = tag_id.strip_prefix('#').unwrap_or(tag_id);
-            let full_tag = if tag_id.contains(':') {
-                tag_id.to_string()
-            } else {
-                format!("minecraft:{tag_id}")
-            };
-            if let Some(tag_entry) = cat_tags.get(&full_tag).or_else(|| cat_tags.get(tag_id)) {
-                let full_entry = if entry_id.contains(':') {
-                    entry_id.to_string()
-                } else {
-                    format!("minecraft:{entry_id}")
-                };
-                return tag_entry
-                    .values
-                    .iter()
-                    .any(|v| v == &full_entry || v == entry_id);
-            }
-        }
-        false
-    }
-
-    /// A block tag's block ids: the built-in tag (unless a pack replaced it) plus what the
-    /// loaded packs add, with nested `#tags` resolved. `None` when no tag has this id.
-    #[must_use]
-    pub fn resolve_block_tag(&self, tag: &str) -> Option<Vec<u16>> {
-        let guard = self
-            .tags
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let empty = HashMap::new();
-        let packs = guard.get("block").unwrap_or(&empty);
-        let mut ids = Vec::new();
-        let mut visited = Vec::new();
-        collect_block_tag(packs, tag, &mut ids, &mut visited).then_some(ids)
-    }
-
-    /// The registries whose tags `CUpdateTags` carries.
-    #[must_use]
-    pub fn network_tag_keys() -> Vec<pumpkin_data::tag::RegistryKey> {
-        pumpkin_data::tag::RegistryKey::NETWORK_KEYS
-            .iter()
-            .copied()
-            .filter(|&key| {
-                pumpkin_data::tag::get_registry_key_tags(
-                    pumpkin_data::packet::CURRENT_MC_VERSION,
-                    key,
-                )
-                .is_some_and(|map| !map.is_empty())
-            })
-            .collect()
-    }
-
-    /// Every block tag a pack defines or extends, resolved, for `CUpdateTags`.
-    #[must_use]
-    pub fn datapack_block_tags(&self) -> Vec<(String, Vec<u16>)> {
-        let names: Vec<String> = self
-            .tags
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .get("block")
-            .map(|packs| packs.keys().cloned().collect())
-            .unwrap_or_default();
-        let mut tags: Vec<_> = names
-            .into_iter()
-            .filter_map(|name| {
-                let mut ids = self.resolve_block_tag(&name)?;
-                ids.sort_unstable();
-                ids.dedup();
-                Some((name, ids))
-            })
-            .collect();
-        tags.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-        tags
-    }
-
-    #[must_use]
-    pub fn get_tag_entries(&self, category: &str, tag_id: &str) -> Option<Vec<String>> {
-        let guard = self
-            .tags
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let category = category.strip_prefix("minecraft:").unwrap_or(category);
-        let cat_tags = guard.get(category)?;
-        let tag_id = tag_id.strip_prefix('#').unwrap_or(tag_id);
-        let full_tag = if tag_id.contains(':') {
-            tag_id.to_string()
-        } else {
-            format!("minecraft:{tag_id}")
-        };
-        let tag_entry = cat_tags.get(&full_tag).or_else(|| cat_tags.get(tag_id))?;
-        Some(tag_entry.values.clone())
     }
 
     #[must_use]
@@ -1600,42 +1528,6 @@ fn build_damage_type_registry(
     damage_type_registry
 }
 
-/// Adds the block ids of `tag` to `ids`, returning whether the tag exists built in or in a pack.
-fn collect_block_tag(
-    packs: &HashMap<String, tag_loader::DynamicTagEntry>,
-    tag: &str,
-    ids: &mut Vec<u16>,
-    visited: &mut Vec<String>,
-) -> bool {
-    let tag = if tag.contains(':') {
-        tag.to_string()
-    } else {
-        format!("minecraft:{tag}")
-    };
-    if visited.contains(&tag) {
-        return true;
-    }
-    visited.push(tag.clone());
-    let entry = packs.get(&tag);
-    let builtin = pumpkin_command::argument_types::block_predicate::builtin_block_tag(&tag);
-    if entry.is_none() && builtin.is_none() {
-        return false;
-    }
-    if let Some(builtin) = builtin
-        && !entry.is_some_and(|entry| entry.replace)
-    {
-        ids.extend(builtin);
-    }
-    for value in entry.iter().flat_map(|entry| &entry.values) {
-        if let Some(nested) = value.strip_prefix('#') {
-            collect_block_tag(packs, nested, ids, visited);
-        } else if let Some(block) = pumpkin_data::Block::from_name(value) {
-            ids.push(block.id.as_u16());
-        }
-    }
-    true
-}
-
 struct PackContentAccumulators<'a> {
     recipes: &'a mut Vec<DynamicRecipe>,
     functions: &'a mut HashMap<String, String>,
@@ -1651,7 +1543,7 @@ struct PackContentAccumulators<'a> {
     predicates: &'a mut HashMap<String, serde_json::Value>,
     item_modifiers: &'a mut HashMap<String, serde_json::Value>,
     slot_sources: &'a mut HashMap<String, serde_json::Value>,
-    tags: &'a mut HashMap<String, HashMap<String, tag_loader::DynamicTagEntry>>,
+    tags: &'a mut tag_loader::TagBuilders,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -1733,7 +1625,7 @@ fn load_bundled_datapacks(
             && let Some(pack_path) = find_bundled_datapack_dir(bundled)
         {
             let (description, pack_format, known_packs) = read_pack_mcmeta(&pack_path);
-            let counts = load_pack_contents(&pack_path, acc);
+            let counts = load_pack_contents(&pack_path, &format!("minecraft:{bundled}"), acc);
             info!(
                 "Loaded bundled datapack '{bundled}': {} recipe(s), {} function(s), {} test instance(s), {} damage type(s), {} int provider(s), {} float provider(s), {} loot table(s), {} structure(s), {} template pool(s), {} processor list(s), {} dynamic registry entry/entries, {} trade set(s), {} trade(s), {} advancement(s), {} predicate(s), {} tag(s)",
                 counts.recipes,
@@ -1804,7 +1696,7 @@ fn scan_datapacks_dir(
         }
 
         let (description, pack_format, known_packs) = read_pack_mcmeta(&pack_path);
-        let counts = load_pack_contents(&pack_path, acc);
+        let counts = load_pack_contents(&pack_path, &pack_id, acc);
 
         info!(
             "Loaded datapack '{file_name}': {} recipe(s), {} function(s), {} test instance(s), {} damage type(s), {} int provider(s), {} float provider(s), {} loot table(s), {} structure(s), {} template pool(s), {} processor list(s), {} dynamic registry entry/entries, {} trade set(s), {} trade(s), {} advancement(s), {} predicate(s), {} tag(s)",
@@ -1844,6 +1736,7 @@ fn scan_datapacks_dir(
 #[allow(clippy::too_many_lines)]
 fn load_pack_contents(
     pack_path: &Path,
+    pack_id: &str,
     acc: &mut PackContentAccumulators<'_>,
 ) -> PackContentCounts {
     let data_dir = pack_path.join("data");
@@ -1890,7 +1783,8 @@ fn load_pack_contents(
                     &tags_dir,
                     acc.function_tags,
                 );
-                counts.tags += tag_loader::load_tags_from_dir(&namespace, &tags_dir, acc.tags);
+                counts.tags +=
+                    tag_loader::load_tags_from_dir(&namespace, &tags_dir, pack_id, acc.tags);
             }
             // Load game test instances
             let test_instance_dir = ns_path.join("test_instance");
@@ -2435,7 +2329,7 @@ mod tests {
             tags: &mut tags,
         };
 
-        let counts = super::load_pack_contents(&datapack_path, &mut acc);
+        let counts = super::load_pack_contents(&datapack_path, "vanilla", &mut acc);
         assert_eq!(counts.recipes, 2042, "all vanilla recipes must load");
         assert_eq!(
             counts.loot_tables, 1447,
@@ -2515,7 +2409,7 @@ mod tests {
                 tags: &mut tags,
             };
 
-            let counts = super::load_pack_contents(&pack_path, &mut acc);
+            let counts = super::load_pack_contents(&pack_path, "trade_rebalance", &mut acc);
             assert!(counts.trades > 0, "trade rebalance must load trades");
             assert!(
                 counts.trade_tags > 0,
@@ -2549,53 +2443,5 @@ mod tests {
                 .iter()
                 .any(|r| r.registry_id == "minecraft:wolf_variant")
         );
-    }
-
-    #[test]
-    fn block_tags_merge_with_builtin_tags_unless_replaced() {
-        use super::tag_loader::DynamicTagEntry;
-        use std::collections::HashMap;
-        let tag = |id: &str, replace: bool, values: &[&str]| {
-            (
-                id.to_string(),
-                DynamicTagEntry {
-                    id: id.to_string(),
-                    values: values.iter().map(ToString::to_string).collect(),
-                    replace,
-                },
-            )
-        };
-        let resolve = |packs: &HashMap<String, DynamicTagEntry>, id: &str| {
-            let mut ids = Vec::new();
-            super::collect_block_tag(packs, id, &mut ids, &mut Vec::new()).then(|| {
-                ids.sort_unstable();
-                ids.dedup();
-                ids
-            })
-        };
-        let stone = pumpkin_data::Block::STONE.id.as_u16();
-        let granite = pumpkin_data::Block::GRANITE.id.as_u16();
-        let mut packs: HashMap<String, DynamicTagEntry> = HashMap::from([
-            tag("test:stones", false, &["minecraft:stone"]),
-            tag(
-                "test:rocks",
-                false,
-                &["#test:stones", "granite", "#test:rocks"],
-            ),
-        ]);
-        let mut rocks = vec![stone, granite];
-        rocks.sort_unstable();
-        assert_eq!(resolve(&packs, "test:rocks"), Some(rocks));
-        assert_eq!(resolve(&packs, "test:missing"), None);
-
-        let builtin = resolve(&packs, "minecraft:dirt").unwrap_or_default();
-        assert!(builtin.len() > 1 && !builtin.contains(&stone));
-        packs.extend([tag("minecraft:dirt", false, &["stone"])]);
-        assert_eq!(
-            resolve(&packs, "dirt").map(|ids| ids.len()),
-            Some(builtin.len() + 1)
-        );
-        packs.extend([tag("minecraft:dirt", true, &["stone"])]);
-        assert_eq!(resolve(&packs, "minecraft:dirt"), Some(vec![stone]));
     }
 }

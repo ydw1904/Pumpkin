@@ -9,10 +9,9 @@ use pumpkin_data::{
     entity::EntityType,
     fluid::Fluid,
     item_stack::ItemStack,
-    packet::CURRENT_MC_VERSION,
     particle::Particle,
     sound::Sound,
-    tag::{RegistryKey, Tag, Taggable, get_registry_key_tags},
+    tag::{RegistryKey, Tag, Taggable},
 };
 use pumpkin_util::math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3};
 use pumpkin_world::chunk::ChunkData;
@@ -874,9 +873,7 @@ pub fn apply_explode_effect(
         _ => ExplosionInteraction::None,
     };
     let immune_blocks = immune_blocks.and_then(|tag| {
-        get_registry_key_tags(CURRENT_MC_VERSION, RegistryKey::Block)?
-            .get(tag.strip_prefix('#').unwrap_or(tag))
-            .copied()
+        pumpkin_data::datapack_tags::get(RegistryKey::Block, tag.strip_prefix('#').unwrap_or(tag))
     });
     let calculator = SimpleExplosionDamageCalculator::new(
         damage_type.is_some(),

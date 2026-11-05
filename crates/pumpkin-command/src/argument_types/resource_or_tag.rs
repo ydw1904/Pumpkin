@@ -77,7 +77,11 @@ impl ResourceOrTag {
 /// Registry-aware suggestions shared by both argument types: the known entry
 /// ids plus, when tag data exists for the registry, its `#`-prefixed tags.
 fn suggest_for_registry(registry: &Identifier, builder: SuggestionsBuilder) -> Suggestions {
-    let tags = |key: RegistryKey| tag::get_latest_map(key).keys().copied();
+    let tags = |key: RegistryKey| {
+        pumpkin_data::datapack_tags::tags(key)
+            .into_iter()
+            .map(|(name, _)| name)
+    };
 
     if *registry == STRUCTURE_REGISTRY {
         let structures = StructureKeys::all_names()

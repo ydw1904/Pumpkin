@@ -67,7 +67,9 @@ fn enchanted_book_offer_items(
     use pumpkin_data::data_component_impl::StoredEnchantmentsImpl;
     use std::borrow::Cow;
 
-    let enchantment_id = *rng.choose(EnchantmentTag::MINECRAFT_TRADEABLE.1)? as u8;
+    let enchantment_id = *rng
+        .choose(pumpkin_data::datapack_tags::resolve(&EnchantmentTag::MINECRAFT_TRADEABLE).1)?
+        as u8;
     let enchantment = Enchantment::from_id(enchantment_id)?;
     let level = rng.random_range(1..=enchantment.max_level);
     let mut emeralds = 2 + rng.random_range(0..5 + level * 10) + 3 * level;
@@ -686,9 +688,12 @@ impl VillagerEntity {
                     }
                     DynamicTradeModifier::RandomDyes => apply_random_dye(rng, &mut output),
                     DynamicTradeModifier::RandomPotion => {
-                        let Some(potion_name) =
-                            rng.choose(pumpkin_data::tag::Potion::MINECRAFT_TRADEABLE.0)
-                        else {
+                        let Some(potion_name) = rng.choose(
+                            pumpkin_data::datapack_tags::resolve(
+                                &pumpkin_data::tag::Potion::MINECRAFT_TRADEABLE,
+                            )
+                            .0,
+                        ) else {
                             continue;
                         };
                         apply_potion(&mut output, potion_name);

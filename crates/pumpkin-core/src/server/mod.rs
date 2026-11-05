@@ -3,7 +3,6 @@ use crate::command::commands::default_dispatcher;
 use crate::command::commands::defaultgamemode::DefaultGamemode;
 use crate::data::VanillaData;
 use crate::data::advancement_tree::ServerAdvancements;
-use crate::data::datapack::DatapackManager;
 use crate::data::player_server::ServerPlayerData;
 use crate::entity::NBTStorage;
 use crate::item::registry::ItemRegistry;
@@ -796,9 +795,8 @@ impl Server {
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .reload();
         }
-        let tags = DatapackManager::network_tag_keys();
-        let block_tags = self.datapack_manager.datapack_block_tags();
-        let tags_packet = CUpdateTagsPlay::new(&tags).with_block_tags(&block_tags);
+        let tags = self.datapack_manager.network_tags();
+        let tags_packet = CUpdateTagsPlay::new(&tags);
         for player in &players {
             player.try_send_client_packet(&tags_packet);
         }

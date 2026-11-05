@@ -170,7 +170,9 @@ block = []
 potion_brewing = []
 
 [dependencies]
+arc-swap.workspace = true
 phf = { workspace = true, features = ["macros"] }
+rustc-hash.workspace = true
 pumpkin-util.workspace = true
 pumpkin-nbt.workspace = true
 serde = {workspace = true, features = ["rc"]}
