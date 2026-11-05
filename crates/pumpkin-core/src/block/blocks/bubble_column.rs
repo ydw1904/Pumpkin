@@ -197,10 +197,6 @@ impl BlockBehaviour for BubbleColumnBlock {
             } else {
                 args.entity.on_inside_bubble_column(drag_down);
             }
-
-            if let Some(player) = args.entity.get_player() {
-                player.breath_manager.reset(player);
-            }
         }
     }
 

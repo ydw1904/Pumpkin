@@ -535,7 +535,8 @@ impl HostEntity for PluginHostState {
         let entity = self.get(&entity)?;
         Ok(entity.get_player().map_or(0, |player| {
             player
-                .breath_manager
+                .living_entity
+                .entity
                 .air_supply
                 .load(std::sync::atomic::Ordering::Relaxed)
         }))
@@ -545,10 +546,11 @@ impl HostEntity for PluginHostState {
         let entity = self.get(&entity)?;
         if let Some(player) = entity.get_player() {
             player
-                .breath_manager
+                .living_entity
+                .entity
                 .air_supply
                 .store(air, std::sync::atomic::Ordering::Relaxed);
-            player.breath_manager.send_air_supply(player);
+            player.send_air_supply();
         }
         Ok(())
     }

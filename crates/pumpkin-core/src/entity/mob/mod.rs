@@ -2450,15 +2450,16 @@ pub trait Mob: EntityBase + Send + Sync {
     }
 
     fn mob_decrease_air_supply(&self, current: i32) -> i32 {
-        let oxygen_bonus = self
-            .get_mob_entity()
+        self.get_mob_entity()
             .living_entity
-            .get_attribute_value(&Attributes::OXYGEN_BONUS);
-        if oxygen_bonus <= 0.0 || self.get_random().random::<f64>() < 1.0 / (oxygen_bonus + 1.0) {
-            current.wrapping_sub(1)
-        } else {
-            current
-        }
+            .decrease_air_supply(current)
+    }
+
+    /// Vanilla `LivingEntity.canBreatheUnderwater`.
+    fn mob_can_breathe_underwater(&self) -> bool {
+        self.get_entity()
+            .entity_type
+            .has_tag(&tag::EntityType::MINECRAFT_CAN_BREATHE_UNDER_WATER)
     }
 
     fn mob_increase_air_supply(&self, current: i32) -> i32 {
@@ -2528,7 +2529,9 @@ pub trait Mob: EntityBase + Send + Sync {
 
     fn post_tick(&self) {}
 
-    fn base_tick(&self) {}
+    /// A species' own `baseTick`, after `LivingEntity.baseTick`'s air handling, which changed
+    /// the air from `pre_tick_air_supply`.
+    fn base_tick(&self, _pre_tick_air_supply: i32) {}
 
     fn travel(&self, _caller: &dyn EntityBase) -> bool {
         false

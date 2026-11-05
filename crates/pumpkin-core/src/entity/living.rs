@@ -3777,33 +3777,59 @@ impl LivingEntity {
         self.entity.air_supply.load(Relaxed) <= -DROWNING_INTERVAL
     }
 
-    pub(crate) fn tick_air_supply(&self, caller: &dyn crate::entity::mob::Mob) {
+    /// Vanilla `LivingEntity.decreaseAirSupply`: Respiration's oxygen bonus may keep the air.
+    pub fn decrease_air_supply(&self, current: i32) -> i32 {
+        let oxygen_bonus = self.get_attribute_value(&Attributes::OXYGEN_BONUS);
+        if oxygen_bonus > 0.0 && game_random().random::<f64>() >= 1.0 / (oxygen_bonus + 1.0) {
+            current
+        } else {
+            current.wrapping_sub(1)
+        }
+    }
+
+    /// The air part of vanilla `LivingEntity.baseTick`, for every living entity.
+    pub(crate) fn tick_air_supply(&self, caller: &dyn EntityBase) {
         if !self.is_alive() {
             return;
         }
         let entity = &self.entity;
+        let world = entity.world.load();
         let current = entity.air_supply.load(Relaxed);
         let max_air = caller.get_max_air_supply();
-        let water_breathing = self.has_effect(&StatusEffect::WATER_BREATHING)
-            || self.has_effect(&StatusEffect::CONDUIT_POWER);
-        let nautilus_breathing = self.has_effect(&StatusEffect::BREATH_OF_THE_NAUTILUS);
         if entity.is_submerged_in_water()
-            && entity
-                .world
-                .load()
-                .get_block(&entity.get_eye_pos().to_block_pos())
-                != &Block::BUBBLE_COLUMN
+            && world.get_block(&entity.get_eye_pos().to_block_pos()) != &Block::BUBBLE_COLUMN
         {
-            if !entity
-                .entity_type
-                .has_tag(&tag::EntityType::MINECRAFT_CAN_BREATHE_UNDER_WATER)
+            // Vanilla `MobEffectUtil.hasWaterBreathing` and `shouldEffectsRefillAirsupply`.
+            let water_breathing = self.has_effect(&StatusEffect::WATER_BREATHING)
+                || self.has_effect(&StatusEffect::CONDUIT_POWER);
+            let nautilus_breathing = self.has_effect(&StatusEffect::BREATH_OF_THE_NAUTILUS);
+            let can_breathe_underwater = caller.get_mob().map_or_else(
+                || {
+                    entity
+                        .entity_type
+                        .has_tag(&tag::EntityType::MINECRAFT_CAN_BREATHE_UNDER_WATER)
+                },
+                crate::entity::mob::Mob::mob_can_breathe_underwater,
+            );
+            let invulnerable_player = caller.get_player().is_some_and(|player| {
+                player
+                    .abilities
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .invulnerable
+            });
+            if !can_breathe_underwater
                 && !water_breathing
                 && !nautilus_breathing
+                && !invulnerable_player
             {
-                entity.set_air_supply(caller.mob_decrease_air_supply(current));
+                entity.set_air_supply(caller.get_mob().map_or_else(
+                    || self.decrease_air_supply(current),
+                    |mob| mob.mob_decrease_air_supply(current),
+                ));
                 if self.should_take_drowning_damage() {
                     entity.set_air_supply(0);
-                    entity.world.load().send_entity_status(
+                    world.send_entity_status(
                         entity,
                         EntityStatus::DrownParticles,
                         ActorEventID::None,
@@ -3816,6 +3842,15 @@ impl LivingEntity {
                 }
             } else if current < max_air && (!nautilus_breathing || water_breathing) {
                 entity.set_air_supply(caller.increase_air_supply(current));
+            }
+
+            if let Some(vehicle) = entity.get_vehicle()
+                && vehicle
+                    .get_entity()
+                    .entity_type
+                    .has_tag(&tag::EntityType::MINECRAFT_DISMOUNTS_UNDERWATER)
+            {
+                vehicle.get_entity().remove_passenger(entity.entity_id);
             }
         } else if current < max_air {
             entity.set_air_supply(caller.increase_air_supply(current));
@@ -4672,9 +4707,11 @@ impl EntityBase for LivingEntity {
     fn tick(&self, caller: &dyn EntityBase, server: &Server) {
         self.entity.tick(caller, server);
         self.tick_last_hurt_by_mob();
+        let pre_tick_air_supply = self.entity.air_supply.load(Relaxed);
+        self.tick_air_supply(caller);
         if let Some(mob) = caller.get_mob() {
             mob.tick_ambient_sound();
-            mob.base_tick();
+            mob.base_tick(pre_tick_air_supply);
         }
 
         // Only tick movement if the entity is alive. This prevents a dead "corpse"

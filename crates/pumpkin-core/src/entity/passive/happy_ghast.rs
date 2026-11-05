@@ -156,6 +156,15 @@ impl Mob for HappyGhastEntity {
         Some(self)
     }
 
+    /// Vanilla `HappyGhast.canBreatheUnderwater`: a ghastling never drowns.
+    fn mob_can_breathe_underwater(&self) -> bool {
+        self.mob_entity.living_entity.is_baby()
+            || self
+                .get_entity()
+                .entity_type
+                .has_tag(&pumpkin_data::tag::EntityType::MINECRAFT_CAN_BREATHE_UNDER_WATER)
+    }
+
     /// Vanilla `HappyGhast.getWalkTargetValue`.
     fn get_walk_target_value(&self, level: &dyn CreatureSpawnLevel, pos: &BlockPos) -> f32 {
         let is_empty = |pos: &BlockPos| level.block_state(pos).is_air();

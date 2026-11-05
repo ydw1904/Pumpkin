@@ -2238,6 +2238,20 @@ impl Entity {
         }
         self.air_supply.store(air, Relaxed);
         self.set_synced_data(tracked_data::entity::DATA_AIR_SUPPLY_ID, VarInt(air));
+        self.send_bedrock_air_supply();
+    }
+
+    pub fn send_bedrock_air_supply(&self) {
+        let mut bedrock_meta = SyncedActorDataList::new();
+        bedrock_meta.set(
+            entity_data_key::AIR_SUPPLY,
+            MetadataValue::Short(
+                self.air_supply
+                    .load(Relaxed)
+                    .clamp(0, i32::from(i16::MAX)) as i16,
+            ),
+        );
+        self.send_bedrock_actor_data(&bedrock_meta);
     }
 
     pub fn is_silent(&self) -> bool {
@@ -6163,9 +6177,7 @@ impl Entity {
             "Rotation",
             NbtTag::List(vec![self.yaw.load().into(), self.pitch.load().into()]),
         );
-        if self.entity_type != &EntityType::PLAYER {
-            nbt.put_short("Air", self.air_supply.load(Relaxed) as i16);
-        }
+        nbt.put_short("Air", self.air_supply.load(Relaxed) as i16);
         nbt.put_short("Fire", self.fire_ticks.load(Relaxed) as i16);
         nbt.put_bool("OnGround", self.on_ground.load(Relaxed));
         nbt.put_bool("Invulnerable", self.invulnerable.load(Relaxed));
@@ -6287,13 +6299,11 @@ impl Entity {
         );
         self.on_ground
             .store(nbt.get_bool("OnGround").unwrap_or(false), Relaxed);
-        if self.entity_type != &EntityType::PLAYER {
-            let air = nbt
-                .get_numeric_short("Air")
-                .map_or(max_air_supply, i32::from);
-            self.air_supply.store(air, Relaxed);
-            self.set_synced_data(tracked_data::entity::DATA_AIR_SUPPLY_ID, VarInt(air));
-        }
+        let air = nbt
+            .get_numeric_short("Air")
+            .map_or(max_air_supply, i32::from);
+        self.air_supply.store(air, Relaxed);
+        self.set_synced_data(tracked_data::entity::DATA_AIR_SUPPLY_ID, VarInt(air));
         self.invulnerable
             .store(nbt.get_bool("Invulnerable").unwrap_or(false), Relaxed);
         self.portal_cooldown

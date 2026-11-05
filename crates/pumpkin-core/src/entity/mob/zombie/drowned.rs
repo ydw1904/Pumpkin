@@ -353,7 +353,7 @@ impl Mob for DrownedEntity {
     }
 
     /// Vanilla `Drowned.updateSwimming`, which runs from `baseTick`.
-    fn base_tick(&self) {
+    fn base_tick(&self, _pre_tick_air_supply: i32) {
         let mob_entity = &self.entity.mob_entity;
         let entity = &mob_entity.living_entity.entity;
         entity.set_swimming(

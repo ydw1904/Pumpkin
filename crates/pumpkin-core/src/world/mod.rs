@@ -4748,7 +4748,7 @@ impl World {
         player.on_screen_handler_opened(&player.player_screen_handler);
 
         player.send_active_effects();
-        player.breath_manager.send_air_supply(player);
+        player.send_air_supply();
         self.send_player_equipment(player);
         player
             .living_entity

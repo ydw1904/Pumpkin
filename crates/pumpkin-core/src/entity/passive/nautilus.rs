@@ -249,6 +249,28 @@ impl Mob for NautilusEntity {
     /// Vanilla `AbstractNautilus` steps silently.
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {}
 
+    /// Vanilla `Nautilus.baseTick` and `handleAirSupply`: out of water it dries out.
+    fn base_tick(&self, pre_tick_air_supply: i32) {
+        if self.mob_entity.is_no_ai() {
+            return;
+        }
+        let living = &self.mob_entity.living_entity;
+        let entity = &living.entity;
+        if living.is_alive() && !entity.is_in_water() {
+            entity.set_air_supply(pre_tick_air_supply - 1);
+            if living.should_take_drowning_damage() {
+                entity.set_air_supply(0);
+                self.damage(
+                    self,
+                    crate::entity::breath::DROWNING_DAMAGE,
+                    pumpkin_data::damage::DamageType::DRY_OUT,
+                );
+            }
+        } else {
+            entity.set_air_supply(crate::entity::breath::MAX_AIR);
+        }
+    }
+
     fn as_custom_sound(&self) -> Option<&dyn crate::entity::custom_sound::CustomSound> {
         Some(self)
     }

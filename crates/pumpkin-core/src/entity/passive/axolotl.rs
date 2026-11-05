@@ -764,12 +764,10 @@ impl Mob for AxolotlEntity {
         true
     }
 
-    /// Vanilla `Axolotl.baseTick`: `LivingEntity.baseTick`'s air, then `handleAirSupply`.
-    fn base_tick(&self) {
-        let air_supply = self.get_entity().air_supply.load(Ordering::Relaxed);
-        self.mob_entity.living_entity.tick_air_supply(self);
+    /// Vanilla `Axolotl.baseTick`: `handleAirSupply` after `LivingEntity.baseTick`'s air.
+    fn base_tick(&self, pre_tick_air_supply: i32) {
         if !self.mob_entity.is_no_ai() {
-            self.handle_air_supply(air_supply);
+            self.handle_air_supply(pre_tick_air_supply);
         }
     }
 

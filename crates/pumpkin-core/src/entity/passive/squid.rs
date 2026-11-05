@@ -156,11 +156,11 @@ pub trait Squid: AgeableWaterCreature {
         }
     }
 
-    fn squid_base_tick(&self, caller: &dyn EntityBase) {
+    fn squid_base_tick(&self, caller: &dyn EntityBase, pre_tick_air_supply: i32) {
         self.squid_data()
             .y_body_rot_o
             .store(self.get_entity().body_yaw.load());
-        self.handle_air_supply(self.get_entity().air_supply.load(Relaxed), caller);
+        self.handle_air_supply(pre_tick_air_supply, caller);
     }
 
     fn rotate_vector(&self, vector: Vector3<f64>) -> Vector3<f64> {
@@ -341,7 +341,7 @@ macro_rules! squid_mob_hooks {
         fn as_custom_sound(&self) -> Option<&dyn $crate::entity::custom_sound::CustomSound> { Some(self) }
         fn get_ambient_sound(&self) -> Option<pumpkin_data::sound::Sound> { Some($crate::entity::passive::squid::Squid::ambient_sound(self)) }
         fn get_ambient_sound_interval(&self) -> i32 { $crate::entity::passive::water_animal::AMBIENT_SOUND_INTERVAL }
-        fn base_tick(&self) { $crate::entity::passive::squid::Squid::squid_base_tick(self, self); }
+        fn base_tick(&self, pre_tick_air_supply: i32) { $crate::entity::passive::squid::Squid::squid_base_tick(self, self, pre_tick_air_supply); }
         fn travel(&self, caller: &dyn $crate::entity::EntityBase) -> bool {
             let entity = &self.mob_entity.living_entity.entity;
             entity.move_entity(caller, entity.velocity.load());

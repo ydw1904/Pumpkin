@@ -321,7 +321,6 @@ use crate::world::raid::Raid;
 use crate::world::{BlockBreakingProgress, World};
 use bytes::Bytes;
 
-use super::breath::BreathManager;
 use super::combat::{self, can_smash_attack, mace_smash_damage_bonus, mace_smash_knockback};
 use super::decoration::armor_stand::ArmorStandEntity;
 use super::hunger::HungerManager;
@@ -683,8 +682,6 @@ pub struct Player {
     pub sleeping_bed_pos: AtomicCell<Option<BlockPos>>,
     /// Whether the player is ignored when calculating the percentage of sleeping players needed to skip the night.
     pub sleeping_ignored: AtomicBool,
-    /// Manages the player's breath level
-    pub breath_manager: BreathManager,
     /// Manages the player's hunger level.
     pub hunger_manager: HungerManager,
     /// The ID of the currently open container (if any).
@@ -1083,7 +1080,6 @@ impl Player {
             gameprofile,
             client,
             awaiting_teleport: Mutex::new(None),
-            breath_manager: BreathManager::default(),
             // TODO: Load this from previous instance
             hunger_manager: HungerManager::default(),
             current_block_destroy_stage: AtomicI32::new(-1),
@@ -3626,8 +3622,6 @@ impl Player {
 
         self.living_entity.tick(self, server);
 
-        self.breath_manager.tick(self);
-
         let level_info = self.world().level_info.load();
         if level_info.difficulty == Difficulty::Peaceful
             && level_info.game_rules.natural_health_regeneration
@@ -5454,9 +5448,12 @@ impl Player {
         {
             return false;
         }
-        // Vanilla `Player.isInvulnerableTo`: the `freeze_damage` game rule.
-        if damage_type.has_tag(&tag::DamageType::MINECRAFT_IS_FREEZING)
-            && !self.world().level_info.load().game_rules.freeze_damage
+        // Vanilla `Player.isInvulnerableTo`: the `drowning_damage` and `freeze_damage` game rules.
+        let level_info = self.world().level_info.load();
+        if (damage_type.has_tag(&tag::DamageType::MINECRAFT_IS_DROWNING)
+            && !level_info.game_rules.drowning_damage)
+            || (damage_type.has_tag(&tag::DamageType::MINECRAFT_IS_FREEZING)
+                && !level_info.game_rules.freeze_damage)
         {
             return false;
         }
@@ -5508,6 +5505,16 @@ impl Player {
         use pumpkin_data::damage::DamageType;
         self.living_entity
             .damage(self, f32::MAX, DamageType::GENERIC_KILL);
+    }
+
+    /// Sends the player's air to its own client even when it didn't change.
+    pub fn send_air_supply(&self) {
+        let entity = &self.living_entity.entity;
+        entity.set_synced_data_forced(
+            pumpkin_data::tracked_data::entity::DATA_AIR_SUPPLY_ID,
+            pumpkin_protocol::codec::var_int::VarInt(entity.air_supply.load(Ordering::Relaxed)),
+        );
+        entity.send_bedrock_air_supply();
     }
 
     pub fn send_health(&self) {
@@ -5962,8 +5969,12 @@ impl Player {
             }
         }
 
-        // Reset air supply & drowning ticks on death
-        self.breath_manager.reset(self);
+        // Vanilla respawns a new `ServerPlayer`, which starts with full air.
+        self.living_entity
+            .entity
+            .air_supply
+            .store(super::breath::MAX_AIR, Ordering::Relaxed);
+        self.send_air_supply();
 
         if matches!(self.client.as_ref(), ClientPlatform::Java(_)) {
             self.set_client_loaded(false);
@@ -8210,7 +8221,6 @@ impl EntityBase for Player {
         self
     }
 
-    #[expect(clippy::too_many_lines)]
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
         self.write_shoulders(nbt);
         nbt.put_int("DataVersion", DATA_VERSION);
@@ -8257,21 +8267,6 @@ impl EntityBase for Player {
 
         // Store food level, saturation, exhaustion, and tick timer
         self.hunger_manager.write_nbt(nbt);
-
-        let air_supply = self
-            .breath_manager
-            .air_supply
-            .load(Ordering::Relaxed)
-            .clamp(0, super::breath::MAX_AIR);
-        nbt.put_short("Air", air_supply as i16);
-        nbt.put_int("AirSupply", air_supply);
-        nbt.put_int(
-            "DrowningTick",
-            self.breath_manager
-                .drowning_tick
-                .load(Ordering::Relaxed)
-                .clamp(0, super::breath::DROWNING_INTERVAL - 1),
-        );
 
         nbt.put_string(
             "Dimension",
@@ -8454,22 +8449,6 @@ impl EntityBase for Player {
         );
 
         self.hunger_manager.read_nbt_non_mut(nbt);
-
-        if let Some(air) = nbt
-            .get_short("Air")
-            .map(i32::from)
-            .or_else(|| nbt.get_int("AirSupply"))
-        {
-            self.breath_manager
-                .air_supply
-                .store(air.clamp(0, super::breath::MAX_AIR), Ordering::Relaxed);
-        }
-        if let Some(tick) = nbt.get_int("DrowningTick") {
-            self.breath_manager.drowning_tick.store(
-                tick.clamp(0, super::breath::DROWNING_INTERVAL - 1),
-                Ordering::Relaxed,
-            );
-        }
 
         // Load any saved spawnpoint data (both vanilla "respawn" compound and legacy SpawnX/SpawnY/SpawnZ)
         if let Some(respawn_compound) = nbt.get_compound("respawn") {

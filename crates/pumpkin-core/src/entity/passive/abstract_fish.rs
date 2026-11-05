@@ -187,8 +187,8 @@ pub trait AbstractFish: WaterAnimal + crate::entity::bucketable::Bucketable {
         entity.set_default_dimensions(dimensions);
     }
 
-    fn fish_base_tick(&self, caller: &dyn crate::entity::EntityBase) {
-        self.handle_air_supply(self.get_entity().air_supply.load(Relaxed), caller);
+    fn fish_base_tick(&self, caller: &dyn crate::entity::EntityBase, pre_tick_air_supply: i32) {
+        self.handle_air_supply(pre_tick_air_supply, caller);
     }
 
     fn fish_remove_when_far_away(&self) -> bool {
@@ -338,8 +338,12 @@ macro_rules! fish_mob_hooks {
             );
         }
 
-        fn base_tick(&self) {
-            $crate::entity::passive::abstract_fish::AbstractFish::fish_base_tick(self, self);
+        fn base_tick(&self, pre_tick_air_supply: i32) {
+            $crate::entity::passive::abstract_fish::AbstractFish::fish_base_tick(
+                self,
+                self,
+                pre_tick_air_supply,
+            );
         }
 
         fn remove_when_far_away(&self, _distance_sq: f64) -> bool {
