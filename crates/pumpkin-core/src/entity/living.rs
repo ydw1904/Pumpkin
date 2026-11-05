@@ -3082,18 +3082,6 @@ impl LivingEntity {
                 self.drop_loot(&*dyn_self, &params);
             }
 
-            // Award experience
-            if perished
-                && (dyn_self.is_always_experience_dropper()
-                    || (params.killed_by_player.unwrap_or(false)
-                        && world.level_info.load().game_rules.mob_drops
-                        && dyn_self.should_drop_experience()))
-            {
-                let amount = dyn_self.get_experience_reward(killer);
-                if amount > 0 {
-                    ExperienceOrbEntity::spawn(&world, self.entity.pos.load(), amount);
-                }
-            }
             self.entity.pose.store(EntityPose::Dying);
 
             // Players drop their whole inventory instead (`Player::handle_killed`).
@@ -3109,6 +3097,20 @@ impl LivingEntity {
 
             // Broadcast death message if it's a player and the gamerule is enabled
             self.broadcast_death_message(&*dyn_self, damage_type, source, cause);
+
+            // Vanilla `dropAllDeathLoot` drops experience last, after the equipment, custom loot
+            // and a player's inventory.
+            if perished
+                && (dyn_self.is_always_experience_dropper()
+                    || (params.killed_by_player.unwrap_or(false)
+                        && world.level_info.load().game_rules.mob_drops
+                        && dyn_self.should_drop_experience()))
+            {
+                let amount = dyn_self.get_experience_reward(killer);
+                if amount > 0 {
+                    ExperienceOrbEntity::spawn(&world, self.entity.pos.load(), amount);
+                }
+            }
 
             // Trigger on_mob_death for active status effects
             let active_effects_vec: Vec<_> = {
