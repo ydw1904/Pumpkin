@@ -8,6 +8,7 @@ use pumpkin_data::{
     enchantment::EnchantmentEntityEffect,
     entity::EntityType,
     fluid::Fluid,
+    item_stack::ItemStack,
     packet::CURRENT_MC_VERSION,
     particle::Particle,
     sound::Sound,
@@ -21,14 +22,17 @@ use crate::{
     block::{
         ExplodeArgs,
         blocks::fire::{FireBlockBase, fire::FireBlock},
-        drop_loot,
+        collect_loot,
     },
-    entity::{Entity, EntityBase, combat::knockback_after_resistance},
+    entity::{Entity, EntityBase, combat::knockback_after_resistance, item::ItemEntity},
     net::ClientPlatform,
     world::loot::LootContextParameters,
 };
 
 use super::{BlockFlags, World};
+
+/// Vanilla `StackCollector.tryMerge` merges explosion drops into piles of this size.
+const EXPLOSION_PILE_SIZE: u8 = 16;
 
 /// Defines the type of explosion interaction with the world.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -709,6 +713,15 @@ impl<'a> Explosion<'a> {
         (self.interact_with_blocks(world), hit_players)
     }
 
+    /// Vanilla `interactWithBlocks` shuffles the blocks with the level random first.
+    fn shuffled(
+        blocks: FxHashMap<BlockPos, (&'static Block, &'static BlockState)>,
+    ) -> Vec<(BlockPos, (&'static Block, &'static BlockState))> {
+        let mut blocks: Vec<_> = blocks.into_iter().collect();
+        game_random().shuffle(&mut blocks);
+        blocks
+    }
+
     fn interact_with_blocks(&self, world: &Arc<World>) -> u32 {
         match self.block_interaction {
             BlockInteraction::Keep => {
@@ -720,6 +733,7 @@ impl<'a> Explosion<'a> {
             }
             BlockInteraction::TriggerBlock => {
                 let (blocks, blown) = self.get_blocks_to_destroy(world);
+                let blocks = Self::shuffled(blocks);
                 for (pos, (block, _state)) in &blocks {
                     let pumpkin_block = world.block_registry.get_pumpkin_block(block.id);
                     if let Some(pumpkin_block) = pumpkin_block {
@@ -753,8 +767,10 @@ impl<'a> Explosion<'a> {
                 }
 
                 let (blocks, blown) = self.get_blocks_to_destroy(world);
+                let blocks = Self::shuffled(blocks);
                 let decay_drops = self.block_interaction == BlockInteraction::DestroyWithDecay;
                 let explosion_radius = decay_drops.then_some(self.power);
+                let mut drops = Vec::new();
 
                 for (pos, (block, state)) in &blocks {
                     let pumpkin_block = world.block_registry.get_pumpkin_block(block.id);
@@ -775,7 +791,9 @@ impl<'a> Explosion<'a> {
                             is_thundering: Some(is_thundering),
                             ..Default::default()
                         };
-                        drop_loot(world, block, pos, false, &params);
+                        for stack in collect_loot(world, block, pos, &params) {
+                            add_or_append_stack(&mut drops, stack, *pos);
+                        }
                     }
 
                     world.set_block_state(pos, BlockStateId::AIR, BlockFlags::NOTIFY_ALL);
@@ -790,11 +808,37 @@ impl<'a> Explosion<'a> {
                         });
                     }
                 }
+                for (pos, stack) in drops {
+                    world.drop_stack(&pos, stack);
+                }
                 Self::create_fire(world, &blown);
                 blocks.len() as u32
             }
         }
     }
+}
+
+/// Vanilla `ServerExplosion.addOrAppendStack`: explosion drops merge into piles of up to 16
+/// before they spawn, each pile at the first block that dropped it.
+fn add_or_append_stack(
+    drops: &mut Vec<(BlockPos, ItemStack)>,
+    mut stack: ItemStack,
+    pos: BlockPos,
+) {
+    for (_, pile) in drops.iter_mut() {
+        // `StackCollector.tryMerge` uses `ItemEntity.merge(to, from, 16)`. Its delta goes
+        // negative for a pile already above 16, which moves items back into the incoming stack.
+        if ItemEntity::are_mergeable(pile, &stack) {
+            let max = i32::from(pile.get_max_stack_size().min(EXPLOSION_PILE_SIZE));
+            let delta = (max - i32::from(pile.item_count)).min(i32::from(stack.item_count));
+            pile.item_count = (i32::from(pile.item_count) + delta) as u8;
+            stack.item_count = (i32::from(stack.item_count) - delta) as u8;
+        }
+        if stack.is_empty() {
+            return;
+        }
+    }
+    drops.push((pos, stack));
 }
 
 /// Vanilla `ExplodeEffect.apply` for an enchantment's `minecraft:explode` effect.
@@ -859,8 +903,60 @@ pub fn apply_explode_effect(
 
 #[cfg(test)]
 mod tests {
-    use super::Explosion;
-    use pumpkin_data::Block;
+    use super::{Explosion, add_or_append_stack};
+    use pumpkin_data::{Block, item::Item, item_stack::ItemStack};
+    use pumpkin_util::math::position::BlockPos;
+
+    fn counts(drops: &[(BlockPos, ItemStack)]) -> Vec<(i32, u16, u8)> {
+        drops
+            .iter()
+            .map(|(pos, stack)| (pos.0.x, stack.item.id, stack.item_count))
+            .collect()
+    }
+
+    #[test]
+    fn explosion_drops_merge_into_piles_of_16() {
+        let mut drops = Vec::new();
+        for x in 0..20 {
+            add_or_append_stack(
+                &mut drops,
+                ItemStack::new(1, &Item::COBBLESTONE),
+                BlockPos::new(x, 0, 0),
+            );
+        }
+        add_or_append_stack(
+            &mut drops,
+            ItemStack::new(1, &Item::DIRT),
+            BlockPos::new(0, 1, 0),
+        );
+        assert_eq!(
+            counts(&drops),
+            [
+                (0, Item::COBBLESTONE.id, 16),
+                (16, Item::COBBLESTONE.id, 4),
+                (0, Item::DIRT.id, 1),
+            ]
+        );
+    }
+
+    /// `ItemEntity.merge` with a pile above 16 has a negative delta: the pile shrinks to 16 and
+    /// the surplus moves into the incoming stack.
+    #[test]
+    fn pile_above_16_gives_its_surplus_to_the_incoming_stack() {
+        let mut drops = vec![(
+            BlockPos::new(0, 0, 0),
+            ItemStack::new(26, &Item::COBBLESTONE),
+        )];
+        add_or_append_stack(
+            &mut drops,
+            ItemStack::new(1, &Item::COBBLESTONE),
+            BlockPos::new(1, 0, 0),
+        );
+        assert_eq!(
+            counts(&drops),
+            [(0, Item::COBBLESTONE.id, 16), (1, Item::COBBLESTONE.id, 11)]
+        );
+    }
 
     #[test]
     fn tnt_minecart_rail_protection_covers_every_rail_type() {
