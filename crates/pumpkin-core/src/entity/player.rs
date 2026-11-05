@@ -8303,7 +8303,10 @@ impl EntityBase for Player {
             })
             .hover_event(HoverEvent::show_entity(
                 self.living_entity.entity.entity_uuid.to_string(),
-                self.living_entity.entity.entity_type.resource_name.into(),
+                format!(
+                    "minecraft:{}",
+                    self.living_entity.entity.entity_type.resource_name
+                ),
                 Some(name),
             ))
             .insertion(self.gameprofile.name.clone())

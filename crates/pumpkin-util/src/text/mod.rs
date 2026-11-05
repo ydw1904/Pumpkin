@@ -344,7 +344,11 @@ impl TextComponentBase {
                     HoverEvent::ShowEntity { id, uuid, name } => {
                         hover_tag.put_string("action", "show_entity".to_string());
                         hover_tag.put_string("id", id.to_string());
-                        hover_tag.put_string("uuid", uuid.to_string());
+                        match hover::uuid_int_array(uuid) {
+                            Some(ints) => hover_tag
+                                .put("uuid", pumpkin_nbt::tag::NbtTag::IntArray(ints.to_vec())),
+                            None => hover_tag.put_string("uuid", uuid.to_string()),
+                        }
                         if let Some(n) = name {
                             if n.len() == 1 {
                                 hover_tag.put("name", n[0].to_nbt_tag_for_version(version));
@@ -832,7 +836,10 @@ impl TextComponentBase {
                             .insert("id".to_string(), serde_json::Value::String(id.to_string()));
                         hover_map.insert(
                             "uuid".to_string(),
-                            serde_json::Value::String(uuid.to_string()),
+                            hover::uuid_int_array(uuid).map_or_else(
+                                || serde_json::Value::String(uuid.to_string()),
+                                |ints| serde_json::json!(ints),
+                            ),
                         );
                         if let Some(n) = name {
                             if n.len() == 1 {
@@ -2315,11 +2322,27 @@ mod test {
         let hover = show_entity.get_compound("hover_event").unwrap();
         assert_eq!(hover.get_string("action"), Some("show_entity"));
         assert_eq!(hover.get_string("id"), Some("minecraft:pig"));
+        // `UUIDUtil.CODEC` writes the four ints, most significant first.
         assert_eq!(
-            hover.get_string("uuid"),
-            Some("6ba1a740-9a3b-4b7c-8f2c-8f5a5c1a0a11")
+            hover.get_int_array("uuid"),
+            Some(&[1_805_756_224, -1_707_390_084, -1_892_905_126, 1_545_210_385][..])
         );
         assert!(hover.get_compound("entity").is_none());
+
+        // `UUIDUtil.LENIENT_CODEC` reads the int array and the string alike.
+        for uuid in [
+            "[1805756224,-1707390084,-1892905126,1545210385]",
+            "\"6ba1a740-9a3b-4b7c-8f2c-8f5a5c1a0a11\"",
+        ] {
+            let json = format!(
+                r#"{{"text":"pig","hover_event":{{"action":"show_entity","id":"minecraft:pig","uuid":{uuid}}}}}"#
+            );
+            let component: TextComponent = serde_json::from_str(&json).unwrap();
+            let Some(HoverEvent::ShowEntity { uuid, .. }) = &component.0.style.hover_event else {
+                panic!("no show_entity hover in {json}");
+            };
+            assert_eq!(uuid, "6ba1a740-9a3b-4b7c-8f2c-8f5a5c1a0a11");
+        }
     }
 
     /// `/tellraw`'s JSON keeps a `show_item` hover's components, and they go

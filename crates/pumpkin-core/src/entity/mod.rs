@@ -1227,7 +1227,7 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         crate::world::scoreboard::Team::format_name_for_team(self.get_team().as_ref(), name.clone())
             .hover_event(HoverEvent::show_entity(
                 entity.entity_uuid.to_string(),
-                entity.entity_type.resource_name.into(),
+                format!("minecraft:{}", entity.entity_type.resource_name),
                 Some(name),
             ))
             .insertion(entity.entity_uuid.to_string())

@@ -109,8 +109,9 @@ pub enum HoverEvent {
     ShowEntity {
         /// The entity's ID Entity Type.
         id: Cow<'static, str>,
-        /// The entity's UUID
-        /// The UUID cannot use `uuid::Uuid` because its serialization parses it into bytes, so its double bytes serialized.
+        /// The entity's UUID in its hyphenated form. Written as vanilla's `UUIDUtil.CODEC` int
+        /// array and read like `UUIDUtil.LENIENT_CODEC`, from either form.
+        #[serde(serialize_with = "serialize_uuid", deserialize_with = "lenient_uuid")]
         uuid: Cow<'static, str>,
         /// Optional custom name for the entity.
         #[serde(
@@ -120,6 +121,45 @@ pub enum HoverEvent {
         )]
         name: Option<Vec<TextComponentBase>>,
     },
+}
+
+/// Vanilla `UUIDUtil.uuidToIntArray`, for a hover's UUID string.
+#[must_use]
+pub fn uuid_int_array(uuid: &str) -> Option<[i32; 4]> {
+    let bits = uuid::Uuid::parse_str(uuid).ok()?.as_u128();
+    Some([
+        (bits >> 96) as i32,
+        (bits >> 64) as i32,
+        (bits >> 32) as i32,
+        bits as i32,
+    ])
+}
+
+fn serialize_uuid<S: serde::Serializer>(uuid: &str, serializer: S) -> Result<S::Ok, S::Error> {
+    match uuid_int_array(uuid) {
+        Some(ints) => ints.serialize(serializer),
+        None => uuid.serialize(serializer),
+    }
+}
+
+fn lenient_uuid<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Cow<'static, str>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Lenient {
+        Ints([i32; 4]),
+        Text(String),
+    }
+    Ok(match Lenient::deserialize(deserializer)? {
+        Lenient::Ints(ints) => {
+            let bits = ints
+                .iter()
+                .fold(0u128, |bits, int| (bits << 32) | u128::from(*int as u32));
+            Cow::Owned(uuid::Uuid::from_u128(bits).to_string())
+        }
+        Lenient::Text(text) => Cow::Owned(text),
+    })
 }
 
 impl HoverEvent {
