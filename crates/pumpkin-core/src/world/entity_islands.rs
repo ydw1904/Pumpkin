@@ -99,12 +99,20 @@ impl PlanningBudget {
     }
 }
 
-const MIN_PARALLEL_ENTITIES: usize = 16;
+pub(super) const MIN_PARALLEL_ENTITIES: usize = 16;
+/// Entities with a global reach split the tick into runs planned one after another. Past this
+/// many runs the rest of the tick runs in list order.
+pub(super) const MAX_PLANNED_RUNS: usize = 4;
 const SERIAL_PROBE_INTERVAL: u8 = 20;
 const PARALLEL_SHARE_DIVISOR: usize = 4;
 /// A serial preference also ends once the entity count moves this share away from the count
 /// it was planned with. Spawns and despawns change the count almost every tick in a busy area.
 const RECOUNT_SHARE_DIVISOR: usize = 8;
+
+/// A dominant island leaves too little parallel work to pay for planning.
+pub(super) const fn worth_parallel(largest_island: usize, entity_count: usize) -> bool {
+    largest_island < entity_count - entity_count / PARALLEL_SHARE_DIVISOR
+}
 
 #[derive(Default)]
 pub(super) struct Schedule {
@@ -132,9 +140,7 @@ impl Schedule {
 
     pub(super) const fn record_plan(&mut self, largest_island: usize) -> bool {
         self.planned_count = self.entity_count;
-        // A dominant island leaves too little parallel work to pay for planning.
-        let parallel =
-            largest_island < self.entity_count - self.entity_count / PARALLEL_SHARE_DIVISOR;
+        let parallel = worth_parallel(largest_island, self.entity_count);
         // Only the serial preference is cached; parallel ticks always use a fresh plan.
         self.ticks_until_probe = if parallel {
             0
@@ -469,7 +475,7 @@ pub(crate) enum BlockWriteCheck {
 }
 
 impl EntityReach {
-    const fn is_global(&self) -> bool {
+    pub(super) const fn is_global(&self) -> bool {
         match self {
             Self::Audited(reach) => reach.global,
             Self::Conservative(reach) => reach.global,

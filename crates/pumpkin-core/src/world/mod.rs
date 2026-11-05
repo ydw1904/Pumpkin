@@ -1806,6 +1806,118 @@ impl World {
         self.play_sound_expect(player, sound, category, &new_vec);
     }
 
+    /// Plans the islands of the entities at the start of `tickable` up to the first one whose
+    /// tick can reach anywhere. Returns where that run ends and its islands, with slots relative
+    /// to `tickable`, or `None` when the run ticks in list order.
+    fn plan_entity_run(
+        &self,
+        tickable: &[(&Arc<dyn EntityBase>, Vector2<i32>)],
+        players: &[Arc<Player>],
+        config: &pumpkin_config::world::EntityIslandsConfig,
+    ) -> (usize, Option<entity_islands::Islands>) {
+        self.player_search.refresh(players);
+        self.game_event_listeners
+            .store(Some(Arc::new(crate::entity::mob::game_event_listeners(
+                self,
+            ))));
+        self.contact_sections.store(Some(Arc::default()));
+        let mut reports: Vec<_> = tickable
+            .par_iter()
+            .map(|(entity, _)| entity_islands::EntityReach::of(entity.as_ref(), config))
+            .collect();
+        let end = reports
+            .iter()
+            .position(entity_islands::EntityReach::is_global)
+            .unwrap_or(reports.len());
+        reports.truncate(end);
+        let islands = (end >= entity_islands::MIN_PARALLEL_ENTITIES)
+            .then(|| self.plan_islands(&tickable[..end], reports, players, config))
+            .flatten();
+        self.game_event_listeners.store(None);
+        self.contact_sections.store(None);
+        (end, islands)
+    }
+
+    fn plan_islands(
+        &self,
+        run: &[(&Arc<dyn EntityBase>, Vector2<i32>)],
+        reports: Vec<entity_islands::EntityReach>,
+        players: &[Arc<Player>],
+        config: &pumpkin_config::world::EntityIslandsConfig,
+    ) -> Option<entity_islands::Islands> {
+        let block_write_checks: Vec<_> = reports
+            .iter()
+            .map(entity_islands::EntityReach::block_write_check)
+            .collect();
+        let ids: Vec<_> = run
+            .iter()
+            .map(|(entity, _)| entity.get_entity().entity_id)
+            .collect();
+        let ticking: FxHashSet<i32> = ids.iter().copied().collect();
+        // Hits from other entities' turns can make these react beyond their bodies. A
+        // ticking entity's stand-in links it, an idle one's stand-in replaces it.
+        let mut stand_ins = Vec::new();
+        for (entity, _) in run {
+            if let Some(hurt) = entity
+                .get_mob()
+                .and_then(crate::entity::mob::Mob::hurt_reach)
+            {
+                let base = entity.get_entity();
+                stand_ins.push((
+                    !base.entity_id,
+                    hurt.stand_in(
+                        base.bounding_box.load(),
+                        base.entity_type,
+                        vec![base.entity_id],
+                    ),
+                ));
+            }
+        }
+        // Everything else is idle for this run, including entities that ticked or were spawned
+        // earlier in the tick, so they are read where they are now.
+        let mut idle_entities = Vec::new();
+        for entity in self.entities.load().iter() {
+            let base = entity.get_entity();
+            if ticking.contains(&base.entity_id) {
+                continue;
+            }
+            let body = base.bounding_box.load();
+            if let Some(hurt) = entity
+                .get_mob()
+                .and_then(crate::entity::mob::Mob::hurt_reach)
+            {
+                stand_ins.push((
+                    base.entity_id,
+                    hurt.stand_in(body, base.entity_type, Vec::new()),
+                ));
+            } else {
+                idle_entities.push((base.entity_id, body, base.entity_type));
+            }
+        }
+        let player_bodies: Vec<_> = players
+            .iter()
+            .map(|player| {
+                let entity = player.get_entity();
+                (entity.entity_id, entity.bounding_box.load())
+            })
+            .collect();
+        let mut islands = entity_islands::plan(
+            self,
+            &ids,
+            reports,
+            &block_write_checks,
+            &stand_ins,
+            &idle_entities,
+            &player_bodies,
+            config,
+        )?;
+        // Start the largest islands first.
+        islands
+            .islands
+            .sort_by_key(|island| std::cmp::Reverse(island.len()));
+        Some(islands)
+    }
+
     #[expect(clippy::too_many_lines)]
     pub fn tick(self: &Arc<Self>, server: &Arc<Server>) {
         let start = std::time::Instant::now();
@@ -1927,113 +2039,7 @@ impl World {
             }
         }
 
-        // Entities that can affect each other tick in list order; separate islands run in
-        // parallel.
-        let islands_config = &server.advanced_config.world.entity_islands;
-        let plan_islands = !entity_islands::plugins_observe_entity_ticks(server)
-            && self
-                .island_schedule
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .should_plan(tickable.len());
-        let islands = if plan_islands {
-            let islands = (|| {
-                self.player_search.refresh(&players);
-                self.game_event_listeners.store(Some(Arc::new(
-                    crate::entity::mob::game_event_listeners(self),
-                )));
-                self.contact_sections.store(Some(Arc::default()));
-                let reports: Vec<_> = tickable
-                    .par_iter()
-                    .map(|(entity, _)| {
-                        entity_islands::EntityReach::of(entity.as_ref(), islands_config)
-                    })
-                    .collect();
-                let block_write_checks: Vec<_> = reports
-                    .iter()
-                    .map(entity_islands::EntityReach::block_write_check)
-                    .collect();
-                let ids: Vec<_> = tickable
-                    .iter()
-                    .map(|(entity, _)| entity.get_entity().entity_id)
-                    .collect();
-                let ticking: FxHashSet<i32> = ids.iter().copied().collect();
-                // Hits from other entities' turns can make these react beyond their bodies. A
-                // ticking entity's stand-in links it, an idle one's stand-in replaces it.
-                let mut stand_ins = Vec::new();
-                for (entity, _) in &tickable {
-                    if let Some(hurt) = entity
-                        .get_mob()
-                        .and_then(crate::entity::mob::Mob::hurt_reach)
-                    {
-                        let base = entity.get_entity();
-                        stand_ins.push((
-                            !base.entity_id,
-                            hurt.stand_in(
-                                base.bounding_box.load(),
-                                base.entity_type,
-                                vec![base.entity_id],
-                            ),
-                        ));
-                    }
-                }
-                let mut idle_entities = Vec::new();
-                for entity in entities_to_tick.iter() {
-                    let base = entity.get_entity();
-                    if ticking.contains(&base.entity_id) {
-                        continue;
-                    }
-                    let body = base.bounding_box.load();
-                    if let Some(hurt) = entity
-                        .get_mob()
-                        .and_then(crate::entity::mob::Mob::hurt_reach)
-                    {
-                        stand_ins.push((
-                            base.entity_id,
-                            hurt.stand_in(body, base.entity_type, Vec::new()),
-                        ));
-                    } else {
-                        idle_entities.push((base.entity_id, body, base.entity_type));
-                    }
-                }
-                let player_bodies: Vec<_> = players
-                    .iter()
-                    .map(|player| {
-                        let entity = player.get_entity();
-                        (entity.entity_id, entity.bounding_box.load())
-                    })
-                    .collect();
-                let mut islands = entity_islands::plan(
-                    self,
-                    &ids,
-                    reports,
-                    &block_write_checks,
-                    &stand_ins,
-                    &idle_entities,
-                    &player_bodies,
-                    islands_config,
-                )?;
-                // Start the largest islands first.
-                islands
-                    .islands
-                    .sort_by_key(|island| std::cmp::Reverse(island.len()));
-                Some(islands)
-            })();
-            self.game_event_listeners.store(None);
-            self.contact_sections.store(None);
-            let parallel = self
-                .island_schedule
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .record_plan(islands.as_ref().map_or(tickable.len(), |islands| {
-                    islands.islands.first().map_or(0, Vec::len)
-                }));
-            islands.filter(|_| parallel)
-        } else {
-            None
-        };
         let first_order = self.level.reserve_entity_tick_orders(tickable.len());
-
         let server_ref = server.as_ref();
         let tick_entity = |index: usize| {
             let (entity, entity_chunk) = &tickable[index];
@@ -2067,26 +2073,77 @@ impl World {
                 }
             }
         };
-        if let Some(islands) = islands {
-            islands
-                .islands
-                .par_iter()
-                .with_max_len(1)
-                .for_each(|island| {
-                    for &index in island {
-                        #[cfg(debug_assertions)]
-                        entity_islands::enter(&islands, tickable[index].0.get_entity().entity_id);
-                        tick_entity(index);
-                    }
-                    order::set_entity_order(None);
-                    #[cfg(debug_assertions)]
-                    entity_islands::leave();
-                });
-        } else {
-            for index in 0..tickable.len() {
+        let tick_in_order = |run: std::ops::Range<usize>| {
+            for index in run {
                 tick_entity(index);
             }
             order::set_entity_order(None);
+        };
+
+        // Entities that can affect each other tick in list order; separate islands run in
+        // parallel. An entity whose tick can reach anywhere ticks alone, between the entities
+        // before it and the ones after it, which are planned once it has ticked.
+        let islands_config = &server.advanced_config.world.entity_islands;
+        let plan_islands = !entity_islands::plugins_observe_entity_ticks(server)
+            && self
+                .island_schedule
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .should_plan(tickable.len());
+        if plan_islands {
+            let mut largest_island = None;
+            let mut start = 0;
+            let mut runs = 0;
+            while start < tickable.len() {
+                if runs == entity_islands::MAX_PLANNED_RUNS {
+                    tick_in_order(start..tickable.len());
+                    break;
+                }
+                runs += 1;
+                let (end, islands) =
+                    self.plan_entity_run(&tickable[start..], &players, islands_config);
+                let end = start + end;
+                match islands {
+                    Some(islands)
+                        if entity_islands::worth_parallel(
+                            islands.islands.first().map_or(0, Vec::len),
+                            end - start,
+                        ) =>
+                    {
+                        let largest = islands.islands.first().map_or(0, Vec::len);
+                        largest_island = Some(largest_island.unwrap_or(0).max(largest));
+                        islands
+                            .islands
+                            .par_iter()
+                            .with_max_len(1)
+                            .for_each(|island| {
+                                for &slot in island {
+                                    let index = start + slot;
+                                    #[cfg(debug_assertions)]
+                                    entity_islands::enter(
+                                        &islands,
+                                        tickable[index].0.get_entity().entity_id,
+                                    );
+                                    tick_entity(index);
+                                }
+                                order::set_entity_order(None);
+                                #[cfg(debug_assertions)]
+                                entity_islands::leave();
+                            });
+                    }
+                    _ => tick_in_order(start..end),
+                }
+                if end < tickable.len() {
+                    tick_in_order(end..end + 1);
+                }
+                start = end + 1;
+            }
+            self.island_schedule
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .record_plan(largest_island.unwrap_or(tickable.len()));
+        } else {
+            tick_in_order(0..tickable.len());
         }
         self.order_tick_spawns();
         // Vanilla `tickPassenger`: after a root vehicle ticked, `rideTick` has each vehicle's
