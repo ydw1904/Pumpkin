@@ -8,10 +8,12 @@ use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::translation;
+use pumpkin_data::world::WorldEvent;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::bedrock::client::CUpdateBlock;
 use pumpkin_protocol::java::client::play::CBlockUpdate;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_util::text::TextComponent;
 use pumpkin_world::generation::structure::template::PaletteEntry;
 use pumpkin_world::world::BlockFlags;
@@ -19,7 +21,10 @@ use std::sync::atomic::{AtomicBool, AtomicI32};
 use std::sync::{Arc, Mutex, atomic::Ordering};
 
 use crate::{
-    block::{blocks::falling::FallingBlock, registry::can_replace_with_other_block},
+    block::{
+        blocks::{anvil::AnvilBlock, falling::FallingBlock},
+        registry::can_replace_with_other_block,
+    },
     entity::{Entity, EntityBase, living::LivingEntity},
     server::Server,
     world::World,
@@ -29,6 +34,10 @@ use crate::{
 const TIME_OUT_OF_WORLD: i32 = 100;
 /// Vanilla `FallingBlockEntity.tick`: drop after this many ticks still falling.
 const TIME_MAX: i32 = 600;
+/// Vanilla `FallingBlockEntity.DEFAULT_MAX_FALL_DAMAGE`.
+const DEFAULT_MAX_FALL_DAMAGE: i32 = 40;
+/// Vanilla `AnvilBlock.falling` damage per block fallen.
+const ANVIL_FALL_DAMAGE_PER_DISTANCE: f32 = 2.0;
 
 pub struct FallingEntity {
     entity: Entity,
@@ -39,6 +48,10 @@ pub struct FallingEntity {
     cancel_drop: AtomicBool,
     /// Vanilla `blockData`, saved as `TileEntityData`.
     block_data: Mutex<Option<NbtCompound>>,
+    hurt_entities: AtomicBool,
+    fall_damage_per_distance: AtomicCell<f32>,
+    fall_damage_max: AtomicI32,
+    fall_distance: AtomicCell<f64>,
 }
 
 impl FallingEntity {
@@ -56,16 +69,134 @@ impl FallingEntity {
             drop_item: AtomicBool::new(true),
             cancel_drop: AtomicBool::new(false),
             block_data: Mutex::new(None),
+            hurt_entities: AtomicBool::new(false),
+            fall_damage_per_distance: AtomicCell::new(0.0),
+            fall_damage_max: AtomicI32::new(DEFAULT_MAX_FALL_DAMAGE),
+            fall_distance: AtomicCell::new(0.0),
         }
     }
 
-    fn drop_as_item(&self, world: &World) {
-        if self.drop_item.load(Ordering::Relaxed)
-            && world.level_info.load().game_rules.entity_drops
-            && let Some(item) =
-                Item::from_id(Block::from_state_id(self.block_state_id.load()).item_id)
+    /// Vanilla `FallingBlockEntity.disableDrop`.
+    pub fn disable_drop(&self) {
+        self.cancel_drop.store(true, Ordering::Relaxed);
+    }
+
+    /// Vanilla `FallingBlockEntity.setHurtsEntities`.
+    pub fn set_hurts_entities(&self, damage_per_distance: f32, damage_max: i32) {
+        self.hurt_entities.store(true, Ordering::Relaxed);
+        self.fall_damage_per_distance.store(damage_per_distance);
+        self.fall_damage_max.store(damage_max, Ordering::Relaxed);
+    }
+
+    /// Vanilla `Entity.checkFallDamage`. A falling block never runs the base tick, so it never
+    /// counts as in water.
+    fn check_fall_damage(&self, moved_y: f64) {
+        if moved_y < 0.0 {
+            self.fall_distance
+                .store(self.fall_distance.load() - moved_y);
+        }
+        if self.entity.on_ground.load(Ordering::Relaxed) {
+            let fall_distance = self.fall_distance.swap(0.0);
+            if fall_distance > 0.0 {
+                self.cause_fall_damage(fall_distance);
+            }
+        }
+    }
+
+    /// Vanilla `FallingBlockEntity.causeFallDamage`.
+    fn cause_fall_damage(&self, fall_distance: f64) {
+        if !self.hurt_entities.load(Ordering::Relaxed) {
+            return;
+        }
+        let distance = (fall_distance - 1.0).ceil() as i32;
+        if distance < 0 {
+            return;
+        }
+        let state = self.block_state_id.load();
+        let is_anvil = Block::from_state_id(state).has_tag(&tag::Block::MINECRAFT_ANVIL);
+        // `Fallable.getFallDamageSource`: anvils have their own damage type.
+        let damage_type = if is_anvil {
+            DamageType::FALLING_ANVIL
+        } else {
+            DamageType::FALLING_BLOCK
+        };
+        let damage = ((distance as f32 * self.fall_damage_per_distance.load()).floor() as i32)
+            .min(self.fall_damage_max.load(Ordering::Relaxed)) as f32;
+        let world = self.entity.world.load();
+        for target in world.get_entities_at_box(&self.entity.bounding_box.load()) {
+            let target_entity = target.get_entity();
+            // `NO_CREATIVE_OR_SPECTATOR` and `LIVING_ENTITY_STILL_ALIVE`.
+            if target_entity.entity_id == self.entity.entity_id
+                || target
+                    .get_living_entity()
+                    .is_none_or(|living| living.dead.load(Ordering::Relaxed))
+                || target
+                    .get_player()
+                    .is_some_and(|player| player.is_creative() || player.is_spectator())
+            {
+                continue;
+            }
+            target.damage_with_context(
+                target.as_ref(),
+                damage,
+                damage_type,
+                None,
+                Some(self),
+                Some(self),
+            );
+        }
+        if is_anvil && damage > 0.0 && game_random().next_f32() < 0.05 + distance as f32 * 0.05 {
+            match AnvilBlock::damage(state) {
+                Some(damaged) => self.block_state_id.store(damaged),
+                None => self.disable_drop(),
+            }
+        }
+    }
+
+    /// Vanilla `Fallable.onLand`.
+    fn on_land(&self, world: &World, pos: &BlockPos) {
+        let block = Block::from_state_id(self.block_state_id.load());
+        if block.has_tag(&tag::Block::MINECRAFT_ANVIL) && !self.entity.is_silent() {
+            world.sync_world_event(WorldEvent::SoundAnvilLand, *pos, 0);
+        }
+    }
+
+    /// Vanilla `Fallable.onBrokenAfterFall`.
+    fn on_broken_after_fall(&self, world: &World, pos: &BlockPos) {
+        let state = self.block_state_id.load();
+        let block = Block::from_state_id(state);
+        if block.has_tag(&tag::Block::MINECRAFT_ANVIL) {
+            if !self.entity.is_silent() {
+                world.sync_world_event(WorldEvent::SoundAnvilBroken, *pos, 0);
+            }
+        } else if block == &Block::SUSPICIOUS_SAND || block == &Block::SUSPICIOUS_GRAVEL {
+            let bounding_box = self.entity.bounding_box.load();
+            let center = bounding_box
+                .min
+                .add(&bounding_box.max)
+                .multiply(0.5, 0.5, 0.5);
+            world.sync_world_event(
+                WorldEvent::ParticlesAndSoundDestroyBlock,
+                BlockPos::floored_v(center),
+                i32::from(state.as_u16()),
+            );
+            world.emit_game_event(
+                pumpkin_data::game_event::GameEvent::BlockDestroy.name(),
+                center,
+            );
+        }
+    }
+
+    /// Vanilla `callOnBrokenAfterFall` and `spawnAtLocation` when the block can't be placed.
+    fn drop_as_item(&self, world: &World, pos: &BlockPos) {
+        if self.drop_item.load(Ordering::Relaxed) && world.level_info.load().game_rules.entity_drops
         {
-            self.entity.spawn_at_location(ItemStack::new(1, item));
+            self.on_broken_after_fall(world, pos);
+            if let Some(item) =
+                Item::from_id(Block::from_state_id(self.block_state_id.load()).item_id)
+            {
+                self.entity.spawn_at_location(ItemStack::new(1, item));
+            }
         }
     }
 
@@ -89,7 +220,7 @@ impl FallingEntity {
             None,
         ) && !would_continue_falling;
         if !(may_replace && would_survive) {
-            self.drop_as_item(world);
+            self.drop_as_item(world, &pos);
             return;
         }
         if world.is_water_source(&pos)
@@ -114,6 +245,7 @@ impl FallingEntity {
             &CBlockUpdate::new(pos, i32::from(placed.as_u16()).into()),
             &CUpdateBlock::new(pos, BlockState::to_be_network_id(placed)),
         );
+        self.on_land(world, &pos);
         self.apply_block_data(world, &pos);
     }
 
@@ -143,7 +275,11 @@ impl FallingEntity {
     }
 
     /// Replaces the current block with its fluid and spawns a falling one (synchronous)
-    pub fn replace_spawn(world: &Arc<World>, position: BlockPos, block_state: BlockStateId) {
+    pub fn replace_spawn(
+        world: &Arc<World>,
+        position: BlockPos,
+        block_state: BlockStateId,
+    ) -> Arc<Self> {
         let replacement = if block_state.is_waterlogged() {
             Block::WATER.default_state.id
         } else {
@@ -166,7 +302,12 @@ impl FallingEntity {
             entity.block_pos.load(),
         );
         let entity = Arc::new(Self::new(entity, block_state));
-        world.spawn_entity_non_save(entity);
+        // Vanilla `FallingBlock.falling`, which only `AnvilBlock` overrides.
+        if Block::from_state_id(block_state).has_tag(&tag::Block::MINECRAFT_ANVIL) {
+            entity.set_hurts_entities(ANVIL_FALL_DAMAGE_PER_DISTANCE, DEFAULT_MAX_FALL_DAMAGE);
+        }
+        world.spawn_entity_non_save(entity.clone());
+        entity
     }
 }
 
@@ -199,7 +340,9 @@ impl EntityBase for FallingEntity {
 
         entity.velocity.store(velo);
 
+        let y_before = entity.pos.load().y;
         entity.move_entity(caller, velo);
+        self.check_fall_damage(entity.pos.load().y - y_before);
         entity.tick_block_collisions(caller);
         let world = entity.world.load_full();
         let pos = self.entity.block_pos.load();
@@ -210,7 +353,12 @@ impl EntityBase for FallingEntity {
         if !entity.on_ground.load(Ordering::Relaxed) && !is_stuck_in_water {
             let out_of_world = pos.0.y <= world.get_bottom_y() || pos.0.y > world.get_top_y();
             if (time > TIME_OUT_OF_WORLD && out_of_world) || time > TIME_MAX {
-                self.drop_as_item(&world);
+                if self.drop_item.load(Ordering::Relaxed)
+                    && world.level_info.load().game_rules.entity_drops
+                    && let Some(item) = Item::from_id(block.item_id)
+                {
+                    entity.spawn_at_location(ItemStack::new(1, item));
+                }
                 entity.remove();
             }
         } else {
@@ -219,7 +367,9 @@ impl EntityBase for FallingEntity {
                 .store(entity.velocity.load().multiply(0.7, -0.5, 0.7));
             // Vanilla waits until a piston has finished moving a block through the landing cell.
             if world.get_block(&pos) != &Block::MOVING_PISTON {
-                if !self.cancel_drop.load(Ordering::Relaxed) {
+                if self.cancel_drop.load(Ordering::Relaxed) {
+                    self.on_broken_after_fall(&world, &pos);
+                } else {
                     self.land(&world, pos, block, is_stuck_in_water);
                 }
                 entity.remove();
@@ -239,6 +389,9 @@ impl EntityBase for FallingEntity {
         );
         nbt.put_int("Time", self.time.load(Ordering::Relaxed));
         nbt.put_bool("DropItem", self.drop_item.load(Ordering::Relaxed));
+        nbt.put_bool("HurtEntities", self.hurt_entities.load(Ordering::Relaxed));
+        nbt.put_float("FallHurtAmount", self.fall_damage_per_distance.load());
+        nbt.put_int("FallHurtMax", self.fall_damage_max.load(Ordering::Relaxed));
         if let Some(block_data) = self
             .block_data
             .lock()
@@ -261,6 +414,19 @@ impl EntityBase for FallingEntity {
             .store(i32::from(state.as_u16()), Ordering::Relaxed);
         self.time
             .store(nbt.get_int("Time").unwrap_or(0), Ordering::Relaxed);
+        self.hurt_entities.store(
+            nbt.get_bool("HurtEntities").unwrap_or_else(|| {
+                Block::from_state_id(state).has_tag(&tag::Block::MINECRAFT_ANVIL)
+            }),
+            Ordering::Relaxed,
+        );
+        self.fall_damage_per_distance
+            .store(nbt.get_float("FallHurtAmount").unwrap_or(0.0));
+        self.fall_damage_max.store(
+            nbt.get_int("FallHurtMax")
+                .unwrap_or(DEFAULT_MAX_FALL_DAMAGE),
+            Ordering::Relaxed,
+        );
         self.drop_item
             .store(nbt.get_bool("DropItem").unwrap_or(true), Ordering::Relaxed);
         *self

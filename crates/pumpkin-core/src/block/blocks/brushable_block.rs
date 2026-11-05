@@ -130,6 +130,6 @@ impl BlockBehaviour for BrushableBlock {
             return;
         }
         let state = args.world.get_block_state(args.position);
-        FallingEntity::replace_spawn(args.world, *args.position, state.id);
+        FallingEntity::replace_spawn(args.world, *args.position, state.id).disable_drop();
     }
 }
