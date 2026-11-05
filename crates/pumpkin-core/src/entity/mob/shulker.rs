@@ -14,10 +14,11 @@ use pumpkin_data::{Block, BlockDirection};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_protocol::java::client::play::CEntityPositionSync;
-use pumpkin_util::math::boundingbox::BoundingBox;
+use pumpkin_util::math::boundingbox::{BoundingBox, EntityDimensions};
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_world::generation::update_shape::is_face_full;
+use uuid::Uuid;
 
 use crate::entity::ai::behavior::hunting::{self, Hunt};
 use crate::entity::ai::goal::look_around::RandomLookAroundGoal;
@@ -25,8 +26,10 @@ use crate::entity::ai::goal::look_at_entity::LookAtEntityGoal;
 use crate::entity::ai::goal::revenge::RevengeGoal;
 use crate::entity::ai::goal::{Controls, Goal};
 use crate::entity::ai::target_match::TargetMatch;
+use crate::entity::attributes::{Modifier, ModifierOperation, send_attribute_updates_for_living};
 use crate::entity::mob::{Mob, MobEntity};
 use crate::entity::projectile::shulker_bullet::ShulkerBulletEntity;
+use crate::entity::r#type::from_type;
 use crate::entity::{Entity, EntityBase};
 use crate::world::game_event::GameEventContext;
 
@@ -35,6 +38,11 @@ const NO_COLOR: u8 = 16;
 const PEEK_PER_TICK: f32 = 0.05;
 const MAX_TELEPORT_DISTANCE: i32 = 8;
 const TELEPORT_ATTEMPTS: usize = 5;
+const OTHER_SHULKER_SCAN_RADIUS: f64 = 8.0;
+const OTHER_SHULKER_LIMIT: f32 = 5.0;
+const MAX_SCALE: f32 = 3.0;
+const COVERED_ARMOR_MODIFIER_ID: &str = "minecraft:covered";
+const COVERED_ARMOR: f64 = 20.0;
 
 /// Vanilla `Shulker.getProgressAabb`: the shell of `size` at `position`, opened by `progress`
 /// towards `direction`.
@@ -44,13 +52,46 @@ fn progress_aabb(
     progress: f64,
     position: Vector3<f64>,
 ) -> BoundingBox {
-    let step = direction.to_offset().to_f64() * (progress * size);
+    progress_delta_aabb(size, direction, -1.0, progress, position)
+}
+
+/// Vanilla `Shulker.getProgressDeltaAabb`: the space the shell sweeps opening from
+/// `progress_from` to `progress_to`.
+fn progress_delta_aabb(
+    size: f64,
+    direction: BlockDirection,
+    progress_from: f64,
+    progress_to: f64,
+    position: Vector3<f64>,
+) -> BoundingBox {
+    let step = direction.to_offset().to_f64();
+    let max_movement = progress_from.max(progress_to) * size;
+    let min_movement = (1.0 + progress_from.min(progress_to)) * size;
     BoundingBox::new(
         Vector3::new(-size * 0.5, 0.0, -size * 0.5),
         Vector3::new(size * 0.5, size, size * 0.5),
     )
-    .expand_towards(step.x, step.y, step.z)
+    .expand_towards(
+        step.x * max_movement,
+        step.y * max_movement,
+        step.z * max_movement,
+    )
+    .contract(
+        -step.x * min_movement,
+        -step.y * min_movement,
+        -step.z * min_movement,
+    )
     .shift(position)
+}
+
+/// Vanilla `Mth.clamp`, which doesn't panic when the raw peek puts `min` above `max`.
+fn mth_clamp(value: f32, min: f32, max: f32) -> f32 {
+    if value < min { min } else { value.min(max) }
+}
+
+/// Vanilla `Shulker.getPhysicalPeek`.
+fn physical_peek(amount: f32) -> f32 {
+    0.5 - pumpkin_util::math::sin((0.5 + amount) * std::f32::consts::PI) * 0.5
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -141,6 +182,97 @@ impl ShulkerEntity {
             pumpkin_data::tracked_data::shulker::ATTACH_FACE_ID,
             VarInt(face as i32),
         );
+        // `onSyncedDataUpdated`.
+        self.update_bounding_box();
+    }
+
+    /// Vanilla `getScale` with `Shulker.sanitizeScale`.
+    fn scale(&self) -> f32 {
+        (self
+            .mob_entity
+            .living_entity
+            .get_attribute_value(&Attributes::SCALE) as f32)
+            .min(MAX_SCALE)
+    }
+
+    /// Vanilla `Shulker.makeBoundingBox`: the shell opened by its physical peek.
+    fn update_bounding_box(&self) {
+        let peek = physical_peek(self.current_peek_amount.load());
+        self.mob_entity
+            .living_entity
+            .entity
+            .set_relative_bounding_box(progress_aabb(
+                f64::from(self.scale()),
+                self.get_attach_face().opposite(),
+                f64::from(peek),
+                Vector3::default(),
+            ));
+    }
+
+    /// Vanilla `Shulker.getDefaultDimensions`: a shell on the floor grows taller as it opens.
+    fn refresh_dimensions(&self) {
+        let entity = &self.mob_entity.living_entity.entity;
+        let peek = self.current_peek_amount.load();
+        if self.get_attach_face() == BlockDirection::Down && peek > 0.0 {
+            let base = Entity::type_dimensions(entity.entity_type);
+            let height_scale = 1.0 + peek;
+            entity.set_default_dimensions(EntityDimensions::new(
+                base.width,
+                base.height * height_scale,
+                base.eye_height * height_scale,
+            ));
+        } else {
+            entity.clear_default_dimensions();
+        }
+        // `Shulker.setPos` keeps it on the block centre wherever
+        // `fudgePositionAfterSizeChange` puts it.
+        if !entity.has_vehicle() {
+            let pos = entity.pos.load();
+            let centred = Vector3::new(
+                pos.x.floor() + 0.5,
+                (pos.y + 0.5).floor(),
+                pos.z.floor() + 0.5,
+            );
+            if centred != pos {
+                entity.set_pos(centred);
+            }
+        }
+    }
+
+    /// Vanilla `Shulker.onPeekAmountChange`: an opening shell pushes what is in its way.
+    fn on_peek_amount_change(&self) {
+        let entity = &self.mob_entity.living_entity.entity;
+        // `reapplyPosition`.
+        self.update_bounding_box();
+        self.refresh_dimensions();
+        let scale = self.scale();
+        let peek = physical_peek(self.current_peek_amount.load());
+        let peek_old = physical_peek(self.prev_peek_amount.load());
+        let push = (peek - peek_old) * scale;
+        if push <= 0.0 {
+            return;
+        }
+        let direction = self.get_attach_face().opposite();
+        let area = progress_delta_aabb(
+            f64::from(scale),
+            direction,
+            f64::from(peek_old),
+            f64::from(peek),
+            entity.pos.load(),
+        );
+        let motion = direction.to_offset().to_f64() * f64::from(push);
+        // Players push themselves: the client runs this for its own shulkers too.
+        for other in entity.world.load().get_entities_at_box(&area) {
+            let other_entity = other.get_entity();
+            if other_entity.entity_id == entity.entity_id
+                || other_entity.entity_type == &EntityType::SHULKER
+                || other_entity.no_physics.load(Ordering::Relaxed)
+                || other_entity.is_passenger_of_same_vehicle(entity)
+            {
+                continue;
+            }
+            other.move_entity(other.as_ref(), motion);
+        }
     }
 
     pub fn get_color(&self) -> Option<u8> {
@@ -159,51 +291,64 @@ impl ShulkerEntity {
         self.peek_amount.load(Ordering::Relaxed)
     }
 
+    /// Vanilla `Shulker.setRawPeekAmount`: closing adds the covered armor, every change plays
+    /// its sound.
     pub fn set_raw_peek(&self, amount: u8) {
-        let entity = &self.mob_entity.living_entity.entity;
-        let world = entity.world.load();
-        let pos = entity.pos.load();
+        let living = &self.mob_entity.living_entity;
+        living.update_attribute(&Attributes::ARMOR, |armor| {
+            armor.remove_modifier(COVERED_ARMOR_MODIFIER_ID);
+            if amount == 0 {
+                armor.add_or_replace_permanent_modifier(Modifier {
+                    id: COVERED_ARMOR_MODIFIER_ID.to_string(),
+                    amount: COVERED_ARMOR,
+                    operation: ModifierOperation::Add,
+                });
+            }
+        });
+        send_attribute_updates_for_living(living, vec![Attributes::ARMOR]);
+        let (sound, event) = if amount == 0 {
+            (Sound::EntityShulkerClose, GameEvent::ContainerClose)
+        } else {
+            (Sound::EntityShulkerOpen, GameEvent::ContainerOpen)
+        };
+        self.play_entity_sound(sound, 1.0, 1.0);
+        let entity = &living.entity;
+        entity.world.load().emit_game_event_with_context(
+            event.name(),
+            entity.pos.load(),
+            &GameEventContext {
+                source_entity: Some(self),
+            },
+        );
+        self.store_raw_peek(amount);
+    }
 
-        if amount == 0 {
-            world.play_sound_fine(
-                Sound::EntityShulkerClose,
-                SoundCategory::Hostile,
-                &pos,
-                1.0,
-                1.0,
-            );
-        } else if self.peek_amount.load(Ordering::Relaxed) == 0 {
-            world.play_sound_fine(
-                Sound::EntityShulkerOpen,
-                SoundCategory::Hostile,
-                &pos,
-                1.0,
-                1.0,
-            );
-        }
-
+    fn store_raw_peek(&self, amount: u8) {
         self.peek_amount.store(amount, Ordering::Relaxed);
-
-        entity.set_synced_data(pumpkin_data::tracked_data::shulker::PEEK_ID, amount);
+        self.mob_entity
+            .living_entity
+            .entity
+            .set_synced_data(pumpkin_data::tracked_data::shulker::PEEK_ID, amount);
     }
 
     pub fn is_closed(&self) -> bool {
         self.peek_amount.load(Ordering::Relaxed) == 0
     }
 
+    /// Vanilla `Shulker.updatePeekAmount`: the shell moves 0.05 a tick towards the raw peek.
     fn update_peek_amount(&self) -> bool {
         let current = self.current_peek_amount.load();
         self.prev_peek_amount.store(current);
         let target = f32::from(self.get_raw_peek()) * 0.01;
 
-        if (current - target).abs() < 1e-6 {
+        if current == target {
             return false;
         }
 
         let new = if current > target {
-            (current - PEEK_PER_TICK).max(target)
+            mth_clamp(current - PEEK_PER_TICK, target, 1.0)
         } else {
-            (current + PEEK_PER_TICK).min(target)
+            mth_clamp(current + PEEK_PER_TICK, 0.0, target)
         };
 
         self.current_peek_amount.store(new);
@@ -349,23 +494,56 @@ impl ShulkerEntity {
                     MAX_TELEPORT_DISTANCE,
                 ),
             );
-            // Set directly: unlike `set_raw_peek` this plays no sound.
-            self.peek_amount.store(0, Ordering::Relaxed);
-            entity.set_synced_data(pumpkin_data::tracked_data::shulker::PEEK_ID, 0u8);
+            // Unlike `set_raw_peek`: no sound and no armor change.
+            self.store_raw_peek(0);
             self.mob_entity.set_target(None);
             return true;
         }
         false
     }
 
-    pub fn on_shulker_damage(&self) {
+    /// The end of vanilla `Shulker.hurtServer`, after the damage landed.
+    fn on_shulker_damage(&self, damage_type: DamageType, source: Option<&dyn EntityBase>) {
         let living = &self.mob_entity.living_entity;
-        let health = living.health.load();
-        let max = living.get_max_health();
-
-        if health < max * 0.5 && game_random().random_range(0..4) == 0 {
+        if living.health.load() < living.get_max_health() * 0.5
+            && self.get_random().random_range(0..4) == 0
+        {
             self.teleport_somewhere();
+        } else if damage_type.has_tag(&tag::DamageType::MINECRAFT_IS_PROJECTILE)
+            && source.is_some_and(|source| {
+                source.get_entity().entity_type == &EntityType::SHULKER_BULLET
+            })
+        {
+            self.hit_by_shulker_bullet();
         }
+    }
+
+    /// Vanilla `Shulker.hitByShulkerBullet`: an open shulker teleports away and leaves a copy
+    /// behind, less often the more shulkers are around.
+    fn hit_by_shulker_bullet(&self) {
+        let entity = &self.mob_entity.living_entity.entity;
+        let old_position = entity.pos.load();
+        let old_box = entity.bounding_box.load();
+        if self.is_closed() || !self.teleport_somewhere() {
+            return;
+        }
+        let world = entity.world.load();
+        let shulker_count = world
+            .get_entities_of_types_at_box(&old_box.expand_all(OTHER_SHULKER_SCAN_RADIUS), |kind| {
+                kind == &EntityType::SHULKER
+            })
+            .iter()
+            .filter(|shulker| shulker.get_entity().is_alive())
+            .count();
+        let failure_chance = (shulker_count as f32 - 1.0) / OTHER_SHULKER_LIMIT;
+        if game_random().random::<f32>() < failure_chance {
+            return;
+        }
+        let baby = from_type(&EntityType::SHULKER, old_position, &world, Uuid::new_v4());
+        if let Some(shulker) = baby.cast_any().downcast_ref::<Self>() {
+            shulker.set_color(self.get_color());
+        }
+        world.spawn_entity(baby);
     }
 }
 
@@ -378,20 +556,21 @@ impl Mob for ShulkerEntity {
 
     fn mob_write_nbt(&self, nbt: &mut NbtCompound) {
         nbt.put_byte("AttachFace", self.attach_face.load(Ordering::Relaxed) as i8);
-        nbt.put_byte("PeekAmount", self.peek_amount.load(Ordering::Relaxed) as i8);
+        nbt.put_byte("Peek", self.peek_amount.load(Ordering::Relaxed) as i8);
         nbt.put_byte("Color", self.color.load(Ordering::Relaxed) as i8);
     }
 
     fn mob_read_nbt(&self, nbt: &NbtCompound) {
-        if let Some(face) = nbt.get_byte("AttachFace") {
-            self.attach_face.store(face as u8, Ordering::Relaxed);
-        }
-        if let Some(peek) = nbt.get_byte("PeekAmount") {
-            self.peek_amount.store(peek as u8, Ordering::Relaxed);
-        }
-        if let Some(color) = nbt.get_byte("Color") {
-            self.color.store(color as u8, Ordering::Relaxed);
-        }
+        // `Direction.from3DDataValue`.
+        let face = nbt
+            .get_byte("AttachFace")
+            .and_then(|face| BlockDirection::try_from((i32::from(face) % 6).abs()).ok())
+            .unwrap_or(DEFAULT_ATTACH_FACE);
+        self.set_attach_face(face);
+        self.store_raw_peek(nbt.get_byte("Peek").unwrap_or(0) as u8);
+        self.set_color(Some(
+            nbt.get_byte("Color").map_or(NO_COLOR, |color| color as u8),
+        ));
     }
 
     fn get_mob_entity(&self) -> &MobEntity {
@@ -410,22 +589,27 @@ impl Mob for ShulkerEntity {
         }
 
         entity.velocity.store(Vector3::new(0.0, 0.0, 0.0));
+    }
 
-        self.update_peek_amount();
-
+    // The rest of vanilla `Shulker.tick`, after `super.tick()`.
+    fn post_tick(&self) {
+        let entity = &self.mob_entity.living_entity.entity;
         let pos = entity.block_pos.load();
-        let face = self.get_attach_face();
-        if !entity.has_vehicle() && !self.can_stay_at(&pos, face) {
+        if !entity.has_vehicle() && !self.can_stay_at(&pos, self.get_attach_face()) {
             self.find_new_attachment();
+        }
+        if self.update_peek_amount() {
+            self.on_peek_amount_change();
         }
     }
 
-    fn on_damage(&self, _damage_type: DamageType, _source: Option<&dyn EntityBase>) {
-        self.on_shulker_damage();
+    fn on_damage(&self, damage_type: DamageType, source: Option<&dyn EntityBase>) {
+        self.on_shulker_damage(damage_type, source);
     }
 
     // `on_shulker_damage` can teleport it to a block around it, checking the blocks and
-    // collidable entities there and its fully opened shell one block further.
+    // collidable entities there and its fully opened shell one block further, then count the
+    // shulkers within `OTHER_SHULKER_SCAN_RADIUS` of its old box and leave a copy there.
     fn hurt_reach(&self) -> Option<crate::world::entity_islands::HurtReach> {
         let reach = f64::from(MAX_TELEPORT_DISTANCE) + 2.0;
         Some(crate::world::entity_islands::HurtReach {
@@ -443,16 +627,6 @@ impl Mob for ShulkerEntity {
             return false;
         }
         true
-    }
-
-    fn modify_incoming_damage(&self, amount: f32, damage_type: DamageType) -> f32 {
-        if self.is_closed() && !crate::entity::living::bypasses_armor_durability(&damage_type) {
-            const ARMOR: f32 = 20.0;
-            let f1 = (ARMOR - amount * 0.5f32).clamp(ARMOR * 0.2f32, 20.0f32);
-            (amount * (1.0f32 - f1 / 25.0f32)).max(0.0)
-        } else {
-            amount
-        }
     }
 }
 
@@ -615,5 +789,23 @@ impl BlockPosExt for BlockPos {
             self.0.y + offset.y,
             self.0.z + offset.z,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opening_sweeps_only_the_space_the_lid_moves_into() {
+        let at = Vector3::new(10.5, 64.0, -3.5);
+        // A floor shulker opening from half to fully open sweeps the half block above its lid.
+        let swept = progress_delta_aabb(1.0, BlockDirection::Up, 0.5, 1.0, at);
+        assert_eq!(swept.min, Vector3::new(10.0, 65.5, -4.0));
+        assert_eq!(swept.max, Vector3::new(11.0, 66.0, -3.0));
+        // On a ceiling the shell opens downwards.
+        let open = progress_aabb(2.0, BlockDirection::Down, 0.25, at);
+        assert_eq!(open.min, Vector3::new(9.5, 63.5, -4.5));
+        assert_eq!(open.max, Vector3::new(11.5, 66.0, -2.5));
     }
 }

@@ -1553,6 +1553,9 @@ pub struct Entity {
     ///The size (width and height) of the bounding box
     pub entity_dimension: AtomicCell<EntityDimensions>,
     default_dimensions: AtomicCell<Option<EntityDimensions>>,
+    /// Replaces the dimension box, relative to the position, for vanilla `makeBoundingBox`
+    /// overrides like the shulker's opened shell.
+    relative_bounding_box: AtomicCell<Option<BoundingBox>>,
     /// Whether this entity is invulnerable to all damage
     pub invulnerable: AtomicBool,
     /// List of damage types this entity is immune to
@@ -1839,6 +1842,7 @@ impl Entity {
             bounding_box,
             entity_dimension: AtomicCell::new(bounding_box_size),
             default_dimensions: AtomicCell::new(None),
+            relative_bounding_box: AtomicCell::new(None),
             invulnerable: AtomicBool::new(false),
             damage_immunities: std::sync::Mutex::new(Vec::new()),
             data: AtomicI32::new(0),
@@ -2260,6 +2264,28 @@ impl Entity {
         self.refresh_dimensions();
     }
 
+    /// Vanilla `makeBoundingBox`: the box at `position`.
+    #[must_use]
+    pub fn make_bounding_box(&self, position: Vector3<f64>) -> BoundingBox {
+        self.relative_bounding_box.load().map_or_else(
+            || {
+                BoundingBox::new_from_pos(
+                    position.x,
+                    position.y,
+                    position.z,
+                    &self.entity_dimension.load(),
+                )
+            },
+            |relative| relative.shift(position),
+        )
+    }
+
+    /// Uses `relative`, around the position, as the box instead of the dimensions.
+    pub fn set_relative_bounding_box(&self, relative: BoundingBox) {
+        self.relative_bounding_box.store(Some(relative));
+        self.bounding_box.store(relative.shift(self.pos.load()));
+    }
+
     pub fn refresh_dimensions(&self) {
         let mut metadata = SyncedActorDataList::new();
         self.refresh_dimensions_into(&mut metadata);
@@ -2270,9 +2296,8 @@ impl Entity {
         let old_dimensions = self.entity_dimension.load();
         let dimensions = self.get_dimensions(self.pose.load());
         self.entity_dimension.store(dimensions);
-        let pos = self.pos.load();
         self.bounding_box
-            .store(BoundingBox::new_from_pos(pos.x, pos.y, pos.z, &dimensions));
+            .store(self.make_bounding_box(self.pos.load()));
         metadata.set(
             entity_data_key::WIDTH,
             MetadataValue::Float(dimensions.width),
@@ -2386,12 +2411,8 @@ impl Entity {
         let pos = self.pos.load();
         if pos != new_position {
             self.pos.store(new_position);
-            self.bounding_box.store(BoundingBox::new_from_pos(
-                new_position.x,
-                new_position.y,
-                new_position.z,
-                &self.entity_dimension.load(),
-            ));
+            self.bounding_box
+                .store(self.make_bounding_box(new_position));
 
             let floor_x = new_position.x.floor() as i32;
             let floor_y = new_position.y.floor() as i32;

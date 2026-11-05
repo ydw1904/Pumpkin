@@ -137,6 +137,26 @@ impl BoundingBox {
         }
     }
 
+    /// Vanilla `AABB.contract`: moves the maximum boundary in by positive values and the
+    /// minimum boundary in by negative ones.
+    #[must_use]
+    pub fn contract(&self, x: f64, y: f64, z: f64) -> Self {
+        let mut min = self.min;
+        let mut max = self.max;
+        for (value, min, max) in [
+            (x, &mut min.x, &mut max.x),
+            (y, &mut min.y, &mut max.y),
+            (z, &mut min.z, &mut max.z),
+        ] {
+            if value < 0.0 {
+                *min -= value;
+            } else if value > 0.0 {
+                *max -= value;
+            }
+        }
+        Self { min, max }
+    }
+
     /// Expands this box uniformly along all axes.
     ///
     /// # Arguments
