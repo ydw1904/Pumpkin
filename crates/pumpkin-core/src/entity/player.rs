@@ -911,9 +911,6 @@ fn decode_skin_png(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     Some((width, height, rgba))
 }
 
-/// `WrittenBookContent.PAGE_LENGTH`.
-const WRITTEN_BOOK_PAGE_LENGTH: usize = 32767;
-
 impl Player {
     pub async fn fetch_skin(
         properties: &[Property],
@@ -3284,13 +3281,12 @@ impl Player {
             Hand::Left => PlayerInventory::OFF_HAND_SLOT,
         };
         let mut stack = inventory.get_stack(slot);
-        let Some(content) = stack
+        if stack
             .get_data_component::<WrittenBookContentImpl>()
-            .filter(|content| !content.resolved)
-            .cloned()
-        else {
+            .is_none_or(|content| content.resolved)
+        {
             return;
-        };
+        }
         let (Some(player), Some(server)) = (
             self.world().get_player_by_uuid(self.gameprofile.id),
             self.world().server.upgrade(),
@@ -3298,28 +3294,9 @@ impl Player {
             return;
         };
         let source = player.get_command_source(&server);
-        let mut pages = Vec::with_capacity(content.pages.len());
-        for page in &content.pages {
-            let resolved = crate::command::text_resolution::resolve(&source, page)
-                .unwrap_or_else(|_| page.clone());
-            // `WrittenBookContent.isPageTooLarge`: then the book keeps its pages as they are.
-            if resolved
-                .to_json_for_version(&JavaMinecraftVersion::V_26_3)
-                .encode_utf16()
-                .count()
-                > WRITTEN_BOOK_PAGE_LENGTH
-            {
-                pages.clone_from(&content.pages);
-                break;
-            }
-            pages.push(resolved);
+        if crate::command::text_resolution::resolve_book_for_item(&mut stack, &source) {
+            inventory.set_stack(slot, stack);
         }
-        stack.set_data_component(WrittenBookContentImpl {
-            pages,
-            resolved: true,
-            ..content
-        });
-        inventory.set_stack(slot, stack);
     }
 
     pub fn open_sign_editor(&self, location: BlockPos, is_front_text: bool) {

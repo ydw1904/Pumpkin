@@ -7891,13 +7891,14 @@ impl World {
     /// whose items are all that changed is updated the same way; anything else is replaced,
     /// which closes its menus since the opened block entity is gone.
     pub fn load_block_entity_data(
-        &self,
+        self: &Arc<Self>,
         block_entity: &Arc<dyn BlockEntity>,
         nbt: &NbtCompound,
     ) -> bool {
         let Some(loaded) = reload_block_entity(block_entity.as_ref(), nbt) else {
             return false;
         };
+        loaded.loaded_in_world(self);
         let before = block_entity_nbt(block_entity.as_ref());
         let written = block_entity_nbt(loaded.as_ref());
         let changed = before != written;

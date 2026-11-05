@@ -78,6 +78,11 @@ pub trait BlockEntity: Any + Send + Sync {
     where
         Self: Sized;
     fn tick(&self, _world: &Arc<World>) {}
+
+    /// The part of vanilla `loadAdditional` that needs a server level: it runs for data loaded
+    /// into a block entity in the world (commands, placed items), not for chunk loading.
+    fn loaded_in_world(&self, _world: &Arc<World>) {}
+
     fn resource_location(&self) -> &'static str;
     fn get_position(&self) -> BlockPos;
 

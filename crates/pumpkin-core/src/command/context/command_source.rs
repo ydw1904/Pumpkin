@@ -168,6 +168,33 @@ impl CommandSource {
         }
     }
 
+    /// Vanilla `createCommandSourceStack` of signs and lecterns: a source with no output at the
+    /// centre of `pos`, acting as `player`, or else named `name`.
+    #[must_use]
+    pub fn for_block(
+        world: Arc<World>,
+        server: Arc<Server>,
+        pos: &BlockPos,
+        name: &str,
+        player: Option<Arc<Player>>,
+    ) -> Self {
+        let (name, display_name) = player.as_ref().map_or_else(
+            || (name.to_string(), TextComponent::text(name.to_string())),
+            |player| (player.gameprofile.name.clone(), player.get_display_name()),
+        );
+        // `CommandSender::Dummy` has the gamemaster level.
+        Self::new(
+            CommandSender::Dummy,
+            world,
+            player.map(|player| player as Arc<dyn EntityBase>),
+            pos.to_centered_f64(),
+            Vector2::new(0.0, 0.0),
+            name,
+            display_name,
+            server,
+        )
+    }
+
     /// Returns a new [`CommandSource`] with the specified output and
     /// everything else from the `source` provided.
     #[must_use]

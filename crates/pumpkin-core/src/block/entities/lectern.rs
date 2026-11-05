@@ -11,6 +11,9 @@ use std::{
 };
 
 use crate::block::entities::BlockEntity;
+use crate::command::CommandSource;
+use crate::command::text_resolution;
+use crate::world::World;
 use pumpkin_inventory::{Clearable, Inventory};
 
 pub struct LecternBlockEntity {
@@ -28,6 +31,10 @@ impl BlockEntity for LecternBlockEntity {
 
     fn get_position(&self) -> BlockPos {
         self.position
+    }
+
+    fn loaded_in_world(&self, world: &Arc<World>) {
+        self.resolve_book(world);
     }
 
     fn from_nbt(nbt: &NbtCompound, position: BlockPos) -> Self
@@ -119,6 +126,28 @@ impl LecternBlockEntity {
             page: AtomicUsize::new(0),
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
+        }
+    }
+
+    /// Vanilla `LecternBlockEntity.resolveBook` without a player: a written book's pages are
+    /// resolved for a source named "Lectern".
+    pub fn resolve_book(&self, world: &Arc<World>) {
+        let Some(server) = world.server.upgrade() else {
+            return;
+        };
+        let source =
+            CommandSource::for_block(world.clone(), server, &self.position, "Lectern", None);
+        // Resolved unlocked: an NBT component can read this lectern.
+        let mut book = self
+            .book
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        if text_resolution::resolve_book_for_item(&mut book, &source) {
+            *self
+                .book
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = book;
         }
     }
 

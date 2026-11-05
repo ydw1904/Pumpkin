@@ -903,6 +903,7 @@ impl BlockRegistry {
                     }
                 }
                 if let Some(reloaded) = crate::block::entities::block_entity_from_nbt(&nbt) {
+                    reloaded.loaded_in_world(&world);
                     world.add_block_entity(reloaded);
                 }
             }

@@ -5,12 +5,15 @@ use std::borrow::Cow;
 use std::cell::Cell;
 use std::sync::Arc;
 
+use pumpkin_data::data_component_impl::WrittenBookContentImpl;
+use pumpkin_data::item_stack::ItemStack;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::text::color::NamedColor;
 use pumpkin_util::text::hover::HoverEvent;
 use pumpkin_util::text::style::Style;
 use pumpkin_util::text::{ScoreContent, TextComponent, TextComponentBase, TextContent};
+use pumpkin_util::version::JavaMinecraftVersion;
 
 use crate::command::CommandSource;
 use crate::command::argument_types::argument_type::ArgumentType;
@@ -32,6 +35,8 @@ const DEPTH_LIMIT: usize = 100;
 /// `ResolutionContext.DEFAULT_RESOLVED_COMPONENT_LIMIT`: how many NBT components one resolution
 /// may read.
 const DEFAULT_RESOLVED_COMPONENT_LIMIT: usize = 65536;
+/// `WrittenBookContent.PAGE_LENGTH`.
+const WRITTEN_BOOK_PAGE_LENGTH: usize = 32767;
 
 /// Vanilla `ResolutionContext`.
 struct ResolutionContext<'a> {
@@ -61,6 +66,40 @@ pub fn resolve_for_entity(
         resolved_component_count: Cell::new(0),
     };
     Ok(TextComponent(context.resolve(&component.0, 0)?))
+}
+
+/// Vanilla `WrittenBookContent.resolveForItem`: resolves the pages of a written book the first
+/// time, or marks it resolved as it is when a page would get too large. Returns whether the
+/// stack changed.
+pub fn resolve_book_for_item(stack: &mut ItemStack, source: &CommandSource) -> bool {
+    let Some(content) = stack
+        .get_data_component::<WrittenBookContentImpl>()
+        .filter(|content| !content.resolved)
+        .cloned()
+    else {
+        return false;
+    };
+    let mut pages = Vec::with_capacity(content.pages.len());
+    for page in &content.pages {
+        let resolved = resolve(source, page).unwrap_or_else(|_| page.clone());
+        // `WrittenBookContent.isPageTooLarge`: then the book keeps its pages as they are.
+        if resolved
+            .to_json_for_version(&JavaMinecraftVersion::V_26_3)
+            .encode_utf16()
+            .count()
+            > WRITTEN_BOOK_PAGE_LENGTH
+        {
+            pages.clone_from(&content.pages);
+            break;
+        }
+        pages.push(resolved);
+    }
+    stack.set_data_component(WrittenBookContentImpl {
+        pages,
+        resolved: true,
+        ..content
+    });
+    true
 }
 
 /// Vanilla `Style.applyTo`: the fields `style` sets, then those of `inner`.
