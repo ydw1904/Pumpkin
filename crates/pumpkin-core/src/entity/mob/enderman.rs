@@ -17,7 +17,10 @@ use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::attributes::Modifier;
 use crate::entity::attributes::ModifierOperation;
 use crate::plugin::api::events::entity::entity_target::TargetReason;
-use pumpkin_data::{Block, BlockStateId, attributes::Attributes};
+use crate::world::loot::{LootContextParameters, generate_loot_from_handle};
+use pumpkin_data::item::Item;
+use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::{Block, BlockState, BlockStateId, Enchantment, attributes::Attributes};
 
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::{
@@ -455,6 +458,33 @@ impl EndermanEntity {
 
         let entity = &self.mob_entity.living_entity.entity;
         let enderman_pos = entity.pos.load();
+    /// Vanilla `Enderman.dropCustomDeathLoot`: the carried block's own drops, mined with a
+    /// silk touch diamond axe (`enderman_loot_drop`).
+    fn drop_custom_death_loot(&self) {
+        let Some(state_id) = self.get_carried_block() else {
+            return;
+        };
+        let entity = self.get_entity();
+        let world = entity.world.load();
+        let block = Block::from_state_id(state_id);
+        let Some(loot_table) = block.loot_table.and_then(|key| world.get_loot_table(key)) else {
+            return;
+        };
+        let mut tool = ItemStack::new(1, &Item::DIAMOND_AXE);
+        tool.add_enchantment(&Enchantment::SILK_TOUCH, 1);
+        let params = LootContextParameters {
+            world: Some(&world),
+            block_state: Some(BlockState::from_id(state_id)),
+            position: Some(entity.pos.load()),
+            tool: Some(tool),
+            this_entity: Some(self),
+            ..Default::default()
+        };
+        for stack in generate_loot_from_handle(&loot_table, 0, &params) {
+            entity.spawn_at_location(stack);
+        }
+    }
+
         let enderman_eye_y = enderman_pos.y + ENDERMAN_EYE_HEIGHT;
 
         let player_entity = player.get_entity();

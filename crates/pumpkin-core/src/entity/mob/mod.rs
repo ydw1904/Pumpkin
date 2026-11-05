@@ -2374,6 +2374,9 @@ pub trait Mob: EntityBase + Send + Sync {
 
     fn drop_inventory(&self) {}
 
+    /// The species part of vanilla `dropCustomDeathLoot`, after the equipment drops.
+    fn drop_custom_death_loot(&self) {}
+
     fn can_dispenser_equip_into_slot(&self, _slot: &EquipmentSlot) -> bool {
         self.get_mob_entity().can_pick_up_loot()
     }

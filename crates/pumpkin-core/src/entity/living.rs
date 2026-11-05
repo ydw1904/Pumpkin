@@ -3073,6 +3073,9 @@ impl LivingEntity {
                 self.drop_equipment(looting_level);
             }
             if perished && let Some(mob) = dyn_self.get_mob() {
+                if let Some(mob) = dyn_self.get_mob() {
+                    mob.drop_custom_death_loot();
+                }
                 mob.drop_inventory();
             }
 
