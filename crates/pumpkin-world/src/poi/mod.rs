@@ -497,15 +497,43 @@ fn distance_sq(center: BlockPos, pos: BlockPos) -> i64 {
     dx * dx + dy * dy + dz * dz
 }
 
-fn sort_records(records: &mut [PoiRecord], center: BlockPos) {
-    records.sort_unstable_by_key(|record| {
-        (
-            distance_sq(center, record.pos),
-            record.pos.0.x,
-            record.pos.0.y,
-            record.pos.0.z,
-        )
-    });
+/// The first of the nearest positions, like a Java stream's `min`, which keeps the earliest
+/// of equally near elements.
+fn first_closest<T>(
+    items: impl IntoIterator<Item = T>,
+    center: BlockPos,
+    pos: impl Fn(&T) -> BlockPos,
+) -> Option<T> {
+    items
+        .into_iter()
+        .fold(None, |best: Option<(T, i64)>, item| {
+            let distance = distance_sq(center, pos(&item));
+            match best {
+                Some((_, best_distance)) if best_distance <= distance => best,
+                _ => Some((item, distance)),
+            }
+        })
+        .map(|(item, _)| item)
+}
+
+/// The bucket a `BlockPos` lands in within a Java `HashSet` holding `len` positions: vanilla
+/// `PoiSection` streams the records of each type in this order.
+const fn java_hash_set_bucket(pos: BlockPos, len: usize) -> u32 {
+    // `Vec3i.hashCode`, then `HashMap.hash`.
+    let hash = pos
+        .0
+        .y
+        .wrapping_add(pos.0.z.wrapping_mul(31))
+        .wrapping_mul(31)
+        .wrapping_add(pos.0.x)
+        .cast_unsigned();
+    let spread = hash ^ (hash >> 16);
+    // A `HashSet` starts at 16 buckets and doubles once it is more than 3/4 full.
+    let mut capacity = 16usize;
+    while len * 4 > capacity * 3 {
+        capacity *= 2;
+    }
+    spread & (capacity as u32 - 1)
 }
 
 /// The sections exactly `distance` away from `section` in vanilla `SectionTracker` steps,
@@ -567,13 +595,11 @@ impl PoiStorage {
         })
     }
 
-    fn records_in_square(
-        &mut self,
-        predicate: &dyn Fn(PoiType) -> bool,
-        center: BlockPos,
-        radius: i32,
-        occupancy: Occupancy,
-    ) -> Vec<PoiRecord> {
+    /// The entries within `radius` blocks of `center` on x and z, in the order vanilla
+    /// `PoiManager.getInSquare` streams them: chunk by chunk along x then z, each chunk's
+    /// sections from the bottom up, and each section's records type by type in `HashSet` order.
+    /// Vanilla orders the types of a section by identity hash, so here they go by name.
+    fn entries_in_square(&mut self, center: BlockPos, radius: i32) -> Vec<&PoiEntry> {
         let min_x = center.0.x - radius;
         let max_x = center.0.x + radius;
         let min_z = center.0.z - radius;
@@ -582,35 +608,64 @@ impl PoiStorage {
         let max_section_x = max_x >> 4;
         let min_section_z = min_z >> 4;
         let max_section_z = max_z >> 4;
+        let regions_x = (min_section_x >> 5)..=(max_section_x >> 5);
+        let regions_z = (min_section_z >> 5)..=(max_section_z >> 5);
 
-        let mut records = Vec::new();
-        for rx in (min_section_x >> 5)..=(max_section_x >> 5) {
-            for rz in (min_section_z >> 5)..=(max_section_z >> 5) {
-                let region = self.get_or_load_region(rx, rz);
-                for (section, entries) in &region.sections {
-                    if section.x < min_section_x
-                        || section.x > max_section_x
-                        || section.z < min_section_z
-                        || section.z > max_section_z
-                    {
-                        continue;
-                    }
-                    for entry in entries.values() {
-                        if entry.x < min_x || entry.x > max_x || entry.z < min_z || entry.z > max_z
-                        {
-                            continue;
-                        }
-                        let Some(record) = typed_record(entry) else {
-                            continue;
-                        };
-                        if predicate(record.poi_type) && occupancy.test(&record) {
-                            records.push(record);
-                        }
-                    }
-                }
+        for rx in regions_x.clone() {
+            for rz in regions_z.clone() {
+                self.get_or_load_region(rx, rz);
             }
         }
-        records
+        let mut sections = Vec::new();
+        for rx in regions_x {
+            for rz in regions_z.clone() {
+                let Some(region) = self.regions.get(&(rx, rz)) else {
+                    continue;
+                };
+                sections.extend(region.sections.iter().filter(|(section, _)| {
+                    (min_section_x..=max_section_x).contains(&section.x)
+                        && (min_section_z..=max_section_z).contains(&section.z)
+                }));
+            }
+        }
+        sections.sort_unstable_by_key(|(section, _)| (section.z, section.x, section.y));
+
+        let mut result = Vec::new();
+        for (_, entries) in sections {
+            let mut type_counts: FxHashMap<&str, usize> = FxHashMap::default();
+            for entry in entries.values() {
+                *type_counts.entry(entry.poi_type.as_str()).or_default() += 1;
+            }
+            let start = result.len();
+            result.extend(entries.values().filter(|entry| {
+                (min_x..=max_x).contains(&entry.x) && (min_z..=max_z).contains(&entry.z)
+            }));
+            result[start..].sort_unstable_by_key(|entry| {
+                let pos = entry.pos();
+                (
+                    entry.poi_type.as_str(),
+                    java_hash_set_bucket(pos, type_counts[entry.poi_type.as_str()]),
+                    pos.0.x,
+                    pos.0.y,
+                    pos.0.z,
+                )
+            });
+        }
+        result
+    }
+
+    fn records_in_square(
+        &mut self,
+        predicate: &dyn Fn(PoiType) -> bool,
+        center: BlockPos,
+        radius: i32,
+        occupancy: Occupancy,
+    ) -> Vec<PoiRecord> {
+        self.entries_in_square(center, radius)
+            .into_iter()
+            .filter_map(typed_record)
+            .filter(|record| predicate(record.poi_type) && occupancy.test(record))
+            .collect()
     }
 
     fn is_village_center(&mut self, section: SectionPos) -> bool {
@@ -683,6 +738,7 @@ impl PoiStorage {
         self.get_type(pos).is_some_and(predicate)
     }
 
+    /// Vanilla `PoiManager.getInSquare`, in its stream order.
     pub fn get_records_in_square(
         &mut self,
         predicate: &dyn Fn(PoiType) -> bool,
@@ -690,11 +746,10 @@ impl PoiStorage {
         radius: i32,
         occupancy: Occupancy,
     ) -> Vec<PoiRecord> {
-        let mut records = self.records_in_square(predicate, center, radius, occupancy);
-        sort_records(&mut records, center);
-        records
+        self.records_in_square(predicate, center, radius, occupancy)
     }
 
+    /// Vanilla `PoiManager.getInRange`, in its stream order.
     pub fn get_records_in_range(
         &mut self,
         predicate: &dyn Fn(PoiType) -> bool,
@@ -705,7 +760,6 @@ impl PoiStorage {
         let radius_sqr = i64::from(radius) * i64::from(radius);
         let mut records = self.records_in_square(predicate, center, radius, occupancy);
         records.retain(|record| distance_sq(center, record.pos) <= radius_sqr);
-        sort_records(&mut records, center);
         records
     }
 
@@ -717,10 +771,13 @@ impl PoiStorage {
         radius: i32,
         occupancy: Occupancy,
     ) -> Option<BlockPos> {
-        self.get_records_in_range(predicate, center, radius, occupancy)
+        let found: Vec<BlockPos> = self
+            .get_records_in_range(predicate, center, radius, occupancy)
             .into_iter()
-            .find(|record| filter(record.pos))
             .map(|record| record.pos)
+            .filter(|pos| filter(*pos))
+            .collect();
+        first_closest(found, center, |pos| *pos)
     }
 
     pub fn find_closest_with_type(
@@ -730,10 +787,12 @@ impl PoiStorage {
         radius: i32,
         occupancy: Occupancy,
     ) -> Option<(PoiType, BlockPos)> {
-        self.get_records_in_range(predicate, center, radius, occupancy)
-            .into_iter()
-            .next()
-            .map(|record| (record.poi_type, record.pos))
+        first_closest(
+            self.get_records_in_range(predicate, center, radius, occupancy),
+            center,
+            |record| record.pos,
+        )
+        .map(|record| (record.poi_type, record.pos))
     }
 
     pub fn find_all_closest_first_with_type(
@@ -744,11 +803,15 @@ impl PoiStorage {
         radius: i32,
         occupancy: Occupancy,
     ) -> Vec<(PoiType, BlockPos)> {
-        self.get_records_in_range(predicate, center, radius, occupancy)
+        let mut found: Vec<(PoiType, BlockPos)> = self
+            .get_records_in_range(predicate, center, radius, occupancy)
             .into_iter()
             .filter(|record| filter(record.pos))
             .map(|record| (record.poi_type, record.pos))
-            .collect()
+            .collect();
+        // Java's `sorted` is stable, so equally near records keep their stream order.
+        found.sort_by_key(|(_, pos)| distance_sq(center, *pos));
+        found
     }
 
     pub fn take(
@@ -878,53 +941,22 @@ impl PoiStorage {
         }
     }
 
-    /// Get all POI positions within a square radius (for portal search)
-    #[expect(clippy::similar_names)]
+    /// Vanilla `PoiManager.getInSquare` positions, in its stream order (for portal search).
     pub fn get_in_square(
         &mut self,
         center: BlockPos,
         radius: i32,
         poi_type: Option<&str>,
     ) -> Vec<BlockPos> {
-        let min_x = center.0.x - radius;
-        let max_x = center.0.x + radius;
-        let min_z = center.0.z - radius;
-        let max_z = center.0.z + radius;
-
-        // Calculate which regions we need to check
-        let min_rx = (min_x >> 4) >> 5;
-        let max_rx = (max_x >> 4) >> 5;
-        let min_rz = (min_z >> 4) >> 5;
-        let max_rz = (max_z >> 4) >> 5;
-
-        let mut results = Vec::new();
-
-        for rx in min_rx..=max_rx {
-            for rz in min_rz..=max_rz {
-                let region = self.get_or_load_region(rx, rz);
-                for entry in region.get_all() {
-                    if let Some(filter_type) = poi_type
-                        && entry.poi_type != filter_type
-                    {
-                        continue;
-                    }
-
-                    let dx = (entry.x - center.0.x).abs();
-                    let dz = (entry.z - center.0.z).abs();
-                    if dx <= radius && dz <= radius {
-                        results.push(entry.pos());
-                    }
-                }
-            }
-        }
-
-        results
+        self.entries_in_square(center, radius)
+            .into_iter()
+            .filter(|entry| poi_type.is_none_or(|filter_type| entry.poi_type == filter_type))
+            .map(PoiEntry::pos)
+            .collect()
     }
 
-    /// Finds the closest POI whose type matches `matches`, considering
-    /// entries within `radius` blocks of `center` on the x/z axes (like
-    /// vanilla's `PoiManager.findClosestWithType`: a chebyshev square gather
-    /// followed by picking the smallest 3D squared distance).
+    /// Finds the closest POI whose type matches `matches` within `radius` blocks of `center`,
+    /// like vanilla `PoiManager.findClosestWithType`: the first of the nearest in stream order.
     ///
     /// Returns the entry's position together with its type.
     pub fn find_closest_matching(
@@ -936,43 +968,24 @@ impl PoiStorage {
         self.find_closest_where(center, radius, |poi_type, _| matches(poi_type))
     }
 
+    /// Vanilla `PoiManager.findClosest` with a position filter, on untyped entries.
     pub fn find_closest_where(
         &mut self,
         center: BlockPos,
         radius: i32,
         matches: impl Fn(&str, BlockPos) -> bool,
     ) -> Option<(BlockPos, String)> {
-        let min_rx = ((center.0.x - radius) >> 4) >> 5;
-        let max_rx = ((center.0.x + radius) >> 4) >> 5;
-        let min_rz = ((center.0.z - radius) >> 4) >> 5;
-        let max_rz = ((center.0.z + radius) >> 4) >> 5;
-
-        let mut best: Option<(BlockPos, String, i64)> = None;
-
-        for rx in min_rx..=max_rx {
-            for rz in min_rz..=max_rz {
-                let region = self.get_or_load_region(rx, rz);
-                for entry in region.get_all() {
-                    if (entry.x - center.0.x).abs() > radius
-                        || (entry.z - center.0.z).abs() > radius
-                        || !matches(&entry.poi_type, entry.pos())
-                    {
-                        continue;
-                    }
-
-                    let dx = i64::from(entry.x - center.0.x);
-                    let dy = i64::from(entry.y - center.0.y);
-                    let dz = i64::from(entry.z - center.0.z);
-                    let distance_sq = dx * dx + dy * dy + dz * dz;
-
-                    if best.as_ref().is_none_or(|(_, _, d)| distance_sq < *d) {
-                        best = Some((entry.pos(), entry.poi_type.clone(), distance_sq));
-                    }
-                }
-            }
-        }
-
-        best.map(|(pos, poi_type, _)| (pos, poi_type))
+        let radius_sqr = i64::from(radius) * i64::from(radius);
+        let found: Vec<&PoiEntry> = self
+            .entries_in_square(center, radius)
+            .into_iter()
+            .filter(|entry| {
+                distance_sq(center, entry.pos()) <= radius_sqr
+                    && matches(&entry.poi_type, entry.pos())
+            })
+            .collect();
+        first_closest(found, center, |entry| entry.pos())
+            .map(|entry| (entry.pos(), entry.poi_type.clone()))
     }
 
     pub fn save_all(&mut self) -> std::io::Result<()> {
@@ -1155,6 +1168,38 @@ mod tests {
         assert!(!storage.release(&home));
         assert!(storage.acquire_ticket(&home));
         assert!(!storage.acquire_ticket(&home));
+    }
+
+    /// Vanilla streams chunks along x, then z: `take` claims the first record in that order,
+    /// `findClosest` the nearest, and the earlier of equally near ones.
+    #[test]
+    fn poi_queries_follow_vanilla_stream_order() {
+        let dir = std::env::temp_dir().join("pumpkin_poi_stream_order_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut storage = PoiStorage::new(dir);
+
+        let center = BlockPos(Vector3::new(0, 64, 0));
+        let near = BlockPos(Vector3::new(-20, 64, 10));
+        let far_in_earlier_chunk = BlockPos(Vector3::new(16, 64, -30));
+        let tie_west = BlockPos(Vector3::new(-3, 64, 0));
+        let tie_east = BlockPos(Vector3::new(3, 64, 0));
+        for pos in [near, far_in_earlier_chunk, tie_east, tie_west] {
+            assert!(storage.add_poi(pos, PoiType::Home));
+        }
+        let home = |poi_type| poi_type == PoiType::Home;
+
+        assert_eq!(
+            storage.find_closest(&home, &|pos| pos.0.x.abs() > 3, center, 48, Occupancy::Any),
+            Some(near)
+        );
+        assert_eq!(
+            storage.find_closest(&home, &|_| true, center, 4, Occupancy::Any),
+            Some(tie_west)
+        );
+        assert_eq!(
+            storage.take(&home, &|_, pos| pos.0.x.abs() > 3, center, 48),
+            Some(far_in_earlier_chunk)
+        );
     }
 
     #[test]

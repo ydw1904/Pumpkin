@@ -3199,8 +3199,6 @@ impl World {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .find_closest_where(center, LIGHTNING_ROD_SEARCH_RADIUS, |poi_type, rod_pos| {
                 PoiType::from_name(poi_type) == Some(PoiType::LightningRod)
-                    && rod_pos.squared_distance(&center)
-                        <= LIGHTNING_ROD_SEARCH_RADIUS * LIGHTNING_ROD_SEARCH_RADIUS
                     && rod_pos.0.y
                         == self.get_heightmap_height(WorldSurface, rod_pos.0.x, rod_pos.0.z)
             })?;
