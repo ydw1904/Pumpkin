@@ -25,6 +25,7 @@ use crate::command::argument_types::entity::EntityArgumentType;
 use crate::command::argument_types::particle::{
     ERROR_INVALID_OPTIONS, ParticleArgumentType, ParticleWithOptions,
 };
+use crate::command::commands::data::snbt_string;
 use crate::command::context::command_context::CommandContext;
 use crate::command::context::command_source::CommandSource;
 use crate::command::errors::command_syntax_error::CommandSyntaxError;
@@ -261,17 +262,24 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
 )]
 fn encode_particle_options(particle: Particle, options: &NbtCompound) -> Result<Vec<u8>, String> {
     let mut data = Vec::new();
-    let required = |name: &str| {
-        options
-            .get(name)
-            .ok_or_else(|| format!("No key {name} in MapLike"))
+    // DFU's `MapLike` names the whole options compound.
+    let missing = |name: &str| {
+        format!(
+            "No key {name} in MapLike[{}]",
+            snbt_string(&NbtTag::Compound(options.clone()))
+        )
     };
+    let required = |name: &str| options.get(name).ok_or_else(|| missing(name));
     let written = |result: Result<(), pumpkin_protocol::ser::WritingError>| {
         result.map_err(|error| error.to_string())
     };
     match particle {
         // `DustParticleOptions`.
         Particle::Dust => {
+            // A record codec reports every missing field, the later one first.
+            if options.get("color").is_none() && options.get("scale").is_none() {
+                return Err(format!("{}; {}", missing("scale"), missing("color")));
+            }
             let color = rgb_color(required("color")?)?;
             let scale = scale(required("scale")?)?;
             written(
@@ -363,7 +371,12 @@ fn encode_particle_options(particle: Particle, options: &NbtCompound) -> Result<
             let pos: Vec<i32> = match destination.get("pos") {
                 Some(NbtTag::IntArray(pos)) => pos.clone(),
                 Some(NbtTag::List(pos)) => pos.iter().map(int).collect::<Result<_, _>>()?,
-                _ => return Err("No key pos in MapLike".to_string()),
+                _ => {
+                    return Err(format!(
+                        "No key pos in MapLike[{}]",
+                        snbt_string(&NbtTag::Compound(destination.clone()))
+                    ));
+                }
             };
             let [x, y, z] = pos[..] else {
                 return Err(format!("Input is not a list of 3 elements: {pos:?}"));
