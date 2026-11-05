@@ -67,12 +67,16 @@ impl<'a> PistonHandler<'a> {
         if !self.try_move(self.pos_to, self.motion_direction) {
             return false;
         }
-        for i in 0..self.moved_blocks.len() {
+        // Vanilla rereads the size every iteration, so blocks added by a branch get their own
+        // branches checked too.
+        let mut i = 0;
+        while i < self.moved_blocks.len() {
             let block_pos = self.moved_blocks[i];
             let block = self.world.get_block(&block_pos);
             if Self::is_block_sticky(block) && !self.try_move_adjacent_block(block, &block_pos) {
                 return false;
             }
+            i += 1;
         }
         true
     }

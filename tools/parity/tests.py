@@ -202,6 +202,26 @@ TESTS = [
         ((5, 1, 0), "minecraft:oak_planks", "planks left where they were pushed"),
     ),
 
+    # Slime blocks found through another slime block's branch still pull their own neighbours
+    # (PistonStructureResolver.resolve rechecks the list size).
+    Test("piston_moves_nested_slime_branches")
+    .set((1, 1, 0), "minecraft:piston[extended=false,facing=east]")
+    # Keeps the floor from sticking to the bottom slime.
+    .set((2, 0, 0), "minecraft:obsidian")
+    .set((2, 1, 0), "minecraft:slime_block")
+    .set((2, 2, 0), "minecraft:slime_block")
+    .set((2, 3, 0), "minecraft:oak_planks")
+    .set((3, 1, 0), "minecraft:air")
+    .set((3, 2, 0), "minecraft:air")
+    .set((3, 3, 0), "minecraft:air")
+    .check_after(
+        1,
+        ((3, 1, 0), "minecraft:slime_block", "pushed slime moved"),
+        ((3, 2, 0), "minecraft:slime_block", "slime stuck to it moved"),
+        ((3, 3, 0), "minecraft:oak_planks", "planks stuck to the second slime moved"),
+        ((2, 3, 0), "minecraft:air", "nothing left where the planks were"),
+    ),
+
     Test("iron_door_opens_with_redstone")
     .set((1, 1, 0), "minecraft:iron_door[facing=east,half=lower,hinge=left,open=false,powered=false]")
     .set((1, 2, 0), "minecraft:iron_door[facing=east,half=upper,hinge=left,open=false,powered=false]")
