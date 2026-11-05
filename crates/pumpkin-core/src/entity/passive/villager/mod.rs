@@ -1334,21 +1334,8 @@ impl VillagerEntity {
             })
             .ok();
 
-        let game_time = world
-            .level_time
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .world_age;
-        self.maybe_decay_gossip(game_time);
-
-        if self.is_sleeping() && !self.check_bed_exists() {
-            self.wake_up();
-        }
-    }
-
-    fn villager_ai_step(&self) {
-        let world = self.get_entity().world.load();
-
+        // Vanilla `rewardTradeXp` levels up during the trade, NoAI or not; the trading player's
+        // open menu is locked then, so it happens at the villager's next tick.
         if self
             .increase_profession_level_on_update
             .swap(false, Ordering::Relaxed)
@@ -1365,6 +1352,21 @@ impl VillagerEntity {
             });
             self.notify_trading_player_offers_updated();
         }
+
+        let game_time = world
+            .level_time
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .world_age;
+        self.maybe_decay_gossip(game_time);
+
+        if self.is_sleeping() && !self.check_bed_exists() {
+            self.wake_up();
+        }
+    }
+
+    fn villager_ai_step(&self) {
+        let world = self.get_entity().world.load();
 
         let last_traded_player = self
             .last_traded_player
