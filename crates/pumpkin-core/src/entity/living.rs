@@ -4049,10 +4049,9 @@ impl LivingEntity {
         self.entity
             .set_glowing_from_effect(active_effects.contains_key(&StatusEffect::GLOWING));
 
-        // Vanilla LivingEntity.readAdditionalSaveData defaults to the mob's own max health,
-        // not a flat 20; a hoglin (40 max) or iron golem (100 max) with no saved Health would
-        // otherwise be silently reset to 20 here.
-        self.health.store(
+        // Vanilla `setHealth(getFloatOr("Health", getMaxHealth()))`: clamped and synced, so a
+        // loaded mob's health reaches the client.
+        self.set_health(
             nbt.get_numeric_float("Health")
                 .unwrap_or_else(|| self.get_max_health()),
         );
