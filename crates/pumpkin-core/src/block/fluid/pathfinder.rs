@@ -17,9 +17,49 @@ pub struct PathNode {
     pub exclude_dir: BlockDirection,
 }
 
+/// Furthest horizontal offset from the spreading fluid that its searches read: a side plus the
+/// longest slope search (fast lava, 5).
+const STATE_CACHE_RADIUS: i32 = 6;
+const STATE_CACHE_SIDE: i32 = STATE_CACHE_RADIUS * 2 + 1;
+
+/// The states one `get_spread` reads at the fluid's level and the level below, like the state
+/// cache in vanilla `FlowingFluid.getSpread`. Nothing changes while it runs, and the slope
+/// searches of the four sides read the same blocks many times.
+struct StateCache {
+    origin: BlockPos,
+    states: [Option<BlockStateId>; (STATE_CACHE_SIDE * STATE_CACHE_SIDE * 2) as usize],
+}
+
+impl StateCache {
+    const fn new(origin: BlockPos) -> Self {
+        Self {
+            origin,
+            states: [None; (STATE_CACHE_SIDE * STATE_CACHE_SIDE * 2) as usize],
+        }
+    }
+
+    fn get(&mut self, world: &World, pos: &BlockPos) -> BlockStateId {
+        let dx = pos.0.x - self.origin.0.x + STATE_CACHE_RADIUS;
+        let dz = pos.0.z - self.origin.0.z + STATE_CACHE_RADIUS;
+        let dy = self.origin.0.y - pos.0.y;
+        if !(0..STATE_CACHE_SIDE).contains(&dx)
+            || !(0..STATE_CACHE_SIDE).contains(&dz)
+            || !(0..=1).contains(&dy)
+        {
+            return world.get_block_state_id(pos);
+        }
+        let index = ((dy * STATE_CACHE_SIDE + dz) * STATE_CACHE_SIDE + dx) as usize;
+        *self.states[index].get_or_insert_with(|| world.get_block_state_id(pos))
+    }
+
+    fn get_block(&mut self, world: &World, pos: &BlockPos) -> &'static Block {
+        Block::from_state_id(self.get(world, pos))
+    }
+}
+
 /// Checks if a position has a hole (downward flow opportunity) below it.
-fn is_hole(world: &Arc<World>, pos: &BlockPos) -> bool {
-    physics::can_hold_fluid(world.get_block(&pos.down()))
+fn is_hole(world: &World, cache: &mut StateCache, pos: &BlockPos) -> bool {
+    physics::can_hold_fluid(cache.get_block(world, &pos.down()))
 }
 
 /// Determines valid spread directions for fluid flow using hole-first priority.
@@ -36,6 +76,7 @@ pub fn get_spread<T: FlowingFluid + Sync + ?Sized>(
     let mut min_dist = 1000;
     let mut result = [(BlockDirection::North, BlockStateId::default()); 4];
     let mut result_count = 0;
+    let mut cache = StateCache::new(*block_pos);
 
     for direction in [
         BlockDirection::North,
@@ -44,9 +85,8 @@ pub fn get_spread<T: FlowingFluid + Sync + ?Sized>(
         BlockDirection::East,
     ] {
         let side_pos = block_pos.offset(direction.to_offset());
-        let side_state = world.get_block_state(&side_pos);
-        let side_state_id = side_state.id;
-        let side_block = Block::from_state_id(side_state.id);
+        let side_state_id = cache.get(world, &side_pos);
+        let side_block = Block::from_state_id(side_state_id);
 
         let side_fluid_props = fluid_impl.get_effective_props(fluid, side_state_id);
 
@@ -67,12 +107,13 @@ pub fn get_spread<T: FlowingFluid + Sync + ?Sized>(
         let new_state_id = new_fluid_props.to_state_id(fluid);
 
         // Holes get distance 0
-        let slope_dist = if is_hole(world, &side_pos) {
+        let slope_dist = if is_hole(world, &mut cache, &side_pos) {
             0
         } else {
             get_in_flow_down_distance_iterative(
                 fluid_impl,
                 world,
+                &mut cache,
                 fluid,
                 side_pos,
                 direction.opposite(),
@@ -112,9 +153,10 @@ pub fn get_spread<T: FlowingFluid + Sync + ?Sized>(
 ///
 /// # Returns
 /// Distance to nearest hole, or 1000 if no hole found within search distance
-pub fn get_in_flow_down_distance_iterative<T: FlowingFluid + Sync + ?Sized>(
+fn get_in_flow_down_distance_iterative<T: FlowingFluid + Sync + ?Sized>(
     fluid_impl: &T,
     world: &Arc<World>,
+    cache: &mut StateCache,
     fluid: &Fluid,
     start_pos: BlockPos,
     initial_exclude_dir: BlockDirection,
@@ -166,7 +208,7 @@ pub fn get_in_flow_down_distance_iterative<T: FlowingFluid + Sync + ?Sized>(
         }
 
         // Check for hole (downward flow opportunity)
-        if physics::can_hold_fluid(world.get_block(&node.pos.down())) {
+        if physics::can_hold_fluid(cache.get_block(world, &node.pos.down())) {
             return node.distance;
         }
 
@@ -182,12 +224,12 @@ pub fn get_in_flow_down_distance_iterative<T: FlowingFluid + Sync + ?Sized>(
 
             let next_pos = node.pos.offset(direction.to_offset());
 
-            if !physics::can_hold_fluid(world.get_block(&next_pos)) {
+            let next_state_id = cache.get(world, &next_pos);
+            if !physics::can_hold_fluid(Block::from_state_id(next_state_id)) {
                 continue;
             }
 
             // Source blocks (including waterlogged) block horizontal pathfinding
-            let next_state_id = world.get_block_state_id(&next_pos);
             if fluid_impl
                 .get_effective_props(fluid, next_state_id)
                 .is_some_and(|p| p.level == Level::L8 && p.falling == Falling::False)
