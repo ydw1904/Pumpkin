@@ -736,9 +736,12 @@ impl Mob for WitherEntity {
         // Two lethal hits from parallel entity ticks can both get here, so drop once.
         if living.dead.load(Ordering::Relaxed) && !self.dropped_loot.swap(true, Ordering::SeqCst) {
             let world = living.entity.world.load_full();
-            if world.level_info.load().game_rules.mob_drops {
-                let pos = living.entity.block_pos.load();
-                world.drop_stack(&pos, ItemStack::new(1, &Item::NETHER_STAR));
+            if world.level_info.load().game_rules.mob_drops
+                && let Some(nether_star) = living
+                    .entity
+                    .spawn_at_location(ItemStack::new(1, &Item::NETHER_STAR))
+            {
+                nether_star.set_extended_lifetime();
             }
         }
     }

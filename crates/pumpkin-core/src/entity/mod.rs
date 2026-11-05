@@ -5210,16 +5210,18 @@ impl Entity {
         }
     }
 
-    pub fn spawn_at_location(&self, stack: ItemStack) {
+    /// Vanilla `Entity.spawnAtLocation`: drops `stack` at this entity's position.
+    pub fn spawn_at_location(&self, stack: ItemStack) -> Option<Arc<ItemEntity>> {
         if stack.is_empty() {
-            return;
+            return None;
         }
         let world = self.world.load();
-        let item_entity = ItemEntity::new(
+        let item_entity = Arc::new(ItemEntity::new(
             Self::new(world.clone(), self.pos.load(), &EntityType::ITEM),
             stack,
-        );
-        world.spawn_entity(Arc::new(item_entity));
+        ));
+        world.spawn_entity(item_entity.clone());
+        Some(item_entity)
     }
 
     pub fn has_passengers(&self) -> bool {

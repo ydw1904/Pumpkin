@@ -104,6 +104,11 @@ const MERGE_DISTANCE: f64 = 0.5;
 impl ItemEntity {
     pub const DEFAULT_PICKUP_DELAY: u8 = 10;
 
+    /// Vanilla `setExtendedLifetime`: the item lasts 6000 ticks longer.
+    pub fn set_extended_lifetime(&self) {
+        self.item_age.store(-6000, Ordering::Relaxed);
+    }
+
     // Vanilla rounds after the multiply and after the add, so no `mul_add` here.
     #[allow(clippy::suboptimal_flops)]
     pub fn new(entity: Entity, item_stack: ItemStack) -> Self {
