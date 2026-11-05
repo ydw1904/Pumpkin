@@ -297,6 +297,10 @@ impl MobEntity {
 
     #[must_use]
     pub fn new(entity: Entity) -> Self {
+        // Vanilla `Mob.defineSynchedData`.
+        entity
+            .synched_data
+            .define(tracked_data::mob::DATA_MOB_FLAGS_ID, 0u8);
         Self {
             living_entity: LivingEntity::new(entity),
             goals_selector: GoalSelector::default(),
@@ -3368,6 +3372,12 @@ impl<T: Mob + Send + 'static> EntityBase for T {
     }
 
     fn init_data_tracker(&self) {
+        // Vanilla `AgeableMob.defineSynchedData`.
+        if self.as_ageable().is_some() {
+            let data = &self.get_entity().synched_data;
+            data.define(tracked_data::ageable_mob::DATA_BABY_ID, false);
+            data.define(tracked_data::ageable_mob::AGE_LOCKED, false);
+        }
         self.mob_init_data_tracker();
     }
 

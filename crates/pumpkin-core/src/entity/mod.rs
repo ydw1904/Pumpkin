@@ -1870,7 +1870,7 @@ impl Entity {
             scoreboard_tags: std::sync::Mutex::new(HashSet::new()),
             no_physics: AtomicBool::new(false),
             first_tick: AtomicBool::new(true),
-            synched_data: synched_entity_data::SynchedEntityData::new(),
+            synched_data: Self::define_synched_data(),
             movement_multiplier: AtomicCell::new(Vector3::default()),
             velocity_dirty: AtomicBool::new(true),
             removed: AtomicBool::new(false),
@@ -1882,6 +1882,29 @@ impl Entity {
             custom_data: std::sync::Mutex::new(NbtCompound::new()),
             unmodelled_nbt: std::sync::Mutex::new(NbtCompound::new()),
         }
+    }
+
+    /// Vanilla `Entity.defineSynchedData`: the defaults clients assume for every entity.
+    fn define_synched_data() -> synched_entity_data::SynchedEntityData {
+        let data = synched_entity_data::SynchedEntityData::new();
+        data.define(tracked_data::entity::DATA_SHARED_FLAGS_ID, 0i8);
+        data.define(
+            tracked_data::entity::DATA_AIR_SUPPLY_ID,
+            VarInt(breath::MAX_AIR),
+        );
+        data.define(tracked_data::entity::DATA_CUSTOM_NAME_VISIBLE, false);
+        data.define(
+            tracked_data::entity::DATA_CUSTOM_NAME,
+            None::<TextComponent>,
+        );
+        data.define(tracked_data::entity::DATA_SILENT, false);
+        data.define(tracked_data::entity::DATA_NO_GRAVITY, false);
+        data.define(
+            tracked_data::entity::DATA_POSE,
+            VarInt(EntityPose::Standing as i32),
+        );
+        data.define(tracked_data::entity::DATA_TICKS_FROZEN, VarInt(0));
+        data
     }
 
     /// Remembers the tags of `loaded` that this entity, freshly read from it, does not

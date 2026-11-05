@@ -346,7 +346,7 @@ impl LivingEntity {
             0.8
         };
         let mut max_health: f32 = 20.0; // Overridden by attribute base below
-        Self {
+        let living = Self {
             // Populate local attribute instances from the default registry and get initial vars
             attributes: {
                 let mut m = FxHashMap::default();
@@ -398,7 +398,26 @@ impl LivingEntity {
             water_movement_speed_multiplier,
             last_block_pos: AtomicCell::new(None),
             equipment_attribute_modifier_ids: std::sync::Mutex::new(FxHashMap::default()),
-        }
+        };
+        living.define_synched_data();
+        living
+    }
+
+    /// Vanilla `LivingEntity.defineSynchedData`, then the constructor's
+    /// `setHealth(getMaxHealth())`.
+    fn define_synched_data(&self) {
+        let data = &self.entity.synched_data;
+        data.define(tracked_data::living_entity::DATA_LIVING_ENTITY_FLAGS, 0u8);
+        data.define(
+            tracked_data::living_entity::EFFECT_PARTICLES,
+            EffectParticles(Vec::new()),
+        );
+        data.define(tracked_data::living_entity::EFFECT_AMBIENCE_ID, false);
+        data.define(tracked_data::living_entity::DATA_HEALTH_ID, 1.0f32);
+        data.set(
+            tracked_data::living_entity::DATA_HEALTH_ID,
+            self.health.load(),
+        );
     }
 
     pub fn get_last_hurt_by_mob(&self) -> Option<Arc<dyn EntityBase>> {

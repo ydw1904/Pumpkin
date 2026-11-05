@@ -51,6 +51,8 @@ pub struct DataItem {
     pub tracked: TrackedData,
     pub serializer: Box<dyn ErasedSerializer>,
     pub canonical_bytes: Vec<u8>,
+    /// The defined default, `None` while nothing defined one.
+    pub default_bytes: Option<Vec<u8>>,
     pub dirty: bool,
     pub is_default: bool,
 }
@@ -76,25 +78,32 @@ impl SynchedEntityData {
         }
     }
 
-    /// Registers a tracked value with the default the client already assumes, so it
-    /// is only sent once something actually sets it.
+    /// Registers the default the client already assumes for a tracked value, like vanilla
+    /// `SynchedEntityData.Builder.define`, so the value is only sent while it differs. A value
+    /// set before its default was defined keeps its value.
     pub fn define<T: MetadataSerializer + Clone + Send + Sync + 'static>(
         &self,
         tracked: TrackedData,
         value: T,
     ) {
         let holder = SerializerHolder { value };
-        let canonical_bytes = holder.write_canonical(tracked.id, tracked.r#type);
+        let default_bytes = holder.write_canonical(tracked.id, tracked.r#type);
         let mut items = self
             .items
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(item) = items.get_mut(&tracked) {
+            item.is_default = item.canonical_bytes == default_bytes;
+            item.default_bytes = Some(default_bytes);
+            return;
+        }
         items.insert(
             tracked,
             DataItem {
                 tracked,
                 serializer: Box::new(holder),
-                canonical_bytes,
+                canonical_bytes: default_bytes.clone(),
+                default_bytes: Some(default_bytes),
                 dirty: false,
                 is_default: true,
             },
@@ -119,10 +128,12 @@ impl SynchedEntityData {
             if item.canonical_bytes == new_canonical {
                 return false;
             }
+            // Vanilla `DataItem.isSetToDefault`: back at its default, a value isn't sent again
+            // to clients that start tracking the entity.
+            item.is_default = item.default_bytes.as_ref() == Some(&new_canonical);
             item.canonical_bytes = new_canonical;
             item.serializer = Box::new(holder);
             item.dirty = true;
-            item.is_default = false;
         } else {
             items.insert(
                 tracked,
@@ -130,6 +141,7 @@ impl SynchedEntityData {
                     tracked,
                     serializer: Box::new(holder),
                     canonical_bytes: new_canonical,
+                    default_bytes: None,
                     dirty: true,
                     is_default: false,
                 },
@@ -264,5 +276,25 @@ mod test {
             data.get_non_default_values_for_version(&JavaMinecraftVersion::V_26_3)
                 .is_none()
         );
+    }
+
+    /// Like vanilla `isSetToDefault`, a value set back to its default is sent as a change but
+    /// not to a client that starts tracking later, and a default defined after the value was
+    /// set still counts.
+    #[test]
+    fn values_at_their_default_are_left_out_of_the_spawn_data() {
+        let version = JavaMinecraftVersion::V_26_3;
+        let data = SynchedEntityData::new();
+        data.define(PLAYER_MODE_CUSTOMISATION, 0u8);
+        assert!(data.set(PLAYER_MODE_CUSTOMISATION, 0x7Fu8));
+        data.clear_dirty();
+        assert!(data.set(PLAYER_MODE_CUSTOMISATION, 0u8));
+        assert!(data.pack_dirty_for_version(&version).is_some());
+        assert!(data.get_non_default_values_for_version(&version).is_none());
+
+        let late = SynchedEntityData::new();
+        late.set(PLAYER_MODE_CUSTOMISATION, 0u8);
+        late.define(PLAYER_MODE_CUSTOMISATION, 0u8);
+        assert!(late.get_non_default_values_for_version(&version).is_none());
     }
 }
