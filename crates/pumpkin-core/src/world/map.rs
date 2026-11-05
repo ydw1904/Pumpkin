@@ -23,8 +23,10 @@ use pumpkin_protocol::java::client::play::{CMapItemData, MapIcon, MapPatch};
 use pumpkin_util::math::{position::BlockPos, vector2::Vector2};
 use pumpkin_util::text::TextComponent;
 use pumpkin_world::chunk::ChunkHeightmapType;
-use pumpkin_world::level::SyncChunk;
+use pumpkin_world::chunk_system::ChunkLoading;
+use pumpkin_world::level::{Level, SyncChunk};
 use pumpkin_world::world_info::data_files::{read_saved_data, write_saved_data};
+use rustc_hash::FxHashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tracing::error;
@@ -54,6 +56,62 @@ const LOWEST: u8 = 3;
 
 /// `MapItemSavedData.isInsideMap`: how far from the center, in map pixels, a marker still shows.
 const HALF_MAP_INSIDE: f32 = 63.0;
+
+/// How many ticks a chunk loaded for a map keeps its ticket after a map last read it. A held
+/// map reads each of its columns every 16 ticks.
+const MAP_CHUNK_TICKET_TICKS: u8 = 20;
+
+/// Tickets for chunks held maps read before they were loaded.
+///
+/// Vanilla `MapItem.update` loads them on the spot with `getChunk` (a one-tick `UNKNOWN` ticket
+/// at full chunk level). Here they get a full chunk ticket and load in the background without
+/// blocking the tick, and the map colors them on a later update. The ticket goes once no map has
+/// read the chunk for a while, and the chunk then unloads like any other.
+#[derive(Default)]
+pub struct MapChunkTickets(FxHashMap<Vector2<i32>, u8>);
+
+impl MapChunkTickets {
+    fn request(&mut self, level: &Level, chunks: &[(Vector2<i32>, bool)]) {
+        let mut chunk_loading = None;
+        for &(pos, loaded) in chunks {
+            if loaded {
+                if let Some(ticks) = self.0.get_mut(&pos) {
+                    *ticks = MAP_CHUNK_TICKET_TICKS;
+                }
+            } else if self.0.insert(pos, MAP_CHUNK_TICKET_TICKS).is_none() {
+                chunk_loading
+                    .get_or_insert_with(|| {
+                        level
+                            .chunk_loading
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    })
+                    .add_ticket(pos, ChunkLoading::FULL_CHUNK_LEVEL);
+            }
+        }
+    }
+
+    /// Counts down the tickets and removes those no map read in time. The world sends the
+    /// ticket changes at the end of its tick.
+    pub fn tick(&mut self, level: &Level) {
+        let mut chunk_loading = None;
+        self.0.retain(|&pos, ticks| {
+            *ticks -= 1;
+            if *ticks > 0 {
+                return true;
+            }
+            chunk_loading
+                .get_or_insert_with(|| {
+                    level
+                        .chunk_loading
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                })
+                .remove_ticket(pos, ChunkLoading::FULL_CHUNK_LEVEL);
+            false
+        });
+    }
+}
 
 /// Whether the item is a `MapItem`: every map item, and only those, comes with
 /// `map_decorations`.
@@ -860,6 +918,8 @@ impl MapData {
         holder.step = holder.step.wrapping_add(1);
         let step = holder.step;
         let min_y = world.dimension.min_y;
+        // The chunks this update read, and whether each was loaded.
+        let mut chunks: Vec<(Vector2<i32>, bool)> = Vec::new();
 
         let mut found_consecutive_changes = false;
         for img_x in player_img_x - radius + 1..player_img_x + radius {
@@ -878,17 +938,20 @@ impl MapData {
                 let dither_black = distance_to_player_sqr > (radius - 2) * (radius - 2);
                 let area_min_x = (center_x / scale + img_x - HALF_MAP_SIZE) * scale;
                 let area_min_z = (center_z / scale + img_y - HALF_MAP_SIZE) * scale;
-                // Vanilla loads the chunk here; maps only read chunks that are already loaded.
-                let Some((color, average_area_height, water_depth)) = world.level.read_chunk_sync(
-                    &Vector2::new(area_min_x >> 4, area_min_z >> 4),
-                    |chunk| {
-                        if has_ceiling {
-                            ceiling_area_color(area_min_x, area_min_z)
-                        } else {
-                            sample_area(chunk, area_min_x, area_min_z, scale, min_y)
-                        }
-                    },
-                ) else {
+                let chunk_pos = Vector2::new(area_min_x >> 4, area_min_z >> 4);
+                let sampled = world.level.read_chunk_sync(&chunk_pos, |chunk| {
+                    if has_ceiling {
+                        ceiling_area_color(area_min_x, area_min_z)
+                    } else {
+                        sample_area(chunk, area_min_x, area_min_z, scale, min_y)
+                    }
+                });
+                // Vanilla loads a missing chunk here; this pixel waits until it has loaded.
+                let chunk = (chunk_pos, sampled.is_some());
+                if chunks.last() != Some(&chunk) {
+                    chunks.push(chunk);
+                }
+                let Some((color, average_area_height, water_depth)) = sampled else {
                     continue;
                 };
                 if !has_ceiling && !self.banners.is_empty() {
@@ -929,6 +992,13 @@ impl MapData {
                         self.update_color(img_x as usize, img_y as usize, color << 2 | brightness);
                 }
             }
+        }
+        if !chunks.is_empty() {
+            world
+                .map_chunk_tickets
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .request(&world.level, &chunks);
         }
     }
 }

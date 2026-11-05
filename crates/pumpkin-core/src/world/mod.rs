@@ -324,6 +324,8 @@ pub struct World {
     pub portal_forcer: tokio::sync::Mutex<()>,
     /// Active raids in this world.
     pub raids: std::sync::Mutex<raid::Raids>,
+    /// Tickets for chunks held maps read before they were loaded.
+    pub map_chunk_tickets: std::sync::Mutex<map::MapChunkTickets>,
     /// Vanilla `PhantomSpawner`; only ticked in the overworld.
     pub phantom_spawner: std::sync::Mutex<phantom_spawner::PhantomSpawner>,
     /// Vanilla `PatrolSpawner`; only ticked in the overworld.
@@ -553,6 +555,7 @@ impl World {
             portal_poi: std::sync::Mutex::new(portal_poi),
             portal_forcer: tokio::sync::Mutex::new(()),
             raids: std::sync::Mutex::new(raids),
+            map_chunk_tickets: std::sync::Mutex::default(),
             phantom_spawner: std::sync::Mutex::default(),
             patrol_spawner: std::sync::Mutex::default(),
             cat_spawner: std::sync::Mutex::default(),
@@ -2257,6 +2260,10 @@ impl World {
         self.flush_comparator_updates(&block_entities);
         let block_entity_elapsed = t_be.elapsed();
 
+        self.map_chunk_tickets
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .tick(&self.level);
         self.level
             .chunk_loading
             .lock()
