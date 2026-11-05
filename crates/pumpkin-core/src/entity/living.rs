@@ -2256,6 +2256,9 @@ impl LivingEntity {
         }
 
         for entity in pushable {
+            if let Some(mob) = dyn_self.get_mob() {
+                mob.mob_do_push(entity.as_ref());
+            }
             if dyn_self
                 .get_mob()
                 .is_none_or(|mob| mob.can_push_entity(entity.as_ref()))

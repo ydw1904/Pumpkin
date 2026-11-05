@@ -239,6 +239,19 @@ impl AngerManagement {
             .cloned()
     }
 
+    /// The suspects the warden keeps references to, wherever they are.
+    pub fn suspect_ids(&self) -> impl Iterator<Item = i32> + '_ {
+        self.suspects
+            .iter()
+            .map(|suspect| suspect.get_entity().entity_id)
+    }
+
+    /// Saved suspects that the next conversion may look up anywhere in the world.
+    #[must_use]
+    pub fn has_unresolved_suspects(&self) -> bool {
+        !self.anger_by_uuid.is_empty()
+    }
+
     #[must_use]
     pub fn from_nbt(nbt: &NbtCompound) -> Self {
         let mut anger_by_uuid = HashMap::new();

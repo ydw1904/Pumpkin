@@ -2222,6 +2222,12 @@ impl Entity {
         self.refresh_dimensions();
     }
 
+    /// Goes back to the entity type's dimensions after `set_default_dimensions`.
+    pub fn clear_default_dimensions(&self) {
+        self.default_dimensions.store(None);
+        self.refresh_dimensions();
+    }
+
     pub fn refresh_dimensions(&self) {
         let mut metadata = SyncedActorDataList::new();
         self.refresh_dimensions_into(&mut metadata);

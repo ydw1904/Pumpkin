@@ -242,7 +242,8 @@ mod tests {
         *allay
             .vibration
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = crate::entity::vibration::VibrationData::read_nbt(&nbt);
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            crate::entity::vibration::VibrationData::read_nbt(&nbt);
         allay.tick_vibration();
         assert!(!allay.mob_entity.with_brain(allay.as_ref(), |brain| {
             brain.has_memory_value(types::LIKED_NOTEBLOCK_POSITION.id())

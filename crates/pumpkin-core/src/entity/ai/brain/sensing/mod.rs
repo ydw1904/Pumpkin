@@ -35,6 +35,7 @@ pub enum SensorType {
     NearestItems,
     FoodTemptations,
     NearestAdult,
+    WardenEntity,
 }
 
 impl SensorType {
@@ -48,6 +49,7 @@ impl SensorType {
             Self::NearestItems => "minecraft:nearest_items",
             Self::FoodTemptations => "minecraft:food_temptations",
             Self::NearestAdult => "minecraft:nearest_adult",
+            Self::WardenEntity => "minecraft:warden_entity_sensor",
         }
     }
 
@@ -60,7 +62,8 @@ impl SensorType {
             | Self::HurtBy
             | Self::NearestItems
             | Self::FoodTemptations
-            | Self::NearestAdult => DEFAULT_SCAN_RATE,
+            | Self::NearestAdult
+            | Self::WardenEntity => DEFAULT_SCAN_RATE,
         }
     }
 
@@ -73,6 +76,7 @@ impl SensorType {
             Self::NearestItems => Box::new(nearest_items::NearestItemSensor),
             Self::FoodTemptations => Box::new(tempting::FoodTemptationSensor),
             Self::NearestAdult => Box::new(adult::AdultSensor),
+            Self::WardenEntity => Box::new(crate::entity::mob::warden::ai::WardenEntitySensor),
         }
     }
 

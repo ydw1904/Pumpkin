@@ -179,8 +179,16 @@ impl VibrationData {
         self.current.is_some()
     }
 
+    /// Whether the next `tick` can deliver a vibration.
+    #[must_use]
+    pub fn may_arrive_next_tick(&self) -> bool {
+        self.current
+            .as_ref()
+            .map_or(self.candidate.is_some(), |_| self.delay <= 1)
+    }
+
     #[cfg(test)]
-    pub(crate) fn take_candidate(&mut self) -> Option<(VibrationInfo, i64)> {
+    pub(crate) const fn take_candidate(&mut self) -> Option<(VibrationInfo, i64)> {
         self.candidate.take()
     }
 

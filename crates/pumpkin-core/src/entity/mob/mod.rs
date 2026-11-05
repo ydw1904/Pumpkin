@@ -938,6 +938,29 @@ impl MobEntity {
         result
     }
 
+    /// `with_brain` that returns `None` instead of waiting while the brain is locked, as it is
+    /// during the mob's own brain tick.
+    pub fn try_with_brain<R>(
+        &self,
+        mob: &dyn Mob,
+        callback: impl FnOnce(&mut Brain) -> R,
+    ) -> Option<R> {
+        let result = {
+            let mut slot = match self.brain.try_lock() {
+                Ok(slot) => slot,
+                Err(std::sync::TryLockError::Poisoned(error)) => error.into_inner(),
+                Err(std::sync::TryLockError::WouldBlock) => return None,
+            };
+            let brain = slot.get_or_insert_with(|| mob.make_brain(&PackedMemories::empty()));
+            if self.take_brain_memory_clear_request() {
+                brain.clear_memories();
+            }
+            callback(brain)
+        };
+        self.process_brain_memory_clear();
+        Some(result)
+    }
+
     /// Installs an already built brain, such as one restored from saved memories.
     pub fn set_brain(&self, brain: Brain) {
         *self
@@ -2350,6 +2373,14 @@ pub trait Mob: EntityBase + Send + Sync {
         false
     }
 
+    /// Vanilla `Entity.dampensVibrations`.
+    fn mob_dampens_vibrations(&self) -> bool {
+        false
+    }
+
+    /// The species part of vanilla `LivingEntity.doPush`, run before this mob pushes `other`.
+    fn mob_do_push(&self, _other: &dyn EntityBase) {}
+
     /// Retained entities accessed regardless of their distance from the mob.
     fn tick_links(&self) -> Vec<i32> {
         Vec::new()
@@ -3170,6 +3201,10 @@ impl<T: Mob + Send + 'static> EntityBase for T {
 
     fn is_pushable(&self) -> bool {
         self.mob_is_pushable()
+    }
+
+    fn dampens_vibrations(&self) -> bool {
+        self.mob_dampens_vibrations()
     }
 
     fn support_quad_leash(&self) -> bool {
