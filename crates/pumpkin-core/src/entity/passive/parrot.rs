@@ -7,6 +7,7 @@ use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::Sound;
+use pumpkin_util::Difficulty;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_util::math::position::BlockPos;
 
@@ -23,6 +24,52 @@ use crate::entity::{
 /// Duration in ticks of the poison a parrot gets from eating a cookie, matching
 /// vanilla `Parrot.mobInteract`.
 const COOKIE_POISON_DURATION: i32 = 900;
+
+/// The values of vanilla `Parrot.MOB_SOUND_MAP`, one per imitated entity type.
+const MOB_SOUND_MAP_SOUNDS: &[Sound] = &[
+    Sound::EntityParrotImitateBlaze,
+    Sound::EntityParrotImitateBogged,
+    Sound::EntityParrotImitateBreeze,
+    Sound::EntityParrotImitateCamelHusk,
+    Sound::EntityParrotImitateSpider,
+    Sound::EntityParrotImitateCreaking,
+    Sound::EntityParrotImitateCreeper,
+    Sound::EntityParrotImitateDrowned,
+    Sound::EntityParrotImitateElderGuardian,
+    Sound::EntityParrotImitateEnderDragon,
+    Sound::EntityParrotImitateEndermite,
+    Sound::EntityParrotImitateEvoker,
+    Sound::EntityParrotImitateGhast,
+    Sound::IntentionallyEmpty,
+    Sound::EntityParrotImitateGuardian,
+    Sound::EntityParrotImitateHoglin,
+    Sound::EntityParrotImitateHusk,
+    Sound::EntityParrotImitateIllusioner,
+    Sound::EntityParrotImitateMagmaCube,
+    Sound::EntityParrotImitateParched,
+    Sound::EntityParrotImitatePhantom,
+    Sound::EntityParrotImitatePiglin,
+    Sound::EntityParrotImitatePiglinBrute,
+    Sound::EntityParrotImitatePillager,
+    Sound::EntityParrotImitateRavager,
+    Sound::EntityParrotImitateShulker,
+    Sound::EntityParrotImitateSilverfish,
+    Sound::EntityParrotImitateSkeleton,
+    Sound::EntityParrotImitateSlime,
+    Sound::EntityParrotImitateSpider,
+    Sound::EntityParrotImitateStray,
+    Sound::EntityParrotImitateVex,
+    Sound::EntityParrotImitateVindicator,
+    Sound::EntityParrotImitateWarden,
+    Sound::EntityParrotImitateWitch,
+    Sound::EntityParrotImitateWither,
+    Sound::EntityParrotImitateWitherSkeleton,
+    Sound::EntityParrotImitateZoglin,
+    Sound::EntityParrotImitateZombie,
+    Sound::EntityParrotImitateZombieHorse,
+    Sound::EntityParrotImitateZombieNautilus,
+    Sound::EntityParrotImitateZombieVillager,
+];
 
 /// Represents a Parrot, a passive flying mob that can mimic nearby mob sounds.
 ///
@@ -94,6 +141,25 @@ impl ParrotEntity {
 }
 
 impl Mob for ParrotEntity {
+    fn get_ambient_sound_interval(&self) -> i32 {
+        crate::entity::passive::animal::AMBIENT_SOUND_INTERVAL
+    }
+
+    /// Vanilla `Parrot.getAmbient`.
+    fn get_ambient_sound(&self) -> Option<Sound> {
+        let world = self.get_entity().world.load();
+        let random = self.get_random();
+        Some(
+            if world.level_info.load().difficulty != Difficulty::Peaceful
+                && random.random_range(0..1000) == 0
+            {
+                MOB_SOUND_MAP_SOUNDS[random.random_range(0..MOB_SOUND_MAP_SOUNDS.len())]
+            } else {
+                Sound::EntityParrotAmbient
+            },
+        )
+    }
+
     // `mob_ai_step` only slows a fall after the parrot moved.
     fn has_audited_tick(&self) -> bool {
         true

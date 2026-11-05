@@ -71,14 +71,12 @@ pub struct PiglinEntity {
     pub nearest_visible_player: Mutex<Option<Arc<Player>>>,
     pub near_repellent: AtomicBool,
     pub activity: AtomicCell<PiglinActivity>,
-    pub ambient_sound_time: AtomicI32,
 }
 
 impl PiglinEntity {
     pub const CONVERSION_TIME: i32 = 300;
     pub const INVENTORY_SIZE: usize = 8;
     pub const XP_REWARD: u32 = 5;
-    pub const AMBIENT_SOUND_INTERVAL: i32 = 80;
 
     pub fn new(entity: Entity) -> Arc<Self> {
         let mob_entity = MobEntity::new(entity);
@@ -103,7 +101,6 @@ impl PiglinEntity {
             nearest_visible_player: Mutex::new(None),
             near_repellent: AtomicBool::new(false),
             activity: AtomicCell::new(PiglinActivity::Idle),
-            ambient_sound_time: AtomicI32::new(0),
         };
         let mob_arc = Arc::new(piglin);
         mob_arc.mob_entity.set_can_pick_up_loot(true);
@@ -628,23 +625,6 @@ impl PiglinEntity {
         );
     }
 
-    fn tick_ambient_sound(&self) {
-        let living = &self.mob_entity.living_entity;
-        let alive = living.entity.is_alive() && living.health.load() > 0.0;
-        if alive
-            && game_random().random_range(0..1000)
-                < self.ambient_sound_time.fetch_add(1, Ordering::Relaxed)
-        {
-            self.reset_ambient_sound_time();
-            self.make_sound(PiglinAi::get_sound_for_activity(self, self.activity.load()));
-        }
-    }
-
-    fn reset_ambient_sound_time(&self) {
-        self.ambient_sound_time
-            .store(-Self::AMBIENT_SOUND_INTERVAL, Ordering::Relaxed);
-    }
-
     fn stop_holding_item_if_no_longer_admiring(&self) {
         if self.is_admiring() {
             return;
@@ -878,6 +858,17 @@ impl PiglinEntity {
 }
 
 impl Mob for PiglinEntity {
+    fn get_ambient_sound(&self) -> Option<Sound> {
+        Some(PiglinAi::get_sound_for_activity(self, self.activity.load()))
+    }
+
+    // Vanilla `AbstractPiglin.playAmbientSound` only plays while idle.
+    fn play_ambient_sound(&self) {
+        if self.activity.load() == PiglinActivity::Idle {
+            self.make_sound(PiglinAi::get_sound_for_activity(self, PiglinActivity::Idle));
+        }
+    }
+
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
         self.play_entity_sound(Sound::EntityPiglinStep, 0.15, 1.0);
     }
@@ -1048,8 +1039,6 @@ impl Mob for PiglinEntity {
         if !entity.is_alive() {
             return;
         }
-        self.tick_ambient_sound();
-
         let world = entity.world.load();
         if self.is_converting(&world) {
             let time = self.time_in_overworld.fetch_add(1, Ordering::Relaxed) + 1;
@@ -1165,7 +1154,6 @@ impl Mob for PiglinEntity {
         _damage_type: pumpkin_data::damage::DamageType,
         source: Option<&dyn EntityBase>,
     ) {
-        self.reset_ambient_sound_time();
         let living = &self.mob_entity.living_entity;
         if living.dead.load(Ordering::Relaxed) {
             if living.should_drop_loot() {

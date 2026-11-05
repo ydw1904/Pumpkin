@@ -248,6 +248,21 @@ impl CatEntity {
 }
 
 impl Mob for CatEntity {
+    fn get_ambient_sound(&self) -> Option<pumpkin_data::sound::Sound> {
+        let is_baby = self.get_entity().age.load(Ordering::Relaxed) < 0;
+        let sound_variant = CatSoundVariant::from_id(self.sound_variant.load(Ordering::Relaxed))
+            .unwrap_or_default();
+        Some(if !self.is_tame() {
+            sound_variant.stray_ambient_sound()
+        } else if self.mob_entity.is_in_love() {
+            sound_variant.purr_sound(is_baby)
+        } else if self.get_random().random_range(0..4) == 0 {
+            sound_variant.purreow_sound(is_baby)
+        } else {
+            sound_variant.ambient_sound(is_baby)
+        })
+    }
+
     fn finalize_spawn(
         &self,
         world: &Arc<World>,

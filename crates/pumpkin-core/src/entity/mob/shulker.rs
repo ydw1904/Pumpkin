@@ -301,6 +301,12 @@ impl ShulkerEntity {
 }
 
 impl Mob for ShulkerEntity {
+    fn play_ambient_sound(&self) {
+        if !self.is_closed() {
+            self.make_sound(Sound::EntityShulkerAmbient);
+        }
+    }
+
     fn mob_write_nbt(&self, nbt: &mut NbtCompound) {
         nbt.put_byte("AttachFace", self.attach_face.load(Ordering::Relaxed) as i8);
         nbt.put_byte("PeekAmount", self.peek_amount.load(Ordering::Relaxed) as i8);

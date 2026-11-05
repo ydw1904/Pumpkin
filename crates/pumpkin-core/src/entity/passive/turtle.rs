@@ -27,6 +27,8 @@ use crate::entity::{
     player::Player,
 };
 
+/// Vanilla `Turtle.getAmbientSoundInterval`.
+const AMBIENT_SOUND_INTERVAL: i32 = 200;
 const TEMPT_ITEMS: &[&Item] = &[&Item::SEAGRASS];
 
 /// Turtle is prey for wolves and cats.
@@ -111,6 +113,19 @@ impl Animal for TurtleEntity {
 }
 
 impl Mob for TurtleEntity {
+    fn get_ambient_sound_interval(&self) -> i32 {
+        AMBIENT_SOUND_INTERVAL
+    }
+
+    // Vanilla `Turtle.getAmbientSound` falls back to `Mob`'s silence.
+    fn get_ambient_sound(&self) -> Option<Sound> {
+        let entity = self.get_entity();
+        (!entity.is_in_water()
+            && entity.on_ground.load(Ordering::Relaxed)
+            && !self.mob_entity.living_entity.is_baby())
+        .then_some(Sound::EntityTurtleAmbientLand)
+    }
+
     fn has_audited_tick(&self) -> bool {
         true
     }

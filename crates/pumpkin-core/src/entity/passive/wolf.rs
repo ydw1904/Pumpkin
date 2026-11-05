@@ -266,6 +266,23 @@ impl NeutralMob for WolfEntity {
 }
 
 impl Mob for WolfEntity {
+    fn get_ambient_sound(&self) -> Option<pumpkin_data::sound::Sound> {
+        let is_baby = self.is_baby();
+        let sound_variant = WolfSoundVariant::from_id(self.sound_variant.load(Ordering::Relaxed))
+            .unwrap_or_default();
+        Some(if self.is_angry() {
+            sound_variant.growl_sound(is_baby)
+        } else if self.get_random().random_range(0..3) == 0 {
+            if self.is_tame() && self.mob_entity.living_entity.health.load() < 20.0 {
+                sound_variant.whine_sound(is_baby)
+            } else {
+                sound_variant.pant_sound(is_baby)
+            }
+        } else {
+            sound_variant.ambient_sound(is_baby)
+        })
+    }
+
     /// Vanilla `Wolf.hurtServer`: any hurt it isn't invulnerable to makes it stand up, even one
     /// the hurt cooldown then blocks.
     fn pre_damage_with_context(
@@ -552,6 +569,10 @@ impl CustomSound for WolfEntity {
         let sound_variant = WolfSoundVariant::from_id(self.sound_variant.load(Ordering::Relaxed))
             .unwrap_or_default();
         Some(sound_variant.hurt_sound(is_baby))
+    }
+
+    fn sound_volume(&self) -> f32 {
+        0.4
     }
 }
 

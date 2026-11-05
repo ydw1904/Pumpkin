@@ -205,6 +205,10 @@ impl Animal for GoatEntity {
 }
 
 impl Mob for GoatEntity {
+    fn get_ambient_sound(&self) -> Option<Sound> {
+        Some(self.screaming_sound(Sound::EntityGoatAmbient, Sound::EntityGoatScreamingAmbient))
+    }
+
     fn finalize_spawn(
         &self,
         _world: &Arc<World>,

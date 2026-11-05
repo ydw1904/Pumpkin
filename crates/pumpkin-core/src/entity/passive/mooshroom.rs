@@ -210,6 +210,14 @@ impl Animal for MooshroomEntity {
 }
 
 impl Mob for MooshroomEntity {
+    fn get_ambient_sound(&self) -> Option<Sound> {
+        Some(CowSoundVariant::Classic.ambient_sound(self.is_baby()))
+    }
+
+    fn as_custom_sound(&self) -> Option<&dyn crate::entity::custom_sound::CustomSound> {
+        Some(self)
+    }
+
     /// Vanilla `MushroomCow.getWalkTargetValue`.
     fn get_walk_target_value(&self, level: &dyn CreatureSpawnLevel, pos: &BlockPos) -> f32 {
         if level.block(&pos.down()) == &pumpkin_data::Block::MYCELIUM {
@@ -374,5 +382,19 @@ impl Mob for MooshroomEntity {
         }
 
         self.animal_interact(player, item_stack)
+    }
+}
+
+impl crate::entity::custom_sound::CustomSound for MooshroomEntity {
+    fn death_sound(&self) -> Option<pumpkin_data::sound::Sound> {
+        None
+    }
+
+    fn hurt_sound(&self) -> Option<pumpkin_data::sound::Sound> {
+        None
+    }
+
+    fn sound_volume(&self) -> f32 {
+        0.4
     }
 }

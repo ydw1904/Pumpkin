@@ -29,6 +29,9 @@ use crate::world::game_event::GameEventContext;
 
 const SNOW_GOLEM_HUNTS: &[Hunt] = &[Hunt::new(1, TargetMatch::Enemy, true)];
 
+/// Vanilla `AbstractGolem.getAmbientSoundInterval`.
+const AMBIENT_SOUND_INTERVAL: i32 = 120;
+
 pub struct SnowGolemEntity {
     pub mob_entity: MobEntity,
     pub has_pumpkin: AtomicBool,
@@ -117,6 +120,10 @@ impl SnowGolemEntity {
 }
 
 impl Mob for SnowGolemEntity {
+    fn get_ambient_sound_interval(&self) -> i32 {
+        AMBIENT_SOUND_INTERVAL
+    }
+
     fn mob_write_nbt(&self, nbt: &mut NbtCompound) {
         nbt.put_bool("Pumpkin", self.has_pumpkin());
     }

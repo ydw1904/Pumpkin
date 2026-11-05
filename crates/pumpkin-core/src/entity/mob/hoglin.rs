@@ -167,6 +167,22 @@ impl HoglinEntity {
 }
 
 impl Mob for HoglinEntity {
+    fn get_ambient_sound_interval(&self) -> i32 {
+        crate::entity::passive::animal::AMBIENT_SOUND_INTERVAL
+    }
+
+    // Vanilla `HoglinAi.getSoundForActivity`; Pumpkin's hoglin has no avoid activity or
+    // repellent memory, so only conversion makes it retreat.
+    fn get_ambient_sound(&self) -> Option<Sound> {
+        Some(if self.is_converting(&self.get_entity().world.load()) {
+            Sound::EntityHoglinRetreat
+        } else if self.mob_entity.get_target().is_some() {
+            Sound::EntityHoglinAngry
+        } else {
+            Sound::EntityHoglinAmbient
+        })
+    }
+
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
         self.play_entity_sound(Sound::EntityHoglinStep, 0.15, 1.0);
     }

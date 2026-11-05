@@ -2502,12 +2502,18 @@ pub trait Mob: EntityBase + Send + Sync {
         None
     }
 
+    /// The extracted `getAmbientSound` of a fresh entity; species whose sound depends on state
+    /// override this.
     fn get_ambient_sound(&self) -> Option<pumpkin_data::sound::Sound> {
-        None
+        self.get_entity().entity_type.ambient_sound
     }
 
     fn get_ambient_sound_interval(&self) -> i32 {
-        MobEntity::DEFAULT_AMBIENT_SOUND_INTERVAL
+        if self.as_animal().is_some() {
+            crate::entity::passive::animal::AMBIENT_SOUND_INTERVAL
+        } else {
+            MobEntity::DEFAULT_AMBIENT_SOUND_INTERVAL
+        }
     }
 
     fn play_ambient_sound(&self) {

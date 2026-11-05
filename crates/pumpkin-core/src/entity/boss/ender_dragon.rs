@@ -1148,6 +1148,10 @@ impl EnderDragonEntity {
 }
 
 impl Mob for EnderDragonEntity {
+    fn as_custom_sound(&self) -> Option<&dyn crate::entity::custom_sound::CustomSound> {
+        Some(self)
+    }
+
     fn get_mob_entity(&self) -> &MobEntity {
         &self.mob_entity
     }
@@ -1266,5 +1270,19 @@ impl Mob for EnderDragonEntity {
             .iter()
             .map(|part| part.clone() as Arc<dyn EntityBase>)
             .collect()
+    }
+}
+
+impl crate::entity::custom_sound::CustomSound for EnderDragonEntity {
+    fn death_sound(&self) -> Option<pumpkin_data::sound::Sound> {
+        None
+    }
+
+    fn hurt_sound(&self) -> Option<pumpkin_data::sound::Sound> {
+        None
+    }
+
+    fn sound_volume(&self) -> f32 {
+        5.0
     }
 }

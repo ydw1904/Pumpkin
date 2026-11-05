@@ -26,6 +26,8 @@ use crate::entity::{
     player::Player,
 };
 
+/// Vanilla `Ocelot.getAmbientSoundInterval`.
+const AMBIENT_SOUND_INTERVAL: i32 = 900;
 const OCELOT_FLEES: &[Flee] = &[feline::flee_players(4, is_wary)];
 
 const OCELOT_HUNTS: &[Hunt] = &[
@@ -112,6 +114,10 @@ impl crate::entity::ageable::AgeableMob for OcelotEntity {
 }
 
 impl Mob for OcelotEntity {
+    fn get_ambient_sound_interval(&self) -> i32 {
+        AMBIENT_SOUND_INTERVAL
+    }
+
     /// Vanilla `Ocelot.checkSpawnObstruction`: above sea level, on grass or leaves.
     fn check_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
         let entity = self.get_entity();

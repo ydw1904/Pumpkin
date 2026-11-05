@@ -50,6 +50,9 @@ impl BreezeEntity {
 }
 
 impl Mob for BreezeEntity {
+    // Vanilla `Breeze.playAmbientSound` uses `playLocalSound`, which does nothing on the server.
+    fn play_ambient_sound(&self) {}
+
     fn cause_fall_damage(
         &self,
         caller: &dyn EntityBase,

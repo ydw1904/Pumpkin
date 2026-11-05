@@ -77,33 +77,6 @@ impl NautilusEntity {
         self.owner.store(owner);
     }
 
-    pub fn get_ambient_sound(&self) -> Sound {
-        let is_baby = self
-            .mob_entity
-            .living_entity
-            .entity
-            .age
-            .load(Ordering::Relaxed)
-            < 0;
-        let is_water = self
-            .mob_entity
-            .living_entity
-            .entity
-            .touching_water
-            .load(Ordering::Relaxed);
-        if is_baby {
-            if is_water {
-                Sound::EntityBabyNautilusAmbient
-            } else {
-                Sound::EntityBabyNautilusAmbientLand
-            }
-        } else if is_water {
-            Sound::EntityNautilusAmbient
-        } else {
-            Sound::EntityNautilusAmbientLand
-        }
-    }
-
     pub fn get_dash_sound(&self) -> Sound {
         let is_water = self
             .mob_entity
@@ -209,6 +182,18 @@ impl crate::entity::ageable::AgeableMob for NautilusEntity {
 }
 
 impl Mob for NautilusEntity {
+    fn get_ambient_sound(&self) -> Option<Sound> {
+        let under_water = self.get_entity().is_under_water();
+        Some(
+            match (self.mob_entity.living_entity.is_baby(), under_water) {
+                (true, true) => Sound::EntityBabyNautilusAmbient,
+                (true, false) => Sound::EntityBabyNautilusAmbientLand,
+                (false, true) => Sound::EntityNautilusAmbient,
+                (false, false) => Sound::EntityNautilusAmbientLand,
+            },
+        )
+    }
+
     /// Vanilla `AbstractNautilus.checkSpawnObstruction`.
     fn check_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
         crate::entity::mob::is_unobstructed(self, level)

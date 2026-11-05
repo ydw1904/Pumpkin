@@ -159,6 +159,14 @@ impl PiglinBruteEntity {
 }
 
 impl Mob for PiglinBruteEntity {
+    // Vanilla `AbstractPiglin.playAmbientSound` only plays while idle, and a brute's only other
+    // activity is fighting its target.
+    fn play_ambient_sound(&self) {
+        if self.mob_entity.get_target().is_none() {
+            self.make_sound(Sound::EntityPiglinBruteAmbient);
+        }
+    }
+
     fn wants_to_pick_up(&self, stack: &pumpkin_data::item_stack::ItemStack) -> bool {
         stack.item.id == pumpkin_data::item::Item::GOLDEN_AXE.id && self.can_hold_item(stack)
     }

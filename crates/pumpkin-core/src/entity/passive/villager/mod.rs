@@ -2328,6 +2328,17 @@ impl AgeableMob for VillagerEntity {
 const BED_STAND_UP_RANGE: f64 = 3.0;
 
 impl Mob for VillagerEntity {
+    fn get_ambient_sound(&self) -> Option<pumpkin_data::sound::Sound> {
+        use pumpkin_data::sound::Sound;
+        if self.is_sleeping() {
+            None
+        } else if self.is_trading.load(Ordering::Relaxed) {
+            Some(Sound::EntityVillagerTrade)
+        } else {
+            Some(Sound::EntityVillagerAmbient)
+        }
+    }
+
     fn as_ageable(&self) -> Option<&dyn AgeableMob> {
         Some(self)
     }

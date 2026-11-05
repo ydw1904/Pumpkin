@@ -127,6 +127,27 @@ impl Animal for HappyGhastEntity {
 }
 
 impl Mob for HappyGhastEntity {
+    fn get_ambient_sound_interval(&self) -> i32 {
+        let interval = crate::entity::passive::animal::AMBIENT_SOUND_INTERVAL;
+        if self.get_entity().has_passengers() {
+            interval * 6
+        } else {
+            interval
+        }
+    }
+
+    fn get_ambient_sound(&self) -> Option<pumpkin_data::sound::Sound> {
+        Some(if self.mob_entity.living_entity.is_baby() {
+            pumpkin_data::sound::Sound::EntityGhastlingAmbient
+        } else {
+            pumpkin_data::sound::Sound::EntityHappyGhastAmbient
+        })
+    }
+
+    fn as_custom_sound(&self) -> Option<&dyn crate::entity::custom_sound::CustomSound> {
+        Some(self)
+    }
+
     /// Vanilla `HappyGhast.getWalkTargetValue`.
     fn get_walk_target_value(&self, level: &dyn CreatureSpawnLevel, pos: &BlockPos) -> f32 {
         let is_empty = |pos: &BlockPos| level.block_state(pos).is_air();
@@ -237,5 +258,23 @@ impl Mob for HappyGhastEntity {
         }
 
         self.animal_interact(player, item_stack)
+    }
+}
+
+impl crate::entity::custom_sound::CustomSound for HappyGhastEntity {
+    fn death_sound(&self) -> Option<pumpkin_data::sound::Sound> {
+        None
+    }
+
+    fn hurt_sound(&self) -> Option<pumpkin_data::sound::Sound> {
+        None
+    }
+
+    fn sound_volume(&self) -> f32 {
+        if self.mob_entity.living_entity.is_baby() {
+            1.0
+        } else {
+            4.0
+        }
     }
 }

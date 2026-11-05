@@ -668,6 +668,22 @@ impl Animal for AxolotlEntity {
 }
 
 impl Mob for AxolotlEntity {
+    fn get_ambient_sound(&self) -> Option<Sound> {
+        Some(if self.get_entity().is_in_water() {
+            Sound::EntityAxolotlIdleWater
+        } else {
+            Sound::EntityAxolotlIdleAir
+        })
+    }
+
+    fn play_ambient_sound(&self) {
+        if !self.is_playing_dead()
+            && let Some(sound) = self.get_ambient_sound()
+        {
+            self.make_sound(sound);
+        }
+    }
+
     fn has_audited_tick(&self) -> bool {
         true
     }

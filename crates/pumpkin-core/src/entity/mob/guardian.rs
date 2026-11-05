@@ -64,6 +64,9 @@ pub fn guardian_walk_target_value(
     }
 }
 
+/// Vanilla `Guardian.getAmbientSoundInterval`.
+pub const AMBIENT_SOUND_INTERVAL: i32 = 160;
+
 pub const GUARDIAN_HUNTS: &[Hunt] =
     &[Hunt::new(1, GUARDIAN_PREY, true).matching(outside_melee_range)];
 
@@ -270,6 +273,18 @@ impl CustomSound for GuardianEntity {
 }
 
 impl Mob for GuardianEntity {
+    fn get_ambient_sound_interval(&self) -> i32 {
+        AMBIENT_SOUND_INTERVAL
+    }
+
+    fn get_ambient_sound(&self) -> Option<Sound> {
+        Some(if self.get_entity().is_in_water() {
+            Sound::EntityGuardianAmbient
+        } else {
+            Sound::EntityGuardianAmbientLand
+        })
+    }
+
     fn get_walk_target_value(
         &self,
         level: &dyn CreatureSpawnLevel,

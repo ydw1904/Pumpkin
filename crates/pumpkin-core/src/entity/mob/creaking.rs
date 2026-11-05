@@ -397,6 +397,10 @@ impl CreakingEntity {
 }
 
 impl Mob for CreakingEntity {
+    fn get_ambient_sound(&self) -> Option<Sound> {
+        (!self.is_active()).then_some(Sound::EntityCreakingAmbient)
+    }
+
     /// Vanilla `Creaking.getWalkTargetValue`.
     fn get_walk_target_value(
         &self,

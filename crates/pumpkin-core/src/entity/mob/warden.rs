@@ -150,6 +150,20 @@ impl WardenEntity {
 }
 
 impl Mob for WardenEntity {
+    // Pumpkin's warden has no anger yet, so it always uses the calm `AngerLevel` sound.
+    fn get_ambient_sound(&self) -> Option<Sound> {
+        let pose = self.mob_entity.living_entity.entity.pose.load();
+        (!matches!(
+            pose,
+            EntityPose::Roaring | EntityPose::Digging | EntityPose::Emerging
+        ))
+        .then_some(Sound::EntityWardenAmbient)
+    }
+
+    fn as_custom_sound(&self) -> Option<&dyn crate::entity::custom_sound::CustomSound> {
+        Some(self)
+    }
+
     /// Vanilla `Warden.getWalkTargetValue`.
     fn get_walk_target_value(
         &self,
@@ -180,5 +194,19 @@ impl Mob for WardenEntity {
         !level.contains_any_liquid(bounding_box)
             && level.entities_at_box(&bounding_box).is_empty()
             && level.is_space_empty(bounding_box)
+    }
+}
+
+impl crate::entity::custom_sound::CustomSound for WardenEntity {
+    fn death_sound(&self) -> Option<pumpkin_data::sound::Sound> {
+        None
+    }
+
+    fn hurt_sound(&self) -> Option<pumpkin_data::sound::Sound> {
+        None
+    }
+
+    fn sound_volume(&self) -> f32 {
+        4.0
     }
 }

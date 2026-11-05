@@ -329,6 +329,14 @@ impl Animal for SnifferEntity {
 }
 
 impl Mob for SnifferEntity {
+    fn get_ambient_sound(&self) -> Option<Sound> {
+        (!matches!(
+            self.get_state(),
+            SnifferState::Digging | SnifferState::Searching
+        ))
+        .then_some(Sound::EntitySnifferIdle)
+    }
+
     fn mob_support_quad_leash(&self) -> bool {
         true
     }

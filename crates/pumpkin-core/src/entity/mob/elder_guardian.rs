@@ -5,12 +5,13 @@ use std::sync::{Arc, Weak};
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::potion::Effect;
+use pumpkin_data::sound::Sound;
 use pumpkin_protocol::java::client::play::{CGameEvent, GameEvent};
 use pumpkin_util::GameMode;
 
 use crate::entity::mob::guardian::{
-    GuardianState, guardian_ai_step, guardian_pre_damage, guardian_travel_in_water,
-    guardian_walk_target_value, init_guardian,
+    AMBIENT_SOUND_INTERVAL, GuardianState, guardian_ai_step, guardian_pre_damage,
+    guardian_travel_in_water, guardian_walk_target_value, init_guardian,
 };
 use crate::entity::{
     Entity, EntityBase,
@@ -95,6 +96,18 @@ impl ElderGuardianEntity {
 }
 
 impl Mob for ElderGuardianEntity {
+    fn get_ambient_sound_interval(&self) -> i32 {
+        AMBIENT_SOUND_INTERVAL
+    }
+
+    fn get_ambient_sound(&self) -> Option<Sound> {
+        Some(if self.get_entity().is_in_water() {
+            Sound::EntityElderGuardianAmbient
+        } else {
+            Sound::EntityElderGuardianAmbientLand
+        })
+    }
+
     fn get_walk_target_value(
         &self,
         level: &dyn CreatureSpawnLevel,

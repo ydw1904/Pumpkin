@@ -432,7 +432,41 @@ fn is_thundering(world: &World) -> bool {
     weather.thunder_level * weather.rain_level > 0.9
 }
 
+/// Vanilla `Fox.playAmbientSound` screech volume.
+const FOX_SCREECH_VOLUME: f32 = 2.0;
+
 impl Mob for FoxEntity {
+    fn get_ambient_sound(&self) -> Option<Sound> {
+        if self.is_sleeping() {
+            return Some(Sound::EntityFoxSleep);
+        }
+        let entity = self.get_entity();
+        let world = entity.world.load();
+        if !world.is_bright_outside() && self.get_random().random::<f32>() < 0.1 {
+            let search = entity.bounding_box.load().expand(16.0, 16.0, 16.0);
+            if world
+                .get_players_at_box(&search)
+                .iter()
+                .all(|player| player.is_spectator())
+            {
+                return Some(Sound::EntityFoxScreech);
+            }
+        }
+        Some(Sound::EntityFoxAmbient)
+    }
+
+    fn play_ambient_sound(&self) {
+        match self.get_ambient_sound() {
+            Some(Sound::EntityFoxScreech) => self.mob_entity.living_entity.make_sound(
+                Sound::EntityFoxScreech,
+                self.sound_source(),
+                FOX_SCREECH_VOLUME,
+            ),
+            Some(sound) => self.make_sound(sound),
+            None => {}
+        }
+    }
+
     fn can_dispenser_equip_into_slot(
         &self,
         slot: &pumpkin_data::data_component_impl::EquipmentSlot,

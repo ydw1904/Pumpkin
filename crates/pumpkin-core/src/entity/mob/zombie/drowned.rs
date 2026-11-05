@@ -236,6 +236,14 @@ impl DrownedEntity {
 }
 
 impl Mob for DrownedEntity {
+    fn get_ambient_sound(&self) -> Option<Sound> {
+        Some(if self.get_entity().is_in_water() {
+            Sound::EntityDrownedAmbientWater
+        } else {
+            Sound::EntityDrownedAmbient
+        })
+    }
+
     fn on_damage_with_context(
         &self,
         _damage_type: DamageType,

@@ -132,6 +132,14 @@ impl NeutralMob for PolarBearEntity {
 }
 
 impl Mob for PolarBearEntity {
+    fn get_ambient_sound(&self) -> Option<Sound> {
+        Some(if self.mob_entity.living_entity.is_baby() {
+            Sound::EntityPolarBearAmbientBaby
+        } else {
+            Sound::EntityPolarBearAmbient
+        })
+    }
+
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
         self.play_entity_sound(Sound::EntityPolarBearStep, 0.15, 1.0);
     }

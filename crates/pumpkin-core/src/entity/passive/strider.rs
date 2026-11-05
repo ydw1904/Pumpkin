@@ -226,6 +226,11 @@ impl Animal for StriderEntity {
 }
 
 impl Mob for StriderEntity {
+    fn get_ambient_sound(&self) -> Option<Sound> {
+        (!self.is_panicking() && !self.mob_entity.goals_selector.is_running::<TemptGoal>())
+            .then_some(Sound::EntityStriderAmbient)
+    }
+
     /// Vanilla `Strider.checkSpawnObstruction`.
     fn check_spawn_obstruction(&self, level: &dyn CreatureSpawnLevel) -> bool {
         crate::entity::mob::is_unobstructed(self, level)

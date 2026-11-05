@@ -8,6 +8,9 @@ use crate::entity::{EntityBase, mob::Mob, player::Player, r#type::from_type};
 use pumpkin_protocol::bedrock::server::actor_event::ActorEventID;
 use pumpkin_util::math::vector3::Vector3;
 
+/// Vanilla `Animal.getAmbientSoundInterval`.
+pub const AMBIENT_SOUND_INTERVAL: i32 = 120;
+
 pub trait Animal: Mob {
     fn is_food(&self, item_stack: &ItemStack) -> bool;
 

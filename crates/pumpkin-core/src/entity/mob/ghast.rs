@@ -107,6 +107,10 @@ impl GhastEntity {
 }
 
 impl Mob for GhastEntity {
+    fn as_custom_sound(&self) -> Option<&dyn crate::entity::custom_sound::CustomSound> {
+        Some(self)
+    }
+
     fn mob_support_quad_leash_as_holder(&self) -> bool {
         true
     }
@@ -449,5 +453,19 @@ impl Goal for RandomFloatAroundGoal {
 
     fn controls(&self) -> Controls {
         Controls::MOVE
+    }
+}
+
+impl crate::entity::custom_sound::CustomSound for GhastEntity {
+    fn death_sound(&self) -> Option<pumpkin_data::sound::Sound> {
+        None
+    }
+
+    fn hurt_sound(&self) -> Option<pumpkin_data::sound::Sound> {
+        None
+    }
+
+    fn sound_volume(&self) -> f32 {
+        5.0
     }
 }
