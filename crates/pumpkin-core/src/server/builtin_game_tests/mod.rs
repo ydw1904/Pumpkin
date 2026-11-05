@@ -163,10 +163,11 @@ const BUILTIN_TEST_IDS: &[&str] = &[
     "pumpkin:sticky_piston_leaves_obsidian_behind",
     "pumpkin:sticky_piston_redstone_block_powers_lamp",
     "pumpkin:piston_one_stone_leaves_pushed_block",
-    // dispensers_and_droppers_extended (12)
+    // dispensers_and_droppers_extended (13)
     "pumpkin:dispenser_lava_bucket_places_and_picks_up",
     "pumpkin:dispenser_powder_snow_bucket_places_and_picks_up",
     "pumpkin:dispenser_shears_harvest_full_beehive",
+    "pumpkin:dispenser_shears_snow_golem",
     "pumpkin:dispenser_glass_bottle_fills_from_water",
     "pumpkin:dispenser_flint_and_steel_primes_tnt",
     "pumpkin:dispenser_flint_and_steel_lights_campfire",
@@ -1087,7 +1088,7 @@ pub fn ensure_builtin_game_tests_registered() {
             pistons_extended::test_sticky_piston_pulls_redstone_block_cuts_power,
         );
 
-        // dispensers_and_droppers_extended (12)
+        // dispensers_and_droppers_extended (13)
         register_function_test(
             "pumpkin:dispenser_lava_bucket_places_and_picks_up",
             "pumpkin:empty_5x4x5",
@@ -1108,6 +1109,13 @@ pub fn ensure_builtin_game_tests_registered() {
             20,
             0,
             dispensers_and_droppers_extended::test_dispenser_shears_full_beehive_drops_honeycomb,
+        );
+        register_function_test(
+            "pumpkin:dispenser_shears_snow_golem",
+            "pumpkin:empty_5x4x5",
+            20,
+            0,
+            dispensers_and_droppers_extended::test_dispenser_shears_snow_golem_drops_pumpkin,
         );
         register_function_test(
             "pumpkin:dispenser_glass_bottle_fills_from_water",

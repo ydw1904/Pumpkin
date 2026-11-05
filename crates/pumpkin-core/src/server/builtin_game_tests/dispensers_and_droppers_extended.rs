@@ -152,6 +152,37 @@ pub(super) async fn test_dispenser_shears_full_beehive_drops_honeycomb(
     Ok(())
 }
 
+pub(super) async fn test_dispenser_shears_snow_golem_drops_pumpkin(
+    helper: GameTestHelper,
+) -> GameTestResult<()> {
+    build_stone_floor(&helper, 5, 4).await?;
+    let disp = BlockPos::new(1, 1, 1);
+    let golem = BlockPos::new(2, 1, 1);
+    helper
+        .set_block(&disp, east_dispenser_id(&Block::DISPENSER))
+        .await?;
+    helper
+        .set_container_item(&disp, 0, "minecraft:shears", 1)
+        .await?;
+    helper
+        .execute_command(&golem, "summon minecraft:snow_golem ~ ~ ~ {NoAI:1b}")
+        .await?;
+    helper
+        .set_block_default(&BlockPos::new(1, 2, 1), &Block::REDSTONE_BLOCK)
+        .await?;
+
+    helper
+        .start_sequence()
+        .then_idle(5)
+        .then_execute(move |helper| async move {
+            helper
+                .assert_item_entity_present("minecraft:carved_pumpkin", &golem, 3.0)
+                .await
+        })
+        .then_succeed();
+    Ok(())
+}
+
 pub(super) async fn test_dispenser_glass_bottle_fills_water_from_source(
     helper: GameTestHelper,
 ) -> GameTestResult<()> {
