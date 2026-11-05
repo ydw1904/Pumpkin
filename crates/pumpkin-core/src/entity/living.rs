@@ -4230,6 +4230,12 @@ impl LivingEntity {
             }
         }
 
+        if let Some(player) = caller.get_player()
+            && player.is_sleeping()
+        {
+            player.wake_up();
+        }
+
         let (damage_blocked, blocked_with) =
             self.apply_item_blocking(caller, amount, damage_type, position, source);
         amount -= damage_blocked;

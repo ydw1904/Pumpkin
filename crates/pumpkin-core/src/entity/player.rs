@@ -5569,8 +5569,7 @@ impl Player {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .invulnerable
-            && damage_type != pumpkin_data::damage::DamageType::GENERIC_KILL
-            && damage_type != pumpkin_data::damage::DamageType::OUT_OF_WORLD
+            && !damage_type.has_tag(&tag::DamageType::MINECRAFT_BYPASSES_INVULNERABILITY)
         {
             return false;
         }
@@ -5582,7 +5581,20 @@ impl Player {
         {
             return false;
         }
-        // TODO: Vanilla `Player.hurtServer` difficulty scaling when `scalesWithDifficulty`
+        // Vanilla `Player.hurtServer`. `removeEntitiesOnShoulder` would go here, but
+        // Pumpkin has no shoulder entities.
+        let mut amount = amount;
+        if combat::scales_with_difficulty(&damage_type, cause.or(source)) {
+            amount = match self.world().level_info.load().difficulty {
+                Difficulty::Peaceful => 0.0,
+                Difficulty::Easy => (amount / 2.0 + 1.0).min(amount),
+                Difficulty::Normal => amount,
+                Difficulty::Hard => amount * 3.0 / 2.0,
+            };
+        }
+        if amount == 0.0 {
+            return false;
+        }
         self.living_entity
             .damage_with_context(caller, amount, damage_type, position, source, cause)
     }

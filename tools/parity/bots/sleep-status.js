@@ -48,5 +48,15 @@ h.start(async () => {
   h.result('other_spectating', take(msgsA))
   await h.ticks(120)
   h.result('night_skipped', bot.time.timeOfDay < 1000)
+
+  // Getting hurt wakes a sleeping player.
+  h.cmd('time set 18000')
+  await h.ticks(10)
+  await bot.sleep(bedA).catch(e => h.result('hurt_sleep_error', e.message))
+  await h.ticks(10)
+  const asleep = bot.isSleeping
+  h.cmd(`damage ${bot.username} 1 minecraft:generic`)
+  await h.ticks(10)
+  h.result('hurt_wakes', `asleep=${asleep} after=${bot.isSleeping}`)
   b2.quit()
 })

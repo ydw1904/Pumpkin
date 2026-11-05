@@ -75,6 +75,18 @@ h.start(async () => {
   await h.ticks(5)
   h.result('resistance2.generic10', await hurt(10, 'minecraft:generic'))
 
+  // Difficulty scales damage caused by a living non-player, and explosions always; generic
+  // damage without an attacker never.
+  for (const difficulty of ['peaceful', 'easy', 'hard', 'normal']) {
+    h.cmd(`difficulty ${difficulty}`)
+    for (const [label, type, by] of [['golem10', 'minecraft:mob_attack', ' by @e[tag=g,limit=1]'], ['explosion10', 'minecraft:explosion', ''], ['generic10', 'minecraft:generic', '']]) {
+      await reset()
+      h.cmd(`summon iron_golem ${X + 0.5} ${Y + 1} ${Z + 3.5} {NoAI:1b,Silent:1b,Tags:["g"]}`)
+      await h.waitFor(() => Object.values(bot.entities).some(e => e.name === 'iron_golem'), 5000)
+      h.result(`difficulty.${difficulty}.${label}`, await hurt(10, type, by))
+    }
+  }
+
   // A second hit inside the invulnerability window deals only what exceeds the first.
   await reset()
   const first = await hurt(4, 'minecraft:generic')

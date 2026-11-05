@@ -4,12 +4,29 @@ use std::sync::atomic::Ordering;
 use crate::entity::EntityBase;
 use crate::entity::decoration::armor_stand::ArmorStandEntity;
 use crate::entity::living::LivingEntity;
+use pumpkin_data::damage::{DamageScaling, DamageType};
+use pumpkin_data::entity::EntityType;
 use pumpkin_data::tag::Taggable;
 use pumpkin_data::world::WorldEvent;
 use pumpkin_data::{attributes::Attributes, particle::Particle};
 use pumpkin_util::math::vector3::Vector3;
 
 use crate::{entity::Entity, world::World};
+
+/// Vanilla `DamageSource.scalesWithDifficulty`. `cause` is the causing entity
+/// (vanilla `DamageSource.getEntity`).
+pub fn scales_with_difficulty(damage_type: &DamageType, cause: Option<&dyn EntityBase>) -> bool {
+    match damage_type.scaling {
+        DamageScaling::Never => false,
+        // By type, since many callers pass the attacker's bare `Entity`. Like `from_type`,
+        // types with attributes are the living ones.
+        DamageScaling::WhenCausedByLivingNonPlayer => cause.is_some_and(|cause| {
+            let entity_type = cause.get_entity().entity_type;
+            !entity_type.attributes.is_empty() && entity_type != &EntityType::PLAYER
+        }),
+        DamageScaling::Always => true,
+    }
+}
 
 /// Checks smash eligibility, rejecting stale fall distance after a ground-only packet.
 pub fn can_smash_attack(attacker: &LivingEntity) -> bool {
