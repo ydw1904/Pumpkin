@@ -316,6 +316,17 @@ impl TextComponentBase {
                     click_tag.put_string("action", "copy_to_clipboard".to_string());
                     click_tag.put_string("value", value.to_string());
                 }
+                ClickEvent::ShowDialog { dialog } => {
+                    click_tag.put_string("action", "show_dialog".to_string());
+                    click_tag.put("dialog", dialog.to_nbt());
+                }
+                ClickEvent::Custom { id, payload } => {
+                    click_tag.put_string("action", "custom".to_string());
+                    click_tag.put_string("id", id.to_string());
+                    if let Some(payload) = payload {
+                        click_tag.put("payload", payload.to_nbt());
+                    }
+                }
             }
             let click_key = if *version >= JavaMinecraftVersion::V_1_21_5 {
                 "click_event"
@@ -791,6 +802,23 @@ impl TextComponentBase {
                         "value".to_string(),
                         serde_json::Value::String(value.to_string()),
                     );
+                }
+                ClickEvent::ShowDialog { dialog } => {
+                    click_map.insert(
+                        "action".to_string(),
+                        serde_json::Value::String("show_dialog".to_string()),
+                    );
+                    click_map.insert("dialog".to_string(), dialog.0.clone());
+                }
+                ClickEvent::Custom { id, payload } => {
+                    click_map.insert(
+                        "action".to_string(),
+                        serde_json::Value::String("custom".to_string()),
+                    );
+                    click_map.insert("id".to_string(), serde_json::Value::String(id.to_string()));
+                    if let Some(payload) = payload {
+                        click_map.insert("payload".to_string(), payload.0.clone());
+                    }
                 }
             }
             let click_key = if *version >= JavaMinecraftVersion::V_1_21_5 {

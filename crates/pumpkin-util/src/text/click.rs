@@ -20,4 +20,31 @@ pub enum ClickEvent {
     ChangePage { page: u32 },
     /// Copies the given text to the system clipboard.
     CopyToClipboard { value: Cow<'static, str> },
+    /// Opens a dialog: a dialog id, or a dialog written inline.
+    ShowDialog { dialog: ClickPayload },
+    /// Sends `id` and `payload` back to the server as a custom click action.
+    Custom {
+        id: Cow<'static, str>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        payload: Option<ClickPayload>,
+    },
+}
+
+/// A dialog or custom payload in a click event, kept as the JSON it was given.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(transparent)]
+pub struct ClickPayload(pub serde_json::Value);
+
+impl std::hash::Hash for ClickPayload {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.to_string().hash(state);
+    }
+}
+
+impl ClickPayload {
+    /// The payload as NBT, as the network writes it.
+    #[must_use]
+    pub fn to_nbt(&self) -> pumpkin_nbt::tag::NbtTag {
+        super::hover::json_to_nbt(&self.0)
+    }
 }
