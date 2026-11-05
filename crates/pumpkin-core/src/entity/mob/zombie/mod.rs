@@ -129,6 +129,17 @@ impl ZombieEntityBase {
     /// Vanilla `Zombie.registerGoals` without `addBehaviourGoals`, for zombies that bring their
     /// own behaviour goals, like the drowned.
     pub fn without_behaviour_goals(entity: Entity, can_break_doors: bool) -> Arc<Self> {
+        // Vanilla `Zombie.defineSynchedData`.
+        entity
+            .synched_data
+            .define(tracked_data::zombie::DATA_BABY_ID, false);
+        entity.synched_data.define(
+            tracked_data::zombie::DATA_SPECIAL_TYPE_ID,
+            pumpkin_protocol::VarInt(0),
+        );
+        entity
+            .synched_data
+            .define(tracked_data::zombie::DATA_DROWNED_CONVERSION_ID, false);
         let mob_entity = MobEntity::new(entity);
         let zombie = Self {
             mob_entity,

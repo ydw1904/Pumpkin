@@ -52,6 +52,10 @@ pub struct OcelotEntity {
 
 impl OcelotEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Ocelot.defineSynchedData`.
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::ocelot::DATA_TRUSTING, false);
         let mob_entity = MobEntity::new(entity);
         let ocelot = Self {
             mob_entity,

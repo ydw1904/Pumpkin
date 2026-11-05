@@ -52,6 +52,14 @@ impl TridentEntity {
     const DESPAWN_TIME: u32 = 1200;
 
     pub fn new(entity: Entity, owner: Option<&Entity>) -> Self {
+        // Vanilla `ThrownTrident.defineSynchedData`.
+        crate::entity::projectile::arrow::define_abstract_arrow_synched_data(&entity);
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::trident::ID_LOYALTY, 0i8);
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::trident::ID_FOIL, false);
         Self {
             entity,
             owner: ProjectileOwner::new(owner),

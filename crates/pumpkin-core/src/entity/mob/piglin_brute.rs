@@ -34,6 +34,8 @@ impl PiglinBruteEntity {
     pub const XP_REWARD: u32 = 20;
 
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `AbstractPiglin.defineSynchedData`.
+        crate::entity::mob::piglin::define_abstract_piglin_synched_data(&entity);
         let mob_entity = MobEntity::new(entity);
         let piglin = Self {
             mob_entity,

@@ -86,6 +86,11 @@ pub struct WitchEntity {
 impl WitchEntity {
     #[must_use]
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Witch.defineSynchedData`.
+        crate::entity::mob::raider::define_raider_synched_data(&entity);
+        entity
+            .synched_data
+            .define(tracked_data::witch::DATA_USING_ITEM, false);
         let mob_entity = MobEntity::new(entity);
         let witch = Self {
             mob_entity,

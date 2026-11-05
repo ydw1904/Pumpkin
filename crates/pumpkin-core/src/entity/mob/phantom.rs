@@ -47,6 +47,10 @@ pub struct PhantomEntity {
 
 impl PhantomEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Phantom.defineSynchedData`.
+        entity
+            .synched_data
+            .define(tracked_data::phantom::ID_SIZE, pumpkin_protocol::VarInt(0));
         let mut mob_entity = MobEntity::new(entity);
         *mob_entity
             .move_control

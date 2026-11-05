@@ -21,6 +21,13 @@ use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::mob::Mob;
 use crate::entity::mob::patrol::{PatrolData, PatrollingMonster};
 
+/// Vanilla `Raider.defineSynchedData`.
+pub fn define_raider_synched_data(entity: &crate::entity::Entity) {
+    entity
+        .synched_data
+        .define(tracked_data::raider::IS_CELEBRATING, false);
+}
+
 #[must_use]
 pub fn is_raider(entity_type: &'static EntityType) -> bool {
     entity_type.has_tag(&tag::EntityType::MINECRAFT_RAIDERS)

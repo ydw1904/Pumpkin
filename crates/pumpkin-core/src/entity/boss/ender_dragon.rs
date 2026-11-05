@@ -229,6 +229,11 @@ impl EnderDragonEntity {
             parts.push(part);
         }
 
+        // Vanilla `EnderDragon.defineSynchedData`.
+        entity.synched_data.define(
+            tracked_data::ender_dragon::DATA_PHASE,
+            VarInt(EnderDragonPhase::Hovering.id()),
+        );
         Arc::new(Self {
             mob_entity: MobEntity::new(entity),
             parts,

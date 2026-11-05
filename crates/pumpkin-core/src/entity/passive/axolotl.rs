@@ -125,6 +125,18 @@ pub struct AxolotlEntity {
 
 impl AxolotlEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Axolotl.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::axolotl::DATA_VARIANT,
+            VarInt(pumpkin_data::entity_variant::AxolotlVariant::DEFAULT.id()),
+        );
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::axolotl::DATA_PLAYING_DEAD,
+            false,
+        );
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::axolotl::FROM_BUCKET, false);
         let mut mob_entity = MobEntity::new(entity);
         // Vanilla `Axolotl` constructor and `createNavigation`.
         *mob_entity

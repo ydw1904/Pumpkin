@@ -314,6 +314,14 @@ const BED_STAND_UP_RANGE: f64 = 3.0;
 /// `ExplorationMapFunction.DEFAULT_ZOOM`, which villager trades use.
 const EXPLORATION_MAP_ZOOM: i8 = 2;
 
+/// Vanilla `AbstractVillager.defineSynchedData`.
+pub fn define_abstract_villager_synched_data(entity: &crate::entity::Entity) {
+    entity.synched_data.define(
+        tracked_data::abstract_villager::DATA_UNHAPPY_COUNTER,
+        VarInt(0),
+    );
+}
+
 pub struct VillagerEntity {
     pub mob_entity: MobEntity,
     pub ageable_data: AgeableData,
@@ -377,6 +385,15 @@ impl VillagerEntity {
 
     #[allow(clippy::too_many_lines)]
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Villager.defineSynchedData`.
+        crate::entity::passive::villager::define_abstract_villager_synched_data(&entity);
+        entity.synched_data.define(
+            tracked_data::villager::DATA_VILLAGER_DATA,
+            VillagerData::new(VillagerType::Plains, VillagerProfession::None, 1),
+        );
+        entity
+            .synched_data
+            .define(tracked_data::villager::DATA_VILLAGER_DATA_FINALIZED, false);
         let mut mob_entity = MobEntity::new(entity);
         let navigator = mob_entity
             .navigator

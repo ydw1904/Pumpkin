@@ -90,6 +90,30 @@ const SHAKE_END: f32 = 2.0;
 
 impl WolfEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Wolf.defineSynchedData`.
+        crate::entity::passive::tamable::define_tamable_animal_synched_data(&entity);
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::wolf::DATA_VARIANT_ID,
+            VarInt(i32::from(
+                pumpkin_data::wolf_variant::WolfVariant::Pale.id(),
+            )),
+        );
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::wolf::DATA_SOUND_VARIANT_ID,
+            VarInt(i32::from(
+                pumpkin_data::wolf_sound_variant::WolfSoundVariant::Classic.id(),
+            )),
+        );
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::wolf::DATA_INTERESTED_ID, false);
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::wolf::DATA_COLLAR_COLOR,
+            VarInt(pumpkin_data::dye_color::DyeColor::Red as i32),
+        );
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::wolf::DATA_ANGER_END_TIME, -1i64);
         let mob_entity = MobEntity::new(entity);
         let wolf = Self {
             mob_entity,

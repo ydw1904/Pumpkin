@@ -51,6 +51,20 @@ pub struct InteractionEntity {
 impl InteractionEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
         entity.no_physics.store(true, Ordering::Relaxed);
+        // Vanilla `Interaction.defineSynchedData`.
+        let data = &entity.synched_data;
+        data.define(
+            pumpkin_data::tracked_data::interaction::DATA_WIDTH_ID,
+            1.0f32,
+        );
+        data.define(
+            pumpkin_data::tracked_data::interaction::DATA_HEIGHT_ID,
+            1.0f32,
+        );
+        data.define(
+            pumpkin_data::tracked_data::interaction::DATA_RESPONSE_ID,
+            false,
+        );
         let width = 1.0;
         let height = 1.0;
         let dimensions = EntityDimensions::new(width, height, height * 0.85);

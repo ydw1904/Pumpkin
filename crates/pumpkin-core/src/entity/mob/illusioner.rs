@@ -60,6 +60,8 @@ impl IllusionerEntity {
         entity
             .synched_data
             .define(tracked_data::illusioner::DATA_SPELL_CASTING_ID, 0i8);
+        // Vanilla `Raider.defineSynchedData`.
+        crate::entity::mob::raider::define_raider_synched_data(&entity);
         let mob_entity = MobEntity::new(entity);
         let illusioner = Self {
             mob_entity,

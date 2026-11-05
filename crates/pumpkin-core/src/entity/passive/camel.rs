@@ -63,6 +63,15 @@ pub struct CamelEntity {
 impl CamelEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
         let husk = entity.entity_type == &EntityType::CAMEL_HUSK;
+        // Vanilla `Camel.defineSynchedData`.
+        crate::entity::passive::abstract_horse::define_abstract_horse_synched_data(&entity);
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::camel::DASH, false);
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::camel::LAST_POSE_CHANGE_TICK,
+            0i64,
+        );
         let mut mob_entity = MobEntity::new(entity);
         let navigator = mob_entity
             .navigator

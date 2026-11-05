@@ -66,19 +66,30 @@ impl ZombieVillagerEntity {
 
     #[must_use]
     pub fn with_can_break_doors(entity: Entity, can_break_doors: bool) -> Arc<Self> {
+        let villager_data = VillagerData::new(
+            pumpkin_data::villager::VillagerType::Plains,
+            // Vanilla's `initializeZombieVillagerData` rolls a random profession
+            // so a cured villager has trades. NBT-loaded data overwrites this later.
+            pumpkin_data::villager::VillagerProfession::from_i32(game_random().random_range(0..15))
+                .unwrap_or(pumpkin_data::villager::VillagerProfession::None),
+            1,
+        );
+        // Vanilla `ZombieVillager.defineSynchedData`: the rolled data is the default, so a
+        // fresh zombie villager's profession isn't sent at spawn.
+        let data = &entity.synched_data;
+        data.define(tracked_data::zombie_villager::DATA_CONVERTING_ID, false);
+        data.define(
+            tracked_data::zombie_villager::DATA_VILLAGER_DATA,
+            villager_data,
+        );
+        data.define(
+            tracked_data::zombie_villager::DATA_VILLAGER_DATA_FINALIZED,
+            false,
+        );
         let mob_entity = ZombieEntityBase::with_can_break_doors(entity, can_break_doors);
         Arc::new(Self {
             mob_entity,
-            villager_data: std::sync::Mutex::new(VillagerData::new(
-                pumpkin_data::villager::VillagerType::Plains,
-                // Vanilla's `initializeZombieVillagerData` rolls a random profession
-                // so a cured villager has trades. NBT-loaded data overwrites this later.
-                pumpkin_data::villager::VillagerProfession::from_i32(
-                    game_random().random_range(0..15),
-                )
-                .unwrap_or(pumpkin_data::villager::VillagerProfession::None),
-                1,
-            )),
+            villager_data: std::sync::Mutex::new(villager_data),
             villager_data_finalized: AtomicBool::new(false),
             villager_nbt: std::sync::Mutex::new(NbtCompound::new()),
             villager_xp: AtomicI32::new(0),

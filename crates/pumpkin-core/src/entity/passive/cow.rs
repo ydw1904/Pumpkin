@@ -45,6 +45,19 @@ pub struct CowEntity {
 
 impl CowEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Cow.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::cow::DATA_VARIANT_ID,
+            VarInt(i32::from(
+                pumpkin_data::cow_variant::CowVariant::Temperate.id(),
+            )),
+        );
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::cow::DATA_SOUND_VARIANT_ID,
+            VarInt(i32::from(
+                pumpkin_data::cow_sound_variant::CowSoundVariant::Classic.id(),
+            )),
+        );
         let mob_entity = MobEntity::new(entity);
         let cow = Self {
             mob_entity,

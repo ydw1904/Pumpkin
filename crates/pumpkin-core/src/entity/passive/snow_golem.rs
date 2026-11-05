@@ -39,6 +39,11 @@ pub struct SnowGolemEntity {
 
 impl SnowGolemEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `SnowGolem.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::snow_golem::DATA_PUMPKIN_ID,
+            16i8,
+        );
         let mob_entity = MobEntity::new(entity);
         let snow_golem = Self {
             mob_entity,

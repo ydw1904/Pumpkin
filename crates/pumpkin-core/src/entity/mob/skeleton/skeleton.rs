@@ -27,6 +27,10 @@ pub struct SkeletonEntity {
 
 impl SkeletonEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Skeleton.defineSynchedData`.
+        entity
+            .synched_data
+            .define(tracked_data::skeleton::DATA_STRAY_CONVERSION_ID, false);
         let entity = SkeletonEntityBase::new(entity);
         let skeleton = Self {
             entity,

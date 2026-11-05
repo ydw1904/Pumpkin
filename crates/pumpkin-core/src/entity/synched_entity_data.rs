@@ -93,7 +93,18 @@ impl SynchedEntityData {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(item) = items.get_mut(&tracked) {
+            // A subclass default replacing its parent's, like an overridden
+            // `getMaxAirSupply`, also replaces a value nothing has set yet.
+            if item.is_default && !item.dirty && item.default_bytes.is_some() {
+                item.serializer = Box::new(holder);
+                item.canonical_bytes.clone_from(&default_bytes);
+            }
             item.is_default = item.canonical_bytes == default_bytes;
+            // Defined late, a value already set to its default is no change: vanilla defines
+            // first, and setting the same value again doesn't mark it dirty.
+            if item.default_bytes.is_none() && item.is_default {
+                item.dirty = false;
+            }
             item.default_bytes = Some(default_bytes);
             return;
         }
@@ -149,6 +160,26 @@ impl SynchedEntityData {
         }
         self.is_dirty.store(true, Ordering::Release);
         true
+    }
+
+    /// Like [`Self::set`], but marks the value dirty even when it is unchanged, like vanilla
+    /// `SynchedEntityData.set(accessor, value, true)`.
+    pub fn set_forced<T: MetadataSerializer + Clone + Send + Sync + 'static>(
+        &self,
+        tracked: TrackedData,
+        value: T,
+    ) {
+        if self.set(tracked, value) {
+            return;
+        }
+        let mut items = self
+            .items
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(item) = items.get_mut(&tracked) {
+            item.dirty = true;
+            self.is_dirty.store(true, Ordering::Release);
+        }
     }
 
     /// Whether any value changed since the last [`Self::clear_dirty`].
@@ -296,5 +327,18 @@ mod test {
         late.set(PLAYER_MODE_CUSTOMISATION, 0u8);
         late.define(PLAYER_MODE_CUSTOMISATION, 0u8);
         assert!(late.get_non_default_values_for_version(&version).is_none());
+        // Vanilla defines first, so setting the default again is no change to send.
+        assert!(late.pack_dirty_for_version(&version).is_none());
+
+        // A subclass default, like an overridden `getMaxAirSupply`, replaces the parent's
+        // while nothing has set the value.
+        let redefined = SynchedEntityData::new();
+        redefined.define(PLAYER_MODE_CUSTOMISATION, 0u8);
+        redefined.define(PLAYER_MODE_CUSTOMISATION, 0x7Fu8);
+        assert!(
+            redefined
+                .get_non_default_values_for_version(&version)
+                .is_none()
+        );
     }
 }

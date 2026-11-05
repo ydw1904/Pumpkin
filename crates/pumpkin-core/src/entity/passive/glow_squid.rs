@@ -31,6 +31,11 @@ pub struct GlowSquidEntity {
 
 impl GlowSquidEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `GlowSquid.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::glow_squid::DATA_DARK_TICKS_REMAINING,
+            pumpkin_protocol::VarInt(0),
+        );
         let mob_entity = MobEntity::new(entity);
         let squid_data = SquidData::new(&mob_entity);
         Arc::new(Self {

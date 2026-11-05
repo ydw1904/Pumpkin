@@ -36,6 +36,10 @@ impl GhastEntity {
     pub const FLYING_SPEED: f64 = 0.06;
 
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Ghast.defineSynchedData`.
+        entity
+            .synched_data
+            .define(tracked_data::ghast::DATA_IS_CHARGING, false);
         let mob_entity = MobEntity::new(entity);
         let ghast = Self {
             mob_entity,

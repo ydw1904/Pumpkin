@@ -76,6 +76,63 @@ pub struct DisplayEntity {
 impl DisplayEntity {
     pub fn new(entity: Entity) -> Self {
         entity.no_physics.store(true, Ordering::Relaxed);
+        // Vanilla `Display.defineSynchedData`.
+        let data = &entity.synched_data;
+        data.define(
+            pumpkin_data::tracked_data::display::DATA_POS_ROT_INTERPOLATION_DURATION_ID,
+            VarInt(0),
+        );
+        data.define(
+            pumpkin_data::tracked_data::display::DATA_TRANSFORMATION_INTERPOLATION_START_DELTA_TICKS_ID,
+            VarInt(0),
+        );
+        data.define(
+            pumpkin_data::tracked_data::display::DATA_TRANSFORMATION_INTERPOLATION_DURATION_ID,
+            VarInt(0),
+        );
+        data.define(
+            pumpkin_data::tracked_data::display::DATA_TRANSLATION_ID,
+            Vector3fSerializer(0.0, 0.0, 0.0),
+        );
+        data.define(
+            pumpkin_data::tracked_data::display::DATA_SCALE_ID,
+            Vector3fSerializer(1.0, 1.0, 1.0),
+        );
+        data.define(
+            pumpkin_data::tracked_data::display::DATA_RIGHT_ROTATION_ID,
+            QuaternionfSerializer(0.0, 0.0, 0.0, 1.0),
+        );
+        data.define(
+            pumpkin_data::tracked_data::display::DATA_LEFT_ROTATION_ID,
+            QuaternionfSerializer(0.0, 0.0, 0.0, 1.0),
+        );
+        // `BillboardConstraints.FIXED`.
+        data.define(
+            pumpkin_data::tracked_data::display::DATA_BILLBOARD_RENDER_CONSTRAINTS_ID,
+            0u8,
+        );
+        data.define(
+            pumpkin_data::tracked_data::display::DATA_BRIGHTNESS_OVERRIDE_ID,
+            VarInt(-1),
+        );
+        data.define(
+            pumpkin_data::tracked_data::display::DATA_VIEW_RANGE_ID,
+            1.0f32,
+        );
+        data.define(
+            pumpkin_data::tracked_data::display::DATA_SHADOW_RADIUS_ID,
+            0.0f32,
+        );
+        data.define(
+            pumpkin_data::tracked_data::display::DATA_SHADOW_STRENGTH_ID,
+            1.0f32,
+        );
+        data.define(pumpkin_data::tracked_data::display::DATA_WIDTH_ID, 0.0f32);
+        data.define(pumpkin_data::tracked_data::display::DATA_HEIGHT_ID, 0.0f32);
+        data.define(
+            pumpkin_data::tracked_data::display::DATA_GLOW_COLOR_OVERRIDE_ID,
+            VarInt(-1),
+        );
         Self {
             entity,
             interpolation_start_delta_ticks: AtomicI32::new(0),
@@ -103,7 +160,8 @@ impl DisplayEntity {
     pub fn set_interpolation_start_delta_ticks(&self, ticks: i32) {
         self.interpolation_start_delta_ticks
             .store(ticks, Ordering::Relaxed);
-        self.entity.set_synced_data(
+        // Vanilla `setTransformationInterpolationDelay` forces the update even when unchanged.
+        self.entity.synched_data.set_forced(
             pumpkin_data::tracked_data::display::START_INTERPOLATION,
             VarInt(ticks),
         );
@@ -373,7 +431,7 @@ impl DisplayEntity {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
 
-        self.entity.set_synced_data(
+        self.entity.synched_data.set_forced(
             pumpkin_data::tracked_data::display::START_INTERPOLATION,
             VarInt(self.interpolation_start_delta_ticks.load(Ordering::Relaxed)),
         );
@@ -675,6 +733,11 @@ pub struct BlockDisplayEntity {
 
 impl BlockDisplayEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `BlockDisplay.defineSynchedData`: air.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::block_display::DATA_BLOCK_STATE_ID,
+            VarInt(0),
+        );
         Arc::new(Self {
             display: DisplayEntity::new(entity),
             block_state: AtomicI32::new(0),
@@ -782,6 +845,16 @@ pub struct ItemDisplayEntity {
 
 impl ItemDisplayEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `ItemDisplay.defineSynchedData`: no item, `ItemDisplayContext.NONE`.
+        let data = &entity.synched_data;
+        data.define(
+            pumpkin_data::tracked_data::item_display::DATA_ITEM_STACK_ID,
+            ItemStackSerializer::from(ItemStack::EMPTY.clone()),
+        );
+        data.define(
+            pumpkin_data::tracked_data::item_display::DATA_ITEM_DISPLAY_ID,
+            0u8,
+        );
         Arc::new(Self {
             display: DisplayEntity::new(entity),
             item_stack: Mutex::new(ItemStack::new(0, &pumpkin_data::item::Item::AIR)),
@@ -950,6 +1023,28 @@ pub struct TextDisplayEntity {
 
 impl TextDisplayEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `TextDisplay.defineSynchedData`.
+        let data = &entity.synched_data;
+        data.define(
+            pumpkin_data::tracked_data::text_display::DATA_TEXT_ID,
+            TextComponent::text(""),
+        );
+        data.define(
+            pumpkin_data::tracked_data::text_display::DATA_LINE_WIDTH_ID,
+            VarInt(200),
+        );
+        data.define(
+            pumpkin_data::tracked_data::text_display::DATA_BACKGROUND_COLOR_ID,
+            VarInt(0x4000_0000),
+        );
+        data.define(
+            pumpkin_data::tracked_data::text_display::DATA_TEXT_OPACITY_ID,
+            -1i8,
+        );
+        data.define(
+            pumpkin_data::tracked_data::text_display::DATA_STYLE_FLAGS_ID,
+            0u8,
+        );
         Arc::new(Self {
             display: DisplayEntity::new(entity),
             text: Mutex::new(TextComponent::text("")),

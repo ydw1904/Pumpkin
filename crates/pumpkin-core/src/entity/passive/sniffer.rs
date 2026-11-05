@@ -80,6 +80,15 @@ pub struct SnifferEntity {
 
 impl SnifferEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Sniffer.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::sniffer::DATA_STATE,
+            VarInt(SnifferState::Idling.id()),
+        );
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::sniffer::DATA_DROP_SEED_AT_TICK,
+            VarInt(0),
+        );
         let mob_entity = MobEntity::new(entity);
         let sniffer = Self {
             mob_entity,

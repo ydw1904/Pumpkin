@@ -47,6 +47,16 @@ impl FireworkRocketEntity {
     }
 
     pub fn new_with_stack(entity: Entity, stack: ItemStack) -> Self {
+        // Vanilla `FireworkRocketEntity.defineSynchedData`. The item has no default: vanilla
+        // compares stacks by identity, so the rocket's own item is always sent.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::firework_rocket::DATA_ATTACHED_TO_TARGET,
+            OptionalInt(None),
+        );
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::firework_rocket::DATA_SHOT_AT_ANGLE,
+            false,
+        );
         let mut random = RandomGenerator::Gameplay(game_random());
         let life_time = Self::compute_lifetime(&stack, &mut random);
 

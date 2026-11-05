@@ -15,6 +15,14 @@ use pumpkin_util::math::{boundingbox::EntityDimensions, vector3::Vector3};
 
 use super::water_animal::WaterAnimal;
 
+/// Vanilla `AbstractFish.defineSynchedData`.
+pub fn define_abstract_fish_synched_data(entity: &crate::entity::Entity) {
+    entity.synched_data.define(
+        pumpkin_data::tracked_data::abstract_fish::FROM_BUCKET,
+        false,
+    );
+}
+
 #[derive(Default)]
 pub struct FishData {
     pub from_bucket: AtomicBool,

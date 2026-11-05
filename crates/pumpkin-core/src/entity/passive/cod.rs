@@ -22,6 +22,8 @@ pub struct CodEntity {
 
 impl CodEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `AbstractFish.defineSynchedData`.
+        crate::entity::passive::abstract_fish::define_abstract_fish_synched_data(&entity);
         let mut mob_entity = MobEntity::new(entity);
         super::abstract_fish::initialize_fish_movement(&mut mob_entity);
         let mob_arc = Arc::new_cyclic(|weak: &std::sync::Weak<Self>| Self {

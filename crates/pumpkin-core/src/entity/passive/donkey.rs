@@ -33,6 +33,9 @@ pub struct DonkeyEntity {
 
 impl DonkeyEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `AbstractChestedHorse.defineSynchedData`.
+        crate::entity::passive::abstract_horse::define_abstract_horse_synched_data(&entity);
+        crate::entity::passive::abstract_horse::define_abstract_chested_horse_synched_data(&entity);
         let mob_entity = MobEntity::new(entity);
         let donkey = Self {
             mob_entity,

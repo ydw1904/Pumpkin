@@ -114,6 +114,15 @@ pub struct CopperGolemEntity {
 
 impl CopperGolemEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `CopperGolem.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::copper_golem::DATA_WEATHER_STATE,
+            VarInt(WeatherState::Unaffected.id()),
+        );
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::copper_golem::COPPER_GOLEM_STATE,
+            VarInt(CopperGolemState::Idle.id()),
+        );
         let mob_entity = MobEntity::new(entity);
         let golem = Self {
             mob_entity,

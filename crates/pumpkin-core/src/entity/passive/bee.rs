@@ -78,6 +78,13 @@ pub struct BeeEntity {
 
 impl BeeEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Bee.defineSynchedData`.
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::bee::DATA_FLAGS_ID, 0i8);
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::bee::DATA_ANGER_END_TIME, -1i64);
         let mut mob_entity = MobEntity::new(entity);
         *mob_entity
             .move_control

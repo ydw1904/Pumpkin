@@ -35,8 +35,18 @@ impl TNTEntity {
     /// Vanilla `PrimedTnt.DEFAULT_EXPLOSION_POWER`.
     pub const DEFAULT_POWER: f32 = 4.0;
 
-    pub const fn new(mut entity: Entity, power: f32, fuse: u32) -> Self {
+    pub fn new(mut entity: Entity, power: f32, fuse: u32) -> Self {
         entity.blocks_building = true;
+        // Vanilla `PrimedTnt.defineSynchedData`.
+        let data = &entity.synched_data;
+        data.define(
+            pumpkin_data::tracked_data::tnt::DATA_FUSE_ID,
+            VarInt(Self::DEFAULT_FUSE as i32),
+        );
+        data.define(
+            pumpkin_data::tracked_data::tnt::DATA_BLOCK_STATE_ID,
+            VarInt(i32::from(Block::TNT.default_state.id.as_u16())),
+        );
         Self {
             entity,
             power: AtomicCell::new(power),

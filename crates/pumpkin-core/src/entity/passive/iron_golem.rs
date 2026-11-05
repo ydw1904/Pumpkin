@@ -66,6 +66,10 @@ pub struct IronGolemEntity {
 
 impl IronGolemEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `IronGolem.defineSynchedData`.
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::iron_golem::DATA_FLAGS_ID, 0i8);
         let mob_entity = MobEntity::new(entity);
         let iron_golem = Self {
             mob_entity,

@@ -114,6 +114,10 @@ pub struct SheepEntity {
 
 impl SheepEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Sheep.defineSynchedData`.
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::sheep::DATA_WOOL_ID, 0i8);
         let mob_entity = MobEntity::new(entity);
         let sheep = Self {
             mob_entity,

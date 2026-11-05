@@ -37,6 +37,12 @@ pub struct SalmonEntity {
 
 impl SalmonEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Salmon.defineSynchedData`.
+        crate::entity::passive::abstract_fish::define_abstract_fish_synched_data(&entity);
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::salmon::DATA_TYPE,
+            pumpkin_protocol::VarInt(SalmonSize::DEFAULT.id()),
+        );
         let mut mob_entity = MobEntity::new(entity);
         super::abstract_fish::initialize_fish_movement(&mut mob_entity);
         let mob_arc = Arc::new_cyclic(|weak: &std::sync::Weak<Self>| Self {

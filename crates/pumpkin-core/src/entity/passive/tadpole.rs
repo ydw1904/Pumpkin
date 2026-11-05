@@ -56,6 +56,11 @@ pub struct TadpoleEntity {
 
 impl TadpoleEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Tadpole.defineSynchedData`.
+        crate::entity::passive::abstract_fish::define_abstract_fish_synched_data(&entity);
+        entity
+            .synched_data
+            .define(tracked_data::tadpole::AGE_LOCKED, false);
         let mut mob_entity = MobEntity::new(entity);
         abstract_fish::initialize_fish_movement(&mut mob_entity);
         *mob_entity

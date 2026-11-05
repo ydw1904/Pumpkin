@@ -59,6 +59,11 @@ pub struct MooshroomEntity {
 
 impl MooshroomEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `MushroomCow.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::mooshroom::DATA_TYPE,
+            VarInt(pumpkin_data::entity_variant::MooshroomVariant::DEFAULT.id()),
+        );
         let mooshroom = Self {
             mob_entity: MobEntity::new(entity),
             ageable_data: AgeableData::default(),

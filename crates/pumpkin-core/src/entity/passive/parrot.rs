@@ -119,6 +119,12 @@ impl ParrotEntity {
             control::flying_move_control::FlyingMoveControl,
             pathfinder::{Navigator, node::PathType},
         };
+        // Vanilla `Parrot.defineSynchedData`.
+        crate::entity::passive::tamable::define_tamable_animal_synched_data(&entity);
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::parrot::DATA_VARIANT_ID,
+            VarInt(pumpkin_data::entity_variant::ParrotVariant::DEFAULT.id()),
+        );
         let mut mob_entity = MobEntity::new(entity);
         *mob_entity
             .move_control

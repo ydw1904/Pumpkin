@@ -28,6 +28,10 @@ pub struct CaveSpiderEntity {
 
 impl CaveSpiderEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Spider.defineSynchedData`.
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::cave_spider::DATA_FLAGS_ID, 0i8);
         let mut mob_entity = MobEntity::new(entity);
         initialize_spider_navigation(&mut mob_entity);
         let mob_arc = Arc::new(Self { mob_entity });

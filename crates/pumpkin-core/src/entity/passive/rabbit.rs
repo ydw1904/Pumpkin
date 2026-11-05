@@ -130,6 +130,11 @@ pub struct RabbitEntity {
 
 impl RabbitEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Rabbit.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::rabbit::DATA_TYPE_ID,
+            VarInt(pumpkin_data::entity_variant::RabbitVariant::DEFAULT.id()),
+        );
         let rabbit = Self {
             mob_entity: MobEntity::new(entity),
             ageable_data: AgeableData::default(),

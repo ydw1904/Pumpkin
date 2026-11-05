@@ -59,6 +59,13 @@ pub struct AllayEntity {
 
 impl AllayEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Allay.defineSynchedData`.
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::allay::DATA_DANCING, false);
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::allay::DATA_CAN_DUPLICATE, true);
         let mut mob_entity = MobEntity::new(entity);
         *mob_entity
             .move_control

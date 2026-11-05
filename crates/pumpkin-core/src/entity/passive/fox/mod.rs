@@ -150,6 +150,22 @@ pub struct FoxEntity {
 
 impl FoxEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Fox.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::fox::DATA_TRUSTED_ID_0,
+            None::<uuid::Uuid>,
+        );
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::fox::DATA_TRUSTED_ID_1,
+            None::<uuid::Uuid>,
+        );
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::fox::DATA_TYPE_ID,
+            VarInt(pumpkin_data::entity_variant::FoxVariant::DEFAULT.id()),
+        );
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::fox::DATA_FLAGS_ID, 0i8);
         let mob_entity = MobEntity::new(entity);
         let fox = Self {
             mob_entity,

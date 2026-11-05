@@ -128,6 +128,17 @@ pub struct ShulkerEntity {
 
 impl ShulkerEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Shulker.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::shulker::DATA_ATTACH_FACE_ID,
+            VarInt(DEFAULT_ATTACH_FACE as i32),
+        );
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::shulker::DATA_PEEK_ID, 0i8);
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::shulker::DATA_COLOR_ID, NO_COLOR);
         let mob_entity = MobEntity::new(entity);
         let shulker = Self {
             mob_entity,

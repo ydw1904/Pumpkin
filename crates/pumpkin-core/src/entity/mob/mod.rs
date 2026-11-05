@@ -53,7 +53,6 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::random::RandomGenerator;
 use pumpkin_util::random::gameplay::{GameRandom, game_random};
-use pumpkin_util::version::JavaMinecraftVersion;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU8, Ordering};
 use std::sync::{Arc, LazyLock};
@@ -2227,12 +2226,6 @@ pub trait Mob: EntityBase + Send + Sync {
             meta = meta.no_ai(true);
         }
         Some(meta)
-    }
-
-    /// Metadata which must accompany this mob whenever it is spawned for a Java client.
-    fn mob_java_spawn_metadata(&self, version: JavaMinecraftVersion) -> Option<Box<[u8]>> {
-        self.mob_metadata()
-            .and_then(|m| m.to_java_spawn_metadata(version))
     }
 
     /// Metadata which must accompany this mob whenever it is spawned for a Bedrock client.

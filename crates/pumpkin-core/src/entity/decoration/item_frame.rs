@@ -1,4 +1,5 @@
 use pumpkin_util::random::gameplay::game_random;
+use std::borrow::Cow;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -12,9 +13,10 @@ use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::Sound;
+use pumpkin_data::tracked_data;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::item_stack_seralizer::ItemStackSerializer;
-use pumpkin_protocol::java::client::play::{CSetEntityMetadata, Metadata};
+use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_util::math::vector3::Vector3;
 
 /// An item frame or glow item frame.
@@ -42,6 +44,17 @@ impl ItemFrameEntity {
 
     pub fn new(entity: Entity) -> Self {
         let facing = Self::DEFAULT_FACING.to_index();
+        // Vanilla `HangingEntity.defineSynchedData` and `ItemFrame.defineSynchedData`.
+        let data = &entity.synched_data;
+        data.define(
+            tracked_data::item_frame::DATA_DIRECTION,
+            VarInt(i32::from(facing)),
+        );
+        data.define(
+            tracked_data::item_frame::DATA_ITEM,
+            ItemStackSerializer(Cow::Borrowed(ItemStack::EMPTY)),
+        );
+        data.define(tracked_data::item_frame::DATA_ROTATION, VarInt(0));
         // The spawn packet reads the direction from the entity data field, so
         // it has to agree with `facing` or the frame spawns facing elsewhere.
         entity.data.store(i32::from(facing), Ordering::Relaxed);
@@ -106,9 +119,18 @@ impl ItemFrameEntity {
     }
 
     pub fn set_facing(&self, facing: BlockDirection) {
-        let index = facing.to_index();
+        self.store_facing(facing.to_index());
+    }
+
+    /// Vanilla `HangingEntity.setDirection`: the spawn packet's data field and the
+    /// `DATA_DIRECTION` entity data both carry the direction.
+    fn store_facing(&self, index: u8) {
         self.facing.store(index, Ordering::Relaxed);
         self.entity.data.store(i32::from(index), Ordering::Relaxed);
+        self.entity.set_synced_data(
+            tracked_data::item_frame::DATA_DIRECTION,
+            VarInt(i32::from(index)),
+        );
     }
 
     pub fn get_item(&self) -> ItemStack {
@@ -346,10 +368,7 @@ impl EntityBase for ItemFrameEntity {
             (nbt.get_byte("ItemRotation").unwrap_or(0) as u8) % 8,
             Ordering::Relaxed,
         );
-        let facing = nbt.get_byte("Facing").unwrap_or(0) as u8 % 6;
-        self.facing.store(facing, Ordering::Relaxed);
-        // The spawn packet's data field carries the frame's direction.
-        self.entity.data.store(i32::from(facing), Ordering::Relaxed);
+        self.store_facing(nbt.get_byte("Facing").unwrap_or(0) as u8 % 6);
         self.item_drop_chance
             .store(nbt.get_float("ItemDropChance").unwrap_or(1.0));
         self.invisible.store(
@@ -383,37 +402,6 @@ impl EntityBase for ItemFrameEntity {
         );
         self.entity
             .set_synced_data(pumpkin_data::tracked_data::item_frame::ROTATION, rotation);
-    }
-
-    fn send_java_spawn_packet(&self, client: &crate::net::java::JavaClient) {
-        let spawn_packet = self.entity.create_spawn_packet();
-        if let Ok(data) = client.serialize_packet(&spawn_packet) {
-            client.try_enqueue_packet(data);
-        }
-
-        let ver = pumpkin_data::packet::CURRENT_MC_VERSION;
-        let item_serializer = ItemStackSerializer::from(
-            self.item_stack
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .clone(),
-        );
-        let rotation = self.get_rotation() as i32;
-
-        let mut data = Vec::new();
-        let meta_item = Metadata::new(
-            pumpkin_data::tracked_data::item_frame::ITEM,
-            item_serializer,
-        );
-        let meta_rot = Metadata::new(pumpkin_data::tracked_data::item_frame::ROTATION, rotation);
-
-        if meta_item.write(&mut data, &ver).is_ok() && meta_rot.write(&mut data, &ver).is_ok() {
-            data.push(255);
-            let meta_packet = CSetEntityMetadata::new(self.entity.entity_id.into(), data.into());
-            if let Ok(meta_data) = client.serialize_packet(&meta_packet) {
-                client.try_enqueue_packet(meta_data);
-            }
-        }
     }
 
     fn interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {

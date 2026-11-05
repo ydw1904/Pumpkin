@@ -62,6 +62,12 @@ pub struct HorseEntity {
 
 impl HorseEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Horse.defineSynchedData`.
+        crate::entity::passive::abstract_horse::define_abstract_horse_synched_data(&entity);
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::horse::DATA_ID_TYPE_VARIANT,
+            VarInt(0),
+        );
         let mob_entity = MobEntity::new(entity);
         let horse = Self {
             mob_entity,

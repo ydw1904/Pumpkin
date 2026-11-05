@@ -76,6 +76,15 @@ impl FishingBobberEntity {
         luck_bonus: i32,
         wait_time_reduction_ticks: i32,
     ) -> Self {
+        // Vanilla `FishingHook.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::fishing_bobber::DATA_HOOKED_ENTITY,
+            0i32,
+        );
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::fishing_bobber::DATA_BITING,
+            false,
+        );
         let owner_id = owner.living_entity.entity.entity_id;
         let owner_entity = &owner.living_entity.entity;
 

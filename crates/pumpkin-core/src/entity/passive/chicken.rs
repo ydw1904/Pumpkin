@@ -57,6 +57,19 @@ pub struct ChickenEntity {
 
 impl ChickenEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Chicken.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::chicken::DATA_VARIANT_ID,
+            VarInt(i32::from(
+                pumpkin_data::chicken_variant::ChickenVariant::Temperate.id(),
+            )),
+        );
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::chicken::DATA_SOUND_VARIANT_ID,
+            VarInt(i32::from(
+                pumpkin_data::chicken_sound_variant::ChickenSoundVariant::Classic.id(),
+            )),
+        );
         let mob_entity = MobEntity::new(entity);
         let egg_lay_time = game_random().random_range(EGG_LAY_TIME);
         let chicken = Self {

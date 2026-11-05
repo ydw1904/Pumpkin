@@ -54,6 +54,20 @@ use crate::entity::r#type::from_type;
 use crate::entity::{Entity, EntityBase};
 use crate::world::World;
 
+/// Vanilla `AbstractHorse.defineSynchedData`.
+pub fn define_abstract_horse_synched_data(entity: &crate::entity::Entity) {
+    entity
+        .synched_data
+        .define(tracked_data::abstract_horse::DATA_ID_FLAGS, 0i8);
+}
+
+/// Vanilla `AbstractChestedHorse.defineSynchedData`.
+pub fn define_abstract_chested_horse_synched_data(entity: &crate::entity::Entity) {
+    entity
+        .synched_data
+        .define(tracked_data::abstract_chested_horse::DATA_ID_CHEST, false);
+}
+
 pub const FLAG_TAME: i8 = 2;
 pub const FLAG_BRED: i8 = 8;
 pub const FLAG_EATING: i8 = 16;

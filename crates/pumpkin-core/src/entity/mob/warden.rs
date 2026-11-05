@@ -76,6 +76,11 @@ pub struct WardenEntity {
 
 impl WardenEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Warden.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::warden::CLIENT_ANGER_LEVEL,
+            VarInt(0),
+        );
         let mut mob_entity = MobEntity::new(entity);
         let navigator = mob_entity
             .navigator

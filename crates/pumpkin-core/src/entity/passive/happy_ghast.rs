@@ -40,6 +40,14 @@ pub struct HappyGhastEntity {
 
 impl HappyGhastEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `HappyGhast.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::happy_ghast::IS_LEASH_HOLDER,
+            false,
+        );
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::happy_ghast::STAYS_STILL, false);
         let mob_entity = MobEntity::new(entity);
         let happy_ghast = Self {
             mob_entity,

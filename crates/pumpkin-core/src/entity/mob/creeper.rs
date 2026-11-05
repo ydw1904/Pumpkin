@@ -96,6 +96,17 @@ impl CreeperEntity {
 
 impl CreeperEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Creeper.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::creeper::DATA_SWELL_DIR,
+            VarInt(-1),
+        );
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::creeper::DATA_IS_POWERED, false);
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::creeper::DATA_IS_IGNITED, false);
         let mob_entity = MobEntity::new(entity);
         let entity = Self {
             mob_entity,

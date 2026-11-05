@@ -75,6 +75,19 @@ pub struct WitherEntity {
 
 impl WitherEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `WitherBoss.defineSynchedData`.
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::wither::DATA_TARGET_A, VarInt(0));
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::wither::DATA_TARGET_B, VarInt(0));
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::wither::DATA_TARGET_C, VarInt(0));
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::wither::DATA_ID_INV, VarInt(0));
         let mut mob_entity = MobEntity::new(entity);
         *mob_entity
             .move_control

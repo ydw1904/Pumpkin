@@ -41,6 +41,15 @@ pub struct FrogEntity {
 
 impl FrogEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Frog.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::frog::DATA_VARIANT_ID,
+            VarInt(FrogVariant::Temperate.id() as i32),
+        );
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::frog::DATA_TONGUE_TARGET_ID,
+            pumpkin_protocol::codec::optional_int::OptionalInt(None),
+        );
         let mob_entity = MobEntity::new(entity);
         let frog = Self {
             mob_entity,

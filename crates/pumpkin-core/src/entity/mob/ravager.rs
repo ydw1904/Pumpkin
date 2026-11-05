@@ -62,6 +62,8 @@ pub struct RavagerEntity {
 impl RavagerEntity {
     #[must_use]
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Raider.defineSynchedData`.
+        crate::entity::mob::raider::define_raider_synched_data(&entity);
         let mut mob_entity = MobEntity::new(entity);
         mob_entity
             .navigator

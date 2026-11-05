@@ -23,8 +23,17 @@ pub struct EndCrystalEntity {
 
 impl EndCrystalEntity {
     #[must_use]
-    pub const fn new(mut entity: Entity) -> Self {
+    pub fn new(mut entity: Entity) -> Self {
         entity.blocks_building = true;
+        // Vanilla `EndCrystal.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::end_crystal::DATA_BEAM_TARGET,
+            None::<BlockPos>,
+        );
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::end_crystal::DATA_SHOW_BOTTOM,
+            true,
+        );
         Self {
             entity,
             beam_target: Mutex::new(None),

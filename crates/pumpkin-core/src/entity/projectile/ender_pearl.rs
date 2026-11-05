@@ -48,6 +48,16 @@ impl EnderPearlEntity {
 }
 
 impl EntityBase for EnderPearlEntity {
+    /// Vanilla compares item stacks by identity, so the item is never at its default and always goes out with the spawn packet.
+    fn init_data_tracker(&self) {
+        self.get_entity().set_synced_data(
+            pumpkin_data::tracked_data::ender_pearl::DATA_ITEM_STACK,
+            pumpkin_protocol::codec::item_stack_seralizer::ItemStackSerializer::from(
+                pumpkin_data::item_stack::ItemStack::new(1, &pumpkin_data::item::Item::ENDER_PEARL),
+            ),
+        );
+    }
+
     fn get_projectile_owner(&self) -> Option<&ProjectileOwner> {
         Some(&self.thrown.owner)
     }

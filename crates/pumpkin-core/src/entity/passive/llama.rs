@@ -90,6 +90,16 @@ pub struct LlamaEntity {
 
 impl LlamaEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Llama.defineSynchedData`.
+        crate::entity::passive::abstract_horse::define_abstract_horse_synched_data(&entity);
+        crate::entity::passive::abstract_horse::define_abstract_chested_horse_synched_data(&entity);
+        entity
+            .synched_data
+            .define(tracked_data::llama::DATA_STRENGTH_ID, VarInt(0));
+        entity.synched_data.define(
+            tracked_data::llama::DATA_VARIANT_ID,
+            VarInt(pumpkin_data::entity_variant::LlamaVariant::DEFAULT.id()),
+        );
         let mut mob_entity = MobEntity::new(entity);
         mob_entity
             .navigator

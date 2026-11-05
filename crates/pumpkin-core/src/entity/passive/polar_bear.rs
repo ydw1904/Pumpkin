@@ -48,6 +48,11 @@ pub struct PolarBearEntity {
 
 impl PolarBearEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `PolarBear.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::polar_bear::DATA_STANDING_ID,
+            false,
+        );
         let mob_entity = MobEntity::new(entity);
         let polar_bear = Self {
             mob_entity,

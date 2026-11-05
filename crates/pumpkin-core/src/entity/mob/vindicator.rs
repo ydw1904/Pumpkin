@@ -62,6 +62,8 @@ impl VindicatorEntity {
     #[must_use]
     pub fn new(entity: Entity) -> Arc<Self> {
         let seen_name = Mutex::new(entity.custom_name.load_full());
+        // Vanilla `Raider.defineSynchedData`.
+        crate::entity::mob::raider::define_raider_synched_data(&entity);
         let mob_entity = MobEntity::new(entity);
         let vindicator = Self {
             mob_entity,

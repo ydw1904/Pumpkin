@@ -60,6 +60,20 @@ pub struct CreakingEntity {
 
 impl CreakingEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Creaking.defineSynchedData`.
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::creaking::CAN_MOVE, true);
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::creaking::IS_ACTIVE, false);
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::creaking::IS_TEARING_DOWN, false);
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::creaking::HOME_POS,
+            None::<BlockPos>,
+        );
         let mob_entity = MobEntity::new(entity);
         let creaking = Self {
             mob_entity,

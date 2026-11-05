@@ -33,6 +33,10 @@ pub struct BlazeEntity {
 
 impl BlazeEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Blaze.defineSynchedData`.
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::blaze::DATA_FLAGS_ID, 0i8);
         let entity = Arc::new(MobEntity::new(entity));
         let blaze = Self {
             entity,

@@ -80,6 +80,13 @@ pub struct TurtleEntity {
 
 impl TurtleEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Turtle.defineSynchedData`.
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::turtle::HAS_EGG, false);
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::turtle::LAYING_EGG, false);
         let mut mob_entity = MobEntity::new(entity);
         let mut navigator = Navigator::amphibious(false);
         navigator.set_pathfinding_malus(PathType::Water, 0.0);

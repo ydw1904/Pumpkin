@@ -56,6 +56,28 @@ pub struct CatEntity {
 
 impl CatEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Cat.defineSynchedData`.
+        crate::entity::passive::tamable::define_tamable_animal_synched_data(&entity);
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::cat::DATA_VARIANT_ID,
+            VarInt(i32::from(pumpkin_data::cat_variant::CatVariant::Black.id())),
+        );
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::cat::DATA_SOUND_VARIANT_ID,
+            VarInt(i32::from(
+                pumpkin_data::cat_sound_variant::CatSoundVariant::Classic.id(),
+            )),
+        );
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::cat::IS_LYING, false);
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::cat::RELAX_STATE_ONE, false);
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::cat::DATA_COLLAR_COLOR,
+            VarInt(pumpkin_data::dye_color::DyeColor::Red as i32),
+        );
         let mob_entity = MobEntity::new(entity);
         let cat = Self {
             mob_entity,

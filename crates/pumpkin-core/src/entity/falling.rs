@@ -27,8 +27,13 @@ pub struct FallingEntity {
 }
 
 impl FallingEntity {
-    pub const fn new(mut entity: Entity, block_state_id: BlockStateId) -> Self {
+    pub fn new(mut entity: Entity, block_state_id: BlockStateId) -> Self {
         entity.blocks_building = true;
+        // Vanilla `FallingBlockEntity.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::falling_block::DATA_START_POS,
+            BlockPos::ZERO,
+        );
         Self {
             entity,
             block_state_id,
@@ -53,6 +58,11 @@ impl FallingEntity {
         entity
             .data
             .store(i32::from(block_state.as_u16()), Ordering::Relaxed);
+        // Vanilla `fall` sets the start position; a summoned falling block keeps the default.
+        entity.set_synced_data(
+            pumpkin_data::tracked_data::falling_block::DATA_START_POS,
+            entity.block_pos.load(),
+        );
         let entity = Arc::new(Self::new(entity, block_state));
         world.spawn_entity_non_save(entity);
     }
@@ -142,12 +152,7 @@ impl EntityBase for FallingEntity {
         entity.velocity.store(velo.multiply(drag, drag, drag));
     }
 
-    fn init_data_tracker(&self) {
-        self.entity.set_synced_data(
-            pumpkin_data::tracked_data::falling_block::START_POS,
-            self.entity.block_pos.load(),
-        );
-    }
+    fn init_data_tracker(&self) {}
 
     fn get_entity(&self) -> &Entity {
         &self.entity

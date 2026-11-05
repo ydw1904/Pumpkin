@@ -45,6 +45,12 @@ pub struct PufferfishEntity {
 
 impl PufferfishEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Pufferfish.defineSynchedData`.
+        crate::entity::passive::abstract_fish::define_abstract_fish_synched_data(&entity);
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::pufferfish::PUFF_STATE,
+            pumpkin_protocol::VarInt(0),
+        );
         let mut mob_entity = MobEntity::new(entity);
         super::abstract_fish::initialize_fish_movement(&mut mob_entity);
         let mob_arc = Arc::new(Self {

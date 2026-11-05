@@ -414,7 +414,16 @@ impl LivingEntity {
             EffectParticles(Vec::new()),
         );
         data.define(tracked_data::living_entity::EFFECT_AMBIENCE_ID, false);
+        data.define(tracked_data::living_entity::DATA_ARROW_COUNT_ID, VarInt(0));
+        data.define(
+            tracked_data::living_entity::DATA_STINGER_COUNT_ID,
+            VarInt(0),
+        );
         data.define(tracked_data::living_entity::DATA_HEALTH_ID, 1.0f32);
+        data.define(
+            tracked_data::living_entity::SLEEPING_POS_ID,
+            None::<BlockPos>,
+        );
         data.set(
             tracked_data::living_entity::DATA_HEALTH_ID,
             self.health.load(),

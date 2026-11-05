@@ -158,6 +158,8 @@ impl WanderingTraderEntity {
     #[allow(clippy::too_many_lines)]
     #[must_use]
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `AbstractVillager.defineSynchedData`.
+        crate::entity::passive::villager::define_abstract_villager_synched_data(&entity);
         let mob_entity = MobEntity::new(entity);
         let trader = Self {
             mob_entity,

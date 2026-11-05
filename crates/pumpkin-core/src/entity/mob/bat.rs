@@ -37,6 +37,10 @@ pub struct BatEntity {
 
 impl BatEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Bat.defineSynchedData`.
+        entity
+            .synched_data
+            .define(tracked_data::bat::DATA_ID_FLAGS, 0i8);
         let mob_entity = MobEntity::new(entity);
         let bat = Self {
             mob_entity,

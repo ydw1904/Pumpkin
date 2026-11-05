@@ -57,6 +57,11 @@ impl PillagerEntity {
 
     #[must_use]
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Pillager.defineSynchedData`.
+        crate::entity::mob::raider::define_raider_synched_data(&entity);
+        entity
+            .synched_data
+            .define(tracked_data::pillager::IS_CHARGING_CROSSBOW, false);
         let mob_arc = Arc::new(Self {
             mob_entity: MobEntity::new(entity),
             raider_data: RaiderData::default(),

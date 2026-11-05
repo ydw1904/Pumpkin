@@ -36,6 +36,11 @@ impl HoglinEntity {
     pub const BABY_XP_REWARD: u32 = 3;
 
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Hoglin.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::hoglin::DATA_IMMUNE_TO_ZOMBIFICATION,
+            false,
+        );
         let mob_entity = MobEntity::new(entity);
         {
             let mut attributes = mob_entity

@@ -47,6 +47,22 @@ pub struct PigEntity {
 
 impl PigEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Pig.defineSynchedData`.
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::pig::DATA_BOOST_TIME, VarInt(0));
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::pig::DATA_VARIANT_ID,
+            VarInt(i32::from(
+                pumpkin_data::pig_variant::PigVariant::Temperate.id(),
+            )),
+        );
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::pig::DATA_SOUND_VARIANT_ID,
+            VarInt(i32::from(
+                pumpkin_data::pig_sound_variant::PigSoundVariant::Classic.id(),
+            )),
+        );
         let mob_entity = MobEntity::new(entity);
         let pig = Self {
             mob_entity,

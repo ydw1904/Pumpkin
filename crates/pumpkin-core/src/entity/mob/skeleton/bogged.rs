@@ -14,6 +14,10 @@ pub struct BoggedSkeletonEntity {
 
 impl BoggedSkeletonEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Bogged.defineSynchedData`.
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::bogged::DATA_SHEARED, false);
         let entity = SkeletonEntityBase::new(entity);
         let bogged = Self { entity };
         Arc::new(bogged)

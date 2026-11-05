@@ -106,6 +106,18 @@ impl AreaEffectCloudEntity {
     #[must_use]
     pub fn new(entity: Entity) -> Arc<Self> {
         entity.no_physics.store(true, Relaxed);
+        // Vanilla `AreaEffectCloud.defineSynchedData`; `DEFAULT_PARTICLE` is a white
+        // `entity_effect`.
+        let data = &entity.synched_data;
+        data.define(RADIUS, DEFAULT_RADIUS);
+        data.define(WAITING, false);
+        data.define(
+            PARTICLE,
+            ParticleMeta {
+                particle_id: VarInt(Particle::EntityEffect as i32),
+                data: Box::new((-1i32).to_be_bytes()),
+            },
+        );
         let cloud = Self {
             entity,
             owner: EntityReference::none(),

@@ -9,6 +9,18 @@ use crate::entity::mob::Mob;
 use crate::entity::passive::animal::Animal;
 use crate::plugin::api::events::entity::entity_toggle_sit::EntityToggleSitEvent;
 
+/// Vanilla `TamableAnimal.defineSynchedData`.
+pub fn define_tamable_animal_synched_data(entity: &crate::entity::Entity) {
+    entity.synched_data.define(
+        pumpkin_data::tracked_data::tamable_animal::DATA_FLAGS_ID,
+        0i8,
+    );
+    entity.synched_data.define(
+        pumpkin_data::tracked_data::tamable_animal::DATA_OWNERUUID_ID,
+        None::<Uuid>,
+    );
+}
+
 /// Gate for goals vanilla runs only on wild animals.
 pub fn is_untamed(mob: &dyn Mob) -> bool {
     !mob.is_tamed()

@@ -47,6 +47,17 @@ pub struct GoatEntity {
 
 impl GoatEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Goat.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::goat::DATA_IS_SCREAMING_GOAT,
+            false,
+        );
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::goat::DATA_HAS_LEFT_HORN, true);
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::goat::DATA_HAS_RIGHT_HORN, true);
         let mut mob_entity = MobEntity::new(entity);
         let navigator = mob_entity
             .navigator

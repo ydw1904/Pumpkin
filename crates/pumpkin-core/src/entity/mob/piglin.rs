@@ -73,12 +73,31 @@ pub struct PiglinEntity {
     pub activity: AtomicCell<PiglinActivity>,
 }
 
+/// Vanilla `AbstractPiglin.defineSynchedData`.
+pub fn define_abstract_piglin_synched_data(entity: &crate::entity::Entity) {
+    entity.synched_data.define(
+        tracked_data::abstract_piglin::DATA_IMMUNE_TO_ZOMBIFICATION,
+        false,
+    );
+}
+
 impl PiglinEntity {
     pub const CONVERSION_TIME: i32 = 300;
     pub const INVENTORY_SIZE: usize = 8;
     pub const XP_REWARD: u32 = 5;
 
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Piglin.defineSynchedData`.
+        crate::entity::mob::piglin::define_abstract_piglin_synched_data(&entity);
+        entity
+            .synched_data
+            .define(tracked_data::piglin::DATA_BABY_ID, false);
+        entity
+            .synched_data
+            .define(tracked_data::piglin::DATA_IS_CHARGING_CROSSBOW, false);
+        entity
+            .synched_data
+            .define(tracked_data::piglin::DATA_IS_DANCING, false);
         let mob_entity = MobEntity::new(entity);
         let piglin = Self {
             mob_entity,

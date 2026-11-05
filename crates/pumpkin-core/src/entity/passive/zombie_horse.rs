@@ -38,6 +38,8 @@ pub struct ZombieHorseEntity {
 
 impl ZombieHorseEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `AbstractHorse.defineSynchedData`.
+        crate::entity::passive::abstract_horse::define_abstract_horse_synched_data(&entity);
         let mob_entity = MobEntity::new(entity);
         let horse = Self {
             mob_entity,

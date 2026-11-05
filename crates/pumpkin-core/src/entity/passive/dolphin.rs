@@ -60,6 +60,18 @@ pub struct DolphinEntity {
 impl DolphinEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
         entity.air_supply.store(TOTAL_AIR_SUPPLY, Ordering::Relaxed);
+        // Vanilla `Dolphin.defineSynchedData`.
+        entity.synched_data.define(
+            tracked_data::dolphin::DATA_AIR_SUPPLY_ID,
+            VarInt(TOTAL_AIR_SUPPLY),
+        );
+        entity
+            .synched_data
+            .define(tracked_data::dolphin::GOT_FISH, false);
+        entity.synched_data.define(
+            tracked_data::dolphin::MOISTNESS_LEVEL,
+            VarInt(TOTAL_MOISTNESS_LEVEL),
+        );
         let mut mob_entity = MobEntity::new(entity);
         *mob_entity
             .move_control

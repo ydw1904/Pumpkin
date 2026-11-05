@@ -10,7 +10,6 @@ use crate::{
     entity::{Entity, EntityBase, living::LivingEntity, player::Player},
     server::Server,
 };
-use bytes::BufMut;
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::data_component_impl::PotionDurationScaleImpl;
 use pumpkin_data::entity::EntityType;
@@ -18,11 +17,11 @@ use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_protocol::IdOr;
-use pumpkin_protocol::java::client::play::{CEntityVelocity, CSoundEffect, Metadata};
+use pumpkin_protocol::codec::var_int::VarInt;
+use pumpkin_protocol::java::client::play::{CEntityVelocity, CSoundEffect};
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 /// Represents the pickup rules for arrows
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +49,17 @@ impl ArrowPickup {
             Self::CreativeOnly => 2,
         }
     }
+}
+
+/// Vanilla `AbstractArrow.defineSynchedData`.
+pub fn define_abstract_arrow_synched_data(entity: &Entity) {
+    let data = &entity.synched_data;
+    data.define(pumpkin_data::tracked_data::abstract_arrow::ID_FLAGS, 0i8);
+    data.define(
+        pumpkin_data::tracked_data::abstract_arrow::PIERCE_LEVEL,
+        0i8,
+    );
+    data.define(pumpkin_data::tracked_data::abstract_arrow::IN_GROUND, false);
 }
 
 pub struct ArrowEntity {
@@ -91,6 +101,14 @@ impl ArrowEntity {
         item_stack: &ItemStack,
         pickup: ArrowPickup,
     ) -> Self {
+        define_abstract_arrow_synched_data(&entity);
+        if entity.entity_type.id == EntityType::ARROW.id {
+            // Vanilla `Arrow.defineSynchedData`: no effect colour.
+            entity.synched_data.define(
+                pumpkin_data::tracked_data::arrow::ID_EFFECT_COLOR,
+                VarInt(-1),
+            );
+        }
         Self {
             entity,
             owner: ProjectileOwner::new(owner),
@@ -499,57 +517,6 @@ impl EntityBase for ArrowEntity {
         if self.is_on_fire() {
             entity.set_on_fire(true);
         }
-    }
-
-    fn java_spawn_metadata(&self, version: JavaMinecraftVersion) -> Option<Box<[u8]>> {
-        let entity = self.get_entity();
-        let flags = self.get_flags();
-        let pierce = self.pierce_level.load(Ordering::Relaxed);
-        let in_ground = self.in_ground.load(Ordering::Relaxed);
-        let shared_flags = entity.flags.load(Ordering::Relaxed);
-
-        let mut buf = Vec::new();
-        if shared_flags != 0 {
-            let _ = Metadata::new(
-                pumpkin_data::tracked_data::entity::DATA_SHARED_FLAGS_ID,
-                shared_flags,
-            )
-            .write(&mut buf, &version);
-        }
-        if entity.entity_type.id == EntityType::SPECTRAL_ARROW.id {
-            let _ = Metadata::new(pumpkin_data::tracked_data::spectral_arrow::ID_FLAGS, flags)
-                .write(&mut buf, &version);
-            let _ = Metadata::new(
-                pumpkin_data::tracked_data::spectral_arrow::PIERCE_LEVEL,
-                pierce,
-            )
-            .write(&mut buf, &version);
-            let _ = Metadata::new(
-                pumpkin_data::tracked_data::spectral_arrow::IN_GROUND,
-                in_ground,
-            )
-            .write(&mut buf, &version);
-        } else {
-            let item_stack = self
-                .item_stack
-                .read()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let color = Self::get_effect_color(&item_stack);
-            let _ = Metadata::new(pumpkin_data::tracked_data::arrow::ID_FLAGS, flags)
-                .write(&mut buf, &version);
-            let _ = Metadata::new(pumpkin_data::tracked_data::arrow::PIERCE_LEVEL, pierce)
-                .write(&mut buf, &version);
-            let _ = Metadata::new(pumpkin_data::tracked_data::arrow::IN_GROUND, in_ground)
-                .write(&mut buf, &version);
-            if color != -1 {
-                let _ = Metadata::new(pumpkin_data::tracked_data::arrow::ID_EFFECT_COLOR, color)
-                    .write(&mut buf, &version);
-            }
-        }
-        (!buf.is_empty()).then(|| {
-            buf.put_u8(255);
-            buf.into_boxed_slice()
-        })
     }
 
     #[allow(clippy::too_many_lines)]

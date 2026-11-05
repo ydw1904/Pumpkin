@@ -810,23 +810,23 @@ pub trait EntityBase: Send + Sync + std::any::Any {
                 Box::<[u8]>::from([0x00u8, shared_flags as u8, 127u8])
             });
         }
-        self.get_mob().map_or_else(
-            || {
-                let entity = self.get_entity();
-                let shared_flags = entity.flags.load(Ordering::Relaxed);
-                (shared_flags != 0).then(|| {
-                    let mut buf = Vec::new();
-                    let _ = Metadata::new(
-                        pumpkin_data::tracked_data::entity::DATA_SHARED_FLAGS_ID,
-                        shared_flags,
-                    )
-                    .write(&mut buf, &version);
-                    buf.put_u8(255);
-                    buf.into_boxed_slice()
-                })
-            },
-            |mob| mob.mob_java_spawn_metadata(version),
-        )
+        // A mob's data goes out with the tracker's non-default values right after the spawn
+        // packet, like vanilla `getNonDefaultValues`.
+        if self.get_mob().is_some() {
+            return None;
+        }
+        let entity = self.get_entity();
+        let shared_flags = entity.flags.load(Ordering::Relaxed);
+        (shared_flags != 0).then(|| {
+            let mut buf = Vec::new();
+            let _ = Metadata::new(
+                pumpkin_data::tracked_data::entity::DATA_SHARED_FLAGS_ID,
+                shared_flags,
+            )
+            .write(&mut buf, &version);
+            buf.put_u8(255);
+            buf.into_boxed_slice()
+        })
     }
 
     fn send_bedrock_spawn_packet(&self, client: &BedrockClient) {

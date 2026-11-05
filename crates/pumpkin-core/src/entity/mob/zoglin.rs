@@ -32,6 +32,10 @@ impl ZoglinEntity {
     const BABY_ATTACK_DAMAGE: f64 = 0.5;
 
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Zoglin.defineSynchedData`.
+        entity
+            .synched_data
+            .define(tracked_data::zoglin::DATA_BABY_ID, false);
         let mob_entity = MobEntity::new(entity);
         {
             let mut attributes = mob_entity

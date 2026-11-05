@@ -99,6 +99,17 @@ pub struct EndermanEntity {
 
 impl EndermanEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `EnderMan.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::enderman::DATA_CARRY_STATE,
+            VarInt(0),
+        );
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::enderman::DATA_CREEPY, false);
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::enderman::DATA_STARED_AT, false);
         let mob_entity = MobEntity::new(entity);
         let entity = Self {
             mob_entity,

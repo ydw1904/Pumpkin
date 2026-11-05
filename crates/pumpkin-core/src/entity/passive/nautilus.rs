@@ -42,6 +42,11 @@ pub struct NautilusEntity {
 
 impl NautilusEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `AbstractNautilus.defineSynchedData`.
+        crate::entity::passive::tamable::define_tamable_animal_synched_data(&entity);
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::nautilus::DASH, false);
         let mob_entity = MobEntity::new(entity);
         let nautilus = Self {
             mob_entity,

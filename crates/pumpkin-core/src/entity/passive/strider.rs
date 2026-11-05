@@ -144,6 +144,14 @@ pub struct StriderEntity {
 
 impl StriderEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Strider.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::strider::DATA_BOOST_TIME,
+            pumpkin_protocol::VarInt(0),
+        );
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::strider::DATA_SUFFOCATING, false);
         let mob_entity = MobEntity::new(entity);
         let strider = Self {
             mob_entity,

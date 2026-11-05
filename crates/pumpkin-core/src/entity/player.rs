@@ -996,6 +996,29 @@ impl Player {
             Vector3::new(0.0, 100.0, 0.0),
             &EntityType::PLAYER,
         ));
+        // Vanilla `Avatar.defineSynchedData` and `Player.defineSynchedData`.
+        let data = &living_entity.entity.synched_data;
+        data.define(
+            pumpkin_data::tracked_data::player::DATA_PLAYER_MAIN_HAND,
+            Hand::Right as u8,
+        );
+        data.define(
+            pumpkin_data::tracked_data::player::DATA_PLAYER_MODE_CUSTOMISATION,
+            0u8,
+        );
+        data.define(
+            pumpkin_data::tracked_data::player::DATA_PLAYER_ABSORPTION_ID,
+            0.0f32,
+        );
+        data.define(pumpkin_data::tracked_data::player::DATA_SCORE_ID, VarInt(0));
+        data.define(
+            pumpkin_data::tracked_data::player::DATA_SHOULDER_PARROT_LEFT,
+            pumpkin_protocol::codec::optional_int::OptionalInt(None),
+        );
+        data.define(
+            pumpkin_data::tracked_data::player::DATA_SHOULDER_PARROT_RIGHT,
+            pumpkin_protocol::codec::optional_int::OptionalInt(None),
+        );
         living_entity.entity.invulnerable.store(
             matches!(gamemode, GameMode::Creative | GameMode::Spectator),
             Ordering::Relaxed,

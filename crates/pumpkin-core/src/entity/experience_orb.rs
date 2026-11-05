@@ -48,6 +48,11 @@ impl ExperienceOrbEntity {
     const LAVA_BOUNCE_SPEED: f64 = 0.2;
 
     pub fn new(entity: Entity, value: u32) -> Self {
+        // Vanilla `ExperienceOrb.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::experience_orb::DATA_VALUE,
+            VarInt(0),
+        );
         entity.yaw.store(game_random().random::<f32>() * 360.0);
         Self {
             entity,

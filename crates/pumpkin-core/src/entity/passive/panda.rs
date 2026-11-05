@@ -157,6 +157,26 @@ pub struct PandaEntity {
 
 impl PandaEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        // Vanilla `Panda.defineSynchedData`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::panda::UNHAPPY_COUNTER,
+            VarInt(0),
+        );
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::panda::SNEEZE_COUNTER, VarInt(0));
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::panda::MAIN_GENE_ID, 0i8);
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::panda::HIDDEN_GENE_ID, 0i8);
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::panda::DATA_ID_FLAGS, 0i8);
+        entity
+            .synched_data
+            .define(pumpkin_data::tracked_data::panda::EAT_COUNTER, VarInt(0));
         let mob_entity = MobEntity::new(entity);
         // Vanilla only does this when not a baby, but the age is not loaded yet at this point.
         mob_entity.set_can_pick_up_loot(true);

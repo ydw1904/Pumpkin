@@ -5297,10 +5297,7 @@ impl World {
                             continue;
                         };
                         for entity in self_and_passengers(&root) {
-                            match entity.get_mob() {
-                                Some(mob) => mob.mob_init_data_tracker(),
-                                None => entity.init_data_tracker(),
-                            }
+                            entity.init_data_tracker();
 
                             // Clear velocity so the client does not replay the drop
                             // animation; residual velocity from the original drop is
@@ -5395,10 +5392,7 @@ impl World {
                 continue;
             };
             for entity in self_and_passengers(&root) {
-                match entity.get_mob() {
-                    Some(mob) => mob.mob_init_data_tracker(),
-                    None => entity.init_data_tracker(),
-                }
+                entity.init_data_tracker();
                 self.add_entity_silent(entity);
             }
         }
