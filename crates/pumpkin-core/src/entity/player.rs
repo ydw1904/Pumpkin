@@ -1,5 +1,6 @@
 pub mod advancement;
 pub mod recipe_book;
+mod shoulders;
 pub mod statistics;
 
 use core::f32;
@@ -829,6 +830,7 @@ pub struct Player {
     /// A command packet the parallel packet loop stopped at, with the number of packets
     /// handled before it this tick. [`Player::process_deferred_packets`] handles it.
     deferred_command: std::sync::Mutex<Option<(RawPacket, usize)>>,
+    shoulders: Mutex<shoulders::Shoulders>,
 }
 
 use base64::prelude::*;
@@ -1047,6 +1049,7 @@ impl Player {
 
         Self {
             living_entity,
+            shoulders: Mutex::new(shoulders::Shoulders::default()),
             config: ArcSwap::new(Arc::new(config)),
             recipe_book: std::sync::Mutex::new(recipe_book::ServerRecipeBook::default()),
             advancements: Arc::new(Mutex::new(
@@ -3532,6 +3535,8 @@ impl Player {
 
     #[expect(clippy::too_many_lines)]
     pub fn tick<'a>(&'a self, server: &'a Server) {
+        self.tick_shoulders();
+
         if self.is_spectator() {
             self.living_entity
                 .entity
@@ -5581,8 +5586,12 @@ impl Player {
         {
             return false;
         }
-        // Vanilla `Player.hurtServer`. `removeEntitiesOnShoulder` would go here, but
-        // Pumpkin has no shoulder entities.
+        // Vanilla `Player.hurtServer`: shoulder entities come off before difficulty scaling.
+        if !self.get_entity().is_invulnerable_to(&damage_type, cause)
+            && !self.living_entity.is_dead_or_dying()
+        {
+            self.release_shoulders();
+        }
         let mut amount = amount;
         if combat::scales_with_difficulty(&damage_type, cause.or(source)) {
             amount = match self.world().level_info.load().difficulty {
@@ -8307,6 +8316,7 @@ impl EntityBase for Player {
 
     #[expect(clippy::too_many_lines)]
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
+        self.write_shoulders(nbt);
         nbt.put_int("DataVersion", DATA_VERSION);
         self.inventory.write_nbt(nbt);
         self.ender_chest_inventory.write_nbt(nbt);
@@ -8428,6 +8438,7 @@ impl EntityBase for Player {
 
     #[expect(clippy::too_many_lines)]
     fn read_custom_nbt(&self, nbt: &NbtCompound) {
+        self.read_shoulders(nbt);
         self.inventory.read_nbt_non_mut(nbt);
         self.ender_chest_inventory.read_nbt_non_mut(nbt);
         self.living_entity

@@ -109,9 +109,9 @@ impl FollowOwnerGoal {
         if context.get_land_node_type(pos.0) != PathType::Walkable {
             return false;
         }
-        // Wolves and cats can't fly to their owner.
-        if world
-            .get_block(&pos.down())
+        if !mob.can_fly_to_owner()
+            && world
+                .get_block(&pos.down())
             .has_tag(&tag::Block::MINECRAFT_LEAVES)
         {
             return false;

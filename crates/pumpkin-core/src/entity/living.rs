@@ -276,7 +276,8 @@ impl LivingEntity {
 
     #[must_use]
     pub fn is_baby(&self) -> bool {
-        self.entity.age.load(Relaxed) < 0
+        // Parrot.canBeABaby is false even when a command loads a negative Age.
+        self.entity.entity_type != &EntityType::PARROT && self.entity.age.load(Relaxed) < 0
     }
 
     #[must_use]
@@ -2255,7 +2256,12 @@ impl LivingEntity {
         }
 
         for entity in pushable {
-            entity.push(dyn_self);
+            if dyn_self
+                .get_mob()
+                .is_none_or(|mob| mob.can_push_entity(entity.as_ref()))
+            {
+                entity.push(dyn_self);
+            }
         }
     }
 
