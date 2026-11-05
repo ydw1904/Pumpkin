@@ -52,6 +52,8 @@ impl<'a> PistonHandler<'a> {
         let (block, block_state) = self.world.get_block_and_state(&self.pos_to);
 
         if !PistonBlock::is_movable(
+            self.world,
+            &self.pos_to,
             block,
             block_state,
             self.motion_direction,
@@ -100,12 +102,21 @@ impl<'a> PistonHandler<'a> {
             || (!self.retracted && pos == self.pos_from.offset(self.piston_direction.to_offset()))
     }
 
+    #[expect(clippy::too_many_lines)]
     fn try_move(&mut self, pos: BlockPos, dir: BlockDirection) -> bool {
         let (mut block, block_state) = self.world.get_block_and_state(&pos);
         if block_state.is_air() {
             return true;
         }
-        if !PistonBlock::is_movable(block, block_state, self.motion_direction, false, dir) {
+        if !PistonBlock::is_movable(
+            self.world,
+            &pos,
+            block,
+            block_state,
+            self.motion_direction,
+            false,
+            dir,
+        ) {
             return true;
         }
         if self.is_piston_head_or_base(pos) {
@@ -125,6 +136,8 @@ impl<'a> PistonHandler<'a> {
             if next_state.is_air()
                 || !Self::is_adjacent_block_stuck(block2, next_block)
                 || !PistonBlock::is_movable(
+                    self.world,
+                    &block_pos,
                     next_block,
                     next_state,
                     self.motion_direction,
@@ -171,6 +184,8 @@ impl<'a> PistonHandler<'a> {
                 return true;
             }
             if !PistonBlock::is_movable(
+                self.world,
+                &block_pos2,
                 block,
                 block_state,
                 self.motion_direction,
