@@ -8,7 +8,9 @@ use pumpkin_data::translation;
 use pumpkin_data::{Block, BlockState, BlockStateId};
 use pumpkin_macros::pumpkin_block_from_tag;
 use pumpkin_util::GameMode;
+use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::text::TextComponent;
 use pumpkin_world::world::BlockFlags;
 
 use crate::block::OnLandedUponArgs;
@@ -19,48 +21,19 @@ use crate::block::{
     BlockBehaviour, BrokenArgs, CanPlaceAtArgs, GetStateForNeighborUpdateArgs, NormalUseArgs,
     OnPlaceArgs, OnStateReplacedArgs, PathComputationType, PlacedArgs,
 };
-use crate::entity::{EntityBase, mob::Mob, player::Player};
+use crate::entity::{
+    EntityBase,
+    mob::{Mob, is_monster},
+    player::Player,
+};
 use crate::world::World;
 use pumpkin_data::HorizontalFacingExt;
 
 type BedProperties = pumpkin_data::block_properties::WhiteBedLikeProperties;
 
-const NO_SLEEP_IDS: &[u16] = &[
-    EntityType::BLAZE.id,
-    EntityType::BOGGED.id,
-    EntityType::SKELETON.id,
-    EntityType::STRAY.id,
-    EntityType::WITHER_SKELETON.id,
-    EntityType::BREEZE.id,
-    EntityType::CREAKING.id,
-    EntityType::CREEPER.id,
-    EntityType::DROWNED.id,
-    EntityType::ENDERMITE.id,
-    EntityType::EVOKER.id,
-    EntityType::GIANT.id,
-    EntityType::GUARDIAN.id,
-    EntityType::ELDER_GUARDIAN.id,
-    EntityType::ILLUSIONER.id,
-    EntityType::OCELOT.id,
-    EntityType::PIGLIN.id,
-    EntityType::PIGLIN_BRUTE.id,
-    EntityType::PILLAGER.id,
-    EntityType::PHANTOM.id,
-    EntityType::RAVAGER.id,
-    EntityType::SILVERFISH.id,
-    EntityType::SPIDER.id,
-    EntityType::CAVE_SPIDER.id,
-    EntityType::VEX.id,
-    EntityType::VINDICATOR.id,
-    EntityType::WARDEN.id,
-    EntityType::WITCH.id,
-    EntityType::WITHER.id,
-    EntityType::ZOGLIN.id,
-    EntityType::ZOMBIE.id,
-    EntityType::ZOMBIE_VILLAGER.id,
-    EntityType::HUSK.id,
-    EntityType::ENDERMAN.id,
-];
+/// The half extents of vanilla `ServerPlayer.startSleepInBed`'s monster box.
+const MONSTER_H_RANGE: f64 = 8.0;
+const MONSTER_V_RANGE: f64 = 5.0;
 
 #[pumpkin_block_from_tag("minecraft:beds")]
 pub struct BedBlock;
@@ -208,7 +181,6 @@ impl BlockBehaviour for BedBlock {
 }
 
 impl BedBlock {
-    #[expect(clippy::too_many_lines)]
     fn use_bed(
         world: &Arc<World>,
         player: &Arc<Player>,
@@ -245,35 +217,6 @@ impl BedBlock {
             return BlockActionResult::SuccessServer;
         }
 
-        let is_dark = world.is_dark_outside();
-        let can_sleep = world.dimension.bed_rule.can_sleep(is_dark);
-        let can_set_spawn = world.dimension.bed_rule.can_set_spawn(is_dark);
-
-        if !can_set_spawn && !can_sleep {
-            player.send_system_message_raw(
-                &pumpkin_macros::translate_cross!(
-                    translation::java::BLOCK_MINECRAFT_BED_NO_SLEEP,
-                    translation::bedrock::TILE_BED_NOSLEEP
-                ),
-                true,
-            );
-            return BlockActionResult::SuccessServer;
-        }
-
-        // Make sure the bed is not obstructed
-        if world.get_block_state(&bed_head_pos.up()).is_solid()
-            || world.get_block_state(&bed_foot_pos.up()).is_solid()
-        {
-            player.send_system_message_raw(
-                &pumpkin_macros::translate_cross!(
-                    translation::java::BLOCK_MINECRAFT_BED_OBSTRUCTED,
-                    translation::bedrock::TILE_BED_OBSTRUCTED
-                ),
-                true,
-            );
-            return BlockActionResult::SuccessServer;
-        }
-
         // Make sure the bed is not occupied
         if bed_props.occupied {
             // TODO: Wake up villager
@@ -288,71 +231,20 @@ impl BedBlock {
             return BlockActionResult::SuccessServer;
         }
 
-        // Make sure player is close enough
-        if !player
-            .position()
-            .is_within_bounds(bed_head_pos.to_f64(), 3.0, 3.0, 3.0)
-            && !player
-                .position()
-                .is_within_bounds(bed_foot_pos.to_f64(), 3.0, 3.0, 3.0)
-        {
-            player.send_system_message_raw(
-                &pumpkin_macros::translate_cross!(
-                    translation::java::BLOCK_MINECRAFT_BED_TOO_FAR_AWAY,
-                    translation::bedrock::TILE_BED_TOOFAR
-                ),
-                true,
-            );
-            return BlockActionResult::SuccessServer;
-        }
-
-        // Set respawn point
-        if can_set_spawn
-            && player.set_respawn_point(
-                world.dimension.clone(),
-                bed_head_pos,
-                player.get_entity().yaw.load(),
-                player.get_entity().pitch.load(),
-                false,
-            )
-        {
-            player.send_system_message(&pumpkin_macros::translate_cross!(
-                translation::java::BLOCK_MINECRAFT_SET_SPAWN,
-                translation::bedrock::TILE_BED_RESPAWNSET
-            ));
-        }
-
-        // Make sure the time and weather allows sleep
-        if !can_sleep {
-            player.send_system_message_raw(
-                &pumpkin_macros::translate_cross!(
-                    translation::java::BLOCK_MINECRAFT_BED_NO_SLEEP,
-                    translation::bedrock::TILE_BED_NOSLEEP
-                ),
-                true,
-            );
-            return BlockActionResult::SuccessServer;
-        }
-
-        // Make sure there are no monsters nearby
-        for entity in world.entities.load().iter() {
-            if !entity_prevents_sleep(entity.as_ref(), player.as_ref(), world) {
-                continue;
+        let is_dark = world.is_dark_outside();
+        let can_set_spawn = world.dimension.bed_rule.can_set_spawn(is_dark);
+        if let Err(problem) = start_sleep_in_bed_checks(
+            world,
+            player,
+            bed_head_pos,
+            bed_foot_pos,
+            world.dimension.bed_rule.can_sleep(is_dark),
+            can_set_spawn,
+        ) {
+            if let Some(problem) = problem {
+                player.send_system_message_raw(&problem, true);
             }
-
-            let pos = entity.get_entity().pos.load();
-            if pos.is_within_bounds(bed_head_pos.to_f64(), 8.0, 5.0, 8.0)
-                || pos.is_within_bounds(bed_foot_pos.to_f64(), 8.0, 5.0, 8.0)
-            {
-                player.send_system_message_raw(
-                    &pumpkin_macros::translate_cross!(
-                        translation::java::BLOCK_MINECRAFT_BED_NOT_SAFE,
-                        translation::bedrock::TILE_BED_NOTSAFE
-                    ),
-                    true,
-                );
-                return BlockActionResult::SuccessServer;
-            }
+            return BlockActionResult::SuccessServer;
         }
 
         if let Some(server) = world.server.upgrade() {
@@ -368,14 +260,16 @@ impl BedBlock {
         }
 
         player.sleep(bed_head_pos);
-        player.trigger_advancement(
-            crate::entity::player::advancement::trigger::AdvancementTrigger::SleptInBed,
-        );
         player.increment_stat(
             pumpkin_data::statistic::StatisticCategory::Custom,
             pumpkin_data::statistic::CustomStatistic::SleepInBed as i32,
             1,
         );
+        if can_set_spawn {
+            player.trigger_advancement(
+                crate::entity::player::advancement::trigger::AdvancementTrigger::SleptInBed,
+            );
+        }
         Self::set_occupied(true, world, block, position, state_id);
 
         BlockActionResult::SuccessServer
@@ -416,14 +310,92 @@ impl BedBlock {
     }
 }
 
+/// The checks of vanilla `ServerPlayer.startSleepInBed` before the player lies down, in
+/// vanilla order. `Err` holds the overlay message to show, if any.
+pub(crate) fn start_sleep_in_bed_checks(
+    world: &World,
+    player: &Player,
+    bed_head_pos: BlockPos,
+    bed_foot_pos: BlockPos,
+    can_sleep: bool,
+    can_set_spawn: bool,
+) -> Result<(), Option<TextComponent>> {
+    if player.is_sleeping() || !player.living_entity.is_alive() {
+        return Err(None);
+    }
+
+    // `bedInRange`: within 3 blocks across and 2 up or down of either half's bottom centre.
+    let player_pos = player.position();
+    let reachable = |pos: BlockPos| player_pos.is_within_bounds(pos.to_f64(), 3.0, 2.0, 3.0);
+    if !reachable(bed_head_pos) && !reachable(bed_foot_pos) {
+        return Err(Some(pumpkin_macros::translate_cross!(
+            translation::java::BLOCK_MINECRAFT_BED_TOO_FAR_AWAY,
+            translation::bedrock::TILE_BED_TOOFAR
+        )));
+    }
+
+    // `bedBlocked`: `Player.freeAt` above both halves.
+    if world.get_block_state(&bed_head_pos.up()).is_suffocating()
+        || world.get_block_state(&bed_foot_pos.up()).is_suffocating()
+    {
+        return Err(Some(pumpkin_macros::translate_cross!(
+            translation::java::BLOCK_MINECRAFT_BED_OBSTRUCTED,
+            translation::bedrock::TILE_BED_OBSTRUCTED
+        )));
+    }
+
+    if can_set_spawn
+        && player.set_respawn_point(
+            world.dimension.clone(),
+            bed_head_pos,
+            player.get_entity().yaw.load(),
+            player.get_entity().pitch.load(),
+            false,
+        )
+    {
+        player.send_system_message(&pumpkin_macros::translate_cross!(
+            translation::java::BLOCK_MINECRAFT_SET_SPAWN,
+            translation::bedrock::TILE_BED_RESPAWNSET
+        ));
+    }
+
+    if !can_sleep {
+        return Err(Some(pumpkin_macros::translate_cross!(
+            translation::java::BLOCK_MINECRAFT_BED_NO_SLEEP,
+            translation::bedrock::TILE_BED_NOSLEEP
+        )));
+    }
+
+    if !player.is_creative() && monster_prevents_rest(world, player, bed_head_pos) {
+        return Err(Some(pumpkin_macros::translate_cross!(
+            translation::java::BLOCK_MINECRAFT_BED_NOT_SAFE,
+            translation::bedrock::TILE_BED_NOTSAFE
+        )));
+    }
+    Ok(())
+}
+
+/// A `Monster` whose box meets the 16x10x16 box around the bed head's bottom centre and
+/// whose `isPreventingPlayerRest` holds.
+fn monster_prevents_rest(world: &World, player: &Player, bed_head_pos: BlockPos) -> bool {
+    let center = bed_head_pos.to_f64();
+    let area = BoundingBox::new(
+        center.add_raw(-MONSTER_H_RANGE, -MONSTER_V_RANGE, -MONSTER_H_RANGE),
+        center.add_raw(MONSTER_H_RANGE, MONSTER_V_RANGE, MONSTER_H_RANGE),
+    );
+    world
+        .get_entities_of_types_at_box(&area, is_monster)
+        .iter()
+        .any(|monster| is_preventing_player_rest(monster.as_ref(), player, world))
+}
+
 /// Vanilla `Monster.isPreventingPlayerRest`: a zombified piglin only while angry at `player`.
-fn entity_prevents_sleep(entity: &dyn EntityBase, player: &dyn EntityBase, world: &World) -> bool {
-    let entity_type = entity.get_entity().entity_type;
-    if entity_type == &EntityType::ZOMBIFIED_PIGLIN {
-        return entity
+fn is_preventing_player_rest(monster: &dyn EntityBase, player: &Player, world: &World) -> bool {
+    if monster.get_entity().entity_type == &EntityType::ZOMBIFIED_PIGLIN {
+        return monster
             .get_mob()
             .and_then(Mob::as_neutral)
             .is_some_and(|neutral| neutral.is_angry_at(player, world));
     }
-    NO_SLEEP_IDS.contains(&entity_type.id)
+    true
 }

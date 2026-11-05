@@ -1531,7 +1531,7 @@ const MONSTERS: &[&EntityType] = &[
     &EntityType::ZOMBIFIED_PIGLIN,
 ];
 
-fn is_monster(entity_type: &EntityType) -> bool {
+pub(crate) fn is_monster(entity_type: &EntityType) -> bool {
     MONSTERS.iter().any(|monster| monster.id == entity_type.id)
 }
 

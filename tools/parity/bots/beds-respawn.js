@@ -76,6 +76,39 @@ h.start(async () => {
   await h.ticks(40)
   take()
 
+  // Only `Monster`s count (an ocelot doesn't), in a box around the head's bottom centre that
+  // their own box only has to touch, and never for a creative player.
+  const tryBed = async (key) => {
+    // A sleep before can have skipped the night.
+    h.cmd('time set 18000')
+    await h.ticks(10)
+    take()
+    await use(X + 2, Y + 1, Z)
+    h.result(`${key}_click`, take())
+    h.result(`${key}_sleeping`, bot.isSleeping)
+    if (bot.isSleeping) {
+      await bot.wake().catch(e => h.result('wake_error', e.message))
+      await h.waitFor(() => !bot.isSleeping, 5000)
+      await h.ticks(10)
+      take()
+    }
+  }
+  h.cmd(`summon ocelot ${X - 3.5} ${Y + 1} ${Z + 0.5} {NoAI:1b,PersistenceRequired:1b}`)
+  await h.ticks(10)
+  await tryBed('ocelot')
+  h.cmd('kill @e[type=ocelot]')
+  // Feet 6.9 blocks below the bed, head just inside the box.
+  h.cmd(`summon zombie ${X + 2.5} ${Y - 5.9} ${Z + 0.5} {NoAI:1b,NoGravity:1b,PersistenceRequired:1b}`)
+  await h.ticks(10)
+  await tryBed('low_zombie')
+  h.cmd(`gamemode creative ${bot.username}`)
+  await h.ticks(10)
+  await tryBed('creative_zombie')
+  h.cmd(`gamemode survival ${bot.username}`)
+  h.cmd('kill @e[type=zombie]')
+  await h.ticks(40)
+  take()
+
   h.cmd('weather rain')
   await h.ticks(10)
   await bot.sleep(h.block(X + 2, Y + 1, Z)).catch(e => h.result('sleep_error', e.message))

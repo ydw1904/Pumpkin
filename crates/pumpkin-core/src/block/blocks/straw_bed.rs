@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::block::blocks::bed::{BedBlock, start_sleep_in_bed_checks};
 use crate::block::entities::bed::BedBlockEntity;
 use pumpkin_data::block_properties::BedPart;
 use pumpkin_data::sound::{Sound, SoundCategory};
@@ -8,7 +9,6 @@ use pumpkin_data::{Block, BlockState, BlockStateId};
 use pumpkin_macros::pumpkin_block;
 use pumpkin_util::GameMode;
 use pumpkin_util::math::position::BlockPos;
-use pumpkin_util::text::TextComponent;
 use pumpkin_world::world::BlockFlags;
 
 use crate::block::OnLandedUponArgs;
@@ -24,44 +24,6 @@ use crate::world::World;
 use pumpkin_data::HorizontalFacingExt;
 
 type BedProperties = pumpkin_data::block_properties::WhiteBedLikeProperties;
-
-const NO_SLEEP_IDS: &[u16] = &[
-    pumpkin_data::entity::EntityType::BLAZE.id,
-    pumpkin_data::entity::EntityType::BOGGED.id,
-    pumpkin_data::entity::EntityType::SKELETON.id,
-    pumpkin_data::entity::EntityType::STRAY.id,
-    pumpkin_data::entity::EntityType::WITHER_SKELETON.id,
-    pumpkin_data::entity::EntityType::BREEZE.id,
-    pumpkin_data::entity::EntityType::CREAKING.id,
-    pumpkin_data::entity::EntityType::CREEPER.id,
-    pumpkin_data::entity::EntityType::DROWNED.id,
-    pumpkin_data::entity::EntityType::ENDERMITE.id,
-    pumpkin_data::entity::EntityType::EVOKER.id,
-    pumpkin_data::entity::EntityType::GIANT.id,
-    pumpkin_data::entity::EntityType::GUARDIAN.id,
-    pumpkin_data::entity::EntityType::ELDER_GUARDIAN.id,
-    pumpkin_data::entity::EntityType::ILLUSIONER.id,
-    pumpkin_data::entity::EntityType::OCELOT.id,
-    pumpkin_data::entity::EntityType::PIGLIN.id,
-    pumpkin_data::entity::EntityType::PIGLIN_BRUTE.id,
-    pumpkin_data::entity::EntityType::PILLAGER.id,
-    pumpkin_data::entity::EntityType::PHANTOM.id,
-    pumpkin_data::entity::EntityType::RAVAGER.id,
-    pumpkin_data::entity::EntityType::SILVERFISH.id,
-    pumpkin_data::entity::EntityType::SPIDER.id,
-    pumpkin_data::entity::EntityType::CAVE_SPIDER.id,
-    pumpkin_data::entity::EntityType::VEX.id,
-    pumpkin_data::entity::EntityType::VINDICATOR.id,
-    pumpkin_data::entity::EntityType::WARDEN.id,
-    pumpkin_data::entity::EntityType::WITCH.id,
-    pumpkin_data::entity::EntityType::WITHER.id,
-    pumpkin_data::entity::EntityType::ZOGLIN.id,
-    pumpkin_data::entity::EntityType::ZOMBIE.id,
-    pumpkin_data::entity::EntityType::ZOMBIE_VILLAGER.id,
-    pumpkin_data::entity::EntityType::HUSK.id,
-    pumpkin_data::entity::EntityType::ENDERMAN.id,
-    pumpkin_data::entity::EntityType::ZOMBIFIED_PIGLIN.id,
-];
 
 #[pumpkin_block("minecraft:straw_bed")]
 pub struct StrawBedBlock;
@@ -237,69 +199,6 @@ impl StrawBedBlock {
         );
     }
 
-    /// Returns the message to show the player when they cannot sleep here, or
-    /// `None` if the bed is usable.
-    fn sleep_refusal(
-        world: &Arc<World>,
-        player: &Arc<Player>,
-        occupied: bool,
-        bed_head_pos: BlockPos,
-        bed_foot_pos: BlockPos,
-    ) -> Option<TextComponent> {
-        if !world.dimension.bed_rule.can_sleep(world.is_dark_outside()) {
-            return Some(pumpkin_macros::translate_cross!(
-                translation::java::BLOCK_MINECRAFT_BED_NO_SLEEP,
-                translation::bedrock::TILE_BED_NOSLEEP
-            ));
-        }
-
-        if world.get_block_state(&bed_head_pos.up()).is_solid()
-            || world.get_block_state(&bed_foot_pos.up()).is_solid()
-        {
-            return Some(pumpkin_macros::translate_cross!(
-                translation::java::BLOCK_MINECRAFT_BED_OBSTRUCTED,
-                translation::bedrock::TILE_BED_OBSTRUCTED
-            ));
-        }
-
-        if occupied {
-            return Some(pumpkin_macros::translate_cross!(
-                translation::java::BLOCK_MINECRAFT_BED_OCCUPIED,
-                translation::bedrock::TILE_BED_OCCUPIED
-            ));
-        }
-
-        if !player
-            .position()
-            .is_within_bounds(bed_head_pos.to_f64(), 3.0, 3.0, 3.0)
-            && !player
-                .position()
-                .is_within_bounds(bed_foot_pos.to_f64(), 3.0, 3.0, 3.0)
-        {
-            return Some(pumpkin_macros::translate_cross!(
-                translation::java::BLOCK_MINECRAFT_BED_TOO_FAR_AWAY,
-                translation::bedrock::TILE_BED_TOOFAR
-            ));
-        }
-
-        for entity in world.entities.load().iter() {
-            if !NO_SLEEP_IDS.contains(&entity.get_entity().entity_type.id) {
-                continue;
-            }
-            let pos = entity.get_entity().pos.load();
-            if pos.is_within_bounds(bed_head_pos.to_f64(), 8.0, 5.0, 8.0)
-                || pos.is_within_bounds(bed_foot_pos.to_f64(), 8.0, 5.0, 8.0)
-            {
-                return Some(pumpkin_macros::translate_cross!(
-                    translation::java::BLOCK_MINECRAFT_BED_NOT_SAFE,
-                    translation::bedrock::TILE_BED_NOTSAFE
-                ));
-            }
-        }
-
-        None
-    }
-
     fn use_bed(
         world: &Arc<World>,
         player: &Arc<Player>,
@@ -318,14 +217,28 @@ impl StrawBedBlock {
             (position.offset(bed_props.facing.to_offset()), *position)
         };
 
-        if let Some(message) = Self::sleep_refusal(
+        if bed_props.occupied {
+            player.send_system_message_raw(
+                &pumpkin_macros::translate_cross!(
+                    translation::java::BLOCK_MINECRAFT_BED_OCCUPIED,
+                    translation::bedrock::TILE_BED_OCCUPIED
+                ),
+                true,
+            );
+            return BlockActionResult::SuccessServer;
+        }
+
+        if let Err(problem) = start_sleep_in_bed_checks(
             world,
             player,
-            bed_props.occupied,
             bed_head_pos,
             bed_foot_pos,
+            world.dimension.bed_rule.can_sleep(world.is_dark_outside()),
+            false,
         ) {
-            player.send_system_message_raw(&message, true);
+            if let Some(problem) = problem {
+                player.send_system_message_raw(&problem, true);
+            }
             return BlockActionResult::SuccessServer;
         }
 
@@ -350,7 +263,7 @@ impl StrawBedBlock {
             pumpkin_data::statistic::CustomStatistic::SleepInStrawBed as i32,
             1,
         );
-        crate::block::blocks::bed::BedBlock::set_occupied(true, world, block, position, state_id);
+        BedBlock::set_occupied(true, world, block, position, state_id);
 
         BlockActionResult::SuccessServer
     }
