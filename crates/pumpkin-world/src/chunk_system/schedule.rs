@@ -943,6 +943,10 @@ impl GenerationSchedule {
                 holder.public = false;
             }
 
+            if holder.read_failed {
+                continue;
+            }
+
             if let Some(tmp) = holder.chunk {
                 match tmp {
                     Chunk::Level(chunk) => {
@@ -983,6 +987,9 @@ impl GenerationSchedule {
         let mut chunks = Vec::with_capacity(self.chunk_map.len());
 
         for (pos, holder) in &mut self.chunk_map {
+            if holder.read_failed {
+                continue;
+            }
             if let Some(chunk) = &holder.chunk {
                 let should_save = match chunk {
                     Chunk::Level(sync_chunk) => sync_chunk.is_dirty(),
@@ -1074,7 +1081,7 @@ impl GenerationSchedule {
     #[expect(clippy::too_many_lines)]
     fn receive_chunk(&mut self, pos: ChunkPos, data: RecvChunk) {
         match data {
-            RecvChunk::IO(chunk) => {
+            RecvChunk::IO { chunk, read_failed } => {
                 let mut holder = self.chunk_map.remove(&pos).expect("holder exists");
                 if holder.chunk.is_some() {
                     warn!(
@@ -1083,6 +1090,7 @@ impl GenerationSchedule {
                     );
                 }
                 debug_assert_eq!(holder.current_stage, StagedChunkEnum::None);
+                holder.read_failed = read_failed;
 
                 let stage = StagedChunkEnum::from(chunk.get_stage_id());
                 self.drop_satisfied_tasks(&mut holder, stage);
@@ -1503,6 +1511,10 @@ impl GenerationSchedule {
                             node.pos.y - write_radius,
                             write_radius << 1 | 1,
                         );
+                        cache.read_failed = self
+                            .chunk_map
+                            .get(&node.pos)
+                            .is_some_and(|holder| holder.read_failed);
 
                         if node.stage == StagedChunkEnum::Surface {
                             let mut neighborhood =
