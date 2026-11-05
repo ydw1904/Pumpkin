@@ -273,8 +273,13 @@ impl ThrownItemEntity {
         let mut closest_t = 1.0f64;
         let mut hit = None;
 
-        // Block collisions
-        let (block_cols, block_positions) = world.get_block_collisions(search_box, caller);
+        // Block collisions. Vanilla `BlockGetter.clip` misses when the ray has no length, so a
+        // projectile at rest on a block doesn't hit it.
+        let (block_cols, block_positions) = if delta.length_squared() > 0.0 {
+            world.get_block_collisions(search_box, caller)
+        } else {
+            Default::default()
+        };
         for (idx, bb) in block_cols.iter().enumerate() {
             if let Some(t) = calculate_ray_intersection(&start_pos, &delta, bb)
                 && t < closest_t
