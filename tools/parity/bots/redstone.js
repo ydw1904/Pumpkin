@@ -5,9 +5,14 @@ const { make } = require('./survival-lib')
 const h = make('Wirer')
 const { bot, Vec3 } = h
 const X = 6000; const Y = 200; const Z = 0
+// Time packets arrive every 20 ticks; two intervals leave time for queued commands to run.
+const SETTLE_TICKS = 40
 
 const props = (x, y, z) => { const b = h.block(x, y, z); return b ? b.getProperties() : {} }
 const power = (x, y, z) => props(x, y, z).power
+function requireScene (condition, message) {
+  if (!condition) throw new Error(`Invalid redstone scene: ${message}`)
+}
 // Watches a block for the states it passes through.
 function watch (x, y, z, key) {
   const seen = []
@@ -69,12 +74,17 @@ h.start(async () => {
   h.cmd(`setblock ${X - 14} ${y} ${Z - 8} lever[face=floor,powered=false]`)
   h.cmd(`setblock ${X - 14} ${y} ${Z - 7} repeater[facing=north]`)
   h.cmd(`setblock ${X - 14} ${y} ${Z - 6} redstone_lamp`)
-  h.cmd(`setblock ${X - 12} ${y} ${Z - 7} redstone_block`)
   h.cmd(`setblock ${X - 13} ${y} ${Z - 7} repeater[facing=east]`)
-  await h.ticks(10)
+  // Power arrives after placement so the side repeater receives a neighbour update.
+  h.cmd(`setblock ${X - 12} ${y} ${Z - 7} redstone_block`)
+  await h.serverTicks(SETTLE_TICKS)
+  requireScene(props(X - 13, y, Z - 7).powered === true && props(X - 14, y, Z - 7).locked === true, 'side repeater must lock the main repeater')
   h.cmd(`setblock ${X - 14} ${y} ${Z - 8} lever[face=floor,powered=true]`)
-  await h.ticks(10)
+  await h.serverTicks(SETTLE_TICKS)
   h.result('repeater_locked', `${props(X - 14, y, Z - 7).locked} lamp=${props(X - 14, y, Z - 6).lit}`)
+  h.cmd(`setblock ${X - 12} ${y} ${Z - 7} air`)
+  await h.serverTicks(SETTLE_TICKS)
+  h.result('repeater_unlocked', `${props(X - 14, y, Z - 7).locked} lamp=${props(X - 14, y, Z - 6).lit}`)
 
   // Observer: pulses once when the watched block changes.
   h.cmd(`setblock ${X - 8} ${y} ${Z - 7} observer[facing=north]`)
@@ -164,11 +174,12 @@ h.start(async () => {
   h.result('detector_rail_after', props(X - 10, y, Z + 6).powered)
   h.cmd(`setblock ${X - 15} ${y} ${Z + 10} stone`)
   h.cmd(`fill ${X - 14} ${y} ${Z + 10} ${X - 4} ${y} ${Z + 10} powered_rail[shape=east_west]`)
-  h.cmd(`fill ${X - 14} ${Y} ${Z + 11} ${X - 4} ${Y} ${Z + 11} redstone_block`)
+  h.cmd(`fill ${X - 14} ${Y} ${Z + 10} ${X - 4} ${Y} ${Z + 10} redstone_block`)
   h.cmd(`fill ${X - 3} ${y} ${Z + 10} ${X + 8} ${y} ${Z + 10} rail[shape=east_west]`)
-  await h.ticks(10)
+  await h.serverTicks(SETTLE_TICKS)
+  requireScene(props(X - 14, y, Z + 10).powered === true, 'rail under the minecart must be powered')
   h.cmd(`summon minecart ${X - 13.5} ${y} ${Z + 10.5}`)
-  await h.ticks(30)
+  await h.serverTicks(SETTLE_TICKS)
   const cart = Object.values(bot.entities).find(e => e.name === 'minecart')
   h.result('powered_rail_cart_moved_east', cart ? cart.position.x > X - 10 : 'none')
 
@@ -187,12 +198,15 @@ h.start(async () => {
   h.result('hopper_unlocked', `${props(X + 8, y + 1, Z + 12).enabled} chest_signal=${power(X + 8, y, Z + 14)}`)
 
   // Slime carries the block beside it; honey does not stick to slime.
-  h.cmd(`setblock ${X - 4} ${y} ${Z + 14} piston[facing=east]`)
-  h.cmd(`setblock ${X - 3} ${y} ${Z + 14} slime_block`)
-  h.cmd(`setblock ${X - 3} ${y} ${Z + 15} cobblestone`)
-  h.cmd(`setblock ${X - 3} ${y} ${Z + 13} honey_block`)
-  await h.ticks(5)
-  h.cmd(`setblock ${X - 5} ${y} ${Z + 14} redstone_block`)
-  await h.ticks(10)
-  h.result('slime_push', [h.blockName(X - 2, y, Z + 14), h.blockName(X - 2, y, Z + 15), h.blockName(X - 3, y, Z + 15), h.blockName(X - 3, y, Z + 13), h.blockName(X - 2, y, Z + 13)].join(','))
+  // Keep sticky blocks clear of the arena floor, which would exceed the push limit.
+  const pistonY = y + 2
+  h.cmd(`setblock ${X - 4} ${pistonY} ${Z + 14} piston[facing=east]`)
+  h.cmd(`setblock ${X - 3} ${pistonY} ${Z + 14} slime_block`)
+  h.cmd(`setblock ${X - 3} ${pistonY} ${Z + 15} cobblestone`)
+  h.cmd(`setblock ${X - 3} ${pistonY} ${Z + 13} honey_block`)
+  await h.serverTicks(SETTLE_TICKS)
+  h.cmd(`setblock ${X - 5} ${pistonY} ${Z + 14} redstone_block`)
+  await h.serverTicks(SETTLE_TICKS)
+  requireScene(props(X - 4, pistonY, Z + 14).extended === true, 'slime piston must extend')
+  h.result('slime_push', [h.blockName(X - 2, pistonY, Z + 14), h.blockName(X - 2, pistonY, Z + 15), h.blockName(X - 3, pistonY, Z + 15), h.blockName(X - 3, pistonY, Z + 13), h.blockName(X - 2, pistonY, Z + 13)].join(','))
 })
