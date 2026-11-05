@@ -35,10 +35,19 @@ pub struct AnimalMakeLove {
 impl AnimalMakeLove {
     #[must_use]
     pub const fn new(partner_type: &'static EntityType) -> Self {
+        Self::with_approach(partner_type, 1.0, 2)
+    }
+
+    #[must_use]
+    pub const fn with_approach(
+        partner_type: &'static EntityType,
+        speed_modifier: f32,
+        close_enough_distance: i32,
+    ) -> Self {
         Self {
             partner_type,
-            speed_modifier: 1.0,
-            close_enough_distance: 2,
+            speed_modifier,
+            close_enough_distance,
             spawn_child_at_time: 0,
         }
     }

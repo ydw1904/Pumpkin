@@ -2,6 +2,7 @@ use rand::{Rng, RngExt};
 
 use crate::entity::EntityBase;
 use crate::entity::ai::target_predicate::TargetPredicate;
+use crate::entity::passive::armadillo;
 
 use super::memory::{MemoryModuleId, types};
 use super::{BrainTick, VisibilityContext};
@@ -10,6 +11,7 @@ pub mod adult;
 pub mod dummy;
 pub mod golem;
 pub mod hurt_by;
+pub mod mob;
 pub mod nearest_bed;
 pub mod nearest_items;
 pub mod nearest_living_entities;
@@ -47,6 +49,7 @@ pub enum SensorType {
     VillagerHostiles,
     SecondaryPois,
     GolemDetected,
+    ArmadilloScareDetected,
 }
 
 impl SensorType {
@@ -67,6 +70,7 @@ impl SensorType {
             Self::VillagerHostiles => "minecraft:villager_hostiles",
             Self::SecondaryPois => "minecraft:secondary_pois",
             Self::GolemDetected => "minecraft:golem_detected",
+            Self::ArmadilloScareDetected => "minecraft:armadillo_scare_detected",
         }
     }
 
@@ -87,6 +91,7 @@ impl SensorType {
             | Self::WardenEntity => DEFAULT_SCAN_RATE,
             Self::SecondaryPois => 40,
             Self::GolemDetected => 200,
+            Self::ArmadilloScareDetected => armadillo::SCARE_SCAN_RATE,
         }
     }
 
@@ -106,6 +111,12 @@ impl SensorType {
             Self::VillagerHostiles => Box::new(villager_hostiles::VillagerHostilesSensor),
             Self::SecondaryPois => Box::new(secondary_pois::SecondaryPoiSensor),
             Self::GolemDetected => Box::new(golem::GolemSensor),
+            Self::ArmadilloScareDetected => Box::new(mob::MobSensor::new(
+                armadillo::is_scared_by,
+                armadillo::can_stay_rolled_up,
+                types::DANGER_DETECTED_RECENTLY,
+                armadillo::DANGER_DETECTED_RECENTLY_TICKS,
+            )),
         }
     }
 

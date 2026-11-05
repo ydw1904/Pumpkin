@@ -4336,7 +4336,6 @@ impl LivingEntity {
             caller,
             cause.or(source),
         );
-        let play_sound = full_hit && self.health.load() > effective_amount;
 
         // Finalize state
         self.last_damage_taken.store(amount);
@@ -4412,41 +4411,6 @@ impl LivingEntity {
         }
 
         self.no_action_time.store(0, Relaxed);
-        if play_sound {
-            if let Some(mob) = caller.get_mob() {
-                mob.reset_ambient_sound_time();
-            }
-            self.make_voice_sound(caller, self.hurt_sound(caller));
-        }
-        if play_sound {
-            self.play_secondary_hurt_sound(caller, damage_type);
-        }
-        // Vanilla `dealDefaultKnockback`: along a projectile's flight, else away from the direct
-        // source or the source position; with neither, `knockback` picks a random direction.
-        let fully_blocked = blocked && amount <= 0.0;
-        if full_hit
-            && !fully_blocked
-            && !damage_type.has_tag(&tag::DamageType::MINECRAFT_NO_KNOCKBACK)
-        {
-            let target_pos = self.entity.pos.load();
-            let (dx, dz) = if let Some(source) = source
-                && source.get_projectile_owner().is_some()
-                && !Self::knocks_back_from_position(source.get_entity().entity_type)
-            {
-                let velocity = source.get_entity().velocity.load();
-                (-velocity.x, -velocity.z)
-            } else {
-                source
-                    .map(|source| source.get_entity().pos.load())
-                    .or(position)
-                    .map_or((0.0, 0.0), |from| {
-                        (from.x - target_pos.x, from.z - target_pos.z)
-                    })
-            };
-            let resistance = self.get_attribute_value(&Attributes::KNOCKBACK_RESISTANCE);
-            self.entity
-                .apply_knockback(knockback_after_resistance(0.4, resistance), dx, dz);
-        }
 
         // Vanilla parity: actuallyHurt
         let original_damage = damage_amount;
@@ -4528,7 +4492,47 @@ impl LivingEntity {
             }
         }
 
-        if new_health <= 0.0 && !self.check_totem_death_protection(caller, damage_type) {
+        if let Some(mob) = caller.get_mob() {
+            mob.actually_hurt(damage_type, cause.or(source), new_health <= 0.0);
+        }
+
+        // Vanilla `dealDefaultKnockback`: along a projectile's flight, else away from the direct
+        // source or the source position; with neither, `knockback` picks a random direction.
+        let fully_blocked = blocked && amount <= 0.0;
+        if full_hit
+            && !fully_blocked
+            && !damage_type.has_tag(&tag::DamageType::MINECRAFT_NO_KNOCKBACK)
+        {
+            let target_pos = self.entity.pos.load();
+            let (dx, dz) = if let Some(source) = source
+                && source.get_projectile_owner().is_some()
+                && !Self::knocks_back_from_position(source.get_entity().entity_type)
+            {
+                let velocity = source.get_entity().velocity.load();
+                (-velocity.x, -velocity.z)
+            } else {
+                source
+                    .map(|source| source.get_entity().pos.load())
+                    .or(position)
+                    .map_or((0.0, 0.0), |from| {
+                        (from.x - target_pos.x, from.z - target_pos.z)
+                    })
+            };
+            let resistance = self.get_attribute_value(&Attributes::KNOCKBACK_RESISTANCE);
+            self.entity
+                .apply_knockback(knockback_after_resistance(0.4, resistance), dx, dz);
+        }
+
+        // Vanilla plays the hurt sound after `actuallyHurt`, so it hears the state that set.
+        if new_health > 0.0 {
+            if full_hit {
+                if let Some(mob) = caller.get_mob() {
+                    mob.reset_ambient_sound_time();
+                }
+                self.make_voice_sound(caller, self.hurt_sound(caller));
+                self.play_secondary_hurt_sound(caller, damage_type);
+            }
+        } else if !self.check_totem_death_protection(caller, damage_type) {
             let mut death_event =
                 crate::plugin::api::events::entity::entity_death::EntityDeathEvent::new(
                     self.entity.entity_id,

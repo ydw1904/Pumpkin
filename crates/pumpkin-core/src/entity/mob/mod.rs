@@ -219,6 +219,14 @@ impl MobEntity {
             .store(Vector3::new(input.x, input.y, f64::from(speed)));
     }
 
+    /// Vanilla `Mob.stopInPlace`.
+    pub fn stop_in_place(&self) {
+        self.steered().navigator().stop();
+        self.living_entity.movement_input.store(Vector3::default());
+        self.set_speed(0.0);
+        self.living_entity.entity.velocity.store(Vector3::default());
+    }
+
     const CONTROL_FLAGS_UPDATE_INTERVAL: i32 = 5;
     const AI_DISABLED_FLAG: u8 = 1;
     const LEFT_HANDED_FLAG: u8 = 2;
@@ -2112,6 +2120,15 @@ pub trait Mob: EntityBase + Send + Sync {
         75.0
     }
 
+    /// Vanilla `Mob.clampHeadRotationToBody`.
+    fn clamp_head_rotation_to_body(&self) {
+        let entity = self.get_entity();
+        let max = self.get_max_head_rotation();
+        let head = entity.head_yaw.load();
+        let diff = pumpkin_util::math::wrap_degrees(entity.body_yaw.load() - head);
+        entity.head_yaw.store(head + diff - diff.clamp(-max, max));
+    }
+
     fn ticks_look_control(&self) -> bool {
         true
     }
@@ -2569,6 +2586,16 @@ pub trait Mob: EntityBase + Send + Sync {
     }
 
     fn on_damage(&self, _damage_type: DamageType, _source: Option<&dyn EntityBase>) {}
+
+    /// Vanilla's `actuallyHurt` overrides: runs once the damage is applied, before the knockback
+    /// and the hurt or death sound. `attacker` is the damage source's causing entity.
+    fn actually_hurt(
+        &self,
+        _damage_type: DamageType,
+        _attacker: Option<&dyn EntityBase>,
+        _dying: bool,
+    ) {
+    }
 
     fn on_damage_with_context(
         &self,

@@ -16,6 +16,7 @@ use crate::block::{
 };
 use crate::entity::decoration::armor_stand::ArmorStandEntity;
 use crate::entity::item::ItemEntity;
+use crate::entity::passive::armadillo::{self, ArmadilloEntity};
 use crate::entity::passive::sheep::SheepEntity;
 use crate::entity::projectile::ThrownItemEntity;
 use crate::entity::projectile::arrow::{ArrowEntity, ArrowPickup};
@@ -381,6 +382,9 @@ impl DispenserBlock {
         } else if item.item.id == Item::SHEARS.id {
             // Shears harvest full beehives and shear sheep
             Self::dispense_shears(ctx, item);
+        } else if item.item.id == Item::BRUSH.id {
+            // Brushes brush scutes off armadillos
+            Self::dispense_brush(ctx, item);
         } else if item.item.id == Item::GLASS_BOTTLE.id {
             // Glass bottles fill from water and full beehives
             if !Self::dispense_glass_bottle(ctx, dispenser, item) {
@@ -417,7 +421,7 @@ impl DispenserBlock {
             // Experience bottles (bottles o' enchanting) are thrown like splash potions
             Self::dispense_experience_bottle(ctx, item);
         } else {
-            // TODO: chests onto llamas, brushes onto armadillos
+            // TODO: chests onto llamas
             // Default / Drop
             Self::drop_item(ctx, item);
         }
@@ -1034,6 +1038,22 @@ impl DispenserBlock {
         }
 
         false
+    }
+
+    fn dispense_brush(ctx: &DispenseContext<'_>, item: &mut ItemStack) {
+        let target_box = BoundingBox::from_block(&Self::target_position(ctx));
+        let brushed = ctx
+            .world
+            .get_entities_at_box(&target_box)
+            .iter()
+            .filter_map(|entity| entity.cast_any().downcast_ref::<ArmadilloEntity>())
+            .any(|armadillo| armadillo.brush_off_scute(item));
+        if brushed {
+            let _ = item.damage_item(armadillo::BRUSH_DAMAGE);
+            Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserDispense);
+        } else {
+            Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserFail);
+        }
     }
 
     fn dispense_glass_bottle(

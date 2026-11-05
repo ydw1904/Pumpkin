@@ -17,7 +17,6 @@ use pumpkin_data::tag::{self, Taggable};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::boundingbox::{BoundingBox, EntityDimensions};
 use pumpkin_util::math::position::BlockPos;
-use pumpkin_util::math::wrap_degrees;
 
 use crate::entity::{
     Entity, EntityBase,
@@ -286,14 +285,6 @@ impl CamelEntity {
             offset += f64::from(bottom_point);
         }
         offset
-    }
-
-    fn clamp_head_rotation_to_body(&self) {
-        let entity = self.get_entity();
-        let head = entity.head_yaw.load();
-        let diff = wrap_degrees(entity.body_yaw.load() - head);
-        let clamped = diff.clamp(-MAX_HEAD_Y_ROT, MAX_HEAD_Y_ROT);
-        entity.head_yaw.store(head + diff - clamped);
     }
 }
 

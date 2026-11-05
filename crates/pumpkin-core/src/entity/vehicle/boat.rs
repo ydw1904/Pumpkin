@@ -19,7 +19,6 @@ use pumpkin_nbt::NbtCompound;
 use pumpkin_protocol::bedrock::server::actor_event::ActorEventID;
 use pumpkin_util::GameMode;
 use pumpkin_util::math::position::BlockPos;
-use pumpkin_util::math::wrap_degrees;
 use pumpkin_util::random::gameplay::game_random;
 use pumpkin_util::text::TextComponent;
 
@@ -600,11 +599,7 @@ impl EntityBase for BoatEntity {
         let body_yaw = self.passenger_body_yaw(passenger);
         rider.body_yaw.store(body_yaw);
         rider.yaw.store(body_yaw);
-        // Vanilla `Mob.clampHeadRotationToBody`.
-        let max = mob.get_max_head_rotation();
-        let head = rider.head_yaw.load();
-        let diff = wrap_degrees(body_yaw - head);
-        rider.head_yaw.store(head + diff - diff.clamp(-max, max));
+        mob.clamp_head_rotation_to_body();
     }
 
     fn get_entity(&self) -> &Entity {
