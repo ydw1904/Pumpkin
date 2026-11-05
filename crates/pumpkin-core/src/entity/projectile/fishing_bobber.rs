@@ -479,6 +479,7 @@ impl FishingBobberEntity {
 
         // Vanilla moves the hook through the engine's collision resolution, so it comes to rest on
         // block surfaces instead of hovering above them.
+        entity.velocity.store(velocity);
         entity.move_entity(caller, velocity);
 
         // Vanilla zeroes the hook's momentum when it comes to rest while flying.
@@ -1049,9 +1050,8 @@ mod tests {
         assert_eq!(bobber.state.load(), HookState::HookedIn(other.entity_id));
     }
 
-    /// `process_tick` hands this velocity to `move_entity`, which stores it back on the hook, so
-    /// hooking has to clear the throw motion before the move or the hook keeps flying once the
-    /// hooked entity is removed.
+    /// `process_tick` stores this velocity on the hook before its move, so hooking has to clear
+    /// the throw motion or the hook keeps flying once the hooked entity is removed.
     #[tokio::test]
     async fn hook_then_detach_does_not_resume_the_flight() {
         let world = test_world();
@@ -1081,6 +1081,7 @@ mod tests {
         );
         assert_eq!(bobber.state.load(), HookState::HookedIn(hooked.entity_id));
 
+        bobber.entity.velocity.store(velocity);
         bobber.entity.move_entity(&bobber, velocity);
         assert_eq!(
             bobber.entity.velocity.load(),

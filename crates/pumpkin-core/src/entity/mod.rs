@@ -3327,100 +3327,44 @@ impl Entity {
         self.set_pos(self.pos.load() + delta);
     }
 
-    // Move by a delta, adjust for collisions, and send
-
-    // Does not send movement. That must be done separately
-    pub fn move_entity(&self, caller: &dyn EntityBase, mut motion: Vector3<f64>) {
+    /// Vanilla `Entity.move` with `MoverType.SELF`: moves by `motion` with collisions and
+    /// keeps the velocity except along the axes the move collided on. Does not send movement.
+    pub fn move_entity(&self, caller: &dyn EntityBase, motion: Vector3<f64>) {
         if caller.get_player().is_some() {
             return;
         }
-
-        if self.no_physics.load(Ordering::Relaxed) {
-            self.move_pos(motion);
-            self.horizontal_collision.store(false, Ordering::Relaxed);
-            self.vertical_collision.store(false, Ordering::Relaxed);
-            self.on_ground.store(false, Ordering::Relaxed);
-
+        if self.move_without_physics(motion) {
             return;
         }
+        self.move_colliding(caller, motion, true);
+    }
 
-        let movement_multiplier = self.movement_multiplier.swap(Vector3::default());
-
-        if movement_multiplier.length_squared() > 1.0e-7 {
-            motion = motion.multiply(
-                movement_multiplier.x,
-                movement_multiplier.y,
-                movement_multiplier.z,
-            );
-
-            self.velocity.store(Vector3::default());
+    /// The `noPhysics` branch of vanilla `Entity.move`.
+    fn move_without_physics(&self, delta: Vector3<f64>) -> bool {
+        if !self.no_physics.load(Ordering::Relaxed) {
+            return false;
         }
-        let current_velocity = self.velocity.load();
-
-        let final_move = self.adjust_movement_for_collisions(motion, caller);
-
-        self.move_pos(final_move);
-
-        let velocity_multiplier = f64::from(caller.get_block_speed_factor());
-
-        self.velocity.store(final_move * velocity_multiplier);
-
-        if let Some(living) = caller.get_living_entity() {
-            let on_ground = self.on_ground.load(Ordering::SeqCst);
-            living.fall(caller, final_move.y, on_ground, false);
-        }
-
-        let (effect_pos, effect_block, effect_state) = self.get_block_with_y_offset(0.2);
-        if self.is_removed() {
-            return;
-        }
-        if let Some(restituted) = self.restitute_movement_after_collisions(
-            caller,
-            effect_block,
-            current_velocity,
-            motion,
-            final_move,
-        ) {
-            // Vanilla scales only the horizontal velocity by the block speed factor.
-            let mut velocity = self.velocity.load();
-            if motion.x != final_move.x {
-                velocity.x = restituted.x * velocity_multiplier;
-            }
-            if motion.z != final_move.z {
-                velocity.z = restituted.z * velocity_multiplier;
-            }
-            if motion.y != final_move.y {
-                velocity.y = restituted.y;
-            }
-            self.velocity.store(velocity);
-        }
-        self.emit_movement(caller, final_move, &effect_pos, effect_state);
+        self.move_pos(delta);
+        self.horizontal_collision.store(false, Ordering::Relaxed);
+        self.vertical_collision.store(false, Ordering::Relaxed);
+        true
     }
 
     /// Vanilla `Entity.move` with `MoverType.PISTON`.
     pub fn move_by_piston(&self, caller: &dyn EntityBase, delta: Vector3<f64>) {
-        if self.no_physics.load(Ordering::Relaxed) {
-            self.move_pos(delta);
-            self.horizontal_collision.store(false, Ordering::Relaxed);
-            self.vertical_collision.store(false, Ordering::Relaxed);
+        if self.move_without_physics(delta) {
             return;
         }
         let delta = self.limit_piston_movement(delta);
         if delta == Vector3::default() {
             return;
         }
-        self.move_keeping_velocity(caller, delta, false);
+        self.move_colliding(caller, delta, false);
     }
 
-    /// Vanilla `Entity.move` for physics that keep their own velocity, unlike
-    /// [`Self::move_entity`]: velocity only changes where the move collides and by the block
-    /// speed factor. Pistons don't slow down in cobwebs (`stuck_slows` false).
-    pub fn move_keeping_velocity(
-        &self,
-        caller: &dyn EntityBase,
-        mut delta: Vector3<f64>,
-        stuck_slows: bool,
-    ) {
+    /// The physics branch of vanilla `Entity.move`. Pistons don't slow down in cobwebs
+    /// (`stuck_slows` false).
+    fn move_colliding(&self, caller: &dyn EntityBase, mut delta: Vector3<f64>, stuck_slows: bool) {
         let movement_multiplier = self.movement_multiplier.swap(Vector3::default());
         if movement_multiplier.length_squared() > 1.0e-7 {
             if stuck_slows {
@@ -3439,6 +3383,10 @@ impl Entity {
         if movement_length > 1.0e-7 || delta.length_squared() - movement_length < 1.0e-7 {
             self.move_pos(movement);
         }
+        self.horizontal_collision.store(
+            Self::collided(delta.x, movement.x) || Self::collided(delta.z, movement.z),
+            Ordering::SeqCst,
+        );
 
         if let Some(living) = caller.get_living_entity() {
             let on_ground = self.on_ground.load(Ordering::SeqCst);
@@ -3480,8 +3428,8 @@ impl Entity {
         delta: Vector3<f64>,
         movement: Vector3<f64>,
     ) -> Option<Vector3<f64>> {
-        let x_collision = delta.x != movement.x;
-        let z_collision = delta.z != movement.z;
+        let x_collision = Self::collided(delta.x, movement.x);
+        let z_collision = Self::collided(delta.z, movement.z);
         let vertical_collision = delta.y != movement.y;
         if !x_collision && !z_collision && !vertical_collision {
             return None;
@@ -3544,6 +3492,11 @@ impl Entity {
             self.emit_own_game_event(caller, GameEvent::Bounce);
         }
         Some(after_bounce)
+    }
+
+    /// Whether a move along one axis collided: vanilla `!Mth.equal(delta, movement)`.
+    fn collided(delta: f64, movement: f64) -> bool {
+        (movement - delta).abs() >= f64::from(1.0E-5f32)
     }
 
     /// Vanilla `getBlockBounciness`: entities that are not living bounce less.

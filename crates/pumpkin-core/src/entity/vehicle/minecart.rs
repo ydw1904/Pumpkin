@@ -238,18 +238,17 @@ impl MinecartEntity {
         }
     }
 
-    /// Vanilla `AbstractMinecart.move(MoverType.SELF, ...)`: the move doesn't replace the
-    /// cart's velocity, which the rail code sets itself.
+    /// Vanilla `AbstractMinecart.move(MoverType.SELF, ...)`.
     fn move_self(&self, caller: &dyn EntityBase, delta: Vector3<f64>) {
         let entity = &self.vehicle.entity;
         let from = entity.pos.load();
         let to_position = from.add(&delta);
-        entity.move_keeping_velocity(caller, delta, true);
+        entity.move_entity(caller, delta);
         if let Some(dyn_self) = entity.world.load().get_entity_by_id(entity.entity_id)
             && dyn_self.push_entities(caller)
         {
             let back_motion = to_position.sub(&entity.pos.load());
-            entity.move_keeping_velocity(caller, back_motion, true);
+            entity.move_entity(caller, back_motion);
         }
         let to = entity.pos.load();
         let allowed = super::vehicle::fire_vehicle_move(entity, from, to);
@@ -1027,25 +1026,7 @@ impl EntityBase for MinecartEntity {
     }
 
     fn move_entity(&self, caller: &dyn EntityBase, motion: Vector3<f64>) {
-        let entity = &self.vehicle.entity;
-        let from = entity.pos.load();
-        let to_position = from.add(&motion);
-        entity.move_entity(caller, motion);
-        let entity_id = entity.entity_id;
-        let world = entity.world.load().clone();
-        if let Some(dyn_self) = world.get_entity_by_id(entity_id) {
-            let should_continue = dyn_self.push_entities(caller);
-            if should_continue {
-                let current_pos = dyn_self.get_entity().pos.load();
-                let back_motion = to_position.sub(&current_pos);
-                dyn_self.get_entity().move_entity(caller, back_motion);
-            }
-        }
-        let to = entity.pos.load();
-        let allowed = super::vehicle::fire_vehicle_move(entity, from, to);
-        if allowed != to {
-            entity.set_pos(allowed);
-        }
+        self.move_self(caller, motion);
     }
 
     fn cast_any(&self) -> &dyn std::any::Any {
