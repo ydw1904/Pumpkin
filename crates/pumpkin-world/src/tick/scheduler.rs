@@ -70,7 +70,8 @@ impl<'a, T: std::hash::Hash + Eq> ChunkTickScheduler<&'a T> {
         res
     }
 
-    pub fn schedule_tick(&self, tick: &ScheduledTick<&'a T>, sub_tick_order: u64) {
+    /// Queues the tick unless the same one is already queued, and returns whether it was.
+    pub fn schedule_tick(&self, tick: &ScheduledTick<&'a T>, sub_tick_order: u64) -> bool {
         let offset = self.offset.load(Ordering::SeqCst);
         let mut inner_guard = self
             .inner
@@ -98,6 +99,9 @@ impl<'a, T: std::hash::Hash + Eq> ChunkTickScheduler<&'a T> {
                     .or_default()
                     .push(ordered_tick);
             }
+            true
+        } else {
+            false
         }
     }
 

@@ -1191,11 +1191,10 @@ impl Level {
         };
 
         let chunk_pos = block_pos.chunk_position();
-        if self
-            .read_chunk_sync(&chunk_pos, |chunk| {
-                chunk.block_ticks.schedule_tick(&scheduled_tick, tick_order);
-            })
-            .is_some()
+        // A tick that was already queued keeps the chunk in the set.
+        if self.read_chunk_sync(&chunk_pos, |chunk| {
+            chunk.block_ticks.schedule_tick(&scheduled_tick, tick_order)
+        }) == Some(true)
         {
             self.chunks_with_scheduled_ticks.insert(chunk_pos);
         }
@@ -1219,11 +1218,9 @@ impl Level {
         };
 
         let chunk_pos = block_pos.chunk_position();
-        if self
-            .read_chunk_sync(&chunk_pos, |chunk| {
-                chunk.fluid_ticks.schedule_tick(&scheduled_tick, tick_order);
-            })
-            .is_some()
+        if self.read_chunk_sync(&chunk_pos, |chunk| {
+            chunk.fluid_ticks.schedule_tick(&scheduled_tick, tick_order)
+        }) == Some(true)
         {
             self.chunks_with_scheduled_ticks.insert(chunk_pos);
         }
