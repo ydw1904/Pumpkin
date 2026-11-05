@@ -7980,6 +7980,17 @@ impl EntityBase for Player {
         SoundCategory::Players
     }
 
+    /// Vanilla `Entity.interact`: shears cut the leashes this player holds.
+    fn interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
+        if item_stack.get_item() == &pumpkin_data::item::Item::SHEARS
+            && crate::entity::shear_off_all_leash_connections(self, Some(player))
+        {
+            let _ = player.damage_item_stack(item_stack, 1);
+            return true;
+        }
+        false
+    }
+
     /// Vanilla `Player.playSound`: everyone but this player, whose client plays it already.
     fn play_entity_sound(&self, sound: Sound, volume: f32, pitch: f32) {
         let entity = self.get_entity();
