@@ -8,6 +8,7 @@ pub mod end_crystal;
 pub mod item_frame;
 pub mod leash_knot;
 pub mod painting;
+pub mod transformation;
 
 /// Saves the block a hanging entity is attached in, like vanilla's `BlockAttachedEntity`.
 /// Vanilla discards a hanging entity loaded without it.

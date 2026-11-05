@@ -19,9 +19,20 @@ use tracing::warn;
 
 use crate::{
     command::{CommandSender, CommandSource, text_resolution},
-    entity::{Entity, EntityBase, living::LivingEntity},
+    entity::{
+        Entity, EntityBase, decoration::transformation::Transformation, living::LivingEntity,
+    },
     server::Server,
 };
+
+/// Vanilla clamps `teleport_duration` to `0..=59`.
+const MAX_TELEPORT_DURATION: i32 = 59;
+const MAX_LIGHT_LEVEL: i32 = 15;
+
+/// `LightCoordsUtil.pack`, the form display brightness is synced in.
+const fn pack_brightness(block: i32, sky: i32) -> i32 {
+    block << 4 | sky << 20
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct Vector3fSerializer(pub f32, pub f32, pub f32);
@@ -503,10 +514,6 @@ impl DisplayEntity {
             "interpolation_duration",
             self.interpolation_duration.load(Ordering::Relaxed),
         );
-        nbt.put_int(
-            "start_interpolation",
-            self.interpolation_start_delta_ticks.load(Ordering::Relaxed),
-        );
         nbt.put_float(
             "view_range",
             *self
@@ -557,8 +564,9 @@ impl DisplayEntity {
 
         let brightness = self.brightness.load(Ordering::Relaxed);
         if brightness != -1 {
-            let block = brightness & 0xF;
-            let sky = (brightness >> 4) & 0xF;
+            // `LightCoordsUtil.block` and `sky`.
+            let block = (brightness >> 4) & MAX_LIGHT_LEVEL;
+            let sky = (brightness >> 20) & MAX_LIGHT_LEVEL;
             let mut b_compound = NbtCompound::new();
             b_compound.put_int("block", block);
             b_compound.put_int("sky", sky);
@@ -616,113 +624,80 @@ impl DisplayEntity {
         nbt.put("transformation", NbtTag::Compound(transform));
     }
 
-    #[expect(clippy::too_many_lines)]
+    /// Vanilla `Display.readAdditionalSaveData`: a missing or invalid field resets to its
+    /// default, and the values are synced to clients like vanilla's `entityData.set`.
     pub fn read_display_nbt(&self, nbt: &NbtCompound) {
-        if let Some(dur) = nbt.get_int("interpolation_duration") {
-            self.interpolation_duration.store(dur, Ordering::Relaxed);
-        }
-        if let Some(start) = nbt.get_int("start_interpolation") {
-            self.interpolation_start_delta_ticks
-                .store(start, Ordering::Relaxed);
-        }
-        if let Some(vr) = nbt.get_float("view_range") {
-            *self
-                .view_range
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = vr;
-        }
-        if let Some(sr) = nbt.get_float("shadow_radius") {
-            *self
-                .shadow_radius
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = sr;
-        }
-        if let Some(ss) = nbt.get_float("shadow_strength") {
-            *self
-                .shadow_strength
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = ss;
-        }
-        if let Some(w) = nbt.get_float("width") {
-            *self
-                .width
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = w;
-        }
-        if let Some(h) = nbt.get_float("height") {
-            *self
-                .height
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = h;
-        }
-        if let Some(glow) = nbt.get_int("glow_color_override") {
-            self.glow_color_override.store(glow, Ordering::Relaxed);
-        }
-        if let Some(bb) = nbt.get_string("billboard") {
-            let mode = match bb {
-                "vertical" => 1,
-                "horizontal" => 2,
-                "center" => 3,
-                _ => 0,
-            };
-            self.billboard.store(mode, Ordering::Relaxed);
-        }
+        let transformation = nbt
+            .get("transformation")
+            .and_then(Transformation::from_nbt)
+            .unwrap_or(Transformation::IDENTITY);
+        let [x, y, z] = transformation.translation;
+        *self
+            .translation
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Vector3::new(x, y, z);
+        *self
+            .left_rotation
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = transformation.left_rotation;
+        let [x, y, z] = transformation.scale;
+        *self
+            .scale
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Vector3::new(x, y, z);
+        *self
+            .right_rotation
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = transformation.right_rotation;
 
-        if let Some(b) = nbt.get_compound("brightness") {
-            let block = b.get_int("block").unwrap_or(0);
-            let sky = b.get_int("sky").unwrap_or(0);
-            self.brightness
-                .store((sky << 4) | (block & 0xF), Ordering::Relaxed);
+        let int = |name: &str, default: i32| nbt.get_numeric_int(name).unwrap_or(default);
+        let float = |name: &str, default: f32| nbt.get_numeric_float(name).unwrap_or(default);
+        self.interpolation_duration
+            .store(int("interpolation_duration", 0), Ordering::Relaxed);
+        self.interpolation_start_delta_ticks
+            .store(int("start_interpolation", 0), Ordering::Relaxed);
+        self.teleport_duration.store(
+            int("teleport_duration", 0).clamp(0, MAX_TELEPORT_DURATION),
+            Ordering::Relaxed,
+        );
+        let billboard = match nbt.get_string("billboard") {
+            Some("vertical") => 1,
+            Some("horizontal") => 2,
+            Some("center") => 3,
+            _ => 0,
+        };
+        self.billboard.store(billboard, Ordering::Relaxed);
+        for (field, name, default) in [
+            (&self.view_range, "view_range", 1.0),
+            (&self.shadow_radius, "shadow_radius", 0.0),
+            (&self.shadow_strength, "shadow_strength", 1.0),
+            (&self.width, "width", 0.0),
+            (&self.height, "height", 0.0),
+        ] {
+            *field
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = float(name, default);
         }
+        self.glow_color_override
+            .store(int("glow_color_override", -1), Ordering::Relaxed);
+        // `Brightness.CODEC`: both light levels in 0..=15, packed like `LightCoordsUtil.pack`.
+        let light = |b: &NbtCompound, name: &str| {
+            b.get_numeric_int(name)
+                .filter(|level| (0..=MAX_LIGHT_LEVEL).contains(level))
+        };
+        let brightness = nbt
+            .get_compound("brightness")
+            .and_then(|b| Some(pack_brightness(light(b, "block")?, light(b, "sky")?)))
+            .unwrap_or(-1);
+        self.brightness.store(brightness, Ordering::Relaxed);
 
-        if let Some(transform) = nbt.get_compound("transformation") {
-            if let Some(t_list) = transform.get_list("translation")
-                && t_list.len() >= 3
-            {
-                let x = t_list[0].extract_float().unwrap_or(0.0);
-                let y = t_list[1].extract_float().unwrap_or(0.0);
-                let z = t_list[2].extract_float().unwrap_or(0.0);
-                *self
-                    .translation
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = Vector3::new(x, y, z);
-            }
-            if let Some(s_list) = transform.get_list("scale")
-                && s_list.len() >= 3
-            {
-                let x = s_list[0].extract_float().unwrap_or(1.0);
-                let y = s_list[1].extract_float().unwrap_or(1.0);
-                let z = s_list[2].extract_float().unwrap_or(1.0);
-                *self
-                    .scale
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = Vector3::new(x, y, z);
-            }
-            if let Some(lr_list) = transform.get_list("left_rotation")
-                && lr_list.len() >= 4
-            {
-                let x = lr_list[0].extract_float().unwrap_or(0.0);
-                let y = lr_list[1].extract_float().unwrap_or(0.0);
-                let z = lr_list[2].extract_float().unwrap_or(0.0);
-                let w = lr_list[3].extract_float().unwrap_or(1.0);
-                *self
-                    .left_rotation
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = [x, y, z, w];
-            }
-            if let Some(rr_list) = transform.get_list("right_rotation")
-                && rr_list.len() >= 4
-            {
-                let x = rr_list[0].extract_float().unwrap_or(0.0);
-                let y = rr_list[1].extract_float().unwrap_or(0.0);
-                let z = rr_list[2].extract_float().unwrap_or(0.0);
-                let w = rr_list[3].extract_float().unwrap_or(1.0);
-                *self
-                    .right_rotation
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = [x, y, z, w];
-            }
-        }
+        // `setTransformationInterpolationDelay` forces the update, so an unchanged delay
+        // still restarts the client's interpolation. Each display type syncs the rest with
+        // `init_data_tracker` once its own fields are read.
+        self.entity.set_synced_data_forced(
+            pumpkin_data::tracked_data::display::START_INTERPOLATION,
+            VarInt(self.interpolation_start_delta_ticks.load(Ordering::Relaxed)),
+        );
     }
 }
 
@@ -780,6 +755,7 @@ impl EntityBase for BlockDisplayEntity {
         if let Some(state) = state {
             self.block_state.store(state, Ordering::Relaxed);
         }
+        self.init_data_tracker();
     }
 
     fn tick(&self, _caller: &dyn EntityBase, _server: &Server) {}
@@ -944,6 +920,7 @@ impl EntityBase for ItemDisplayEntity {
             };
             self.item_display.store(mode, Ordering::Relaxed);
         }
+        self.init_data_tracker();
     }
 
     fn tick(&self, _caller: &dyn EntityBase, _server: &Server) {}
@@ -1261,6 +1238,7 @@ impl EntityBase for TextDisplayEntity {
             }
         }
         self.flags.store(flags, Ordering::Relaxed);
+        self.init_data_tracker();
     }
 
     /// Vanilla `TextDisplay.readAdditionalSaveData`: loaded text is resolved for the display
