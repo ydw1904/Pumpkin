@@ -176,7 +176,7 @@ impl PendingConnection {
     ) -> Result<GameProfile, AuthError> {
         let hash = server.digest_secret(shared_secret);
         let ip = self.address.ip();
-        let profile = authentication::authenticate(
+        let mut profile = authentication::authenticate(
             username,
             &hash,
             &ip,
@@ -212,18 +212,15 @@ impl PendingConnection {
                 return Err(AuthError::Banned);
             }
         }
-        for property in profile.properties.load().iter() {
-            authentication::validate_textures(
-                property,
-                &server
-                    .advanced_config
-                    .networking
-                    .java
-                    .authentication
-                    .textures,
-            )
-            .map_err(AuthError::TextureError)?;
-        }
+        authentication::retain_valid_textures(
+            &mut profile,
+            &server
+                .advanced_config
+                .networking
+                .java
+                .authentication
+                .textures,
+        );
         Ok(profile)
     }
 }
