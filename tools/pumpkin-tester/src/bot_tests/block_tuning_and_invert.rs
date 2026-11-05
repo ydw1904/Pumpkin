@@ -72,6 +72,7 @@ pub async fn run_block_tuning_and_invert_tests(
     for _ in 0..MAX_POLL_TICKS {
         tokio::time::sleep(Duration::from_millis(5)).await;
         server.tick();
+        server.run_chunk_tasks();
 
         let note_state = world.get_block_state(&note_pos);
         if world.get_block(&note_pos).id == Block::NOTE_BLOCK.id

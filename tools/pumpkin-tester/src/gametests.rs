@@ -140,6 +140,7 @@ pub async fn run_gametests(
             break;
         }
         server.tick();
+        server.run_chunk_tasks();
         runner.tick().await;
     }
 

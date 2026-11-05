@@ -1524,6 +1524,23 @@ impl Server {
         });
     }
 
+    /// The chunk source half of vanilla `MinecraftServer.pollTaskInternal`: runs the next queued
+    /// chunk task of the first world that has one. Returns whether a task ran.
+    pub fn poll_chunk_task(&self) -> bool {
+        self.simulation_pool.install(|| {
+            self.worlds
+                .load()
+                .iter()
+                .any(crate::world::World::run_ticking_chunk_task)
+        })
+    }
+
+    /// Runs every queued chunk task, for callers that tick the server without the ticker's wait
+    /// between ticks.
+    pub fn run_chunk_tasks(&self) {
+        while self.poll_chunk_task() {}
+    }
+
     /// Vanilla `DedicatedServer.handleConsoleInput`: the command runs in the next tick, and
     /// `done` is signalled once it has.
     pub fn queue_console_input(

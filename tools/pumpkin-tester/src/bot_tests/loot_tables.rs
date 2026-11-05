@@ -45,6 +45,7 @@ pub async fn run_loot_table_tests(
     for _ in 0..40 {
         tokio::time::sleep(Duration::from_millis(5)).await;
         server.tick();
+        server.run_chunk_tasks();
         if count_item(&player, &Item::RED_WOOL) == 1
             && count_item(&player, &Item::AMETHYST_SHARD) == before + 15
         {

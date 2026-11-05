@@ -632,7 +632,7 @@ impl World {
 
         for pos in newly_block_ticking {
             if self.level.is_chunk_loaded(&pos) && tracker.loaded_block_ticking_chunks.insert(pos) {
-                migrations.push(pos);
+                tracker.ticking_tasks.push_back(pos);
             }
         }
         let mut newly_loaded = Vec::new();
@@ -644,22 +644,25 @@ impl World {
                         && self.level.is_chunk_loaded(&pos)
                         && tracker.loaded_block_ticking_chunks.insert(pos)
                     {
-                        migrations.push(pos);
+                        tracker.ticking_tasks.push_back(pos);
                     }
                 }
                 pumpkin_world::level::LoadedChunkChange::Unloaded(pos) => {
                     if !self.level.is_chunk_loaded(&pos) {
                         tracker.loaded_block_ticking_chunks.remove(&pos);
+                        Arc::make_mut(&mut active_chunks).ticking.remove(&pos);
                     }
                 }
             }
         }
+        tracker.requeue_waiting_ticking_tasks(|pos| self.level.is_chunk_ticking_ready(pos));
         let mut pending_migrations = FxHashSet::default();
         while let Some(pos) = self.pending_block_entity_migrations.pop() {
             pending_migrations.insert(pos);
         }
+        // Chunks that aren't ticking yet migrate when their ticking task runs.
         for pos in pending_migrations {
-            if active_chunks.block_ticking.contains(&pos) && self.level.is_chunk_loaded(&pos) {
+            if active_chunks.ticking.contains(&pos) && self.level.is_chunk_loaded(&pos) {
                 migrations.push(pos);
             }
         }
@@ -675,6 +678,52 @@ impl World {
             self.register_chunk_pois(pos);
             self.add_world_gen_chunk_entities(pos);
         }
+    }
+
+    /// Vanilla `ChunkMap.prepareTickingChunk`'s main thread task for the next chunk that became
+    /// block ticking: post-processes it, then lets it tick (`startTickingChunk`). Vanilla runs
+    /// these one at a time between ticks while the server has time. Returns whether a task ran.
+    pub fn run_ticking_chunk_task(self: &Arc<Self>) -> bool {
+        let pos = {
+            let mut tracker = self
+                .active_chunk_tracker
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let active_chunks = self
+                .active_chunks
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            loop {
+                let Some(pos) = tracker.ticking_tasks.pop_front() else {
+                    return false;
+                };
+                // Left block ticking or unloaded since, or queued again after leaving.
+                if !tracker.loaded_block_ticking_chunks.contains(&pos)
+                    || active_chunks.ticking.contains(&pos)
+                {
+                    continue;
+                }
+                if !self.level.is_chunk_ticking_ready(&pos) {
+                    tracker.ticking_tasks_waiting.insert(pos);
+                    continue;
+                }
+                break pos;
+            }
+        };
+        self.post_process_generation(pos);
+        self.migrate_pending_block_entities(pos);
+        let tracker = self
+            .active_chunk_tracker
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if tracker.loaded_block_ticking_chunks.contains(&pos) {
+            let mut active_chunks = self
+                .active_chunks
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            Arc::make_mut(&mut active_chunks).ticking.insert(pos);
+        }
+        true
     }
 
     /// Vanilla `PoiManager.checkConsistencyWithBlocks` for a chunk that just became full:
@@ -2000,11 +2049,16 @@ impl World {
             .map(|entity| block_chunk(entity.get_entity().pos.load()))
             .collect::<FxHashSet<_>>()
             .into_par_iter()
-            .filter(|chunk| level_for_entities.is_chunk_entity_ticking_ready(chunk))
+            .filter(|chunk| {
+                active_chunks.ticking.contains(chunk)
+                    && level_for_entities.is_chunk_entity_ticking_ready(chunk)
+            })
             .collect();
         // Vanilla `ServerLevel.tick` keeps entities whose chunk can entity tick in its tick list,
-        // and ticks those in entity ticking range. A passenger in the list ticks with its root
-        // vehicle (`tickPassenger`), and a player always ticks.
+        // and ticks those in entity ticking range. The entity ticking promotion is a main thread
+        // task queued after the chunk's ticking task, so it never comes before post-processing.
+        // A passenger in the list ticks with its root vehicle (`tickPassenger`), and a player
+        // always ticks.
         let (tickable, frozen): (Vec<_>, Vec<_>) = entities_to_tick
             .par_iter()
             .filter_map(|entity| {
@@ -2574,7 +2628,7 @@ impl World {
             .clone();
         let tick_data = self.level.get_tick_data(
             &active_chunks.entity_ticking,
-            &active_chunks.block_ticking,
+            &active_chunks.ticking,
             random_tick_speed,
         );
 
@@ -2659,7 +2713,8 @@ impl World {
             .spawn_candidates
             .par_iter()
             .filter(|pos| {
-                self.level.is_chunk_ticking_ready(pos)
+                active_chunks.ticking.contains(*pos)
+                    && self.level.is_chunk_ticking_ready(pos)
                     && natural_spawner::any_player_close_enough_for_spawning(&players, **pos)
             })
             .filter_map(|pos| {
@@ -6634,11 +6689,12 @@ impl World {
     /// Vanilla `ServerLevel.isPositionEntityTicking`.
     #[must_use]
     pub fn is_position_entity_ticking(&self, position: &BlockPos) -> bool {
-        self.active_chunks
+        let chunk = position.chunk_position();
+        let active_chunks = self
+            .active_chunks
             .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .entity_ticking
-            .contains(&position.chunk_position())
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        active_chunks.entity_ticking.contains(&chunk) && active_chunks.ticking.contains(&chunk)
     }
 
     /// Vanilla `ServerLevel.updateNeighboursOnBlockSet`: the neighbour updates commands run

@@ -42,6 +42,7 @@ async fn interact(
     for _ in 0..MAX_INTERACT_TICKS {
         tokio::time::sleep(Duration::from_millis(5)).await;
         server.tick();
+        server.run_chunk_tasks();
         if done() {
             break;
         }

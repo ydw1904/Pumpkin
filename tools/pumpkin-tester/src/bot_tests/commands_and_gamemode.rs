@@ -39,6 +39,7 @@ pub async fn run_commands_and_gamemode_tests(
     while !world.is_loaded(&marker_pos) && load_start.elapsed() < PACKET_TIMEOUT {
         tokio::time::sleep(Duration::from_millis(5)).await;
         server.tick();
+        server.run_chunk_tasks();
     }
     if !world.is_loaded(&marker_pos) {
         return Err(format!(
@@ -62,6 +63,7 @@ pub async fn run_commands_and_gamemode_tests(
     for _ in 0..MAX_POLL_TICKS {
         tokio::time::sleep(Duration::from_millis(5)).await;
         server.tick();
+        server.run_chunk_tasks();
         drain_game_test_queue(server, runner).await;
         if !runner.is_empty() {
             command_queued_and_ran = true;

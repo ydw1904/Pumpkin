@@ -334,6 +334,7 @@ impl ServerGameTestWorld {
                 let chunk = Vector2::new(chunk_x, chunk_z);
                 if !self.world.level.is_chunk_entity_ticking_ready(&chunk)
                     || !active_chunks.entity_ticking.contains(&chunk)
+                    || !active_chunks.ticking.contains(&chunk)
                 {
                     return false;
                 }

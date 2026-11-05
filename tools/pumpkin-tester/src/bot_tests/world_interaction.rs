@@ -46,6 +46,7 @@ pub async fn run_world_interaction_tests(
     for _ in 0..MAX_POLL_TICKS {
         tokio::time::sleep(Duration::from_millis(5)).await;
         server.tick();
+        server.run_chunk_tasks();
 
         let state = world.get_block_state(&trapdoor_pos);
         if world.get_block(&trapdoor_pos).id == Block::OAK_TRAPDOOR.id

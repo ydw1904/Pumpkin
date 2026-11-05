@@ -646,12 +646,13 @@ impl Level {
     }
 
     /// Collects this tick's random ticks and precipitation from `entity_ticking` chunks, and its
-    /// due scheduled ticks from `block_ticking` chunks, like vanilla's `tickChunk` and
-    /// `LevelTicks.tick` split them.
+    /// due scheduled ticks from all `ticking` chunks, like vanilla's `tickChunk` and
+    /// `LevelTicks.tick` split them. `ticking` holds the block ticking chunks that started
+    /// ticking (vanilla `ChunkHolder.getTickingChunk`); neither kind of tick runs elsewhere.
     pub fn get_tick_data(
         &self,
         entity_ticking: &FxHashSet<Vector2<i32>>,
-        block_ticking: &FxHashSet<Vector2<i32>>,
+        ticking: &FxHashSet<Vector2<i32>>,
         random_tick_speed: i64,
     ) -> TickData {
         let samples_per_section = random_tick_speed.max(0);
@@ -660,7 +661,7 @@ impl Level {
         // samples in order.
         let per_chunk: Vec<(Vec<BlockPos>, Vec<RandomTickSample>)> = entity_ticking
             .par_iter()
-            .filter(|pos| self.is_chunk_ticking_ready(pos))
+            .filter(|pos| ticking.contains(pos) && self.is_chunk_ticking_ready(pos))
             .filter_map(|pos| {
                 self.loaded_chunks
                     .get(pos)
@@ -689,7 +690,7 @@ impl Level {
             .map(|p| *p)
             .collect();
         for pos in scheduled_chunk_pos {
-            if !block_ticking.contains(&pos) || !self.is_chunk_ticking_ready(&pos) {
+            if !ticking.contains(&pos) || !self.is_chunk_ticking_ready(&pos) {
                 continue;
             }
             if let Some(chunk) = self.loaded_chunks.get(&pos) {

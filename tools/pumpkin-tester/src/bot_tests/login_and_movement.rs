@@ -26,6 +26,7 @@ pub async fn run_login_and_movement_tests(
     let mut bots_joined = false;
     for _ in 0..MAX_POLL_TICKS {
         server.tick();
+        server.run_chunk_tasks();
         tokio::time::sleep(Duration::from_millis(5)).await;
         if server.get_player_count() == 2 {
             bots_joined = true;
@@ -57,6 +58,7 @@ pub async fn run_login_and_movement_tests(
     for _ in 0..MAX_POLL_TICKS {
         tokio::time::sleep(Duration::from_millis(5)).await;
         server.tick();
+        server.run_chunk_tasks();
         if let Some(player1) = world.get_player_by_name("TestBot1") {
             let actual_pos = player1.living_entity.entity.pos.load();
             if (actual_pos.x - target_pos.x).abs() < 0.01

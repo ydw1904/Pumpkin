@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use pumpkin_util::math::vector2::Vector2;
 use rustc_hash::{FxHashMap, FxHashSet};
 use uuid::Uuid;
@@ -14,6 +16,10 @@ pub struct ActiveChunks {
     /// Vanilla `inBlockTickingRange`: one ring further than `entity_ticking`. Scheduled ticks,
     /// block events and block entities run here.
     pub block_ticking: FxHashSet<Vector2<i32>>,
+    /// Vanilla `ChunkHolder.getTickingChunk() != null`: block ticking chunks whose
+    /// `prepareTickingChunk` task has post-processed them. Only these get scheduled and random
+    /// ticks, spawn mobs and tick their entities.
+    pub ticking: FxHashSet<Vector2<i32>>,
     /// Vanilla `getSpawnCandidateChunks`: chunks within eight chunks of a player's chunk. Their
     /// count is the mob cap's chunk count.
     pub spawn_candidates: FxHashSet<Vector2<i32>>,
@@ -102,6 +108,12 @@ pub(super) struct ActiveChunkTracker {
     pub players: FxHashMap<Uuid, ActivePlayerArea>,
     /// Block ticking chunks that were loaded when they last became block ticking.
     pub loaded_block_ticking_chunks: FxHashSet<Vector2<i32>>,
+    /// Loaded block ticking chunks waiting for their `prepareTickingChunk` task, in the order
+    /// vanilla would queue them on the main thread executor.
+    pub ticking_tasks: VecDeque<Vector2<i32>>,
+    /// Queued chunks whose neighbours aren't all loaded yet. Vanilla's ticking future waits for
+    /// the chunks around it to be full before its task is queued.
+    pub ticking_tasks_waiting: FxHashSet<Vector2<i32>>,
     entity_ticking: SquareUnion,
     block_ticking: SquareUnion,
     spawn_candidates: SquareUnion,
@@ -152,6 +164,7 @@ impl ActiveChunkTracker {
         self.entity_ticking
             .update(from[0], to[0], &mut active.entity_ticking, |_| {}, |_| {});
         let loaded = &mut self.loaded_block_ticking_chunks;
+        let ticking = &mut active.ticking;
         self.block_ticking.update(
             from[1],
             to[1],
@@ -159,6 +172,7 @@ impl ActiveChunkTracker {
             |pos| newly_block_ticking.push(pos),
             |pos| {
                 loaded.remove(&pos);
+                ticking.remove(&pos);
             },
         );
         self.spawn_candidates
@@ -210,6 +224,26 @@ impl ActiveChunkTracker {
         }
         self.forced_chunks.clone_from(forced_chunks);
         (added, removed)
+    }
+
+    /// Queues the waiting chunks whose neighbours have loaded since, and forgets the ones that
+    /// stopped block ticking.
+    pub fn requeue_waiting_ticking_tasks(
+        &mut self,
+        neighbours_loaded: impl Fn(&Vector2<i32>) -> bool,
+    ) {
+        let loaded = &self.loaded_block_ticking_chunks;
+        let queue = &mut self.ticking_tasks;
+        self.ticking_tasks_waiting.retain(|pos| {
+            if !loaded.contains(pos) {
+                return false;
+            }
+            if neighbours_loaded(pos) {
+                queue.push_back(*pos);
+                return false;
+            }
+            true
+        });
     }
 }
 

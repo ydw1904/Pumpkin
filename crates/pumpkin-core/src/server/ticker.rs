@@ -131,7 +131,16 @@ impl Ticker {
                 break 'ticker;
             }
 
-            wait_until_next_tick(server, base, schedule.next_tick_nanos);
+            // Vanilla lets queued tasks run until one tick after this one ended, even when that
+            // is past the next tick's start, so chunks keep starting to tick under load.
+            let delayed_tasks_max_nanos =
+                (elapsed_nanos(base) + this_tick_nanos).max(schedule.next_tick_nanos);
+            wait_until_next_tick(
+                server,
+                base,
+                schedule.next_tick_nanos,
+                delayed_tasks_max_nanos,
+            );
 
             if server.stop_token.is_cancelled() {
                 break 'ticker;
@@ -191,12 +200,32 @@ const fn apply_overload_skip(
 
 /// Vanilla `waitUntilNextTick` / `LockSupport.parkNanos`.
 ///
-/// Vanilla drains its server-thread queue here (`pollTask`). there is no such queue:
-/// that work runs on the runtime and keeps going while this thread parks.
-fn wait_until_next_tick(server: &Server, base: Instant, next_tick_nanos: i64) {
+/// Like vanilla `pollTaskInternal`, queued chunk tasks run one at a time while `haveTime()`
+/// holds or the server sprints. `haveTime()` allows them until `delayed_tasks_max_nanos` while
+/// tasks keep coming, then only until the next tick. Other server-thread work runs on the
+/// runtime and keeps going while this thread parks.
+fn wait_until_next_tick(
+    server: &Server,
+    base: Instant,
+    next_tick_nanos: i64,
+    delayed_tasks_max_nanos: i64,
+) {
+    let mut may_have_delayed_tasks = true;
     loop {
         if server.stop_token.is_cancelled() {
             return;
+        }
+
+        let deadline = if may_have_delayed_tasks {
+            delayed_tasks_max_nanos
+        } else {
+            next_tick_nanos
+        };
+        if server.tick_rate_manager.is_sprinting() || elapsed_nanos(base) < deadline {
+            may_have_delayed_tasks = server.poll_chunk_task();
+            if may_have_delayed_tasks {
+                continue;
+            }
         }
 
         let remaining = next_tick_nanos - elapsed_nanos(base);

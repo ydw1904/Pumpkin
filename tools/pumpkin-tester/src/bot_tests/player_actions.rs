@@ -31,6 +31,7 @@ pub async fn run_player_actions_and_disconnect_tests(
     for _ in 0..MAX_POLL_TICKS {
         tokio::time::sleep(Duration::from_millis(5)).await;
         server.tick();
+        server.run_chunk_tasks();
         if player1.inventory.get_selected_slot() == 4 {
             slot_updated = true;
         }
@@ -62,6 +63,7 @@ pub async fn run_player_actions_and_disconnect_tests(
     for _ in 0..MAX_POLL_TICKS {
         tokio::time::sleep(Duration::from_millis(5)).await;
         server.tick();
+        server.run_chunk_tasks();
         if !player1
             .living_entity
             .entity
@@ -83,6 +85,7 @@ pub async fn run_player_actions_and_disconnect_tests(
     for _ in 0..MAX_POLL_TICKS {
         tokio::time::sleep(Duration::from_millis(5)).await;
         server.tick();
+        server.run_chunk_tasks();
         if server.get_player_count() == 0 {
             break;
         }

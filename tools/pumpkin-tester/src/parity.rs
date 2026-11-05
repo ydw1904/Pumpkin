@@ -293,6 +293,7 @@ async fn run_tests(
             break;
         }
         server.tick();
+        server.run_chunk_tasks();
         runner.tick().await;
     }
     runner.clear();
