@@ -92,8 +92,22 @@ pub struct TextComponentBase {
     #[serde(flatten)]
     pub style: Box<Style>,
     /// Child text components that are appended after this component's content.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "extra_components"
+    )]
     pub extra: Vec<Self>,
+}
+
+/// Vanilla's `ComponentSerialization.CODEC` for each child: a string, a list or an object.
+fn extra_components<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<TextComponentBase>, D::Error> {
+    Ok(Vec::<TextComponent>::deserialize(deserializer)?
+        .into_iter()
+        .map(|component| component.0)
+        .collect())
 }
 
 impl TextComponentBase {
@@ -2343,6 +2357,16 @@ mod test {
             };
             assert_eq!(uuid, "6ba1a740-9a3b-4b7c-8f2c-8f5a5c1a0a11");
         }
+    }
+
+    /// Children saved as plain strings, as vanilla writes a team-formatted name, read back.
+    #[test]
+    fn extra_reads_plain_strings() {
+        let component: TextComponent =
+            serde_json::from_str(r#"{"text":"","extra":["Steve",{"text":"!"}]}"#).unwrap();
+        assert_eq!(component.get_text(), "Steve!");
+        let name = TextComponent::text("").add_child(TextComponent::text("Steve"));
+        assert_eq!(TextComponent::from_nbt(&name.0.to_nbt_tag()), name);
     }
 
     /// `/tellraw`'s JSON keeps a `show_item` hover's components, and they go
