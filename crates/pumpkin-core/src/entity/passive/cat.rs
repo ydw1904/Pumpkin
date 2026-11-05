@@ -6,6 +6,7 @@ use std::sync::{
 
 use pumpkin_data::cat_sound_variant::CatSoundVariant;
 use pumpkin_data::cat_variant::CatVariant;
+use pumpkin_data::dye_color::DyeColor;
 use pumpkin_data::entity::{EntityStatus, EntityType};
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -16,8 +17,10 @@ use pumpkin_protocol::codec::var_int::VarInt;
 use uuid::Uuid;
 
 use crate::entity::custom_sound::CustomSound;
+use crate::entity::passive::sheep::get_mixed_color;
 use crate::entity::{
     Entity, EntityBase,
+    ageable::{AgeableData, AgeableMob},
     ai::behavior::{
         feline,
         fleeing::{self, Flee},
@@ -50,6 +53,7 @@ pub struct CatEntity {
     pub sound_variant: AtomicU8,
     pub collar_color: AtomicU8,
     pub tamable_data: TamableData,
+    pub ageable_data: AgeableData,
     pub is_lying: AtomicBool,
     pub relax_state_one: AtomicBool,
 }
@@ -85,6 +89,7 @@ impl CatEntity {
             sound_variant: AtomicU8::new(0), // Default to classic
             collar_color: AtomicU8::new(14), // Default to red
             tamable_data: TamableData::default(),
+            ageable_data: AgeableData::default(),
             is_lying: AtomicBool::new(false),
             relax_state_one: AtomicBool::new(false),
         };
@@ -219,6 +224,36 @@ impl CustomSound for CatEntity {
 }
 
 impl Animal for CatEntity {
+    /// Vanilla `Cat.getBreedOffspring`: either parent's variant, and a tame parent's owner with
+    /// the collars mixed.
+    fn get_breed_offspring(&self, partner: &dyn EntityBase) -> Arc<dyn EntityBase> {
+        let entity = self.get_entity();
+        let world = entity.world.load_full();
+        let baby = Self::new(Entity::new(
+            world.clone(),
+            entity.pos.load(),
+            &EntityType::CAT,
+        ));
+        if let Some(partner) = partner.cast_any().downcast_ref::<Self>() {
+            let parent = if self.get_random().random::<bool>() {
+                self
+            } else {
+                partner
+            };
+            baby.set_variant(parent.variant.load(Ordering::Relaxed));
+            if self.is_tame() {
+                baby.set_tame(true, self.get_owner());
+                let collar = get_mixed_color(
+                    &world,
+                    DyeColor::from(self.get_collar_color()),
+                    DyeColor::from(partner.get_collar_color()),
+                );
+                baby.set_collar_color(collar.id());
+            }
+        }
+        baby
+    }
+
     fn play_eating_sound(&self) {
         let sound_variant = CatSoundVariant::from_id(self.sound_variant.load(Ordering::Relaxed))
             .unwrap_or_default();
@@ -232,6 +267,12 @@ impl Animal for CatEntity {
     fn is_food(&self, item_stack: &ItemStack) -> bool {
         let item = item_stack.get_item();
         item.has_tag(&tag::Item::MINECRAFT_CAT_FOOD) || item == &Item::COD || item == &Item::SALMON
+    }
+}
+
+impl AgeableMob for CatEntity {
+    fn get_ageable_data(&self) -> &AgeableData {
+        &self.ageable_data
     }
 }
 
@@ -305,6 +346,10 @@ impl Mob for CatEntity {
     }
 
     fn as_animal(&self) -> Option<&dyn Animal> {
+        Some(self)
+    }
+
+    fn as_ageable(&self) -> Option<&dyn AgeableMob> {
         Some(self)
     }
 

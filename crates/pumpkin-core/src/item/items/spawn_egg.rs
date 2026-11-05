@@ -4,7 +4,9 @@ use std::sync::Arc;
 
 use crate::block::entities::mob_spawner::MobSpawnerBlockEntity;
 use crate::entity::EntityBase;
+use crate::entity::mob::Mob;
 use crate::entity::mob::spawn::finalize_spawn;
+use crate::entity::passive::villager::VillagerEntity;
 use crate::entity::player::Player;
 use crate::entity::r#type::from_type;
 use crate::item::{ItemBehaviour, ItemMetadata};
@@ -386,17 +388,24 @@ impl ItemBehaviour for SpawnEggItem {
             if is_disallowed_in_peaceful(entity_type, &world) {
                 return;
             }
+            // Vanilla `SpawnEggItem.spawnOffspringFromSpawnEgg`: an ageable parent breeds with
+            // itself, so the baby takes its variant.
             let pos = entity.get_entity().pos.load();
-            let mob = from_type(entity_type, pos, &world, Uuid::new_v4());
+            let mob = if let Some(parent) = entity.get_mob().and_then(Mob::as_animal) {
+                parent.get_breed_offspring(entity.as_ref())
+            } else if let Some(villager) = entity.cast_any().downcast_ref::<VillagerEntity>() {
+                match villager.get_breed_offspring(&world, villager) {
+                    Some(baby) => baby,
+                    None => return,
+                }
+            } else {
+                from_type(entity_type, pos, &world, Uuid::new_v4())
+            };
             // no baby form, no offspring.
-            if !mob
-                .get_mob()
-                .is_some_and(crate::entity::mob::Mob::spawn_as_baby)
-            {
+            if !mob.get_mob().is_some_and(Mob::spawn_as_baby) {
                 return;
             }
-            mob.get_entity()
-                .set_rotation(game_random().random::<f32>() * 360.0, 0.0);
+            mob.get_entity().set_rotation(0.0, 0.0);
             apply_entity_variant(item, mob.as_ref(), Some(player));
             if world.spawn_creature(
                 mob.clone(),
@@ -407,7 +416,14 @@ impl ItemBehaviour for SpawnEggItem {
                     parent.on_offspring_spawned_from_egg(player, mob.as_ref());
                 }
                 item.decrement_unless_creative(player.gamemode.load(), 1);
-                world.emit_game_event(GameEvent::EntityPlace.name(), pos);
+                // `Mob.interact` records the interaction on the parent.
+                world.emit_game_event_with_context(
+                    GameEvent::EntityInteract.name(),
+                    pos,
+                    &crate::world::game_event::GameEventContext {
+                        source_entity: Some(player),
+                    },
+                );
             }
         }
     }

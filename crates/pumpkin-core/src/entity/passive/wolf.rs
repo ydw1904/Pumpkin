@@ -7,6 +7,7 @@ use std::sync::{
 
 use pumpkin_data::BlockState;
 use pumpkin_data::damage::DamageType;
+use pumpkin_data::dye_color::DyeColor;
 use pumpkin_data::entity::{EntityStatus, EntityType};
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
@@ -21,6 +22,7 @@ use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_util::math::position::BlockPos;
 
 use crate::entity::custom_sound::CustomSound;
+use crate::entity::passive::sheep::get_mixed_color;
 use crate::entity::{
     Entity, EntityBase,
     ageable::AgeableMob,
@@ -274,6 +276,40 @@ impl Animal for WolfEntity {
     fn is_food(&self, item_stack: &ItemStack) -> bool {
         let item = item_stack.get_item();
         item.has_tag(&tag::Item::MINECRAFT_WOLF_FOOD) || item == &Item::BONE
+    }
+
+    /// Vanilla `Wolf.getBreedOffspring`: either parent's variant, a tame parent's owner with the
+    /// collars mixed, and a random sound variant.
+    fn get_breed_offspring(&self, partner: &dyn EntityBase) -> Arc<dyn EntityBase> {
+        let entity = self.get_entity();
+        let world = entity.world.load_full();
+        let baby = Self::new(Entity::new(
+            world.clone(),
+            entity.pos.load(),
+            &EntityType::WOLF,
+        ));
+        if let Some(partner) = partner.cast_any().downcast_ref::<Self>() {
+            let random = self.get_random();
+            let parent = if random.random::<bool>() {
+                self
+            } else {
+                partner
+            };
+            baby.set_variant_id(parent.variant.load(Ordering::Relaxed));
+            if self.is_tame() {
+                baby.set_owner(self.get_owner());
+                baby.set_tame(true);
+                let collar = get_mixed_color(
+                    &world,
+                    DyeColor::from(self.collar_color.load(Ordering::Relaxed)),
+                    DyeColor::from(partner.collar_color.load(Ordering::Relaxed)),
+                );
+                baby.set_collar_color(collar.id());
+            }
+            let sound_variants = WolfSoundVariant::ALL;
+            baby.set_sound_variant(sound_variants[random.random_range(0..sound_variants.len())]);
+        }
+        baby
     }
 }
 

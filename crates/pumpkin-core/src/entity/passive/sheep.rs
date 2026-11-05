@@ -7,6 +7,7 @@ use pumpkin_data::BlockState;
 use pumpkin_data::{entity::EntityType, item::Item};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::random::gameplay::game_random;
 
 use crate::entity::{
     Entity, EntityBase,
@@ -73,6 +74,17 @@ const COLD_SPAWN_CONFIGURATION: SheepColorSpawnConfiguration = [
 const EAT_GRASS_AGE_UP_SECONDS: i32 = 60;
 
 const COMMON_COLOR_WEIGHT: u32 = 499;
+
+/// Vanilla `DyeColor.getMixedColor`: the dye crafted from both colors, else either one.
+pub(crate) fn get_mixed_color(world: &World, color1: DyeColor, color2: DyeColor) -> DyeColor {
+    find_color_mix_in_recipes(world, color1, color2).unwrap_or_else(|| {
+        if game_random().random::<bool>() {
+            color1
+        } else {
+            color2
+        }
+    })
+}
 
 fn find_color_mix_in_recipes(
     world: &World,
@@ -209,16 +221,6 @@ impl SheepEntity {
         }
     }
 
-    fn get_mixed_color(&self, world: &World, color1: DyeColor, color2: DyeColor) -> DyeColor {
-        find_color_mix_in_recipes(world, color1, color2).unwrap_or_else(|| {
-            if self.get_random().random::<bool>() {
-                color1
-            } else {
-                color2
-            }
-        })
-    }
-
     pub fn set_sheared(&self, sheared: bool) {
         let byte = if sheared {
             self.get_packed_byte() | 0x10
@@ -294,7 +296,7 @@ impl Animal for SheepEntity {
             &EntityType::SHEEP,
         ));
         if let Some(partner) = partner.cast_any().downcast_ref::<Self>() {
-            let color = self.get_mixed_color(
+            let color = get_mixed_color(
                 &world,
                 DyeColor::from(self.get_color()),
                 DyeColor::from(partner.get_color()),
