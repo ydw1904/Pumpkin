@@ -38,6 +38,7 @@ use crate::entity::player::statistics::{CustomStatistic, StatisticCategory};
 use crate::item::items::spear::SpearItem;
 use crate::server::Server;
 use crate::world::World;
+use crate::world::game_event::GameEventContext;
 use crate::world::loot::LootContextParameters;
 use crate::world::scoreboard::{self, NameTagVisibility};
 use crossbeam::atomic::AtomicCell;
@@ -52,10 +53,11 @@ use pumpkin_data::data_component_impl::{
 };
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::{EntityPose, EntityStatus, EntityType};
-use pumpkin_data::fluid::Fluid;
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::game_rules::{GameRule, GameRuleValue};
 use pumpkin_data::item_stack::{DamageResult, ItemStack};
 use pumpkin_data::sound::SoundCategory;
+use pumpkin_data::world::WorldEvent;
 use pumpkin_data::{Block, Enchantment};
 use pumpkin_data::{damage::DamageType, sound::Sound};
 use pumpkin_inventory::entity_equipment::EntityEquipment;
@@ -3071,11 +3073,11 @@ impl LivingEntity {
             // Players drop their whole inventory instead (`Player::handle_killed`).
             if should_drop_loot && dyn_self.get_player().is_none() {
                 self.drop_equipment(looting_level);
-            }
-            if perished && let Some(mob) = dyn_self.get_mob() {
                 if let Some(mob) = dyn_self.get_mob() {
                     mob.drop_custom_death_loot();
                 }
+            }
+            if perished && let Some(mob) = dyn_self.get_mob() {
                 mob.drop_inventory();
             }
 
@@ -5030,46 +5032,7 @@ impl LivingEntity {
                     }
                 }
                 ConsumeEffect::TeleportRandomly(diameter) => {
-                    // Java Edition dismounts the consumer before random teleport attempts.
-                    let vehicle = caller
-                        .get_entity()
-                        .vehicle
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .clone();
-                    if let Some(vehicle) = vehicle {
-                        vehicle
-                            .get_entity()
-                            .remove_passenger_sync(caller.get_entity().entity_id);
-                        if caller.get_entity().has_vehicle() {
-                            continue;
-                        }
-                    }
-
-                    let center = self.entity.pos.load();
-                    let Some(pos) = self.find_random_teleport_target(*diameter) else {
-                        continue;
-                    };
-                    let (yaw, pitch) = (self.entity.yaw.load(), self.entity.pitch.load());
-                    let world = self.entity.world.load_full();
-                    caller.teleport(pos, Some(yaw), Some(pitch), world.clone());
-
-                    let destination = self.entity.pos.load();
-                    if destination != center {
-                        self.fall_distance.store(0.0);
-                        // Vanilla broadcasts entity event 46 (teleport particles) on success.
-                        world.send_entity_status(
-                            &self.entity,
-                            EntityStatus::Teleport,
-                            ActorEventID::None,
-                        );
-                        world.emit_game_event("teleport", center);
-                        world.play_sound(
-                            Sound::ItemChorusFruitTeleport,
-                            SoundCategory::Players,
-                            &destination,
-                        );
-                    }
+                    self.teleport_randomly_consume_effect(caller, *diameter);
                 }
                 ConsumeEffect::PlaySound(sound) => {
                     if let pumpkin_data::data_component_impl::IdOr::Id(sound) = sound {
@@ -5084,56 +5047,131 @@ impl LivingEntity {
         }
     }
 
-    fn find_random_teleport_target(&self, diameter: f32) -> Option<Vector3<f64>> {
-        let center = self.entity.pos.load();
-        let world = self.entity.world.load();
-        let bottom_y = world.get_bottom_y();
-        let top_y = world.get_top_y();
-        let dimensions = self.entity.entity_dimension.load();
-        let rng = game_random();
-
-        'attempts: for _ in 0..Self::RANDOM_TELEPORT_ATTEMPTS {
-            let target_x = random_teleport_coordinate(center.x, diameter, rng.random());
-            let target_z = random_teleport_coordinate(center.z, diameter, rng.random());
-            let sampled_y = random_teleport_coordinate(center.y, diameter, rng.random())
-                .clamp(f64::from(bottom_y + 1), f64::from(top_y));
-            let mut block_y = sampled_y.floor() as i32;
-            let block_x = target_x.floor() as i32;
-            let block_z = target_z.floor() as i32;
-
-            loop {
-                if block_y <= bottom_y {
-                    continue 'attempts;
-                }
-
-                let below = BlockPos::new(block_x, block_y - 1, block_z);
-                let Some(below_state) = world.get_block_state_if_loaded(&below) else {
-                    continue 'attempts;
-                };
-                if below_state.is_solid() {
-                    break;
-                }
-                block_y -= 1;
+    /// Vanilla `TeleportRandomlyConsumeEffect.apply`, as on chorus fruit.
+    fn teleport_randomly_consume_effect(&self, caller: &dyn EntityBase, diameter: f32) {
+        let world = self.entity.world.load_full();
+        let min_y = f64::from(world.get_bottom_y());
+        let max_y = min_y + f64::from(world.dimension.logical_height) - 1.0;
+        for _ in 0..Self::RANDOM_TELEPORT_ATTEMPTS {
+            let pos = self.entity.pos.load();
+            let (x, y, z) = {
+                let rng = game_random();
+                let x = random_teleport_coordinate(pos.x, diameter, rng.random());
+                let y =
+                    random_teleport_coordinate(pos.y, diameter, rng.random()).clamp(min_y, max_y);
+                let z = random_teleport_coordinate(pos.z, diameter, rng.random());
+                (x, y, z)
+            };
+            let vehicle = caller
+                .get_entity()
+                .vehicle
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone();
+            if let Some(vehicle) = vehicle {
+                vehicle
+                    .get_entity()
+                    .remove_passenger_sync(caller.get_entity().entity_id);
             }
 
-            let target = Vector3::new(target_x, f64::from(block_y), target_z);
-            let bounding_box = BoundingBox::new_from_pos(target.x, target.y, target.z, &dimensions);
-
-            for block_pos in
-                BlockPos::iterate(bounding_box.min_block_pos(), bounding_box.max_block_pos())
-            {
-                if world.get_block_state_if_loaded(&block_pos).is_none()
-                    || world.get_fluid(&block_pos).id != Fluid::EMPTY.id
-                {
-                    continue 'attempts;
-                }
+            let Some(target) = self.random_teleport_target(
+                x,
+                y,
+                z,
+                // `consumable_does_not_teleport_to` ships empty, so it isn't generated.
+                |_| false,
+                |_, _| true,
+            ) else {
+                continue;
+            };
+            let (yaw, pitch) = (self.entity.yaw.load(), self.entity.pitch.load());
+            caller.teleport(target, Some(yaw), Some(pitch), world.clone());
+            world.send_entity_status(&self.entity, EntityStatus::Teleport, ActorEventID::None);
+            if let Some(mob) = caller.get_mob() {
+                mob.get_mob_entity().steered().navigator().stop();
             }
 
-            if world.is_space_empty(bounding_box) {
-                return Some(target);
-            }
+            world.emit_game_event_with_context(
+                GameEvent::Teleport.name(),
+                pos,
+                &GameEventContext {
+                    source_entity: Some(caller),
+                },
+            );
+            let (sound, category) = if self.entity.entity_type == &EntityType::FOX {
+                (Sound::EntityFoxTeleport, SoundCategory::Neutral)
+            } else {
+                (Sound::ItemChorusFruitTeleport, SoundCategory::Players)
+            };
+            world.play_sound(sound, category, &self.entity.pos.load());
+            // `directional_particles` isn't in the component yet; it defaults to true.
+            let origin = BlockPos::containing_vec(pos);
+            world.sync_world_event(
+                WorldEvent::ParticlesConsumeEffectTeleport,
+                origin,
+                origin.clamped_pack_difference_in_position(
+                    &self.entity.block_pos.load(),
+                    127,
+                    127,
+                    127,
+                ),
+            );
+            self.fall_distance.store(0.0);
+            return;
         }
+    }
 
+    /// Vanilla `LivingEntity.randomTeleport` up to the move: from `(x, y, z)` clamped to the
+    /// world border, down to the first block entities can teleport to, if the body fits above
+    /// it. `is_invalid` is the avoidance predicate, `can_teleport_to` `canRandomlyTeleportTo`.
+    pub fn random_teleport_target(
+        &self,
+        x: f64,
+        y: f64,
+        z: f64,
+        is_invalid: impl Fn(&Block) -> bool,
+        can_teleport_to: impl Fn(&World, Vector3<f64>) -> bool,
+    ) -> Option<Vector3<f64>> {
+        let world = self.entity.world.load();
+        let (x, z) = {
+            let border = world
+                .worldborder
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let half = border.new_diameter / 2.0;
+            let margin = f64::from(1.0E-5f32);
+            (
+                x.clamp(border.center_x - half, border.center_x + half - margin),
+                z.clamp(border.center_z - half, border.center_z + half - margin),
+            )
+        };
+        let mut pos = BlockPos::containing(x, y, z);
+        // `Level.hasChunkAt`.
+        world.level.read_chunk_sync(&pos.chunk_position(), |_| ())?;
+        let mut y = y;
+        while pos.0.y > world.get_bottom_y() {
+            pos = pos.down();
+            let below = world.get_block(&pos);
+            if below.has_tag(&tag::Block::MINECRAFT_ENTITIES_CAN_TELEPORT_TO) {
+                // `checkPositionAndTeleport`.
+                if is_invalid(below) {
+                    return None;
+                }
+                let bb = BoundingBox::new_from_pos(x, y, z, &self.entity.entity_dimension.load());
+                // `noCollision` without a source entity skips the world border.
+                if !world.is_space_empty(bb)
+                    || !world.no_entity_collision(&bb)
+                    || world.contains_any_liquid(bb)
+                    || BlockPos::iterate(bb.min_block_pos(), bb.max_block_pos())
+                        .any(|pos| is_invalid(world.get_block(&pos)))
+                {
+                    return None;
+                }
+                let target = Vector3::new(x, y, z);
+                return can_teleport_to(&world, target).then_some(target);
+            }
+            y -= 1.0;
+        }
         None
     }
 

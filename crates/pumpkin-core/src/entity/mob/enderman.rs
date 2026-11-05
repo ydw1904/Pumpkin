@@ -220,17 +220,15 @@ impl EndermanEntity {
         );
         if !entity.is_silent() {
             let old_block = BlockPos::containing_vec(origin);
-            let new_block = entity.block_pos.load();
-            // `BlockUtil.clampedPackDifferenceInPosition` with radius 127 on every axis.
-            let clamped = BlockPos::new(
-                old_block.0.x + (new_block.0.x - old_block.0.x).clamp(-127, 127),
-                old_block.0.y + (new_block.0.y - old_block.0.y).clamp(-127, 127),
-                old_block.0.z + (new_block.0.z - old_block.0.z).clamp(-127, 127),
-            );
             world.sync_world_event(
                 WorldEvent::ParticlesEndermanTeleport,
                 old_block,
-                old_block.pack_difference_in_position(&clamped, 127, 127, 127),
+                old_block.clamped_pack_difference_in_position(
+                    &entity.block_pos.load(),
+                    127,
+                    127,
+                    127,
+                ),
             );
             world.play_sound(
                 Sound::EntityEndermanTeleport,
@@ -243,71 +241,25 @@ impl EndermanEntity {
     }
 
     /// Vanilla `LivingEntity.randomTeleport` with `Enderman.canRandomlyTeleportTo` and the
-    /// `enderman_does_not_teleport_to` tag: moves down to a block entities can stand on.
+    /// `enderman_does_not_teleport_to` tag.
     fn random_teleport(&self, x: f64, y: f64, z: f64) -> bool {
-        let entity = &self.mob_entity.living_entity.entity;
-        let world = entity.world.load();
-        let (x, z) = {
-            let border = world
-                .worldborder
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let half = border.new_diameter / 2.0;
-            let margin = f64::from(1.0E-5f32);
-            (
-                x.clamp(border.center_x - half, border.center_x + half - margin),
-                z.clamp(border.center_z - half, border.center_z + half - margin),
-            )
+        let living = &self.mob_entity.living_entity;
+        let entity = &living.entity;
+        let Some(new_pos) = living.random_teleport_target(
+            x,
+            y,
+            z,
+            |block| block.has_tag(&tag::Block::MINECRAFT_ENDERMAN_DOES_NOT_TELEPORT_TO),
+            |world, pos| {
+                !world
+                    .get_fluid(&BlockPos::containing_vec(pos).down())
+                    .has_tag(&tag::Fluid::MINECRAFT_WATER)
+            },
+        ) else {
+            return false;
         };
-        let mut pos = BlockPos::containing(x, y, z);
-        // `Level.hasChunkAt`.
-        if world
-            .level
-            .read_chunk_sync(&pos.chunk_position(), |_| ())
-            .is_none()
-        {
-            return false;
-        }
-        let mut y = y;
-        while pos.0.y > world.get_bottom_y() {
-            pos = pos.down();
-            let below = world.get_block(&pos);
-            if below.has_tag(&tag::Block::MINECRAFT_ENTITIES_CAN_TELEPORT_TO) {
-                return self.check_position_and_teleport(x, y, z, below);
-            }
-            y -= 1.0;
-        }
-        false
-    }
-
-    /// Vanilla `LivingEntity.checkPositionAndTeleport`.
-    fn check_position_and_teleport(&self, x: f64, y: f64, z: f64, below: &Block) -> bool {
-        let is_invalid =
-            |block: &Block| block.has_tag(&tag::Block::MINECRAFT_ENDERMAN_DOES_NOT_TELEPORT_TO);
-        if is_invalid(below) {
-            return false;
-        }
-        let entity = &self.mob_entity.living_entity.entity;
         let world = entity.world.load();
-        let bb = BoundingBox::new_from_pos(x, y, z, &entity.entity_dimension.load());
-        if !world.is_space_empty(bb) || world.contains_any_liquid(bb) {
-            return false;
-        }
-        if BlockPos::iterate(bb.min_block_pos(), bb.max_block_pos())
-            .any(|pos| is_invalid(world.get_block(&pos)))
-        {
-            return false;
-        }
-        // `Enderman.canRandomlyTeleportTo`.
-        if world
-            .get_fluid(&BlockPos::containing(x, y, z).down())
-            .has_tag(&tag::Fluid::MINECRAFT_WATER)
-        {
-            return false;
-        }
-
         let origin = entity.pos.load();
-        let new_pos = Vector3::new(x, y, z);
         if let Some(server) = world.server.upgrade() {
             let mut event =
                 crate::plugin::api::events::entity::entity_teleport::EntityTeleportEvent::new(
@@ -458,33 +410,6 @@ impl EndermanEntity {
 
         let entity = &self.mob_entity.living_entity.entity;
         let enderman_pos = entity.pos.load();
-    /// Vanilla `Enderman.dropCustomDeathLoot`: the carried block's own drops, mined with a
-    /// silk touch diamond axe (`enderman_loot_drop`).
-    fn drop_custom_death_loot(&self) {
-        let Some(state_id) = self.get_carried_block() else {
-            return;
-        };
-        let entity = self.get_entity();
-        let world = entity.world.load();
-        let block = Block::from_state_id(state_id);
-        let Some(loot_table) = block.loot_table.and_then(|key| world.get_loot_table(key)) else {
-            return;
-        };
-        let mut tool = ItemStack::new(1, &Item::DIAMOND_AXE);
-        tool.add_enchantment(&Enchantment::SILK_TOUCH, 1);
-        let params = LootContextParameters {
-            world: Some(&world),
-            block_state: Some(BlockState::from_id(state_id)),
-            position: Some(entity.pos.load()),
-            tool: Some(tool),
-            this_entity: Some(self),
-            ..Default::default()
-        };
-        for stack in generate_loot_from_handle(&loot_table, 0, &params) {
-            entity.spawn_at_location(stack);
-        }
-    }
-
         let enderman_eye_y = enderman_pos.y + ENDERMAN_EYE_HEIGHT;
 
         let player_entity = player.get_entity();
@@ -533,6 +458,33 @@ impl NeutralMob for EndermanEntity {
 }
 
 impl Mob for EndermanEntity {
+    /// Vanilla `Enderman.dropCustomDeathLoot`: the carried block's own drops, mined with a
+    /// silk touch diamond axe (`enderman_loot_drop`).
+    fn drop_custom_death_loot(&self) {
+        let Some(state_id) = self.get_carried_block() else {
+            return;
+        };
+        let entity = self.get_entity();
+        let world = entity.world.load();
+        let block = Block::from_state_id(state_id);
+        let Some(loot_table) = block.loot_table.and_then(|key| world.get_loot_table(key)) else {
+            return;
+        };
+        let mut tool = ItemStack::new(1, &Item::DIAMOND_AXE);
+        tool.add_enchantment(&Enchantment::SILK_TOUCH, 1);
+        let params = LootContextParameters {
+            world: Some(&world),
+            block_state: Some(BlockState::from_id(state_id)),
+            position: Some(entity.pos.load()),
+            tool: Some(tool),
+            this_entity: Some(self),
+            ..Default::default()
+        };
+        for stack in generate_loot_from_handle(&loot_table, 0, &params) {
+            entity.spawn_at_location(stack);
+        }
+    }
+
     /// Vanilla `Enderman.getWalkTargetValue`.
     fn get_walk_target_value(
         &self,

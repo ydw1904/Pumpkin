@@ -12,7 +12,7 @@ use pumpkin_world::{chunk::ChunkHeightmapType, generation::generator::WorldGener
 use rand::RngExt;
 use rustc_hash::FxHashSet;
 
-use super::World;
+use super::{World, entity_islands};
 use crate::entity::{
     EntityBase, ageable::AgeableMob, mob::shulker::ShulkerEntity,
     passive::happy_ghast::HappyGhastEntity, spawn_util::is_face_full_up, vehicle::boat::BoatEntity,
@@ -166,15 +166,20 @@ impl World {
             return false;
         }
 
-        let entity_box = player_box.expand_all(COLLISION_EPSILON);
-        !self.entities.load().iter().any(|entity| {
-            can_be_collided_with(entity.as_ref())
-                && entity
-                    .get_entity()
-                    .bounding_box
-                    .load()
-                    .intersects(&entity_box)
-        })
+        self.no_entity_collision(&player_box)
+    }
+
+    /// Vanilla `noEntityCollision` with no source entity: no boat, living shulker or still
+    /// happy ghast meets `aabb`. Players are never collidable this way.
+    pub(crate) fn no_entity_collision(&self, aabb: &BoundingBox) -> bool {
+        !self
+            .entity_index
+            .query(
+                self.entities.load_full(),
+                aabb.expand_all(COLLISION_EPSILON),
+            )
+            .inspect(|entity| entity_islands::check_reached(entity.get_entity().entity_id))
+            .any(|entity| can_be_collided_with(entity.as_ref()))
     }
 
     pub(super) fn fixup_spawn_height_at(&self, mut position: BlockPos) -> BlockPos {

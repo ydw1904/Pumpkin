@@ -720,6 +720,29 @@ impl BlockPos {
             | ((z_diff + z_radius) & 0xFF)
     }
 
+    /// Vanilla `BlockUtil.clampedPackDifferenceInPosition`: like
+    /// [`Self::pack_difference_in_position`], with the radii and offsets clamped to 127.
+    #[must_use]
+    pub fn clamped_pack_difference_in_position(
+        &self,
+        other: &Self,
+        x_radius: i32,
+        y_radius: i32,
+        z_radius: i32,
+    ) -> i32 {
+        let clamped = Self::new(
+            self.0.x + (other.0.x - self.0.x).clamp(-127, 127),
+            self.0.y + (other.0.y - self.0.y).clamp(-127, 127),
+            self.0.z + (other.0.z - self.0.z).clamp(-127, 127),
+        );
+        self.pack_difference_in_position(
+            &clamped,
+            x_radius.clamp(0, 127),
+            y_radius.clamp(0, 127),
+            z_radius.clamp(0, 127),
+        )
+    }
+
     /// Calculates the squared Euclidean distance between this block position and another.
     ///
     /// # Arguments
