@@ -115,11 +115,19 @@ pub trait NeutralMob: Mob {
         self.get_neutral_data().anger_end_time.load(Relaxed)
     }
 
+    /// The entity data key vanilla keeps the anger end time in, for the mobs whose client
+    /// shows anger (bees and wolves).
+    fn anger_end_time_data(&self) -> Option<pumpkin_data::tracked_data::TrackedData> {
+        None
+    }
+
     fn set_anger_end_time(&self, end_time: i64) {
         self.get_neutral_data()
             .anger_end_time
             .store(end_time, Relaxed);
-        // TODO: sync DATA_ANGER_END_TIME so the client shows the angry pose.
+        if let Some(data) = self.anger_end_time_data() {
+            self.get_entity().set_synced_data(data, end_time);
+        }
     }
 
     fn set_time_to_remain_angry(&self, ticks: i32) {

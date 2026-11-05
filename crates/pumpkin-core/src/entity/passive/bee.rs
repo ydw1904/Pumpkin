@@ -223,6 +223,10 @@ impl NeutralMob for BeeEntity {
         &self.neutral_data
     }
 
+    fn anger_end_time_data(&self) -> Option<pumpkin_data::tracked_data::TrackedData> {
+        Some(pumpkin_data::tracked_data::bee::DATA_ANGER_END_TIME)
+    }
+
     /// Bees calm down once the target is gone, unlike the other neutral mobs.
     fn stays_angry_with_target(&self) -> bool {
         false
