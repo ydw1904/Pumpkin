@@ -14,12 +14,8 @@ pub struct LilyPadBlock;
 
 impl BlockBehaviour for LilyPadBlock {
     fn on_entity_collision(&self, args: OnEntityCollisionArgs<'_>) {
-        if args
-            .entity
-            .get_entity()
-            .entity_type
-            .has_tag(&tag::EntityType::MINECRAFT_BOAT)
-        {
+        // Vanilla `entity instanceof AbstractBoat`: chest boats too, which the boat tag leaves out.
+        if args.entity.get_entity().entity_type.boat.is_some() {
             args.world
                 .break_block(args.position, None, BlockFlags::NOTIFY_ALL);
         }
