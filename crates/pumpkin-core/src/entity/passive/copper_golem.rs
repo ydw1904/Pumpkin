@@ -527,9 +527,15 @@ impl Mob for CopperGolemEntity {
         }
     }
 
-    fn on_damage(&self, _damage_type: DamageType, _source: Option<&dyn EntityBase>) {
+    fn actually_hurt(
+        &self,
+        _damage_type: DamageType,
+        _attacker: Option<&dyn EntityBase>,
+        dying: bool,
+    ) {
         self.set_state(CopperGolemState::Idle);
-        if self.mob_entity.living_entity.health.load() <= 0.0 {
+        // Vanilla `dropEquipment` drops the preserved items even without mob loot.
+        if dying {
             self.close_container();
             self.drop_preserved_equipment();
         }
