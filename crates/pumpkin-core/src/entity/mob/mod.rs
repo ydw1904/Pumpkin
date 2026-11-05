@@ -3532,6 +3532,14 @@ impl<T: Mob + Send + 'static> EntityBase for T {
     }
 
     fn interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
+        // Vanilla `Entity.interact`: shears cut leashes before they shear equipment.
+        if item_stack.get_item() == &Item::SHEARS
+            && self.get_mob_entity().living_entity.is_alive()
+            && crate::entity::shear_off_all_leash_connections(self, Some(player))
+        {
+            let _ = player.damage_item_stack(item_stack, 1);
+            return true;
+        }
         if item_stack.get_item() == &Item::SHEARS
             && self.can_shear_equipment(player)
             && !player.get_entity().is_sneaking()

@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use uuid::Uuid;
 
+use crate::block::blocks::beehive::BeehiveBlock;
 use crate::block::blocks::carved_pumpkin::find_golem_pattern;
 use crate::block::blocks::redstone::block_receives_redstone_power;
 use crate::block::blocks::tnt::TNTBlock;
@@ -998,7 +999,7 @@ impl DispenserBlock {
             return false;
         }
 
-        let mut props = BeeNestLikeProperties::from_state_id(state_id);
+        let props = BeeNestLikeProperties::from_state_id(state_id);
         if props.honey_level < FULL_HONEY_LEVEL {
             return false;
         }
@@ -1010,10 +1011,9 @@ impl DispenserBlock {
             target.to_centered_f64(),
             ItemStack::new(HARVESTED_HONEYCOMBS, &Item::HONEYCOMB),
         );
-
-        props.honey_level = 0;
+        BeehiveBlock::release_bees_and_reset_honey_level(ctx.world, &target);
         ctx.world
-            .set_block_state(&target, props.to_state_id(block), BlockFlags::NOTIFY_ALL);
+            .emit_game_event(GameEvent::Shear.name(), target.to_centered_f64());
 
         true
     }
@@ -1022,7 +1022,16 @@ impl DispenserBlock {
         let target = Self::target_position(ctx);
         let target_box = BoundingBox::from_block(&target);
 
-        for entity in ctx.world.get_entities_at_box(&target_box) {
+        for entity in ctx.world.get_entities_and_players_at_box(&target_box) {
+            if entity
+                .get_player()
+                .is_some_and(|player| player.gamemode.load() == pumpkin_util::GameMode::Spectator)
+            {
+                continue;
+            }
+            if crate::entity::shear_off_all_leash_connections(entity.as_ref(), None) {
+                return true;
+            }
             // Vanilla `LivingEntity.isAlive` also needs health left.
             let alive = entity
                 .get_living_entity()
@@ -1071,14 +1080,12 @@ impl DispenserBlock {
         let (block, state_id) = ctx.world.get_block_and_state_id(&target);
 
         if block.has_tag(&tag::Block::MINECRAFT_BEEHIVES) {
-            let mut props = BeeNestLikeProperties::from_state_id(state_id);
+            let props = BeeNestLikeProperties::from_state_id(state_id);
             if props.honey_level < FULL_HONEY_LEVEL {
                 return false;
             }
 
-            props.honey_level = 0;
-            ctx.world
-                .set_block_state(&target, props.to_state_id(block), BlockFlags::NOTIFY_ALL);
+            BeehiveBlock::release_bees_and_reset_honey_level(ctx.world, &target);
             Self::consume_with_remainder(
                 ctx,
                 dispenser,

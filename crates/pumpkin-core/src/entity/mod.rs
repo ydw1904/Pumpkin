@@ -5068,10 +5068,16 @@ impl Entity {
             .delayed_leash
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
-        *self
+        let old_holder = self
             .leashed_to
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(holder);
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .replace(holder);
+        if let Some(old_holder) = old_holder
+            && old_holder.get_entity().entity_id != holder_entity_id
+        {
+            notify_leashee_removed(old_holder.as_ref());
+        }
 
         let je_packet = pumpkin_protocol::java::client::play::CSetEntityLink::new(
             self.entity_id,
@@ -5140,6 +5146,9 @@ impl Entity {
         }
 
         self.send_leash_removed();
+        if let Some(holder) = old_holder {
+            notify_leashee_removed(holder.as_ref());
+        }
     }
 
     pub fn remove_leash(&self) {
@@ -5148,8 +5157,9 @@ impl Entity {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
-        if old_holder.is_some() {
+        if let Some(holder) = old_holder {
             self.send_leash_removed();
+            notify_leashee_removed(holder.as_ref());
         }
     }
 
@@ -5432,6 +5442,50 @@ impl Entity {
         if !still_leashed {
             self.spawn_at_location(ItemStack::new(1, &pumpkin_data::item::Item::LEAD));
         }
+    }
+
+    /// Vanilla `Leashable.leashableLeashedTo`: the entities in a 32-block cube around this one
+    /// that are leashed to it.
+    pub fn leashed_to_this(&self) -> Vec<Arc<dyn EntityBase>> {
+        let bounding_box = self.bounding_box.load();
+        let center = (bounding_box.min + bounding_box.max) * 0.5;
+        let area = BoundingBox::of_size(center, 32.0, 32.0, 32.0);
+        self.world
+            .load()
+            .get_entities_at_box(&area)
+            .into_iter()
+            .filter(|entity| {
+                entity
+                    .get_entity()
+                    .get_leash_holder()
+                    .is_some_and(|holder| holder.get_entity().entity_id == self.entity_id)
+            })
+            .collect()
+    }
+
+    /// Vanilla `Entity.dropAllLeashConnections`: drops this entity's leash and every leash
+    /// held by it.
+    pub fn drop_all_leash_connections(&self, player: Option<&dyn EntityBase>) -> bool {
+        let leashed = self.leashed_to_this();
+        let dropped = if self.is_leashed() {
+            self.drop_leash();
+            true
+        } else {
+            !leashed.is_empty()
+        };
+        for entity in leashed {
+            entity.get_entity().drop_leash();
+        }
+        if dropped {
+            self.world.load().emit_game_event_with_context(
+                GameEvent::Shear.name(),
+                self.pos.load(),
+                &crate::world::game_event::GameEventContext {
+                    source_entity: player,
+                },
+            );
+        }
+        dropped
     }
 
     /// Vanilla `Entity.spawnAtLocation`: drops `stack` at this entity's position.
@@ -6391,6 +6445,30 @@ impl Flag {
             Self::Glowing => None,
         }
     }
+}
+
+/// Vanilla `Entity.notifyLeasheeRemoved`: a knot goes once nothing is leashed to it.
+fn notify_leashee_removed(holder: &dyn EntityBase) {
+    if let Some(knot) = holder.cast_any().downcast_ref::<LeashKnotEntity>() {
+        knot.notify_leashee_removed();
+    }
+}
+
+/// Vanilla `Entity.shearOffAllLeashConnections`: shears snip every leash on or held by `entity`.
+pub fn shear_off_all_leash_connections(entity: &dyn EntityBase, player: Option<&Player>) -> bool {
+    let base = entity.get_entity();
+    let dropped = base.drop_all_leash_connections(player.map(|player| player as &dyn EntityBase));
+    if dropped {
+        let category = if player.is_some() {
+            SoundCategory::Players
+        } else {
+            entity.sound_source()
+        };
+        base.world
+            .load()
+            .play_block_sound(Sound::ItemShearsSnip, category, base.block_pos.load());
+    }
+    dropped
 }
 
 #[cfg(test)]

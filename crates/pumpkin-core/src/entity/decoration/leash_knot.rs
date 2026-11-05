@@ -3,6 +3,7 @@ use crate::entity::{Entity, EntityBase, living::LivingEntity};
 use crate::world::World;
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tag::Taggable;
@@ -10,16 +11,28 @@ use pumpkin_util::math::boundingbox::{BoundingBox, EntityDimensions};
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub struct LeashKnotEntity {
     entity: Entity,
+    /// A leash came off; the knot checks in its tick whether any are left.
+    leashee_removed: AtomicBool,
 }
 
 impl LeashKnotEntity {
     pub const OFFSET_Y: f64 = 0.375;
 
     pub const fn new(entity: Entity) -> Self {
-        Self { entity }
+        Self {
+            entity,
+            leashee_removed: AtomicBool::new(false),
+        }
+    }
+
+    /// Vanilla `LeashFenceKnotEntity.notifyLeasheeRemoved`, which discards the knot once no
+    /// leash is left. The leashee may be ticking, so the knot looks in its own tick.
+    pub fn notify_leashee_removed(&self) {
+        self.leashee_removed.store(true, Ordering::Relaxed);
     }
 
     pub fn get_or_create(world: &Arc<World>, pos: BlockPos) -> Arc<dyn EntityBase> {
@@ -95,6 +108,10 @@ impl EntityBase for LeashKnotEntity {
             let pos = self.entity.pos.load();
             world.play_sound(Sound::ItemLeadUntied, SoundCategory::Neutral, &pos);
             self.entity.remove();
+        } else if self.leashee_removed.swap(false, Ordering::Relaxed)
+            && self.entity.leashed_to_this().is_empty()
+        {
+            self.entity.remove();
         }
     }
 
@@ -133,8 +150,16 @@ impl EntityBase for LeashKnotEntity {
         self.entity.is_alive()
     }
 
-    fn interact(&self, player: &Arc<Player>, _item_stack: &mut ItemStack) -> bool {
+    fn interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
         let world = player.world();
+        // Vanilla `LeashFenceKnotEntity.interact` lets shears cut its leashes first, and
+        // `notifyLeasheeRemoved` discards the knot once none are left.
+        if item_stack.get_item() == &Item::SHEARS
+            && crate::entity::shear_off_all_leash_connections(self, Some(player))
+        {
+            let _ = player.damage_item_stack(item_stack, 1);
+            return true;
+        }
         let knot_id = self.entity.entity_id;
         let player_id = player.entity_id();
 
