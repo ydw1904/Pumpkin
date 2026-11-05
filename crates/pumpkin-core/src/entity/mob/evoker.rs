@@ -15,12 +15,12 @@ use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::{
     Entity, EntityBase,
     ai::goal::{
-        Controls, Goal, look_around::RandomLookAroundGoal, look_at_entity::LookAtEntityGoal,
-        swim::SwimGoal, wander_around::WanderAroundGoal,
+        Controls, Goal, look_at_entity::LookAtEntityGoal, swim::SwimGoal,
+        wander_around::WanderAroundGoal,
     },
     mob::{
         Mob, MobEntity,
-        patrol::{PatrolData, PatrollingMonster},
+        patrol::{LongDistancePatrolGoal, PatrolData, PatrollingMonster},
         raider::{
             self, ObtainRaidLeaderBannerGoal, PathfindToRaidGoal, Raider, RaiderCelebrationGoal,
             RaiderData, RaiderMoveThroughVillageGoal,
@@ -96,22 +96,30 @@ impl EvokerEntity {
         {
             let goal_selector = &mob_arc.mob_entity.goals_selector;
 
+            // `PatrollingMonster` and `Raider.registerGoals` run first.
+            goal_selector.add_goal(4, Box::new(LongDistancePatrolGoal::new(0.7, 0.595)));
+            goal_selector.add_goal(1, Box::new(ObtainRaidLeaderBannerGoal));
+            goal_selector.add_goal(3, Box::new(PathfindToRaidGoal::default()));
+            goal_selector.add_goal(4, Box::new(RaiderMoveThroughVillageGoal::new(1.05)));
+            goal_selector.add_goal(5, Box::new(RaiderCelebrationGoal));
             goal_selector.add_goal(0, Box::new(SwimGoal::default()));
             goal_selector.add_goal(1, Box::new(EvokerCastingSpellGoal::new(mob_weak.clone())));
-            goal_selector.add_goal(2, Box::new(ObtainRaidLeaderBannerGoal));
             fleeing::apply(goal_selector, EVOKER_FLEES);
-            goal_selector.add_goal(3, Box::new(RaiderMoveThroughVillageGoal::new(1.05)));
-            goal_selector.add_goal(3, Box::new(PathfindToRaidGoal::default()));
             goal_selector.add_goal(4, Box::new(EvokerSummonSpellGoal::new(mob_weak.clone())));
             goal_selector.add_goal(5, Box::new(EvokerAttackSpellGoal::new(mob_weak.clone())));
             goal_selector.add_goal(6, Box::new(EvokerWololoSpellGoal::new(mob_weak)));
-            goal_selector.add_goal(7, Box::new(RaiderCelebrationGoal));
             goal_selector.add_goal(8, Box::new(WanderAroundGoal::new(0.6)));
             goal_selector.add_goal(
                 9,
-                LookAtEntityGoal::with_default(mob_interface_weak, &EntityType::PLAYER, 3.0),
+                Box::new(LookAtEntityGoal::new(
+                    mob_interface_weak,
+                    &EntityType::PLAYER,
+                    3.0,
+                    1.0,
+                    false,
+                )),
             );
-            goal_selector.add_goal(10, Box::new(RandomLookAroundGoal::default()));
+            goal_selector.add_goal(10, LookAtEntityGoal::mobs(8.0));
 
             let target_selector = &mob_arc.mob_entity.target_selector;
             target_selector.add_goal(1, raider::revenge_goal());

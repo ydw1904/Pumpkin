@@ -7,14 +7,14 @@ use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::Sound;
-use pumpkin_util::Difficulty;
 use pumpkin_data::tag::{self, Taggable};
+use pumpkin_util::Difficulty;
 use pumpkin_util::math::position::BlockPos;
 
 use crate::entity::{
     Entity, EntityBase,
     ai::goal::{
-        look_around::RandomLookAroundGoal, look_at_entity::LookAtEntityGoal, swim::SwimGoal,
+        escape_danger::EscapeDangerGoal, look_at_entity::LookAtEntityGoal, swim::SwimGoal,
         wander_around::WanderAroundGoal,
     },
     mob::{Mob, MobEntity},
@@ -97,13 +97,17 @@ impl ParrotEntity {
         {
             let goal_selector = &mob_arc.mob_entity.goals_selector;
 
+            // `TamableAnimalPanicGoal`; parrots can't be tamed yet.
+            goal_selector.add_goal(0, EscapeDangerGoal::new(1.25));
             goal_selector.add_goal(0, Box::new(SwimGoal::default()));
-            goal_selector.add_goal(1, Box::new(WanderAroundGoal::new(1.0)));
             goal_selector.add_goal(
-                2,
-                LookAtEntityGoal::with_default(mob_weak, &EntityType::PLAYER, 6.0),
+                1,
+                LookAtEntityGoal::with_default(mob_weak, &EntityType::PLAYER, 8.0),
             );
-            goal_selector.add_goal(3, Box::new(RandomLookAroundGoal::default()));
+            // TODO: SitWhenOrderedToGoal and FollowOwnerGoal at 2, which need taming.
+            // Stands in for ParrotWanderGoal until parrots fly.
+            goal_selector.add_goal(2, Box::new(WanderAroundGoal::new(1.0)));
+            // TODO: LandOnOwnersShoulderGoal and FollowMobGoal at 3.
         };
 
         mob_arc

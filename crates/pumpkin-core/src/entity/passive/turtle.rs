@@ -7,7 +7,6 @@ use std::sync::{
 use pumpkin_data::BlockState;
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::entity::EntityType;
-use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::Sound;
 use pumpkin_data::tag::{self, Taggable};
@@ -18,9 +17,8 @@ use crate::entity::{
     Entity, EntityBase,
     ageable::{AgeableData, AgeableMob},
     ai::goal::{
-        breed::BreedGoal, escape_danger::EscapeDangerGoal, look_around::RandomLookAroundGoal,
-        look_at_entity::LookAtEntityGoal, tempt::TemptGoal, try_find_water::TryFindWaterGoal,
-        wander_around::WanderAroundGoal,
+        breed::BreedGoal, escape_danger::EscapeDangerGoal, look_at_entity::LookAtEntityGoal,
+        tempt::TemptGoal, try_find_water::TryFindWaterGoal, wander_around::WanderAroundGoal,
     },
     mob::{Mob, MobEntity},
     passive::animal::Animal,
@@ -29,7 +27,17 @@ use crate::entity::{
 
 /// Vanilla `Turtle.getAmbientSoundInterval`.
 const AMBIENT_SOUND_INTERVAL: i32 = 200;
-const TEMPT_ITEMS: &[&Item] = &[&Item::SEAGRASS];
+/// Vanilla `Turtle.TurtleRandomStrollGoal` interval.
+const RANDOM_STROLL_INTERVAL: i32 = 100;
+
+/// Vanilla `TurtleRandomStrollGoal.canUse`, without the unported `goingHome`.
+fn can_random_stroll(mob: &dyn Mob) -> bool {
+    !mob.get_entity().is_in_water()
+        && mob
+            .cast_any()
+            .downcast_ref::<TurtleEntity>()
+            .is_some_and(|turtle| !turtle.has_egg())
+}
 
 /// Turtle is prey for wolves and cats.
 pub fn is_baby_on_land(mob: &dyn Mob) -> bool {
@@ -61,16 +69,30 @@ impl TurtleEntity {
         {
             let goal_selector = &mob_arc.mob_entity.goals_selector;
 
-            goal_selector.add_goal(0, Box::new(TryFindWaterGoal::new()));
-            goal_selector.add_goal(2, EscapeDangerGoal::new(1.2));
-            goal_selector.add_goal(3, BreedGoal::new(1.0));
-            goal_selector.add_goal(4, Box::new(TemptGoal::new(1.1, TEMPT_ITEMS, false)));
-            goal_selector.add_goal(5, Box::new(WanderAroundGoal::new(1.0)));
+            // TODO: TurtlePanicGoal's water search, TurtleBreedGoal and TurtleLayEggGoal.
+            goal_selector.add_goal(0, EscapeDangerGoal::new(1.2));
+            goal_selector.add_goal(1, BreedGoal::new(1.0));
             goal_selector.add_goal(
-                6,
-                LookAtEntityGoal::with_default(mob_weak, &EntityType::PLAYER, 6.0),
+                2,
+                Box::new(TemptGoal::with_tag(
+                    1.1,
+                    &tag::Item::MINECRAFT_TURTLE_FOOD,
+                    false,
+                )),
             );
-            goal_selector.add_goal(7, Box::new(RandomLookAroundGoal::default()));
+            // Stands in for TurtleGoToWaterGoal; TODO: TurtleGoHomeGoal at 4, TurtleTravelGoal at 7.
+            goal_selector.add_goal(3, Box::new(TryFindWaterGoal::new()));
+            goal_selector.add_goal(
+                8,
+                LookAtEntityGoal::with_default(mob_weak, &EntityType::PLAYER, 8.0),
+            );
+            goal_selector.add_goal(
+                9,
+                Box::new(
+                    WanderAroundGoal::with_interval(1.0, RANDOM_STROLL_INTERVAL)
+                        .gated_by(can_random_stroll),
+                ),
+            );
         };
 
         mob_arc
@@ -108,7 +130,6 @@ impl AgeableMob for TurtleEntity {
 impl Animal for TurtleEntity {
     fn is_food(&self, item_stack: &ItemStack) -> bool {
         item_stack.item.has_tag(&tag::Item::MINECRAFT_TURTLE_FOOD)
-            || item_stack.item == &Item::SEAGRASS
     }
 }
 

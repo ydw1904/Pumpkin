@@ -20,8 +20,7 @@ use crate::entity::{
     ageable::{AgeableData, AgeableMob},
     ai::behavior::fleeing::{self, Flee},
     ai::goal::{
-        breed::BreedGoal, escape_danger::EscapeDangerGoal, follow_parent::FollowParentGoal,
-        look_around::RandomLookAroundGoal, look_at_entity::LookAtEntityGoal,
+        breed::BreedGoal, escape_danger::EscapeDangerGoal, look_at_entity::LookAtEntityGoal,
         melee_attack::MeleeAttackGoal, swim::SwimGoal, tempt::TemptGoal,
         wander_around::WanderAroundGoal,
     },
@@ -128,13 +127,11 @@ impl RabbitEntity {
             goal_selector.add_goal(2, BreedGoal::new(0.8));
             goal_selector.add_goal(3, Box::new(TemptGoal::new(1.0, TEMPT_ITEMS, false)));
             fleeing::apply(goal_selector, RABBIT_FLEES);
-            goal_selector.add_goal(5, Box::new(FollowParentGoal::new(0.8)));
-            goal_selector.add_goal(6, Box::new(WanderAroundGoal::new(0.6)));
+            goal_selector.add_goal(6, Box::new(WanderAroundGoal::water_avoiding(0.6)));
             goal_selector.add_goal(
                 11,
                 LookAtEntityGoal::with_default(mob_weak, &EntityType::PLAYER, 10.0),
             );
-            goal_selector.add_goal(11, Box::new(RandomLookAroundGoal::default()));
         };
 
         mob_arc

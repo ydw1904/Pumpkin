@@ -12,7 +12,7 @@ use crate::entity::{
     Entity, EntityBase,
     ai::goal::{
         look_around::RandomLookAroundGoal, look_at_entity::LookAtEntityGoal,
-        wander_around::WanderAroundGoal,
+        move_towards_restriction::MoveTowardsRestrictionGoal, wander_around::WanderAroundGoal,
     },
     mob::{Mob, MobEntity},
 };
@@ -58,7 +58,11 @@ impl BlazeEntity {
                 ),
             );
 
-            goal_selector.add_goal(5, Box::new(WanderAroundGoal::new(1.0)));
+            goal_selector.add_goal(5, Box::new(MoveTowardsRestrictionGoal::new(1.0)));
+            goal_selector.add_goal(
+                7,
+                Box::new(WanderAroundGoal::water_avoiding_with_probability(1.0, 0.0)),
+            );
             goal_selector.add_goal(
                 8,
                 LookAtEntityGoal::with_default(mob_weak, &EntityType::PLAYER, 8.0),

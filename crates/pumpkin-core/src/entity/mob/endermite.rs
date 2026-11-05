@@ -46,13 +46,13 @@ impl EndermiteEntity {
 
             goal_selector.add_goal(1, Box::new(SwimGoal::default()));
             goal_selector.add_goal(1, Box::new(ClimbOnTopOfPowderSnowGoal));
-            goal_selector.add_goal(4, Box::new(MeleeAttackGoal::new(1.0, true)));
-            goal_selector.add_goal(5, Box::new(WanderAroundGoal::new(1.0)));
+            goal_selector.add_goal(2, Box::new(MeleeAttackGoal::new(1.0, false)));
+            goal_selector.add_goal(3, Box::new(WanderAroundGoal::water_avoiding(1.0)));
             goal_selector.add_goal(
-                6,
+                7,
                 LookAtEntityGoal::with_default(mob_weak.clone(), &EntityType::PLAYER, 8.0),
             );
-            goal_selector.add_goal(7, Box::new(RandomLookAroundGoal::default()));
+            goal_selector.add_goal(8, Box::new(RandomLookAroundGoal::default()));
 
             let target_selector = &mob_arc.mob_entity.target_selector;
             target_selector.add_goal(1, Box::new(RevengeGoal::new(true).alerting_others()));

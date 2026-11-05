@@ -1,4 +1,5 @@
 use super::{Controls, Goal, GoalReach, to_goal_ticks};
+use crate::entity::ai::goal::revenge::MobFilter;
 use crate::entity::ai::util::{default_random_pos, land_random_pos};
 use crate::entity::{ai::pathfinder::NavigatorGoal, mob::Mob};
 use pumpkin_util::math::vector3::Vector3;
@@ -17,6 +18,7 @@ pub struct WanderAroundGoal {
     /// A `trigger` its mob can set from outside the selector.
     shared_trigger: Option<Arc<AtomicBool>>,
     water_avoiding_probability: Option<f32>,
+    gate: Option<MobFilter>,
 }
 
 impl WanderAroundGoal {
@@ -35,14 +37,28 @@ impl WanderAroundGoal {
             force_trigger: false,
             shared_trigger: None,
             water_avoiding_probability: None,
+            gate: None,
         }
     }
 
     #[must_use]
     pub const fn water_avoiding(speed: f64) -> Self {
+        Self::water_avoiding_with_probability(speed, PROBABILITY)
+    }
+
+    /// Vanilla `WaterAvoidingRandomStrollGoal` with an explicit `probability`.
+    #[must_use]
+    pub const fn water_avoiding_with_probability(speed: f64, probability: f32) -> Self {
         let mut goal = Self::new(speed);
-        goal.water_avoiding_probability = Some(PROBABILITY);
+        goal.water_avoiding_probability = Some(probability);
         goal
+    }
+
+    /// Only starts while `gate` holds, like vanilla subclasses that add a `canUse` condition.
+    #[must_use]
+    pub const fn gated_by(mut self, gate: MobFilter) -> Self {
+        self.gate = Some(gate);
+        self
     }
 
     /// Run once on the next check, ignoring the interval.
@@ -91,6 +107,9 @@ impl Goal for WanderAroundGoal {
     }
 
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
+        if self.gate.is_some_and(|gate| !gate(mob)) {
+            return false;
+        }
         // Every mob that carries a passenger is controlled by it.
         if mob.get_entity().has_passengers() {
             return false;

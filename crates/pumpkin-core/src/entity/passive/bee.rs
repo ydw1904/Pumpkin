@@ -1,6 +1,6 @@
 use crate::entity::r#type::CreatureSpawnLevel;
 use std::sync::{
-    Arc, Weak,
+    Arc,
     atomic::{AtomicI32, AtomicU8, Ordering},
 };
 
@@ -29,7 +29,6 @@ use crate::entity::{
     },
     ai::goal::{
         active_target::TargetCondition, breed::BreedGoal, follow_parent::FollowParentGoal,
-        look_around::RandomLookAroundGoal, look_at_entity::LookAtEntityGoal,
         melee_attack::MeleeAttackGoal, reset_universal_anger::ResetUniversalAngerGoal,
         revenge::RevengeGoal, swim::SwimGoal, tempt::TemptGoal, wander_around::WanderAroundGoal,
     },
@@ -109,10 +108,6 @@ impl BeeEntity {
             time_since_sting: AtomicI32::new(0),
         };
         let mob_arc = Arc::new(bee);
-        let mob_weak: Weak<dyn Mob> = {
-            let mob_arc: Arc<dyn Mob> = mob_arc.clone();
-            Arc::downgrade(&mob_arc)
-        };
 
         {
             let goal_selector = &mob_arc.mob_entity.goals_selector;
@@ -122,15 +117,17 @@ impl BeeEntity {
                 Box::new(MeleeAttackGoal::new(1.4, true).gated_by(can_sting)),
             );
             goal_selector.add_goal(2, BreedGoal::new(1.0));
-            goal_selector.add_goal(3, Box::new(TemptGoal::new(1.25, &[], false)));
+            goal_selector.add_goal(
+                3,
+                Box::new(TemptGoal::with_tag(
+                    1.25,
+                    &tag::Item::MINECRAFT_BEE_FOOD,
+                    false,
+                )),
+            );
             goal_selector.add_goal(5, Box::new(FollowParentGoal::new(1.25)));
             goal_selector.add_goal(8, Box::new(WanderAroundGoal::new(1.0)));
             goal_selector.add_goal(9, Box::new(SwimGoal::default()));
-            goal_selector.add_goal(
-                10,
-                LookAtEntityGoal::with_default(mob_weak, &EntityType::PLAYER, 6.0),
-            );
-            goal_selector.add_goal(11, Box::new(RandomLookAroundGoal::default()));
         };
 
         {

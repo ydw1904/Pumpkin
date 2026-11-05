@@ -21,9 +21,8 @@ use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::{
     Entity, EntityBase,
     ai::goal::{
-        look_around::RandomLookAroundGoal, look_at_entity::LookAtEntityGoal,
-        ranged_crossbow_attack::RangedCrossbowAttackGoal, swim::SwimGoal,
-        wander_around::WanderAroundGoal,
+        look_at_entity::LookAtEntityGoal, ranged_crossbow_attack::RangedCrossbowAttackGoal,
+        swim::SwimGoal, wander_around::WanderAroundGoal,
     },
     mob::{
         Mob, MobEntity,
@@ -73,21 +72,28 @@ impl PillagerEntity {
         {
             let goal_selector = &mob_arc.mob_entity.goals_selector;
 
-            goal_selector.add_goal(0, Box::new(SwimGoal::default()));
+            // `PatrollingMonster` and `Raider.registerGoals` run first.
+            goal_selector.add_goal(4, Box::new(LongDistancePatrolGoal::new(0.7, 0.595)));
             goal_selector.add_goal(1, Box::new(ObtainRaidLeaderBannerGoal));
+            goal_selector.add_goal(3, Box::new(PathfindToRaidGoal::default()));
+            goal_selector.add_goal(4, Box::new(RaiderMoveThroughVillageGoal::new(1.05)));
+            goal_selector.add_goal(5, Box::new(RaiderCelebrationGoal));
+            goal_selector.add_goal(0, Box::new(SwimGoal::default()));
             fleeing::apply(goal_selector, PILLAGER_FLEES);
             goal_selector.add_goal(2, Box::new(HoldGroundAttackGoal::new(10.0)));
             goal_selector.add_goal(3, Box::new(RangedCrossbowAttackGoal::new(1.0, 8.0)));
-            goal_selector.add_goal(4, Box::new(LongDistancePatrolGoal::new(0.7, 0.595)));
-            goal_selector.add_goal(4, Box::new(RaiderMoveThroughVillageGoal::new(1.05)));
-            goal_selector.add_goal(4, Box::new(PathfindToRaidGoal::default()));
-            goal_selector.add_goal(5, Box::new(RaiderCelebrationGoal));
-            goal_selector.add_goal(5, Box::new(WanderAroundGoal::new(1.0)));
+            goal_selector.add_goal(8, Box::new(WanderAroundGoal::new(0.6)));
             goal_selector.add_goal(
-                6,
-                LookAtEntityGoal::with_default(mob_weak, &EntityType::PLAYER, 8.0),
+                9,
+                Box::new(LookAtEntityGoal::new(
+                    mob_weak,
+                    &EntityType::PLAYER,
+                    15.0,
+                    1.0,
+                    false,
+                )),
             );
-            goal_selector.add_goal(7, Box::new(RandomLookAroundGoal::default()));
+            goal_selector.add_goal(10, LookAtEntityGoal::mobs(15.0));
 
             let target_selector = &mob_arc.mob_entity.target_selector;
             target_selector.add_goal(1, raider::revenge_goal());
