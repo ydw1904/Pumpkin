@@ -758,6 +758,44 @@ impl DatapackManager {
         false
     }
 
+    /// A block tag's block ids: the built-in tag (unless a pack replaced it) plus what the
+    /// loaded packs add, with nested `#tags` resolved. `None` when no tag has this id.
+    #[must_use]
+    pub fn resolve_block_tag(&self, tag: &str) -> Option<Vec<u16>> {
+        let guard = self
+            .tags
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let empty = HashMap::new();
+        let packs = guard.get("block").unwrap_or(&empty);
+        let mut ids = Vec::new();
+        let mut visited = Vec::new();
+        collect_block_tag(packs, tag, &mut ids, &mut visited).then_some(ids)
+    }
+
+    /// Every block tag a pack defines or extends, resolved, for `CUpdateTags`.
+    #[must_use]
+    pub fn datapack_block_tags(&self) -> Vec<(String, Vec<u16>)> {
+        let names: Vec<String> = self
+            .tags
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get("block")
+            .map(|packs| packs.keys().cloned().collect())
+            .unwrap_or_default();
+        let mut tags: Vec<_> = names
+            .into_iter()
+            .filter_map(|name| {
+                let mut ids = self.resolve_block_tag(&name)?;
+                ids.sort_unstable();
+                ids.dedup();
+                Some((name, ids))
+            })
+            .collect();
+        tags.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+        tags
+    }
+
     #[must_use]
     pub fn get_tag_entries(&self, category: &str, tag_id: &str) -> Option<Vec<String>> {
         let guard = self
@@ -1554,6 +1592,42 @@ fn build_damage_type_registry(
     );
 
     damage_type_registry
+}
+
+/// Adds the block ids of `tag` to `ids`, returning whether the tag exists built in or in a pack.
+fn collect_block_tag(
+    packs: &HashMap<String, tag_loader::DynamicTagEntry>,
+    tag: &str,
+    ids: &mut Vec<u16>,
+    visited: &mut Vec<String>,
+) -> bool {
+    let tag = if tag.contains(':') {
+        tag.to_string()
+    } else {
+        format!("minecraft:{tag}")
+    };
+    if visited.contains(&tag) {
+        return true;
+    }
+    visited.push(tag.clone());
+    let entry = packs.get(&tag);
+    let builtin = pumpkin_command::argument_types::block_predicate::builtin_block_tag(&tag);
+    if entry.is_none() && builtin.is_none() {
+        return false;
+    }
+    if let Some(builtin) = builtin
+        && !entry.is_some_and(|entry| entry.replace)
+    {
+        ids.extend(builtin);
+    }
+    for value in entry.iter().flat_map(|entry| &entry.values) {
+        if let Some(nested) = value.strip_prefix('#') {
+            collect_block_tag(packs, nested, ids, visited);
+        } else if let Some(block) = pumpkin_data::Block::from_name(value) {
+            ids.push(block.id.as_u16());
+        }
+    }
+    true
 }
 
 struct PackContentAccumulators<'a> {
@@ -2469,5 +2543,53 @@ mod tests {
                 .iter()
                 .any(|r| r.registry_id == "minecraft:wolf_variant")
         );
+    }
+
+    #[test]
+    fn block_tags_merge_with_builtin_tags_unless_replaced() {
+        use super::tag_loader::DynamicTagEntry;
+        use std::collections::HashMap;
+        let tag = |id: &str, replace: bool, values: &[&str]| {
+            (
+                id.to_string(),
+                DynamicTagEntry {
+                    id: id.to_string(),
+                    values: values.iter().map(ToString::to_string).collect(),
+                    replace,
+                },
+            )
+        };
+        let resolve = |packs: &HashMap<String, DynamicTagEntry>, id: &str| {
+            let mut ids = Vec::new();
+            super::collect_block_tag(packs, id, &mut ids, &mut Vec::new()).then(|| {
+                ids.sort_unstable();
+                ids.dedup();
+                ids
+            })
+        };
+        let stone = pumpkin_data::Block::STONE.id.as_u16();
+        let granite = pumpkin_data::Block::GRANITE.id.as_u16();
+        let mut packs: HashMap<String, DynamicTagEntry> = HashMap::from([
+            tag("test:stones", false, &["minecraft:stone"]),
+            tag(
+                "test:rocks",
+                false,
+                &["#test:stones", "granite", "#test:rocks"],
+            ),
+        ]);
+        let mut rocks = vec![stone, granite];
+        rocks.sort_unstable();
+        assert_eq!(resolve(&packs, "test:rocks"), Some(rocks));
+        assert_eq!(resolve(&packs, "test:missing"), None);
+
+        let builtin = resolve(&packs, "minecraft:dirt").unwrap_or_default();
+        assert!(builtin.len() > 1 && !builtin.contains(&stone));
+        packs.extend([tag("minecraft:dirt", false, &["stone"])]);
+        assert_eq!(
+            resolve(&packs, "dirt").map(|ids| ids.len()),
+            Some(builtin.len() + 1)
+        );
+        packs.extend([tag("minecraft:dirt", true, &["stone"])]);
+        assert_eq!(resolve(&packs, "minecraft:dirt"), Some(vec![stone]));
     }
 }

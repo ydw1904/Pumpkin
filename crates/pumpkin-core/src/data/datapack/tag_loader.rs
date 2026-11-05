@@ -8,6 +8,8 @@ use serde::Deserialize;
 pub struct DynamicTagEntry {
     pub id: String,
     pub values: Vec<String>,
+    /// A pack set `replace`, so the entries of lower packs, the built-in tag included, are gone.
+    pub replace: bool,
 }
 
 #[derive(Deserialize, Debug)]
@@ -111,6 +113,7 @@ fn load_tag_category_recursive<S: std::hash::BuildHasher>(
                         DynamicTagEntry {
                             id: tag_id,
                             values: string_values,
+                            replace: true,
                         },
                     );
                 } else {
@@ -120,6 +123,7 @@ fn load_tag_category_recursive<S: std::hash::BuildHasher>(
                             .or_insert_with(|| DynamicTagEntry {
                                 id: tag_id,
                                 values: Vec::new(),
+                                replace: false,
                             });
                     for val in string_values {
                         if !entry.values.contains(&val) {

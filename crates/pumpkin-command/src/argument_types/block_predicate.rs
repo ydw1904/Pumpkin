@@ -171,10 +171,20 @@ pub(crate) fn parse_nbt(
 
 pub struct BlockPredicateArgumentType;
 
-impl<S: crate::source::CommandSource> ArgumentType<S> for BlockPredicateArgumentType {
-    type Item = BlockPredicate;
+/// A built-in block tag's block ids; datapack tags come from [`crate::source::CommandSource::block_tag`].
+#[must_use]
+pub fn builtin_block_tag(tag: &str) -> Option<Vec<u16>> {
+    get_tag_ids(RegistryKey::Block, tag)
+        .or_else(|| get_tag_ids(RegistryKey::Block, tag.strip_prefix("minecraft:")?))
+        .map(<[u16]>::to_vec)
+}
 
-    fn parse(&self, reader: &mut StringReader) -> Result<Self::Item, CommandSyntaxError> {
+impl BlockPredicateArgumentType {
+    /// Parses a predicate, looking up a `#tag` with `block_tag`.
+    fn parse_with_tags(
+        reader: &mut StringReader,
+        block_tag: impl FnOnce(&str) -> Option<Vec<u16>>,
+    ) -> Result<BlockPredicate, CommandSyntaxError> {
         if reader.peek() == Some('#') {
             reader.skip();
             let start = reader.cursor();
@@ -191,16 +201,10 @@ impl<S: crate::source::CommandSource> ArgumentType<S> for BlockPredicateArgument
             } else {
                 format!("minecraft:{tag_str}")
             };
-            let stripped = normalized.strip_prefix("minecraft:").unwrap_or(&normalized);
-
-            let tag_ids = get_tag_ids(RegistryKey::Block, &normalized)
-                .or_else(|| get_tag_ids(RegistryKey::Block, stripped));
-
-            let block_ids = match tag_ids {
-                Some(ids) => ids.to_vec(),
-                None => {
-                    return Err(ERROR_UNKNOWN_TAG.create(reader, TextComponent::text(normalized)));
-                }
+            let Some(block_ids) = block_tag(&normalized) else {
+                // Vanilla reports the tag from its `#`.
+                reader.set_cursor(start - 1);
+                return Err(ERROR_UNKNOWN_TAG.create(reader, TextComponent::text(normalized)));
             };
 
             let properties = parse_properties(reader)?;
@@ -241,6 +245,22 @@ impl<S: crate::source::CommandSource> ArgumentType<S> for BlockPredicateArgument
                 nbt,
             })
         }
+    }
+}
+
+impl<S: crate::source::CommandSource> ArgumentType<S> for BlockPredicateArgumentType {
+    type Item = BlockPredicate;
+
+    fn parse(&self, reader: &mut StringReader) -> Result<Self::Item, CommandSyntaxError> {
+        Self::parse_with_tags(reader, builtin_block_tag)
+    }
+
+    fn parse_with_source(
+        &self,
+        reader: &mut StringReader,
+        source: &S,
+    ) -> Result<Self::Item, CommandSyntaxError> {
+        Self::parse_with_tags(reader, |tag| source.block_tag(tag))
     }
 
     fn client_side_parser(&self) -> JavaClientArgumentType {

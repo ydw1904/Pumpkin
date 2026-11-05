@@ -148,6 +148,12 @@ pub trait CommandSource: Clone + Send + Sync + 'static {
     fn command_quota_exhausted(&self) -> bool {
         false
     }
+
+    /// The block ids of a block tag such as `minecraft:logs`, including the tags datapacks
+    /// define, or `None` for an unknown tag.
+    fn block_tag(&self, tag: &str) -> Option<Vec<u16>> {
+        crate::argument_types::block_predicate::builtin_block_tag(tag)
+    }
 }
 
 #[derive(Clone, Default)]
