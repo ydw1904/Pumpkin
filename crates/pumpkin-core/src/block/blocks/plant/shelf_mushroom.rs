@@ -11,7 +11,7 @@ use pumpkin_world::world::{BlockAccessor, BlockFlags};
 
 use crate::block::{
     BlockBehaviour, BlockIsReplacing, BonemealArgs, CanPlaceAtArgs, GetStateForNeighborUpdateArgs,
-    OnLandedUponArgs, OnPlaceArgs, PathComputationType, UpdateEntityMovementAfterFallOnArgs,
+    OnPlaceArgs, PathComputationType, UpdateEntityMovementAfterFallOnArgs,
     bounce_entity_after_fall,
 };
 use crate::entity::EntityBase;
@@ -108,12 +108,6 @@ impl BlockBehaviour for ShelfMushroomBlock {
                 props.to_state_id(args.block),
                 BlockFlags::NOTIFY_ALL,
             );
-        }
-    }
-
-    fn on_landed_upon(&self, args: OnLandedUponArgs<'_>) {
-        if let Some(living) = args.entity.get_living_entity() {
-            living.handle_fall_damage(args.entity, args.fall_distance, 0.0);
         }
     }
 

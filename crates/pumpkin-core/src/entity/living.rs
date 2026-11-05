@@ -2822,7 +2822,11 @@ impl LivingEntity {
                     entity: caller,
                 });
             } else {
-                self.handle_fall_damage(caller, fall_distance, 1.0);
+                self.handle_fall_damage(
+                    caller,
+                    fall_distance * f64::from(1.0 - block.get_fall_distance_reduction()),
+                    1.0,
+                );
             }
         }
     }
