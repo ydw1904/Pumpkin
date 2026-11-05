@@ -308,6 +308,10 @@ pub trait EntityBase: Send + Sync + std::any::Any {
 
     fn read_custom_nbt(&self, _nbt: &NbtCompound) {}
 
+    /// The part of vanilla `readAdditionalSaveData` that needs the entity as a command source.
+    /// Runs after `read_nbt_non_mut` when an entity is loaded or `/data` changes it.
+    fn read_nbt_as_source(&self, _this: &Arc<dyn EntityBase>) {}
+
     /// Explicit removal of top-level keys, since a missing key on read keeps the field.
     fn remove_nbt(&self, removed: &[Box<str>]) {
         {

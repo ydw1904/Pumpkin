@@ -10,10 +10,15 @@ use pumpkin_protocol::{
     java::client::play::MetadataSerializer,
     ser::{NetworkWriteExt, WritingError},
 };
-use pumpkin_util::{math::vector3::Vector3, text::TextComponent};
+use pumpkin_util::{
+    math::{vector2::Vector2, vector3::Vector3},
+    text::TextComponent,
+};
 use pumpkin_world::generation::structure::template::PaletteEntry;
+use tracing::warn;
 
 use crate::{
+    command::{CommandSender, CommandSource, text_resolution},
     entity::{Entity, EntityBase, living::LivingEntity},
     server::Server,
 };
@@ -927,6 +932,8 @@ impl EntityBase for ItemDisplayEntity {
 pub struct TextDisplayEntity {
     pub display: DisplayEntity,
     pub text: Mutex<TextComponent>,
+    /// Text read from NBT, waiting for `read_nbt_as_source` to resolve it.
+    loaded_text: Mutex<Option<TextComponent>>,
     pub line_width: AtomicI32,
     pub background: AtomicI32,
     pub text_opacity: AtomicI8,
@@ -938,6 +945,7 @@ impl TextDisplayEntity {
         Arc::new(Self {
             display: DisplayEntity::new(entity),
             text: Mutex::new(TextComponent::text("")),
+            loaded_text: Mutex::new(None),
             line_width: AtomicI32::new(200),
             background: AtomicI32::new(1_073_741_824),
             text_opacity: AtomicI8::new(-1),
@@ -1115,11 +1123,12 @@ impl EntityBase for TextDisplayEntity {
                 .extract_string()
                 .filter(|s| s.starts_with('{'))
                 .and_then(|s| pumpkin_util::serde_json::from_str(s).ok());
+            // Resolved in `read_nbt_as_source`.
             *self
-                .text
+                .loaded_text
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) =
-                legacy_json.unwrap_or_else(|| TextComponent::from_nbt(text));
+                Some(legacy_json.unwrap_or_else(|| TextComponent::from_nbt(text)));
         }
         if let Some(lw) = nbt.get_int("line_width") {
             self.line_width.store(lw, Ordering::Relaxed);
@@ -1149,6 +1158,42 @@ impl EntityBase for TextDisplayEntity {
             }
         }
         self.flags.store(flags, Ordering::Relaxed);
+    }
+
+    /// Vanilla `TextDisplay.readAdditionalSaveData`: loaded text is resolved for the display
+    /// with gamemaster permissions; text that fails to resolve isn't set.
+    fn read_nbt_as_source(&self, this: &Arc<dyn EntityBase>) {
+        let Some(text) = self
+            .loaded_text
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+        else {
+            return;
+        };
+        let entity = &self.display.entity;
+        let world = entity.world.load_full();
+        let Some(server) = world.server.upgrade() else {
+            self.set_text(TextComponent::empty());
+            return;
+        };
+        // `createCommandSourceStackForNameResolution`; `Dummy` has the gamemaster level.
+        let source = CommandSource::new(
+            CommandSender::Dummy,
+            world,
+            None,
+            entity.pos.load(),
+            Vector2::new(entity.yaw.load(), entity.pitch.load()),
+            String::new(),
+            TextComponent::empty(),
+            server,
+        )
+        .with_entity(this.clone());
+        if let Ok(resolved) = text_resolution::resolve(&source, &text) {
+            self.set_text(resolved);
+        } else {
+            warn!("Failed to parse display entity text {text:?}");
+        }
     }
 
     fn tick(&self, _caller: &dyn EntityBase, _server: &Server) {}
