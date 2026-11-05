@@ -2100,9 +2100,9 @@ impl LivingEntity {
     }
 
     /// Vanilla `LivingEntity.getAirDrag`.
-    pub(crate) fn air_drag(&self, caller: &dyn EntityBase) -> f64 {
+    pub(crate) fn air_drag(&self, omnidirectional_air_mover: bool) -> f64 {
         Self::compute_modified_friction(
-            if caller.is_flutterer() {
+            if omnidirectional_air_mover {
                 0.91
             } else {
                 super::AIR_DRAG

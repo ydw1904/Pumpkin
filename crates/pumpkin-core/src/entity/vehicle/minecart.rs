@@ -605,6 +605,10 @@ impl MinecartEntity {
 }
 
 impl EntityBase for MinecartEntity {
+    fn get_air_drag(&self) -> f64 {
+        AIR_DRAG
+    }
+
     fn audited_reach(&self) -> Option<AuditedReach> {
         self.empty_cart_reach()
     }

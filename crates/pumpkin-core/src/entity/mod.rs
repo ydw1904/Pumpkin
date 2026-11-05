@@ -679,6 +679,14 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         false
     }
 
+    /// Vanilla `getAirDrag`.
+    fn get_air_drag(&self) -> f64 {
+        self.get_living_entity()
+            .map_or(f64::from(AIR_DRAG), |living| {
+                living.air_drag(self.is_flutterer())
+            })
+    }
+
     fn set_sprinting(&self, is_sprinting: bool) {
         if let Some(living) = self.get_living_entity() {
             living.set_sprinting(is_sprinting);
@@ -3475,7 +3483,7 @@ impl Entity {
             let (gravity_compensation, effective_drag) = if restitution > 0.0 {
                 bounced = true;
                 let portion_with_movement = movement.y / current.y;
-                let air_drag = living.map_or(f64::from(AIR_DRAG), |living| living.air_drag(caller));
+                let air_drag = caller.get_air_drag();
                 (
                     portion_with_movement * gravity,
                     pumpkin_util::math::lerp(portion_with_movement, 1.0, air_drag),
