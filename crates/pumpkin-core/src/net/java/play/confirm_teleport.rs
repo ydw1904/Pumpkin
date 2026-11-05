@@ -39,6 +39,8 @@ impl JavaClient {
                     // This may fix issues when the client sends the position while being teleported.
                     player.get_entity().set_pos(*position);
                     *awaiting_teleport = None;
+                    // Vanilla `hasChangedDimension`.
+                    player.changing_dimension.store(false, Ordering::Relaxed);
                     TeleportResult::Success
                 } else {
                     // A newer teleport replaced this one, vanilla ignores the stale id

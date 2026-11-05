@@ -15,6 +15,8 @@ impl JavaClient {
                 if !won_game && player.living_entity.health.load() > 0.0 {
                     return;
                 }
+                // Vanilla `restartClientLoadTimerAfterRespawn`.
+                player.set_client_loaded(false);
                 let player_c = player.clone();
                 let Some(server) = player.world().server.upgrade() else {
                     return;

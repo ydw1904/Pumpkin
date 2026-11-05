@@ -758,6 +758,9 @@ pub struct Player {
     pub subscribed_debug_sample: AtomicBool,
     /// Whether the client has reported that it has loaded.
     pub client_loaded: AtomicBool,
+    /// Vanilla `isChangingDimension`: from a move to another world until the client accepts
+    /// the teleport there.
+    pub changing_dimension: AtomicBool,
     pub bedrock_spawned: AtomicBool,
     /// Whether the player is frozen in place (movement locked for dialogues/cutscenes).
     pub is_movement_locked: AtomicBool,
@@ -1109,6 +1112,7 @@ impl Player {
             last_item_in_main_hand: std::sync::Mutex::new(ItemStack::EMPTY.clone()),
             last_equipment: std::sync::Mutex::new(HashMap::new()),
             client_loaded: AtomicBool::new(initially_loaded),
+            changing_dimension: AtomicBool::new(false),
             bedrock_spawned: AtomicBool::new(false),
             client_loaded_timeout: AtomicU32::new(if initially_loaded { 0 } else { 60 }),
             chat_spam_tick_count: AtomicU32::new(0),
@@ -5058,7 +5062,12 @@ impl Player {
                 let pitch = event.pitch;
                 let new_world = event.new_world;
 
-                self.set_client_loaded(false);
+                // Vanilla restarts the load timer only on join and respawn; Bedrock clients still
+                // report when they have loaded the new world.
+                if matches!(self.client.as_ref(), ClientPlatform::Bedrock(_)) {
+                    self.set_client_loaded(false);
+                }
+                self.changing_dimension.store(true, Ordering::Relaxed);
                 let Some(player) = current_world.remove_player(self, false).await else {
                     return;
                 };
@@ -5569,6 +5578,14 @@ impl Player {
         source: Option<&dyn crate::entity::EntityBase>,
         cause: Option<&dyn crate::entity::EntityBase>,
     ) -> bool {
+        // Vanilla `ServerPlayer.isInvulnerableTo`: nothing but its own ender pearl hurts a player
+        // changing dimension, and nothing hurts one whose client hasn't loaded.
+        if (self.changing_dimension.load(Ordering::Relaxed)
+            && damage_type != pumpkin_data::damage::DamageType::ENDER_PEARL)
+            || !self.has_client_loaded()
+        {
+            return false;
+        }
         if self
             .abilities
             .lock()
