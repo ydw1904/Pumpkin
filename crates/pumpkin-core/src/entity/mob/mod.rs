@@ -2616,6 +2616,16 @@ pub trait Mob: EntityBase + Send + Sync {
         None
     }
 
+    /// Vanilla `PathNavigation.isStableDestination` of the mob's navigation. Takes the
+    /// navigation lock, so callers must not already hold it.
+    fn is_stable_destination(&self, world: &World, pos: &BlockPos) -> bool {
+        self.get_mob_entity()
+            .navigator
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_stable_destination(world, pos)
+    }
+
     /// How much this mob likes standing on `pos`, used to rank stroll candidates.
     fn get_walk_target_value(&self, level: &dyn CreatureSpawnLevel, pos: &BlockPos) -> f32 {
         if let Some(animal) = self.as_animal() {

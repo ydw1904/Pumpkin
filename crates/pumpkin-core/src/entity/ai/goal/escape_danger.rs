@@ -14,6 +14,8 @@ use crate::entity::passive::abstract_horse::AbstractHorse;
 use crate::entity::{ai::pathfinder::NavigatorGoal, mob::Mob};
 
 const WATER_SEARCH_XZ: i32 = 5;
+/// Vanilla `TurtlePanicGoal.canUse`'s `lookForWater` distance.
+const TURTLE_WATER_SEARCH_XZ: i32 = 7;
 const WATER_SEARCH_Y: i32 = 1;
 const HORIZONTAL_RANGE: i32 = 5;
 const VERTICAL_RANGE: i32 = 4;
@@ -30,6 +32,9 @@ pub struct EscapeDangerGoal {
     stop_when: Option<MobFilter>,
     /// Vanilla `TamableAnimalPanicGoal`: a panicking pet still teleports to its far owner.
     teleports_to_owner: bool,
+    /// Vanilla `TurtlePanicGoal`: heads for water within this distance whenever it panics, not
+    /// only when burning.
+    always_seeks_water: Option<i32>,
 }
 
 impl EscapeDangerGoal {
@@ -45,6 +50,7 @@ impl EscapeDangerGoal {
             baby_panic_causes: None,
             stop_when: None,
             teleports_to_owner: false,
+            always_seeks_water: None,
         })
     }
 
@@ -80,6 +86,14 @@ impl EscapeDangerGoal {
         self
     }
 
+    /// Vanilla `Turtle.TurtlePanicGoal`.
+    #[must_use]
+    pub fn turtle(speed: f64) -> Box<Self> {
+        let mut goal = Self::new(speed);
+        goal.always_seeks_water = Some(TURTLE_WATER_SEARCH_XZ);
+        goal
+    }
+
     /// Horses don't panic while they count as mob controlled.
     #[must_use]
     pub fn mount(speed: f64) -> Box<Self> {
@@ -108,8 +122,9 @@ impl EscapeDangerGoal {
             })
     }
 
-    /// Nearest water within 5 blocks horizontally, only when the mob is not stuck in a block.
-    fn look_for_water(mob: &dyn Mob) -> Option<BlockPos> {
+    /// Nearest water within `xz_dist` blocks horizontally, only when the mob is not stuck in a
+    /// block.
+    fn look_for_water(mob: &dyn Mob, xz_dist: i32) -> Option<BlockPos> {
         let entity = mob.get_entity();
         let world = entity.world.load();
         let mob_pos = entity.block_pos.load();
@@ -124,9 +139,9 @@ impl EscapeDangerGoal {
         }
 
         let mut best: Option<(i32, BlockPos)> = None;
-        for dx in -WATER_SEARCH_XZ..=WATER_SEARCH_XZ {
+        for dx in -xz_dist..=xz_dist {
             for dy in -WATER_SEARCH_Y..=WATER_SEARCH_Y {
-                for dz in -WATER_SEARCH_XZ..=WATER_SEARCH_XZ {
+                for dz in -xz_dist..=xz_dist {
                     let pos = BlockPos::new(mob_pos.0.x + dx, mob_pos.0.y + dy, mob_pos.0.z + dz);
                     if !TryFindWaterGoal::is_water(&world, &pos) {
                         continue;
@@ -182,8 +197,11 @@ impl Goal for EscapeDangerGoal {
             return false;
         }
 
-        if mob.get_entity().fire_ticks.load(Relaxed) > 0
-            && let Some(water) = Self::look_for_water(mob)
+        let water_search = self
+            .always_seeks_water
+            .or_else(|| (mob.get_entity().fire_ticks.load(Relaxed) > 0).then_some(WATER_SEARCH_XZ));
+        if let Some(xz_dist) = water_search
+            && let Some(water) = Self::look_for_water(mob, xz_dist)
         {
             self.target = Some(water.to_f64());
             return true;

@@ -20,6 +20,8 @@ pub struct BreedGoal {
     partners: Option<TargetMatch>,
     mate: Option<Arc<dyn EntityBase>>,
     timer: i32,
+    /// Vanilla `BreedGoal.breed`, which subclasses like `TurtleBreedGoal` override.
+    breed: fn(&dyn Mob, &dyn EntityBase),
 }
 
 impl BreedGoal {
@@ -30,7 +32,16 @@ impl BreedGoal {
             partners: None,
             mate: None,
             timer: 0,
+            breed: Self::breed,
         })
+    }
+
+    /// Runs `breed` instead of spawning a baby.
+    #[must_use]
+    pub fn with_breed(speed: f64, breed: fn(&dyn Mob, &dyn EntityBase)) -> Box<Self> {
+        let mut goal = Self::new(speed);
+        goal.breed = breed;
+        goal
     }
 
     /// Searches `partners` instead of the mob's own type.
@@ -41,6 +52,7 @@ impl BreedGoal {
             partners: Some(partners),
             mate: None,
             timer: 0,
+            breed: Self::breed,
         })
     }
 
@@ -71,6 +83,38 @@ impl BreedGoal {
         })
     }
 
+    /// Both parents' online breeders, vanilla's love causes.
+    pub(crate) fn love_causes(
+        mob: &dyn Mob,
+        mate: &dyn EntityBase,
+    ) -> (Option<Uuid>, Option<Uuid>) {
+        let world = mob.get_entity().world.load();
+        let online = |uuid: &Uuid| world.get_player_by_uuid(*uuid).is_some();
+        let first = mob.get_mob_entity().breeder.load().filter(online);
+        let second = mate
+            .get_mob()
+            .and_then(|mate| mate.get_mob_entity().breeder.load())
+            .filter(|uuid| online(uuid) && first != Some(*uuid));
+        (first, second)
+    }
+
+    /// Vanilla `getLoveCause` (this parent's breeder, else the mate's) gets the stat and the
+    /// advancement.
+    pub(crate) fn award_love_cause(mob: &dyn Mob, love_cause: Option<Uuid>) {
+        let entity = mob.get_entity();
+        let world = entity.world.load();
+        if let Some(player) = love_cause.and_then(|uuid| world.get_player_by_uuid(uuid)) {
+            player.increment_stat(
+                pumpkin_data::statistic::StatisticCategory::Custom,
+                pumpkin_data::statistic::CustomStatistic::AnimalsBred as i32,
+                1,
+            );
+            player.trigger_advancement(AdvancementTrigger::BredAnimal {
+                parent_type: format!("minecraft:{}", entity.entity_type.resource_name),
+            });
+        }
+    }
+
     pub(crate) fn breed(mob: &dyn Mob, mate: &dyn EntityBase) {
         let mob_entity = mob.get_mob_entity();
         let entity = mob.get_entity();
@@ -98,31 +142,13 @@ impl BreedGoal {
             return;
         };
 
-        // Both parents' online breeders, vanilla's love causes.
-        let online = |uuid: &Uuid| world.get_player_by_uuid(*uuid).is_some();
-        let first = mob_entity.breeder.load().filter(online);
-        let second = mate
-            .get_mob()
-            .and_then(|mate| mate.get_mob_entity().breeder.load())
-            .filter(|uuid| online(uuid) && first != Some(*uuid));
+        let (first, second) = Self::love_causes(mob, mate);
         if let Some(baby_mob) = baby.get_mob() {
             for breeder in first.into_iter().chain(second) {
                 baby_mob.on_bred_by(breeder);
             }
         }
-
-        // Vanilla `getLoveCause`: this parent's breeder, else the mate's.
-        let love_cause = first.or(second);
-        if let Some(player) = love_cause.and_then(|uuid| world.get_player_by_uuid(uuid)) {
-            player.increment_stat(
-                pumpkin_data::statistic::StatisticCategory::Custom,
-                pumpkin_data::statistic::CustomStatistic::AnimalsBred as i32,
-                1,
-            );
-            player.trigger_advancement(AdvancementTrigger::BredAnimal {
-                parent_type: format!("minecraft:{}", entity.entity_type.resource_name),
-            });
-        }
+        Self::award_love_cause(mob, first.or(second));
 
         mob_entity.reset_love_ticks();
         mob_entity
@@ -251,7 +277,7 @@ impl Goal for BreedGoal {
         self.timer += 1;
 
         if self.timer >= self.get_tick_count(60) && dist_sq < 9.0 {
-            Self::breed(mob, mate.as_ref());
+            (self.breed)(mob, mate.as_ref());
         }
     }
 

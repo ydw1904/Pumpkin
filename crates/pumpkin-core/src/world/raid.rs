@@ -13,7 +13,6 @@ use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::difficulty::Difficulty;
 use pumpkin_util::math::position::BlockPos;
-use pumpkin_util::math::vector2::Vector2;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::text::TextComponent;
 use pumpkin_world::chunk::ChunkHeightmapType;
@@ -775,13 +774,8 @@ impl Raid {
             {
                 continue;
             }
-            if has_chunks_at(
-                world,
-                spawn_x - 10,
-                spawn_z - 10,
-                spawn_x + 10,
-                spawn_z + 10,
-            ) && world.is_position_entity_ticking(&spawn_pos)
+            if world.has_chunks_at(spawn_x - 10, spawn_z - 10, spawn_x + 10, spawn_z + 10)
+                && world.is_position_entity_ticking(&spawn_pos)
                 && (is_spawn_position_ok(world, &spawn_pos, &EntityType::RAVAGER)
                     || (world.get_block(&spawn_pos.down()) == &pumpkin_data::Block::SNOW
                         && world.get_block_state(&spawn_pos).is_air()))
@@ -1028,14 +1022,6 @@ fn block_dist_squared(a: BlockPos, b: BlockPos) -> f64 {
 fn block_dist_squared_i64(a: BlockPos, b: BlockPos) -> i64 {
     let delta = a.0 - b.0;
     i64::from(delta.x).pow(2) + i64::from(delta.y).pow(2) + i64::from(delta.z).pow(2)
-}
-
-/// Vanilla `Level.hasChunksAt` for a block area.
-fn has_chunks_at(world: &World, min_x: i32, min_z: i32, max_x: i32, max_z: i32) -> bool {
-    (min_x >> 4..=max_x >> 4).all(|chunk_x| {
-        (min_z >> 4..=max_z >> 4)
-            .all(|chunk_z| world.level.is_chunk_loaded(&Vector2::new(chunk_x, chunk_z)))
-    })
 }
 
 /// Vanilla `Raids.getNearbyRaid(pos, 9216)` over the active raids' centres.

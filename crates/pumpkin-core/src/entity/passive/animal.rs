@@ -29,6 +29,11 @@ pub trait Animal: Mob {
         true
     }
 
+    /// Vanilla `Animal.canFallInLove`.
+    fn can_fall_in_love(&self) -> bool {
+        !self.get_mob_entity().is_in_love()
+    }
+
     /// Returns `false` when a plugin cancels.
     fn set_in_love(&self, player: &Arc<Player>) -> bool {
         let Some(ticks) = self.approve_love(Some(player.entity_id()), 600) else {
@@ -86,7 +91,7 @@ pub trait Animal: Mob {
                 .age
                 .load(std::sync::atomic::Ordering::Relaxed);
 
-            if age >= 0 && mob_entity.is_breeding_ready() && !mob_entity.is_in_love() {
+            if age >= 0 && mob_entity.is_breeding_ready() && self.can_fall_in_love() {
                 item_stack.decrement_unless_creative(player.gamemode.load(), 1);
                 if self.set_in_love(player) {
                     self.play_eating_sound();

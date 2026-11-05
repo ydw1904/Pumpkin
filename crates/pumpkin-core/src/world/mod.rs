@@ -7272,6 +7272,15 @@ impl World {
     }
     /* End ItemScatterer.java */
 
+    /// Vanilla `Level.hasChunksAt` for a block area.
+    #[must_use]
+    pub fn has_chunks_at(&self, min_x: i32, min_z: i32, max_x: i32, max_z: i32) -> bool {
+        (min_x >> 4..=max_x >> 4).all(|chunk_x| {
+            (min_z >> 4..=max_z >> 4)
+                .all(|chunk_z| self.level.is_chunk_loaded(&Vector2::new(chunk_x, chunk_z)))
+        })
+    }
+
     pub fn sync_world_event(&self, world_event: WorldEvent, position: BlockPos, data: i32) {
         let chunk_pos = position.chunk_position();
         self.broadcast_to_chunk(
