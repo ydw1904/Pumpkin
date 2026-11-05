@@ -3712,6 +3712,12 @@ impl LivingEntity {
         self.entity.is_alive() && self.health.load() > 0.0
     }
 
+    /// Vanilla `LivingEntity.attackable`: false only for armor stands.
+    #[must_use]
+    pub fn attackable(&self) -> bool {
+        self.entity.entity_type != &EntityType::ARMOR_STAND
+    }
+
     pub fn can_attack(&self, target: &dyn EntityBase) -> bool {
         if target.get_player().is_some()
             && self.entity.world.load().level_info.load().difficulty == Difficulty::Peaceful

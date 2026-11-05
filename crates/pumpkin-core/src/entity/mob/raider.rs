@@ -13,6 +13,7 @@ use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::vector3::Vector3;
 
 use crate::entity::ai::behavior::fleeing::Flee;
+use crate::entity::ai::goal::open_door::OpenDoorGoal;
 use crate::entity::ai::goal::revenge::RevengeGoal;
 use crate::entity::ai::goal::{Controls, Goal};
 use crate::entity::ai::pathfinder::NavigatorGoal;
@@ -465,3 +466,46 @@ impl Goal for RaiderMoveThroughVillageGoal {
 }
 
 pub use crate::entity::ai::goal::pathfind_to_raid::PathfindToRaidGoal;
+
+/// Vanilla `AbstractIllager.RaiderOpenDoorGoal`: opens doors, only during a raid.
+pub struct RaiderOpenDoorGoal {
+    open_door: OpenDoorGoal,
+}
+
+impl Default for RaiderOpenDoorGoal {
+    fn default() -> Self {
+        Self {
+            open_door: OpenDoorGoal::new(false),
+        }
+    }
+}
+
+impl Goal for RaiderOpenDoorGoal {
+    fn can_start(&mut self, mob: &dyn Mob) -> bool {
+        self.open_door.can_start(mob) && mob.as_raider().is_some_and(Raider::has_active_raid)
+    }
+
+    fn should_continue(&mut self, mob: &dyn Mob) -> bool {
+        self.open_door.should_continue(mob)
+    }
+
+    fn start(&mut self, mob: &dyn Mob) {
+        self.open_door.start(mob);
+    }
+
+    fn stop(&mut self, mob: &dyn Mob) {
+        self.open_door.stop(mob);
+    }
+
+    fn tick(&mut self, mob: &dyn Mob) {
+        self.open_door.tick(mob);
+    }
+
+    fn should_run_every_tick(&self) -> bool {
+        self.open_door.should_run_every_tick()
+    }
+
+    fn controls(&self) -> Controls {
+        self.open_door.controls()
+    }
+}

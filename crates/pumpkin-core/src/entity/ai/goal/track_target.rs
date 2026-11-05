@@ -89,14 +89,25 @@ impl TrackTargetGoal {
             .map(|target| target.get_entity().entity_id)
     }
 
-    fn can_navigate_to_entity(&mut self, mob: &dyn Mob) -> bool {
+    /// Vanilla `TargetGoal.canReach`: a path to the target ends within 1.5 blocks of it.
+    fn can_navigate_to_entity(&mut self, mob: &dyn Mob, target: &dyn EntityBase) -> bool {
         self.check_can_navigate_cooldown = to_goal_ticks(10 + mob.get_random().random_range(0..5));
-        // TODO: after implementing path
-        // Path inside `can_start`, claim `TARGET` only afterwards: the selector runs
-        // `can_replace_all` -> `can_start` -> claim -> `start`, so a failed path must not evict revenge.
-        // No navigator lock earlier in the tick (`has_malus` callers must not hold it).
-        // Selectors are `mem::take`n during the AI tick: never lock them from a goal.
-        false
+        let target_entity = target.get_entity();
+        let steered = mob.get_mob_entity().steered();
+        let Some(path) = steered.navigator().create_path(
+            &steered.mob_entity().living_entity,
+            target_entity.pos.load(),
+            0,
+        ) else {
+            return false;
+        };
+        let Some(end) = path.get_end_node() else {
+            return false;
+        };
+        let target_pos = target_entity.block_pos.load();
+        let xx = end.pos.0.x - target_pos.0.x;
+        let zz = end.pos.0.z - target_pos.0.z;
+        f64::from(xx * xx + zz * zz) <= 2.25
     }
 
     const fn remembers_visible_target(&mut self, has_line_of_sight: bool) -> bool {
@@ -136,7 +147,7 @@ impl TrackTargetGoal {
             }
 
             if self.can_navigate_flag == UNSET {
-                self.can_navigate_flag = if self.can_navigate_to_entity(mob) {
+                self.can_navigate_flag = if self.can_navigate_to_entity(mob, target) {
                     CAN_TRACK
                 } else {
                     CANNOT_TRACK

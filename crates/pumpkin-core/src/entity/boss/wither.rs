@@ -57,12 +57,7 @@ const WITHER_HUNTS: &[Hunt] = &[Hunt::new(
     false,
 )
 .every(0)
-.matching(|_hunter, target, _world| is_attackable(target))];
-
-/// Vanilla `attackable()`: false only for armor stands.
-fn is_attackable(target: &LivingEntity) -> bool {
-    target.entity.entity_type != &EntityType::ARMOR_STAND
-}
+.matching(|_hunter, target, _world| target.attackable())];
 
 pub struct WitherEntity {
     pub mob_entity: MobEntity,
@@ -560,7 +555,9 @@ impl WitherEntity {
                         .get_entity()
                         .entity_type
                         .has_tag(&tag::EntityType::MINECRAFT_WITHER_FRIENDS)
-                        && candidate.get_living_entity().is_some_and(is_attackable)
+                        && candidate
+                            .get_living_entity()
+                            .is_some_and(LivingEntity::attackable)
                         && predicate.test(world, Some(self), candidate.as_ref())
                 });
 
