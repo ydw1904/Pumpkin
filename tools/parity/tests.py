@@ -187,6 +187,21 @@ TESTS = [
         ((2, 1, 0), "minecraft:obsidian", "obsidian not moved"),
     ),
 
+    # The observer's 2 tick pulse ends while the planks are still moving, during the scheduled
+    # ticks (ServerLevel.isHandlingTick), so the sticky piston leaves them behind.
+    Test("sticky_piston_drops_block_on_observer_pulse", max_ticks=40)
+    .set((1, 1, 0), "minecraft:redstone_lamp[lit=false]")
+    .set((2, 1, 0), "minecraft:observer[facing=west,powered=false]")
+    .set((3, 1, 0), "minecraft:sticky_piston[extended=false,facing=east]")
+    .set((4, 1, 0), "minecraft:oak_planks")
+    .set((5, 1, 0), "minecraft:air")
+    .check_after(
+        2,
+        ((3, 1, 0), "minecraft:sticky_piston[extended=false]", "sticky piston retracted again"),
+        ((4, 1, 0), "minecraft:air", "planks not pulled back"),
+        ((5, 1, 0), "minecraft:oak_planks", "planks left where they were pushed"),
+    ),
+
     Test("iron_door_opens_with_redstone")
     .set((1, 1, 0), "minecraft:iron_door[facing=east,half=lower,hinge=left,open=false,powered=false]")
     .set((1, 2, 0), "minecraft:iron_door[facing=east,half=upper,hinge=left,open=false,powered=false]")

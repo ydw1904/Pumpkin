@@ -312,6 +312,9 @@ pub struct World {
     pub block_registry: Arc<BlockRegistry>,
     pub server: Weak<Server>,
     synced_block_event_queue: std::sync::Mutex<Vec<BlockEvent>>,
+    /// Vanilla `ServerLevel.handlingTick`. Per world, because worlds tick in parallel; commands
+    /// run after all worlds ticked, so they never see it set.
+    handling_tick: std::sync::atomic::AtomicBool,
     /// A map of unsent block changes, keyed by block position.
     unsent_block_changes: std::sync::Mutex<HashMap<BlockPos, BlockStateId>>,
     /// Persisted vanilla POI storage for portal and villager lookups.
@@ -545,6 +548,7 @@ impl World {
             sea_level: generation_settings.sea_level,
             min_y: i32::from(generation_settings.shape.min_y),
             synced_block_event_queue: std::sync::Mutex::new(Vec::new()),
+            handling_tick: std::sync::atomic::AtomicBool::new(false),
             unsent_block_changes: std::sync::Mutex::new(HashMap::new()),
             portal_poi: std::sync::Mutex::new(portal_poi),
             portal_forcer: tokio::sync::Mutex::new(()),
@@ -1127,6 +1131,12 @@ impl World {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         queue.push(BlockEvent { pos, r#type, data });
+    }
+
+    /// Whether this world is running its weather, scheduled ticks, chunk ticks or block events.
+    #[must_use]
+    pub fn is_handling_tick(&self) -> bool {
+        self.handling_tick.load(Relaxed)
     }
 
     pub fn flush_synced_block_events(self: &Arc<Self>) {
@@ -1779,7 +1789,10 @@ impl World {
         self.level.light_engine.run_queued_checks(&self.level);
         self.broadcast_light_changes();
         self.flush_block_updates();
+        // Vanilla runs the block events at the end of the previous tick's handling phase.
+        self.handling_tick.store(true, Relaxed);
         self.flush_synced_block_events();
+        self.handling_tick.store(false, Relaxed);
         // Vanilla `processPacketsAndTick` handles queued player packets before the level tick
         // advances time and runs scheduled ticks, so a player's action lands a tick earlier than
         // it would with the rest of `Player::tick`.
@@ -1787,6 +1800,7 @@ impl World {
             player.process_inbound_packets();
         });
         self.update_active_chunks();
+        self.handling_tick.store(true, Relaxed);
         self.tick_environment();
         // Ticked under the lock, so a save or a loading raider never sees the raids missing.
         self.raids
@@ -1797,6 +1811,7 @@ impl World {
         let t_chunks = std::time::Instant::now();
         self.tick_chunks();
         let chunk_elapsed = t_chunks.elapsed();
+        self.handling_tick.store(false, Relaxed);
         // Vanilla `ServerChunkCache.tick` runs `ChunkMap.tick` after ticking chunks and before
         // entities and players tick, so a change made by a packet is seen for a tick even if
         // the player's tick undoes it.
