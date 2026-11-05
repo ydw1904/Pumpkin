@@ -60,9 +60,13 @@ h.start(async () => {
 
   // Block predicates with datapack tags: a new tag, one nesting another, an extended vanilla
   // tag and a replaced one.
+  // The console's feedback reaches the bot as an op broadcast; wait for it so it doesn't land
+  // in the next result when the server lags behind after the reload.
+  msgs.length = 0
   h.cmd(`setblock ${X} ${y} ${Z} granite`)
   h.cmd(`setblock ${X + 1} ${y} ${Z} stone`)
   h.cmd(`setblock ${X + 2} ${y} ${Z} oak_log`)
+  await h.waitFor(() => msgs.filter(m => m.includes('commands.setblock.success')).length >= 3, 10000)
   await h.ticks(5)
   h.result('tag_nested', await run(`execute if block ${X} ${y} ${Z} #p:stones`))
   h.result('tag_direct', await run(`execute if block ${X + 1} ${y} ${Z} #p:stones`))
