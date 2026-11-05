@@ -22,6 +22,7 @@ use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_util::math::position::BlockPos;
 
 use crate::entity::custom_sound::CustomSound;
+use crate::entity::mob::spawn::SpawnGroupData;
 use crate::entity::passive::sheep::get_mixed_color;
 use crate::entity::{
     Entity, EntityBase,
@@ -84,6 +85,9 @@ pub struct WolfEntity {
     shake_anim_o: AtomicCell<f32>,
 }
 
+/// The `MAX_HEALTH` base values `Wolf.applyTamingSideEffects` sets.
+const TAME_MAX_HEALTH: f32 = 40.0;
+const WILD_MAX_HEALTH: f32 = 8.0;
 /// Vanilla `Wolf.getSoundVolume`.
 const WOLF_SOUND_VOLUME: f32 = 0.4;
 /// `shakeAnim` gained per tick; the shake ends once it passes `SHAKE_END`.
@@ -299,6 +303,7 @@ impl Animal for WolfEntity {
             if self.is_tame() {
                 baby.set_owner(self.get_owner());
                 baby.set_tame(true);
+                baby.apply_taming_side_effects();
                 let collar = get_mixed_color(
                     &world,
                     DyeColor::from(self.collar_color.load(Ordering::Relaxed)),
@@ -317,6 +322,17 @@ impl TamableAnimal for WolfEntity {
     fn get_tamable_data(&self) -> &TamableData {
         &self.tamable_data
     }
+
+    /// Vanilla `Wolf.applyTamingSideEffects`.
+    fn apply_taming_side_effects(&self) {
+        let living = &self.mob_entity.living_entity;
+        if self.is_tame() {
+            living.set_max_health(TAME_MAX_HEALTH);
+            living.set_health(TAME_MAX_HEALTH);
+        } else {
+            living.set_max_health(WILD_MAX_HEALTH);
+        }
+    }
 }
 
 impl NeutralMob for WolfEntity {
@@ -326,6 +342,35 @@ impl NeutralMob for WolfEntity {
 }
 
 impl Mob for WolfEntity {
+    /// Vanilla `Wolf.finalizeSpawn`: a pack shares the variant its first wolf picked from the
+    /// spawn biome, and every wolf rolls its own sound variant.
+    fn finalize_spawn(
+        &self,
+        world: &Arc<crate::world::World>,
+        _reason: crate::entity::mob::spawn::EntitySpawnReason,
+        group_data: Option<SpawnGroupData>,
+    ) -> Option<SpawnGroupData> {
+        let random = self.get_random();
+        let variant = if let Some(SpawnGroupData::WolfPack(variant)) = group_data {
+            Some(variant)
+        } else {
+            let biome = crate::world::natural_spawner::spawn_biome(
+                world,
+                &self.get_entity().block_pos.load(),
+            );
+            WolfVariant::select_to_spawn(biome.registry_id, |count| random.random_range(0..count))
+        };
+        let sound_variants = WolfSoundVariant::ALL;
+        self.set_sound_variant(sound_variants[random.random_range(0..sound_variants.len())]);
+        let Some(variant) = variant else {
+            return self.finalize_spawn_super(group_data);
+        };
+        self.set_variant(variant);
+        // `AgeableMob.finalizeSpawn` with a group that spawns no babies.
+        self.mob_entity.finalize_spawn_base();
+        Some(SpawnGroupData::WolfPack(variant))
+    }
+
     fn get_ambient_sound(&self) -> Option<pumpkin_data::sound::Sound> {
         let is_baby = self.is_baby();
         let sound_variant = WolfSoundVariant::from_id(self.sound_variant.load(Ordering::Relaxed))

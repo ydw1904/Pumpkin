@@ -12,6 +12,52 @@ struct WolfVariantJson {
     assets: WolfAssetsJson,
     #[serde(default)]
     baby_assets: Option<WolfAssetsJson>,
+    #[serde(default)]
+    spawn_conditions: Vec<SpawnConditionJson>,
+}
+
+#[derive(Deserialize)]
+struct SpawnConditionJson {
+    #[serde(default)]
+    priority: i32,
+    #[serde(default)]
+    condition: Option<BiomeConditionJson>,
+}
+
+/// A `minecraft:biome` spawn condition: one biome, a `#` biome tag or a list of biomes.
+#[derive(Deserialize)]
+struct BiomeConditionJson {
+    biomes: BiomesJson,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum BiomesJson {
+    One(String),
+    List(Vec<String>),
+}
+
+fn bare(name: &str) -> &str {
+    name.strip_prefix("minecraft:").unwrap_or(name)
+}
+
+/// The biome names a condition matches, as a `&[&str]` expression.
+fn biome_list_tokens(biomes: &BiomesJson) -> TokenStream {
+    match biomes {
+        BiomesJson::One(tag) if tag.starts_with('#') => {
+            let tag_ident =
+                format_ident!("{}", tag[1..].replace([':', '/'], "_").to_ascii_uppercase());
+            quote! { crate::tag::WorldgenBiome::#tag_ident.0 }
+        }
+        BiomesJson::One(biome) => {
+            let biome = bare(biome);
+            quote! { &[#biome] }
+        }
+        BiomesJson::List(biomes) => {
+            let biomes = biomes.iter().map(|biome| bare(biome));
+            quote! { &[#(#biomes),*] }
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -54,6 +100,7 @@ pub fn build() -> TokenStream {
     let mut tame_asset_arms = Vec::new();
     let mut angry_asset_arms = Vec::new();
     let mut all_variants = Vec::new();
+    let mut spawn_selectors = Vec::new();
 
     for (name, json) in &variants {
         let variant_ident = format_ident!("{}", name.to_pascal_case());
@@ -82,6 +129,17 @@ pub fn build() -> TokenStream {
             Self::#variant_ident => #angry
         });
         all_variants.push(quote! { Self::#variant_ident });
+        for selector in &json.spawn_conditions {
+            let priority = selector.priority;
+            let biomes = selector.condition.as_ref().map_or_else(
+                || quote! { None },
+                |condition| {
+                    let list = biome_list_tokens(&condition.biomes);
+                    quote! { Some(#list) }
+                },
+            );
+            spawn_selectors.push(quote! { (WolfVariant::#variant_ident, #priority, #biomes) });
+        }
     }
 
     quote! {
@@ -155,6 +213,34 @@ pub fn build() -> TokenStream {
                 &[
                     #(#all_variants,)*
                 ]
+            }
+
+            #[doc = "Vanilla `VariantUtils.selectVariantToSpawn` over the `spawn_conditions`: one of the matching selectors with the highest priority, chosen by `random_index` from their count."]
+            #[must_use]
+            pub fn select_to_spawn(
+                biome_name: &str,
+                random_index: impl FnOnce(usize) -> usize,
+            ) -> Option<Self> {
+                const SELECTORS: &[(WolfVariant, i32, Option<&[&str]>)] = &[
+                    #(#spawn_selectors,)*
+                ];
+                let bare = biome_name.strip_prefix("minecraft:").unwrap_or(biome_name);
+                let mut highest = i32::MIN;
+                let mut matched = Vec::new();
+                for &(variant, priority, biomes) in SELECTORS {
+                    if priority < highest || biomes.is_some_and(|biomes| !biomes.contains(&bare)) {
+                        continue;
+                    }
+                    if priority > highest {
+                        highest = priority;
+                        matched.clear();
+                    }
+                    matched.push(variant);
+                }
+                if matched.is_empty() {
+                    return None;
+                }
+                matched.get(random_index(matched.len())).copied()
             }
         }
     }

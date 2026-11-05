@@ -58,6 +58,8 @@ pub enum SpawnGroupData {
         variants: [crate::entity::passive::axolotl::AxolotlVariant; 2],
         group_size: u32,
     },
+    /// Vanilla `WolfPackData`: the variant the whole pack shares. It never spawns babies.
+    WolfPack(pumpkin_data::wolf_variant::WolfVariant),
     /// Vanilla `ZombieGroupData`: whether the group spawns as babies, and whether those may
     /// ride a chicken.
     Zombie {

@@ -124,4 +124,55 @@ impl WolfVariant {
             Self::Woods,
         ]
     }
+    #[doc = "Vanilla `VariantUtils.selectVariantToSpawn` over the `spawn_conditions`: one of the matching selectors with the highest priority, chosen by `random_index` from their count."]
+    #[must_use]
+    pub fn select_to_spawn(
+        biome_name: &str,
+        random_index: impl FnOnce(usize) -> usize,
+    ) -> Option<Self> {
+        const SELECTORS: &[(WolfVariant, i32, Option<&[&str]>)] = &[
+            (WolfVariant::Ashen, 1i32, Some(&["snowy_taiga"])),
+            (WolfVariant::Black, 1i32, Some(&["old_growth_pine_taiga"])),
+            (
+                WolfVariant::Chestnut,
+                1i32,
+                Some(&["old_growth_spruce_taiga"]),
+            ),
+            (WolfVariant::Pale, 0i32, None),
+            (
+                WolfVariant::Rusty,
+                1i32,
+                Some(crate::tag::WorldgenBiome::MINECRAFT_IS_JUNGLE.0),
+            ),
+            (WolfVariant::Snowy, 1i32, Some(&["grove"])),
+            (
+                WolfVariant::Spotted,
+                1i32,
+                Some(crate::tag::WorldgenBiome::MINECRAFT_IS_SAVANNA.0),
+            ),
+            (
+                WolfVariant::Striped,
+                1i32,
+                Some(crate::tag::WorldgenBiome::MINECRAFT_IS_BADLANDS.0),
+            ),
+            (WolfVariant::Woods, 1i32, Some(&["forest"])),
+        ];
+        let bare = biome_name.strip_prefix("minecraft:").unwrap_or(biome_name);
+        let mut highest = i32::MIN;
+        let mut matched = Vec::new();
+        for &(variant, priority, biomes) in SELECTORS {
+            if priority < highest || biomes.is_some_and(|biomes| !biomes.contains(&bare)) {
+                continue;
+            }
+            if priority > highest {
+                highest = priority;
+                matched.clear();
+            }
+            matched.push(variant);
+        }
+        if matched.is_empty() {
+            return None;
+        }
+        matched.get(random_index(matched.len())).copied()
+    }
 }

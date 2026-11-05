@@ -160,8 +160,12 @@ pub trait TamableAnimal: Animal {
         self.get_owner().is_some_and(|id| id == *player_uuid)
     }
 
+    /// Vanilla `applyTamingSideEffects`, which `setTame(tame, true)` runs.
+    fn apply_taming_side_effects(&self) {}
+
     fn tame(&self, player_id: Uuid) {
         self.set_tame(true);
+        self.apply_taming_side_effects();
         self.set_owner(Some(player_id));
         let mob_entity = self.get_mob_entity();
         let entity = &mob_entity.living_entity.entity;
@@ -207,8 +211,10 @@ pub trait TamableAnimal: Animal {
         if let Some(owner) = nbt.get_uuid("Owner") {
             self.set_owner(Some(owner));
             self.set_tame(true);
-        } else if let Some(is_tame) = nbt.get_bool("IsTame") {
-            self.set_tame(is_tame);
+        } else {
+            // Vanilla `setTame(false, true)`; `IsTame` is an old Pumpkin save field.
+            self.set_tame(nbt.get_bool("IsTame").unwrap_or(false));
+            self.apply_taming_side_effects();
         }
         let sitting = nbt
             .get_bool("Sitting")
