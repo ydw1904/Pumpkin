@@ -1514,7 +1514,8 @@ impl LivingEntity {
     /// Vanilla `LivingEntity.addEffect(effect, source)`: the entity that caused the effect
     /// reaches the `effects_changed` trigger.
     pub fn add_effect_with_source(&self, effect: Effect, source: Option<&dyn EntityBase>) {
-        if !self.can_be_affected(&effect) {
+        // Vanilla `WitherBoss.addEffect` refuses every effect.
+        if self.entity.entity_type == &EntityType::WITHER || !self.can_be_affected(&effect) {
             return;
         }
 
