@@ -46,6 +46,14 @@ pub(crate) fn hit_candidates(world: &World, area: &BoundingBox) -> Vec<Arc<dyn E
     candidates
 }
 
+/// Vanilla `AbstractArrow`: arrows, spectral arrows and tridents.
+#[must_use]
+pub fn is_abstract_arrow(entity_type: &EntityType) -> bool {
+    entity_type == &EntityType::ARROW
+        || entity_type == &EntityType::SPECTRAL_ARROW
+        || entity_type == &EntityType::TRIDENT
+}
+
 #[must_use]
 pub fn is_projectile(entity_type: &EntityType) -> bool {
     *entity_type == EntityType::ARROW

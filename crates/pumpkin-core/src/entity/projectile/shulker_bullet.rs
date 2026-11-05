@@ -1,6 +1,6 @@
-use crate::entity::projectile::owner::ProjectileOwner;
+use crate::entity::projectile::owner::{EntityReference, ProjectileOwner};
 use pumpkin_util::random::gameplay::game_random;
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU8, Ordering};
 
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::damage::DamageType;
@@ -9,6 +9,7 @@ use pumpkin_data::entity::EntityType;
 use pumpkin_data::particle::Particle;
 use pumpkin_data::potion::Effect;
 use pumpkin_data::sound::{Sound, SoundCategory};
+use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use uuid::Uuid;
@@ -31,8 +32,8 @@ const SPEED: f64 = 0.15;
 pub struct ShulkerBulletEntity {
     pub entity: Entity,
     pub owner: ProjectileOwner,
-    /// Entity id of the final target; -1 = no target, 0+ = valid target
-    target_id: AtomicI32,
+    /// Vanilla `finalTarget`.
+    target: EntityReference,
     /// Current movement direction (direction ordinal, or `DIR_NONE`)
     current_dir: AtomicU8,
     /// How many ticks remain on the current axis segment
@@ -46,15 +47,8 @@ pub struct ShulkerBulletEntity {
     age: AtomicI32,
 }
 
-use std::sync::atomic::AtomicU8;
-
 impl ShulkerBulletEntity {
-    pub fn new(
-        owner: &Entity,
-        target_id: i32,
-        target_pos: Vector3<f64>,
-        invalid_axis: Axis,
-    ) -> Self {
+    pub fn new(owner: &Entity, target: &Entity, invalid_axis: Axis) -> Self {
         let world = owner.world.load();
 
         // Position at the center of the shulker's bounding box
@@ -75,7 +69,7 @@ impl ShulkerBulletEntity {
         let bullet = Self {
             entity,
             owner: ProjectileOwner::new(Some(owner)),
-            target_id: AtomicI32::new(target_id),
+            target: EntityReference::new(Some(target)),
             current_dir: AtomicU8::new(DIR_UP),
             flight_steps: AtomicI32::new(0),
             target_delta_x: AtomicCell::new(0.0),
@@ -87,44 +81,39 @@ impl ShulkerBulletEntity {
 
         // Prime target_delta and flight_steps so movement begins on tick 1.
         let avoid_axis = invalid_axis as u8;
-        bullet.select_next_dir(avoid_axis, Some(target_pos));
+        bullet.select_next_dir(avoid_axis, Some(target));
 
         bullet
     }
 
     #[allow(clippy::similar_names)]
-    fn select_next_dir(&self, avoid_axis: u8, target_pos_opt: Option<Vector3<f64>>) {
-        const Y_OFFSET: f64 = 0.5;
-
+    fn select_next_dir(&self, avoid_axis: u8, target: Option<&Entity>) {
         let pos = self.entity.pos.load();
         let cur_bp = self.entity.block_pos.load();
         let world = self.entity.world.load();
 
-        // Compute the target block position
-        let tbp = target_pos_opt.map_or_else(
-            || BlockPos::new(cur_bp.0.x, cur_bp.0.y - 1, cur_bp.0.z), // Default: below
-            |tp| {
-                BlockPos::new(
-                    // Target provided
-                    tp.x.floor() as i32,
-                    (tp.y + Y_OFFSET).floor() as i32,
-                    tp.z.floor() as i32,
-                )
+        // Vanilla aims at the middle of the target's height, or the block below without one.
+        let (tbp, y_offset) = target.map_or_else(
+            || (BlockPos::new(cur_bp.0.x, cur_bp.0.y - 1, cur_bp.0.z), 0.5),
+            |target| {
+                let y_offset = f64::from(target.height()) * 0.5;
+                let tp = target.pos.load();
+                (BlockPos::floored(tp.x, tp.y + y_offset, tp.z), y_offset)
             },
         );
 
         // ... and the "steering" target point.
         let target_x = f64::from(tbp.0.x) + 0.5;
-        let target_y = f64::from(tbp.0.y) + Y_OFFSET;
+        let target_y = f64::from(tbp.0.y) + y_offset;
         let target_z = f64::from(tbp.0.z) + 0.5;
 
-        // If target block center is more than 2 blocks from bullet -> pick axis step.
+        // Vanilla `closerToCenterThan(position, 2.0)`.
         let tbp_cx = f64::from(tbp.0.x) + 0.5;
         let tbp_cy = f64::from(tbp.0.y) + 0.5;
         let tbp_cz = f64::from(tbp.0.z) + 0.5;
         let center_dist_sq =
             (tbp_cx - pos.x).powi(2) + (tbp_cy - pos.y).powi(2) + (tbp_cz - pos.z).powi(2);
-        let target_is_far = center_dist_sq > 4.0;
+        let target_is_far = center_dist_sq >= 4.0;
 
         let (chosen_tx, chosen_ty, chosen_tz, selected_dir) = if target_is_far {
             // Pick an axis-aligned direction toward the target
@@ -258,7 +247,7 @@ impl ShulkerBulletEntity {
         Self {
             entity,
             owner: ProjectileOwner::none(),
-            target_id: AtomicI32::new(-1),
+            target: EntityReference::none(),
             current_dir: AtomicU8::new(DIR_NONE),
             flight_steps: AtomicI32::new(0),
             target_delta_x: AtomicCell::new(0.0),
@@ -273,6 +262,53 @@ impl ShulkerBulletEntity {
 impl EntityBase for ShulkerBulletEntity {
     fn get_projectile_owner(&self) -> Option<&ProjectileOwner> {
         Some(&self.owner)
+    }
+
+    fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
+        self.target.write_nbt(nbt, "Target");
+        let dir = self.current_dir.load(Ordering::Relaxed);
+        if dir != DIR_NONE {
+            nbt.put_byte("Dir", dir as i8);
+        }
+        nbt.put_int("Steps", self.flight_steps.load(Ordering::Relaxed));
+        nbt.put_double("TXD", self.target_delta_x.load());
+        nbt.put_double("TYD", self.target_delta_y.load());
+        nbt.put_double("TZD", self.target_delta_z.load());
+    }
+
+    fn read_custom_nbt(&self, nbt: &NbtCompound) {
+        if let Some(steps) = nbt.get_int("Steps") {
+            self.flight_steps.store(steps, Ordering::Relaxed);
+        }
+        for (key, delta) in [
+            ("TXD", &self.target_delta_x),
+            ("TYD", &self.target_delta_y),
+            ("TZD", &self.target_delta_z),
+        ] {
+            if let Some(value) = nbt.get_double(key) {
+                delta.store(value);
+            }
+        }
+        // `Direction.LEGACY_ID_CODEC`: `from3DDataValue`, whose order the `DIR_` ids follow.
+        if let Some(dir) = nbt.get_byte("Dir") {
+            self.current_dir
+                .store((i32::from(dir) % 6).unsigned_abs() as u8, Ordering::Relaxed);
+        }
+        self.target.read_nbt(nbt, "Target");
+    }
+
+    fn remove_custom_nbt(&self, removed: &[Box<str>]) {
+        for key in removed {
+            match &**key {
+                "Target" => self.target.clear(),
+                "Dir" => self.current_dir.store(DIR_NONE, Ordering::Relaxed),
+                "Steps" => self.flight_steps.store(0, Ordering::Relaxed),
+                "TXD" => self.target_delta_x.store(0.0),
+                "TYD" => self.target_delta_y.store(0.0),
+                "TZD" => self.target_delta_z.store(0.0),
+                _ => {}
+            }
+        }
     }
 
     fn get_entity(&self) -> &Entity {
@@ -356,30 +392,15 @@ impl EntityBase for ShulkerBulletEntity {
         let entity = &self.entity;
         let world = entity.world.load();
 
-        let target_id = self.target_id.load(Ordering::Relaxed);
-        let target_opt = if target_id >= 0 {
-            world.get_entity_by_id(target_id)
-        } else {
-            None
-        };
+        let target_opt = self.target.get(&world);
+        if target_opt.is_none() {
+            self.target.clear();
+        }
 
         // Apply gravity only if target is null, dead, or a spectator.
         let target_alive = target_opt
             .as_ref()
-            .is_some_and(|t| t.get_entity().is_alive());
-
-        if !target_alive && target_id >= 0 {
-            // Target ID is set but entity was not found (dead/left the world).
-            // Only permanently clear the target when we're sure it's gone.
-            if let Some(t) = &target_opt {
-                if !t.get_entity().is_alive() {
-                    self.target_id.store(-1, Ordering::Relaxed);
-                }
-            } else {
-                // Not found -> clear target
-                self.target_id.store(-1, Ordering::Relaxed);
-            }
-        }
+            .is_some_and(|t| t.get_entity().is_alive() && !t.is_spectator());
 
         if target_alive {
             // Accelerate target deltas x 1.025, clamped
@@ -515,46 +536,39 @@ impl EntityBase for ShulkerBulletEntity {
             break;
         }
 
-        if !target_alive || self.has_hit.load(Ordering::Relaxed) {
+        // Vanilla steers towards any target still in the world, alive or not.
+        if self.has_hit.load(Ordering::Relaxed) {
             return;
         }
-
-        let target_pos = target_opt.as_ref().map(|t| t.get_entity().pos.load());
+        let Some(target) = target_opt else {
+            return;
+        };
+        let target = target.get_entity();
 
         let raw_dir = self.current_dir.load(Ordering::Relaxed);
         let avoid_axis = dir_axis(raw_dir);
 
-        // Decrement flight-step counter; re-select direction when it hits 0
-        let steps = self.flight_steps.fetch_sub(1, Ordering::Relaxed) - 1;
-        if steps <= 0 {
-            self.select_next_dir(avoid_axis, target_pos);
+        let steps = self.flight_steps.load(Ordering::Relaxed);
+        if steps > 0 {
+            self.flight_steps.store(steps - 1, Ordering::Relaxed);
+            if steps == 1 {
+                self.select_next_dir(avoid_axis, Some(target));
+            }
         }
 
-        // Check the block immediately ahead.
-        // If it is solid we must re-select; if we've aligned axes with the target we also re-select.
+        // Re-select when the block ahead is not empty or the target's axis is reached.
         let dir = self.current_dir.load(Ordering::Relaxed);
         if dir != DIR_NONE {
             let cur_bp = entity.block_pos.load();
-            if !is_empty_block(&world, &cur_bp, dir) {
-                // Solid obstacle -> navigate around it
-                self.select_next_dir(dir_axis(dir), target_pos);
-            } else if let Some(tp) = target_pos {
-                let axis = dir_axis(dir);
-                let tbp = BlockPos::new(
-                    tp.x.floor() as i32,
-                    tp.y.floor() as i32,
-                    tp.z.floor() as i32,
-                );
-                let cur_bp2 = entity.block_pos.load();
-                let reached = match axis {
-                    0 => cur_bp2.0.x == tbp.0.x,
-                    1 => cur_bp2.0.y == tbp.0.y,
-                    _ => cur_bp2.0.z == tbp.0.z,
-                };
-                if reached {
-                    // Aligned on this axis -> switch to next best axis
-                    self.select_next_dir(axis, Some(tp));
-                }
+            let axis = dir_axis(dir);
+            let tbp = target.block_pos.load();
+            let reached = match axis {
+                0 => cur_bp.0.x == tbp.0.x,
+                1 => cur_bp.0.y == tbp.0.y,
+                _ => cur_bp.0.z == tbp.0.z,
+            };
+            if reached || !is_empty_block(&world, &cur_bp, dir) {
+                self.select_next_dir(axis, Some(target));
             }
         }
     }

@@ -14,6 +14,7 @@ use crate::plugin::api::events::entity::entity_target::TargetReason;
 use crate::world::World;
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::entity::EntityType;
+use pumpkin_util::math::boundingbox::BoundingBox;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -32,6 +33,8 @@ pub enum TargetCondition {
     Adult,
     /// Only starts while the mob is untamed, and re-runs the search test to continue. (Wolves hunting prey)
     Untamed,
+    /// Only starts while the mob is on a team. (Shulkers defending their team)
+    OnTeam,
 }
 
 impl TargetCondition {
@@ -45,7 +48,7 @@ impl TargetCondition {
             // TODO: `Mob::is_baby()` once baby state is unified.
             Self::Adult => !mob.as_ageable().is_some_and(AgeableMob::is_baby),
             Self::Untamed => !mob.is_tamed(),
-            Self::Always | Self::NoDaylight => true,
+            Self::Always | Self::NoDaylight | Self::OnTeam => true,
         }
     }
 
@@ -56,7 +59,7 @@ impl TargetCondition {
             Self::AngryAt => mob
                 .as_neutral()
                 .and_then(NeutralMob::get_persistent_anger_target),
-            Self::Always | Self::NoDaylight | Self::Adult | Self::Untamed => None,
+            Self::Always | Self::NoDaylight | Self::Adult | Self::Untamed | Self::OnTeam => None,
         }
     }
 
@@ -67,7 +70,7 @@ impl TargetCondition {
             Self::AngryAt => mob
                 .as_neutral()
                 .is_some_and(|neutral| neutral.is_angry_at(target, world)),
-            Self::Always | Self::NoDaylight | Self::Adult | Self::Untamed => true,
+            Self::Always | Self::NoDaylight | Self::Adult | Self::Untamed | Self::OnTeam => true,
         }
     }
 }
@@ -82,7 +85,12 @@ pub struct ActiveTargetGoal {
     gate: Option<MobFilter>,
     target_filter: Option<MobFilter>,
     selector: Option<TargetPredicateFn>,
+    search_box: Option<SearchBoxFn>,
 }
+
+/// Vanilla `getTargetSearchArea` overrides: the box non-player candidates are searched in,
+/// from the hunter and its follow range.
+pub type SearchBoxFn = fn(&dyn Mob, f64) -> BoundingBox;
 
 impl ActiveTargetGoal {
     pub fn new<F>(
@@ -116,6 +124,7 @@ impl ActiveTargetGoal {
             gate: None,
             target_filter: None,
             selector: None,
+            search_box: None,
         }
     }
 
@@ -152,6 +161,13 @@ impl ActiveTargetGoal {
     #[must_use]
     pub fn selecting(mut self: Box<Self>, selector: TargetPredicateFn) -> Box<Self> {
         self.selector = Some(selector);
+        self
+    }
+
+    /// Searches non-player candidates in `search_box` instead of the follow range cube.
+    #[must_use]
+    pub fn searching_in(mut self: Box<Self>, search_box: SearchBoxFn) -> Box<Self> {
+        self.search_box = Some(search_box);
         self
     }
 
@@ -196,6 +212,7 @@ impl ActiveTargetGoal {
             gate: None,
             target_filter: None,
             selector: None,
+            search_box: None,
         })
     }
 
@@ -224,7 +241,10 @@ impl ActiveTargetGoal {
 
         let entity = &mob_entity.living_entity.entity;
         let world = entity.world.load();
-        let area = SearchArea::from_eyes(entity, follow_range, follow_range).players_anywhere();
+        let mut area = SearchArea::from_eyes(entity, follow_range, follow_range).players_anywhere();
+        if let Some(search_box) = self.search_box {
+            area.area = search_box(mob, follow_range);
+        }
 
         // Pick the nearest candidate that passes the conditions, not the nearest overall.
         let target_type = self.target_type;
@@ -266,6 +286,7 @@ impl Goal for ActiveTargetGoal {
         let searches = !running
             && match self.condition {
                 TargetCondition::NoDaylight => !mob_entity.is_in_daylight(),
+                TargetCondition::OnTeam => mob.get_team_name().is_some(),
                 // Only a grudge, or the universal anger an earlier goal or island member can
                 // start this tick, lets the search run.
                 TargetCondition::AngryAt => {
@@ -305,6 +326,10 @@ impl Goal for ActiveTargetGoal {
         }
         // Vanilla `SpiderTargetGoal.canUse` checks the light before the search roll.
         if self.condition == TargetCondition::NoDaylight && mob.get_mob_entity().is_in_daylight() {
+            return false;
+        }
+        // Vanilla `ShulkerDefenseAttackGoal.canUse` checks the team before the search roll.
+        if self.condition == TargetCondition::OnTeam && mob.get_team_name().is_none() {
             return false;
         }
         if self.reciprocal_chance > 0

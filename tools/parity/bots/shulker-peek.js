@@ -86,4 +86,22 @@ h.start(async () => {
   h.result('dup.copied', shulkers().length > 2)
   h.cmd(`gamemode creative ${bot.username}`)
   h.cmd('kill @e[type=shulker]')
+  h.cmd('kill @e[type=shulker_bullet]')
+  h.cmd(`effect clear ${bot.username}`)
+  await h.ticks(20)
+
+  // An open shulker keeps its peek through /tp (snapTo, not Shulker.setPos), and a closed
+  // shell turns away every AbstractArrow, tridents included.
+  h.cmd(`summon shulker ${X + 0.5} ${Y + 4} ${Z + 4.5} {NoAI:1b,PersistenceRequired:1b,Peek:100b,Tags:["tp"]}`)
+  await h.serverTicks(20)
+  h.cmd(`tp @e[tag=tp,limit=1] ${X + 2.5} ${Y + 4} ${Z + 4.5}`)
+  await h.serverTicks(5)
+  h.result('tp.peek', await ask('/data get entity @e[tag=tp,limit=1] Peek', /entity data|No entity/))
+  h.cmd('kill @e[type=!player]')
+  h.cmd(`summon shulker ${X + 2.5} ${Y + 1} ${Z + 4.5} {NoAI:1b,PersistenceRequired:1b,Tags:["closed"]}`)
+  await h.serverTicks(20)
+  h.cmd(`summon trident ${X + 2.5} ${Y + 5} ${Z + 4.5} {Motion:[0.0,-1.0,0.0]}`)
+  await h.serverTicks(20)
+  h.result('trident.health', await ask('/data get entity @e[tag=closed,limit=1] Health', /entity data|No entity/))
+  h.cmd('kill @e[type=!player]')
 })

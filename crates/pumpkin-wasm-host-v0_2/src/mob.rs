@@ -679,7 +679,7 @@ impl HostMob for PluginHostState {
         {
             return Ok(WitMobData::Shulker(WitShulkerData {
                 attached_face: to_wit_block_direction(shulker.get_attach_face()),
-                peek_amount: shulker.get_raw_peek(),
+                peek_amount: shulker.get_raw_peek().cast_unsigned(),
                 color: shulker.get_color().map(to_wit_dye_color),
             }));
         }
@@ -821,7 +821,7 @@ impl HostMob for PluginHostState {
                     any.downcast_ref::<pumpkin_core::entity::mob::shulker::ShulkerEntity>()
                 {
                     shulker.set_attach_face(from_wit_block_direction(shulker_data.attached_face));
-                    shulker.set_raw_peek(shulker_data.peek_amount);
+                    shulker.set_raw_peek(shulker_data.peek_amount.cast_signed());
                     shulker.set_color(shulker_data.color.map(from_wit_dye_color));
                     return Ok(true);
                 }

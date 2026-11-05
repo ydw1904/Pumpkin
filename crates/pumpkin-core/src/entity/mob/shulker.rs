@@ -1,5 +1,5 @@
 use pumpkin_util::random::gameplay::game_random;
-use std::sync::atomic::{AtomicI32, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicI8, AtomicI32, AtomicU8, Ordering};
 use std::sync::{Arc, Weak};
 
 use crossbeam::atomic::AtomicCell;
@@ -14,6 +14,7 @@ use pumpkin_data::{Block, BlockDirection};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_protocol::java::client::play::CEntityPositionSync;
+use pumpkin_util::Difficulty;
 use pumpkin_util::math::boundingbox::{BoundingBox, EntityDimensions};
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
@@ -21,13 +22,15 @@ use pumpkin_world::generation::update_shape::is_face_full;
 use uuid::Uuid;
 
 use crate::entity::ai::behavior::hunting::{self, Hunt};
+use crate::entity::ai::goal::active_target::TargetCondition;
 use crate::entity::ai::goal::look_around::RandomLookAroundGoal;
 use crate::entity::ai::goal::look_at_entity::LookAtEntityGoal;
 use crate::entity::ai::goal::revenge::RevengeGoal;
-use crate::entity::ai::goal::{Controls, Goal};
+use crate::entity::ai::goal::{Controls, Goal, to_goal_ticks};
 use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::attributes::{Modifier, ModifierOperation, send_attribute_updates_for_living};
 use crate::entity::mob::{Mob, MobEntity};
+use crate::entity::projectile::is_abstract_arrow;
 use crate::entity::projectile::shulker_bullet::ShulkerBulletEntity;
 use crate::entity::r#type::from_type;
 use crate::entity::{Entity, EntityBase};
@@ -43,6 +46,9 @@ const OTHER_SHULKER_LIMIT: f32 = 5.0;
 const MAX_SCALE: f32 = 3.0;
 const COVERED_ARMOR_MODIFIER_ID: &str = "minecraft:covered";
 const COVERED_ARMOR: f64 = 20.0;
+const SEARCH_FLAT_RANGE: f64 = 4.0;
+/// Vanilla `ShulkerAttackGoal`: bullets only fly at targets closer than 20 blocks.
+const ATTACK_RANGE_SQ: f64 = 400.0;
 
 /// Vanilla `Shulker.getProgressAabb`: the shell of `size` at `position`, opened by `progress`
 /// towards `direction`.
@@ -115,12 +121,45 @@ impl BlockDirectionExt for BlockDirection {
     }
 }
 
-const SHULKER_HUNTS: &[Hunt] = &[Hunt::new(2, TargetMatch::Type(&EntityType::PLAYER), true)];
+/// Vanilla `ShulkerNearestAttackGoal` and `ShulkerDefenseAttackGoal`. Players are searched
+/// without a box, so only the defense goal sees the flattened one.
+const SHULKER_HUNTS: &[Hunt] = &[
+    Hunt::new(2, TargetMatch::Type(&EntityType::PLAYER), true)
+        .gated_by(not_peaceful)
+        .searching_in(shulker_target_search_area),
+    Hunt::new(3, TargetMatch::Enemy, true)
+        .when(TargetCondition::OnTeam)
+        .searching_in(shulker_target_search_area),
+];
+
+fn is_peaceful(mob: &dyn Mob) -> bool {
+    mob.get_entity().world.load().level_info.load().difficulty == Difficulty::Peaceful
+}
+
+fn not_peaceful(mob: &dyn Mob) -> bool {
+    !is_peaceful(mob)
+}
+
+/// Vanilla `getTargetSearchArea` of both shulker target goals: only 4 blocks along the
+/// attach face's axis.
+fn shulker_target_search_area(mob: &dyn Mob, follow_range: f64) -> BoundingBox {
+    let face = mob
+        .cast_any()
+        .downcast_ref::<ShulkerEntity>()
+        .map_or(DEFAULT_ATTACH_FACE, ShulkerEntity::get_attach_face);
+    let bounding_box = mob.get_entity().bounding_box.load();
+    match face.axis_of() {
+        Axis::X => bounding_box.expand(SEARCH_FLAT_RANGE, follow_range, follow_range),
+        Axis::Z => bounding_box.expand(follow_range, follow_range, SEARCH_FLAT_RANGE),
+        Axis::Y => bounding_box.expand(follow_range, SEARCH_FLAT_RANGE, follow_range),
+    }
+}
 
 pub struct ShulkerEntity {
     pub mob_entity: MobEntity,
     attach_face: AtomicU8,
-    peek_amount: AtomicU8,
+    /// Vanilla `DATA_PEEK_ID`, a signed byte.
+    peek_amount: AtomicI8,
     color: AtomicU8,
     current_peek_amount: AtomicCell<f32>,
     prev_peek_amount: AtomicCell<f32>,
@@ -143,7 +182,7 @@ impl ShulkerEntity {
         let shulker = Self {
             mob_entity,
             attach_face: AtomicU8::new(DEFAULT_ATTACH_FACE as u8),
-            peek_amount: AtomicU8::new(0),
+            peek_amount: AtomicI8::new(0),
             color: AtomicU8::new(NO_COLOR),
             current_peek_amount: AtomicCell::new(0.0),
             prev_peek_amount: AtomicCell::new(0.0),
@@ -175,7 +214,6 @@ impl ShulkerEntity {
                 ),
             );
             hunting::apply(target_selector, &mob_arc.mob_entity, SHULKER_HUNTS);
-            // TODO: search box flattened to 4 along the attach face; ShulkerDefenseAttackGoal at 3.
         };
 
         mob_arc
@@ -298,13 +336,13 @@ impl ShulkerEntity {
         entity.set_synced_data(pumpkin_data::tracked_data::shulker::COLOR, val as i8);
     }
 
-    pub fn get_raw_peek(&self) -> u8 {
+    pub fn get_raw_peek(&self) -> i8 {
         self.peek_amount.load(Ordering::Relaxed)
     }
 
     /// Vanilla `Shulker.setRawPeekAmount`: closing adds the covered armor, every change plays
     /// its sound.
-    pub fn set_raw_peek(&self, amount: u8) {
+    pub fn set_raw_peek(&self, amount: i8) {
         let living = &self.mob_entity.living_entity;
         living.update_attribute(&Attributes::ARMOR, |armor| {
             armor.remove_modifier(COVERED_ARMOR_MODIFIER_ID);
@@ -334,7 +372,7 @@ impl ShulkerEntity {
         self.store_raw_peek(amount);
     }
 
-    fn store_raw_peek(&self, amount: u8) {
+    fn store_raw_peek(&self, amount: i8) {
         self.peek_amount.store(amount, Ordering::Relaxed);
         self.mob_entity
             .living_entity
@@ -567,7 +605,7 @@ impl Mob for ShulkerEntity {
 
     fn mob_write_nbt(&self, nbt: &mut NbtCompound) {
         nbt.put_byte("AttachFace", self.attach_face.load(Ordering::Relaxed) as i8);
-        nbt.put_byte("Peek", self.peek_amount.load(Ordering::Relaxed) as i8);
+        nbt.put_byte("Peek", self.peek_amount.load(Ordering::Relaxed));
         nbt.put_byte("Color", self.color.load(Ordering::Relaxed) as i8);
     }
 
@@ -578,7 +616,7 @@ impl Mob for ShulkerEntity {
             .and_then(|face| BlockDirection::try_from((i32::from(face) % 6).abs()).ok())
             .unwrap_or(DEFAULT_ATTACH_FACE);
         self.set_attach_face(face);
-        self.store_raw_peek(nbt.get_byte("Peek").unwrap_or(0) as u8);
+        self.store_raw_peek(nbt.get_byte("Peek").unwrap_or(0));
         self.set_color(Some(
             nbt.get_byte("Color").map_or(NO_COLOR, |color| color as u8),
         ));
@@ -614,6 +652,17 @@ impl Mob for ShulkerEntity {
         }
     }
 
+    /// Vanilla `Shulker.setPos`: carried to another block after its first tick, it closes
+    /// without the sound or the armor change. `/tp` uses `snapTo`, which keeps the peek.
+    fn mob_on_positioned_on_vehicle(&self, old_block_pos: BlockPos) {
+        let entity = &self.mob_entity.living_entity.entity;
+        if entity.tick_count.load(Ordering::Relaxed) != 0
+            && entity.block_pos.load() != old_block_pos
+        {
+            self.store_raw_peek(0);
+        }
+    }
+
     fn on_damage(&self, damage_type: DamageType, source: Option<&dyn EntityBase>) {
         self.on_shulker_damage(damage_type, source);
     }
@@ -633,11 +682,9 @@ impl Mob for ShulkerEntity {
         })
     }
 
-    fn pre_damage(&self, damage_type: DamageType, _source: Option<&dyn EntityBase>) -> bool {
-        if self.is_closed() && damage_type == DamageType::ARROW {
-            return false;
-        }
-        true
+    fn pre_damage(&self, _damage_type: DamageType, source: Option<&dyn EntityBase>) -> bool {
+        !(self.is_closed()
+            && source.is_some_and(|source| is_abstract_arrow(source.get_entity().entity_type)))
     }
 }
 
@@ -665,13 +712,11 @@ impl Goal for ShulkerAttackGoal {
         target
             .as_ref()
             .is_some_and(|t| t.get_living_entity().is_some_and(|l| l.entity.is_alive()))
+            && !is_peaceful(mob)
     }
 
     fn should_continue(&mut self, mob: &dyn Mob) -> bool {
-        let target = mob.get_mob_entity().get_target();
-        target
-            .as_ref()
-            .is_some_and(|t| t.get_living_entity().is_some_and(|l| l.entity.is_alive()))
+        self.can_start(mob)
     }
 
     fn start(&mut self, _mob: &dyn Mob) {
@@ -688,52 +733,51 @@ impl Goal for ShulkerAttackGoal {
     }
 
     fn tick(&mut self, mob: &dyn Mob) {
-        let mob_entity = mob.get_mob_entity();
-        let target_arc = mob_entity.get_target();
-
-        let Some(target) = target_arc else {
-            return;
-        };
-
-        if !target.get_entity().is_alive() {
+        if is_peaceful(mob) {
             return;
         }
+        let cooldown = self.attack_cooldown.fetch_sub(1, Ordering::Relaxed) - 1;
+        let mob_entity = mob.get_mob_entity();
+        let Some(target) = mob_entity.get_target() else {
+            return;
+        };
+        mob_entity
+            .look_control
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .look_at_entity_with_range(&target, 180.0, 180.0);
 
         let entity = &mob_entity.living_entity.entity;
         let shulker_pos = entity.pos.load();
         let target_pos = target.get_entity().pos.load();
-        let dist_sq = shulker_pos.squared_distance_to_vec(&target_pos);
-
-        if dist_sq > 400.0 {
+        if shulker_pos.squared_distance_to_vec(&target_pos) >= ATTACK_RANGE_SQ {
             mob_entity.set_target(None);
             return;
         }
-
-        let cooldown = self.attack_cooldown.fetch_sub(1, Ordering::Relaxed) - 1;
-        if cooldown <= 0 {
-            let new_cd = 20 + mob.get_random().random_range(0..5) * 10;
-            self.attack_cooldown.store(new_cd, Ordering::Relaxed);
-
-            let world = entity.world.load();
-            let target_pos = target.get_entity().pos.load();
-            let bullet = ShulkerBulletEntity::new(
-                entity,
-                target.get_entity().entity_id,
-                target_pos,
-                self.shulker.get_attach_face().axis_of(),
-            );
-            world.spawn_entity_non_save(Arc::new(bullet));
-
-            let pitch =
-                1.0 + (mob.get_random().random::<f32>() - mob.get_random().random::<f32>()) * 0.2;
-            world.play_sound_fine(
-                Sound::EntityShulkerShoot,
-                SoundCategory::Hostile,
-                &shulker_pos,
-                2.0,
-                pitch,
-            );
+        if cooldown > 0 {
+            return;
         }
+        self.attack_cooldown.store(
+            20 + mob.get_random().random_range(0..10) * 20 / 2,
+            Ordering::Relaxed,
+        );
+        let world = entity.world.load();
+        let bullet = ShulkerBulletEntity::new(
+            entity,
+            target.get_entity(),
+            self.shulker.get_attach_face().axis_of(),
+        );
+        world.spawn_entity_non_save(Arc::new(bullet));
+
+        let pitch =
+            1.0 + (mob.get_random().random::<f32>() - mob.get_random().random::<f32>()) * 0.2;
+        world.play_sound_fine(
+            Sound::EntityShulkerShoot,
+            SoundCategory::Hostile,
+            &shulker_pos,
+            2.0,
+            pitch,
+        );
     }
 }
 
@@ -757,7 +801,7 @@ impl Goal for ShulkerPeekGoal {
         if has_target {
             return false;
         }
-        if mob.get_random().random_range(0..40) != 0 {
+        if mob.get_random().random_range(0..to_goal_ticks(40)) != 0 {
             return false;
         }
         let pos = mob.get_mob_entity().living_entity.entity.block_pos.load();
@@ -771,7 +815,7 @@ impl Goal for ShulkerPeekGoal {
     }
 
     fn start(&mut self, mob: &dyn Mob) {
-        let duration = 20 * (1 + mob.get_random().random_range(0..3));
+        let duration = self.get_tick_count(20 * (1 + mob.get_random().random_range(0..3)));
         self.peek_time.store(duration, Ordering::Relaxed);
         self.shulker.set_raw_peek(30);
     }

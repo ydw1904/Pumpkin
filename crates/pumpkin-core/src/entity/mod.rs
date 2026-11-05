@@ -664,6 +664,10 @@ pub trait EntityBase: Send + Sync + std::any::Any {
 
     fn on_rider_positioned(&self, _passenger: &dyn EntityBase) {}
 
+    /// Called on a passenger its vehicle just moved onto its seat, vanilla `setPos` from
+    /// `positionRider`, with its block position from before.
+    fn on_positioned_on_vehicle(&self, _old_block_pos: BlockPos) {}
+
     fn hurt_gear_slots(&self, _gear: GearDamage) -> &'static [EquipmentSlot] {
         &[]
     }
@@ -1451,7 +1455,9 @@ pub fn position_rider(vehicle: &dyn EntityBase, passenger: &dyn EntityBase) {
             let (own, own_scale) = attachments_of(passenger);
             attachment_point(own.vehicle, own_scale, passenger_entity.yaw.load())
         });
+    let old_block_pos = passenger_entity.block_pos.load();
     passenger_entity.set_pos(vehicle_entity.pos.load() + seat - offset);
+    passenger.on_positioned_on_vehicle(old_block_pos);
     vehicle.on_rider_positioned(passenger);
 }
 

@@ -2252,6 +2252,8 @@ pub trait Mob: EntityBase + Send + Sync {
 
     fn mob_on_rider_positioned(&self, _passenger: &dyn EntityBase) {}
 
+    fn mob_on_positioned_on_vehicle(&self, _old_block_pos: BlockPos) {}
+
     fn mob_consume_sound(&self, _stack: &ItemStack) -> Option<pumpkin_data::sound::Sound> {
         None
     }
@@ -3770,6 +3772,10 @@ impl<T: Mob + Send + 'static> EntityBase for T {
 
     fn on_rider_positioned(&self, passenger: &dyn EntityBase) {
         self.mob_on_rider_positioned(passenger);
+    }
+
+    fn on_positioned_on_vehicle(&self, old_block_pos: BlockPos) {
+        self.mob_on_positioned_on_vehicle(old_block_pos);
     }
 
     fn get_experience_reward(&self, _killer: Option<&dyn EntityBase>) -> u32 {
