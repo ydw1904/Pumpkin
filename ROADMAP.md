@@ -229,6 +229,37 @@ Landed upstream and taken in through the 2026-11-03 sync (`a4e2da410`), so these
 - From the survival bot audit (local unless noted): death drops armor, offhand and experience, and destroys vanishing items; the client is told when eating finishes; `/item` and `/loot` use the right container slots; experience orbs follow players, merge and keep their value; the sleep status action bar and non-spectator sleep counting; villager trades no longer deadlock the server, villagers level up and pay 3 to 6 XP, What a Deal! fires; villager data saved in vanilla's format; the merchant offer out-of-stock flag (#3765); `/kill` removes the dragon at once; the end credits show once and respawning after them keeps everything; the dragon flies back to the exit portal before dying. Bot checks: `death-drops`, `villager-trade`, `xp-orbs`, `sleep-status`.
 - Mobs and spawning: #4404 (monster light check uses sky-darkened brightness), #3861 (weighted spawn entries), #4412 (wandering trader and trader llamas), #3808 (sun burning floor fix), #3815 and #3586 (enderman), #4113 and #3790 (blaze), #3765 (villager trading deadlock), #4389 (creeper) with #3663 (effect cloud), #4387 (pig), #4368 (spider and cave spider), #4393 (witch), #4095 (hoglin throw), #3661 (ender dragon hitbox parts), #4417 (minecarts in lava and on cactus), #3886 (silverfish; infested blocks spawn real silverfish), #4287 (goat), #4039 (first commit: zombies sink). Local: phantom spawner and phantom AI, swamp surface slimes and `checkMobSpawnRules`, water and rain damage for all water-sensitive mobs, snow golem trail and melting, zombie to drowned, husk to zombie and skeleton to stray conversions (shared conversion tracker), zombie villagers from killed villagers, husk hunger, baby zombie speed and XP, bat movement and sounds (following the #4304 review).
 
+## Redstone audit (2026-11-05)
+
+Source review at `8e740347f`, against the decompiled Java 26.3 server. This is not a
+fresh server test or a claim of complete parity. Ordinary circuits have useful coverage,
+but timing-sensitive circuits and piston machines still have gaps:
+
+| Area | Source finding | Next step |
+| --- | --- | --- |
+| Dust | `redstone_wire::update_power_strength` visits the affected positions in insertion order; vanilla's `DefaultRedstoneWireEvaluator` iterates a Java `HashSet`. | Reproduce an observable update-order difference before changing the traversal. |
+| Sticky retraction | `try_move` checks current progress below 0.5, but omits vanilla's previous-progress, last-ticked and handling-tick conditions. | Review upstream [#4026](https://github.com/Pumpkin-MC/Pumpkin/pull/4026), which already covers this. |
+| Moving entities | `PistonBlockEntity::push_entities` uses simplified boxes and direct position changes. It has no slime velocity launch or honey carrying pass. Player movement is deliberately client authoritative in Pumpkin. | Review the overlapping collision work in upstream [#3057](https://github.com/Pumpkin-MC/Pumpkin/pull/3057); audit honey carrying separately. |
+| Movement limits | `PistonBlock::is_movable` has no world or position argument for vanilla's build-height and border checks. | Review upstream [#2995](https://github.com/Pumpkin-MC/Pumpkin/pull/2995) for height limits; check border handling too. |
+| Sticky branches | `PistonHandler::calculate_push` fixes the loop endpoint before discovering branches. Vanilla checks the growing list size on every iteration. | Upstream [#3057](https://github.com/Pumpkin-MC/Pumpkin/pull/3057) already includes this fix. Add a nested-branch regression when integrating it. |
+
+The saved `20261103-100737-redstone` bot run matches 14 comparator sources, subtract
+output, daylight readings, target pulses, detector-rail activation and hopper locking.
+It does **not** establish repeater locking, slime pushing or powered-rail acceleration:
+the matching observations are respectively `locked=false lamp=true`, an unmoved slime
+assembly, and `powered_rail_cart_moved_east=false`. Repair those scenes and require their
+preconditions before counting a matching result as coverage. That run also has observer,
+note-instrument and TNT observations that differ; rerun against the current branch before
+treating those historical differences as current bugs.
+
+Older entries #35 and #36 predate the piston client-update and NBT work recorded under
+upstream #4047 above. The current code saves the moved state and suppresses moving-piston
+block entity update packets; recheck those entries rather than assuming they remain open.
+
+Open upstream piston PRs and issues were searched on 2026-11-05. The links above identify
+overlapping work, not patches newly implemented or verified by this audit. Prioritize useful
+regressions and local integration of the existing work over duplicate upstream PRs.
+
 ## Future work
 
 ### Harness
