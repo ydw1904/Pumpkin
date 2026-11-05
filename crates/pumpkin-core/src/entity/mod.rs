@@ -2444,7 +2444,7 @@ impl Entity {
         self.supporting_block_pos.load()
     }
 
-    /// Block collisions, then stepping up onto what was hit.
+    /// Vanilla `Entity.collide`: block and entity collisions, then stepping up onto what was hit.
     #[expect(clippy::float_cmp)]
     fn adjust_movement_for_collisions(
         &self,
@@ -2453,9 +2453,20 @@ impl Entity {
     ) -> Vector3<f64> {
         let was_on_ground = self.on_ground.load(Ordering::SeqCst);
         let bounding_box = self.bounding_box.load();
-        let movement_step = self.collide_bounding_box(movement, caller);
-
         let max_up_step = Self::max_up_step(caller);
+        // Only used when there is movement to collide.
+        let entity_colliders = if movement.length_squared() == 0.0 {
+            Vec::new()
+        } else {
+            self.world.load().get_entity_collisions(
+                Some(caller),
+                bounding_box
+                    .expand_towards(movement.x, movement.y, movement.z)
+                    .expand_towards(0.0, f64::from(max_up_step), 0.0),
+            )
+        };
+        let movement_step = self.collide_bounding_box(movement, caller, &entity_colliders);
+
         let horizontal_collision = movement.x != movement_step.x || movement.z != movement_step.z;
         let on_ground_after_collision = movement.y != movement_step.y && movement.y < 0.0;
         if max_up_step <= 0.0
@@ -2475,7 +2486,8 @@ impl Entity {
         if !on_ground_after_collision {
             step_up_box = step_up_box.expand_towards(0.0, f64::from(-1.0E-5f32), 0.0);
         }
-        let (colliders, _) = self.world.load().get_block_collisions(step_up_box, caller);
+        let (mut colliders, _) = self.world.load().get_block_collisions(step_up_box, caller);
+        colliders.extend_from_slice(&entity_colliders);
 
         for step_height in Self::candidate_step_up_heights(
             &grounded_box,
@@ -2511,7 +2523,7 @@ impl Entity {
     }
 
     /// Only living entities step up, and a player-ridden mob steps at least one block.
-    fn max_up_step(caller: &dyn EntityBase) -> f32 {
+    pub(crate) fn max_up_step(caller: &dyn EntityBase) -> f32 {
         let Some(living) = caller.get_living_entity() else {
             return 0.0;
         };
@@ -2604,6 +2616,7 @@ impl Entity {
         &self,
         movement: Vector3<f64>,
         caller: &dyn EntityBase,
+        entity_colliders: &[BoundingBox],
     ) -> Vector3<f64> {
         self.vertical_collision.store(false, Ordering::SeqCst);
         if movement.length_squared() == 0.0 {
@@ -2621,7 +2634,7 @@ impl Entity {
             .load()
             .get_block_collisions(bounding_box.stretch(movement), caller);
 
-        if collisions.is_empty() {
+        if collisions.is_empty() && entity_colliders.is_empty() {
             return movement;
         }
 
@@ -2631,9 +2644,8 @@ impl Entity {
         if movement.get_axis(Axis::Y) != 0.0 {
             let mut max_time = 1.0;
             let mut positions = block_positions.into_iter();
+            let mut supporting_block_pos = None;
             if let Some((mut collisions_len, mut position)) = positions.next() {
-                let mut supporting_block_pos = None;
-
                 for (i, inert_box) in collisions.iter().enumerate() {
                     if i == collisions_len {
                         let Some((next_len, next_pos)) = positions.next() else {
@@ -2657,17 +2669,36 @@ impl Entity {
                         }
                     }
                 }
-
-                if max_time != 1.0 {
-                    self.vertical_collision.store(true, Ordering::SeqCst);
-                    let changed_component = adjusted_movement.get_axis(Axis::Y) * max_time;
-                    adjusted_movement.set_axis(Axis::Y, changed_component);
-                }
-
-                self.on_ground
-                    .store(supporting_block_pos.is_some(), Ordering::SeqCst);
-                self.supporting_block_pos.store(supporting_block_pos);
             }
+
+            // Landing on an entity grounds it without a supporting block.
+            let mut on_entity = false;
+            for collider in entity_colliders {
+                if let Some(collision_time) = bounding_box.calculate_collision_time(
+                    collider,
+                    adjusted_movement,
+                    Axis::Y,
+                    max_time,
+                ) {
+                    max_time = collision_time;
+                    if movement.get_axis(Axis::Y) < 0.0 {
+                        supporting_block_pos = None;
+                        on_entity = true;
+                    }
+                }
+            }
+
+            if max_time != 1.0 {
+                self.vertical_collision.store(true, Ordering::SeqCst);
+                let changed_component = adjusted_movement.get_axis(Axis::Y) * max_time;
+                adjusted_movement.set_axis(Axis::Y, changed_component);
+            }
+
+            self.on_ground.store(
+                supporting_block_pos.is_some() || on_entity,
+                Ordering::SeqCst,
+            );
+            self.supporting_block_pos.store(supporting_block_pos);
         }
 
         let mut horizontal_collision = false;
@@ -2679,7 +2710,7 @@ impl Entity {
 
             let mut max_time = 1.0;
 
-            for inert_box in &collisions {
+            for inert_box in collisions.iter().chain(entity_colliders) {
                 if let Some(collision_time) = bounding_box.calculate_collision_time(
                     inert_box,
                     adjusted_movement,

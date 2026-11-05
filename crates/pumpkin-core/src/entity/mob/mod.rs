@@ -1935,7 +1935,10 @@ impl MobEntity {
         let mut reach = AuditedReach {
             bounding_box: entity.bounding_box.load(),
             motion: (horizontal, vertical),
-            entities: goals.entities,
+            // `Entity.collide` reads collidable entities up to a step above the movement.
+            entities: goals
+                .entities
+                .max(f64::from(super::Entity::max_up_step(mob))),
             players: goals.players,
             typed_entities: goals.typed,
             // Spawns, like a reinforcement's chicken jockey, can be of another type.

@@ -12,11 +12,8 @@ use pumpkin_world::{chunk::ChunkHeightmapType, generation::generator::WorldGener
 use rand::RngExt;
 use rustc_hash::FxHashSet;
 
-use super::{World, entity_islands};
-use crate::entity::{
-    EntityBase, ageable::AgeableMob, mob::shulker::ShulkerEntity,
-    passive::happy_ghast::HappyGhastEntity, spawn_util::is_face_full_up, vehicle::boat::BoatEntity,
-};
+use super::World;
+use crate::entity::spawn_util::is_face_full_up;
 
 const ABSOLUTE_MAX_ATTEMPTS: u64 = 1024;
 const DEFAULT_SPAWN_HEIGHT: i32 = 64;
@@ -60,28 +57,6 @@ fn spawn_candidate_offsets(radius: i32, offset: i32) -> impl Iterator<Item = (i3
             value -= count;
         }
         result
-    })
-}
-
-// EntityGetter's null-source query uses canBeCollidedWith, not movement collision.
-fn can_be_collided_with(entity: &dyn EntityBase) -> bool {
-    let base = entity.get_entity();
-    if entity.is_spectator() || base.is_removed() {
-        return false;
-    }
-    let any = entity as &dyn std::any::Any;
-    if any.is::<BoatEntity>() {
-        return true;
-    }
-    if any.is::<ShulkerEntity>() {
-        return entity
-            .get_living_entity()
-            .is_some_and(|living| living.health.load() > 0.0);
-    }
-    any.downcast_ref::<HappyGhastEntity>().is_some_and(|ghast| {
-        !ghast.is_baby()
-            && ghast.mob_entity.living_entity.health.load() > 0.0
-            && ghast.is_on_still_timeout()
     })
 }
 
@@ -166,20 +141,7 @@ impl World {
             return false;
         }
 
-        self.no_entity_collision(&player_box)
-    }
-
-    /// Vanilla `noEntityCollision` with no source entity: no boat, living shulker or still
-    /// happy ghast meets `aabb`. Players are never collidable this way.
-    pub(crate) fn no_entity_collision(&self, aabb: &BoundingBox) -> bool {
-        !self
-            .entity_index
-            .query(
-                self.entities.load_full(),
-                aabb.expand_all(COLLISION_EPSILON),
-            )
-            .inspect(|entity| entity_islands::check_reached(entity.get_entity().entity_id))
-            .any(|entity| can_be_collided_with(entity.as_ref()))
+        self.no_entity_collision(None, &player_box)
     }
 
     pub(super) fn fixup_spawn_height_at(&self, mut position: BlockPos) -> BlockPos {

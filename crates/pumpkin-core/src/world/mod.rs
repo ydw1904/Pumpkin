@@ -29,6 +29,7 @@ use tracing::{debug, error, info, trace, warn};
 mod active_chunks;
 pub mod brightness;
 pub mod chunker;
+mod entity_collision;
 mod entity_index;
 pub(crate) use entity_index::EntityIndex;
 pub mod entity_islands;

@@ -5182,7 +5182,7 @@ impl LivingEntity {
                 let bb = BoundingBox::new_from_pos(x, y, z, &self.entity.entity_dimension.load());
                 // `noCollision` without a source entity skips the world border.
                 if !world.is_space_empty(bb)
-                    || !world.no_entity_collision(&bb)
+                    || !world.no_entity_collision(None, &bb)
                     || world.contains_any_liquid(bb)
                     || BlockPos::iterate(bb.min_block_pos(), bb.max_block_pos())
                         .any(|pos| is_invalid(world.get_block(&pos)))
