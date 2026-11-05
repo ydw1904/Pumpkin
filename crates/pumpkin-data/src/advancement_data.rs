@@ -24,17 +24,25 @@ pub struct AdvancementDisplay {
     pub announce_to_chat: bool,
     pub x: f32,
     pub y: f32,
+    /// A datapack advancement's title, used instead of the `title` translation key.
+    pub title_component: Option<TextComponent>,
+    /// A datapack advancement's description, used instead of the `description` key.
+    pub description_component: Option<TextComponent>,
 }
 
 impl AdvancementDisplay {
     #[allow(deprecated)]
     pub fn get_title(&self) -> TextComponent {
-        TextComponent::translate(self.title, [])
+        self.title_component
+            .clone()
+            .unwrap_or_else(|| TextComponent::translate(self.title, []))
     }
 
     #[allow(deprecated)]
     pub fn get_description(&self) -> TextComponent {
-        TextComponent::translate(self.description, [])
+        self.description_component
+            .clone()
+            .unwrap_or_else(|| TextComponent::translate(self.description, []))
     }
 
     pub fn has_background(&self) -> bool {
@@ -64,6 +72,8 @@ impl AdvancementDisplay {
             announce_to_chat,
             x,
             y,
+            title_component: None,
+            description_component: None,
         }
     }
 }

@@ -10,11 +10,11 @@ use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
 use crate::command::suggestion::provider::{SuggestionProvider, SuggestionProviderResult};
 use crate::command::suggestion::suggestions::SuggestionsBuilder;
+use crate::data::advancement_tree::ServerAdvancements;
 use crate::entity::EntityBase;
 use crate::entity::player::Player;
 use crate::entity::player::advancement::{AdvancementAward, PlayerAdvancement};
-use pumpkin_data::advancement_data::AdvancementNode;
-use pumpkin_data::{ADVANCEMENT_TREE, Advancement, translation};
+use pumpkin_data::{Advancement, translation};
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
@@ -265,35 +265,33 @@ impl Mode {
 ///
 /// A vector of references to advancements matching the specified mode. If the target advancement
 /// is not found in the tree, a vector containing only the target is returned.
-fn get_advancements(target: &Advancement, mode: Mode) -> Vec<&Advancement> {
-    let tree = &ADVANCEMENT_TREE;
-    let target_node = tree.get_node_from_id(&target.id);
-    target_node.map_or_else(
-        || vec![target],
-        |target_node| {
-            let mut advancements = Vec::new();
-            if mode.parents() {
-                let mut parent = target_node.parent;
-                while let Some(parent_id) = parent {
-                    let current_node = &tree.nodes_vector[parent_id];
-                    advancements.push(current_node.value);
-                    parent = current_node.parent;
-                }
-            }
-            advancements.push(target);
-            if mode.children() {
-                add_children(target_node, &mut advancements);
-            }
-            advancements
-        },
-    )
+fn get_advancements(
+    tree: &ServerAdvancements,
+    target: &'static Advancement,
+    mode: Mode,
+) -> Vec<&'static Advancement> {
+    let Some(target_node) = tree.node_of(&target.id) else {
+        return vec![target];
+    };
+    let mut advancements = Vec::new();
+    if mode.parents() {
+        let mut parent = tree.node(target_node).parent;
+        while let Some(node) = parent {
+            advancements.push(tree.node_advancement(node));
+            parent = tree.node(node).parent;
+        }
+    }
+    advancements.push(target);
+    if mode.children() {
+        add_children(tree, target_node, &mut advancements);
+    }
+    advancements
 }
 
-fn add_children(parent: &AdvancementNode, output: &mut Vec<&Advancement>) {
-    for child in &parent.children {
-        let node = &ADVANCEMENT_TREE.nodes_vector[*child];
-        output.push(node.value);
-        add_children(node, output);
+fn add_children(tree: &ServerAdvancements, parent: usize, output: &mut Vec<&'static Advancement>) {
+    for &child in &tree.node(parent).children {
+        output.push(tree.node_advancement(child));
+        add_children(tree, child, output);
     }
 }
 
@@ -546,6 +544,7 @@ impl CommandExecutor for AdvancementExecutor {
             &EntityArgumentType::get_players(context, ARG_TARGETS)?,
             action,
             &get_advancements(
+                &context.server().advancement_manager.advancements(),
                 ResourceKeyArgument::get_advancement(context, ARG_ADVANCEMENT)?,
                 mode,
             ),
@@ -586,7 +585,14 @@ impl CommandExecutor for EveryAdvancementExecutor {
             &context.source,
             &EntityArgumentType::get_players(context, ARG_TARGETS)?,
             action,
-            &Advancement::get_advancements_list(),
+            &context
+                .server()
+                .advancement_manager
+                .advancements()
+                .entries()
+                .iter()
+                .map(|entry| entry.advancement)
+                .collect::<Vec<_>>(),
             show_advancement,
         )
     }

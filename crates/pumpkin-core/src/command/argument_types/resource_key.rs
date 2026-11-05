@@ -110,11 +110,17 @@ impl ResourceKeyArgument {
             ADVANCEMENT_REGISTRY,
             &ERROR_INVALID_ADVANCEMENT,
         )?;
-        Advancement::from_name(resource_key.identifier.path()).ok_or_else(|| {
-            ERROR_INVALID_ADVANCEMENT.create_without_context(TextComponent::text(
-                resource_key.identifier.path().to_string(),
-            ))
-        })
+        context
+            .server()
+            .advancement_manager
+            .advancements()
+            .get(&resource_key.identifier)
+            .map(|entry| entry.advancement)
+            .ok_or_else(|| {
+                ERROR_INVALID_ADVANCEMENT.create_without_context(TextComponent::text(
+                    resource_key.identifier.to_string(),
+                ))
+            })
     }
 
     /// Returns a [`CommandContext`]'s parsed resource key argument as a [`Biome`](pumpkin_data::biome::Biome).

@@ -1,6 +1,6 @@
+use crate::data::advancement_tree::ServerAdvancements;
 use crate::entity::player::advancement::PlayerAdvancement;
-use pumpkin_data::advancement_data::AdvancementNode;
-use pumpkin_data::{ADVANCEMENT_TREE, Advancement};
+use pumpkin_data::Advancement;
 use std::cmp::PartialEq;
 
 static VISIBILITY_DEPTH: usize = 3;
@@ -32,21 +32,22 @@ fn evaluate_visibility_for_unfinished_node(ascendants: &[VisibilityRule]) -> boo
 }
 
 pub fn evaluate_visibility_with_rules(
-    node: &AdvancementNode,
+    tree: &ServerAdvancements,
+    node: usize,
     player_advancement: &mut PlayerAdvancement,
     ascendants: &mut Vec<VisibilityRule>,
-    is_done_test: &mut impl FnMut(&mut PlayerAdvancement, &AdvancementNode) -> bool,
-    output: &mut impl FnMut(&mut PlayerAdvancement, &AdvancementNode, bool),
+    is_done_test: &mut impl FnMut(&mut PlayerAdvancement, usize) -> bool,
+    output: &mut impl FnMut(&mut PlayerAdvancement, usize, bool),
 ) -> bool {
-    let tree = &ADVANCEMENT_TREE.nodes_vector;
     let is_self_done = is_done_test(player_advancement, node);
-    let descendant_visibility = evaluate_visibility_rule(node.value, is_self_done);
+    let descendant_visibility = evaluate_visibility_rule(tree.node_advancement(node), is_self_done);
     let mut is_self_or_descendant_done = is_self_done;
     ascendants.push(descendant_visibility);
 
-    for child in &node.children {
+    for &child in &tree.node(node).children {
         is_self_or_descendant_done |= evaluate_visibility_with_rules(
-            &tree[*child],
+            tree,
+            child,
             player_advancement,
             ascendants,
             is_done_test,
@@ -62,14 +63,16 @@ pub fn evaluate_visibility_with_rules(
 }
 
 pub fn evaluate_visibility(
-    node: &AdvancementNode,
+    tree: &ServerAdvancements,
+    node: usize,
     player_advancement: &mut PlayerAdvancement,
-    is_done: &mut impl FnMut(&mut PlayerAdvancement, &AdvancementNode) -> bool,
-    output: &mut impl FnMut(&mut PlayerAdvancement, &AdvancementNode, bool),
+    is_done: &mut impl FnMut(&mut PlayerAdvancement, usize) -> bool,
+    output: &mut impl FnMut(&mut PlayerAdvancement, usize, bool),
 ) -> bool {
-    let root = node.root();
+    let root = tree.root(node);
     let mut visibility_stack: Vec<VisibilityRule> = Vec::new();
     evaluate_visibility_with_rules(
+        tree,
         root,
         player_advancement,
         &mut visibility_stack,

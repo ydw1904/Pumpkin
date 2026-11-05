@@ -3,18 +3,20 @@ pub mod trigger;
 mod visibility_evaluator;
 
 use crate::data::advancement_data::AdvancementManager;
+use crate::data::advancement_tree::ServerAdvancements;
 use crate::entity::EntityBase;
 use crate::entity::player::Player;
 use indexmap::IndexMap;
-use pumpkin_data::advancement_data::{
-    AdvancementNode, AdvancementProgressData, AdvancementRequirement, AdvancementReward, Criteria,
-};
-use pumpkin_data::{ADVANCEMENT_TREE, Advancement, translation};
+use pumpkin_data::advancement_data::{AdvancementProgressData, AdvancementRequirement, Criteria};
+use pumpkin_data::sound::{Sound, SoundCategory};
+use pumpkin_data::{Advancement, translation};
 use pumpkin_protocol::bedrock::server::text::SText;
 use pumpkin_protocol::java::client::play::{
-    CSelectAdvancementsTab, CSystemChatMessage, CUpdateAdvancements,
+    CSelectAdvancementsTab, CSystemChatMessage, CUpdateAdvancements, PositionedAdvancement,
 };
+use pumpkin_util::PermissionLvl;
 use pumpkin_util::identifier::Identifier;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_util::text::TextComponent;
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -264,29 +266,19 @@ impl std::fmt::Debug for ActiveCriterionListener {
     }
 }
 
-static VANILLA_CONDITIONS_CACHE: std::sync::LazyLock<
-    HashMap<(&'static Advancement, &'static str), Arc<predicate::CriterionConditions>>,
-> = std::sync::LazyLock::new(|| {
-    let mut map = HashMap::new();
-    for node in &ADVANCEMENT_TREE.nodes_vector {
-        for crit in node.value.criteria_definitions {
-            let parsed = Arc::new(predicate::CriterionConditions::from(crit.conditions));
-            map.insert((node.value, crit.name), parsed);
-        }
-    }
-    map
-});
-
 /// Manages a player's collection of advancements.
 ///
 /// This handles saving, loading, and tracking the state of granted / revoked advancements.
 pub struct PlayerAdvancement {
     pub progress: AdvancementProgressMap,
     pub is_first_packet: bool,
-    pub roots_to_update: HashSet<&'static AdvancementNode>,
+    /// Tree nodes of the roots whose visibility changed.
+    pub roots_to_update: HashSet<usize>,
     pub visible: HashSet<&'static Advancement>,
     pub progress_changed: HashSet<&'static Advancement>,
     pub manager: Arc<AdvancementManager>,
+    /// The advancements this progress is for (vanilla `PlayerAdvancements.tree`).
+    pub tree: Arc<ServerAdvancements>,
     pub path: PathBuf,
     pub last_selected_tab: Option<&'static Advancement>,
     /// A weak reference to the player who owns these advancements.
@@ -336,6 +328,7 @@ impl PlayerAdvancement {
         let mut pa = Self {
             progress: AdvancementProgressMap::default(),
             path: manager.advancement_path.join(format!("{uuid}.json")),
+            tree: manager.advancements(),
             manager,
             player: Weak::new(),
             is_first_packet: true,
@@ -357,56 +350,37 @@ impl PlayerAdvancement {
     /// Registers active listeners for all incomplete criteria across all advancements.
     pub fn register_all_listeners(&mut self) {
         self.active_listeners.clear();
-        for node in &ADVANCEMENT_TREE.nodes_vector {
-            self.register_listeners(node.value);
+        for entry in self.tree.clone().entries() {
+            self.register_listeners(entry.advancement);
         }
     }
 
     /// Registers listeners for any incomplete criteria of the given advancement.
     pub fn register_listeners(&mut self, advancement: &'static Advancement) {
-        if let Some(progress) = self.progress.map.get(advancement) {
-            if !progress.is_done() {
-                for criterion_def in advancement.criteria_definitions {
-                    if !progress.is_criterion_done(criterion_def.name) {
-                        let conditions = VANILLA_CONDITIONS_CACHE
-                            .get(&(advancement, criterion_def.name))
-                            .cloned()
-                            .unwrap_or_else(|| {
-                                Arc::new(predicate::CriterionConditions::from(
-                                    criterion_def.conditions,
-                                ))
-                            });
-                        self.active_listeners
-                            .entry(criterion_def.trigger)
-                            .or_default()
-                            .push(ActiveCriterionListener {
-                                advancement,
-                                criterion: criterion_def.name,
-                                conditions,
-                            });
-                    }
-                }
+        let tree = self.tree.clone();
+        let Some(entry) = tree.get(&advancement.id) else {
+            return;
+        };
+        let progress = self.progress.map.get(advancement);
+        if progress.is_some_and(AdvancementProgress::is_done) {
+            return;
+        }
+        for (criterion_def, conditions) in advancement
+            .criteria_definitions
+            .iter()
+            .zip(entry.conditions.iter())
+        {
+            if progress.is_some_and(|progress| progress.is_criterion_done(criterion_def.name)) {
+                continue;
             }
-        } else {
-            // Not in progress map means 0 criteria completed: register all criteria
-            for criterion_def in advancement.criteria_definitions {
-                let conditions = VANILLA_CONDITIONS_CACHE
-                    .get(&(advancement, criterion_def.name))
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        Arc::new(predicate::CriterionConditions::from(
-                            criterion_def.conditions,
-                        ))
-                    });
-                self.active_listeners
-                    .entry(criterion_def.trigger)
-                    .or_default()
-                    .push(ActiveCriterionListener {
-                        advancement,
-                        criterion: criterion_def.name,
-                        conditions,
-                    });
-            }
+            self.active_listeners
+                .entry(criterion_def.trigger)
+                .or_default()
+                .push(ActiveCriterionListener {
+                    advancement,
+                    criterion: criterion_def.name,
+                    conditions: conditions.clone(),
+                });
         }
     }
 
@@ -451,8 +425,10 @@ impl PlayerAdvancement {
         self.manager.save_enabled
     }
 
-    ///reload the advancements from the file
-    pub fn reload(&mut self) -> Result<(), AdvancementDataError> {
+    /// Vanilla `PlayerAdvancements.reload` after `PlayerList.saveAll`: the progress starts over
+    /// against the server's current advancements, from what the player had made so far.
+    pub fn reload(&mut self) {
+        let saved = serde_json::to_value(&*self).ok();
         self.active_listeners.clear();
         self.progress.clear();
         self.visible.clear();
@@ -460,7 +436,16 @@ impl PlayerAdvancement {
         self.progress_changed.clear();
         self.is_first_packet = true;
         self.last_selected_tab = None;
-        self.load()
+        self.tree = self.manager.advancements();
+        if let Some(serde_json::Value::Object(saved)) = saved
+            && let Err(err) = self.apply_from(saved)
+        {
+            error!(
+                "Couldn't reload player advancements in {}: {err}",
+                self.path.display()
+            );
+        }
+        self.register_all_listeners();
     }
 
     /// Saves the player's advancement progress to disk as JSON.
@@ -495,13 +480,23 @@ impl PlayerAdvancement {
             serde_json::from_slice(&json).map_err(AdvancementDataError::Json)?;
 
         self.progress.clear();
+        self.apply_from(loaded_data)?;
+        self.register_all_listeners();
+        Ok(())
+    }
+
+    /// Vanilla `PlayerAdvancements.applyFrom`.
+    fn apply_from(
+        &mut self,
+        loaded_data: serde_json::Map<String, serde_json::Value>,
+    ) -> Result<(), AdvancementDataError> {
         for (advancement_id, progress) in loaded_data {
             if advancement_id == "DataVersion" {
                 continue;
             }
             let mut progress =
                 AdvancementProgress::deserialize(progress).map_err(AdvancementDataError::Json)?;
-            if let Some(advancement_ref) = Advancement::from_minecraft_name(&advancement_id) {
+            if let Some(advancement_ref) = self.tree.get_by_name(&advancement_id) {
                 progress.update(AdvancementRequirement::from_const(
                     advancement_ref.requirements,
                 ));
@@ -509,40 +504,43 @@ impl PlayerAdvancement {
                 self.progress_changed.insert(advancement_ref);
                 self.mark_for_visibility_update(advancement_ref);
             } else {
-                warn!("The Advancement name {} is invalid", advancement_id);
+                warn!(
+                    "Ignored advancement '{advancement_id}' in progress file {} - it doesn't exist anymore?",
+                    self.path.display()
+                );
             }
         }
-        self.register_all_listeners();
         Ok(())
     }
 
     fn mark_for_visibility_update(&mut self, advancement: &'static Advancement) {
-        let node = ADVANCEMENT_TREE.get_node_from_id(&advancement.id);
-        if let Some(node) = node {
-            self.roots_to_update.insert(node.root());
+        if let Some(node) = self.tree.node_of(&advancement.id) {
+            self.roots_to_update.insert(self.tree.root(node));
         }
     }
 
     fn update_tree_visibility(
         &mut self,
-        root: &AdvancementNode,
-        added: &mut Vec<&'static Advancement>,
+        root: usize,
+        added: &mut Vec<usize>,
         removed: &mut Vec<Identifier>,
     ) {
+        let tree = self.tree.clone();
         visibility_evaluator::evaluate_visibility(
+            &tree,
             root,
             self,
             &mut |player_advancement, node| {
                 player_advancement
                     .progress
-                    .get_mut_or_start_progress(node.value)
+                    .get_mut_or_start_progress(tree.node_advancement(node))
                     .is_done()
             },
-            &mut move |player_advancement, node, should_be_visible| {
-                let advancement = node.value;
+            &mut |player_advancement, node, should_be_visible| {
+                let advancement = tree.node_advancement(node);
                 if should_be_visible {
                     if player_advancement.visible.insert(advancement) {
-                        added.push(advancement);
+                        added.push(node);
                         if player_advancement.progress.map.contains_key(advancement) {
                             player_advancement.progress_changed.insert(advancement);
                         }
@@ -561,7 +559,7 @@ impl PlayerAdvancement {
             || !self.progress_changed.is_empty()
         {
             let mut progress: HashMap<Identifier, &AdvancementProgress> = HashMap::new();
-            let mut added: Vec<&Advancement> = Vec::new();
+            let mut added: Vec<usize> = Vec::new();
             let mut removed: Vec<Identifier> = Vec::new();
             for root in self.roots_to_update.clone() {
                 self.update_tree_visibility(root, &mut added, &mut removed);
@@ -591,6 +589,14 @@ impl PlayerAdvancement {
                             .collect(),
                     })
                     .collect();
+                let added = added
+                    .into_iter()
+                    .map(|node| PositionedAdvancement {
+                        advancement: self.tree.node_advancement(node),
+                        x: self.tree.node(node).x,
+                        y: self.tree.node(node).y,
+                    })
+                    .collect();
                 player.try_send_client_packet(&CUpdateAdvancements::new(
                     self.is_first_packet,
                     added,
@@ -603,10 +609,69 @@ impl PlayerAdvancement {
         self.is_first_packet = false;
     }
 
-    /// Grants the rewards (like experience) associated with completing an advancement.
-    pub fn grant_reward(player: &Arc<Player>, reward: &'static AdvancementReward) {
+    /// Vanilla `AdvancementRewards.grant`.
+    pub fn grant_reward(player: &Arc<Player>, advancement: &'static Advancement) {
+        let reward = advancement.reward;
         player.add_experience_points(reward.experience);
+        let server = player.world().server.upgrade();
+        let entry = server.as_ref().and_then(|server| {
+            server
+                .advancement_manager
+                .advancements()
+                .get(&advancement.id)
+                .cloned()
+        });
+        if let (Some(server), Some(entry)) = (&server, &entry) {
+            Self::grant_loot(player, server, &entry.loot);
+        }
         player.award_recipes(reward.recipes);
+        if let (Some(server), Some(function)) = (&server, entry.and_then(|entry| entry.function)) {
+            let mut source = player.get_command_source(server).with_silent();
+            source.permission_level = Some(PermissionLvl::Two);
+            if let Err(err) = server
+                .datapack_manager
+                .execute_function(server, &source, &function)
+            {
+                warn!(
+                    "Couldn't run reward function {function} of {}: {err}",
+                    advancement.id
+                );
+            }
+        }
+    }
+
+    /// The `loot` part of vanilla `AdvancementRewards.grant`.
+    fn grant_loot(player: &Arc<Player>, server: &crate::server::Server, loot: &[String]) {
+        let world = player.world();
+        let position = player.position();
+        for table in loot {
+            let Some(table) = server.datapack_manager.get_loot_table(table) else {
+                continue;
+            };
+            let params = crate::world::loot::LootContextParameters {
+                world: Some(&world),
+                this_entity: Some(player.as_ref()),
+                position: Some(position),
+                ..Default::default()
+            };
+            for mut stack in crate::world::loot::generate_loot_from_handle(&table, 0, &params) {
+                player.inventory().insert_stack_anywhere(&mut stack);
+                if stack.is_empty() {
+                    let random = game_random();
+                    let pitch =
+                        ((random.random::<f32>() - random.random::<f32>()) * 0.7 + 1.0) * 2.0;
+                    world.play_sound_fine(
+                        Sound::EntityItemPickup,
+                        SoundCategory::Players,
+                        &position,
+                        0.2,
+                        pitch,
+                    );
+                } else {
+                    player.drop_item(stack);
+                }
+            }
+        }
     }
 
     /// Records a criterion award while the player's advancement state is locked.
@@ -662,7 +727,7 @@ impl PlayerAdvancement {
                 );
             server.plugin_manager.fire_blocking(&server, &mut event);
         }
-        Self::grant_reward(player, advancement.reward);
+        Self::grant_reward(player, advancement);
         if let Some(display) = advancement.display
             && display.announce_to_chat
             && player

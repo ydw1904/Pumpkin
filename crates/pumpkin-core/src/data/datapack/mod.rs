@@ -401,23 +401,13 @@ impl DatapackManager {
         })
     }
 
-    pub fn get_advancement(
-        &self,
-        id: &str,
-    ) -> Option<advancement_loader::DynamicAdvancementDefinition> {
+    /// The advancement definitions of the enabled packs by id, the highest pack's for each.
+    pub fn advancement_definitions(&self) -> HashMap<String, serde_json::Value> {
         self.advancements
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .get(id)
-            .cloned()
-    }
-
-    pub fn get_advancement_ids(&self) -> Vec<String> {
-        self.advancements
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .keys()
-            .cloned()
+            .iter()
+            .map(|(id, definition)| (id.clone(), definition.json.clone()))
             .collect()
     }
 

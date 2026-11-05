@@ -1,17 +1,15 @@
-use crate::entity::player::advancement::predicate::CriterionConditions;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use std::sync::Arc;
 use tracing::warn;
 
-/// A parsed dynamic advancement definition from a datapack with pre-parsed criteria.
+/// An advancement definition from a datapack, built by
+/// [`crate::data::advancement_tree::ServerAdvancements`].
 #[derive(Clone, Debug)]
 pub struct DynamicAdvancementDefinition {
     pub id: String,
-    pub json: String,
-    pub criteria: HashMap<String, (String, Arc<CriterionConditions>)>,
+    pub json: Value,
 }
 
 /// Loads all advancement JSON files from a directory recursively into `registry`.
@@ -54,30 +52,10 @@ fn load_advancements_recursive<S: std::hash::BuildHasher>(
             let adv_id = format!("{namespace}:{stem_path}");
 
             if let Ok(content) = fs::read_to_string(&path) {
-                if let Ok(val) = serde_json::from_str::<Value>(&content) {
-                    let mut criteria = HashMap::new();
-                    if let Some(crit_obj) = val.get("criteria").and_then(Value::as_object) {
-                        for (name, c_val) in crit_obj {
-                            let trigger = c_val
-                                .get("trigger")
-                                .and_then(Value::as_str)
-                                .unwrap_or("")
-                                .to_string();
-                            let cond_str = c_val
-                                .get("conditions")
-                                .map_or_else(|| "{}".to_string(), ToString::to_string);
-                            let parsed = Arc::new(CriterionConditions::parse(&trigger, &cond_str));
-                            criteria.insert(name.clone(), (trigger, parsed));
-                        }
-                    }
-
+                if let Ok(json) = serde_json::from_str::<Value>(&content) {
                     registry.insert(
                         adv_id.clone(),
-                        DynamicAdvancementDefinition {
-                            id: adv_id,
-                            json: content,
-                            criteria,
-                        },
+                        DynamicAdvancementDefinition { id: adv_id, json },
                     );
                 } else {
                     warn!("Failed to parse advancement JSON at {}", path.display());

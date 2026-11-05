@@ -1,6 +1,7 @@
+use crate::data::advancement_tree::ServerAdvancements;
 use crate::entity::player::Player;
 use crate::entity::player::advancement::{AdvancementDataError, PlayerAdvancement};
-use pumpkin_data::Advancement;
+use arc_swap::ArcSwap;
 use pumpkin_util::identifier::Identifier;
 use std::fs::create_dir_all;
 use std::path::PathBuf;
@@ -13,6 +14,7 @@ use uuid::Uuid;
 pub struct AdvancementManager {
     pub advancement_path: PathBuf,
     pub save_enabled: bool,
+    advancements: ArcSwap<ServerAdvancements>,
 }
 
 impl AdvancementManager {
@@ -30,14 +32,30 @@ impl AdvancementManager {
         Self {
             advancement_path: path,
             save_enabled,
+            advancements: ArcSwap::from_pointee(ServerAdvancements::default()),
         }
     }
 
-    /// Retrieves the list of all available advancements in the game.
+    /// The advancements of the enabled datapacks (vanilla `MinecraftServer.getAdvancements`).
     #[must_use]
-    #[inline]
+    pub fn advancements(&self) -> Arc<ServerAdvancements> {
+        self.advancements.load_full()
+    }
+
+    /// Replaces the advancements after a datapack reload. Players keep the ones they have
+    /// until [`PlayerAdvancement::reload`].
+    pub fn set_advancements(&self, advancements: ServerAdvancements) {
+        self.advancements.store(Arc::new(advancements));
+    }
+
+    /// The ids of every advancement.
+    #[must_use]
     pub fn get_advancements(&self) -> Vec<Identifier> {
-        Advancement::get_identifier_list().to_vec()
+        self.advancements()
+            .entries()
+            .iter()
+            .map(|entry| entry.advancement.id.clone())
+            .collect()
     }
 
     /// Creates and returns a new instance of `PlayerAdvancement` with the configured path.

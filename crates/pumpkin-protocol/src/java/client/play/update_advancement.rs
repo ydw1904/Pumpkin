@@ -10,11 +10,19 @@ use crate::ClientPacket;
 use crate::ser::NetworkWriteExt;
 use pumpkin_util::version::JavaMinecraftVersion;
 
+/// Vanilla `ClientboundUpdateAdvancementsPacket.PositionedAdvancement`: an advancement with its
+/// place in the advancement tree.
+pub struct PositionedAdvancement {
+    pub advancement: &'static Advancement,
+    pub x: f32,
+    pub y: f32,
+}
+
 #[java_packet(UPDATE_ADVANCEMENTS)]
 #[allow(unused)]
 pub struct CUpdateAdvancements {
     pub reset: bool,
-    pub added: Vec<&'static Advancement>,
+    pub added: Vec<PositionedAdvancement>,
     pub removed: Vec<Identifier>,
     pub progress: Vec<AdvancementProgressData>,
     pub show_advancements: bool,
@@ -25,7 +33,7 @@ impl CUpdateAdvancements {
     #[allow(unused)]
     pub const fn new(
         reset: bool,
-        added: Vec<&'static Advancement>,
+        added: Vec<PositionedAdvancement>,
         progress: Vec<AdvancementProgressData>,
         removed: Vec<Identifier>,
         show_advancements: bool,
@@ -49,7 +57,8 @@ impl ClientPacket for CUpdateAdvancements {
         write.write_bool(self.reset)?;
 
         write.write_var_int(&VarInt(self.added.len() as i32))?;
-        for adv in &self.added {
+        for positioned in &self.added {
+            let adv = positioned.advancement;
             write.write_string(&adv.id.to_string())?;
 
             let has_parent = adv.parent.is_some();
@@ -77,8 +86,8 @@ impl ClientPacket for CUpdateAdvancements {
                     write.write_string(bg)?;
                 }
                 if *version < JavaMinecraftVersion::V_26_3 {
-                    write.write_f32_be(display.x)?;
-                    write.write_f32_be(display.y)?;
+                    write.write_f32_be(positioned.x)?;
+                    write.write_f32_be(positioned.y)?;
                 }
             }
 
@@ -104,9 +113,8 @@ impl ClientPacket for CUpdateAdvancements {
             // Since 26.3 the position in the advancement tree is sent per advancement instead of
             // being part of its display.
             if *version >= JavaMinecraftVersion::V_26_3 {
-                let (x, y) = adv.display.map_or((0.0, 0.0), |d| (d.x, d.y));
-                write.write_f32_be(x)?;
-                write.write_f32_be(y)?;
+                write.write_f32_be(positioned.x)?;
+                write.write_f32_be(positioned.y)?;
             }
         }
 

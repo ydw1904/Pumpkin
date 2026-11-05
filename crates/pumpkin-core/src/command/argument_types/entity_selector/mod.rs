@@ -10,7 +10,6 @@ use crate::entity::EntityBase;
 use crate::entity::living::LivingEntity;
 use crate::entity::player::Player;
 use crate::world::World;
-use pumpkin_data::Advancement;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::tag::Taggable;
 use pumpkin_nbt::compound::NbtCompound;
@@ -561,8 +560,16 @@ impl EntitySelectorPredicate {
                 let Some(player) = entity.get_player() else {
                     return false;
                 };
+                let advancements = player
+                    .world()
+                    .server
+                    .upgrade()
+                    .map(|server| server.advancement_manager.advancements());
                 for (adv_id, expected_done) in advancements_map {
-                    if let Some(advancement) = Advancement::from_name(adv_id) {
+                    if let Some(advancement) = advancements
+                        .as_ref()
+                        .and_then(|advancements| advancements.get_by_name(adv_id))
+                    {
                         let is_done = player.has_advancement(advancement);
                         if is_done != *expected_done {
                             return false;

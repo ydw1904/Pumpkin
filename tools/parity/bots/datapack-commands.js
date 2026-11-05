@@ -2,7 +2,9 @@
 // component tests, /particle options, display entity NBT (matrix transformations, partial
 // transformations, brightness), selector scores without a score, rotations given to command
 // sources (rotated as, facing), SelectedItem in player NBT, /schedule with function tags and the
-// tags sent to players after a reload.
+// tags sent to players after a reload, and datapack advancements (added, overriding a built-in
+// one, out of the tree; reward functions; the reset sent on reload). An advancement that fails to
+// parse makes vanilla fail the whole reload, so the unit tests cover that instead.
 const fs = require('fs')
 const path = require('path')
 const { make } = require('./survival-lib')
@@ -30,6 +32,16 @@ const plain = (t) => {
 bot._client.on('system_chat', (p) => { if (!p.isActionBar) msgs.push(flat(plain(p.content))) })
 const tagPackets = []
 bot._client.on('tags', (p) => tagPackets.push(p))
+const advPackets = []
+bot._client.on('advancements', (p) => advPackets.push(p))
+const advIds = (packets) => packets.flatMap(p => p.advancementMapping.map(a => a.key))
+const advEntry = (packets, id) => {
+  for (const p of packets) {
+    const a = p.advancementMapping.find(a => a.key === id)
+    if (a) return a.value
+  }
+  return undefined
+}
 const blockTag = (p, name) => {
   const block = p.tags.find(t => t.tagType === 'minecraft:block')
   const tag = block && block.tags.find(t => t.tagName === name)
@@ -57,13 +69,36 @@ h.start(async () => {
   fs.writeFileSync(path.join(pack, 'data', 'p', 'function', 'mark.mcfunction'), 'scoreboard players add #mark dp 1\n')
   fs.writeFileSync(path.join(pack, 'data', 'p', 'function', 'macro.mcfunction'), '$say $(x)\n')
   fs.writeFileSync(path.join(pack, 'data', 'p', 'tags', 'function', 'marks.json'), JSON.stringify({ values: ['p:mark'] }))
+  const adv = path.join(pack, 'data', 'p', 'advancement')
+  fs.mkdirSync(adv, { recursive: true })
+  fs.mkdirSync(path.join(pack, 'data', 'minecraft', 'advancement', 'story'), { recursive: true })
+  fs.writeFileSync(path.join(adv, 'root.json'), JSON.stringify({
+    display: { icon: { id: 'minecraft:stick' }, title: 'Parity root', description: 'tab', background: 'minecraft:block/stone', show_toast: false, announce_to_chat: false },
+    criteria: { tick: { trigger: 'minecraft:tick' } }
+  }))
+  fs.writeFileSync(path.join(adv, 'child.json'), JSON.stringify({
+    parent: 'p:root',
+    display: { icon: 'minecraft:diamond', title: { text: 'Parity child' }, description: 'granted', frame: 'goal' },
+    criteria: { a: { trigger: 'minecraft:impossible' }, b: { trigger: 'minecraft:impossible' } },
+    requirements: [['a', 'b']],
+    rewards: { function: 'p:reward', experience: 3 }
+  }))
+  fs.writeFileSync(path.join(adv, 'orphan.json'), JSON.stringify({ parent: 'p:nope', criteria: { a: { trigger: 'minecraft:impossible' } } }))
+  fs.writeFileSync(path.join(pack, 'data', 'minecraft', 'advancement', 'story', 'mine_stone.json'), JSON.stringify({
+    parent: 'minecraft:story/root',
+    display: { icon: 'minecraft:cobblestone', title: 'Overridden', description: 'x' },
+    criteria: { x: { trigger: 'minecraft:impossible' } }
+  }))
+  fs.writeFileSync(path.join(pack, 'data', 'p', 'function', 'reward.mcfunction'), 'scoreboard players add #reward dp 1\n')
 
   await h.arena(X, Y, Z, 6)
   h.cmd(`gamemode creative ${bot.username}`)
   await h.ticks(10)
-  await run('reload', 40)
+  // Count what the reload and the enable send.
   tagPackets.length = 0
-  await run('datapack enable "file/parity_dp"', 40)
+  advPackets.length = 0
+  await run('reload', 40)
+  h.result('enable_after_reload', await run('datapack enable "file/parity_dp"', 40))
   // PlayerList.reloadResources sends the reloaded tags to every player.
   const reloaded = tagPackets[tagPackets.length - 1]
   h.result('reload_tags_sent', String(tagPackets.length))
@@ -71,6 +106,28 @@ h.start(async () => {
   h.result('reload_tags_replaced', reloaded ? blockTag(reloaded, 'minecraft:logs') : 'none')
   await run('scoreboard objectives add dp dummy')
   const y = Y + 1
+
+  // Datapack advancements: PlayerAdvancements.reload resends everything with reset set.
+  h.result('adv_reset_sent', String(advPackets.some(p => p.reset)))
+  await h.ticks(40)
+  const ids = advIds(advPackets)
+  h.result('adv_root_visible', String(ids.includes('p:root')))
+  h.result('adv_child_visible', String(ids.includes('p:child')))
+  const child = advEntry(advPackets, 'p:child')
+  h.result('adv_child_parent', child ? String(child.parentId) : 'none')
+  h.result('adv_child_requirements', child ? JSON.stringify(child.requirements) : 'none')
+  const stone = advEntry(advPackets, 'minecraft:story/mine_stone')
+  h.result('adv_override_requirements', stone ? JSON.stringify(stone.requirements) : 'none')
+  h.result('adv_grant_child', await run(`advancement grant ${bot.username} only p:child a`))
+  h.result('adv_reward_ran', await run('scoreboard players get #reward dp'))
+  h.result('adv_grant_child_again', await run(`advancement grant ${bot.username} only p:child`))
+  h.result('adv_grant_orphan', await run(`advancement grant ${bot.username} only p:orphan`))
+  h.result('adv_override_old_criterion', await run(`advancement grant ${bot.username} only minecraft:story/mine_stone get_stone`))
+  h.result('adv_from_root', await run(`advancement revoke ${bot.username} from p:root`))
+  // Progress survives a reload.
+  await run(`advancement grant ${bot.username} only p:child`)
+  await run('reload', 40)
+  h.result('adv_kept_after_reload', await run(`advancement grant ${bot.username} only p:child`))
 
   // Block predicates with datapack tags: a new tag, one nesting another, an extended vanilla
   // tag and a replaced one.

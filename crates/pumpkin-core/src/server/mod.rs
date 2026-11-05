@@ -2,6 +2,7 @@ use crate::block::registry::BlockRegistry;
 use crate::command::commands::default_dispatcher;
 use crate::command::commands::defaultgamemode::DefaultGamemode;
 use crate::data::VanillaData;
+use crate::data::advancement_tree::ServerAdvancements;
 use crate::data::datapack::DatapackManager;
 use crate::data::player_server::ServerPlayerData;
 use crate::entity::NBTStorage;
@@ -772,6 +773,10 @@ impl Server {
                     .map_err(|error| error.message.get_text())
             },
         );
+        self.advancement_manager
+            .set_advancements(ServerAdvancements::new(
+                &self.datapack_manager.advancement_definitions(),
+            ));
     }
 
     pub fn reload_datapacks(&self, server: &Arc<Self>) {
@@ -784,6 +789,13 @@ impl Server {
 
         // `PlayerList.reloadResources`.
         let players = self.get_all_players();
+        for player in &players {
+            player
+                .advancements
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .reload();
+        }
         let tags = DatapackManager::network_tag_keys();
         let block_tags = self.datapack_manager.datapack_block_tags();
         let tags_packet = CUpdateTagsPlay::new(&tags).with_block_tags(&block_tags);
