@@ -25,6 +25,8 @@ use crate::entity::{
             self, ObtainRaidLeaderBannerGoal, PathfindToRaidGoal, Raider, RaiderCelebrationGoal,
             RaiderData, RaiderMoveThroughVillageGoal,
         },
+        spawn::{EntitySpawnReason, finalize_spawn},
+        vex::VexEntity,
     },
     projectile::evoker_fangs::EvokerFangsEntity,
     r#type::from_type,
@@ -470,19 +472,30 @@ impl Goal for EvokerSummonSpellGoal {
             let evoker_ent = &evoker.mob_entity.living_entity.entity;
             evoker_ent.play_sound(Sound::EntityEvokerCastSpell);
 
-            let world = evoker_ent.world.load();
-            let evoker_pos = evoker_ent.pos.load();
+            let world = evoker_ent.world.load_full();
+            let evoker_pos = evoker_ent.block_pos.load();
+            let evoker_team = (evoker.as_ref() as &dyn EntityBase).get_team_name();
 
             for _ in 0..3 {
-                let offset_x = (game_random().random::<i32>() % 5 - 2) as f64;
-                let offset_z = (game_random().random::<i32>() % 5 - 2) as f64;
+                let rng = evoker.get_random();
+                let x = -2 + rng.random_range(0..5);
+                let z = -2 + rng.random_range(0..5);
+                let pos = evoker_pos.offset(Vector3::new(x, 1, z));
                 let spawn_pos = Vector3::new(
-                    evoker_pos.x + offset_x,
-                    evoker_pos.y + 1.0,
-                    evoker_pos.z + offset_z,
+                    f64::from(pos.0.x) + 0.5,
+                    f64::from(pos.0.y),
+                    f64::from(pos.0.z) + 0.5,
                 );
-
                 let vex = from_type(&EntityType::VEX, spawn_pos, &world, Uuid::new_v4());
+                finalize_spawn(&vex, &world, EntitySpawnReason::MobSummoned, None);
+                if let Some(vex) = vex.cast_any().downcast_ref::<VexEntity>() {
+                    vex.set_owner(evoker_ent);
+                    vex.set_bound_origin(Some(pos));
+                    vex.set_limited_life(20 * (30 + rng.random_range(0..90)));
+                }
+                if let Some(team) = &evoker_team {
+                    vex.get_entity().join_team(team);
+                }
                 world.spawn_entity(vex);
             }
         }
