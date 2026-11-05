@@ -37,7 +37,7 @@ impl RunFunction {
         };
 
         let rotation = entity.map_or_else(Vector2::default, |e| {
-            Vector2::new(e.yaw.load(), e.pitch.load())
+            Vector2::new(e.pitch.load(), e.yaw.load())
         });
 
         let source = owner.map_or_else(

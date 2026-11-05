@@ -336,21 +336,29 @@ fn convert_local_coordinates(
     forward: f64,
     rotation: Vector2<f32>,
 ) -> Vector3<f64> {
+    use pumpkin_util::math::{cos, sin};
+
     let pitch = rotation.x;
     let yaw = rotation.y;
+    // Vanilla `LocalCoordinates.apply`: `Mth` lookup tables and float products.
+    let to_radians = (std::f64::consts::PI / 180.0) as f32;
+    let y_cos = cos((yaw + 90.0) * to_radians);
+    let y_sin = sin((yaw + 90.0) * to_radians);
+    let x_cos = cos(-pitch * to_radians);
+    let x_sin = sin(-pitch * to_radians);
+    let x_up_cos = cos((-pitch + 90.0) * to_radians);
+    let x_up_sin = sin((-pitch + 90.0) * to_radians);
 
-    let y = (yaw + 90.0).to_radians() as f64;
-    let y_cos = y.cos();
-    let y_sin = y.sin();
-    let x = (-pitch).to_radians() as f64;
-    let x_cos = x.cos();
-    let x_sin = x.sin();
-    let x_up = (-pitch + 90.0).to_radians() as f64;
-    let x_up_cos = x_up.cos();
-    let x_up_sin = x_up.sin();
-
-    let forward_vector = Vector3::new(y_cos * x_cos, x_sin, y_sin * x_cos);
-    let up_vector = Vector3::new(y_cos * x_up_cos, x_up_sin, y_sin * x_up_cos);
+    let forward_vector = Vector3::new(
+        f64::from(y_cos * x_cos),
+        f64::from(x_sin),
+        f64::from(y_sin * x_cos),
+    );
+    let up_vector = Vector3::new(
+        f64::from(y_cos * x_up_cos),
+        f64::from(x_up_sin),
+        f64::from(y_sin * x_up_cos),
+    );
     let left_vector = forward_vector.cross(&up_vector) * -1.0;
 
     Vector3::new(

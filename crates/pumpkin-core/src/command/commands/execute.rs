@@ -65,6 +65,7 @@ use crate::entity::mob::spawn::finalize_spawn;
 use crate::entity::r#type::from_type;
 use crate::world::scoreboard::Scoreboard;
 use crate::world::stopwatches::Stopwatches;
+use pumpkin_command::source::CommandSource as _;
 use pumpkin_data::Block;
 use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::item_stack::ItemStack;
@@ -77,6 +78,8 @@ use pumpkin_util::PermissionLvl;
 use pumpkin_util::identifier::Identifier;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector2::Vector2;
+use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::math::{atan2, wrap_degrees};
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
 use std::sync::Arc;
@@ -129,7 +132,7 @@ fn execute_at_modifier(context: &CommandContext) -> crate::command::node::Redire
         let entity = target.get_entity();
         let mut source = context.source.as_ref().clone();
         source.position = entity.pos.load();
-        source.rotation = Vector2::new(entity.yaw.load(), entity.pitch.load());
+        source.rotation = Vector2::new(entity.pitch.load(), entity.yaw.load());
         source.world = Some(entity.world.load().clone());
         sources.push(Arc::new(source));
     }
@@ -215,7 +218,7 @@ fn execute_rotated_as_modifier(
     for target in targets {
         let entity = target.get_entity();
         let mut source = context.source.as_ref().clone();
-        source.rotation = Vector2::new(entity.yaw.load(), entity.pitch.load());
+        source.rotation = Vector2::new(entity.pitch.load(), entity.yaw.load());
         sources.push(Arc::new(source));
     }
     Ok(sources)
@@ -271,18 +274,30 @@ fn execute_facing_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
     let pos = Vec3ArgumentType::get_vector3(context, "pos")?;
-    let mut source = context.source.as_ref().clone();
+    Ok(vec![Arc::new(facing(context.source.as_ref(), pos))])
+}
 
-    let dx = pos.x - source.position.x;
-    let dy = pos.y - source.position.y;
-    let dz = pos.z - source.position.z;
-
-    let xz_dist = dx.hypot(dz);
-    let yaw = (dz.atan2(dx).to_degrees() as f32) - 90.0;
-    let pitch = -(dy.atan2(xz_dist).to_degrees() as f32);
-
-    source.rotation = Vector2::new(yaw, pitch);
-    Ok(vec![Arc::new(source)])
+/// Vanilla `CommandSourceStack.facing`: turns the source towards `pos` from its anchor.
+fn facing(
+    source: &crate::command::CommandSource,
+    pos: Vector3<f64>,
+) -> crate::command::CommandSource {
+    let from = source.anchor_position(source.entity_anchor);
+    let dx = pos.x - from.x;
+    let dy = pos.y - from.y;
+    let dz = pos.z - from.z;
+    #[expect(
+        clippy::imprecise_flops,
+        reason = "vanilla's `Math.sqrt(xd * xd + zd * zd)`"
+    )]
+    let horizontal = (dx * dx + dz * dz).sqrt();
+    // Java's `180.0F / (float) Math.PI` is evaluated in double precision.
+    let degrees = 180.0 / f64::from(std::f32::consts::PI);
+    let pitch = wrap_degrees((-(atan2(dy, horizontal) * degrees)) as f32);
+    let yaw = wrap_degrees((atan2(dz, dx) * degrees) as f32 - 90.0);
+    let mut source = source.clone();
+    source.rotation = Vector2::new(pitch, yaw);
+    source
 }
 
 fn execute_facing_entity_modifier(
@@ -294,18 +309,7 @@ fn execute_facing_entity_modifier(
 
     for target in targets {
         let target_pos = anchor.position_at_entity(target.get_entity());
-        let mut source = context.source.as_ref().clone();
-
-        let dx = target_pos.x - source.position.x;
-        let dy = target_pos.y - source.position.y;
-        let dz = target_pos.z - source.position.z;
-
-        let xz_dist = dx.hypot(dz);
-        let yaw = (dz.atan2(dx).to_degrees() as f32) - 90.0;
-        let pitch = -(dy.atan2(xz_dist).to_degrees() as f32);
-
-        source.rotation = Vector2::new(yaw, pitch);
-        sources.push(Arc::new(source));
+        sources.push(Arc::new(facing(context.source.as_ref(), target_pos)));
     }
     Ok(sources)
 }

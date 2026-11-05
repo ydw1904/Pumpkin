@@ -1286,7 +1286,7 @@ impl EntityBase for TextDisplayEntity {
             world,
             None,
             entity.pos.load(),
-            Vector2::new(entity.yaw.load(), entity.pitch.load()),
+            Vector2::new(entity.pitch.load(), entity.yaw.load()),
             String::new(),
             TextComponent::empty(),
             server,
