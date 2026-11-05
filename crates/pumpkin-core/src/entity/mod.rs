@@ -985,53 +985,12 @@ pub trait EntityBase: Send + Sync + std::any::Any {
     }
 
     fn push(&self, entity: &dyn EntityBase) {
-        let self_entity = self.get_entity();
-        let other_entity = entity.get_entity();
-
-        if self_entity.no_physics.load(Ordering::Relaxed)
-            || other_entity.no_physics.load(Ordering::Relaxed)
-        {
-            return;
-        }
-
-        if self_entity.has_passenger(other_entity.entity_id)
-            || other_entity.has_passenger(self_entity.entity_id)
-        {
-            return;
-        }
-
-        let mut dx = other_entity.pos.load().x - self_entity.pos.load().x;
-        let mut dz = other_entity.pos.load().z - self_entity.pos.load().z;
-        let mut d = dx.abs().max(dz.abs());
-        if d >= 0.01 {
-            d = d.sqrt();
-            dx /= d;
-            dz /= d;
-            let mut d2 = 1.0 / d;
-            if d2 > 1.0 {
-                d2 = 1.0;
-            }
-            dx *= d2;
-            dz *= d2;
-            dx *= PUSH_STRENGTH;
-            dz *= PUSH_STRENGTH;
-
-            if !self_entity.has_passengers() && self.is_pushable() {
-                let mut vel = self_entity.velocity.load();
-                vel.x -= dx;
-                vel.z -= dz;
-                self_entity.velocity.store(vel);
-                self_entity.velocity_dirty.store(true, Ordering::SeqCst);
-            }
-
-            if !other_entity.has_passengers() && entity.is_pushable() {
-                let mut vel = other_entity.velocity.load();
-                vel.x += dx;
-                vel.z += dz;
-                other_entity.velocity.store(vel);
-                other_entity.velocity_dirty.store(true, Ordering::SeqCst);
-            }
-        }
+        push_apart(
+            self.get_entity(),
+            self.is_pushable(),
+            entity.get_entity(),
+            entity.is_pushable(),
+        );
     }
 
     #[allow(clippy::too_many_lines)]
@@ -1160,6 +1119,22 @@ pub trait EntityBase: Send + Sync + std::any::Any {
     fn on_hit(&self, _hit: crate::entity::projectile::ProjectileHit) {}
 
     fn set_paddle_state(&self, _left: bool, _right: bool) {}
+
+    /// Vanilla `onAboveBubbleColumn`: touching the top block of a column.
+    fn on_above_bubble_column(&self, drag_down: bool, _pos: &BlockPos) {
+        crate::block::blocks::bubble_column::handle_on_above_bubble_column(
+            self.get_entity(),
+            drag_down,
+        );
+    }
+
+    /// Vanilla `onInsideBubbleColumn`.
+    fn on_inside_bubble_column(&self, drag_down: bool) {
+        crate::block::blocks::bubble_column::handle_on_inside_bubble_column(
+            self.get_entity(),
+            drag_down,
+        );
+    }
 
     fn is_in_love(&self) -> bool {
         false
@@ -1326,6 +1301,51 @@ const SHARED_QUAD_ATTACHMENT_POINTS: [Vector3<f64>; 4] = [
 ];
 
 /// Rotates `vector` around the Y axis.
+/// Vanilla `Entity.push(Entity)`: moves `this` and `other` apart, each only when it is pushable
+/// and carries no passengers.
+pub(crate) fn push_apart(this: &Entity, this_pushable: bool, other: &Entity, other_pushable: bool) {
+    if this.no_physics.load(Ordering::Relaxed) || other.no_physics.load(Ordering::Relaxed) {
+        return;
+    }
+
+    if this.has_passenger(other.entity_id) || other.has_passenger(this.entity_id) {
+        return;
+    }
+
+    let mut dx = other.pos.load().x - this.pos.load().x;
+    let mut dz = other.pos.load().z - this.pos.load().z;
+    let mut d = dx.abs().max(dz.abs());
+    if d >= 0.01 {
+        d = d.sqrt();
+        dx /= d;
+        dz /= d;
+        let mut d2 = 1.0 / d;
+        if d2 > 1.0 {
+            d2 = 1.0;
+        }
+        dx *= d2;
+        dz *= d2;
+        dx *= PUSH_STRENGTH;
+        dz *= PUSH_STRENGTH;
+
+        if !this.has_passengers() && this_pushable {
+            let mut vel = this.velocity.load();
+            vel.x -= dx;
+            vel.z -= dz;
+            this.velocity.store(vel);
+            this.velocity_dirty.store(true, Ordering::SeqCst);
+        }
+
+        if !other.has_passengers() && other_pushable {
+            let mut vel = other.velocity.load();
+            vel.x += dx;
+            vel.z += dz;
+            other.velocity.store(vel);
+            other.velocity_dirty.store(true, Ordering::SeqCst);
+        }
+    }
+}
+
 fn y_rot(vector: Vector3<f64>, angle: f32) -> Vector3<f64> {
     let cos = f64::from(angle.cos());
     let sin = f64::from(angle.sin());

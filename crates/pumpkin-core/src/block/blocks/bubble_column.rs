@@ -14,6 +14,7 @@ use crate::block::{
     BlockBehaviour, BlockMetadata, GetStateForNeighborUpdateArgs, OnEntityCollisionArgs,
     OnNeighborUpdateArgs, OnScheduledTickArgs, PlacedArgs,
 };
+use crate::entity::Entity;
 use crate::world::World;
 
 /// Vanilla `BubbleColumnBlock.CHECK_PERIOD`.
@@ -156,16 +157,31 @@ fn bubble_column_vertical_velocity(
     }
 }
 
-fn bubble_column_velocity(
-    current: Vector3<f64>,
-    kind: BubbleColumnKind,
-    at_surface: bool,
-) -> Vector3<f64> {
-    Vector3::new(
+fn apply_bubble_column_velocity(entity: &Entity, kind: BubbleColumnKind, at_surface: bool) {
+    let current = entity.velocity.load();
+    entity.velocity.store(Vector3::new(
         current.x,
         bubble_column_vertical_velocity(current.y, kind, at_surface),
         current.z,
-    )
+    ));
+}
+
+const fn kind_of(drag_down: bool) -> BubbleColumnKind {
+    if drag_down {
+        BubbleColumnKind::Downward
+    } else {
+        BubbleColumnKind::Upward
+    }
+}
+
+/// Vanilla `Entity.handleOnAboveBubbleColumn`.
+pub(crate) fn handle_on_above_bubble_column(entity: &Entity, drag_down: bool) {
+    apply_bubble_column_velocity(entity, kind_of(drag_down), true);
+}
+
+/// Vanilla `Entity.handleOnInsideBubbleColumn`.
+pub(crate) fn handle_on_inside_bubble_column(entity: &Entity, drag_down: bool) {
+    apply_bubble_column_velocity(entity, kind_of(drag_down), false);
 }
 
 impl BlockBehaviour for BubbleColumnBlock {
@@ -175,14 +191,12 @@ impl BlockBehaviour for BubbleColumnBlock {
                 return;
             }
 
-            let kind = kind_from_state(args.state.id);
-            let at_surface = args.world.get_block(&args.position.up()) == &Block::AIR;
-            let entity = args.entity.get_entity();
-            entity.velocity.store(bubble_column_velocity(
-                entity.velocity.load(),
-                kind,
-                at_surface,
-            ));
+            let drag_down = kind_from_state(args.state.id) == BubbleColumnKind::Downward;
+            if args.world.get_block(&args.position.up()) == &Block::AIR {
+                args.entity.on_above_bubble_column(drag_down, args.position);
+            } else {
+                args.entity.on_inside_bubble_column(drag_down);
+            }
 
             if let Some(player) = args.entity.get_player() {
                 player.breath_manager.reset(player);
