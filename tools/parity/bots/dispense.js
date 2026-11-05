@@ -39,6 +39,14 @@ const fire = async (key, items, opts = {}) => {
   if (opts.below) await place(x + 1, y - 1, z, opts.below)
   if (opts.front) await place(x + 1, y, z, opts.front)
   if (opts.target) await place(x + 2, y, z, opts.target)
+  // A mob in front, for shears; NoAI keeps it on its block.
+  if (opts.mob) {
+    // The last lane's mob drops random loot when its death animation ends.
+    await h.ticks(25)
+    h.cmd(`kill @e[type=item,distance=..40,x=${X},y=${Y},z=${Z}]`)
+    h.cmd(`summon ${opts.mob} ${x + 1.5} ${y} ${z + 0.5} {NoAI:1b}`)
+    await h.ticks(5)
+  }
   await place(x, y, z, `${block}[facing=${opts.facing || 'east'}]`)
   items.forEach((it, i) => h.cmd(`item replace block ${x} ${y} ${z} container.${i} with ${it[0]}${it[2] ? `[${it[2]}]` : ''} ${it[1]}`))
   await h.ticks(2)
@@ -46,7 +54,10 @@ const fire = async (key, items, opts = {}) => {
   await h.ticks(opts.wait || 10)
   const front = h.block(x + 1, y, z)
   // Fast or short-lived entities may already be gone; their lanes only report what was used up.
-  const seen = `front=${front ? front.name : 'unloaded'}` + (opts.projectile ? '' : ` entities=${near(x + 1, y, z)}`)
+  // Shearing loot is random (bogged mushroom colours, wool counts), so `kinds` lists each
+  // entity kind once and the drops as one `item`.
+  const entities = opts.kinds ? [...new Set(near(x + 1, y, z).split(',').map(n => (n.startsWith('item:') ? 'item' : n)))].join(',') : near(x + 1, y, z)
+  const seen = `front=${front ? front.name : 'unloaded'}` + (opts.projectile ? '' : ` entities=${entities}`)
   // Clear placed fluids and fire before they reach other lanes.
   if (!opts.keepFront) {
     h.cmd(`fill ${x + 1} ${y} ${z - 1} ${x + 3} ${y + 1} ${z + 1} air`)
@@ -91,7 +102,11 @@ h.start(async () => {
   await fire('glass_bottle_water', [['glass_bottle', 2]], { front: 'water' })
   await fire('carved_pumpkin_golem', [['carved_pumpkin', 1]], { front: 'air', below: 'iron_block' })
   await fire('honeycomb_copper', [['honeycomb', 2]], { front: 'copper_block' })
-  await fire('shears_sheep', [['shears', 1]], { wait: 5 })
+  await fire('shears_nothing', [['shears', 1]], { wait: 5 })
+  await fire('shears_sheep', [['shears', 1]], { wait: 5, mob: 'sheep', kinds: true })
+  await fire('shears_snow_golem', [['shears', 1]], { wait: 5, mob: 'snow_golem', kinds: true })
+  await fire('shears_bogged', [['shears', 1]], { wait: 5, mob: 'bogged', kinds: true })
+  await fire('shears_mooshroom', [['shears', 1]], { wait: 5, mob: 'mooshroom', kinds: true })
   await fire('trident', [['trident', 1]], { wait: 3, projectile: true })
   await fire('firework', [['firework_rocket', 1]], { wait: 3, projectile: true })
   await fire('wind_charge', [['wind_charge', 2]], { wait: 3, projectile: true })
