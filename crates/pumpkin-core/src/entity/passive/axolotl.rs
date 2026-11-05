@@ -1,5 +1,5 @@
 use crate::entity::r#type::CreatureSpawnLevel;
-use pumpkin_util::random::gameplay::game_random;
+use pumpkin_util::random::gameplay::GameRandom;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicBool, AtomicI32, Ordering},
@@ -22,7 +22,7 @@ use pumpkin_util::math::vector3::Vector3;
 
 use crate::entity::{
     Entity, EntityBase,
-    ageable::{AgeableData, AgeableMob},
+    ageable::{AgeableData, AgeableMob, BABY_START_AGE, DEFAULT_BABY_SPAWN_CHANCE},
     ai::brain::behavior::random_stroll,
     ai::control::{
         Control, LookControlTrait, MoveControlTrait,
@@ -39,7 +39,10 @@ use crate::entity::{
     ai::util::land_random_pos,
     area_effect_cloud::INFINITE_DURATION,
     living::LivingEntity,
-    mob::{Mob, MobEntity},
+    mob::{
+        Mob, MobEntity,
+        spawn::{EntitySpawnReason, SpawnGroupData},
+    },
     passive::animal::Animal,
     player::Player,
 };
@@ -95,21 +98,27 @@ impl AxolotlVariant {
         self as i32
     }
 
+    /// Vanilla `Variant.getCommonSpawnVariant`.
     #[must_use]
-    pub fn random_variant() -> Self {
-        let rng = game_random();
-        if rng.random_range(0..1200) == 0 {
-            Self::Blue
-        } else {
-            match rng.random_range(0..4) {
-                1 => Self::Wild,
-                2 => Self::Gold,
-                3 => Self::Cyan,
-                _ => Self::Lucy,
-            }
-        }
+    pub fn common_spawn_variant(random: GameRandom) -> Self {
+        Self::from_id(random.random_range(0..4))
+    }
+
+    /// Vanilla `Variant.getRareSpawnVariant`: blue is the only rare one.
+    #[must_use]
+    pub const fn rare_spawn_variant() -> Self {
+        Self::Blue
     }
 }
+
+/// Vanilla `Axolotl.useRareVariant`: one in this many bred babies is blue.
+const RARE_VARIANT_CHANCE: i32 = 1200;
+/// Vanilla `Axolotl.AXOLOTL_TOTAL_AIR_SUPPLY`.
+const AXOLOTL_TOTAL_AIR_SUPPLY: i32 = 6000;
+/// Vanilla `Axolotl.rehydrate`: air a water bottle splash gives back.
+const REHYDRATE_AIR_SUPPLY: i32 = 1800;
+/// Vanilla `Axolotl.handleAirSupply`: damage taken each time it dries out.
+const DRY_OUT_DAMAGE: f32 = 2.0;
 
 pub struct AxolotlEntity {
     pub mob_entity: MobEntity,
@@ -125,6 +134,14 @@ pub struct AxolotlEntity {
 
 impl AxolotlEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
+        entity
+            .air_supply
+            .store(AXOLOTL_TOTAL_AIR_SUPPLY, Ordering::Relaxed);
+        // Vanilla `Entity.defineSynchedData` defines the air supply as `getMaxAirSupply()`.
+        entity.synched_data.define(
+            pumpkin_data::tracked_data::axolotl::DATA_AIR_SUPPLY_ID,
+            VarInt(AXOLOTL_TOTAL_AIR_SUPPLY),
+        );
         // Vanilla `Axolotl.defineSynchedData`.
         entity.synched_data.define(
             pumpkin_data::tracked_data::axolotl::DATA_VARIANT,
@@ -156,11 +173,10 @@ impl AxolotlEntity {
             .navigator
             .get_mut()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = navigator;
-        let variant = AxolotlVariant::random_variant();
         let axolotl = Self {
             mob_entity,
             ageable_data: AgeableData::default(),
-            variant: AtomicI32::new(variant.id()),
+            variant: AtomicI32::new(AxolotlVariant::default().id()),
             playing_dead: AtomicBool::new(false),
             from_bucket: AtomicBool::new(false),
             play_dead_ticks: AtomicI32::new(0),
@@ -289,6 +305,28 @@ impl AxolotlEntity {
             );
         }
         living.remove_effect(&StatusEffect::MINING_FATIGUE);
+    }
+
+    /// Vanilla `Axolotl.rehydrate`, from a water bottle splash.
+    pub fn rehydrate(&self) {
+        let entity = self.get_entity();
+        let air = entity.air_supply.load(Ordering::Relaxed) + REHYDRATE_AIR_SUPPLY;
+        entity.set_air_supply(air.min(AXOLOTL_TOTAL_AIR_SUPPLY));
+    }
+
+    /// Vanilla `Axolotl.handleAirSupply`: dries out out of water and rain.
+    fn handle_air_supply(&self, pre_tick_air_supply: i32) {
+        let entity = self.get_entity();
+        let living = &self.mob_entity.living_entity;
+        if living.is_alive() && !entity.is_in_water_or_rain() {
+            entity.set_air_supply(pre_tick_air_supply - 1);
+            if living.should_take_drowning_damage() {
+                entity.set_air_supply(0);
+                self.damage(self, DRY_OUT_DAMAGE, DamageType::DRY_OUT);
+            }
+        } else {
+            entity.set_air_supply(AXOLOTL_TOTAL_AIR_SUPPLY);
+        }
     }
 
     pub fn set_from_bucket(&self, from_bucket: bool) {
@@ -677,6 +715,32 @@ impl Animal for AxolotlEntity {
             || item_stack.item == &Item::TROPICAL_FISH_BUCKET
             || item_stack.item == &Item::TROPICAL_FISH
     }
+
+    /// Vanilla `Axolotl.getBreedOffspring`: a rare blue, else either parent's variant.
+    fn get_breed_offspring(&self, partner: &dyn EntityBase) -> Arc<dyn EntityBase> {
+        let entity = self.get_entity();
+        let baby = Self::new(Entity::new(
+            entity.world.load_full(),
+            entity.pos.load(),
+            &EntityType::AXOLOTL,
+        ));
+        let random = self.get_random();
+        let variant = if random.random_range(0..RARE_VARIANT_CHANCE) == 0 {
+            AxolotlVariant::rare_spawn_variant()
+        } else if random.random::<bool>() {
+            self.get_variant()
+        } else {
+            partner
+                .cast_any()
+                .downcast_ref::<Self>()
+                .map_or_else(|| self.get_variant(), Self::get_variant)
+        };
+        baby.set_variant(variant);
+        baby.mob_entity
+            .persistence_required
+            .store(true, Ordering::Relaxed);
+        baby
+    }
 }
 
 impl Mob for AxolotlEntity {
@@ -698,6 +762,63 @@ impl Mob for AxolotlEntity {
 
     fn has_audited_tick(&self) -> bool {
         true
+    }
+
+    /// Vanilla `Axolotl.baseTick`: `LivingEntity.baseTick`'s air, then `handleAirSupply`.
+    fn base_tick(&self) {
+        let air_supply = self.get_entity().air_supply.load(Ordering::Relaxed);
+        self.mob_entity.living_entity.tick_air_supply(self);
+        if !self.mob_entity.is_no_ai() {
+            self.handle_air_supply(air_supply);
+        }
+    }
+
+    fn mob_max_air_supply(&self) -> i32 {
+        AXOLOTL_TOTAL_AIR_SUPPLY
+    }
+
+    /// Vanilla `Axolotl.finalizeSpawn`: a group shares two common variants, and the third
+    /// axolotl on is a baby. Buckets keep the variant they carry.
+    fn finalize_spawn(
+        &self,
+        _world: &Arc<World>,
+        reason: EntitySpawnReason,
+        group_data: Option<SpawnGroupData>,
+    ) -> Option<SpawnGroupData> {
+        if reason == EntitySpawnReason::Bucket {
+            return group_data;
+        }
+        let random = self.get_random();
+        let (variants, group_size) = match group_data {
+            Some(SpawnGroupData::Axolotl {
+                variants,
+                group_size,
+            }) => (variants, group_size),
+            _ => (
+                [
+                    AxolotlVariant::common_spawn_variant(random),
+                    AxolotlVariant::common_spawn_variant(random),
+                ],
+                0,
+            ),
+        };
+        self.set_variant(variants[random.random_range(0..variants.len())]);
+        if group_size >= 2 {
+            self.set_age(BABY_START_AGE);
+        }
+        // `AxolotlGroupData` passes `shouldSpawnBaby = false` to `AgeableMobGroupData`.
+        let group_size = match self.finalize_ageable_spawn(Some(SpawnGroupData::Ageable {
+            group_size,
+            should_spawn_baby: false,
+            baby_spawn_chance: DEFAULT_BABY_SPAWN_CHANCE,
+        })) {
+            Some(SpawnGroupData::Ageable { group_size, .. }) => group_size,
+            _ => group_size + 1,
+        };
+        Some(SpawnGroupData::Axolotl {
+            variants,
+            group_size,
+        })
     }
 
     /// Vanilla `Axolotl.checkSpawnObstruction`.

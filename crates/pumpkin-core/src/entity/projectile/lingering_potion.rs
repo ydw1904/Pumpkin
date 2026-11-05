@@ -4,6 +4,7 @@ use std::sync::atomic::AtomicBool;
 
 use crate::entity::projectile::splash_potion::{
     extinguish_fire_if_water_potion, hurt_water_sensitive_entities, is_water_potion,
+    rehydrate_axolotls,
 };
 use crate::{
     entity::{Entity, EntityBase, projectile::ThrownItemEntity},
@@ -199,6 +200,7 @@ impl EntityBase for LingeringPotionEntity {
         // Vanilla affects entities before spawning the cloud.
         if hurts_water_sensitive {
             hurt_water_sensitive_entities(&world, self, hit_pos, None);
+            rehydrate_axolotls(&world, self, hit_pos);
         }
 
         // A water bottle has no effects, so it spawns no cloud.

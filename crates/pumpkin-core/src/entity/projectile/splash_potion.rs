@@ -144,6 +144,29 @@ pub(crate) fn hurt_water_sensitive_entities(
     }
 }
 
+/// The `REHYDRATES_AXOLOTLS` branch of vanilla `AbstractThrownPotion#affectEntitiesAround`:
+/// every axolotl in the box, with no distance check.
+pub(crate) fn rehydrate_axolotls(
+    world: &Arc<crate::world::World>,
+    projectile: &dyn EntityBase,
+    hit_pos: Vector3<f64>,
+) {
+    let entity = projectile.get_entity();
+    let rehydrate_box = entity
+        .bounding_box
+        .load()
+        .shift(hit_pos.sub(&entity.pos.load()))
+        .expand(4.0, 2.0, 4.0);
+    for candidate in world.get_entities_at_box(&rehydrate_box) {
+        if let Some(axolotl) = candidate
+            .cast_any()
+            .downcast_ref::<crate::entity::passive::axolotl::AxolotlEntity>()
+        {
+            axolotl.rehydrate();
+        }
+    }
+}
+
 impl EntityBase for SplashPotionEntity {
     fn get_projectile_owner(&self) -> Option<&ProjectileOwner> {
         Some(&self.thrown.owner)
@@ -315,6 +338,7 @@ impl EntityBase for SplashPotionEntity {
                 .map(|(c, _)| c.get_entity().entity_id)
                 .collect();
             hurt_water_sensitive_entities(&world, self, hit_pos, Some(&kept_ids));
+            rehydrate_axolotls(&world, self, hit_pos);
         }
 
         let owner = self.thrown.owner.get(&world);

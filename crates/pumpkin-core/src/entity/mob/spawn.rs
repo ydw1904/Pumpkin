@@ -53,6 +53,11 @@ pub enum SpawnGroupData {
         variant: RabbitVariant,
         group_size: u32,
     },
+    /// Vanilla `AxolotlGroupData`: the two variants the group picks from.
+    Axolotl {
+        variants: [crate::entity::passive::axolotl::AxolotlVariant; 2],
+        group_size: u32,
+    },
     /// Vanilla `ZombieGroupData`: whether the group spawns as babies, and whether those may
     /// ride a chicken.
     Zombie {
