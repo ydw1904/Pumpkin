@@ -118,7 +118,7 @@ impl FollowOwnerGoal {
         }
         let delta = pos.0 - own_block.0;
         let moved = mob_entity.bounding_box.load().shift(delta.to_f64());
-        if !world.is_space_empty(moved) {
+        if !world.no_collision(mob_entity, &moved) {
             return false;
         }
         mob_entity.teleport(

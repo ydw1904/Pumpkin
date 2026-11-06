@@ -41,6 +41,9 @@ static IMITATED_TYPES: LazyLock<Vec<&'static EntityType>> =
 /// Duration in ticks of the poison a parrot gets from eating a cookie, matching
 /// vanilla `Parrot.mobInteract`.
 const COOKIE_POISON_DURATION: i32 = 900;
+const AMBIENT_IMITATION_INTERVAL: i32 = 1000;
+const NEARBY_IMITATION_INTERVAL: i32 = 400;
+const IMITATION_VOLUME: f32 = 0.7;
 
 /// Represents a Parrot, a passive flying mob that can mimic nearby mob sounds.
 ///
@@ -91,7 +94,7 @@ impl ParrotEntity {
                 *sound,
                 entity.sound_source(),
                 &e.pos.load(),
-                0.7,
+                IMITATION_VOLUME,
                 Self::pitch(),
             );
             return true;
@@ -107,7 +110,7 @@ impl ParrotEntity {
     pub(crate) fn ambient(world: &crate::world::World) -> Sound {
         let mut rng = rand::rng();
         if world.level_info.load().difficulty != pumpkin_util::Difficulty::Peaceful
-            && rng.random_range(0..1000) == 0
+            && rng.random_range(0..AMBIENT_IMITATION_INTERVAL) == 0
         {
             IMITATIONS[rng.random_range(0..IMITATIONS.len())].1
         } else {
@@ -387,7 +390,7 @@ impl Mob for ParrotEntity {
     fn mob_ai_step(&self) {
         // Dancing is client side: only the client's `LevelRenderer` calls
         // `setRecordPlayingNearby`, so the server's jukebox field stays null.
-        if self.get_random().random_range(0..400) == 0 {
+        if self.get_random().random_range(0..NEARBY_IMITATION_INTERVAL) == 0 {
             Self::imitate_nearby(self);
         }
         // Vanilla `calculateFlapping`.

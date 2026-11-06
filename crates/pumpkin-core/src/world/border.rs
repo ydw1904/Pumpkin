@@ -6,6 +6,7 @@ use pumpkin_protocol::java::client::play::{
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_world::world_info::data_files::WorldBorderData;
 
+use crate::entity::Entity;
 use crate::net::java::JavaClient;
 
 use super::World;
@@ -176,14 +177,46 @@ impl Worldborder {
         ));
     }
 
+    /// Vanilla `WorldBorder.isWithinBounds(x, z, margin)`.
+    #[must_use]
+    pub fn is_within_bounds(&self, x: f64, z: f64, margin: f64) -> bool {
+        let half = self.new_diameter / 2.0;
+        x >= self.center_x - half - margin
+            && x < self.center_x + half + margin
+            && z >= self.center_z - half - margin
+            && z < self.center_z + half + margin
+    }
+
+    /// Vanilla `WorldBorder.isInsideCloseToBorder`.
+    #[must_use]
+    pub fn is_inside_close_to_border(&self, entity: &Entity, bounding_box: &BoundingBox) -> bool {
+        let size = (bounding_box.max.x - bounding_box.min.x)
+            .abs()
+            .max((bounding_box.max.z - bounding_box.min.z).abs())
+            .max(1.0);
+        let pos = entity.pos.load();
+        self.distance_to_border(pos.x, pos.z) < size * 2.0
+            && self.is_within_bounds(pos.x, pos.z, size)
+    }
+
+    /// Whether `bounding_box` is inside the border's collision shape, the outside of the border
+    /// rounded out to whole blocks.
+    #[must_use]
+    pub fn collision_shape_contains(&self, bounding_box: &BoundingBox) -> bool {
+        let half = self.new_diameter / 2.0;
+        let min_x = (self.center_x - half).floor();
+        let max_x = (self.center_x + half).ceil();
+        let min_z = (self.center_z - half).floor();
+        let max_z = (self.center_z + half).ceil();
+        bounding_box.min.x >= min_x
+            && bounding_box.max.x <= max_x
+            && bounding_box.min.z >= min_z
+            && bounding_box.max.z <= max_z
+    }
+
     #[must_use]
     pub fn contains(&self, x: f64, z: f64) -> bool {
-        let half = self.new_diameter / 2.0;
-        let min_x = self.center_x - half;
-        let max_x = self.center_x + half;
-        let min_z = self.center_z - half;
-        let max_z = self.center_z + half;
-        x >= min_x && x < max_x && z >= min_z && z < max_z
+        self.is_within_bounds(x, z, 0.0)
     }
 
     /// Vanilla `WorldBorder.isWithinBounds(AABB)`.
