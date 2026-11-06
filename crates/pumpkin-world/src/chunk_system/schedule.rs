@@ -31,6 +31,27 @@ pub(crate) struct TaskPriority {
     z: i32,
 }
 
+/// Chunks closer than this read or write each other's blocks in their features steps, so the
+/// order they run in changes the result (trees, ore blobs and patches crossing chunk borders).
+pub(crate) const FEATURES_ORDER_RADIUS: i32 =
+    StagedChunkEnum::Features.get_write_radius() + StagedChunkEnum::Features.get_read_radius();
+
+pub(crate) type FeaturesOrder = (i8, i32, i32, i32, i32);
+
+/// The order in which overlapping chunks run their features step: lower ticket level first,
+/// then a colouring so chunks of one colour never overlap and run in parallel, then
+/// position. Vanilla runs every features step one at a time on its `worldgen` executor; running
+/// them in parallel in whatever order the workers finish made terrain differ between runs.
+pub(crate) const fn features_order(pos: ChunkPos, level: i8) -> FeaturesOrder {
+    (
+        level,
+        pos.x.rem_euclid(FEATURES_ORDER_RADIUS + 1),
+        pos.y.rem_euclid(FEATURES_ORDER_RADIUS + 1),
+        pos.x,
+        pos.y,
+    )
+}
+
 pub(crate) struct TaskHeapNode(TaskPriority, NodeKey);
 impl PartialEq for TaskHeapNode {
     fn eq(&self, other: &Self) -> bool {
@@ -524,6 +545,33 @@ impl GenerationSchedule {
                 self.chunk_map
                     .get(&pos.add_raw(dx, dy))
                     .is_some_and(|h| h.chunk.is_some())
+            })
+        }) && (stage != StagedChunkEnum::Features || !self.has_earlier_features_neighbor(pos))
+    }
+
+    fn features_order(&self, pos: ChunkPos) -> FeaturesOrder {
+        let level = self
+            .last_level
+            .get(&pos)
+            .copied()
+            .unwrap_or(ChunkLoading::MAX_LEVEL);
+        features_order(pos, level)
+    }
+
+    /// Whether a chunk close enough to share blocks with `pos` during features still has to run
+    /// its features step and goes first.
+    fn has_earlier_features_neighbor(&self, pos: ChunkPos) -> bool {
+        let order = self.features_order(pos);
+        (-FEATURES_ORDER_RADIUS..=FEATURES_ORDER_RADIUS).any(|dx| {
+            (-FEATURES_ORDER_RADIUS..=FEATURES_ORDER_RADIUS).any(|dz| {
+                let other = pos.add_raw(dx, dz);
+                other != pos
+                    && self.chunk_map.get(&other).is_some_and(|holder| {
+                        holder.current_stage < StagedChunkEnum::Features
+                            && holder.target_stage.max(holder.dependency_stage)
+                                >= StagedChunkEnum::Features
+                    })
+                    && self.features_order(other) < order
             })
         })
     }

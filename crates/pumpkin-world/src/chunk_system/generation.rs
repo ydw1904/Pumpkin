@@ -91,14 +91,20 @@ pub fn generate_single_chunk_with_radius(
 mod tests {
     use crate::chunk::ChunkHeightmapType;
     use crate::chunk_system::Chunk;
+    use crate::chunk_system::schedule::{FEATURES_ORDER_RADIUS, features_order};
     use crate::chunk_system::{
-        StagedChunkEnum, generate_single_chunk, generation::generate_single_chunk_with_radius,
+        Cache, ChunkPos, StagedChunkEnum, generate_single_chunk,
+        generation::generate_single_chunk_with_radius,
     };
+    use crate::generation::generator::WorldGenerator;
     use crate::generation::get_world_gen;
     use crate::world::WorldPortalExt;
+    use pumpkin_config::lighting::LightingEngineConfig;
     use pumpkin_data::BlockStateId;
     use pumpkin_data::dimension::Dimension;
+    use pumpkin_util::math::vector3::Vector3;
     use pumpkin_util::world_seed::Seed;
+    use std::collections::HashMap;
     use std::sync::Arc;
 
     struct BlockRegistry;
@@ -455,5 +461,127 @@ mod tests {
         let state =
             cage_chunk.get_block_state(&pumpkin_util::math::vector3::Vector3::new(1183, 68, -1330));
         assert_eq!(state.to_block_id(), pumpkin_data::Block::GRASS_BLOCK.id);
+    }
+
+    /// Runs `stage` on the chunk at `pos` with the chunks within `radius` around it.
+    fn advance_in_map(
+        chunks: &mut HashMap<ChunkPos, Chunk>,
+        world_gen: &WorldGenerator,
+        pos: ChunkPos,
+        stage: StagedChunkEnum,
+        radius: i32,
+    ) {
+        let size = radius * 2 + 1;
+        let mut cache = Cache::new(pos.x - radius, pos.y - radius, size);
+        for dx in -radius..=radius {
+            for dz in -radius..=radius {
+                cache
+                    .chunks
+                    .push(chunks.remove(&pos.add_raw(dx, dz)).unwrap());
+            }
+        }
+        cache.advance(
+            stage,
+            world_gen,
+            &BlockRegistry,
+            &LightingEngineConfig::Default,
+        );
+        for (i, chunk) in (0..).zip(cache.chunks) {
+            chunks.insert(ChunkPos::new(cache.x + i / size, cache.z + i % size), chunk);
+        }
+    }
+
+    /// Generates the chunks around `center` to carvers, then runs features on the 3x3 around it
+    /// the way the scheduler does: from `finished` (the order workers would get the chunks ready
+    /// in) it takes the first chunk that no earlier overlapping chunk is waiting for. Returns the
+    /// center chunk's blocks, which all 9 features steps write into.
+    fn center_after_features(
+        world_gen: &WorldGenerator,
+        center: ChunkPos,
+        finished: &[ChunkPos],
+    ) -> Vec<BlockStateId> {
+        let mut chunks = HashMap::new();
+        for dx in -3..=3 {
+            for dz in -3..=3 {
+                let pos = center.add_raw(dx, dz);
+                chunks.insert(
+                    pos,
+                    Chunk::Proto(Box::new(crate::ProtoChunk::new(pos.x, pos.y, world_gen))),
+                );
+            }
+        }
+        let positions: Vec<_> = chunks.keys().copied().collect();
+        for stage in [
+            StagedChunkEnum::Biomes,
+            StagedChunkEnum::StructureStart,
+            StagedChunkEnum::StructureReferences,
+        ] {
+            for &pos in &positions {
+                advance_in_map(&mut chunks, world_gen, pos, stage, 0);
+            }
+        }
+        let inner: Vec<_> = positions
+            .iter()
+            .copied()
+            .filter(|pos| (pos.x - center.x).abs() <= 2 && (pos.y - center.y).abs() <= 2)
+            .collect();
+        for &pos in &inner {
+            advance_in_map(&mut chunks, world_gen, pos, StagedChunkEnum::Noise, 0);
+        }
+        for &pos in &inner {
+            advance_in_map(&mut chunks, world_gen, pos, StagedChunkEnum::Surface, 1);
+            advance_in_map(&mut chunks, world_gen, pos, StagedChunkEnum::Carvers, 0);
+        }
+
+        let mut pending = finished.to_vec();
+        while !pending.is_empty() {
+            let next = pending
+                .iter()
+                .position(|&pos| {
+                    !pending.iter().any(|&other| {
+                        (other.x - pos.x).abs().max((other.y - pos.y).abs())
+                            <= FEATURES_ORDER_RADIUS
+                            && features_order(other, 0) < features_order(pos, 0)
+                    })
+                })
+                .unwrap();
+            let pos = pending.remove(next);
+            advance_in_map(&mut chunks, world_gen, pos, StagedChunkEnum::Features, 1);
+        }
+
+        let chunk = chunks[&center].get_proto_chunk();
+        let bottom_y = chunk.bottom_y() as i32;
+        let mut blocks = Vec::new();
+        for y in bottom_y..bottom_y + chunk.height() as i32 {
+            for x in 0..16 {
+                for z in 0..16 {
+                    blocks.push(chunk.get_block_state(&Vector3::new(
+                        center.x * 16 + x,
+                        y,
+                        center.y * 16 + z,
+                    )));
+                }
+            }
+        }
+        blocks
+    }
+
+    #[test]
+    fn features_do_not_depend_on_the_order_workers_finish_in() {
+        let world_gen = get_world_gen(
+            Seed(1_792_386_707_805_314_503),
+            Dimension::OVERWORLD,
+            false,
+            Vec::new(),
+            String::new(),
+        );
+        let center = ChunkPos::new(59, 64);
+        let mut finished: Vec<_> = (-1..=1)
+            .flat_map(|dx| (-1..=1).map(move |dz| center.add_raw(dx, dz)))
+            .collect();
+        let first = center_after_features(&world_gen, center, &finished);
+        finished.reverse();
+        let second = center_after_features(&world_gen, center, &finished);
+        assert!(first == second, "features placed different blocks");
     }
 }
