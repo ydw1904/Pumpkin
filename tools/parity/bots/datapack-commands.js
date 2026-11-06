@@ -3,8 +3,8 @@
 // transformations, brightness), selector scores without a score, rotations given to command
 // sources (rotated as, facing), SelectedItem in player NBT, /schedule with function tags and the
 // tags of every registry sent to players after a reload, and datapack advancements (added, overriding a built-in
-// one, out of the tree; reward functions; the reset sent on reload). An advancement that fails to
-// parse makes vanilla fail the whole reload, so the unit tests cover that instead.
+// one, out of the tree; reward functions; the reset sent on reload), and a broken pack failing
+// the whole reload.
 const fs = require('fs')
 const path = require('path')
 const { make } = require('./survival-lib')
@@ -275,6 +275,23 @@ h.start(async () => {
     ['plain', 'flame'],
     ['not_a_map', 'dust[1]']
   ]) h.result(`particle_${key}`, await run(`particle ${p} ${X} ${y + 1} ${Z}`))
+
+  // A pack with a broken loot table and an advancement with an unknown trigger fails the whole
+  // reload: the old data and pack selection stay, so its function never loads. The reload
+  // discovers the pack, so `datapack enable` knows it afterwards.
+  const bad = path.join(path.dirname(process.env.CMDS), 'world', 'datapacks', 'parity_bad')
+  for (const dir of ['loot_table', 'advancement', 'function']) fs.mkdirSync(path.join(bad, 'data', 'p', dir), { recursive: true })
+  fs.writeFileSync(path.join(bad, 'pack.mcmeta'), JSON.stringify({ pack: { description: 'parity broken pack', min_format: 121, max_format: 121 } }))
+  fs.writeFileSync(path.join(bad, 'data', 'p', 'loot_table', 'broken.json'), '{"pools": [')
+  fs.writeFileSync(path.join(bad, 'data', 'p', 'advancement', 'bad_trigger.json'), JSON.stringify({ criteria: { a: { trigger: 'p:nope' } } }))
+  fs.writeFileSync(path.join(bad, 'data', 'p', 'function', 'bad_marker.mcfunction'), 'say bad\n')
+  h.result('broken_reload', await run('reload', 40))
+  h.result('broken_reload_selected', String((await run('datapack list enabled')).includes('parity_bad')))
+  h.result('broken_reload_function', await run('function p:bad_marker'))
+  h.result('broken_old_function', await run('function p:mark'))
+  h.result('broken_enable', await run('datapack enable "file/parity_bad"', 40))
+  h.result('broken_enable_selected', String((await run('datapack list enabled')).includes('parity_bad')))
+  h.result('broken_enable_function', await run('function p:bad_marker'))
 
   h.cmd('kill @e[tag=dp_m]')
   h.cmd('kill @e[tag=dp_r]')
