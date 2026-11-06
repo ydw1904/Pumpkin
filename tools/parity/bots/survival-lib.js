@@ -99,11 +99,17 @@ function make (username, timeoutMs = 600000) {
     await h.waitFor(() => bot.entity.position.distanceTo(new Vec3(x + 0.5, y + 1, z + 0.5)) < 1.5, 10000)
     bot.creative.startFlying()
     await h.waitFor(h.chunksLoaded, 180000)
+    // Block changes reach the client a tick after the command, so a floor left from an earlier
+    // scene can still read as stone while that scene's clean-up is on its way. The bedrock
+    // marker only shows once every change before it has arrived.
     for (let i = 0; i < 20; i++) {
       h.cmd(`fill ${x - r} ${y} ${z - r} ${x + r} ${y} ${z + r} stone`)
       h.cmd(`fill ${x - r} ${y + 1} ${z - r} ${x + r} ${y + 6} ${z + r} air`)
-      if (await h.waitFor(() => h.blockName(x + r, y, z + r) === 'stone' && h.blockName(x - r, y, z - r) === 'stone', 3000)) break
+      h.cmd(`setblock ${x} ${y} ${z} bedrock`)
+      if (await h.waitFor(() => h.blockName(x, y, z) === 'bedrock' && h.blockName(x + r, y, z + r) === 'stone' && h.blockName(x - r, y, z - r) === 'stone', 3000)) break
     }
+    h.cmd(`setblock ${x} ${y} ${z} stone`)
+    await h.waitFor(() => h.blockName(x, y, z) === 'stone', 3000)
     bot.creative.stopFlying()
     h.cmd(`tp ${username} ${x + 0.5} ${y + 1} ${z + 0.5}`)
     h.cmd(`gamemode survival ${username}`)
