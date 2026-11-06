@@ -288,6 +288,8 @@ fn resolve_some<T: Future, D, F: FnOnce(D) -> T>(
 pub enum ServerSetupError {
     #[error("Failed to initialize world storage: {0}")]
     WorldInfo(#[from] WorldInfoError),
+    #[error("Failed to load datapacks, can't proceed with server load")]
+    Datapacks,
     #[error("Failed to bind the Java listener on {address}: {source}")]
     JavaBind {
         address: SocketAddr,

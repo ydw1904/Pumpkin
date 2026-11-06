@@ -1,6 +1,7 @@
 //! Vanilla `ServerAdvancementManager` and `AdvancementTree`: the built-in advancements with the
 //! ones enabled datapacks add or override, and their layout (`TreeNodePosition`).
 
+use crate::data::datapack::{ADVANCEMENT_REGISTRY, RegistryLoadErrors};
 use crate::entity::player::advancement::predicate::CriterionConditions;
 use pumpkin_data::advancement_data::{
     AdvancementCondition, AdvancementCriterion, AdvancementDisplay, AdvancementReward, FrameType,
@@ -84,43 +85,111 @@ static INTERNED: LazyLock<Mutex<HashMap<String, &'static Advancement>>> =
 
 impl Default for ServerAdvancements {
     fn default() -> Self {
-        Self::new(&HashMap::new())
+        Self::from_parsed(HashMap::new())
     }
 }
 
+/// The trigger types vanilla 26.3 registers in `CriteriaTriggers`.
+const TRIGGER_TYPES: [&str; 58] = [
+    "impossible",
+    "player_killed_entity",
+    "entity_killed_player",
+    "enter_block",
+    "inventory_changed",
+    "recipe_unlocked",
+    "player_hurt_entity",
+    "entity_hurt_player",
+    "enchanted_item",
+    "filled_bucket",
+    "brewed_potion",
+    "construct_beacon",
+    "used_ender_eye",
+    "summoned_entity",
+    "bred_animals",
+    "location",
+    "slept_in_bed",
+    "cured_zombie_villager",
+    "villager_trade",
+    "item_durability_changed",
+    "levitation",
+    "changed_dimension",
+    "tick",
+    "tame_animal",
+    "placed_block",
+    "consume_item",
+    "effects_changed",
+    "used_totem",
+    "nether_travel",
+    "fishing_rod_hooked",
+    "channeled_lightning",
+    "shot_crossbow",
+    "spear_mobs",
+    "killed_by_arrow",
+    "hero_of_the_village",
+    "voluntary_exile",
+    "slide_down_block",
+    "bee_nest_destroyed",
+    "target_hit",
+    "item_used_on_block",
+    "default_block_use",
+    "any_block_use",
+    "player_generates_container_loot",
+    "thrown_item_picked_up_by_entity",
+    "thrown_item_picked_up_by_player",
+    "player_interacted_with_entity",
+    "player_sheared_equipment",
+    "started_riding",
+    "lightning_strike",
+    "using_item",
+    "fall_from_height",
+    "ride_entity_in_lava",
+    "kill_mob_near_sculk_catalyst",
+    "allay_drop_item_on_block",
+    "avoid_vibration",
+    "recipe_crafted",
+    "crafter_recipe_crafted",
+    "fall_after_explosion",
+];
+
 impl ServerAdvancements {
     /// Builds the advancements from the built-in ones and the datapack definitions by id. A
-    /// datapack definition replaces the built-in advancement with its id; one that doesn't
-    /// parse is left out, like vanilla leaves out an element that fails its codec.
+    /// datapack definition replaces the built-in advancement with its id. A definition that
+    /// fails vanilla's `Advancement.CODEC` goes into `errors`, which fails the whole load.
     #[must_use]
-    pub fn new<S: std::hash::BuildHasher>(datapack: &HashMap<String, Value, S>) -> Self {
-        let mut parsed: HashMap<Identifier, Option<AdvancementEntry>> = HashMap::new();
+    pub fn new<S: std::hash::BuildHasher>(
+        datapack: &HashMap<String, Value, S>,
+        errors: &mut RegistryLoadErrors,
+    ) -> Self {
+        let mut parsed = HashMap::new();
         for (id, json) in datapack {
             let Ok(identifier) = Identifier::parse(id) else {
-                error!("Couldn't parse advancement {id}: invalid id");
+                errors.fail(ADVANCEMENT_REGISTRY, id.clone(), "invalid id");
                 continue;
             };
-            let entry = match parse_advancement(&identifier, json) {
-                Ok(entry) => Some(entry),
-                Err(reason) => {
-                    error!("Couldn't parse advancement {id}: {reason}");
-                    None
+            match parse_advancement(&identifier, json) {
+                Ok(entry) => {
+                    parsed.insert(identifier, entry);
                 }
-            };
-            parsed.insert(identifier, entry);
+                Err(reason) => errors.fail(ADVANCEMENT_REGISTRY, id.clone(), reason),
+            }
         }
+        let advancements = Self::from_parsed(parsed);
+        info!("Loaded {} advancements", advancements.nodes.len());
+        advancements
+    }
 
+    fn from_parsed(mut parsed: HashMap<Identifier, AdvancementEntry>) -> Self {
         // Built-in advancements keep the order the generated tree has; the ones datapacks add
         // follow in vanilla's registry order.
         let mut entries = Vec::new();
         for built_in in BUILT_IN.iter() {
-            match parsed.remove(&built_in.advancement.id) {
-                Some(Some(entry)) => entries.push(entry),
-                Some(None) => {}
-                None => entries.push(built_in.clone()),
-            }
+            entries.push(
+                parsed
+                    .remove(&built_in.advancement.id)
+                    .unwrap_or_else(|| built_in.clone()),
+            );
         }
-        let mut added: Vec<AdvancementEntry> = parsed.into_values().flatten().collect();
+        let mut added: Vec<AdvancementEntry> = parsed.into_values().collect();
         added.sort_by(|a, b| {
             let (a, b) = (&a.advancement.id, &b.advancement.id);
             (a.path(), a.namespace()).cmp(&(b.path(), b.namespace()))
@@ -164,7 +233,6 @@ impl ServerAdvancements {
             }
             to_add = remaining;
         }
-        info!("Loaded {} advancements", self.nodes.len());
     }
 
     /// Vanilla `AdvancementTree.tryInsert`.
@@ -291,9 +359,14 @@ fn parse_advancement(id: &Identifier, json: &Value) -> Result<AdvancementEntry, 
             .get("trigger")
             .and_then(Value::as_str)
             .ok_or_else(|| format!("criterion {name} has no trigger"))?;
-        let trigger = Identifier::parse(trigger)
-            .map_err(|_| format!("invalid trigger {trigger}"))?
-            .to_string();
+        let trigger =
+            Identifier::parse(trigger).map_err(|_| format!("invalid trigger {trigger}"))?;
+        if trigger.namespace() != "minecraft" || !TRIGGER_TYPES.contains(&trigger.path()) {
+            return Err(format!(
+                "Unknown registry key in ResourceKey[minecraft:root / minecraft:trigger_type]: {trigger}"
+            ));
+        }
+        let trigger = trigger.to_string();
         let conditions = criterion
             .get("conditions")
             .map_or_else(|| "{}".to_string(), ToString::to_string);
@@ -829,7 +902,23 @@ mod tests {
             "minecraft:story/root".to_string(),
             serde_json::json!({"criteria": {"x": {"trigger": "minecraft:impossible"}}}),
         );
-        let advancements = ServerAdvancements::new(&datapack);
+        datapack.insert(
+            "p:bad_trigger".to_string(),
+            serde_json::json!({"criteria": {"a": {"trigger": "p:nope"}}}),
+        );
+        let mut errors = RegistryLoadErrors::default();
+        let advancements = ServerAdvancements::new(&datapack, &mut errors);
+        assert_eq!(
+            errors.get(ADVANCEMENT_REGISTRY, "p:bad_trigger"),
+            Some(
+                "Unknown registry key in ResourceKey[minecraft:root / minecraft:trigger_type]: p:nope"
+            )
+        );
+        assert!(
+            errors
+                .get(ADVANCEMENT_REGISTRY, "p:bad_requirements")
+                .is_some()
+        );
 
         let child = advancements.get_by_name("p:child").expect("child loads");
         assert_eq!(child.requirements, &[&["a", "b"][..]]);

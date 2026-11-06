@@ -10,6 +10,7 @@ use tracing::error;
 use crate::command::argument_builder::{ArgumentBuilder, argument, command, literal};
 use crate::command::argument_types::component::ComponentArgumentType;
 use crate::command::argument_types::core::string::StringArgumentType;
+use crate::command::commands::reload::reload_packs;
 use crate::command::context::command_context::CommandContext;
 use crate::command::errors::error_types::CommandErrorType;
 use crate::command::node::dispatcher::CommandDispatcher;
@@ -233,28 +234,13 @@ impl CommandExecutor for DatapackEnableExecutor {
             );
         }
 
-        let target = resolved_name.clone();
-        let pos = self.0;
-        server.level_info.rcu(|level_info| {
-            let mut new_info = (**level_info).clone();
-            new_info.data_packs.disabled.retain(|p| p != &target);
-            new_info.data_packs.enabled.retain(|p| p != &target);
-            match pos {
-                EnablePosition::First => {
-                    new_info.data_packs.enabled.insert(0, target.clone());
-                }
-                EnablePosition::Last => {
-                    new_info.data_packs.enabled.push(target.clone());
-                }
-            }
-            new_info
-        });
-
-        if let Err(err) = server.save_world_info() {
-            error!("Failed to save world info: {err}");
+        let mut data_packs = server.level_info.load().data_packs.clone();
+        data_packs.disabled.retain(|p| p != &resolved_name);
+        data_packs.enabled.retain(|p| p != &resolved_name);
+        match self.0 {
+            EnablePosition::First => data_packs.enabled.insert(0, resolved_name.clone()),
+            EnablePosition::Last => data_packs.enabled.push(resolved_name.clone()),
         }
-
-        server.reload_datapacks(server);
 
         context.source.send_feedback(
             TextComponent::translate_cross(
@@ -264,8 +250,9 @@ impl CommandExecutor for DatapackEnableExecutor {
             ),
             true,
         );
-
-        Ok(server.level_info.load().data_packs.enabled.len() as i32)
+        let selected = data_packs.enabled.len() as i32;
+        reload_packs(context, &data_packs);
+        Ok(selected)
     }
 }
 
@@ -306,39 +293,18 @@ impl CommandExecutor for DatapackEnableExistingExecutor {
             );
         }
 
-        let target = target_pack.clone();
-        let existing = existing_pack;
-        let before_or_after = self.0;
-        server.level_info.rcu(|level_info| {
-            let mut new_info = (**level_info).clone();
-            new_info.data_packs.disabled.retain(|p| p != &target);
-            new_info.data_packs.enabled.retain(|p| p != &target);
-
-            if let Some(idx) = new_info
-                .data_packs
-                .enabled
-                .iter()
-                .position(|p| p == &existing)
-            {
-                let insert_pos = match before_or_after {
-                    BeforeOrAfter::Before => idx,
-                    BeforeOrAfter::After => idx + 1,
-                };
-                new_info
-                    .data_packs
-                    .enabled
-                    .insert(insert_pos, target.clone());
-            } else {
-                new_info.data_packs.enabled.push(target.clone());
-            }
-            new_info
-        });
-
-        if let Err(err) = server.save_world_info() {
-            error!("Failed to save world info: {err}");
+        let mut data_packs = server.level_info.load().data_packs.clone();
+        data_packs.disabled.retain(|p| p != &target_pack);
+        data_packs.enabled.retain(|p| p != &target_pack);
+        if let Some(idx) = data_packs.enabled.iter().position(|p| p == &existing_pack) {
+            let insert_pos = match self.0 {
+                BeforeOrAfter::Before => idx,
+                BeforeOrAfter::After => idx + 1,
+            };
+            data_packs.enabled.insert(insert_pos, target_pack.clone());
+        } else {
+            data_packs.enabled.push(target_pack.clone());
         }
-
-        server.reload_datapacks(server);
 
         context.source.send_feedback(
             TextComponent::translate_cross(
@@ -348,8 +314,9 @@ impl CommandExecutor for DatapackEnableExistingExecutor {
             ),
             true,
         );
-
-        Ok(server.level_info.load().data_packs.enabled.len() as i32)
+        let selected = data_packs.enabled.len() as i32;
+        reload_packs(context, &data_packs);
+        Ok(selected)
     }
 }
 
@@ -376,21 +343,11 @@ impl CommandExecutor for DatapackDisableExecutor {
                 .create_without_context(TextComponent::text("vanilla".to_string())));
         }
 
-        let target = target_pack.clone();
-        server.level_info.rcu(|level_info| {
-            let mut new_info = (**level_info).clone();
-            new_info.data_packs.enabled.retain(|p| p != &target);
-            if !new_info.data_packs.disabled.contains(&target) {
-                new_info.data_packs.disabled.push(target.clone());
-            }
-            new_info
-        });
-
-        if let Err(err) = server.save_world_info() {
-            error!("Failed to save world info: {err}");
+        let mut data_packs = server.level_info.load().data_packs.clone();
+        data_packs.enabled.retain(|p| p != &target_pack);
+        if !data_packs.disabled.contains(&target_pack) {
+            data_packs.disabled.push(target_pack.clone());
         }
-
-        server.reload_datapacks(server);
 
         context.source.send_feedback(
             TextComponent::translate_cross(
@@ -400,8 +357,9 @@ impl CommandExecutor for DatapackDisableExecutor {
             ),
             true,
         );
-
-        Ok(server.level_info.load().data_packs.enabled.len() as i32)
+        let selected = data_packs.enabled.len() as i32;
+        reload_packs(context, &data_packs);
+        Ok(selected)
     }
 }
 

@@ -1,8 +1,9 @@
+use crate::ServerSetupError;
 use crate::block::registry::BlockRegistry;
 use crate::command::commands::default_dispatcher;
 use crate::command::commands::defaultgamemode::DefaultGamemode;
 use crate::data::VanillaData;
-use crate::data::advancement_tree::ServerAdvancements;
+use crate::data::datapack::RegistryLoadErrors;
 use crate::data::player_server::ServerPlayerData;
 use crate::entity::NBTStorage;
 use crate::item::registry::ItemRegistry;
@@ -46,7 +47,7 @@ use pumpkin_world::world_info::anvil::{
 };
 use pumpkin_world::world_info::data_files::{read_saved_data, write_saved_data};
 use pumpkin_world::world_info::{
-    LevelData, OVERWORLD_CLOCK, WorldInfoError, WorldInfoReader, WorldInfoWriter,
+    DataPacks, LevelData, OVERWORLD_CLOCK, WorldInfoError, WorldInfoReader, WorldInfoWriter,
 };
 use rayon::prelude::*;
 use rsa::RsaPublicKey;
@@ -199,7 +200,7 @@ impl Server {
         telemetry_config: TelemetryConfig,
         vanilla_data: VanillaData,
         plugin_loaders: Vec<Arc<dyn PluginLoader>>,
-    ) -> Result<Arc<Self>, WorldInfoError> {
+    ) -> Result<Arc<Self>, ServerSetupError> {
         let permission_manager = Arc::new(PermissionManager::new());
         // First register the default commands. After that, plugins can put in their own.
         let command_dispatcher = ArcSwap::from_pointee(default_dispatcher(
@@ -243,7 +244,7 @@ impl Server {
                 error!("Failed to load world info!");
                 error!("{error}");
                 error!("Unsupported world version! See the logs for more info.");
-                return Err(error);
+                return Err(error.into());
             }
             Err(error) => {
                 error!("Failed to load the world data in {}!", world_path.display());
@@ -252,7 +253,7 @@ impl Server {
                     "Refusing to continue: a default world would generate different terrain on top of the existing region files. Restore {LEVEL_DAT_FILE_NAME} from {LEVEL_DAT_BACKUP_FILE_NAME}, which also holds a copy of the world seed, or move the world folder aside to start a new world."
                 );
                 error!("Failed to load the world data! See the logs for more info.");
-                return Err(error);
+                return Err(error.into());
             }
         };
 
@@ -501,7 +502,10 @@ impl Server {
 
         info!("All worlds loaded successfully.");
 
-        server.load_datapacks();
+        let enabled_packs = server.level_info.load().data_packs.enabled.clone();
+        if server.load_datapacks(&enabled_packs).is_err() {
+            return Err(ServerSetupError::Datapacks);
+        }
 
         let source = crate::command::CommandSender::Console.into_source(&server);
         let _ = server
@@ -752,39 +756,56 @@ impl Server {
         }
     }
 
-    /// Loads the enabled datapacks. Function commands must parse at `function-permission-level`
-    /// (vanilla `ServerFunctionLibrary`'s compilation context).
-    fn load_datapacks(self: &Arc<Self>) {
-        let enabled_packs = self.level_info.load().data_packs.enabled.clone();
+    /// Loads the given datapacks. Function commands must parse at `function-permission-level`
+    /// (vanilla `ServerFunctionLibrary`'s compilation context). When a reloadable registry
+    /// fails to load, the data loaded before stays.
+    fn load_datapacks(
+        self: &Arc<Self>,
+        enabled_packs: &[String],
+    ) -> Result<(), RegistryLoadErrors> {
         let world_path = self.basic_config.get_world_path();
         let dispatcher = self.command_dispatcher.load();
         let mut source = crate::command::CommandSender::Dummy
             .into_source(self)
             .with_silent();
         source.permission_level = Some(self.basic_config.function_permission_level);
-        self.datapack_manager.load_all(
+        let advancements = self.datapack_manager.load_all(
             &world_path,
-            &enabled_packs,
+            enabled_packs,
             &self.recipe_manager,
             &|command| {
                 dispatcher
                     .validate(command, &source)
                     .map_err(|error| error.message.get_text())
             },
-        );
-        self.advancement_manager
-            .set_advancements(ServerAdvancements::new(
-                &self.datapack_manager.advancement_definitions(),
-            ));
+        )?;
+        self.advancement_manager.set_advancements(advancements);
+        Ok(())
     }
 
-    pub fn reload_datapacks(&self, server: &Arc<Self>) {
-        server.load_datapacks();
+    /// Vanilla `MinecraftServer.reloadResources`: loads `data_packs` and only then makes it the
+    /// world's pack selection. If loading fails, the old data and selection stay.
+    pub fn reload_datapacks(
+        self: &Arc<Self>,
+        data_packs: &DataPacks,
+    ) -> Result<(), RegistryLoadErrors> {
+        if let Err(errors) = self.load_datapacks(&data_packs.enabled) {
+            warn!("Failed to execute reload");
+            return Err(errors);
+        }
+        self.level_info.rcu(|level_info| {
+            let mut new_info = (**level_info).clone();
+            new_info.data_packs = data_packs.clone();
+            new_info
+        });
+        if let Err(err) = self.save_world_info() {
+            error!("Failed to save world info: {err}");
+        }
 
-        let source = crate::command::CommandSender::Console.into_source(server);
+        let source = crate::command::CommandSender::Console.into_source(self);
         let _ = self
             .datapack_manager
-            .execute_function(server, &source, "#minecraft:load");
+            .execute_function(self, &source, "#minecraft:load");
 
         // `PlayerList.reloadResources`.
         let players = self.get_all_players();
@@ -803,6 +824,7 @@ impl Server {
         for player in &players {
             player.send_initial_recipe_book();
         }
+        Ok(())
     }
 
     #[must_use]

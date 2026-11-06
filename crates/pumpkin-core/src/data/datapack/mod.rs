@@ -14,11 +14,11 @@ pub mod tag_loader;
 pub mod test_loader;
 pub mod trade_loader;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::registry::RegistryEntryData;
@@ -28,9 +28,11 @@ use pumpkin_nbt::{NbtCompound, nbt_compress::read_gzip_compound_tag};
 use pumpkin_protocol::codec::recipe::DynamicRecipe;
 use pumpkin_protocol::java::client::config::RegistryTags;
 use pumpkin_util::loot_table::DynamicLootTable;
+use pumpkin_world::world_info::DataPacks;
 
 use crate::command::context::command_source::{CommandSource, ResultValueTaker};
 use crate::command::execution::{Action, Entry, ExecutionContext};
+use crate::data::advancement_tree::ServerAdvancements;
 use crate::server::Server;
 use crate::server::recipe::RecipeManager;
 use crate::world::loot::LootTableHandle;
@@ -92,7 +94,6 @@ pub struct DatapackManager {
     dynamic_registries: RwLock<HashMap<String, HashMap<String, RegistryEntryData>>>,
     pub dynamic_registry_manager: Arc<dynamic_registry_manager::DynamicRegistryManager>,
     trade_registry: RwLock<TradeRegistry>,
-    advancements: RwLock<HashMap<String, advancement_loader::DynamicAdvancementDefinition>>,
     predicates: RwLock<HashMap<String, serde_json::Value>>,
     item_modifiers: RwLock<HashMap<String, serde_json::Value>>,
     slot_sources: RwLock<HashMap<String, serde_json::Value>>,
@@ -103,6 +104,71 @@ pub struct DatapackManager {
 
 /// A function's id and its commands as loaded.
 pub type FunctionBody = (String, Arc<[String]>);
+
+pub const LOOT_TABLE_REGISTRY: &str = "minecraft:loot_table";
+pub const PREDICATE_REGISTRY: &str = "minecraft:predicate";
+pub const CONTEXT_FLOAT_PROVIDER_REGISTRY: &str = "minecraft:context_float_provider";
+pub const CONTEXT_INT_PROVIDER_REGISTRY: &str = "minecraft:context_int_provider";
+pub const ITEM_MODIFIER_REGISTRY: &str = "minecraft:item_modifier";
+pub const SLOT_SOURCE_REGISTRY: &str = "minecraft:slot_source";
+pub const ADVANCEMENT_REGISTRY: &str = "minecraft:advancement";
+pub const RECIPE_REGISTRY: &str = "minecraft:recipe";
+
+/// The elements of reloadable registries (vanilla `RegistryDataLoader.RELOADABLE_REGISTRIES`)
+/// that failed to load, by registry and element id. Any of them fails the whole load.
+#[derive(Default, Debug)]
+pub struct RegistryLoadErrors(BTreeMap<(&'static str, String), String>);
+
+impl RegistryLoadErrors {
+    /// Records an element that failed to load. The same element from a later pack replaces
+    /// the error, like vanilla only reads the file of the topmost pack.
+    pub fn fail(&mut self, registry: &'static str, id: String, error: impl std::fmt::Display) {
+        self.0.insert((registry, id), error.to_string());
+    }
+
+    /// Records an element that loaded, which hides the error of the same element in an
+    /// earlier pack.
+    pub fn loaded(&mut self, registry: &'static str, id: &str) {
+        if !self.0.is_empty() {
+            self.0.remove(&(registry, id.to_string()));
+        }
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    #[must_use]
+    pub fn get(&self, registry: &'static str, id: &str) -> Option<&str> {
+        self.0.get(&(registry, id.to_string())).map(String::as_str)
+    }
+
+    /// Vanilla `RegistryDataLoader.printFullDetailsToLog`.
+    pub fn log(&self) {
+        use std::fmt::Write;
+        let mut report = String::new();
+        let mut registry = None;
+        for ((element_registry, id), error) in &self.0 {
+            if registry != Some(*element_registry) {
+                registry = Some(*element_registry);
+                let _ = writeln!(report, "> Errors in registry {element_registry}:");
+            }
+            let _ = writeln!(report, ">> Errors in element {id}:\n{error}");
+        }
+        error!("Registry loading errors:\n{report}");
+    }
+}
+
+/// Why Pumpkin's parser refused an element: its JSON syntax error, if it has one.
+fn invalid_json_reason(content: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(content)
+        .err()
+        .map_or_else(
+            || "Not a valid element".to_string(),
+            |error| error.to_string(),
+        )
+}
 
 impl Default for DatapackManager {
     fn default() -> Self {
@@ -129,7 +195,6 @@ impl DatapackManager {
                 ),
             ),
             trade_registry: RwLock::new(TradeRegistry::new()),
-            advancements: RwLock::new(HashMap::new()),
             predicates: RwLock::new(HashMap::new()),
             item_modifiers: RwLock::new(HashMap::new()),
             slot_sources: RwLock::new(HashMap::new()),
@@ -137,6 +202,10 @@ impl DatapackManager {
         }
     }
 
+    /// Loads the enabled packs. Like vanilla `ReloadableServerRegistries.reload`, an element of
+    /// a reloadable registry that fails to load fails the whole load: the errors are logged
+    /// and returned, and the data loaded before stays. Otherwise this returns the advancements
+    /// to use from now on.
     #[allow(clippy::too_many_lines)]
     pub fn load_all(
         &self,
@@ -144,9 +213,10 @@ impl DatapackManager {
         enabled_packs: &[String],
         recipe_manager: &RecipeManager,
         compile: function_loader::CommandCompiler,
-    ) {
+    ) -> Result<ServerAdvancements, RegistryLoadErrors> {
         let datapacks_dir = world_path.join("datapacks");
-        structure_loader::clear_dynamic_worldgen_data();
+        let mut errors = RegistryLoadErrors::default();
+        let mut worldgen = structure_loader::StagedWorldgen::default();
         let mut loaded_packs_vec = Vec::new();
         let mut all_recipes: Vec<DynamicRecipe> = Vec::new();
         let mut all_functions: HashMap<String, String> = HashMap::new();
@@ -201,6 +271,8 @@ impl DatapackManager {
             item_modifiers: &mut all_item_modifiers,
             slot_sources: &mut all_slot_sources,
             tags: &mut all_tags,
+            worldgen: &mut worldgen,
+            errors: &mut errors,
         };
 
         scan_datapacks_dir(
@@ -212,6 +284,17 @@ impl DatapackManager {
 
         load_bundled_datapacks(enabled_packs, &mut acc, &mut loaded_packs_vec);
 
+        let advancement_definitions: HashMap<String, serde_json::Value> = all_advancements
+            .into_iter()
+            .map(|(id, definition)| (id, definition.json))
+            .collect();
+        let advancements = ServerAdvancements::new(&advancement_definitions, &mut errors);
+        if !errors.is_empty() {
+            errors.log();
+            return Err(errors);
+        }
+
+        worldgen.apply();
         let damage_type_registry = build_damage_type_registry(all_damage_type_defs);
 
         recipe_manager.set_recipes(all_recipes);
@@ -262,10 +345,6 @@ impl DatapackManager {
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = all_trade_registry;
         *self
-            .advancements
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = all_advancements;
-        *self
             .predicates
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = all_predicates;
@@ -285,6 +364,7 @@ impl DatapackManager {
             .functions
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = all_functions;
+        Ok(advancements)
     }
 
     /// Resolves the packs' tags of every registry they touch and binds them (vanilla
@@ -428,16 +508,6 @@ impl DatapackManager {
         let mut names: Vec<_> = guard.keys().cloned().collect();
         names.sort_unstable();
         names
-    }
-
-    /// The advancement definitions of the enabled packs by id, the highest pack's for each.
-    pub fn advancement_definitions(&self) -> HashMap<String, serde_json::Value> {
-        self.advancements
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .iter()
-            .map(|(id, definition)| (id.clone(), definition.json.clone()))
-            .collect()
     }
 
     pub fn get_loaded_packs(&self) -> Vec<LoadedDatapack> {
@@ -1270,165 +1340,98 @@ impl DatapackManager {
         Self::get_enabled_packs(server).contains(&resolved)
     }
 
+    /// Enables a pack and reloads; the world's selection only changes if the reload succeeds.
     pub fn enable_pack(
         server: &Arc<Server>,
         name: &str,
         position: DatapackEnablePosition,
     ) -> Result<(), String> {
-        let Some(resolved_name) = Self::find_pack_name(server, name) else {
+        let Some(target) = Self::find_pack_name(server, name) else {
             return Err(format!("Unknown datapack '{name}'"));
         };
 
         let enabled = Self::get_enabled_packs(server);
-        if enabled.contains(&resolved_name) {
-            return Err(format!("Datapack '{resolved_name}' is already enabled"));
+        if enabled.contains(&target) {
+            return Err(format!("Datapack '{target}' is already enabled"));
         }
 
-        let target = resolved_name;
-        match position {
-            DatapackEnablePosition::First => {
-                server.level_info.rcu(|level_info| {
-                    let mut new_info = (**level_info).clone();
-                    new_info.data_packs.disabled.retain(|p| p != &target);
-                    new_info.data_packs.enabled.retain(|p| p != &target);
-                    new_info.data_packs.enabled.insert(0, target.clone());
-                    new_info
-                });
+        let mut data_packs = server.level_info.load().data_packs.clone();
+        // Embedded packs aren't in the world's list; a pack placed next to one goes last.
+        let index_of = |existing_name: &str| {
+            let Some(existing_pack) = Self::find_pack_name(server, existing_name) else {
+                return Err(format!("Unknown existing datapack '{existing_name}'"));
+            };
+            if !enabled.contains(&existing_pack) {
+                return Err(format!("Datapack '{existing_pack}' is not enabled"));
             }
-            DatapackEnablePosition::Last => {
-                server.level_info.rcu(|level_info| {
-                    let mut new_info = (**level_info).clone();
-                    new_info.data_packs.disabled.retain(|p| p != &target);
-                    new_info.data_packs.enabled.retain(|p| p != &target);
-                    new_info.data_packs.enabled.push(target.clone());
-                    new_info
-                });
-            }
+            Ok(data_packs.enabled.iter().position(|p| p == &existing_pack))
+        };
+        let len = data_packs.enabled.len();
+        let index = match position {
+            DatapackEnablePosition::First => 0,
+            DatapackEnablePosition::Last => len,
             DatapackEnablePosition::Before(existing_name) => {
-                let Some(existing_pack) = Self::find_pack_name(server, &existing_name) else {
-                    return Err(format!("Unknown existing datapack '{existing_name}'"));
-                };
-                if !enabled.contains(&existing_pack) {
-                    return Err(format!("Datapack '{existing_pack}' is not enabled"));
-                }
-                server.level_info.rcu(|level_info| {
-                    let mut new_info = (**level_info).clone();
-                    new_info.data_packs.disabled.retain(|p| p != &target);
-                    new_info.data_packs.enabled.retain(|p| p != &target);
-                    if let Some(idx) = new_info
-                        .data_packs
-                        .enabled
-                        .iter()
-                        .position(|p| p == &existing_pack)
-                    {
-                        new_info.data_packs.enabled.insert(idx, target.clone());
-                    } else {
-                        new_info.data_packs.enabled.push(target.clone());
-                    }
-                    new_info
-                });
+                index_of(&existing_name)?.unwrap_or(len)
             }
             DatapackEnablePosition::After(existing_name) => {
-                let Some(existing_pack) = Self::find_pack_name(server, &existing_name) else {
-                    return Err(format!("Unknown existing datapack '{existing_name}'"));
-                };
-                if !enabled.contains(&existing_pack) {
-                    return Err(format!("Datapack '{existing_pack}' is not enabled"));
-                }
-                server.level_info.rcu(|level_info| {
-                    let mut new_info = (**level_info).clone();
-                    new_info.data_packs.disabled.retain(|p| p != &target);
-                    new_info.data_packs.enabled.retain(|p| p != &target);
-                    if let Some(idx) = new_info
-                        .data_packs
-                        .enabled
-                        .iter()
-                        .position(|p| p == &existing_pack)
-                    {
-                        new_info.data_packs.enabled.insert(idx + 1, target.clone());
-                    } else {
-                        new_info.data_packs.enabled.push(target.clone());
-                    }
-                    new_info
-                });
+                index_of(&existing_name)?.map_or(len, |index| index + 1)
             }
-        }
-
-        if let Err(err) = server.save_world_info() {
-            tracing::error!("Failed to save world info: {err}");
-        }
-
-        server.reload_datapacks(server);
-        Ok(())
+        };
+        data_packs.disabled.retain(|p| p != &target);
+        data_packs.enabled.insert(index, target);
+        Self::reload_with(server, &data_packs)
     }
 
+    /// Disables a pack and reloads; the world's selection only changes if the reload succeeds.
     pub fn disable_pack(server: &Arc<Server>, name: &str) -> Result<(), String> {
-        let Some(target_pack) = Self::find_pack_name(server, name) else {
+        let Some(target) = Self::find_pack_name(server, name) else {
             return Err(format!("Unknown datapack '{name}'"));
         };
 
-        let enabled = Self::get_enabled_packs(server);
-        if !enabled.contains(&target_pack) {
-            return Err(format!("Datapack '{target_pack}' is not enabled"));
+        if !Self::get_enabled_packs(server).contains(&target) {
+            return Err(format!("Datapack '{target}' is not enabled"));
         }
 
-        if Self::is_embedded_pack(&target_pack) {
+        if Self::is_embedded_pack(&target) {
             return Err(format!(
-                "Cannot disable embedded datapack '{target_pack}' because it is compiled into the server"
+                "Cannot disable embedded datapack '{target}' because it is compiled into the server"
             ));
         }
 
-        let target = target_pack;
-        server.level_info.rcu(|level_info| {
-            let mut new_info = (**level_info).clone();
-            new_info.data_packs.enabled.retain(|p| p != &target);
-            if !new_info.data_packs.disabled.contains(&target) {
-                new_info.data_packs.disabled.push(target.clone());
-            }
-            new_info
-        });
-
-        if let Err(err) = server.save_world_info() {
-            tracing::error!("Failed to save world info: {err}");
+        let mut data_packs = server.level_info.load().data_packs.clone();
+        data_packs.enabled.retain(|p| p != &target);
+        if !data_packs.disabled.contains(&target) {
+            data_packs.disabled.push(target);
         }
-
-        server.reload_datapacks(server);
-        Ok(())
+        Self::reload_with(server, &data_packs)
     }
 
-    /// Vanilla `ReloadCommand.discoverNewPacks`: packs added to `datapacks/` since they were last
-    /// looked at are enabled, unless the world lists them as disabled.
-    pub fn discover_new_packs(server: &Server) {
-        let new_packs: Vec<String> = {
-            let level_info = server.level_info.load();
-            Self::get_all_known_packs(server)
-                .into_iter()
-                .filter(|pack| {
-                    pack.starts_with("file/")
-                        && !level_info.data_packs.enabled.contains(pack)
-                        && !level_info.data_packs.disabled.contains(pack)
-                })
-                .collect()
-        };
-        if new_packs.is_empty() {
-            return;
-        }
-        server.level_info.rcu(|level_info| {
-            let mut new_info = (**level_info).clone();
-            new_info
-                .data_packs
-                .enabled
-                .extend(new_packs.iter().cloned());
-            new_info
-        });
-        if let Err(err) = server.save_world_info() {
-            tracing::error!("Failed to save world info: {err}");
-        }
+    /// Vanilla `ReloadCommand.discoverNewPacks`: the current selection plus the packs added to
+    /// `datapacks/` since they were last looked at, unless the world lists them as disabled.
+    #[must_use]
+    pub fn discover_new_packs(server: &Server) -> DataPacks {
+        let mut data_packs = server.level_info.load().data_packs.clone();
+        let new_packs: Vec<String> = Self::get_all_known_packs(server)
+            .into_iter()
+            .filter(|pack| {
+                pack.starts_with("file/")
+                    && !data_packs.enabled.contains(pack)
+                    && !data_packs.disabled.contains(pack)
+            })
+            .collect();
+        data_packs.enabled.extend(new_packs);
+        data_packs
     }
 
     pub fn reload(server: &Arc<Server>) -> Result<(), String> {
-        server.reload_datapacks(server);
-        Ok(())
+        let data_packs = server.level_info.load().data_packs.clone();
+        Self::reload_with(server, &data_packs)
+    }
+
+    fn reload_with(server: &Arc<Server>, data_packs: &DataPacks) -> Result<(), String> {
+        server
+            .reload_datapacks(data_packs)
+            .map_err(|_| "Reload failed; keeping old data".to_string())
     }
 
     pub fn execute_function_from_console(
@@ -1544,6 +1547,8 @@ struct PackContentAccumulators<'a> {
     item_modifiers: &'a mut HashMap<String, serde_json::Value>,
     slot_sources: &'a mut HashMap<String, serde_json::Value>,
     tags: &'a mut tag_loader::TagBuilders,
+    worldgen: &'a mut structure_loader::StagedWorldgen,
+    errors: &'a mut RegistryLoadErrors,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -1761,6 +1766,7 @@ fn load_pack_contents(
                         &recipe_dir,
                         acc.recipes,
                         &mut counts.recipes,
+                        acc.errors,
                     );
                 }
             }
@@ -1817,6 +1823,8 @@ fn load_pack_contents(
                             &namespace,
                             &provider_dir,
                             acc.context_int_providers,
+                            CONTEXT_INT_PROVIDER_REGISTRY,
+                            acc.errors,
                         );
                 }
             }
@@ -1830,6 +1838,8 @@ fn load_pack_contents(
                             &namespace,
                             &provider_dir,
                             acc.context_float_providers,
+                            CONTEXT_FLOAT_PROVIDER_REGISTRY,
+                            acc.errors,
                         );
                 }
             }
@@ -1842,6 +1852,7 @@ fn load_pack_contents(
                         &namespace,
                         &lt_dir,
                         acc.loot_tables,
+                        acc.errors,
                     );
                 }
             }
@@ -1854,6 +1865,7 @@ fn load_pack_contents(
                         &namespace,
                         &adv_dir,
                         acc.advancements,
+                        acc.errors,
                     );
                 }
             }
@@ -1866,6 +1878,7 @@ fn load_pack_contents(
                         &namespace,
                         &pred_dir,
                         acc.predicates,
+                        acc.errors,
                     );
                 }
             }
@@ -1878,6 +1891,7 @@ fn load_pack_contents(
                         &namespace,
                         &im_dir,
                         acc.item_modifiers,
+                        acc.errors,
                     );
                 }
             }
@@ -1890,6 +1904,7 @@ fn load_pack_contents(
                         &namespace,
                         &ss_dir,
                         acc.slot_sources,
+                        acc.errors,
                     );
                 }
             }
@@ -1898,8 +1913,11 @@ fn load_pack_contents(
             for st_sub in ["structure", "structures"] {
                 let st_dir = ns_path.join(st_sub);
                 if st_dir.is_dir() {
-                    counts.structures +=
-                        structure_loader::load_structures_from_dir(&namespace, &st_dir);
+                    counts.structures += structure_loader::load_structures_from_dir(
+                        &namespace,
+                        &st_dir,
+                        acc.worldgen,
+                    );
                 }
             }
 
@@ -1908,13 +1926,19 @@ fn load_pack_contents(
             if worldgen_dir.is_dir() {
                 let pool_dir = worldgen_dir.join("template_pool");
                 if pool_dir.is_dir() {
-                    counts.template_pools +=
-                        structure_loader::load_template_pools_from_dir(&namespace, &pool_dir);
+                    counts.template_pools += structure_loader::load_template_pools_from_dir(
+                        &namespace,
+                        &pool_dir,
+                        acc.worldgen,
+                    );
                 }
                 let proc_dir = worldgen_dir.join("processor_list");
                 if proc_dir.is_dir() {
-                    counts.processor_lists +=
-                        structure_loader::load_processor_lists_from_dir(&namespace, &proc_dir);
+                    counts.processor_lists += structure_loader::load_processor_lists_from_dir(
+                        &namespace,
+                        &proc_dir,
+                        acc.worldgen,
+                    );
                 }
             }
 
@@ -2096,6 +2120,7 @@ fn load_recipes_recursive(
     current_dir: &Path,
     all_recipes: &mut Vec<DynamicRecipe>,
     count: &mut usize,
+    errors: &mut RegistryLoadErrors,
 ) {
     let Ok(entries) = fs::read_dir(current_dir) else {
         return;
@@ -2103,7 +2128,7 @@ fn load_recipes_recursive(
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            load_recipes_recursive(namespace, base_dir, &path, all_recipes, count);
+            load_recipes_recursive(namespace, base_dir, &path, all_recipes, count, errors);
         } else if path
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
@@ -2117,11 +2142,20 @@ fn load_recipes_recursive(
                 .to_string_lossy()
                 .replace('\\', "/");
 
-            if let Ok(content) = fs::read_to_string(&path)
-                && let Some(recipe) = recipe_loader::parse_recipe(namespace, &recipe_name, &content)
-            {
+            let recipe_id = format!("{namespace}:{recipe_name}");
+            let content = match fs::read_to_string(&path) {
+                Ok(content) => content,
+                Err(error) => {
+                    errors.fail(RECIPE_REGISTRY, recipe_id, error);
+                    continue;
+                }
+            };
+            if let Some(recipe) = recipe_loader::parse_recipe(namespace, &recipe_name, &content) {
+                errors.loaded(RECIPE_REGISTRY, &recipe_id);
                 all_recipes.push(recipe);
                 *count += 1;
+            } else {
+                errors.fail(RECIPE_REGISTRY, recipe_id, invalid_json_reason(&content));
             }
         }
     }
@@ -2132,8 +2166,9 @@ fn load_recipes_from_dir(
     dir: &Path,
     all_recipes: &mut Vec<DynamicRecipe>,
     count: &mut usize,
+    errors: &mut RegistryLoadErrors,
 ) {
-    load_recipes_recursive(namespace, dir, dir, all_recipes, count);
+    load_recipes_recursive(namespace, dir, dir, all_recipes, count, errors);
 }
 #[cfg(test)]
 mod tests {
@@ -2310,6 +2345,8 @@ mod tests {
         let mut item_modifiers = std::collections::HashMap::new();
         let mut slot_sources = std::collections::HashMap::new();
         let mut tags = std::collections::HashMap::new();
+        let mut worldgen = super::structure_loader::StagedWorldgen::default();
+        let mut errors = super::RegistryLoadErrors::default();
 
         let mut acc = super::PackContentAccumulators {
             recipes: &mut recipes,
@@ -2327,9 +2364,12 @@ mod tests {
             item_modifiers: &mut item_modifiers,
             slot_sources: &mut slot_sources,
             tags: &mut tags,
+            worldgen: &mut worldgen,
+            errors: &mut errors,
         };
 
         let counts = super::load_pack_contents(&datapack_path, "vanilla", &mut acc);
+        assert!(errors.is_empty(), "vanilla elements must load: {errors:?}");
         assert_eq!(counts.recipes, 2042, "all vanilla recipes must load");
         assert_eq!(
             counts.loot_tables, 1447,
@@ -2390,6 +2430,8 @@ mod tests {
             let mut item_modifiers = std::collections::HashMap::new();
             let mut slot_sources = std::collections::HashMap::new();
             let mut tags = std::collections::HashMap::new();
+            let mut worldgen = super::structure_loader::StagedWorldgen::default();
+            let mut errors = super::RegistryLoadErrors::default();
 
             let mut acc = super::PackContentAccumulators {
                 recipes: &mut recipes,
@@ -2407,9 +2449,15 @@ mod tests {
                 item_modifiers: &mut item_modifiers,
                 slot_sources: &mut slot_sources,
                 tags: &mut tags,
+                worldgen: &mut worldgen,
+                errors: &mut errors,
             };
 
             let counts = super::load_pack_contents(&pack_path, "trade_rebalance", &mut acc);
+            assert!(
+                errors.is_empty(),
+                "trade rebalance elements must load: {errors:?}"
+            );
             assert!(counts.trades > 0, "trade rebalance must load trades");
             assert!(
                 counts.trade_tags > 0,

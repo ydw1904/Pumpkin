@@ -5,7 +5,8 @@ use std::path::Path;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use serde_json::Value;
-use tracing::warn;
+
+use super::RegistryLoadErrors;
 
 pub type ContextProviderRegistry = HashMap<String, NbtTag>;
 
@@ -74,17 +75,28 @@ pub fn load_embedded_context_providers(
     (int_count, float_count)
 }
 
+/// Loads the providers of `provider_dir`, whose failures go into `errors` under the registry
+/// `registry_id`.
 pub fn load_context_providers_from_dir(
     namespace: &str,
     provider_dir: &Path,
     registry: &mut ContextProviderRegistry,
+    registry_id: &'static str,
+    errors: &mut RegistryLoadErrors,
 ) -> usize {
     if !provider_dir.is_dir() {
         return 0;
     }
 
     let before = registry.len();
-    load_context_providers_recursive(namespace, provider_dir, provider_dir, registry);
+    load_context_providers_recursive(
+        namespace,
+        provider_dir,
+        provider_dir,
+        registry,
+        registry_id,
+        errors,
+    );
     registry.len() - before
 }
 
@@ -93,6 +105,8 @@ fn load_context_providers_recursive(
     base_dir: &Path,
     current_dir: &Path,
     registry: &mut ContextProviderRegistry,
+    registry_id: &'static str,
+    errors: &mut RegistryLoadErrors,
 ) {
     let Ok(entries) = fs::read_dir(current_dir) else {
         return;
@@ -102,7 +116,14 @@ fn load_context_providers_recursive(
         let path = entry.path();
 
         if path.is_dir() {
-            load_context_providers_recursive(namespace, base_dir, &path, registry);
+            load_context_providers_recursive(
+                namespace,
+                base_dir,
+                &path,
+                registry,
+                registry_id,
+                errors,
+            );
         } else if path
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
@@ -117,25 +138,16 @@ fn load_context_providers_recursive(
             let stem_path = stem_path.replace('\\', "/");
             let provider_id = format!("{namespace}:{stem_path}");
 
-            match fs::read_to_string(&path) {
-                Ok(content) => match serde_json::from_str::<Value>(&content) {
-                    Ok(val) => {
-                        let tag = json_value_to_nbt(&val);
-                        registry.insert(provider_id, tag);
-                    }
-                    Err(e) => {
-                        warn!(
-                            "Failed to parse context provider '{provider_id}' from '{}': {e}",
-                            path.display()
-                        );
-                    }
-                },
-                Err(e) => {
-                    warn!(
-                        "Failed to read context provider file '{}': {e}",
-                        path.display()
-                    );
+            match fs::read_to_string(&path)
+                .map_err(|error| error.to_string())
+                .and_then(|content| {
+                    serde_json::from_str::<Value>(&content).map_err(|error| error.to_string())
+                }) {
+                Ok(val) => {
+                    errors.loaded(registry_id, &provider_id);
+                    registry.insert(provider_id, json_value_to_nbt(&val));
                 }
+                Err(error) => errors.fail(registry_id, provider_id, error),
             }
         }
     }

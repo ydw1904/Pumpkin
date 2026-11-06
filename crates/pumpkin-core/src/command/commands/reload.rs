@@ -2,6 +2,7 @@ use pumpkin_data::translation;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
+use pumpkin_world::world_info::DataPacks;
 
 use crate::command::argument_builder::{ArgumentBuilder, command};
 use crate::command::context::command_context::CommandContext;
@@ -12,10 +13,23 @@ use crate::data::datapack::DatapackManager;
 const DESCRIPTION: &str = "Reloads the server's datapacks.";
 const PERMISSION: &str = "minecraft:command.reload";
 
+/// Vanilla `ReloadCommand.reloadPacks`: reloads with the given pack selection and tells the
+/// source when that failed and the old data stays.
+pub fn reload_packs(context: &CommandContext, data_packs: &DataPacks) {
+    if context.server().reload_datapacks(data_packs).is_err() {
+        context.source.send_error(TextComponent::translate_cross(
+            translation::java::COMMANDS_RELOAD_FAILURE,
+            translation::java::COMMANDS_RELOAD_FAILURE,
+            [],
+        ));
+    }
+}
+
 struct ReloadExecutor;
 
 impl CommandExecutor for ReloadExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
+        let data_packs = DatapackManager::discover_new_packs(context.server());
         // Vanilla announces the reload before doing it, so the feedback
         // arrives even though reloading takes a moment.
         context.source.send_feedback(
@@ -26,10 +40,7 @@ impl CommandExecutor for ReloadExecutor {
             ),
             true,
         );
-
-        let server = context.server().clone();
-        DatapackManager::discover_new_packs(&server);
-        server.reload_datapacks(&server);
+        reload_packs(context, &data_packs);
 
         Ok(0)
     }

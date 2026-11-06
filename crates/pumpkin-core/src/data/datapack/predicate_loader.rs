@@ -4,13 +4,16 @@ use std::path::Path;
 
 use serde_json::Value;
 
+use super::{PREDICATE_REGISTRY, RegistryLoadErrors};
+
 pub fn load_predicates_from_dir<S: std::hash::BuildHasher>(
     namespace: &str,
     dir: &Path,
     predicates: &mut HashMap<String, Value, S>,
+    errors: &mut RegistryLoadErrors,
 ) -> usize {
     let mut loaded = 0;
-    load_predicates_recursive(namespace, dir, dir, predicates, &mut loaded);
+    load_predicates_recursive(namespace, dir, dir, predicates, &mut loaded, errors);
     loaded
 }
 
@@ -20,6 +23,7 @@ fn load_predicates_recursive<S: std::hash::BuildHasher>(
     current_dir: &Path,
     predicates: &mut HashMap<String, Value, S>,
     loaded: &mut usize,
+    errors: &mut RegistryLoadErrors,
 ) {
     let Ok(entries) = fs::read_dir(current_dir) else {
         return;
@@ -27,7 +31,7 @@ fn load_predicates_recursive<S: std::hash::BuildHasher>(
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            load_predicates_recursive(namespace, base_dir, &path, predicates, loaded);
+            load_predicates_recursive(namespace, base_dir, &path, predicates, loaded, errors);
         } else if path
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
@@ -40,11 +44,17 @@ fn load_predicates_recursive<S: std::hash::BuildHasher>(
             let stem_path = stem_path.replace('\\', "/");
             let predicate_id = format!("{namespace}:{stem_path}");
 
-            if let Ok(content) = fs::read_to_string(&path)
-                && let Ok(val) = serde_json::from_str::<Value>(&content)
-            {
-                predicates.insert(predicate_id, val);
-                *loaded += 1;
+            match fs::read_to_string(&path)
+                .map_err(|error| error.to_string())
+                .and_then(|content| {
+                    serde_json::from_str::<Value>(&content).map_err(|error| error.to_string())
+                }) {
+                Ok(val) => {
+                    errors.loaded(PREDICATE_REGISTRY, &predicate_id);
+                    predicates.insert(predicate_id, val);
+                    *loaded += 1;
+                }
+                Err(error) => errors.fail(PREDICATE_REGISTRY, predicate_id, error),
             }
         }
     }
@@ -66,7 +76,12 @@ mod tests {
         .expect("write");
 
         let mut map = HashMap::new();
-        let loaded = load_predicates_from_dir("custom", &pred_dir, &mut map);
+        let loaded = load_predicates_from_dir(
+            "custom",
+            &pred_dir,
+            &mut map,
+            &mut RegistryLoadErrors::default(),
+        );
         assert_eq!(loaded, 1);
         assert!(map.contains_key("custom:test_pred"));
     }
