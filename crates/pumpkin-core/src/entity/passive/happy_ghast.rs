@@ -76,7 +76,11 @@ impl HappyGhastEntity {
                     7.0,
                 )),
             );
-            goal_selector.add_goal(2, Box::new(WanderAroundGoal::new(1.0)));
+            // Stands in for a vanilla stroll that ignores the no-action time.
+            goal_selector.add_goal(
+                2,
+                Box::new(WanderAroundGoal::new(1.0).with_check_no_action_time(false)),
+            );
             goal_selector.add_goal(
                 3,
                 LookAtEntityGoal::with_default(mob_weak, &EntityType::PLAYER, 6.0),

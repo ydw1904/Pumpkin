@@ -88,7 +88,11 @@ impl GoatEntity {
             goal_selector.add_goal(2, BreedGoal::new(1.0));
             goal_selector.add_goal(3, Box::new(TemptGoal::new(1.25, TEMPT_ITEMS, false)));
             goal_selector.add_goal(4, Box::new(FollowParentGoal::new(1.25)));
-            goal_selector.add_goal(6, Box::new(WanderAroundGoal::new(1.0)));
+            // Stands in for a vanilla stroll that ignores the no-action time.
+            goal_selector.add_goal(
+                6,
+                Box::new(WanderAroundGoal::new(1.0).with_check_no_action_time(false)),
+            );
             goal_selector.add_goal(
                 7,
                 LookAtEntityGoal::with_default(mob_weak, &EntityType::PLAYER, 6.0),

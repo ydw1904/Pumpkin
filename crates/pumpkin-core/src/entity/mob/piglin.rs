@@ -136,7 +136,11 @@ impl PiglinEntity {
             goal_selector.add_goal(2, Box::new(GoToWantedItemGoal::new(mob_arc.clone(), 1.0)));
             goal_selector.add_goal(3, Box::new(MeleeAttackGoal::new(1.0, true)));
             goal_selector.add_goal(4, Box::new(RangedCrossbowAttackGoal::new(1.0, 8.0)));
-            goal_selector.add_goal(5, Box::new(WanderAroundGoal::new(1.0)));
+            // Stands in for a vanilla stroll that ignores the no-action time.
+            goal_selector.add_goal(
+                5,
+                Box::new(WanderAroundGoal::new(1.0).with_check_no_action_time(false)),
+            );
             goal_selector.add_goal(
                 6,
                 LookAtEntityGoal::with_default(mob_weak.clone(), &EntityType::PLAYER, 8.0),

@@ -133,7 +133,11 @@ impl BeeEntity {
                 )),
             );
             goal_selector.add_goal(5, Box::new(FollowParentGoal::new(1.25)));
-            goal_selector.add_goal(8, Box::new(WanderAroundGoal::new(1.0)));
+            // Stands in for a vanilla stroll that ignores the no-action time.
+            goal_selector.add_goal(
+                8,
+                Box::new(WanderAroundGoal::new(1.0).with_check_no_action_time(false)),
+            );
             goal_selector.add_goal(9, Box::new(SwimGoal::default()));
         };
 
