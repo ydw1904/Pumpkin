@@ -160,14 +160,23 @@ impl RegistryLoadErrors {
     }
 }
 
-/// Why Pumpkin's parser refused an element: its JSON syntax error, if it has one.
-fn invalid_json_reason(content: &str) -> String {
-    serde_json::from_str::<serde_json::Value>(content)
-        .err()
-        .map_or_else(
-            || "Not a valid element".to_string(),
-            |error| error.to_string(),
-        )
+/// Records an element Pumpkin's parser refused. A file that isn't a JSON object fails the load
+/// like in vanilla. A JSON object is likely valid in vanilla but uses something Pumpkin can't
+/// represent yet, so it's logged and left out rather than failing the whole load.
+fn refuse_element(
+    errors: &mut RegistryLoadErrors,
+    registry: &'static str,
+    id: String,
+    content: &str,
+) {
+    match serde_json::from_str::<serde_json::Value>(content) {
+        Ok(serde_json::Value::Object(_)) => {
+            warn!("Pumpkin can't load {registry} element {id} yet, leaving it out");
+            errors.loaded(registry, &id);
+        }
+        Ok(_) => errors.fail(registry, id, "Not a JSON object"),
+        Err(error) => errors.fail(registry, id, error),
+    }
 }
 
 impl Default for DatapackManager {
@@ -2150,12 +2159,14 @@ fn load_recipes_recursive(
                     continue;
                 }
             };
+            // A later pack's file replaces an earlier pack's recipe of the same id.
+            all_recipes.retain(|recipe| recipe.recipe_id() != Some(recipe_id.as_str()));
             if let Some(recipe) = recipe_loader::parse_recipe(namespace, &recipe_name, &content) {
                 errors.loaded(RECIPE_REGISTRY, &recipe_id);
                 all_recipes.push(recipe);
                 *count += 1;
             } else {
-                errors.fail(RECIPE_REGISTRY, recipe_id, invalid_json_reason(&content));
+                refuse_element(errors, RECIPE_REGISTRY, recipe_id, &content);
             }
         }
     }

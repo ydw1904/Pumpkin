@@ -2,7 +2,7 @@ use pumpkin_util::loot_table::DynamicLootTable;
 use pumpkin_util::loot_table::parser::parse_loot_table_with_predicates;
 use std::{collections::HashMap, fs, path::Path, sync::Arc};
 
-use super::{LOOT_TABLE_REGISTRY, RegistryLoadErrors, invalid_json_reason};
+use super::{LOOT_TABLE_REGISTRY, RegistryLoadErrors, refuse_element};
 
 #[must_use]
 pub fn parse_loot_table(json: &str) -> Option<DynamicLootTable> {
@@ -85,11 +85,9 @@ fn load_loot_tables_recursive<S: std::hash::BuildHasher>(
                 errors.loaded(LOOT_TABLE_REGISTRY, &loot_table_id);
                 registry.insert(loot_table_id, Arc::new(table));
             } else {
-                errors.fail(
-                    LOOT_TABLE_REGISTRY,
-                    loot_table_id,
-                    invalid_json_reason(&content),
-                );
+                // The topmost pack's file decides, even when Pumpkin can't load it.
+                registry.remove(&loot_table_id);
+                refuse_element(errors, LOOT_TABLE_REGISTRY, loot_table_id, &content);
             }
         }
     }
@@ -269,5 +267,30 @@ mod tests {
             registry["custom:blocks/dirt"].pools[0].condition,
             DynamicLootCondition::RandomChance { chance: 0.0 }
         ));
+    }
+
+    #[test]
+    fn unsupported_tables_are_left_out_and_broken_ones_fail() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = temp.path().join("data/custom/loot_table");
+        fs::create_dir_all(&root).expect("create dir");
+        // Valid in vanilla, but Pumpkin has no `add` number provider.
+        fs::write(
+            root.join("unsupported.json"),
+            r#"{"pools":[{"rolls":{"type":"minecraft:add","inputs":[1,1]},"entries":[{"type":"minecraft:item","name":"minecraft:dirt"}]}]}"#,
+        )
+        .expect("write json");
+        fs::write(root.join("broken.json"), r#"{"pools": ["#).expect("write json");
+
+        let mut registry = HashMap::new();
+        let mut errors = RegistryLoadErrors::default();
+        let count = load_loot_tables_from_dir("custom", &root, &mut registry, &mut errors);
+        assert_eq!(count, 0);
+        assert!(
+            errors
+                .get(LOOT_TABLE_REGISTRY, "custom:unsupported")
+                .is_none()
+        );
+        assert!(errors.get(LOOT_TABLE_REGISTRY, "custom:broken").is_some());
     }
 }
