@@ -292,7 +292,19 @@ impl EntityIndex {
         registry: Arc<Registry>,
         area: BoundingBox,
     ) -> impl Iterator<Item = Arc<dyn EntityBase>> + use<> {
+        self.query_matching(registry, area, |_| true)
+    }
+
+    /// Like [`Self::query`], but drops the candidates `keep` rejects before sorting them or
+    /// reading their bounds.
+    pub fn query_matching<F: Fn(&dyn EntityBase) -> bool>(
+        &self,
+        registry: Arc<Registry>,
+        area: BoundingBox,
+        keep: F,
+    ) -> impl Iterator<Item = Arc<dyn EntityBase>> + use<F> {
         let mut slots = self.with_index(&registry, |index| index.candidates(&area, registry.len()));
+        slots.retain(|&slot| keep(registry[slot].as_ref()));
         // Keep the registry order, including entities spanning several cells.
         slots.sort_unstable();
         slots.dedup();

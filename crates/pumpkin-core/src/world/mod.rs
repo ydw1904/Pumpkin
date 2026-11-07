@@ -5716,8 +5716,9 @@ impl World {
         filter: impl Fn(&'static EntityType) -> bool,
     ) -> Vec<Arc<dyn EntityBase>> {
         self.entity_index
-            .query(self.entities.load_full(), *aabb)
-            .filter(|entity| filter(entity.get_entity().entity_type))
+            .query_matching(self.entities.load_full(), *aabb, |entity| {
+                filter(entity.get_entity().entity_type)
+            })
             .inspect(|entity| entity_islands::check_reached(entity.get_entity().entity_id))
             .collect()
     }
