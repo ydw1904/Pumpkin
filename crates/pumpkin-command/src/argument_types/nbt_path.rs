@@ -509,34 +509,37 @@ impl NbtPath {
 
     /// Gets matching tags from the given root tag.
     pub fn get(&self, tag: &NbtTag) -> Result<Vec<NbtTag>, CommandSyntaxError> {
-        let mut current = vec![tag.clone()];
-        for (i, node) in self.nodes.iter().enumerate() {
-            let mut next = Vec::new();
-            for parent in &current {
-                node.get_tag(parent, &mut next);
-            }
-            if next.is_empty() {
-                return Err(self.create_not_found_exception(i));
-            }
-            current = next;
-        }
-        Ok(current)
+        self.matches(tag)
+            .map_err(|node| self.create_not_found_exception(node))
     }
 
     /// Counts how many elements match the path.
     pub fn count_matching(&self, tag: &NbtTag) -> usize {
-        let mut current = vec![tag.clone()];
-        for node in &self.nodes {
+        self.matches(tag).map_or(0, |matches| matches.len())
+    }
+
+    /// The tags matching the path, or the index of the first node that matched nothing. The root
+    /// is read in place, since copying it copies a whole entity's data for one value.
+    fn matches(&self, tag: &NbtTag) -> Result<Vec<NbtTag>, usize> {
+        let Some((first, rest)) = self.nodes.split_first() else {
+            return Ok(vec![tag.clone()]);
+        };
+        let mut current = Vec::new();
+        first.get_tag(tag, &mut current);
+        if current.is_empty() {
+            return Err(0);
+        }
+        for (i, node) in rest.iter().enumerate() {
             let mut next = Vec::new();
             for parent in &current {
                 node.get_tag(parent, &mut next);
             }
             if next.is_empty() {
-                return 0;
+                return Err(i + 1);
             }
             current = next;
         }
-        current.len()
+        Ok(current)
     }
 
     fn get_or_create_parents(
@@ -829,5 +832,36 @@ fn parse_compound_pattern(reader: &mut StringReader) -> Result<NbtCompound, Comm
     match SnbtParser::parse_for_commands(reader)? {
         NbtTag::Compound(compound) => Ok(compound),
         _ => Err(ERROR_INVALID_NODE.create(reader)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::source::DummySource;
+
+    fn path(text: &str) -> NbtPath {
+        ArgumentType::<DummySource>::parse(&NbtPathArgumentType, &mut StringReader::new(text))
+            .unwrap()
+    }
+
+    fn not_found_prefix(text: &str, root: &NbtTag) -> serde_json::Value {
+        let error = path(text).get(root).unwrap_err();
+        serde_json::to_value(error.message).unwrap()["with"][0]["text"].clone()
+    }
+
+    #[test]
+    fn get_reads_matches_and_reports_the_first_node_that_matched_nothing() {
+        let mut root = NbtCompound::new();
+        root.put_list("Pos", vec![NbtTag::Double(1.5), NbtTag::Double(2.5)]);
+        let root = NbtTag::Compound(root);
+
+        assert!(matches!(
+            path("Pos[1]").get(&root).unwrap().as_slice(),
+            [NbtTag::Double(value)] if *value == 2.5
+        ));
+        assert_eq!(path("Pos[]").count_matching(&root), 2);
+        assert_eq!(not_found_prefix("Motion[0]", &root), "Motion");
+        assert_eq!(not_found_prefix("Pos[5]", &root), "Pos[5]");
     }
 }
