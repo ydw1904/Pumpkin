@@ -15,6 +15,16 @@ const take = () => { const s = msgs.join('|') || 'none'; msgs.length = 0; return
 const events = []
 bot._client.on('game_state_change', (p) => { const r = String(p.reason); if (!/rain|thunder|game_mode|chunks_load/.test(r)) events.push(r) })
 const takeEvents = () => { const s = events.join(',') || 'none'; events.length = 0; return s }
+// The default spawn position (what compasses point at): always the world spawn, never the bed.
+let worldSpawn = null
+const spawnPkts = []
+bot._client.on('spawn_position', (p) => {
+  const g = p.globalPos
+  const at = `${g.location.x},${g.location.y},${g.location.z}`
+  if (worldSpawn === null) worldSpawn = at
+  spawnPkts.push(`${String(g.dimensionName).replace('minecraft:', '')}:${at === worldSpawn ? 'world' : `${g.location.x - X},${g.location.y - Y},${g.location.z - Z}`}`)
+})
+const takeSpawn = () => { const s = [...new Set(spawnPkts)].join(',') || 'none'; spawnPkts.length = 0; return s }
 const dimName = () => String(bot.game.dimension).replace('minecraft:', '')
 const rel = (p, o) => `${(p.x - o[0]).toFixed(1)},${(p.y - o[1]).toFixed(1)},${(p.z - o[2]).toFixed(1)}`
 
@@ -52,6 +62,8 @@ h.start(async () => {
   take()
   await use(X + 2, Y + 1, Z)
   h.result('day_click', take())
+  h.result('login_spawn_pkts', worldSpawn === null ? 'none' : 'seen')
+  h.result('bed_set_spawn_pkts', takeSpawn())
 
   h.cmd(`summon zombie ${X - 3.5} ${Y + 1} ${Z + 0.5} {NoAI:1b,PersistenceRequired:1b}`)
   h.cmd('time set 18000')
@@ -130,6 +142,7 @@ h.start(async () => {
   h.result('bed_respawn_pos', rel(bot.entity.position, [X + 2, Y + 1, Z]))
   h.result('bed_respawn_yaw', bot.entity.yaw.toFixed(2))
   h.result('bed_respawn_events', takeEvents())
+  h.result('bed_respawn_spawn_pkts', takeSpawn())
   h.cmd(`fill ${X + 2} ${Y + 1} ${Z - 2} ${X + 2} ${Y + 1} ${Z + 2} air`)
   take()
   await die()
@@ -196,6 +209,7 @@ h.start(async () => {
   await h.waitFor(h.chunksLoaded, 60000)
   await h.ticks(20)
   const nbed = await placeBed(658, 99, 0)
+  h.result('nether_spawn_pkts', takeSpawn())
   h.result('nether_bed_placed', nbed ? nbed.name : 'none')
   take()
   await use(658, 100, 0)
@@ -217,6 +231,7 @@ h.start(async () => {
   h.result('anchor_respawn_pos', rel(bot.entity.position, [644, 100, 0]))
   h.result('anchor_after_respawn', h.block(644, 100, 0) ? h.block(644, 100, 0).getProperties().charges : 'unloaded')
   h.result('anchor_respawn_yaw', bot.entity.yaw.toFixed(2))
+  h.result('anchor_respawn_spawn_pkts', takeSpawn())
 
   // A forced respawn point: an anchor still uses the stand-up search but keeps its charge,
   // water is no place to respawn in, and a missing forced point is forgotten.
@@ -237,5 +252,13 @@ h.start(async () => {
   h.result('forced_water_events', takeEvents())
   await die()
   h.result('forced_forgotten_events', takeEvents())
+  // /setworldspawn is broadcast to every player, only when the spawn changes.
+  takeSpawn()
+  h.cmd(`setworldspawn ${X} ${Y + 1} ${Z} 90 0`)
+  await h.ticks(10)
+  h.result('setworldspawn_pkts', takeSpawn())
+  h.cmd(`setworldspawn ${X} ${Y + 1} ${Z} 90 0`)
+  await h.ticks(10)
+  h.result('setworldspawn_same_pkts', takeSpawn())
   h.cmd('execute in minecraft:the_nether run forceload remove all')
 })

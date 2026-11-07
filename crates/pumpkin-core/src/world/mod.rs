@@ -4681,26 +4681,8 @@ impl World {
         // Sends initial scoreboard state
         player.initialize_scoreboard();
 
-        let (spawn_block_pos, yaw, pitch) = {
-            let level_info_lock = self.level_info.load();
-            (
-                BlockPos::new(
-                    level_info_lock.spawn_x,
-                    level_info_lock.spawn_y,
-                    level_info_lock.spawn_z,
-                ),
-                level_info_lock.spawn_yaw,
-                level_info_lock.spawn_pitch,
-            )
-        };
-
         client
-            .send_packet(&CPlayerSpawnPosition::new(
-                spawn_block_pos,
-                yaw,
-                pitch,
-                self.dimension.minecraft_name.to_owned(),
-            ))
+            .send_packet(&self.default_spawn_position_packet())
             .await;
 
         // Send initial weather state
@@ -4820,6 +4802,19 @@ impl World {
         self.send_to_tracking_players_bedrock(from.get_entity(), &be_armor_equipment);
     }
 
+    /// Vanilla `ClientboundSetDefaultSpawnPositionPacket(level.getRespawnData())`: always the
+    /// world spawn, which compasses point at, never the player's own respawn point.
+    pub fn default_spawn_position_packet(&self) -> CPlayerSpawnPosition {
+        let info = self.level_info.load();
+        // The world spawn is always an overworld position here (see `respawn_player_now`).
+        CPlayerSpawnPosition::new(
+            BlockPos::new(info.spawn_x, info.spawn_y, info.spawn_z),
+            info.spawn_yaw,
+            info.spawn_pitch,
+            Dimension::OVERWORLD.minecraft_name.to_owned(),
+        )
+    }
+
     pub fn send_world_info(&self, player: &Arc<Player>) {
         if let ClientPlatform::Java(client) = player.client.as_ref() {
             self.worldborder
@@ -4828,7 +4823,7 @@ impl World {
                 .init_client(client);
         }
 
-        // TODO: World spawn (compass stuff)
+        player.try_send_client_packet(&self.default_spawn_position_packet());
 
         if let ClientPlatform::Java(client) = player.client.as_ref()
             && client.version.load() >= JavaMinecraftVersion::V_1_20_2
@@ -5238,36 +5233,30 @@ impl World {
             ))
             .await;
 
-        // Inform the client of the default spawn position so the client doesn't
-        // fall back to (0, 2, 0) while the world reloads (fixes rubberbanding).
-        // This must be sent after the CRespawn packet for proper client positioning.
-        let spawn_block_pos = BlockPos(Vector3::new(
-            position.x.round() as i32,
-            position.y.round() as i32,
-            position.z.round() as i32,
-        ));
-        let bedrock_dimension = match target_world.dimension.minecraft_name {
-            "minecraft:the_nether" => 1,
-            "minecraft:the_end" => 2,
-            _ => 0,
-        };
-        player
-            .send_packet_now_editioned(
-                &CPlayerSpawnPosition::new(
-                    spawn_block_pos,
-                    yaw,
-                    pitch,
-                    target_world.dimension.minecraft_name.to_string(),
-                ),
-                &pumpkin_protocol::bedrock::client::CSetSpawnPosition {
+        // Java clients get the world spawn from `send_world_info` below, like vanilla.
+        if let ClientPlatform::Bedrock(client) = player.client.as_ref() {
+            let spawn_block_pos = BlockPos(Vector3::new(
+                position.x.round() as i32,
+                position.y.round() as i32,
+                position.z.round() as i32,
+            ));
+            let bedrock_dimension = match target_world.dimension.minecraft_name {
+                "minecraft:the_nether" => 1,
+                "minecraft:the_end" => 2,
+                _ => 0,
+            };
+            if let Ok(data) =
+                client.serialize_packet(&pumpkin_protocol::bedrock::client::CSetSpawnPosition {
                     spawn_position_type:
                         pumpkin_protocol::bedrock::client::SpawnPositionType::WorldRespawn,
                     block_position: spawn_block_pos,
                     dimension_type: bedrock_dimension.into(),
                     spawn_block_pos,
-                },
-            )
-            .await;
+                })
+            {
+                client.send_game_packet(data).await;
+            }
+        }
 
         player.send_permission_lvl_update();
 

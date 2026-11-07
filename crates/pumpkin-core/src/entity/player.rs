@@ -271,12 +271,11 @@ use pumpkin_protocol::java::client::play::{
     CCloseContainer, CCombatDeath, CCustomPayload, CDisguisedChatMessage, CEntityAnimation,
     CEntityPositionSync, CEntityVelocity, CGameEvent, CHurtAnimation, CItemCooldown, COpenBook,
     COpenMountScreen, COpenScreen, COpenSignEditor, CParticle, CPlayServerLinks, CPlayerAbilities,
-    CPlayerInfoUpdate, CPlayerPosition, CPlayerSpawnPosition, CRespawn, CSetCamera,
-    CSetContainerContent, CSetContainerProperty, CSetContainerSlot, CSetCursorItem, CSetExperience,
-    CSetHealth, CSetPlayerInventory, CSetSelectedSlot, CSoundEffect, CStopSound, CSubtitle,
-    CSystemChatMessage, CTabList, CTitleAnimation, CTitleText, CUnloadChunk, CUpdateMobEffect,
-    CUpdateTime, GameEvent, PlayerAction, PlayerInfoFlags, PlayerSpawnData, PreviousMessage,
-    Statistic,
+    CPlayerInfoUpdate, CPlayerPosition, CRespawn, CSetCamera, CSetContainerContent,
+    CSetContainerProperty, CSetContainerSlot, CSetCursorItem, CSetExperience, CSetHealth,
+    CSetPlayerInventory, CSetSelectedSlot, CSoundEffect, CStopSound, CSubtitle, CSystemChatMessage,
+    CTabList, CTitleAnimation, CTitleText, CUnloadChunk, CUpdateMobEffect, CUpdateTime, GameEvent,
+    PlayerAction, PlayerInfoFlags, PlayerSpawnData, PreviousMessage, Statistic,
 };
 use pumpkin_protocol::java::server::play::{
     SClickSlot, SContainerButtonClick, SRenameItem, SlotActionType,
@@ -1107,7 +1106,6 @@ impl Player {
             previous_gamemode: AtomicCell::new(None),
             camera_target_id: AtomicCell::new(None),
             is_movement_locked: AtomicBool::new(false),
-            // TODO: Send the CPlayerSpawnPosition packet when the client connects with proper values
             respawn_point: std::sync::Mutex::new(None),
             last_death_location: std::sync::Mutex::new(None),
             sleeping_since: AtomicCell::new(None),
@@ -2478,21 +2476,19 @@ impl Player {
             "minecraft:the_end" => 2,
             _ => 0,
         };
-        self.client.try_enqueue_packet_editioned(
-            &CPlayerSpawnPosition::new(
-                final_block_pos,
-                yaw,
-                pitch,
-                dimension.minecraft_name.to_owned(),
-            ),
-            &pumpkin_protocol::bedrock::client::CSetSpawnPosition {
-                spawn_position_type:
-                    pumpkin_protocol::bedrock::client::SpawnPositionType::PlayerRespawn,
-                block_position: final_block_pos,
-                dimension_type: bedrock_dimension.into(),
-                spawn_block_pos: final_block_pos,
-            },
-        );
+        // Vanilla never tells a Java client its respawn point: its default spawn position is
+        // the world spawn, which compasses point at.
+        if let ClientPlatform::Bedrock(client) = self.client.as_ref() {
+            client.try_enqueue_client_packet(
+                &pumpkin_protocol::bedrock::client::CSetSpawnPosition {
+                    spawn_position_type:
+                        pumpkin_protocol::bedrock::client::SpawnPositionType::PlayerRespawn,
+                    block_position: final_block_pos,
+                    dimension_type: bedrock_dimension.into(),
+                    spawn_block_pos: final_block_pos,
+                },
+            );
+        }
 
         *self
             .respawn_point

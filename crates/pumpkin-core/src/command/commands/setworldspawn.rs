@@ -81,6 +81,14 @@ impl CommandExecutor for SetWorldSpawnExecutor {
 
         server.level_info.store(Arc::new(new_info));
 
+        // Vanilla `MinecraftServer.setRespawnData`: only a changed spawn is broadcast.
+        if previous_position != new_position
+            || previous_yaw != new_yaw
+            || previous_pitch != new_pitch
+        {
+            server.broadcast_packet_all(&world.default_spawn_position_packet());
+        }
+
         context.source.send_feedback(
             TextComponent::translate_cross(
                 translation::java::COMMANDS_SETWORLDSPAWN_SUCCESS,
