@@ -210,6 +210,9 @@ use weather::Weather;
 
 const MAX_LIGHT_LEVEL: u8 = 15;
 const LIGHTNING_ROD_SEARCH_RADIUS: i32 = 128;
+/// The fewest entities a rayon job takes in the per-entity scans of the tick. Each entity costs
+/// a few loads, so a smaller job costs less than waking a worker for it.
+pub(crate) const ENTITY_SCAN_BATCH: usize = 512;
 
 fn bedrock_chest_block_actor(state_id: BlockStateId, position: BlockPos) -> Option<NbtCompound> {
     crate::block::entities::chest_like_block_entity::build_chest_actor(position, state_id, None)
@@ -2063,7 +2066,7 @@ impl World {
             .iter()
             .map(|entity| block_chunk(entity.get_entity().pos.load()))
             .collect::<FxHashSet<_>>()
-            .into_par_iter()
+            .into_iter()
             .filter(|chunk| {
                 active_chunks.ticking.contains(chunk)
                     && level_for_entities.is_chunk_entity_ticking_ready(chunk)
@@ -2076,6 +2079,7 @@ impl World {
         // always ticks.
         let (tickable, frozen): (Vec<_>, Vec<_>) = entities_to_tick
             .par_iter()
+            .with_min_len(ENTITY_SCAN_BATCH)
             .filter_map(|entity| {
                 let entity_chunk = block_chunk(entity.get_entity().pos.load());
                 if !entity_ticking_ready.contains(&entity_chunk) {
