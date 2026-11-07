@@ -284,14 +284,12 @@ impl DatapackManager {
             errors: &mut errors,
         };
 
-        scan_datapacks_dir(
+        load_enabled_packs(
             &datapacks_dir,
             enabled_packs,
             &mut acc,
             &mut loaded_packs_vec,
         );
-
-        load_bundled_datapacks(enabled_packs, &mut acc, &mut loaded_packs_vec);
 
         let advancement_definitions: HashMap<String, serde_json::Value> = all_advancements
             .into_iter()
@@ -1614,106 +1612,62 @@ fn find_bundled_datapack_dir(pack_name: &str) -> Option<PathBuf> {
     None
 }
 
-fn load_bundled_datapacks(
-    enabled_packs: &[String],
-    acc: &mut PackContentAccumulators<'_>,
-    loaded_packs_vec: &mut Vec<LoadedDatapack>,
-) {
-    for bundled in [
-        "trade_rebalance",
-        "minecart_improvements",
-        "redstone_experiments",
-    ] {
-        let is_enabled = enabled_packs.iter().any(|p| {
-            p == bundled
-                || p == &format!("minecraft:{bundled}")
-                || p == &format!("file/{bundled}")
-                || p.strip_prefix("file/") == Some(bundled)
-                || p.strip_prefix("minecraft:") == Some(bundled)
-        });
-        let already_loaded = loaded_packs_vec.iter().any(|p| {
-            p.id == bundled || p.id == format!("minecraft:{bundled}") || p.name == bundled
-        });
-        if is_enabled
-            && !already_loaded
-            && let Some(pack_path) = find_bundled_datapack_dir(bundled)
-        {
-            let (description, pack_format, known_packs) = read_pack_mcmeta(&pack_path);
-            let counts = load_pack_contents(&pack_path, &format!("minecraft:{bundled}"), acc);
-            info!(
-                "Loaded bundled datapack '{bundled}': {} recipe(s), {} function(s), {} test instance(s), {} damage type(s), {} int provider(s), {} float provider(s), {} loot table(s), {} structure(s), {} template pool(s), {} processor list(s), {} dynamic registry entry/entries, {} trade set(s), {} trade(s), {} advancement(s), {} predicate(s), {} tag(s)",
-                counts.recipes,
-                counts.functions,
-                counts.test_instances,
-                counts.damage_types,
-                counts.int_providers,
-                counts.float_providers,
-                counts.loot_tables,
-                counts.structures,
-                counts.template_pools,
-                counts.processor_lists,
-                counts.dynamic_registries,
-                counts.trade_sets,
-                counts.trades,
-                counts.advancements,
-                counts.predicates,
-                counts.tags,
-            );
-            loaded_packs_vec.push(LoadedDatapack {
-                id: format!("minecraft:{bundled}"),
-                name: bundled.to_string(),
-                description,
-                pack_format,
-                root_path: pack_path,
-                recipe_count: counts.recipes,
-                function_count: counts.functions,
-                known_packs,
-            });
-        }
-    }
-}
+/// The feature packs Pumpkin ships in `assets/datapack`.
+const BUNDLED_PACKS: [&str; 3] = [
+    "trade_rebalance",
+    "minecart_improvements",
+    "redstone_experiments",
+];
 
-fn scan_datapacks_dir(
+/// Loads the enabled packs in the order of the enabled list, so a later pack's files replace an
+/// earlier pack's (vanilla `MultiPackResourceManager`). A world pack folder wins over a bundled
+/// pack of the same name.
+fn load_enabled_packs(
     datapacks_dir: &Path,
     enabled_packs: &[String],
     acc: &mut PackContentAccumulators<'_>,
     loaded_packs_vec: &mut Vec<LoadedDatapack>,
 ) {
-    if !datapacks_dir.is_dir() {
-        return;
-    }
-    let entries = match fs::read_dir(datapacks_dir) {
-        Ok(entries) => entries,
-        Err(error) => {
-            warn!(
-                "Failed to read datapacks directory '{}': {error}",
-                datapacks_dir.display()
+    for entry in enabled_packs {
+        let file_name = entry.strip_prefix("file/").unwrap_or(entry);
+        let is_folder_name = !file_name.starts_with('.')
+            && matches!(
+                Path::new(file_name).components().collect::<Vec<_>>()[..],
+                [std::path::Component::Normal(_)]
             );
-            return;
-        }
-    };
-
-    for entry in entries.flatten() {
-        let pack_path = entry.path();
-        let file_name = entry.file_name().to_string_lossy().to_string();
-
-        if file_name.starts_with('.') || !pack_path.is_dir() {
+        let world_pack = datapacks_dir.join(file_name);
+        let (name, pack_id, pack_path, kind) = if is_folder_name && world_pack.is_dir() {
+            (
+                file_name,
+                format!("file/{file_name}"),
+                world_pack,
+                "datapack",
+            )
+        } else {
+            let name = file_name.strip_prefix("minecraft:").unwrap_or(file_name);
+            let Some(pack_path) = BUNDLED_PACKS
+                .contains(&name)
+                .then(|| find_bundled_datapack_dir(name))
+                .flatten()
+            else {
+                continue;
+            };
+            (
+                name,
+                format!("minecraft:{name}"),
+                pack_path,
+                "bundled datapack",
+            )
+        };
+        if loaded_packs_vec.iter().any(|pack| pack.id == pack_id) {
             continue;
         }
-
-        let pack_id = format!("file/{file_name}");
-        let is_enabled = enabled_packs
-            .iter()
-            .any(|p| p == &pack_id || p == &file_name);
-        if !is_enabled {
-            continue;
-        }
+        let name = name.to_string();
 
         let (description, pack_format, known_packs) = read_pack_mcmeta(&pack_path);
         let counts = load_pack_contents(&pack_path, &pack_id, acc);
-
         info!(
-            "Loaded datapack '{file_name}': {} recipe(s), {} function(s), {} test instance(s), {} damage type(s), {} int provider(s), {} float provider(s), {} loot table(s), {} structure(s), {} template pool(s), {} processor list(s), {} dynamic registry entry/entries, {} trade set(s), {} trade(s), {} advancement(s), {} predicate(s), {} tag(s)",
+            "Loaded {kind} '{name}': {} recipe(s), {} function(s), {} test instance(s), {} damage type(s), {} int provider(s), {} float provider(s), {} loot table(s), {} structure(s), {} template pool(s), {} processor list(s), {} dynamic registry entry/entries, {} trade set(s), {} trade(s), {} advancement(s), {} predicate(s), {} tag(s)",
             counts.recipes,
             counts.functions,
             counts.test_instances,
@@ -1731,10 +1685,9 @@ fn scan_datapacks_dir(
             counts.predicates,
             counts.tags,
         );
-
         loaded_packs_vec.push(LoadedDatapack {
             id: pack_id,
-            name: file_name,
+            name,
             description,
             pack_format,
             root_path: pack_path,
