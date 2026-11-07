@@ -5,7 +5,10 @@
 // tags of every registry sent to players after a reload, and datapack advancements (added, overriding a built-in
 // one, out of the tree; reward functions; the reset sent on reload; icon components), new packs
 // staying unknown until a rescan, pack order, a valid loot table Pumpkin can't parse, and a
-// broken pack failing the whole reload.
+// broken pack failing the whole reload. Datapack recipes replacing built-in ones in crafting and
+// smelting, with result components; loot number providers (score, storage, registry
+// references), predicates and item modifiers by id and `slots` entries; a selected pack whose
+// folder is gone.
 const fs = require('fs')
 const path = require('path')
 const { make } = require('./survival-lib')
@@ -108,6 +111,35 @@ h.start(async () => {
     criteria: { x: { trigger: 'minecraft:impossible' } }
   }))
   fs.writeFileSync(path.join(pack, 'data', 'p', 'function', 'reward.mcfunction'), 'scoreboard players add #reward dp 1\n')
+  // A recipe with a built-in id replaces the built-in one; results keep their components.
+  const packFile = (rel, json) => {
+    fs.mkdirSync(path.dirname(path.join(pack, 'data', ...rel)), { recursive: true })
+    fs.writeFileSync(path.join(pack, 'data', ...rel), JSON.stringify(json))
+  }
+  packFile(['minecraft', 'recipe', 'crafting_table.json'], {
+    type: 'minecraft:crafting_shaped',
+    pattern: ['##', '##'],
+    key: { '#': '#minecraft:planks' },
+    result: { id: 'minecraft:diamond', count: 3, components: { 'minecraft:custom_name': 'Table gem' } }
+  })
+  packFile(['minecraft', 'recipe', 'iron_ingot_from_smelting_raw_iron.json'], {
+    type: 'minecraft:smelting', ingredient: 'minecraft:raw_iron', result: { id: 'minecraft:gold_ingot' }, experience: 0.7, cookingtime: 200
+  })
+  packFile(['p', 'loot_table', 'smelted.json'], {
+    pools: [{ rolls: 1, entries: [{ type: 'minecraft:item', name: 'minecraft:raw_iron', modifier: { type: 'minecraft:furnace_smelt' } }] }]
+  })
+  // Loot number providers, registry references and slot sources.
+  const dirt = [{ type: 'minecraft:item', name: 'minecraft:dirt' }]
+  packFile(['p', 'loot_table', 'scored.json'], { pools: [{ rolls: { type: 'minecraft:score', target: { type: 'minecraft:fixed', name: '#rolls' }, score: 'dp' }, entries: dirt }] })
+  packFile(['p', 'loot_table', 'unscored.json'], { pools: [{ rolls: { type: 'minecraft:score', target: 'attacker', score: 'dp', fallback: 4 }, entries: dirt }] })
+  packFile(['p', 'loot_table', 'stored.json'], { pools: [{ rolls: { type: 'minecraft:storage', storage: 'p:s', path: 'n' }, entries: dirt }] })
+  packFile(['p', 'loot_table', 'math.json'], { pools: [{ rolls: { type: 'minecraft:mul', inputs: [{ type: 'minecraft:sub', left: 7, right: 2 }, { type: 'minecraft:from_float', input: { type: 'minecraft:floor', input: 1.9 } }] }, entries: dirt }] })
+  packFile(['p', 'context_int_provider', 'three.json'], { type: 'minecraft:add', inputs: [1, 2] })
+  packFile(['p', 'loot_table', 'referenced.json'], { pools: [{ rolls: 'p:three', entries: dirt }] })
+  packFile(['p', 'predicate', 'always.json'], { type: 'minecraft:inverted', term: { type: 'minecraft:random_chance', chance: 0 } })
+  packFile(['p', 'item_modifier', 'five.json'], { type: 'minecraft:set_count', count: 5 })
+  packFile(['p', 'loot_table', 'by_id.json'], { pools: [{ rolls: 1, entries: [{ type: 'minecraft:item', name: 'minecraft:dirt', condition: 'p:always', modifier: 'p:five' }] }] })
+  packFile(['p', 'loot_table', 'copied.json'], { pools: [{ rolls: 1, entries: [{ type: 'minecraft:slots', slot_source: { type: 'minecraft:limit_slots', limit: 3, slot_source: { type: 'minecraft:slot_range', source: 'this', slots: 'hotbar.*' } } }] }] })
 
   await h.arena(X, Y, Z, 6)
   h.cmd(`gamemode creative ${bot.username}`)
@@ -280,6 +312,34 @@ h.start(async () => {
     ['not_a_map', 'dust[1]']
   ]) h.result(`particle_${key}`, await run(`particle ${p} ${X} ${y + 1} ${Z}`))
 
+  // Crafting in the inventory grid with the replaced recipe, and `furnace_smelt` with the
+  // replaced smelting recipe.
+  await h.fill({ 0: 'oak_planks 4' })
+  await h.click(36, 0, 0)
+  for (const slot of [1, 2, 3, 4]) await h.click(slot, 1, 0)
+  h.result('recipe_override_result', h.stackStr(bot.inventory.slots[0]))
+  await h.click(0, 0, 1)
+  h.result('recipe_override_components', await run(`execute if items entity ${bot.username} container.* diamond[custom_name]`))
+  await h.clear()
+  await run('loot give @s loot p:smelted')
+  await h.ticks(5)
+  h.result('recipe_override_smelt', h.invStr())
+
+  // Loot tables with number providers, references and a slots entry.
+  await run('scoreboard players set #rolls dp 3')
+  await run('data modify storage p:s n set value 2')
+  for (const table of ['scored', 'unscored', 'stored', 'math', 'referenced', 'by_id']) {
+    await h.clear()
+    await run(`loot give @s loot p:${table}`)
+    await h.ticks(5)
+    h.result(`loot_${table}`, h.invStr())
+  }
+  await h.fill({ 2: 'emerald 7', 5: 'apple 2' })
+  await run('loot give @s loot p:copied')
+  await h.ticks(5)
+  h.result('loot_slots', h.invStr())
+  await h.clear()
+
   // A pack added to disk stays unknown until something rescans the folder (`datapack list`
   // does). Its loot table is valid but uses a number provider Pumpkin doesn't have, which must
   // not fail the reload. Packs apply in the order of the enabled list: the later one's function
@@ -301,6 +361,23 @@ h.start(async () => {
   await run('datapack enable "file/parity_late" first', 40)
   await run('function p:order')
   h.result('order_first_loses', await run('scoreboard players get #order dp'))
+  await h.clear()
+  await run('loot give @s loot p:fancy')
+  await h.ticks(5)
+  h.result('loot_fancy', h.invStr())
+
+  // A selected pack whose folder is deleted drops out of the selection once the folders are
+  // scanned again.
+  const gone = path.join(path.dirname(process.env.CMDS), 'world', 'datapacks', 'parity_gone')
+  fs.mkdirSync(path.join(gone, 'data'), { recursive: true })
+  fs.writeFileSync(path.join(gone, 'pack.mcmeta'), JSON.stringify({ pack: { description: 'parity gone pack', min_format: 121, max_format: 121 } }))
+  await run('datapack list available')
+  await run('datapack enable "file/parity_gone"', 40)
+  h.result('gone_enabled', String((await run('datapack list enabled')).includes('parity_gone')))
+  fs.rmSync(gone, { recursive: true, force: true })
+  h.result('gone_listed', String((await run('datapack list')).includes('parity_gone')))
+  await run('reload', 40)
+  h.result('gone_after_reload', String((await run('datapack list')).includes('parity_gone')))
 
   // A pack with a broken loot table and an advancement with an unknown trigger fails the whole
   // reload: the old data and pack selection stay, so its function never loads. The reload
