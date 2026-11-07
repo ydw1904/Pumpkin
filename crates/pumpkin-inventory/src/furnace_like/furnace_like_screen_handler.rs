@@ -7,8 +7,10 @@ use crate::{
 };
 use pumpkin_data::data_component_impl::CookingFuelImpl;
 use pumpkin_data::item_stack::ItemStack;
-use pumpkin_data::recipes::{CookingRecipeKind, CookingRecipeType};
 use pumpkin_data::screen::WindowType;
+use pumpkin_protocol::codec::recipe::{RecipePropertySet, RecipePropertySetKey};
+
+use crate::crafting::recipe_provider::{RecipeProvider, recipe_property_set};
 
 use crate::{
     player::player_inventory::PlayerInventory,
@@ -20,32 +22,13 @@ use crate::{
 
 use super::furnace_like_slot::{FurnaceLikeSlot, FurnaceLikeSlotType, FurnaceOutputSlot};
 
-#[must_use]
-pub fn can_smelt_item(item: &pumpkin_data::item::Item, window_type: WindowType) -> bool {
-    let kind = match window_type {
-        WindowType::Furnace => CookingRecipeKind::Smelting,
-        WindowType::BlastFurnace => CookingRecipeKind::Blasting,
-        WindowType::Smoker => CookingRecipeKind::Smoking,
-        _ => return false,
-    };
-
-    pumpkin_data::recipes::RECIPES_COOKING
-        .iter()
-        .any(|recipe| match (recipe, &kind) {
-            (CookingRecipeType::Smelting(r), CookingRecipeKind::Smelting)
-            | (CookingRecipeType::Blasting(r), CookingRecipeKind::Blasting)
-            | (CookingRecipeType::Smoking(r), CookingRecipeKind::Smoking) => {
-                r.ingredient.match_item(item)
-            }
-            _ => false,
-        })
-}
-
 pub struct FurnaceLikeScreenHandler {
     pub inventory: Arc<dyn Inventory>,
     pub property_delegate: Arc<dyn PropertyDelegate>,
     pub experience_container: Arc<dyn ExperienceContainer>,
     pub window_type: WindowType,
+    /// `AbstractFurnaceMenu.acceptedInputs`: what the menu's recipe type cooks.
+    accepted_inputs: RecipePropertySet,
     pub behaviour: ScreenHandlerBehaviour,
 }
 
@@ -67,6 +50,7 @@ impl FurnaceLikeScreenHandler {
         property_delegate: &Arc<dyn PropertyDelegate>,
         experience_container: Arc<dyn ExperienceContainer>,
         window_type: WindowType,
+        recipe_provider: Option<&dyn RecipeProvider>,
     ) -> Self {
         struct FurnaceLikeScreenListener;
         impl ScreenHandlerListener for FurnaceLikeScreenListener {
@@ -82,11 +66,20 @@ impl FurnaceLikeScreenHandler {
             }
         }
 
+        let accepted_inputs = match window_type {
+            WindowType::BlastFurnace => Some(RecipePropertySetKey::BlastFurnaceInput),
+            WindowType::Smoker => Some(RecipePropertySetKey::SmokerInput),
+            WindowType::Furnace => Some(RecipePropertySetKey::FurnaceInput),
+            _ => None,
+        }
+        .map(|key| recipe_property_set(key, recipe_provider))
+        .unwrap_or_default();
         let mut handler = Self {
             inventory,
             property_delegate: property_delegate.clone(),
             experience_container,
             window_type,
+            accepted_inputs,
             behaviour: ScreenHandlerBehaviour::new(sync_id, Some(window_type)),
         };
 
@@ -119,7 +112,7 @@ impl FurnaceLikeScreenHandler {
 
     #[must_use]
     pub fn can_smelt(&self, item_stack: &ItemStack) -> bool {
-        can_smelt_item(item_stack.item, self.window_type)
+        self.accepted_inputs.test(item_stack.item)
     }
 
     #[must_use]
