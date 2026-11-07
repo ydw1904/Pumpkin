@@ -3,8 +3,9 @@
 // transformations, brightness), selector scores without a score, rotations given to command
 // sources (rotated as, facing), SelectedItem in player NBT, /schedule with function tags and the
 // tags of every registry sent to players after a reload, and datapack advancements (added, overriding a built-in
-// one, out of the tree; reward functions; the reset sent on reload), and a broken pack failing
-// the whole reload.
+// one, out of the tree; reward functions; the reset sent on reload; icon components), new packs
+// staying unknown until a rescan, pack order, a valid loot table Pumpkin can't parse, and a
+// broken pack failing the whole reload.
 const fs = require('fs')
 const path = require('path')
 const { make } = require('./survival-lib')
@@ -90,7 +91,7 @@ h.start(async () => {
   fs.mkdirSync(adv, { recursive: true })
   fs.mkdirSync(path.join(pack, 'data', 'minecraft', 'advancement', 'story'), { recursive: true })
   fs.writeFileSync(path.join(adv, 'root.json'), JSON.stringify({
-    display: { icon: { id: 'minecraft:stick' }, title: 'Parity root', description: 'tab', background: 'minecraft:block/stone', show_toast: false, announce_to_chat: false },
+    display: { icon: { id: 'minecraft:stick', components: { 'minecraft:enchantment_glint_override': true } }, title: 'Parity root', description: 'tab', background: 'minecraft:block/stone', show_toast: false, announce_to_chat: false },
     criteria: { tick: { trigger: 'minecraft:tick' } }
   }))
   fs.writeFileSync(path.join(adv, 'child.json'), JSON.stringify({
@@ -144,6 +145,9 @@ h.start(async () => {
   const ids = advIds(advPackets)
   h.result('adv_root_visible', String(ids.includes('p:root')))
   h.result('adv_child_visible', String(ids.includes('p:child')))
+  const root = advEntry(advPackets, 'p:root')
+  const icon = root && root.displayData && root.displayData.icon
+  h.result('adv_icon_components', icon ? JSON.stringify(icon.components ?? icon.addedComponents ?? Object.keys(icon)) : 'none')
   const child = advEntry(advPackets, 'p:child')
   h.result('adv_child_parent', child ? String(child.parentId) : 'none')
   h.result('adv_child_requirements', child ? JSON.stringify(child.requirements) : 'none')
@@ -275,6 +279,28 @@ h.start(async () => {
     ['plain', 'flame'],
     ['not_a_map', 'dust[1]']
   ]) h.result(`particle_${key}`, await run(`particle ${p} ${X} ${y + 1} ${Z}`))
+
+  // A pack added to disk stays unknown until something rescans the folder (`datapack list`
+  // does). Its loot table is valid but uses a number provider Pumpkin doesn't have, which must
+  // not fail the reload. Packs apply in the order of the enabled list: the later one's function
+  // wins.
+  const late = path.join(path.dirname(process.env.CMDS), 'world', 'datapacks', 'parity_late')
+  for (const dir of ['loot_table', 'function']) fs.mkdirSync(path.join(late, 'data', 'p', dir), { recursive: true })
+  fs.writeFileSync(path.join(late, 'pack.mcmeta'), JSON.stringify({ pack: { description: 'parity late pack', min_format: 121, max_format: 121 } }))
+  fs.writeFileSync(path.join(late, 'data', 'p', 'loot_table', 'fancy.json'), JSON.stringify({
+    pools: [{ rolls: { type: 'minecraft:add', inputs: [1, 1] }, entries: [{ type: 'minecraft:item', name: 'minecraft:dirt' }] }]
+  }))
+  fs.writeFileSync(path.join(late, 'data', 'p', 'function', 'order.mcfunction'), 'scoreboard players set #order dp 2\n')
+  fs.writeFileSync(path.join(pack, 'data', 'p', 'function', 'order.mcfunction'), 'scoreboard players set #order dp 1\n')
+  h.result('late_enable_unscanned', await run('datapack enable "file/parity_late"'))
+  h.result('late_listed', String((await run('datapack list available')).includes('file/parity_late')))
+  h.result('late_enable', await run('datapack enable "file/parity_late"', 40))
+  await run('function p:order')
+  h.result('order_last_wins', await run('scoreboard players get #order dp'))
+  await run('datapack disable "file/parity_late"', 40)
+  await run('datapack enable "file/parity_late" first', 40)
+  await run('function p:order')
+  h.result('order_first_loses', await run('scoreboard players get #order dp'))
 
   // A pack with a broken loot table and an advancement with an unknown trigger fails the whole
   // reload: the old data and pack selection stay, so its function never loads. The reload
