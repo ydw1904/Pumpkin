@@ -3658,10 +3658,6 @@ impl Player {
             adv.flush_dirty(self, true);
         }
 
-        // experience handling
-        self.tick_experience();
-        self.tick_health();
-        self.tick_criteria_scores();
         self.tick_raid_omen();
         self.tick_maps(server);
 
@@ -5577,6 +5573,15 @@ impl Player {
                 client.try_enqueue_packet(data);
             }
         }
+    }
+
+    /// The health, score and experience updates at the end of vanilla `ServerPlayer.doTick`.
+    /// Vanilla runs it from the connection tick after the levels ticked, so a hit a mob lands
+    /// this tick reaches the client before the entity data the mob's next tick sends.
+    pub fn send_tick_stats(&self) {
+        self.tick_health();
+        self.tick_criteria_scores();
+        self.tick_experience();
     }
 
     pub fn tick_health(&self) {

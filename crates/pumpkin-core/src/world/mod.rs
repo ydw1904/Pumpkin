@@ -2292,6 +2292,9 @@ impl World {
         if let Some(ref fight_mutex) = self.dragon_fight {
             dragon_fight::DragonFight::tick(fight_mutex, self);
         }
+        for player in players.iter() {
+            player.send_tick_stats();
+        }
 
         let total_elapsed = start.elapsed();
         if total_elapsed.as_millis() > 50 {

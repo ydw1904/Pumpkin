@@ -1631,6 +1631,7 @@ impl Server {
             players.par_iter().for_each(|player| {
                 player.process_inbound_packets();
                 player.tick(self);
+                player.send_tick_stats();
             });
         }
         self.process_deferred_commands();
