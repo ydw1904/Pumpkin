@@ -475,18 +475,9 @@ impl BedrockClient {
                                             s.output.first().and_then(|out| {
                                                 let out_id = out.id.0;
                                                 available.iter().position(|r| {
-                                                    let item_id = r
-                                                        .result_id
-                                                        .strip_prefix("minecraft:")
-                                                        .unwrap_or(&r.result_id);
-                                                    pumpkin_data::item::Item::from_registry_key(
-                                                        item_id,
+                                                    pumpkin_data::item::JavaToBedrockItemMapping::from_java_item_id(
+                                                        r.result.item.id,
                                                     )
-                                                    .and_then(|item| {
-                                                        pumpkin_data::item::JavaToBedrockItemMapping::from_java_item_id(
-                                                            item.id,
-                                                        )
-                                                    })
                                                     .is_some_and(|m| {
                                                         (m.bedrock_item.id as i32) == out_id
                                                     })

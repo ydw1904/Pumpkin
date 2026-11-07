@@ -4,7 +4,9 @@ use pumpkin_data::damage::DamageType;
 use pumpkin_data::data_component_impl::EnchantmentsImpl;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
-use pumpkin_data::recipes::{CookingRecipeKind, get_cooking_recipe_with_ingredient};
+use pumpkin_data::recipes::CookingRecipeKind;
+
+use crate::server::recipe::find_cooking_recipe;
 use pumpkin_data::tag::Taggable;
 pub use pumpkin_util::loot_table::{
     DynamicLootCondition, DynamicLootEntry, DynamicLootEntryKind, DynamicLootFunction,
@@ -104,24 +106,23 @@ fn direct_attacker_weapon_has_enchantment(params: &LootContextParameters, tag: &
         })
 }
 
-fn smelt(item: &'static Item, count: i32) -> (&'static Item, i32) {
-    let result =
-        get_cooking_recipe_with_ingredient(item, CookingRecipeKind::Smelting).and_then(|recipe| {
-            let id = recipe
-                .result
-                .id
-                .strip_prefix("minecraft:")
-                .unwrap_or(recipe.result.id);
-            Item::from_registry_key(id).map(|item| (item, recipe.result.count))
-        });
-    let Some((result, multiplier)) = result else {
+/// `SmeltItemFunction.run` with `use_input_count`: the smelting result of `item`, `count` times
+/// the result's count up to its stack size, or `None` without a smelting recipe.
+fn smelt(item: &'static Item, count: i32) -> Option<(ItemStack, i32)> {
+    let result = find_cooking_recipe(item, &CookingRecipeKind::Smelting)
+        .map(|recipe| recipe.result)
+        .filter(|result| !result.is_empty());
+    let Some(result) = result else {
         tracing::warn!(
             "Couldn't smelt {} because there is no smelting recipe",
             item.registry_key
         );
-        return (item, count);
+        return None;
     };
-    (result, count.saturating_mul(i32::from(multiplier)))
+    let count = count
+        .saturating_mul(i32::from(result.item_count))
+        .min(i32::from(result.get_max_stack_size()));
+    Some((result, count))
 }
 
 fn weather_matches(

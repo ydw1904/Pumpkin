@@ -15,6 +15,12 @@ pub struct MapDataInfo {
 pub trait RecipeProvider: Send + Sync {
     fn get_dynamic_recipes(&self) -> Vec<DynamicRecipe>;
 
+    /// Whether a datapack or plugin recipe has this id, which replaces the built-in recipe of
+    /// the same id.
+    fn replaces_builtin(&self, _recipe_id: &str) -> bool {
+        false
+    }
+
     /// `MapItem.getSavedData`: the data of the map the stack shows, if there is any.
     fn map_data(&self, _stack: &ItemStack) -> Option<MapDataInfo> {
         None

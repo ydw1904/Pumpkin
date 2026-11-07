@@ -330,6 +330,8 @@ impl Server {
                 .map_err(|e| WorldInfoError::IoError(std::io::Error::other(e)))?,
         );
 
+        let recipe_manager = Arc::new(recipe::RecipeManager::new());
+        recipe::set_active_recipe_manager(&recipe_manager);
         let server = Self {
             basic_config,
             advanced_config,
@@ -338,7 +340,7 @@ impl Server {
             plugin_manager: Arc::new(PluginManager::new(plugin_loaders)),
             permission_manager,
             container_id: 0.into(),
-            recipe_manager: Arc::new(recipe::RecipeManager::new()),
+            recipe_manager,
             datapack_manager: Arc::new(crate::data::datapack::DatapackManager::new()),
             load_functions_pending: AtomicBool::new(false),
             enchantment_manager: Arc::new(enchantment::EnchantmentManager::new()),

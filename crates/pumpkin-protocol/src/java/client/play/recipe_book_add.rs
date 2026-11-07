@@ -10,7 +10,10 @@ use pumpkin_data::recipes::{
 use pumpkin_macros::java_packet;
 use pumpkin_util::version::JavaMinecraftVersion;
 use std::borrow::Cow;
-use std::{collections::HashMap, io::Write};
+use std::{
+    collections::{HashMap, HashSet},
+    io::Write,
+};
 
 use crate::codec::item_stack_seralizer::ItemStackTemplateSerializer;
 use crate::{ClientPacket, VarInt, WritingError, ser::NetworkWriteExt};
@@ -88,7 +91,8 @@ pub fn crafting_displays() -> impl Iterator<Item = CraftingDisplay> {
 
 /// The recipe a recipe book display belongs to, as `RecipeManager.ServerDisplayInfo` knows it.
 pub struct RecipeBookDisplayInfo<'a> {
-    /// Empty for dynamic recipes without an id.
+    /// Empty for dynamic recipes without an id and for built-in recipes a dynamic recipe of the
+    /// same id replaces, so no recipe book holds them.
     pub recipe_id: &'a str,
     pub show_notification: bool,
 }
@@ -96,8 +100,13 @@ pub struct RecipeBookDisplayInfo<'a> {
 /// Every recipe book display, indexed by display id.
 #[must_use]
 pub fn recipe_book_displays(dynamic_recipes: &[DynamicRecipe]) -> Vec<RecipeBookDisplayInfo<'_>> {
+    let replaced: HashSet<&str> = dynamic_recipes
+        .iter()
+        .filter_map(DynamicRecipe::recipe_id)
+        .collect();
+    let builtin_id = |id: &'static str| if replaced.contains(id) { "" } else { id };
     let crafting = crafting_displays().map(|display| RecipeBookDisplayInfo {
-        recipe_id: display.recipe_id,
+        recipe_id: builtin_id(display.recipe_id),
         show_notification: !matches!(
             display.recipe,
             CraftingRecipeTypes::CraftingShaped {
@@ -112,7 +121,7 @@ pub fn recipe_book_displays(dynamic_recipes: &[DynamicRecipe]) -> Vec<RecipeBook
         | CookingRecipeType::Smoking(cooking)
         | CookingRecipeType::CampfireCooking(cooking)) = recipe;
         RecipeBookDisplayInfo {
-            recipe_id: cooking.recipe_id,
+            recipe_id: builtin_id(cooking.recipe_id),
             show_notification: true,
         }
     });

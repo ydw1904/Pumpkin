@@ -627,9 +627,10 @@ impl Generator<'_, '_> {
                         if stack.count <= 0 {
                             continue;
                         }
-                        let (item, count) = smelt(stack.stack.item, stack.count);
-                        stack.stack.item = item;
-                        stack.count = count;
+                        if let Some((result, count)) = smelt(stack.stack.item, stack.count) {
+                            stack.stack = result;
+                            stack.count = count;
+                        }
                     }
                     LootFunctionKind::Json => {
                         if let Some(json) = json {

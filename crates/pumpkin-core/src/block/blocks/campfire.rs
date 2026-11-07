@@ -1,17 +1,15 @@
 use pumpkin_data::tag::Taggable;
 use pumpkin_data::{
     Block, BlockDirection, BlockState, BlockStateId, Enchantment,
-    block_properties::CampfireLikeProperties,
-    damage::DamageType,
-    data_component_impl::EquipmentSlot,
-    effect::StatusEffect,
-    fluid::Fluid,
-    recipes::{CookingRecipeKind, get_cooking_recipe_with_ingredient},
+    block_properties::CampfireLikeProperties, damage::DamageType,
+    data_component_impl::EquipmentSlot, effect::StatusEffect, fluid::Fluid,
+    recipes::CookingRecipeKind,
 };
 use pumpkin_macros::pumpkin_block_from_tag;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::tick::TickPriority;
 
+use crate::server::recipe::find_cooking_recipe;
 use crate::world::World;
 
 use crate::block::entities::campfire::CampfireBlockEntity;
@@ -83,10 +81,9 @@ impl BlockBehaviour for CampfireBlock {
             return BlockActionResult::PassToDefaultBlockAction;
         }
 
-        let Some(recipe) = get_cooking_recipe_with_ingredient(
-            args.item_stack.item,
-            CookingRecipeKind::CampfireCooking,
-        ) else {
+        let Some(recipe) =
+            find_cooking_recipe(args.item_stack.item, &CookingRecipeKind::CampfireCooking)
+        else {
             return BlockActionResult::PassToDefaultBlockAction;
         };
 
@@ -113,7 +110,7 @@ impl BlockBehaviour for CampfireBlock {
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = 0;
             *campfire.cooking_total_times[slot]
                 .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = recipe.cookingtime;
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = recipe.cooking_time;
             drop(stored);
 
             args.player.increment_stat(

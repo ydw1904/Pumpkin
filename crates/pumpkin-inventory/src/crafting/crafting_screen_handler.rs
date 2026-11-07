@@ -38,7 +38,7 @@ use pumpkin_data::screen::WindowType;
 use pumpkin_data::statistic::StatisticCategory;
 use pumpkin_data::tag;
 use pumpkin_data::tag::Taggable;
-use pumpkin_protocol::codec::recipe::{DynamicRecipe, OwnedCraftingRecipe};
+use pumpkin_protocol::codec::recipe::{DynamicRecipe, OwnedCraftingRecipe, recipe_registry_order};
 
 /// The result slot in a crafting screen.
 pub struct ResultSlot {
@@ -480,42 +480,66 @@ pub fn match_crafting_recipe(
         Some(result)
     };
 
-    for (recipe, recipe_id) in RECIPES_CRAFTING.iter().zip(RECIPES_CRAFTING_IDS) {
-        if let Some(result) = recipe_matches(
-            GenericRecipe::Vanilla(recipe),
-            input_height,
-            input_width,
-            top_x,
-            top_y,
-            count,
-            inventory,
-            provider,
-        ) {
-            return usable(result, Some(recipe_id));
-        }
-    }
+    // `RecipeMap.getRecipesFor(...).findFirst()`: the first match in registry order, where a
+    // datapack or plugin recipe takes the place of the built-in one with its id.
+    let builtin = RECIPES_CRAFTING
+        .iter()
+        .zip(RECIPES_CRAFTING_IDS)
+        .filter(|(_, recipe_id)| {
+            !provider.is_some_and(|provider| provider.replaces_builtin(recipe_id))
+        })
+        .find_map(|(recipe, recipe_id)| {
+            recipe_matches(
+                GenericRecipe::Vanilla(recipe),
+                input_height,
+                input_width,
+                top_x,
+                top_y,
+                count,
+                inventory,
+                provider,
+            )
+            .map(|result| (result, Some(*recipe_id)))
+        });
 
-    if let Some(provider) = provider {
-        let dynamic = provider.get_dynamic_recipes();
-        for recipe in &dynamic {
-            if let DynamicRecipe::Crafting(crafting) = recipe
-                && let Some(result) = recipe_matches(
-                    GenericRecipe::Dynamic(crafting),
-                    input_height,
-                    input_width,
-                    top_x,
-                    top_y,
-                    count,
-                    inventory,
-                    Some(provider),
-                )
-            {
-                return usable(result, recipe.recipe_id());
-            }
-        }
-    }
+    let dynamic_recipes = provider.map(RecipeProvider::get_dynamic_recipes);
+    let dynamic = dynamic_recipes
+        .iter()
+        .flatten()
+        .filter_map(|recipe| {
+            let DynamicRecipe::Crafting(crafting) = recipe else {
+                return None;
+            };
+            recipe_matches(
+                GenericRecipe::Dynamic(crafting),
+                input_height,
+                input_width,
+                top_x,
+                top_y,
+                count,
+                inventory,
+                provider,
+            )
+            .map(|result| (result, recipe.recipe_id()))
+        })
+        .min_by(|(_, a), (_, b)| {
+            a.map(recipe_registry_order)
+                .cmp(&b.map(recipe_registry_order))
+        });
 
-    None
+    let (result, recipe_id) = match (builtin, dynamic) {
+        (Some(builtin), Some(dynamic))
+            if dynamic.1.is_none_or(|dynamic_id| {
+                builtin.1.map(recipe_registry_order) < Some(recipe_registry_order(dynamic_id))
+            }) =>
+        {
+            builtin
+        }
+        (_, Some(dynamic)) => dynamic,
+        (Some(builtin), None) => builtin,
+        (None, None) => return None,
+    };
+    usable(result, recipe_id)
 }
 
 impl ResultSlot {

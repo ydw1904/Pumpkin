@@ -6,6 +6,14 @@ use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::tag::Taggable;
 
+/// The order of recipe ids in vanilla's recipe registry: `Identifier.compareTo` compares the
+/// path first, then the namespace.
+#[must_use]
+pub fn recipe_registry_order(id: &str) -> (&str, &str) {
+    id.split_once(':')
+        .map_or((id, "minecraft"), |(namespace, path)| (path, namespace))
+}
+
 #[derive(Clone, Debug)]
 pub enum OwnedRecipeIngredient {
     Simple(String),

@@ -1,17 +1,40 @@
-use std::sync::{RwLock, Weak};
+use std::collections::HashSet;
+use std::sync::{Arc, RwLock, Weak};
 
 use pumpkin_data::data_component::DataComponent;
 use pumpkin_data::data_component_impl::{MapIdImpl, MapPostProcessing, MapPostProcessingImpl};
+use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::recipes::{CookingRecipe, CookingRecipeKind, CookingRecipeType, RECIPES_COOKING};
 use pumpkin_inventory::crafting::recipe_provider::MapDataInfo;
 
 use super::Server;
 
 use pumpkin_inventory::crafting::recipe_provider::RecipeProvider;
 pub use pumpkin_protocol::codec::recipe::DynamicRecipe;
+use pumpkin_protocol::codec::recipe::{
+    OwnedCookingRecipe, OwnedCookingRecipeType, recipe_registry_order,
+};
 
 pub struct RecipeManager {
-    dynamic_recipes: RwLock<Vec<DynamicRecipe>>,
+    dynamic_recipes: RwLock<DynamicRecipes>,
+}
+
+/// The datapack and plugin recipes with their ids, which replace the built-in recipes of the
+/// same id like a later pack's file in vanilla's recipe registry.
+#[derive(Default)]
+struct DynamicRecipes {
+    recipes: Vec<DynamicRecipe>,
+    ids: HashSet<String>,
+}
+
+impl DynamicRecipes {
+    fn push(&mut self, recipe: DynamicRecipe) {
+        if let Some(id) = recipe.recipe_id() {
+            self.ids.insert(id.to_owned());
+        }
+        self.recipes.push(recipe);
+    }
 }
 
 impl Default for RecipeManager {
@@ -22,58 +45,64 @@ impl Default for RecipeManager {
 
 impl RecipeManager {
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            dynamic_recipes: RwLock::new(Vec::new()),
+            dynamic_recipes: RwLock::new(DynamicRecipes::default()),
         }
     }
 
-    pub fn add_recipe(&self, recipe: DynamicRecipe) {
-        let mut recipes = self
-            .dynamic_recipes
+    fn write(&self) -> std::sync::RwLockWriteGuard<'_, DynamicRecipes> {
+        self.dynamic_recipes
             .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        recipes.push(recipe);
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    pub fn add_recipes(&self, new_recipes: impl IntoIterator<Item = DynamicRecipe>) {
-        let mut recipes = self
-            .dynamic_recipes
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        recipes.extend(new_recipes);
-    }
-
-    pub fn set_recipes(&self, new_recipes: Vec<DynamicRecipe>) {
-        let mut recipes = self
-            .dynamic_recipes
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *recipes = new_recipes;
-    }
-
-    pub fn clear(&self) {
-        let mut recipes = self
-            .dynamic_recipes
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        recipes.clear();
-    }
-
-    pub fn get_dynamic_recipes_internal(&self) -> Vec<DynamicRecipe> {
+    fn read(&self) -> std::sync::RwLockReadGuard<'_, DynamicRecipes> {
         self.dynamic_recipes
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
+    }
+
+    pub fn add_recipe(&self, recipe: DynamicRecipe) {
+        self.write().push(recipe);
+    }
+
+    pub fn add_recipes(&self, new_recipes: impl IntoIterator<Item = DynamicRecipe>) {
+        let mut recipes = self.write();
+        for recipe in new_recipes {
+            recipes.push(recipe);
+        }
+    }
+
+    pub fn set_recipes(&self, new_recipes: Vec<DynamicRecipe>) {
+        let mut recipes = DynamicRecipes::default();
+        for recipe in new_recipes {
+            recipes.push(recipe);
+        }
+        *self.write() = recipes;
+    }
+
+    pub fn clear(&self) {
+        *self.write() = DynamicRecipes::default();
+    }
+
+    pub fn get_dynamic_recipes_internal(&self) -> Vec<DynamicRecipe> {
+        self.read().recipes.clone()
+    }
+
+    /// Whether a datapack or plugin recipe replaces the built-in recipe with this id.
+    pub fn replaces_builtin(&self, recipe_id: &str) -> bool {
+        self.read().ids.contains(recipe_id)
     }
 }
 
 impl RecipeProvider for RecipeManager {
     fn get_dynamic_recipes(&self) -> Vec<DynamicRecipe> {
-        self.dynamic_recipes
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
+        self.get_dynamic_recipes_internal()
+    }
+
+    fn replaces_builtin(&self, recipe_id: &str) -> bool {
+        Self::replaces_builtin(self, recipe_id)
     }
 }
 
@@ -108,6 +137,12 @@ impl RecipeProvider for ServerRecipeAccess {
             .upgrade()
             .map(|server| server.recipe_manager.get_dynamic_recipes_internal())
             .unwrap_or_default()
+    }
+
+    fn replaces_builtin(&self, recipe_id: &str) -> bool {
+        self.server
+            .upgrade()
+            .is_some_and(|server| server.recipe_manager.replaces_builtin(recipe_id))
     }
 
     fn can_use_recipe(&self, recipe_id: &str) -> bool {
@@ -171,4 +206,139 @@ impl RecipeProvider for ServerRecipeAccess {
         server.map_manager.insert_map(id, data);
         stack.set_data_component(MapIdImpl { id });
     }
+}
+
+/// The recipe manager of the running server, for lookups that have no level at hand, like a
+/// furnace's `setItem`.
+static ACTIVE_RECIPE_MANAGER: RwLock<Weak<RecipeManager>> = RwLock::new(Weak::new());
+
+/// Makes `manager` the one [`find_cooking_recipe`] reads.
+pub fn set_active_recipe_manager(manager: &Arc<RecipeManager>) {
+    *ACTIVE_RECIPE_MANAGER
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Arc::downgrade(manager);
+}
+
+fn active_recipe_manager() -> Option<Arc<RecipeManager>> {
+    ACTIVE_RECIPE_MANAGER
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .upgrade()
+}
+
+/// A cooking recipe a furnace, campfire or `furnace_smelt` found.
+#[derive(Clone)]
+pub struct CookingMatch {
+    pub recipe_id: String,
+    pub cooking_time: i32,
+    pub experience: f32,
+    /// `AbstractCookingRecipe.assemble`: the result stack.
+    pub result: ItemStack,
+}
+
+impl CookingMatch {
+    fn builtin(recipe: &CookingRecipe) -> Option<Self> {
+        let key = recipe
+            .result
+            .id
+            .strip_prefix("minecraft:")
+            .unwrap_or(recipe.result.id);
+        let mut result = ItemStack::new(recipe.result.count, Item::from_registry_key(key)?);
+        for (component, value) in recipe.result.components {
+            result.patch.push((*component, Some(value.clone_dyn())));
+        }
+        Some(Self {
+            recipe_id: recipe.recipe_id.to_owned(),
+            cooking_time: recipe.cookingtime,
+            experience: recipe.experience,
+            result,
+        })
+    }
+
+    fn dynamic(recipe: &OwnedCookingRecipe) -> Option<Self> {
+        Some(Self {
+            recipe_id: recipe.recipe_id.clone(),
+            cooking_time: recipe.cooking_time,
+            experience: recipe.experience,
+            result: recipe.result.to_stack()?,
+        })
+    }
+}
+
+const fn cooking_kind_of(recipe: &CookingRecipeType) -> (CookingRecipeKind, &CookingRecipe) {
+    match recipe {
+        CookingRecipeType::Smelting(r) => (CookingRecipeKind::Smelting, r),
+        CookingRecipeType::Blasting(r) => (CookingRecipeKind::Blasting, r),
+        CookingRecipeType::Smoking(r) => (CookingRecipeKind::Smoking, r),
+        CookingRecipeType::CampfireCooking(r) => (CookingRecipeKind::CampfireCooking, r),
+    }
+}
+
+const fn owned_cooking_kind_of(
+    recipe: &OwnedCookingRecipeType,
+) -> (CookingRecipeKind, &OwnedCookingRecipe) {
+    match recipe {
+        OwnedCookingRecipeType::Smelting(r) => (CookingRecipeKind::Smelting, r),
+        OwnedCookingRecipeType::Blasting(r) => (CookingRecipeKind::Blasting, r),
+        OwnedCookingRecipeType::Smoking(r) => (CookingRecipeKind::Smoking, r),
+        OwnedCookingRecipeType::CampfireCooking(r) => (CookingRecipeKind::CampfireCooking, r),
+    }
+}
+
+/// `RecipeManager.getRecipeFor` for a cooking recipe type: the first recipe in registry order
+/// that takes `item`, where a datapack or plugin recipe replaces the built-in one of its id.
+#[must_use]
+pub fn find_cooking_recipe(item: &Item, kind: &CookingRecipeKind) -> Option<CookingMatch> {
+    let manager = active_recipe_manager();
+    let recipes = manager.as_ref().map(|manager| manager.read());
+    let kind = std::mem::discriminant(kind);
+    let builtin = RECIPES_COOKING.iter().map(cooking_kind_of).find(|(k, r)| {
+        std::mem::discriminant(k) == kind
+            && r.ingredient.match_item(item)
+            && !recipes
+                .as_ref()
+                .is_some_and(|recipes| recipes.ids.contains(r.recipe_id))
+    });
+    let dynamic = recipes
+        .as_ref()
+        .into_iter()
+        .flat_map(|recipes| &recipes.recipes)
+        .filter_map(|recipe| match recipe {
+            DynamicRecipe::Cooking(cooking) => Some(owned_cooking_kind_of(cooking)),
+            _ => None,
+        })
+        .filter(|(k, r)| std::mem::discriminant(k) == kind && r.ingredient.match_item(item))
+        .min_by(|(_, a), (_, b)| {
+            recipe_registry_order(&a.recipe_id).cmp(&recipe_registry_order(&b.recipe_id))
+        });
+    match (builtin, dynamic) {
+        (Some((_, builtin)), Some((_, dynamic)))
+            if recipe_registry_order(builtin.recipe_id)
+                < recipe_registry_order(&dynamic.recipe_id) =>
+        {
+            CookingMatch::builtin(builtin)
+        }
+        (_, Some((_, dynamic))) => CookingMatch::dynamic(dynamic),
+        (Some((_, builtin)), None) => CookingMatch::builtin(builtin),
+        (None, None) => None,
+    }
+}
+
+/// The experience of the cooking recipe with this id, for the `RecipesUsed` a furnace keeps.
+#[must_use]
+pub fn cooking_recipe_experience(recipe_id: &str) -> Option<f32> {
+    let manager = active_recipe_manager();
+    if let Some(manager) = &manager {
+        let recipes = manager.read();
+        if recipes.ids.contains(recipe_id) {
+            return recipes.recipes.iter().find_map(|recipe| match recipe {
+                DynamicRecipe::Cooking(cooking) => {
+                    let (_, cooking) = owned_cooking_kind_of(cooking);
+                    (cooking.recipe_id == recipe_id).then_some(cooking.experience)
+                }
+                _ => None,
+            });
+        }
+    }
+    pumpkin_data::recipes::get_recipe_experience(recipe_id)
 }

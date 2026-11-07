@@ -13,8 +13,8 @@ use pumpkin_data::data_component_impl::{ProvidesTrimMaterialImpl, TrimImpl};
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::recipes::{
-    RECIPES_SMITHING_TRANSFORM, RECIPES_SMITHING_TRIM, get_smithing_transform_recipe,
-    get_smithing_trim_recipe,
+    RECIPES_SMITHING_TRANSFORM, RECIPES_SMITHING_TRANSFORM_IDS, RECIPES_SMITHING_TRIM,
+    RECIPES_SMITHING_TRIM_IDS, SmithingTransformRecipe, SmithingTrimRecipe,
 };
 use pumpkin_data::screen::WindowType;
 use pumpkin_data::statistic::StatisticCategory;
@@ -47,10 +47,10 @@ impl SmithingInput {
     /// Whether any smithing recipe takes `item` in this input, like vanilla's
     /// `RecipePropertySet.SMITHING_TEMPLATE`, `SMITHING_BASE` and `SMITHING_ADDITION`.
     fn accepts(self, item: &Item, provider: Option<&Arc<dyn RecipeProvider>>) -> bool {
-        RECIPES_SMITHING_TRANSFORM.iter().any(|r| {
+        builtin_transforms(provider).any(|r| {
             self.pick(&r.template, &r.base, &r.addition)
                 .match_item(item)
-        }) || RECIPES_SMITHING_TRIM.iter().any(|r| {
+        }) || builtin_trims(provider).any(|r| {
             self.pick(&r.template, &r.base, &r.addition)
                 .match_item(item)
         }) || provider.is_some_and(|provider| {
@@ -65,6 +65,28 @@ impl SmithingInput {
             })
         })
     }
+}
+
+/// The built-in smithing transform recipes no datapack or plugin recipe replaces.
+fn builtin_transforms(
+    provider: Option<&Arc<dyn RecipeProvider>>,
+) -> impl Iterator<Item = &'static SmithingTransformRecipe> {
+    RECIPES_SMITHING_TRANSFORM
+        .iter()
+        .zip(RECIPES_SMITHING_TRANSFORM_IDS)
+        .filter(move |(_, id)| !provider.is_some_and(|provider| provider.replaces_builtin(id)))
+        .map(|(recipe, _)| recipe)
+}
+
+/// The built-in smithing trim recipes no datapack or plugin recipe replaces.
+fn builtin_trims(
+    provider: Option<&Arc<dyn RecipeProvider>>,
+) -> impl Iterator<Item = &'static SmithingTrimRecipe> {
+    RECIPES_SMITHING_TRIM
+        .iter()
+        .zip(RECIPES_SMITHING_TRIM_IDS)
+        .filter(move |(_, id)| !provider.is_some_and(|provider| provider.replaces_builtin(id)))
+        .map(|(recipe, _)| recipe)
 }
 
 /// A smithing input slot that only takes items some recipe uses there.
@@ -149,7 +171,8 @@ impl SmithingTableScreenHandler {
         base: &ItemStack,
         addition: &ItemStack,
     ) -> Option<ItemStack> {
-        if let Some(recipe) = get_smithing_transform_recipe(template.item, base.item, addition.item)
+        if let Some(recipe) = builtin_transforms(self.recipe_provider.as_ref())
+            .find(|recipe| recipe.matches(template.item, base.item, addition.item))
         {
             let res_key = recipe
                 .result
@@ -199,7 +222,9 @@ impl SmithingTableScreenHandler {
         base: &ItemStack,
         addition: &ItemStack,
     ) -> Option<String> {
-        if let Some(recipe) = get_smithing_trim_recipe(template.item, base.item, addition.item) {
+        if let Some(recipe) = builtin_trims(self.recipe_provider.as_ref())
+            .find(|recipe| recipe.matches(template.item, base.item, addition.item))
+        {
             return Some(recipe.pattern.to_string());
         }
         let provider = self.recipe_provider.as_ref()?;

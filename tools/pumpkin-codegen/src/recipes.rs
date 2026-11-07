@@ -838,6 +838,9 @@ pub fn build() -> TokenStream {
     let mut stonecutting_recipes = Vec::new();
     let mut smithing_trim_recipes = Vec::new();
     let mut smithing_transform_recipes = Vec::new();
+    let mut stonecutting_ids = Vec::new();
+    let mut smithing_trim_ids = Vec::new();
+    let mut smithing_transform_ids = Vec::new();
 
     for (recipe_id, recipe) in recipes_assets {
         match recipe {
@@ -889,9 +892,11 @@ pub fn build() -> TokenStream {
             }
             RecipeTypes::SmithingTransform(recipe) => {
                 smithing_transform_recipes.push(recipe.to_token_stream());
+                smithing_transform_ids.push(recipe_id);
             }
             RecipeTypes::SmithingTrim(recipe) => {
                 smithing_trim_recipes.push(recipe.to_token_stream());
+                smithing_trim_ids.push(recipe_id);
             }
             RecipeTypes::Smoking(recipe) => {
                 let mut common_cooking_token = TokenStream::new();
@@ -905,6 +910,7 @@ pub fn build() -> TokenStream {
             }
             RecipeTypes::Stonecutting(recipe) => {
                 stonecutting_recipes.push(recipe.to_token_stream());
+                stonecutting_ids.push(recipe_id);
             }
             RecipeTypes::CraftingSpecial => {}
             other => {
@@ -1156,11 +1162,23 @@ pub fn build() -> TokenStream {
         pub static RECIPES_STONECUTTING: &[StonecutterRecipe] = &[
             #(#stonecutting_recipes),*
         ];
+        /// The id of each recipe in [`RECIPES_STONECUTTING`], in the same order.
+        pub static RECIPES_STONECUTTING_IDS: &[&str] = &[
+            #(#stonecutting_ids),*
+        ];
         pub static RECIPES_SMITHING_TRIM: &[SmithingTrimRecipe] = &[
             #(#smithing_trim_recipes),*
         ];
+        /// The id of each recipe in [`RECIPES_SMITHING_TRIM`], in the same order.
+        pub static RECIPES_SMITHING_TRIM_IDS: &[&str] = &[
+            #(#smithing_trim_ids),*
+        ];
         pub static RECIPES_SMITHING_TRANSFORM: &[SmithingTransformRecipe] = &[
             #(#smithing_transform_recipes),*
+        ];
+        /// The id of each recipe in [`RECIPES_SMITHING_TRANSFORM`], in the same order.
+        pub static RECIPES_SMITHING_TRANSFORM_IDS: &[&str] = &[
+            #(#smithing_transform_ids),*
         ];
 
         #[derive(Clone, Debug, Serialize)]

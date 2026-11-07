@@ -158,13 +158,19 @@ impl ServerRecipeBook {
 /// Whether a recipe with this id exists and is not `isSpecial`, so a recipe book can hold it.
 #[must_use]
 pub fn is_learnable_recipe(id: &str, dynamic_recipes: &[DynamicRecipe]) -> bool {
-    LEARNABLE_RECIPE_IDS.binary_search(&id).is_ok()
-        || dynamic_recipes.iter().any(|recipe| {
-            !matches!(
-                recipe,
-                DynamicRecipe::Brewing(_) | DynamicRecipe::SpecialCrafting(_)
-            ) && recipe.recipe_id() == Some(id)
-        })
+    // A dynamic recipe replaces the built-in one of its id.
+    dynamic_recipes
+        .iter()
+        .find(|recipe| recipe.recipe_id() == Some(id))
+        .map_or_else(
+            || LEARNABLE_RECIPE_IDS.binary_search(&id).is_ok(),
+            |recipe| {
+                !matches!(
+                    recipe,
+                    DynamicRecipe::Brewing(_) | DynamicRecipe::SpecialCrafting(_)
+                )
+            },
+        )
 }
 
 /// Every learnable recipe, like `RecipeManager.getLearnableRecipes`.
@@ -172,6 +178,7 @@ pub fn is_learnable_recipe(id: &str, dynamic_recipes: &[DynamicRecipe]) -> bool 
 pub fn learnable_recipes(dynamic_recipes: &[DynamicRecipe]) -> Vec<String> {
     let mut ids: IndexSet<String> = LEARNABLE_RECIPE_IDS
         .iter()
+        .filter(|id| is_learnable_recipe(id, dynamic_recipes))
         .map(ToString::to_string)
         .collect();
     for recipe in dynamic_recipes {

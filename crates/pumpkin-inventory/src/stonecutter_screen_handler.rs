@@ -11,15 +11,14 @@ use crate::slot::{NormalSlot, Slot};
 
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
-use pumpkin_data::recipes::RECIPES_STONECUTTING;
+use pumpkin_data::recipes::{RECIPES_STONECUTTING, RECIPES_STONECUTTING_IDS};
 use pumpkin_data::screen::WindowType;
 use pumpkin_data::statistic::StatisticCategory;
 use pumpkin_protocol::codec::recipe::DynamicRecipe;
 use pumpkin_protocol::java::server::play::SlotActionType;
 
 pub struct StonecutterRecipeChoice {
-    pub result_id: String,
-    pub count: u8,
+    pub result: ItemStack,
 }
 
 pub struct StonecutterScreenHandler {
@@ -79,13 +78,7 @@ impl StonecutterScreenHandler {
 
         if recipe_index != u8::MAX && (recipe_index as usize) < available_recipes.len() {
             let recipe = &available_recipes[recipe_index as usize];
-            let item_id = recipe
-                .result_id
-                .strip_prefix("minecraft:")
-                .unwrap_or(&recipe.result_id);
-            let item = Item::from_registry_key(item_id).unwrap_or(&Item::AIR);
-            let result = ItemStack::new(recipe.count, item);
-            self.output_inventory.set_stack(0, result);
+            self.output_inventory.set_stack(0, recipe.result.clone());
         } else {
             self.output_inventory.set_stack(0, ItemStack::EMPTY.clone());
         }
@@ -100,22 +93,33 @@ impl StonecutterScreenHandler {
     pub fn get_available_recipes(&self, input: &ItemStack) -> Vec<StonecutterRecipeChoice> {
         let item = input.item;
         let mut results = Vec::new();
-        for r in RECIPES_STONECUTTING {
+        let provider = self.recipe_provider.as_deref();
+        for (r, id) in RECIPES_STONECUTTING.iter().zip(RECIPES_STONECUTTING_IDS) {
+            if provider.is_some_and(|provider| provider.replaces_builtin(id)) {
+                continue;
+            }
             if r.ingredient.match_item(item) {
+                let key = r
+                    .result
+                    .id
+                    .strip_prefix("minecraft:")
+                    .unwrap_or(r.result.id);
+                let result_item = Item::from_registry_key(key).unwrap_or(&Item::AIR);
                 results.push(StonecutterRecipeChoice {
-                    result_id: r.result.id.to_string(),
-                    count: r.result.count,
+                    result: ItemStack::new(r.result.count, result_item),
                 });
             }
         }
-        if let Some(provider) = &self.recipe_provider {
+        if let Some(provider) = provider {
             for dynamic in provider.get_dynamic_recipes() {
                 if let DynamicRecipe::Stonecutting(r) = dynamic
                     && r.ingredient.match_item(item)
                 {
                     results.push(StonecutterRecipeChoice {
-                        result_id: r.result.item_id,
-                        count: r.result.count,
+                        result: r
+                            .result
+                            .to_stack()
+                            .unwrap_or_else(|| ItemStack::EMPTY.clone()),
                     });
                 }
             }
