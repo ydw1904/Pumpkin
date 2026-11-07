@@ -127,6 +127,9 @@ pub struct Server {
     container_id: AtomicU32,
     pub recipe_manager: Arc<recipe::RecipeManager>,
     pub datapack_manager: Arc<crate::data::datapack::DatapackManager>,
+    /// Set after datapacks load, so the next game tick runs `#minecraft:load` first (vanilla
+    /// `ServerFunctionManager.postReload`).
+    load_functions_pending: AtomicBool,
     pub enchantment_manager: Arc<enchantment::EnchantmentManager>,
     /// Assigns unique IDs to maps.
     map_id: AtomicI32,
@@ -337,6 +340,7 @@ impl Server {
             container_id: 0.into(),
             recipe_manager: Arc::new(recipe::RecipeManager::new()),
             datapack_manager: Arc::new(crate::data::datapack::DatapackManager::new()),
+            load_functions_pending: AtomicBool::new(false),
             enchantment_manager: Arc::new(enchantment::EnchantmentManager::new()),
             map_id: next_map_id(&world_path, level_info.load().map_id).into(),
             worlds: ArcSwap::from_pointee(vec![]),
@@ -517,11 +521,7 @@ impl Server {
             new_info.data_packs = data_packs.clone();
             new_info
         });
-
-        let source = crate::command::CommandSender::Console.into_source(&server);
-        let _ = server
-            .datapack_manager
-            .execute_function(&server, &source, "#minecraft:load");
+        server.load_functions_pending.store(true, Ordering::Relaxed);
 
         Ok(server)
     }
@@ -813,11 +813,6 @@ impl Server {
             error!("Failed to save world info: {err}");
         }
 
-        let source = crate::command::CommandSender::Console.into_source(self);
-        let _ = self
-            .datapack_manager
-            .execute_function(self, &source, "#minecraft:load");
-
         // `PlayerList.saveAll`, before the players' advancements start over.
         let players = self.get_all_players();
         if let Err(err) = self.player_data_storage.save_all_players(self) {
@@ -843,6 +838,9 @@ impl Server {
         for player in &players {
             player.send_initial_recipe_book();
         }
+
+        // `ServerFunctionManager.replaceLibrary`.
+        self.load_functions_pending.store(true, Ordering::Relaxed);
         Ok(())
     }
 
@@ -1654,6 +1652,11 @@ impl Server {
         let source = crate::command::CommandSender::Console
             .into_source(self)
             .with_silent();
+        if self.load_functions_pending.swap(false, Ordering::Relaxed) {
+            let _ = self
+                .datapack_manager
+                .execute_function(self, &source, "#minecraft:load");
+        }
         let _ = self
             .datapack_manager
             .execute_function(self, &source, "#minecraft:tick");
