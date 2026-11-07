@@ -85,6 +85,16 @@ fn lock_scoreboard(world: &World) -> MutexGuard<'_, Scoreboard> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+/// The feedback name of an objective the command just checked exists.
+fn objective_display_name(world: &World, objective_name: &str) -> TextComponent {
+    lock_scoreboard(world)
+        .get_objective(objective_name)
+        .map_or_else(
+            TextComponent::empty,
+            ScoreboardObjective::formatted_display_name,
+        )
+}
+
 fn translated<const N: usize>(key: &'static str, args: [TextComponent; N]) -> TextComponent {
     TextComponent::translate_cross(key, key, args)
 }
@@ -566,35 +576,36 @@ struct PlayersSetExecutor;
 impl CommandExecutor for PlayersSetExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
         let holders = ScoreHolderArgumentType::get_score_holders(context, ARG_TARGETS)?;
-        let objective_name = ObjectiveArgumentType::get(context, ARG_OBJECTIVE)?.to_string();
+        let objective_name = ObjectiveArgumentType::get(context, ARG_OBJECTIVE)?;
         let value = IntegerArgumentType::get(context, ARG_SCORE)?;
 
-        let world = context.world().clone();
-        let mut scoreboard = lock_scoreboard(&world);
+        let world = context.world();
+        let mut scoreboard = lock_scoreboard(world);
 
-        let display_name =
-            ObjectiveArgumentType::writable_objective_or_error(&scoreboard, &objective_name)?
-                .formatted_display_name();
+        ObjectiveArgumentType::writable_objective_or_error(&scoreboard, objective_name)?;
         for holder in &holders {
             scoreboard.set_holder_score(
-                &world,
+                world,
                 &holder.name,
                 holder.entity_display_name.as_ref(),
-                &objective_name,
+                objective_name,
                 value,
             );
         }
         drop(scoreboard);
 
         // Java 26.3 uses the nonzero result count for `players set` feedback.
-        let value_component = TextComponent::text(value.to_string());
-        context.source.send_feedback(
-            holder_feedback(
-                if value == 0 { &[] } else { &holders },
-                translation::java::COMMANDS_SCOREBOARD_PLAYERS_SET_SUCCESS_SINGLE,
-                translation::java::COMMANDS_SCOREBOARD_PLAYERS_SET_SUCCESS_MULTIPLE,
-                |holder| [display_name, holder, value_component],
-            ),
+        context.source.send_feedback_with(
+            || {
+                let display_name = objective_display_name(world, objective_name);
+                let value_component = TextComponent::text(value.to_string());
+                holder_feedback(
+                    if value == 0 { &[] } else { &holders },
+                    translation::java::COMMANDS_SCOREBOARD_PLAYERS_SET_SUCCESS_SINGLE,
+                    translation::java::COMMANDS_SCOREBOARD_PLAYERS_SET_SUCCESS_MULTIPLE,
+                    |holder| [display_name, holder, value_component],
+                )
+            },
             true,
         );
 
@@ -655,7 +666,7 @@ struct PlayersAddRemoveExecutor {
 impl CommandExecutor for PlayersAddRemoveExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
         let holders = ScoreHolderArgumentType::get_score_holders(context, ARG_TARGETS)?;
-        let objective_name = ObjectiveArgumentType::get(context, ARG_OBJECTIVE)?.to_string();
+        let objective_name = ObjectiveArgumentType::get(context, ARG_OBJECTIVE)?;
         let value = IntegerArgumentType::get(context, ARG_SCORE)?;
         let delta = if self.remove {
             value.wrapping_neg()
@@ -663,23 +674,21 @@ impl CommandExecutor for PlayersAddRemoveExecutor {
             value
         };
 
-        let world = context.world().clone();
-        let mut scoreboard = lock_scoreboard(&world);
+        let world = context.world();
+        let mut scoreboard = lock_scoreboard(world);
 
-        let display_name =
-            ObjectiveArgumentType::writable_objective_or_error(&scoreboard, &objective_name)?
-                .formatted_display_name();
+        ObjectiveArgumentType::writable_objective_or_error(&scoreboard, objective_name)?;
         let mut result: i32 = 0;
         for holder in &holders {
             let new_value = scoreboard
-                .get_score_value(&holder.name, &objective_name)
+                .get_score_value(&holder.name, objective_name)
                 .unwrap_or(0)
                 .wrapping_add(delta);
             scoreboard.set_holder_score(
-                &world,
+                world,
                 &holder.name,
                 holder.entity_display_name.as_ref(),
-                &objective_name,
+                objective_name,
                 new_value,
             );
             result = result.wrapping_add(new_value);
@@ -698,21 +707,24 @@ impl CommandExecutor for PlayersAddRemoveExecutor {
             )
         };
 
-        let (holder_text, single) = holder_component(&holders);
-        let value_component = TextComponent::text(value.to_string());
-        context.source.send_feedback(
-            if single {
-                translated(
-                    single_key,
-                    [
-                        value_component,
-                        display_name,
-                        holder_text,
-                        TextComponent::text(result.to_string()),
-                    ],
-                )
-            } else {
-                translated(multiple_key, [value_component, display_name, holder_text])
+        context.source.send_feedback_with(
+            || {
+                let display_name = objective_display_name(world, objective_name);
+                let (holder_text, single) = holder_component(&holders);
+                let value_component = TextComponent::text(value.to_string());
+                if single {
+                    translated(
+                        single_key,
+                        [
+                            value_component,
+                            display_name,
+                            holder_text,
+                            TextComponent::text(result.to_string()),
+                        ],
+                    )
+                } else {
+                    translated(multiple_key, [value_component, display_name, holder_text])
+                }
             },
             true,
         );
@@ -875,44 +887,47 @@ struct PlayersOperationExecutor;
 impl CommandExecutor for PlayersOperationExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
         let holders = ScoreHolderArgumentType::get_score_holders(context, ARG_TARGETS)?;
-        let objective_name = ObjectiveArgumentType::get(context, ARG_TARGET_OBJECTIVE)?.to_string();
+        let objective_name = ObjectiveArgumentType::get(context, ARG_TARGET_OBJECTIVE)?;
         let operation = *context.get_argument::<ScoreboardOperation>(ARG_OPERATION)?;
         let sources = ScoreHolderArgumentType::get_score_holders(context, ARG_SOURCE_TARGETS)?;
-        let source_objective =
-            ObjectiveArgumentType::get(context, ARG_SOURCE_OBJECTIVE)?.to_string();
+        let source_objective = ObjectiveArgumentType::get(context, ARG_SOURCE_OBJECTIVE)?;
 
-        let world = context.world().clone();
-        let mut scoreboard = lock_scoreboard(&world);
+        let world = context.world();
+        let mut scoreboard = lock_scoreboard(world);
 
-        let display_name =
-            ObjectiveArgumentType::writable_objective_or_error(&scoreboard, &objective_name)?
-                .formatted_display_name();
-        ObjectiveArgumentType::objective_or_error(&scoreboard, &source_objective)?;
+        ObjectiveArgumentType::writable_objective_or_error(&scoreboard, objective_name)?;
+        ObjectiveArgumentType::objective_or_error(&scoreboard, source_objective)?;
 
         let result = Self::apply(
             &mut scoreboard,
-            &world,
+            world,
             &holders,
-            &objective_name,
+            objective_name,
             operation,
             &sources,
-            &source_objective,
+            source_objective,
         )?;
         drop(scoreboard);
 
-        let (holder_text, single) = holder_component(&holders);
-        let result_component = TextComponent::text(result.to_string());
-        context.source.send_feedback(
-            if single {
-                translated(
-                    translation::java::COMMANDS_SCOREBOARD_PLAYERS_OPERATION_SUCCESS_SINGLE,
-                    [display_name, holder_text, result_component],
-                )
-            } else {
-                translated(
-                    translation::java::COMMANDS_SCOREBOARD_PLAYERS_OPERATION_SUCCESS_MULTIPLE,
-                    [display_name, holder_text],
-                )
+        context.source.send_feedback_with(
+            || {
+                let display_name = objective_display_name(world, objective_name);
+                let (holder_text, single) = holder_component(&holders);
+                if single {
+                    translated(
+                        translation::java::COMMANDS_SCOREBOARD_PLAYERS_OPERATION_SUCCESS_SINGLE,
+                        [
+                            display_name,
+                            holder_text,
+                            TextComponent::text(result.to_string()),
+                        ],
+                    )
+                } else {
+                    translated(
+                        translation::java::COMMANDS_SCOREBOARD_PLAYERS_OPERATION_SUCCESS_MULTIPLE,
+                        [display_name, holder_text],
+                    )
+                }
             },
             true,
         );

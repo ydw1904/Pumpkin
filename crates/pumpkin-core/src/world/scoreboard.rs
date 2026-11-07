@@ -556,6 +556,30 @@ impl Scoreboard {
             .objectives
             .get(objective_name)
             .is_some_and(|o| o.display_auto_update);
+        let tracked = self.is_tracked(objective_name);
+        if self.objectives.contains_key(objective_name)
+            && let Some(score) = self
+                .scores
+                .get_mut(objective_name)
+                .and_then(|scores| scores.get_mut(holder))
+        {
+            // What `update_score` does, without copying the score.
+            let display_changed = auto_update
+                && holder_display
+                    .is_some_and(|display| score.display_name.as_ref() != Some(display));
+            if display_changed {
+                score.display_name = holder_display.cloned();
+            }
+            let value_changed = score.value.0 != value;
+            if value_changed {
+                score.value = VarInt(value);
+            }
+            if (display_changed || value_changed) && tracked {
+                let (je, be) = score.packets();
+                target.send_editioned(&je, &be);
+            }
+            return;
+        }
         let existing = self.get_score(holder, objective_name);
         let mut changed = existing.is_none();
         let mut score = existing

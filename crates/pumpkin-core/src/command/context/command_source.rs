@@ -398,10 +398,24 @@ impl CommandSource {
 
     /// Sends feedback to this source.
     pub fn send_feedback(&self, message: TextComponent, broadcast_to_ops: bool) {
+        self.send_feedback_with(|| message, broadcast_to_ops);
+    }
+
+    /// Like [`Self::send_feedback`], building the message only if it is sent (vanilla
+    /// `sendSuccess` with its `Supplier`).
+    pub fn send_feedback_with(
+        &self,
+        message: impl FnOnce() -> TextComponent,
+        broadcast_to_ops: bool,
+    ) {
         if !self.silent {
             let should_send_to_output = self.output.should_receive_feedback();
             let should_send_to_ops =
                 broadcast_to_ops && self.output.should_broadcast_console_to_ops();
+            if !should_send_to_output && !should_send_to_ops {
+                return;
+            }
+            let message = message();
 
             if should_send_to_output {
                 self.output.send_message(message.clone());
