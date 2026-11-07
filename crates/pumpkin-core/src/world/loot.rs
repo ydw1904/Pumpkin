@@ -16,6 +16,8 @@ use pumpkin_util::random::gameplay::game_random;
 use pumpkin_util::random::{RandomGenerator, RandomImpl, xoroshiro128::Xoroshiro};
 
 mod generation;
+
+pub(crate) use generation::apply_component_patch;
 mod predicates;
 
 #[derive(Default, Clone)]

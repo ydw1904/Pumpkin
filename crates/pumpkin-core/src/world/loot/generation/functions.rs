@@ -10,6 +10,7 @@ use pumpkin_data::data_component_impl::{
 };
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::item::Item;
+use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::map_decoration::MapDecorationType;
 use pumpkin_data::potion::Potion;
 use pumpkin_data::tag::{RegistryKey, get_tag_values};
@@ -79,15 +80,48 @@ fn put_component(
     id: DataComponent,
     component: Option<Box<dyn DataComponentImpl>>,
 ) {
+    put_item_component(&mut stack.stack, id, component);
+}
+
+fn put_item_component(
+    stack: &mut ItemStack,
+    id: DataComponent,
+    component: Option<Box<dyn DataComponentImpl>>,
+) {
     let Some(component) = component else {
-        stack.stack.remove_data_component(id);
+        stack.remove_data_component(id);
         return;
     };
-    if let Some((_, existing)) = stack.stack.patch.iter_mut().find(|(seen, _)| *seen == id) {
+    if let Some((_, existing)) = stack.patch.iter_mut().find(|(seen, _)| *seen == id) {
         *existing = Some(component);
     } else {
-        stack.stack.patch.push((id, Some(component)));
+        stack.patch.push((id, Some(component)));
     }
+}
+
+/// Applies a `DataComponentPatch` written as JSON, where `!name` removes a component. Values
+/// Pumpkin can't read are left out; an unknown component name is returned as the error after
+/// the rest of the patch is applied.
+pub fn apply_component_patch(
+    stack: &mut ItemStack,
+    components: &serde_json::Map<String, Value>,
+) -> Result<(), String> {
+    let mut unknown = None;
+    for (name, value) in components {
+        let (removed, component_name) = name
+            .strip_prefix('!')
+            .map_or((false, name.as_str()), |name| (true, name));
+        let Some(id) = DataComponent::try_from_name(component_name) else {
+            unknown.get_or_insert_with(|| format!("unknown component {name}"));
+            continue;
+        };
+        if removed {
+            put_item_component(stack, id, None);
+        } else if let Some(component) = json_to_nbt(value).and_then(|tag| read_data(id, &tag)) {
+            put_item_component(stack, id, Some(component));
+        }
+    }
+    unknown.map_or(Ok(()), Err)
 }
 
 impl Generator<'_, '_> {
@@ -172,19 +206,8 @@ impl Generator<'_, '_> {
 
     /// `SetComponentsFunction`: applies a component patch; `!name` removes a component.
     fn set_components(json: &Value, stack: &mut Stack) {
-        let Some(components) = json.get("components").and_then(Value::as_object) else {
-            return;
-        };
-        for (name, value) in components {
-            if let Some(name) = name.strip_prefix('!') {
-                if let Some(id) = DataComponent::try_from_name(name) {
-                    put_component(stack, id, None);
-                }
-            } else if let Some(id) = DataComponent::try_from_name(name)
-                && let Some(component) = json_to_nbt(value).and_then(|tag| read_data(id, &tag))
-            {
-                put_component(stack, id, Some(component));
-            }
+        if let Some(components) = json.get("components").and_then(Value::as_object) {
+            let _ = apply_component_patch(&mut stack.stack, components);
         }
     }
 

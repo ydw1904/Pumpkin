@@ -535,11 +535,11 @@ fn parse_rewards(json: &Value) -> Result<Rewards, String> {
     })
 }
 
-/// Vanilla `DisplayInfo.CODEC`. The icon's components aren't read.
+/// Vanilla `DisplayInfo.CODEC`. Icon components Pumpkin can't read are left out.
 fn parse_display(json: &Value) -> Result<AdvancementDisplay, String> {
     let icon = json.get("icon").ok_or("display has no icon")?;
-    let (item_id, count) = match icon {
-        Value::String(id) => (id.as_str(), 1),
+    let (item_id, count, components) = match icon {
+        Value::String(id) => (id.as_str(), 1, None),
         icon => {
             let id = icon
                 .get("id")
@@ -551,10 +551,18 @@ fn parse_display(json: &Value) -> Result<AdvancementDisplay, String> {
                     .filter(|count| (1..=99).contains(count))
                     .ok_or_else(|| format!("invalid icon count {count}"))
             })?;
-            (id, count)
+            let components = icon
+                .get("components")
+                .map(|components| components.as_object().ok_or("icon components aren't a map"))
+                .transpose()?;
+            (id, count, components)
         }
     };
     let item = Item::from_registry_key(item_id).ok_or_else(|| format!("unknown item {item_id}"))?;
+    let mut icon = ItemStack::new(count as u8, item);
+    if let Some(components) = components {
+        crate::world::loot::apply_component_patch(&mut icon, components)?;
+    }
     let text = |key: &str| -> Result<TextComponent, String> {
         let value = json
             .get(key)
@@ -571,7 +579,7 @@ fn parse_display(json: &Value) -> Result<AdvancementDisplay, String> {
     let mut display = AdvancementDisplay::new(
         "",
         "",
-        ItemStack::new(count as u8, item),
+        icon,
         frame_type,
         background.map(|background| leak_str(&background.to_string())),
         get_bool(json, "show_toast", true)?,
@@ -867,6 +875,45 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn icon_components_are_read() {
+        let mut datapack = HashMap::new();
+        datapack.insert(
+            "p:glint".to_string(),
+            serde_json::json!({
+                "display": {"icon": {"id": "minecraft:stick",
+                    "components": {"minecraft:enchantment_glint_override": true}},
+                    "title": "T", "description": "d", "background": "minecraft:block/stone"},
+                "criteria": {"a": {"trigger": "minecraft:impossible"}}
+            }),
+        );
+        datapack.insert(
+            "p:unknown_component".to_string(),
+            serde_json::json!({
+                "display": {"icon": {"id": "minecraft:stick", "components": {"p:nope": 1}},
+                    "title": "T", "description": "d", "background": "minecraft:block/stone"},
+                "criteria": {"a": {"trigger": "minecraft:impossible"}}
+            }),
+        );
+        let mut errors = RegistryLoadErrors::default();
+        let advancements = ServerAdvancements::new(&datapack, &mut errors);
+        let icon = &advancements
+            .get_by_name("p:glint")
+            .and_then(|advancement| advancement.display)
+            .expect("display loads")
+            .item_icon;
+        assert_eq!(
+            icon.get_data_component::<pumpkin_data::data_component_impl::EnchantmentGlintOverrideImpl>()
+                .map(|glint| glint.glint),
+            Some(true)
+        );
+        assert!(
+            errors
+                .get(ADVANCEMENT_REGISTRY, "p:unknown_component")
+                .is_some()
+        );
     }
 
     #[test]

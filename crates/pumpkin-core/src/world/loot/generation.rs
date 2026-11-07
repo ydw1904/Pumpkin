@@ -4,6 +4,8 @@ use pumpkin_util::random::gameplay::game_random;
 
 mod functions;
 
+pub use functions::apply_component_patch;
+
 use super::{
     DynamicLootCondition, DynamicLootEntry, DynamicLootEntryKind, DynamicLootFunction,
     DynamicLootPool, DynamicLootTable, Item, ItemStack, LootCondition, LootContextParameters,
