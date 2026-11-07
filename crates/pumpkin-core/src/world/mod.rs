@@ -819,9 +819,10 @@ impl World {
 
     /// Starts updating the light changed during this tick on another thread, like vanilla
     /// `ThreadedLevelLightEngine.tryScheduleUpdate` while the server waits for the next tick.
-    pub fn schedule_light_updates(&self) {
-        let level = self.level.clone();
-        rayon::spawn(move || level.light_engine.run_queued_checks(&level));
+    pub fn schedule_light_updates(&self, pool: &rayon::ThreadPool) {
+        self.level
+            .light_engine
+            .try_schedule_update(&self.level, pool);
     }
 
     pub async fn shutdown(&self) {
@@ -1992,9 +1993,9 @@ impl World {
     pub fn tick(self: &Arc<Self>, server: &Arc<Server>) {
         let start = std::time::Instant::now();
 
-        // Light changed by the last tick is updated before this one starts, like vanilla's light
-        // thread usually manages between two ticks.
-        self.level.light_engine.run_queued_checks(&self.level);
+        // Light updates that finished since the last tick become visible and are sent before
+        // this tick's block changes. Like vanilla's light thread, a slow update isn't waited for.
+        self.level.light_engine.publish_updates(&self.level);
         self.broadcast_light_changes();
         // Vanilla `processPacketsAndTick` handles queued player packets before the level tick
         // advances time and runs scheduled ticks, so a player's action lands a tick earlier than

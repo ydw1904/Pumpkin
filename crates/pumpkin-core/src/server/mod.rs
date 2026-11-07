@@ -1559,7 +1559,7 @@ impl Server {
             }
             self.handle_console_inputs();
             for world in self.worlds.load().iter() {
-                world.schedule_light_updates();
+                world.schedule_light_updates(&self.compute_pool);
             }
             Self::resume_player_flushes(&suspended);
         });

@@ -1,3 +1,4 @@
+use crate::chunk::format::LightContainer;
 use crate::chunk::io::Dirtiable;
 use crate::chunk::palette::BlockPalette;
 use crate::level::Level;
@@ -9,6 +10,7 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector2::Vector2;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// Light updates for block changes in loaded chunks.
@@ -22,9 +24,13 @@ pub struct DynamicLightEngine {
     /// Block checks queued since the last light update, like the `checkBlock` tasks vanilla
     /// `ThreadedLevelLightEngine` hands to its light thread.
     queued_checks: Mutex<QueuedChecks>,
-    /// Held while queued checks run, so batches run one at a time like on vanilla's single
+    /// Vanilla `ThreadedLevelLightEngine.scheduled`: an update is running on another thread.
+    scheduled: AtomicBool,
+    /// Held while queued checks run, so updates run one at a time like on vanilla's single
     /// light executor.
     running: Mutex<()>,
+    /// Updates that finished but aren't visible to the chunks yet.
+    finished: Mutex<Vec<FinishedUpdate>>,
     /// Sections whose light changed since the last [`Self::take_changed_sections`], like the
     /// `sectionsAffectedByLightUpdates` vanilla reports to `ChunkHolder.sectionLightChanged`.
     changed_sections: Mutex<FxHashMap<Vector2<i32>, ChangedLightSections>>,
@@ -45,47 +51,117 @@ struct QueuedChecks {
     seen: FxHashSet<BlockPos>,
 }
 
-/// Light access through the level's loaded chunks.
+/// A light section: layer, chunk and section index in the chunk.
+type SectionKey = (LightLayer, Vector2<i32>, usize);
+
+/// The result of one light update, published to the chunks at once like vanilla
+/// `LayerLightSectionStorage.swapSectionMap` publishes `updatingSectionData`.
+struct FinishedUpdate {
+    sections: Vec<(SectionKey, LightContainer)>,
+    /// Sections around every position whose light was set, by layer and section position.
+    changed: FxHashSet<(LightLayer, i32, i32, i32)>,
+}
+
+/// Light access through the level's loaded chunks. Changes go to copies of the sections, like
+/// vanilla's `updatingSectionData`, so game logic keeps reading the last published light while an
+/// update runs.
 struct LevelLightStorage<'a> {
     level: &'a Level,
     min_y: i32,
     max_y: i32,
     /// Positions light couldn't reach because their chunk isn't loaded.
     unloaded: RefCell<Vec<BlockPos>>,
+    /// Copies of the sections read or changed since this storage was created. Later updates in
+    /// the same run read these, as the chunks only see an update once it's published.
+    sections: RefCell<FxHashMap<SectionKey, LightContainer>>,
+    /// Sections changed by the current update.
+    written: FxHashSet<SectionKey>,
     /// Sections around every position whose light was set, by layer.
     changed: FxHashSet<(LightLayer, i32, i32, i32)>,
 }
 
-impl LightStorage for LevelLightStorage<'_> {
-    fn get_level(&self, layer: LightLayer, pos: BlockPos) -> Option<u8> {
+impl<'a> LevelLightStorage<'a> {
+    fn new(level: &'a Level, min_y: i32, max_y: i32) -> Self {
+        Self {
+            level,
+            min_y,
+            max_y,
+            unloaded: RefCell::default(),
+            sections: RefCell::default(),
+            written: FxHashSet::default(),
+            changed: FxHashSet::default(),
+        }
+    }
+
+    /// The section key and the position inside the section, or `None` outside the world.
+    const fn locate(
+        &self,
+        layer: LightLayer,
+        pos: BlockPos,
+    ) -> Option<(SectionKey, usize, usize, usize)> {
         if pos.0.y < self.min_y || pos.0.y >= self.max_y {
             return None;
         }
         let (chunk_pos, relative) = pos.chunk_and_chunk_relative_position();
-        self.level
-            .read_chunk_sync(&chunk_pos, |chunk| {
-                let local_y = (relative.y - chunk.section.min_y) as usize;
-                let light_engine = chunk
-                    .light_engine
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                let sections = match layer {
-                    LightLayer::Sky => &light_engine.sky_light,
-                    LightLayer::Block => &light_engine.block_light,
-                };
-                sections.get(local_y / BlockPalette::SIZE).map(|section| {
-                    section.get(
-                        relative.x as usize,
-                        local_y % BlockPalette::SIZE,
-                        relative.z as usize,
-                    )
-                })
-            })
-            .or_else(|| {
-                self.unloaded.borrow_mut().push(pos);
-                None
-            })
-            .flatten()
+        let local_y = (relative.y - self.min_y) as usize;
+        Some((
+            (layer, chunk_pos, local_y / BlockPalette::SIZE),
+            relative.x as usize,
+            local_y % BlockPalette::SIZE,
+            relative.z as usize,
+        ))
+    }
+
+    /// Copies the section from its chunk if it isn't copied yet. `Some(false)` if the chunk
+    /// isn't loaded, `None` if it has no such section.
+    fn load_section(&self, key: SectionKey) -> Option<bool> {
+        if self.sections.borrow().contains_key(&key) {
+            return Some(true);
+        }
+        let (layer, chunk_pos, index) = key;
+        let Some(section) = self.level.read_chunk_sync(&chunk_pos, |chunk| {
+            let light = chunk
+                .light_engine
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            match layer {
+                LightLayer::Sky => &light.sky_light,
+                LightLayer::Block => &light.block_light,
+            }
+            .get(index)
+            .cloned()
+        }) else {
+            return Some(false);
+        };
+        self.sections.borrow_mut().insert(key, section?);
+        Some(true)
+    }
+
+    /// The sections the current update changed, and resets the change tracking.
+    fn finish_update(&mut self) -> FinishedUpdate {
+        let sections = self.sections.get_mut();
+        FinishedUpdate {
+            sections: self
+                .written
+                .drain()
+                .filter_map(|key| Some((key, sections.get(&key)?.clone())))
+                .collect(),
+            changed: std::mem::take(&mut self.changed),
+        }
+    }
+}
+
+impl LightStorage for LevelLightStorage<'_> {
+    fn get_level(&self, layer: LightLayer, pos: BlockPos) -> Option<u8> {
+        let (key, x, y, z) = self.locate(layer, pos)?;
+        if !self.load_section(key)? {
+            self.unloaded.borrow_mut().push(pos);
+            return None;
+        }
+        self.sections
+            .borrow()
+            .get(&key)
+            .map(|section| section.get(x, y, z))
     }
 
     fn set_level(&mut self, layer: LightLayer, pos: BlockPos, level: u8) {
@@ -100,31 +176,16 @@ impl LightStorage for LevelLightStorage<'_> {
                 }
             }
         }
-        let (chunk_pos, relative) = pos.chunk_and_chunk_relative_position();
-        self.level.read_chunk_sync(&chunk_pos, |chunk| {
-            let local_y = (relative.y - chunk.section.min_y) as usize;
-            let mut light_engine = chunk
-                .light_engine
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let sections = match layer {
-                LightLayer::Sky => &mut light_engine.sky_light,
-                LightLayer::Block => &mut light_engine.block_light,
-            };
-            let Some(section) = sections.get_mut(local_y / BlockPalette::SIZE) else {
-                return;
-            };
-            section.set(
-                relative.x as usize,
-                local_y % BlockPalette::SIZE,
-                relative.z as usize,
-                level,
-            );
-            drop(light_engine);
-            if !chunk.is_dirty() {
-                chunk.mark_dirty(true);
-            }
-        });
+        let Some((key, x, y, z)) = self.locate(layer, pos) else {
+            return;
+        };
+        if self.load_section(key) != Some(true) {
+            return;
+        }
+        if let Some(section) = self.sections.get_mut().get_mut(&key) {
+            section.set(x, y, z, level);
+            self.written.insert(key);
+        }
     }
 
     fn get_state(&self, pos: BlockPos) -> &'static BlockState {
@@ -177,7 +238,9 @@ impl DynamicLightEngine {
             max_y,
             pending_checks: Mutex::default(),
             queued_checks: Mutex::default(),
+            scheduled: AtomicBool::new(false),
             running: Mutex::new(()),
+            finished: Mutex::default(),
             changed_sections: Mutex::default(),
         }
     }
@@ -196,7 +259,7 @@ impl DynamicLightEngine {
     }
 
     /// Vanilla `ThreadedLevelLightEngine.checkBlock`: queues a light check for a changed block.
-    /// The light changes once [`Self::run_queued_checks`] runs.
+    /// The light changes once an update scheduled by [`Self::try_schedule_update`] is published.
     pub fn check_block(&self, pos: BlockPos) {
         self.check_blocks([pos]);
     }
@@ -214,22 +277,116 @@ impl DynamicLightEngine {
         }
     }
 
-    /// Runs the queued light checks in one batch, like vanilla's light thread does in
-    /// `ThreadedLevelLightEngine.runUpdate`. Waits for a batch that is already running.
+    /// Vanilla `ThreadedLevelLightEngine.tryScheduleUpdate`: starts updating the queued checks
+    /// on `pool` unless an update is already running. The tick doesn't wait for it; its light
+    /// becomes visible at a later [`Self::publish_updates`].
+    pub fn try_schedule_update(&self, level: &Arc<Level>, pool: &rayon::ThreadPool) {
+        if self
+            .scheduled
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return;
+        }
+        // The last run has ended, so a new one must start from all of its light.
+        self.publish_updates(level);
+        if self
+            .queued_checks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .order
+            .is_empty()
+        {
+            self.scheduled.store(false, Ordering::Release);
+            return;
+        }
+        let level = level.clone();
+        pool.spawn(move || {
+            let engine = &level.light_engine;
+            let running = engine
+                .running
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            engine.run_updates(&level);
+            drop(running);
+            engine.scheduled.store(false, Ordering::Release);
+        });
+    }
+
+    /// Makes the light of the finished updates visible to game logic and to light packets.
+    pub fn publish_updates(&self, level: &Level) {
+        let finished = std::mem::take(
+            &mut *self
+                .finished
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
+        if finished.is_empty() {
+            return;
+        }
+        let mut changed_sections = self
+            .changed_sections
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for update in finished {
+            for ((layer, chunk_pos, index), section) in update.sections {
+                level.loaded_chunks.read(&chunk_pos, |chunk| {
+                    let mut light = chunk
+                        .light_engine
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    let sections = match layer {
+                        LightLayer::Sky => &mut light.sky_light,
+                        LightLayer::Block => &mut light.block_light,
+                    };
+                    if let Some(target) = sections.get_mut(index) {
+                        *target = section;
+                    }
+                    drop(light);
+                    if !chunk.is_dirty() {
+                        chunk.mark_dirty(true);
+                    }
+                });
+            }
+            for (layer, x, y, z) in update.changed {
+                let sections = changed_sections.entry(Vector2::new(x, z)).or_default();
+                match layer {
+                    LightLayer::Sky => sections.sky.insert(y),
+                    LightLayer::Block => sections.block.insert(y),
+                };
+            }
+        }
+    }
+
+    /// Runs and publishes every queued check on this thread, waiting for a running update first.
+    /// For shutdown and tests; ticks use [`Self::try_schedule_update`].
     pub fn run_queued_checks(&self, level: &Arc<Level>) {
         let _running = self
             .running
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let positions = std::mem::take(
-            &mut *self
-                .queued_checks
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-        )
-        .order;
-        if !positions.is_empty() {
-            self.update_lighting(level, &positions);
+        self.publish_updates(level);
+        self.run_updates(level);
+        self.publish_updates(level);
+    }
+
+    /// Vanilla `ThreadedLevelLightEngine.runUpdate`, repeated while checks are queued. Vanilla
+    /// takes at most 1000 checks per update; one update for all of them gives the same light and
+    /// is several times faster after a large fill, as the light under it propagates only once.
+    fn run_updates(&self, level: &Arc<Level>) {
+        let mut storage = LevelLightStorage::new(level, self.min_y, self.max_y);
+        loop {
+            let positions = std::mem::take(
+                &mut *self
+                    .queued_checks
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+            )
+            .order;
+            if positions.is_empty() {
+                return;
+            }
+            self.update_lighting(level, &mut storage, &positions);
         }
     }
 
@@ -244,8 +401,13 @@ impl DynamicLightEngine {
     }
 
     /// Updates light after several blocks changed, checking all of them before propagating like
-    /// vanilla does for the block checks queued between two light updates.
-    fn update_lighting(&self, level: &Arc<Level>, positions: &[BlockPos]) {
+    /// vanilla `LightEngine.runLightUpdates` does for the block checks of one update.
+    fn update_lighting(
+        &self,
+        level: &Arc<Level>,
+        storage: &mut LevelLightStorage,
+        positions: &[BlockPos],
+    ) {
         if let Some(value) = level.lighting_config.fixed_level() {
             for pos in positions {
                 self.set_block_light_level(level, pos, value).ok();
@@ -254,43 +416,29 @@ impl DynamicLightEngine {
             return;
         }
 
-        let mut storage = LevelLightStorage {
-            level,
-            min_y: self.min_y,
-            max_y: self.max_y,
-            unloaded: RefCell::default(),
-            changed: FxHashSet::default(),
-        };
-
         let mut block_light = LayerLightEngine::new(LightLayer::Block);
         for &pos in positions {
-            block_light.check_node(&mut storage, pos);
+            block_light.check_node(storage, pos);
         }
-        block_light.run_updates(&mut storage);
+        block_light.run_updates(storage);
 
         if level.world_gen.load().dimension().has_skylight {
             let mut sky_light = LayerLightEngine::new(LightLayer::Sky);
             for &pos in positions {
-                sky_light.check_node(&mut storage, pos);
+                sky_light.check_node(storage, pos);
             }
-            sky_light.run_updates(&mut storage);
+            sky_light.run_updates(storage);
         }
 
-        if !storage.changed.is_empty() {
-            let mut changed_sections = self
-                .changed_sections
+        let update = storage.finish_update();
+        if !update.sections.is_empty() || !update.changed.is_empty() {
+            self.finished
                 .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            for (layer, x, y, z) in storage.changed {
-                let sections = changed_sections.entry(Vector2::new(x, z)).or_default();
-                match layer {
-                    LightLayer::Sky => sections.sky.insert(y),
-                    LightLayer::Block => sections.block.insert(y),
-                };
-            }
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(update);
         }
 
-        let unloaded = storage.unloaded.into_inner();
+        let unloaded = std::mem::take(storage.unloaded.get_mut());
         if unloaded.is_empty() {
             return;
         }
@@ -478,7 +626,6 @@ impl DynamicLightEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chunk::format::LightContainer;
     use crate::chunk::{ChunkData, ChunkLight};
     use crate::level::SyncChunk;
     use pumpkin_config::world::LevelConfig;
@@ -530,6 +677,40 @@ mod tests {
         assert_eq!(
             level.light_engine.get_block_light_level(&level, &across),
             Some(14)
+        );
+        level.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn light_stays_unchanged_until_the_update_is_published() {
+        let temp_dir = TempDir::new().unwrap();
+        let level = Level::from_root_folder(
+            &LevelConfig::default(),
+            temp_dir.path().to_path_buf(),
+            0,
+            Dimension::OVERWORLD,
+        );
+        let chunk = lit_chunk(0, 0);
+        chunk.set_block_absolute_y(8, 64, 8, Block::GLOWSTONE.default_state.id);
+        level.loaded_chunks.insert(Vector2::new(0, 0), chunk);
+        level.light_engine.check_block(BlockPos::new(8, 64, 8));
+        level.light_engine.run_updates(&level);
+
+        let beside = BlockPos::new(9, 64, 8);
+        assert_eq!(
+            level.light_engine.get_block_light_level(&level, &beside),
+            Some(0)
+        );
+        level.light_engine.publish_updates(&level);
+        assert_eq!(
+            level.light_engine.get_block_light_level(&level, &beside),
+            Some(14)
+        );
+        assert!(
+            level
+                .light_engine
+                .take_changed_sections()
+                .contains_key(&Vector2::new(0, 0))
         );
         level.shutdown().await;
     }
