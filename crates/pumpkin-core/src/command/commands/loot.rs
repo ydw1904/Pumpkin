@@ -389,9 +389,11 @@ impl CommandExecutor for LootExecutor {
             Source::Loot => {
                 let loot_table = loot_table_argument(context)?;
 
-                // `LootCommand.dropChestLoot`: the origin is the source's position.
+                // `LootCommand.dropChestLoot`: the origin is the source's position and `this` its
+                // entity.
                 let params = LootContextParameters {
                     world: Some(context.world()),
+                    this_entity: context.source.entity.as_deref(),
                     position: Some(context.source.position),
                     ..Default::default()
                 };
