@@ -121,6 +121,11 @@ h.start(async () => {
   h.cmd(`item replace entity ${bot.username} armor.head with iron_helmet`)
   await h.ticks(5)
   await air('helmet_same', 'iron_helmet')
+  // Curse of Binding keeps the worn helmet on.
+  h.cmd(`item replace entity ${bot.username} armor.head with iron_helmet[enchantments={binding_curse:1}]`)
+  await h.ticks(5)
+  await air('helmet_cursed', 'golden_helmet')
+  h.result('cursed_head', bot.inventory.slots[5] ? bot.inventory.slots[5].name : 'empty')
   // Casting a fishing rod counts, reeling in doesn't.
   await air('rod_cast', 'fishing_rod')
   await air('rod_reel', 'fishing_rod')

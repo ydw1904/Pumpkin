@@ -117,7 +117,12 @@ impl JavaClient {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .get(&slot);
-            if current_equipped.are_items_and_components_equal(held) {
+            // Vanilla `Equippable.swapWithEquipmentSlot`: Curse of Binding keeps the worn item on
+            // outside creative.
+            if (crate::entity::living::prevents_armor_change(&current_equipped)
+                && player.gamemode.load() != GameMode::Creative)
+                || current_equipped.are_items_and_components_equal(held)
+            {
                 return;
             }
             // Vanilla `Equippable.swapWithEquipmentSlot`.
