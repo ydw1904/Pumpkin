@@ -139,7 +139,11 @@ def run_check(server, check, port, mineflayer, out_path, timeout):
                                 text=True, encoding="utf8", errors="replace", timeout=timeout)
         output = result.stdout + result.stderr
     except subprocess.TimeoutExpired as err:
-        output = (err.stdout or "") + f"\nTIMEOUT after {timeout}s\n"
+        # The partial output of a timed out run comes back as bytes even in text mode.
+        partial = err.stdout or b""
+        if isinstance(partial, bytes):
+            partial = partial.decode("utf8", errors="replace")
+        output = partial + f"\nTIMEOUT after {timeout}s\n"
     out_path.write_text(output, encoding="utf8")
     return output
 
