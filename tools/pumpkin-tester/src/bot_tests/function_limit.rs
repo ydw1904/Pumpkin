@@ -42,6 +42,8 @@ pub fn run_function_limit_test(
             .handle_command(&CommandSender::Console.into_source(server), command);
     };
     console("scoreboard objectives add regress dummy");
+    // Like vanilla, a new pack folder is unknown until something rescans the folder.
+    console("datapack list");
     console("datapack enable \"file/function_limit\"");
     console("function regress:loop");
     console("function regress:condition");

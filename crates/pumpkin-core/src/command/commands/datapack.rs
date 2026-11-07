@@ -166,6 +166,8 @@ struct DatapackListExecutor(ListFilter);
 impl CommandExecutor for DatapackListExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
         let server = context.server();
+        // `listEnabledPacks` and `listAvailablePacks` both rescan the pack folders first.
+        server.datapack_manager.rescan_world_packs(server);
         let enabled = get_enabled_packs(server);
         let available = get_available_packs(server);
 

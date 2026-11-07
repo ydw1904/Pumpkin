@@ -3,7 +3,7 @@ use crate::block::registry::BlockRegistry;
 use crate::command::commands::default_dispatcher;
 use crate::command::commands::defaultgamemode::DefaultGamemode;
 use crate::data::VanillaData;
-use crate::data::datapack::RegistryLoadErrors;
+use crate::data::datapack::{DatapackManager, RegistryLoadErrors};
 use crate::data::player_server::ServerPlayerData;
 use crate::entity::NBTStorage;
 use crate::item::registry::ItemRegistry;
@@ -502,10 +502,21 @@ impl Server {
 
         info!("All worlds loaded successfully.");
 
-        let enabled_packs = server.level_info.load().data_packs.enabled.clone();
-        if server.load_datapacks(&enabled_packs).is_err() {
+        // `MinecraftServer.configurePackRepository`: packs added to the world's folder since it
+        // last ran are enabled, unless the world lists them as disabled.
+        let data_packs = DatapackManager::discover_new_packs(&server);
+        let saved_count = server.level_info.load().data_packs.enabled.len();
+        for pack in &data_packs.enabled[saved_count..] {
+            info!("Found new data pack {pack}, loading it automatically");
+        }
+        if server.load_datapacks(&data_packs.enabled).is_err() {
             return Err(ServerSetupError::Datapacks);
         }
+        server.level_info.rcu(|level_info| {
+            let mut new_info = (**level_info).clone();
+            new_info.data_packs = data_packs.clone();
+            new_info
+        });
 
         let source = crate::command::CommandSender::Console.into_source(&server);
         let _ = server

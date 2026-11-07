@@ -100,6 +100,9 @@ pub struct DatapackManager {
     /// Tags of synchronized registries without built-in tags (`wolf_variant`, ...), which only
     /// the client uses. The other registries' tags live in [`pumpkin_data::datapack_tags`].
     client_only_tags: RwLock<Vec<RegistryTags>>,
+    /// The pack folders of the world's `datapacks/` as last scanned (vanilla
+    /// `PackRepository.available`).
+    world_packs: RwLock<Vec<String>>,
 }
 
 /// A function's id and its commands as loaded.
@@ -208,6 +211,7 @@ impl DatapackManager {
             item_modifiers: RwLock::new(HashMap::new()),
             slot_sources: RwLock::new(HashMap::new()),
             client_only_tags: RwLock::new(Vec::new()),
+            world_packs: RwLock::new(Vec::new()),
         }
     }
 
@@ -1161,37 +1165,22 @@ impl DatapackManager {
 
         // Bundled feature packs that are known to the server independently of
         // the compile-time structure/test resource embeddings.
-        for bundled in [
-            "trade_rebalance",
-            "minecart_improvements",
-            "redstone_experiments",
-        ] {
+        for bundled in BUNDLED_PACKS {
             if !packs.iter().any(|p| p == bundled) {
                 packs.push(bundled.to_string());
             }
         }
 
-        // World datapacks directory.
-        let datapacks_dir = server.basic_config.get_world_path().join("datapacks");
-        if let Ok(entries) = fs::read_dir(datapacks_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                let file_name = entry.file_name().to_string_lossy().to_string();
-
-                if file_name.starts_with('.') {
-                    continue;
-                }
-
-                if path.is_dir()
-                    || path
-                        .extension()
-                        .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"))
-                {
-                    let pack_name = format!("file/{file_name}");
-                    if !packs.iter().any(|p| p == &pack_name) {
-                        packs.push(pack_name);
-                    }
-                }
+        // The world's pack folders as last scanned, not what's on disk right now.
+        for pack_name in server
+            .datapack_manager
+            .world_packs
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+        {
+            if !packs.contains(pack_name) {
+                packs.push(pack_name.clone());
             }
         }
 
@@ -1417,6 +1406,7 @@ impl DatapackManager {
     /// `datapacks/` since they were last looked at, unless the world lists them as disabled.
     #[must_use]
     pub fn discover_new_packs(server: &Server) -> DataPacks {
+        server.datapack_manager.rescan_world_packs(server);
         let mut data_packs = server.level_info.load().data_packs.clone();
         let new_packs: Vec<String> = Self::get_all_known_packs(server)
             .into_iter()
@@ -1428,6 +1418,33 @@ impl DatapackManager {
             .collect();
         data_packs.enabled.extend(new_packs);
         data_packs
+    }
+
+    /// Vanilla `PackRepository.reload`: looks at the world's `datapacks/` folder again. Until
+    /// then, packs added there are unknown.
+    pub fn rescan_world_packs(&self, server: &Server) {
+        let mut packs = Vec::new();
+        let datapacks_dir = server.basic_config.get_world_path().join("datapacks");
+        if let Ok(entries) = fs::read_dir(datapacks_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let file_name = entry.file_name().to_string_lossy().to_string();
+                if !file_name.starts_with('.')
+                    && (path.is_dir()
+                        || path
+                            .extension()
+                            .is_some_and(|ext| ext.eq_ignore_ascii_case("zip")))
+                {
+                    packs.push(format!("file/{file_name}"));
+                }
+            }
+        }
+        // `discoverAvailable` collects the packs into a `TreeMap`.
+        packs.sort_unstable();
+        *self
+            .world_packs
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = packs;
     }
 
     pub fn reload(server: &Arc<Server>) -> Result<(), String> {
