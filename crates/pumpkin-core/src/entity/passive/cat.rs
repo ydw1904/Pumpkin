@@ -1,34 +1,30 @@
-use pumpkin_util::random::gameplay::game_random;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicBool, AtomicU8, Ordering},
 };
 
 use pumpkin_data::block_properties::WhiteBedLikeProperties;
+use pumpkin_data::cat_sound_variant::CatSoundVariant;
+use pumpkin_data::cat_variant::{CatSpawnCondition, CatVariant};
+use pumpkin_data::data_component_impl::DyeImpl;
+use pumpkin_data::dye_color::DyeColor;
+use pumpkin_data::entity::{EntityPose, EntityType};
 use pumpkin_data::environment_attribute::EnvironmentAttribute;
+use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::sound::{Sound, SoundCategory};
+use pumpkin_data::tag::{self, Taggable};
+use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 
-use pumpkin_data::cat_sound_variant::CatSoundVariant;
-use pumpkin_data::cat_variant::CatVariant;
-use pumpkin_data::dye_color::DyeColor;
-use pumpkin_data::entity::{EntityStatus, EntityType};
-use pumpkin_data::item::Item;
-use pumpkin_data::item_stack::ItemStack;
-use pumpkin_data::tag::{self, Taggable};
-use pumpkin_nbt::compound::NbtCompound;
-use pumpkin_protocol::bedrock::server::actor_event::ActorEventID;
-use pumpkin_protocol::codec::var_int::VarInt;
-use uuid::Uuid;
-
 use crate::entity::custom_sound::CustomSound;
-use crate::entity::passive::sheep::get_mixed_color;
 use crate::entity::{
     Entity, EntityBase,
     ageable::{AgeableData, AgeableMob},
     ai::behavior::{
-        feline,
+        feline::{self, SPRINT_SPEED, TEMPT_SPEED},
         fleeing::{self, Flee},
         hunting::{self, Hunt},
     },
@@ -40,9 +36,12 @@ use crate::entity::{
     },
     ai::pathfinder::NavigatorGoal,
     ai::target_match::TargetMatch,
-    mob::{Mob, MobEntity, spawn::SpawnGroupData},
+    mob::{
+        Mob, MobEntity,
+        spawn::{EntitySpawnReason, SpawnGroupData},
+    },
     passive::{
-        animal::Animal,
+        animal::{Animal, get_mixed_color},
         tamable::{TamableAnimal, TamableData, is_untamed},
     },
     player::Player,
@@ -55,6 +54,9 @@ const CAT_HUNTS: &[Hunt] = &[
     Hunt::new(1, TargetMatch::Type(&EntityType::RABBIT), false).when(TargetCondition::Untamed),
     hunting::baby_turtles(1, false).when(TargetCondition::Untamed),
 ];
+
+const BEG_FOR_FOOD_INTERVAL: i32 = 100;
+const LIE_DOWN_PURR_INTERVAL: i32 = 5;
 
 pub struct CatEntity {
     pub mob_entity: MobEntity,
@@ -73,13 +75,11 @@ impl CatEntity {
         crate::entity::passive::tamable::define_tamable_animal_synched_data(&entity);
         entity.synched_data.define(
             pumpkin_data::tracked_data::cat::DATA_VARIANT_ID,
-            VarInt(i32::from(pumpkin_data::cat_variant::CatVariant::Black.id())),
+            VarInt(i32::from(CatVariant::Black.id())),
         );
         entity.synched_data.define(
             pumpkin_data::tracked_data::cat::DATA_SOUND_VARIANT_ID,
-            VarInt(i32::from(
-                pumpkin_data::cat_sound_variant::CatSoundVariant::Classic.id(),
-            )),
+            VarInt(i32::from(CatSoundVariant::Classic.id())),
         );
         entity
             .synched_data
@@ -89,7 +89,7 @@ impl CatEntity {
             .define(pumpkin_data::tracked_data::cat::RELAX_STATE_ONE, false);
         entity.synched_data.define(
             pumpkin_data::tracked_data::cat::DATA_COLLAR_COLOR,
-            VarInt(pumpkin_data::dye_color::DyeColor::Red as i32),
+            VarInt(DyeColor::Red as i32),
         );
         let mob_entity = MobEntity::new(entity);
         let cat = Self {
@@ -120,15 +120,18 @@ impl CatEntity {
             );
             // Goal 2: SitWhenOrderedToGoal
             goal_selector.add_goal(2, Box::new(SitWhenOrderedToGoal::new()));
-            goal_selector.add_goal(3, Box::new(CatRelaxOnOwnerGoal::default()));
+            goal_selector.add_goal(
+                3,
+                Box::new(CatRelaxOnOwnerGoal::new(Arc::downgrade(&mob_arc))),
+            );
             // Goal 4: CatTemptGoal
-            goal_selector.add_goal(4, Box::new(CatTemptGoal::new()));
+            goal_selector.add_goal(4, Box::new(CatTemptGoal::new(Arc::downgrade(&mob_arc))));
             // Goal 4: CatAvoidEntityGoal (when untamed)
             fleeing::apply(goal_selector, CAT_FLEES);
-            goal_selector.add_goal(5, CatLieOnBlockGoal::new(1.1, 8));
+            goal_selector.add_goal(5, CatLieOnBlockGoal::new(Arc::downgrade(&mob_arc), 1.1, 8));
             // Goal 6: FollowOwnerGoal
             goal_selector.add_goal(6, FollowOwnerGoal::new(1.0, 10.0, 5.0));
-            goal_selector.add_goal(7, CatSitOnBlockGoal::new(0.8));
+            goal_selector.add_goal(7, CatSitOnBlockGoal::new(Arc::downgrade(&mob_arc), 0.8));
             // Goal 8-12: LeapAtTarget, OcelotAttack, Breed, Stroll, LookAtPlayer
             feline::apply_tail(goal_selector, mob_weak, 8);
         };
@@ -175,17 +178,6 @@ impl CatEntity {
         );
     }
 
-    pub fn set_tame(&self, tame: bool, owner: Option<Uuid>) {
-        self.tamable_data.is_tame.store(tame, Ordering::Relaxed);
-        self.set_owner(owner);
-        let entity = self.get_entity();
-        entity.set_synced_data(
-            pumpkin_data::tracked_data::cat::TAMEABLE_FLAGS,
-            self.get_tame_flags(),
-        );
-        entity.set_synced_data(pumpkin_data::tracked_data::cat::OWNER_UUID, owner);
-    }
-
     pub fn set_variant(&self, variant: u8) {
         self.variant.store(variant, Ordering::Relaxed);
         let entity = self.get_entity();
@@ -216,315 +208,120 @@ impl CatEntity {
             VarInt(sound_variant as u8 as i32),
         );
     }
-}
 
-#[must_use]
-pub fn as_cat(mob: &dyn Mob) -> Option<&CatEntity> {
-    mob.cast_any().downcast_ref::<CatEntity>()
-}
-
-/// Vanilla `ChestBlock.isCatSittingOnChest`.
-#[must_use]
-pub fn is_cat_sitting_on(world: &World, pos: &BlockPos) -> bool {
-    let above = BoundingBox::from_block(&pos.up());
-    world.get_entities_at_box(&above).iter().any(|entity| {
-        entity
-            .get_mob()
-            .and_then(as_cat)
-            .is_some_and(TamableAnimal::is_in_sitting_pose)
-    })
-}
-
-impl CatEntity {
-    fn sound_variant(&self) -> CatSoundVariant {
+    fn get_sound_variant(&self) -> CatSoundVariant {
         CatSoundVariant::from_id(self.sound_variant.load(Ordering::Relaxed)).unwrap_or_default()
     }
-}
 
-/// Vanilla `Cat.CatTemptGoal`: only untamed cats follow fish, and a cat sometimes picks the
-/// player it follows and stops being scared of them.
-struct CatTemptGoal {
-    tempt: TemptGoal,
-    selected_player: Option<uuid::Uuid>,
-}
-
-impl CatTemptGoal {
-    fn new() -> Self {
-        Self {
-            tempt: TemptGoal::with_tag(0.6, &tag::Item::MINECRAFT_CAT_FOOD, true),
-            selected_player: None,
-        }
-    }
-
-    fn is_selected(&self) -> bool {
-        self.selected_player.is_some()
-            && self.selected_player
-                == self
-                    .tempt
-                    .target_player()
-                    .map(|player| player.gameprofile.id)
-    }
-}
-
-impl Goal for CatTemptGoal {
-    fn tick_reach(&self, mob: &dyn Mob, running: bool) -> Option<GoalReach> {
-        self.tempt.tick_reach(mob, running)
-    }
-
-    fn can_start(&mut self, mob: &dyn Mob) -> bool {
-        self.tempt.can_start(mob) && as_cat(mob).is_some_and(|cat| !cat.is_tame())
-    }
-
-    fn should_continue(&mut self, mob: &dyn Mob) -> bool {
-        self.tempt.set_can_scare(!self.is_selected());
-        self.tempt.should_continue(mob) && as_cat(mob).is_some_and(|cat| !cat.is_tame())
-    }
-
-    fn start(&mut self, mob: &dyn Mob) {
-        self.tempt.start(mob);
-    }
-
-    fn stop(&mut self, mob: &dyn Mob) {
-        self.tempt.stop(mob);
-    }
-
-    fn tick(&mut self, mob: &dyn Mob) {
-        self.tempt.tick(mob);
-        if self.selected_player.is_none()
-            && mob.get_random().random_range(0..self.get_tick_count(600)) == 0
+    fn handle_lie_down(&self) {
+        if (self.is_lying() || self.is_relax_state_one())
+            && self.get_entity().tick_count.load(Ordering::Relaxed) % LIE_DOWN_PURR_INTERVAL == 0
         {
-            self.selected_player = self
-                .tempt
-                .target_player()
-                .map(|player| player.gameprofile.id);
-        } else if mob.get_random().random_range(0..self.get_tick_count(500)) == 0 {
-            self.selected_player = None;
-        }
-    }
-
-    fn should_run_every_tick(&self) -> bool {
-        self.tempt.should_run_every_tick()
-    }
-
-    fn controls(&self) -> Controls {
-        self.tempt.controls()
-    }
-}
-
-/// Vanilla `CatRelaxOnOwnerGoal.onBedTicks` threshold before the cat lies down.
-const RELAX_ON_BED_TICKS: i32 = 16;
-
-/// Vanilla `Cat.CatRelaxOnOwnerGoal`: a tame cat lies down at the foot of its sleeping owner's
-/// bed, and may leave a morning gift when the owner wakes up.
-#[derive(Default)]
-struct CatRelaxOnOwnerGoal {
-    owner_player: Option<Arc<Player>>,
-    goal_pos: Option<BlockPos>,
-    on_bed_ticks: i32,
-}
-
-impl CatRelaxOnOwnerGoal {
-    fn space_is_occupied(cat: &CatEntity, goal_pos: BlockPos) -> bool {
-        let world = cat.get_entity().world.load();
-        let area = BoundingBox::from_block(&goal_pos).expand(2.0, 2.0, 2.0);
-        world.get_entities_at_box(&area).iter().any(|other| {
-            other.get_entity().entity_id != cat.get_entity().entity_id
-                && other
-                    .get_mob()
-                    .and_then(as_cat)
-                    .is_some_and(|other| other.is_lying() || other.is_relax_state_one())
-        })
-    }
-
-    fn move_to_goal(cat: &CatEntity, goal_pos: BlockPos) {
-        let steered = cat.mob_entity.steered();
-        steered.navigator().set_progress(NavigatorGoal::new(
-            cat.get_entity().pos.load(),
-            goal_pos.0.to_f64(),
-            1.1,
-        ));
-    }
-
-    /// Vanilla `CatRelaxOnOwnerGoal.giveMorningGift`.
-    fn give_morning_gift(cat: &CatEntity) {
-        let rng = cat.get_random();
-        let entity = cat.get_entity();
-        let origin = cat.get_entity().get_leash_holder().map_or_else(
-            || entity.block_pos.load(),
-            |holder| holder.get_entity().block_pos.load(),
-        );
-        let x = f64::from(origin.0.x + rng.random_range(0..11) - 5);
-        let y = f64::from(origin.0.y + rng.random_range(0..5) - 2);
-        let z = f64::from(origin.0.z + rng.random_range(0..11) - 5);
-        let living = &cat.mob_entity.living_entity;
-        if let Some(target) = living.random_teleport_target(
-            x,
-            y,
-            z,
-            |block| block.has_tag(&tag::Block::MINECRAFT_CAT_DOES_NOT_TELEPORT_TO),
-            |_, _| true,
-        ) {
-            let world = entity.world.load_full();
-            entity.teleport(target, None, None, &world);
-            cat.mob_entity.steered().navigator().stop();
-        }
-        let cat_pos = entity.block_pos.load();
-        let body_yaw = entity.body_yaw.load().to_radians();
-        let world = entity.world.load_full();
-        let drop_pos = Vector3::new(
-            f64::from(cat_pos.0.x) - f64::from(body_yaw.sin()),
-            f64::from(cat_pos.0.y),
-            f64::from(cat_pos.0.z) + f64::from(body_yaw.cos()),
-        );
-        crate::entity::mob::drop_from_gift_loot_table_with(
-            cat,
-            CAT_MORNING_GIFT_LOOT_TABLE,
-            |stack| {
-                let item = crate::entity::item::ItemEntity::new(
-                    Entity::new(world.clone(), drop_pos, &EntityType::ITEM),
-                    stack,
-                );
-                world.spawn_entity(Arc::new(item));
-            },
-        );
-    }
-}
-
-const CAT_MORNING_GIFT_LOOT_TABLE: &str = "gameplay/cat_morning_gift";
-
-impl Goal for CatRelaxOnOwnerGoal {
-    fn can_start(&mut self, mob: &dyn Mob) -> bool {
-        let Some(cat) = as_cat(mob) else {
-            return false;
-        };
-        if !cat.is_tame() || cat.is_ordered_to_sit() {
-            return false;
-        }
-        let entity = cat.get_entity();
-        let world = entity.world.load();
-        let Some(owner) = cat
-            .get_owner()
-            .and_then(|uuid| world.get_player_by_uuid(uuid))
-        else {
-            return false;
-        };
-        self.owner_player = Some(owner.clone());
-        if !owner.is_sleeping()
-            || entity
-                .pos
-                .load()
-                .squared_distance_to_vec(&owner.get_entity().pos.load())
-                > 100.0
-        {
-            return false;
-        }
-        let owner_pos = owner.get_entity().block_pos.load();
-        let (block, state_id) = world.get_block_and_state_id(&owner_pos);
-        if !block.has_tag(&tag::Block::MINECRAFT_CATS_CAN_LIE_ON) {
-            return false;
-        }
-        // Every block in `cats_can_lie_on` is a bed, which always has a facing.
-        let facing = WhiteBedLikeProperties::from_state_id(state_id).facing;
-        let goal_pos = owner_pos.offset(facing.opposite().to_offset());
-        self.goal_pos = Some(goal_pos);
-        !Self::space_is_occupied(cat, goal_pos)
-    }
-
-    fn should_continue(&mut self, mob: &dyn Mob) -> bool {
-        let Some(cat) = as_cat(mob) else {
-            return false;
-        };
-        cat.is_tame()
-            && !cat.is_ordered_to_sit()
-            && self
-                .owner_player
-                .as_ref()
-                .is_some_and(|owner| owner.is_sleeping())
-            && self
-                .goal_pos
-                .is_some_and(|goal_pos| !Self::space_is_occupied(cat, goal_pos))
-    }
-
-    fn start(&mut self, mob: &dyn Mob) {
-        if let Some(cat) = as_cat(mob)
-            && let Some(goal_pos) = self.goal_pos
-        {
-            cat.set_in_sitting_pose(false);
-            Self::move_to_goal(cat, goal_pos);
-        }
-    }
-
-    fn stop(&mut self, mob: &dyn Mob) {
-        let Some(cat) = as_cat(mob) else {
-            return;
-        };
-        cat.set_lying(false);
-        if let Some(owner) = &self.owner_player
-            && owner.get_sleep_timer() >= 100
-        {
-            let entity = cat.get_entity();
-            let world = entity.world.load();
-            let gift_chance = world.environment_attributes().get_value_f32(
-                EnvironmentAttribute::GameplayCatWakingUpGiftChance,
-                &entity.block_pos.load(),
+            let random = self.get_random();
+            let volume = 0.6 + 0.4 * (random.random::<f32>() - random.random::<f32>());
+            self.play_entity_sound(
+                self.get_sound_variant()
+                    .purr_sound(self.mob_entity.living_entity.is_baby()),
+                volume,
+                1.0,
             );
-            if cat.get_random().random::<f32>() < gift_chance {
-                Self::give_morning_gift(cat);
-            }
         }
-        self.on_bed_ticks = 0;
-        cat.set_relax_state_one(false);
-        cat.mob_entity.steered().navigator().stop();
     }
 
-    fn tick(&mut self, mob: &dyn Mob) {
-        let Some(cat) = as_cat(mob) else {
-            return;
-        };
-        let (Some(owner), Some(goal_pos)) = (&self.owner_player, self.goal_pos) else {
-            return;
-        };
-        cat.set_in_sitting_pose(false);
-        Self::move_to_goal(cat, goal_pos);
-        let distance_sq = cat
-            .get_entity()
-            .pos
-            .load()
-            .squared_distance_to_vec(&owner.get_entity().pos.load());
-        if distance_sq < 2.5 {
-            self.on_bed_ticks += 1;
-            if self.on_bed_ticks > self.get_tick_count(RELAX_ON_BED_TICKS) {
-                cat.set_lying(true);
-                cat.set_relax_state_one(false);
-            } else {
-                cat.mob_entity.look_at(owner.as_ref(), 45.0, 45.0);
-                cat.set_relax_state_one(true);
-            }
+    fn try_to_tame(&self, player: &Arc<Player>) {
+        if self.get_random().random_range(0..3) == 0 && self.approve_taming(player) {
+            TamableAnimal::tame(self, player.gameprofile.id);
+            self.set_ordered_to_sit(true);
+            self.send_taming_status(true);
         } else {
-            cat.set_lying(false);
+            self.send_taming_status(false);
         }
+    }
+
+    fn select_variant_to_spawn(&self, world: &World) -> Option<CatVariant> {
+        let pos = self.get_entity().block_pos.load();
+        let mut entries: Vec<_> = CatVariant::all()
+            .iter()
+            .flat_map(|variant| {
+                variant
+                    .spawn_selectors()
+                    .iter()
+                    .map(move |selector| (*variant, selector))
+            })
+            .collect();
+        entries.sort_by_key(|(_, selector)| std::cmp::Reverse(selector.priority));
+        let mut highest_matched_priority = i32::MIN;
+        entries.retain(|(_, selector)| {
+            if selector.priority < highest_matched_priority {
+                return false;
+            }
+            let matches = match selector.condition {
+                None => true,
+                Some(CatSpawnCondition::Structure(structures)) => {
+                    world.is_in_structure_piece(&pos, structures)
+                }
+                Some(CatSpawnCondition::MoonBrightness { min, max }) => {
+                    let brightness = f64::from(world.get_moon_brightness(&pos));
+                    min.is_none_or(|min| brightness >= min)
+                        && max.is_none_or(|max| brightness <= max)
+                }
+            };
+            if matches {
+                highest_matched_priority = selector.priority;
+            }
+            matches
+        });
+        if entries.is_empty() {
+            return None;
+        }
+        Some(entries[self.get_random().random_range(0..entries.len())].0)
     }
 }
 
 impl CustomSound for CatEntity {
     fn death_sound(&self) -> Option<pumpkin_data::sound::Sound> {
-        let is_baby = self.get_entity().age.load(Ordering::Relaxed) < 0;
-        let sound_variant = CatSoundVariant::from_id(self.sound_variant.load(Ordering::Relaxed))
-            .unwrap_or_default();
-        Some(sound_variant.death_sound(is_baby))
+        Some(
+            self.get_sound_variant()
+                .death_sound(self.mob_entity.living_entity.is_baby()),
+        )
     }
 
     fn hurt_sound(&self) -> Option<pumpkin_data::sound::Sound> {
-        let is_baby = self.get_entity().age.load(Ordering::Relaxed) < 0;
-        let sound_variant = CatSoundVariant::from_id(self.sound_variant.load(Ordering::Relaxed))
-            .unwrap_or_default();
-        Some(sound_variant.hurt_sound(is_baby))
+        Some(
+            self.get_sound_variant()
+                .hurt_sound(self.mob_entity.living_entity.is_baby()),
+        )
+    }
+
+    fn sound_category(&self) -> SoundCategory {
+        self.sound_source()
     }
 }
 
 impl Animal for CatEntity {
-    /// Vanilla `Cat.getBreedOffspring`: either parent's variant, and a tame parent's owner with
-    /// the collars mixed.
+    fn play_eating_sound(&self) {
+        self.play_entity_sound(
+            self.get_sound_variant()
+                .eat_sound(self.mob_entity.living_entity.is_baby()),
+            1.0,
+            1.0,
+        );
+    }
+
+    fn is_food(&self, item_stack: &ItemStack) -> bool {
+        item_stack
+            .get_item()
+            .has_tag(&tag::Item::MINECRAFT_CAT_FOOD)
+    }
+
+    fn can_mate(&self, partner: &dyn EntityBase) -> bool {
+        self.is_tame()
+            && partner
+                .cast_any()
+                .downcast_ref::<Self>()
+                .is_some_and(TamableAnimal::is_tame)
+    }
+
     fn get_breed_offspring(&self, partner: &dyn EntityBase) -> Arc<dyn EntityBase> {
         let entity = self.get_entity();
         let world = entity.world.load_full();
@@ -534,38 +331,23 @@ impl Animal for CatEntity {
             &EntityType::CAT,
         ));
         if let Some(partner) = partner.cast_any().downcast_ref::<Self>() {
-            let parent = if self.get_random().random::<bool>() {
-                self
+            if self.get_random().random::<bool>() {
+                baby.set_variant(self.variant.load(Ordering::Relaxed));
             } else {
-                partner
-            };
-            baby.set_variant(parent.variant.load(Ordering::Relaxed));
+                baby.set_variant(partner.variant.load(Ordering::Relaxed));
+            }
             if self.is_tame() {
-                baby.set_tame(true, self.get_owner());
-                let collar = get_mixed_color(
+                baby.set_owner(self.get_owner());
+                baby.set_tame(true);
+                let color = get_mixed_color(
                     &world,
                     DyeColor::from(self.get_collar_color()),
                     DyeColor::from(partner.get_collar_color()),
                 );
-                baby.set_collar_color(collar.id());
+                baby.set_collar_color(color.id());
             }
         }
         baby
-    }
-
-    fn play_eating_sound(&self) {
-        let sound_variant = CatSoundVariant::from_id(self.sound_variant.load(Ordering::Relaxed))
-            .unwrap_or_default();
-        self.play_entity_sound(
-            sound_variant.eat_sound(self.mob_entity.living_entity.is_baby()),
-            1.0,
-            1.0,
-        );
-    }
-
-    fn is_food(&self, item_stack: &ItemStack) -> bool {
-        let item = item_stack.get_item();
-        item.has_tag(&tag::Item::MINECRAFT_CAT_FOOD) || item == &Item::COD || item == &Item::SALMON
     }
 }
 
@@ -581,58 +363,17 @@ impl TamableAnimal for CatEntity {
     }
 }
 
-/// Vanilla `DimensionType.MOON_BRIGHTNESS_PER_PHASE`.
-const MOON_BRIGHTNESS_PER_PHASE: [f32; 8] = [1.0, 0.75, 0.5, 0.25, 0.0, 0.25, 0.5, 0.75];
-/// The `moon_brightness` minimum in `data/minecraft/cat_variant/all_black.json`.
-const ALL_BLACK_MIN_MOON_BRIGHTNESS: f32 = 0.9;
-
-impl CatEntity {
-    /// Vanilla `VariantUtils.selectVariantToSpawn` over the `cat_variant` spawn conditions: the
-    /// all-black cat wins inside `#cats_spawn_as_black` structures and joins the others under a
-    /// full moon; every other variant always matches at priority 0.
-    fn select_variant_to_spawn(&self, world: &World) -> CatVariant {
-        let pos = self.get_entity().block_pos.load();
-        if world.is_in_structure_piece(
-            &pos,
-            &pumpkin_data::tag::WorldgenStructure::MINECRAFT_CATS_SPAWN_AS_BLACK,
-        ) {
-            return CatVariant::AllBlack;
-        }
-        let moon_phase = world.environment_attributes().get_value_moon_phase(&pos);
-        let all_black_matches = MOON_BRIGHTNESS_PER_PHASE[usize::from(moon_phase.index())]
-            >= ALL_BLACK_MIN_MOON_BRIGHTNESS;
-        let candidates = CatVariant::all()
-            .iter()
-            .filter(|variant| all_black_matches || **variant != CatVariant::AllBlack)
-            .collect::<Vec<_>>();
-        *candidates[self.get_random().random_range(0..candidates.len())]
-    }
-}
-
 impl Mob for CatEntity {
-    fn get_ambient_sound(&self) -> Option<pumpkin_data::sound::Sound> {
-        let is_baby = self.get_entity().age.load(Ordering::Relaxed) < 0;
-        let sound_variant = CatSoundVariant::from_id(self.sound_variant.load(Ordering::Relaxed))
-            .unwrap_or_default();
-        Some(if !self.is_tame() {
-            sound_variant.stray_ambient_sound()
-        } else if self.mob_entity.is_in_love() {
-            sound_variant.purr_sound(is_baby)
-        } else if self.get_random().random_range(0..4) == 0 {
-            sound_variant.purreow_sound(is_baby)
-        } else {
-            sound_variant.ambient_sound(is_baby)
-        })
-    }
-
     fn finalize_spawn(
         &self,
         world: &Arc<World>,
-        _reason: crate::entity::mob::spawn::EntitySpawnReason,
+        _reason: EntitySpawnReason,
         group_data: Option<SpawnGroupData>,
     ) -> Option<SpawnGroupData> {
         let group_data = self.finalize_spawn_super(group_data);
-        self.set_variant(self.select_variant_to_spawn(world).id());
+        if let Some(variant) = self.select_variant_to_spawn(world) {
+            self.set_variant(variant.id());
+        }
         let sound_variants = CatSoundVariant::ALL;
         self.set_sound_variant(
             sound_variants[self.get_random().random_range(0..sound_variants.len())],
@@ -648,12 +389,73 @@ impl Mob for CatEntity {
         Some(self)
     }
 
+    fn as_tamable(&self) -> Option<&dyn TamableAnimal> {
+        Some(self)
+    }
+
     fn as_ageable(&self) -> Option<&dyn AgeableMob> {
         Some(self)
     }
 
-    fn as_tamable(&self) -> Option<&dyn TamableAnimal> {
+    fn as_cat(&self) -> Option<&CatEntity> {
         Some(self)
+    }
+
+    fn get_ambient_sound(&self) -> Option<Sound> {
+        let sound_variant = self.get_sound_variant();
+        let is_baby = self.mob_entity.living_entity.is_baby();
+        Some(if self.is_tame() {
+            if self.mob_entity.is_in_love() {
+                sound_variant.purr_sound(is_baby)
+            } else if self.get_random().random_range(0..4) == 0 {
+                sound_variant.purreow_sound(is_baby)
+            } else {
+                sound_variant.ambient_sound(is_baby)
+            }
+        } else {
+            sound_variant.stray_ambient_sound(is_baby)
+        })
+    }
+
+    /// The rest of vanilla `Cat.tick` after `super.tick()`: begging for fish and purring while
+    /// lying down.
+    fn post_tick(&self) {
+        if !self.is_tame()
+            && self.get_entity().tick_count.load(Ordering::Relaxed) % BEG_FOR_FOOD_INTERVAL == 0
+            && self.mob_entity.goals_selector.is_running::<CatTemptGoal>()
+        {
+            self.play_entity_sound(
+                self.get_sound_variant()
+                    .beg_for_food_sound(self.mob_entity.living_entity.is_baby()),
+                1.0,
+                1.0,
+            );
+        }
+        self.handle_lie_down();
+    }
+
+    fn custom_server_ai_step(&self, _caller: &dyn EntityBase) {
+        let (pose, sprinting) = {
+            let steered = self.mob_entity.steered();
+            let move_control = steered.move_control();
+            if move_control.has_wanted() {
+                let speed = move_control.get_speed_modifier();
+                if speed == TEMPT_SPEED {
+                    (EntityPose::Crouching, false)
+                } else if speed == SPRINT_SPEED {
+                    (EntityPose::Standing, true)
+                } else {
+                    (EntityPose::Standing, false)
+                }
+            } else {
+                (EntityPose::Standing, false)
+            }
+        };
+        let entity = self.get_entity();
+        entity.set_pose(pose);
+        if entity.is_sprinting() != sprinting {
+            entity.set_sprinting(sprinting);
+        }
     }
 
     fn mob_metadata(&self) -> Option<crate::entity::mob::MobMetadata> {
@@ -775,89 +577,380 @@ impl Mob for CatEntity {
     }
 
     fn mob_interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
-        let item = item_stack.get_item();
-        let is_food = self.is_food(item_stack);
-
         if self.is_tame() {
-            if self.get_owner_uuid() == Some(player.gameprofile.id) {
-                if item.has_tag(&tag::Item::MINECRAFT_CAT_COLLAR_DYES)
-                    || item.has_tag(&tag::Item::C_DYES)
+            if self.is_owned_by(&player.gameprofile.id) {
+                if item_stack
+                    .get_item()
+                    .has_tag(&tag::Item::MINECRAFT_CAT_COLLAR_DYES)
                 {
-                    if let Some(dye) = item_stack
-                        .get_data_component::<pumpkin_data::data_component_impl::DyeImpl>()
+                    if let Some(dye) = item_stack.get_data_component::<DyeImpl>()
                         && dye.color.id() != self.get_collar_color()
                     {
                         self.set_collar_color(dye.color.id());
                         item_stack.decrement_unless_creative(player.gamemode.load(), 1);
+                        self.mob_entity.set_persistence_required();
                         return true;
                     }
-                } else if is_food
+                } else if self.is_food(item_stack)
                     && self.mob_entity.living_entity.health.load()
                         < self.mob_entity.living_entity.get_max_health()
                 {
-                    item_stack.decrement_unless_creative(player.gamemode.load(), 1);
-                    self.mob_entity.living_entity.heal(2.0);
-                    self.play_eating_sound();
+                    self.feed(player, item_stack, 1.0, 1.0);
                     return true;
                 }
 
-                let parent_interaction =
-                    self.mob_entity
-                        .mob_interact(player, item_stack, self.can_be_leashed());
+                let parent_interaction = self.animal_interact(player, item_stack);
                 if !parent_interaction {
                     self.order_to_sit(!self.is_ordered_to_sit());
                     return true;
                 }
                 return parent_interaction;
             }
-        } else if is_food {
+        } else if self.is_food(item_stack) {
             item_stack.decrement_unless_creative(player.gamemode.load(), 1);
+            self.try_to_tame(player);
+            self.mob_entity.set_persistence_required();
             self.play_eating_sound();
-
-            let rng = game_random();
-            if rng.random_range(0..3) == 0 && self.approve_taming(player) {
-                self.set_tame(true, Some(player.gameprofile.id));
-                self.set_ordered_to_sit(true);
-                self.get_entity().world.load().send_entity_status(
-                    self.get_entity(),
-                    EntityStatus::TamingSucceeded,
-                    ActorEventID::TamingSucceeded,
-                );
-            } else {
-                self.get_entity().world.load().send_entity_status(
-                    self.get_entity(),
-                    EntityStatus::TamingFailed,
-                    ActorEventID::TamingFailed,
-                );
-            }
-
             return true;
         }
 
-        self.mob_entity
-            .mob_interact(player, item_stack, self.can_be_leashed())
+        let interact = self.animal_interact(player, item_stack);
+        if interact {
+            self.mob_entity.set_persistence_required();
+        }
+        interact
     }
 
-    /// The rest of vanilla `Cat.tick` after `super.tick()`: begging for fish and purring while
-    /// lying down.
-    fn post_tick(&self) {
+    fn has_global_tick_reach(&self) -> bool {
+        self.mob_entity
+            .goals_selector
+            .is_running::<CatRelaxOnOwnerGoal>()
+    }
+
+    fn mob_get_component(
+        &self,
+        component: pumpkin_data::data_component::DataComponent,
+    ) -> Option<Box<dyn pumpkin_data::data_component_impl::DataComponentImpl>> {
+        use pumpkin_data::{
+            data_component::DataComponent,
+            data_component_impl::{CatCollarImpl, CatSoundVariantImpl, CatVariantImpl},
+        };
+        match component {
+            DataComponent::CatVariant => {
+                let variant_id = u32::from(self.variant.load(Ordering::Relaxed));
+                Some(Box::new(CatVariantImpl {
+                    value: self
+                        .resolve_dynamic_entry_id("minecraft:cat_variant", variant_id, |id| {
+                            CatVariant::all()
+                                .get(id as usize)
+                                .map_or("minecraft:tabby", CatVariant::asset_id)
+                                .to_string()
+                        })
+                        .into(),
+                }))
+            }
+            DataComponent::CatSoundVariant => Some(Box::new(CatSoundVariantImpl {
+                value: format!("minecraft:{}", self.get_sound_variant().to_name()).into(),
+            })),
+            DataComponent::CatCollar => Some(Box::new(CatCollarImpl {
+                value: DyeColor::from(self.get_collar_color()).name().into(),
+            })),
+            _ => None,
+        }
+    }
+
+    fn mob_is_stepping_carefully(&self) -> bool {
         let entity = self.get_entity();
-        let tick_count = entity.tick_count.load(Ordering::Relaxed);
-        let is_baby = self.mob_entity.living_entity.is_baby();
-        if !self.is_tame()
-            && tick_count % 100 == 0
-            && self.mob_entity.goals_selector.is_running::<CatTemptGoal>()
-        {
-            self.play_entity_sound(self.sound_variant().beg_for_food_sound(is_baby), 1.0, 1.0);
-        }
-        if (self.is_lying() || self.is_relax_state_one()) && tick_count % 5 == 0 {
-            let rng = self.get_random();
-            let volume = 0.6 + 0.4 * (rng.random::<f32>() - rng.random::<f32>());
-            self.play_entity_sound(self.sound_variant().purr_sound(is_baby), volume, 1.0);
-        }
+        entity.pose.load() == EntityPose::Crouching || entity.is_sneaking()
     }
 
     fn remove_when_far_away(&self, _distance_sq: f64) -> bool {
         !self.is_tame() && self.get_entity().tick_count.load(Ordering::Relaxed) > 2400
+    }
+}
+
+const RELAX_MAX_OWNER_DISTANCE_SQ: f64 = 100.0;
+const RELAX_ON_BED_DISTANCE_SQ: f64 = 2.5;
+const RELAX_SPEED: f64 = 1.1;
+const RELAX_LIE_DOWN_TICKS: i32 = 16;
+
+/// Vanilla `Cat.CatRelaxOnOwnerGoal`: a tame cat lies down at the foot of its sleeping owner's
+/// bed, and may leave a morning gift when the owner wakes up.
+struct CatRelaxOnOwnerGoal {
+    cat: Weak<CatEntity>,
+    owner_player: Option<Arc<Player>>,
+    goal_pos: Option<BlockPos>,
+    on_bed_ticks: i32,
+}
+
+impl CatRelaxOnOwnerGoal {
+    const fn new(cat: Weak<CatEntity>) -> Self {
+        Self {
+            cat,
+            owner_player: None,
+            goal_pos: None,
+            on_bed_ticks: 0,
+        }
+    }
+
+    fn space_is_occupied(cat: &CatEntity, goal_pos: &BlockPos) -> bool {
+        let entity = cat.get_entity();
+        let bounding_box = BoundingBox::from_block(goal_pos).expand_all(2.0);
+        entity
+            .world
+            .load()
+            .get_entities_at_box(&bounding_box)
+            .iter()
+            .any(|other| {
+                other.get_entity().entity_id != entity.entity_id
+                    && other
+                        .get_mob()
+                        .and_then(Mob::as_cat)
+                        .is_some_and(|other| other.is_lying() || other.is_relax_state_one())
+            })
+    }
+
+    fn move_to_goal(cat: &CatEntity, goal_pos: &BlockPos) {
+        cat.mob_entity
+            .steered()
+            .navigator()
+            .set_progress(NavigatorGoal::new(
+                cat.get_entity().pos.load(),
+                goal_pos.0.to_f64(),
+                RELAX_SPEED,
+            ));
+    }
+
+    /// Vanilla `CatRelaxOnOwnerGoal.giveMorningGift`.
+    fn give_morning_gift(cat: &CatEntity) {
+        let entity = cat.get_entity();
+        let origin = entity.get_leash_holder().map_or_else(
+            || entity.block_pos.load(),
+            |holder| holder.get_entity().block_pos.load(),
+        );
+        let (x, y, z) = {
+            let rng = cat.get_random();
+            (
+                f64::from(origin.0.x + rng.random_range(0..11) - 5),
+                f64::from(origin.0.y + rng.random_range(0..5) - 2),
+                f64::from(origin.0.z + rng.random_range(0..11) - 5),
+            )
+        };
+        if let Some(target) = cat.mob_entity.living_entity.random_teleport_target(
+            x,
+            y,
+            z,
+            |block| block.has_tag(&tag::Block::MINECRAFT_CAT_DOES_NOT_TELEPORT_TO),
+            |_, _| true,
+        ) {
+            let world = entity.world.load_full();
+            entity.teleport(target, None, None, &world);
+            cat.mob_entity.steered().navigator().stop();
+        }
+        let cat_pos = entity.block_pos.load();
+        let body_yaw = entity.body_yaw.load().to_radians();
+        let world = entity.world.load_full();
+        let drop_pos = Vector3::new(
+            f64::from(cat_pos.0.x) - f64::from(body_yaw.sin()),
+            f64::from(cat_pos.0.y),
+            f64::from(cat_pos.0.z) + f64::from(body_yaw.cos()),
+        );
+        crate::entity::mob::drop_from_gift_loot_table_with(
+            cat,
+            CAT_MORNING_GIFT_LOOT_TABLE,
+            |stack| {
+                let item = crate::entity::item::ItemEntity::new(
+                    Entity::new(world.clone(), drop_pos, &EntityType::ITEM),
+                    stack,
+                );
+                world.spawn_entity(Arc::new(item));
+            },
+        );
+    }
+}
+
+const CAT_MORNING_GIFT_LOOT_TABLE: &str = "gameplay/cat_morning_gift";
+
+impl Goal for CatRelaxOnOwnerGoal {
+    fn can_start(&mut self, _mob: &dyn Mob) -> bool {
+        let Some(cat) = self.cat.upgrade() else {
+            return false;
+        };
+        if !cat.is_tame() || cat.is_ordered_to_sit() {
+            return false;
+        }
+        let entity = cat.get_entity();
+        let world = entity.world.load();
+        let Some(owner) = cat.get_owner().and_then(|id| world.get_player_by_uuid(id)) else {
+            return false;
+        };
+        self.owner_player = Some(owner.clone());
+        if !owner.is_sleeping()
+            || entity
+                .pos
+                .load()
+                .squared_distance_to_vec(&owner.get_entity().pos.load())
+                > RELAX_MAX_OWNER_DISTANCE_SQ
+        {
+            return false;
+        }
+        let owner_pos = owner.get_entity().block_pos.load();
+        let (block, state) = world.get_block_and_state(&owner_pos);
+        if !block.has_tag(&tag::Block::MINECRAFT_CATS_CAN_LIE_ON) {
+            return false;
+        }
+        let goal_pos = if block.has_tag(&tag::Block::MINECRAFT_BEDS) {
+            let facing = WhiteBedLikeProperties::from_state_id(state.id).facing;
+            owner_pos.offset(facing.opposite().to_offset())
+        } else {
+            owner_pos
+        };
+        self.goal_pos = Some(goal_pos);
+        !Self::space_is_occupied(&cat, &goal_pos)
+    }
+
+    fn should_continue(&mut self, _mob: &dyn Mob) -> bool {
+        let Some(cat) = self.cat.upgrade() else {
+            return false;
+        };
+        cat.is_tame()
+            && !cat.is_ordered_to_sit()
+            && self
+                .owner_player
+                .as_ref()
+                .is_some_and(|owner| owner.is_sleeping())
+            && self
+                .goal_pos
+                .is_some_and(|goal_pos| !Self::space_is_occupied(&cat, &goal_pos))
+    }
+
+    fn start(&mut self, _mob: &dyn Mob) {
+        if let Some(cat) = self.cat.upgrade()
+            && let Some(goal_pos) = self.goal_pos
+        {
+            cat.set_in_sitting_pose(false);
+            Self::move_to_goal(&cat, &goal_pos);
+        }
+    }
+
+    fn stop(&mut self, _mob: &dyn Mob) {
+        let Some(cat) = self.cat.upgrade() else {
+            return;
+        };
+        cat.set_lying(false);
+        if let Some(owner) = &self.owner_player
+            && owner.get_sleep_timer() >= Player::FULL_SLEEP_TICKS
+        {
+            let world = cat.get_entity().world.load();
+            let gift_chance = world.environment_attributes().get_value_f32(
+                EnvironmentAttribute::GameplayCatWakingUpGiftChance,
+                &cat.get_entity().block_pos.load(),
+            );
+            if cat.get_random().random::<f32>() < gift_chance {
+                Self::give_morning_gift(&cat);
+            }
+        }
+        self.on_bed_ticks = 0;
+        cat.set_relax_state_one(false);
+        cat.mob_entity.steered().navigator().stop();
+    }
+
+    fn tick(&mut self, _mob: &dyn Mob) {
+        let (Some(cat), Some(owner), Some(goal_pos)) =
+            (self.cat.upgrade(), &self.owner_player, self.goal_pos)
+        else {
+            return;
+        };
+        cat.set_in_sitting_pose(false);
+        Self::move_to_goal(&cat, &goal_pos);
+        let owner_entity = owner.get_entity();
+        if cat
+            .get_entity()
+            .pos
+            .load()
+            .squared_distance_to_vec(&owner_entity.pos.load())
+            < RELAX_ON_BED_DISTANCE_SQ
+        {
+            self.on_bed_ticks += 1;
+            if self.on_bed_ticks > self.get_tick_count(RELAX_LIE_DOWN_TICKS) {
+                cat.set_lying(true);
+                cat.set_relax_state_one(false);
+            } else {
+                cat.mob_entity.look_at(owner.as_ref(), 45.0, 45.0);
+                cat.set_relax_state_one(true);
+            }
+        } else {
+            cat.set_lying(false);
+        }
+    }
+
+    fn controls(&self) -> Controls {
+        Controls::empty()
+    }
+}
+
+const SELECT_PLAYER_TICKS: i32 = 600;
+const FORGET_PLAYER_TICKS: i32 = 500;
+
+/// Vanilla `Cat.CatTemptGoal`: only untamed cats follow fish, and a cat sometimes picks the
+/// player it follows and stops being scared of them.
+struct CatTemptGoal {
+    cat: Weak<CatEntity>,
+    tempt_goal: TemptGoal,
+    selected_player: Option<i32>,
+}
+
+impl CatTemptGoal {
+    fn new(cat: Weak<CatEntity>) -> Self {
+        Self {
+            cat,
+            tempt_goal: TemptGoal::with_tag(TEMPT_SPEED, &tag::Item::MINECRAFT_CAT_FOOD, true),
+            selected_player: None,
+        }
+    }
+
+    fn is_untamed(&self) -> bool {
+        self.cat.upgrade().is_some_and(|cat| !cat.is_tame())
+    }
+}
+
+impl Goal for CatTemptGoal {
+    fn can_start(&mut self, mob: &dyn Mob) -> bool {
+        self.tempt_goal.can_start(mob) && self.is_untamed()
+    }
+
+    fn should_continue(&mut self, mob: &dyn Mob) -> bool {
+        let selected_is_tempting = self.selected_player.is_some()
+            && self.selected_player == self.tempt_goal.target_player().map(|p| p.entity_id());
+        self.tempt_goal.set_can_scare(!selected_is_tempting);
+        self.tempt_goal.should_continue(mob) && self.is_untamed()
+    }
+
+    fn start(&mut self, mob: &dyn Mob) {
+        self.tempt_goal.start(mob);
+    }
+
+    fn stop(&mut self, mob: &dyn Mob) {
+        self.tempt_goal.stop(mob);
+    }
+
+    fn tick(&mut self, mob: &dyn Mob) {
+        self.tempt_goal.tick(mob);
+        let random = mob.get_random();
+        if self.selected_player.is_none()
+            && random.random_range(0..self.get_tick_count(SELECT_PLAYER_TICKS)) == 0
+        {
+            self.selected_player = self.tempt_goal.target_player().map(|p| p.entity_id());
+        } else if random.random_range(0..self.get_tick_count(FORGET_PLAYER_TICKS)) == 0 {
+            self.selected_player = None;
+        }
+    }
+
+    fn tick_reach(&self, mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        self.tempt_goal.tick_reach(mob, running)
+    }
+
+    fn controls(&self) -> Controls {
+        self.tempt_goal.controls()
     }
 }

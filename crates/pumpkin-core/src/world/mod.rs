@@ -222,6 +222,7 @@ const ENTITY_REACH_BATCH: usize = 64;
 /// Shards of the maps the tick walks every tick. A walk locks every shard, and with dashmap's
 /// default of four shards per CPU that costs more than the entries on many-core machines.
 const TICK_SCANNED_MAP_SHARDS: usize = 32;
+pub const MOON_BRIGHTNESS_PER_PHASE: [f32; 8] = [1.0, 0.75, 0.5, 0.25, 0.0, 0.25, 0.5, 0.75];
 
 fn bedrock_chest_block_actor(state_id: BlockStateId, position: BlockPos) -> Option<NbtCompound> {
     crate::block::entities::chest_like_block_entity::build_chest_actor(position, state_id, None)
@@ -7041,6 +7042,12 @@ impl World {
     pub fn get_moon_phase(&self) -> MoonPhase {
         self.environment_attributes()
             .get_dimension_value_moon_phase()
+    }
+
+    #[must_use]
+    pub fn get_moon_brightness(&self, pos: &BlockPos) -> f32 {
+        let moon_phase = self.environment_attributes().get_value_moon_phase(pos);
+        MOON_BRIGHTNESS_PER_PHASE[usize::from(moon_phase.index())]
     }
 
     #[must_use]

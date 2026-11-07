@@ -31,7 +31,7 @@ use crate::entity::crackiness::Crackiness;
 use crate::entity::custom_sound::CustomSound;
 use crate::entity::mob::equipment::equip_and_drop_when_killed;
 use crate::entity::mob::spawn::SpawnGroupData;
-use crate::entity::passive::sheep::get_mixed_color;
+use crate::entity::passive::animal::get_mixed_color;
 use crate::entity::{
     Entity, EntityBase, GearDamage,
     ageable::AgeableMob,

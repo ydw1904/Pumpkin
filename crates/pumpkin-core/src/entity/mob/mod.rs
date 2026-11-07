@@ -635,6 +635,10 @@ impl MobEntity {
             .unwrap_or(crate::entity::mob::equipment::DEFAULT_EQUIPMENT_DROP_CHANCE)
     }
 
+    pub fn set_persistence_required(&self) {
+        self.persistence_required.store(true, Relaxed);
+    }
+
     pub fn set_guaranteed_drop(&self, slot: &EquipmentSlot) {
         self.living_entity
             .equipment_drop_chances
@@ -2274,6 +2278,10 @@ pub trait Mob: EntityBase + Send + Sync {
         1.0
     }
 
+    fn mob_is_stepping_carefully(&self) -> bool {
+        self.get_entity().is_sneaking()
+    }
+
     fn remove_when_far_away(&self, _distance_sq: f64) -> bool {
         self.as_animal().is_none()
     }
@@ -3046,6 +3054,10 @@ pub trait Mob: EntityBase + Send + Sync {
         None
     }
 
+    fn as_cat(&self) -> Option<&crate::entity::passive::cat::CatEntity> {
+        None
+    }
+
     fn as_patrolling_monster(&self) -> Option<&dyn patrol::PatrollingMonster> {
         None
     }
@@ -3570,6 +3582,10 @@ impl<T: Mob + Send + 'static> EntityBase for T {
         if !self.mob_kill(caller) {
             caller.damage(caller, f32::MAX, DamageType::GENERIC_KILL);
         }
+    }
+
+    fn is_stepping_carefully(&self) -> bool {
+        self.mob_is_stepping_carefully()
     }
 
     fn is_pushed_by_fluids(&self) -> bool {

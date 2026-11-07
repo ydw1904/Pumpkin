@@ -360,6 +360,16 @@ impl<P> ParentHandle<P> {
     }
 
     #[must_use]
+    pub const fn from_static(parent: &'static P) -> Self
+    where
+        P: Sync,
+    {
+        Self {
+            ptr: ptr::from_ref(parent),
+        }
+    }
+
+    #[must_use]
     /// Creates an empty handle (equivalent to `Option::None`).
     // We can use null as None because we handle it in get.
     pub const fn none() -> Self {

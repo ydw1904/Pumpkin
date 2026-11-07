@@ -7,7 +7,6 @@ use pumpkin_data::BlockState;
 use pumpkin_data::{entity::EntityType, item::Item};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
-use pumpkin_util::random::gameplay::game_random;
 
 use crate::entity::{
     Entity, EntityBase,
@@ -20,7 +19,7 @@ use crate::entity::{
     },
     item::ItemEntity,
     mob::{Mob, MobEntity, spawn::SpawnGroupData},
-    passive::animal::{Animal, get_dye_color_from_item},
+    passive::animal::{Animal, get_mixed_color},
     player::Player,
     shearable::Shearable,
 };
@@ -32,11 +31,7 @@ use pumpkin_data::dye_color::DyeColor;
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
-use pumpkin_data::tag::{self, Taggable, WorldgenBiome};
-use pumpkin_inventory::Inventory;
-use pumpkin_inventory::crafting::crafting_inventory::CraftingInventory;
-use pumpkin_inventory::crafting::crafting_screen_handler::match_crafting_recipe;
-use pumpkin_inventory::crafting::recipe_provider::RecipeProvider;
+use pumpkin_data::tag::{Taggable, WorldgenBiome};
 
 const TEMPT_ITEMS: &[&Item] = &[&Item::WHEAT];
 
@@ -75,48 +70,6 @@ const EAT_GRASS_AGE_UP_SECONDS: i32 = 60;
 
 const COMMON_COLOR_WEIGHT: u32 = 499;
 
-/// Vanilla `DyeColor.getMixedColor`: the dye crafted from both colors, else either one.
-pub(crate) fn get_mixed_color(world: &World, color1: DyeColor, color2: DyeColor) -> DyeColor {
-    find_color_mix_in_recipes(world, color1, color2).unwrap_or_else(|| {
-        if game_random().random::<bool>() {
-            color1
-        } else {
-            color2
-        }
-    })
-}
-
-fn find_color_mix_in_recipes(
-    world: &World,
-    color1: DyeColor,
-    color2: DyeColor,
-) -> Option<DyeColor> {
-    let dye_items = |color: DyeColor| {
-        tag::Item::C_DYES
-            .1
-            .iter()
-            .filter_map(|id| Item::from_id(*id))
-            .filter(move |item| get_dye_color_from_item(item) == Some(color.id()))
-    };
-    let server = world.server.upgrade();
-    let provider = server
-        .as_ref()
-        .map(|server| server.recipe_manager.as_ref() as &dyn RecipeProvider);
-    for dye1 in dye_items(color1) {
-        for dye2 in dye_items(color2) {
-            let input = CraftingInventory::new(2, 1);
-            input.set_stack(0, ItemStack::new(1, dye1));
-            input.set_stack(1, ItemStack::new(1, dye2));
-            if let Some(result) = match_crafting_recipe(&input, provider)
-                && let Some(item) = Item::from_registry_key(&result.item_id)
-                && let Some(color) = get_dye_color_from_item(item)
-            {
-                return Some(DyeColor::from(color));
-            }
-        }
-    }
-    None
-}
 const PINK_WEIGHT: u32 = 1;
 
 pub struct SheepEntity {

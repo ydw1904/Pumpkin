@@ -1,4 +1,69 @@
 /* This file is generated. Do not edit manually. */
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum CatSpawnCondition {
+    Structure(&'static crate::tag::Tag),
+    MoonBrightness { min: Option<f64>, max: Option<f64> },
+}
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct CatSpawnSelector {
+    pub priority: i32,
+    pub condition: Option<CatSpawnCondition>,
+}
+static ALL_BLACK_SPAWN_SELECTORS: [CatSpawnSelector; 2usize] = [
+    CatSpawnSelector {
+        priority: 1i32,
+        condition: Some(CatSpawnCondition::Structure(
+            &crate::tag::WorldgenStructure::MINECRAFT_CATS_SPAWN_AS_BLACK,
+        )),
+    },
+    CatSpawnSelector {
+        priority: 0i32,
+        condition: Some(CatSpawnCondition::MoonBrightness {
+            min: Some(0.9f64),
+            max: None,
+        }),
+    },
+];
+static BLACK_SPAWN_SELECTORS: [CatSpawnSelector; 1usize] = [CatSpawnSelector {
+    priority: 0i32,
+    condition: None,
+}];
+static BRITISH_SHORTHAIR_SPAWN_SELECTORS: [CatSpawnSelector; 1usize] = [CatSpawnSelector {
+    priority: 0i32,
+    condition: None,
+}];
+static CALICO_SPAWN_SELECTORS: [CatSpawnSelector; 1usize] = [CatSpawnSelector {
+    priority: 0i32,
+    condition: None,
+}];
+static JELLIE_SPAWN_SELECTORS: [CatSpawnSelector; 1usize] = [CatSpawnSelector {
+    priority: 0i32,
+    condition: None,
+}];
+static PERSIAN_SPAWN_SELECTORS: [CatSpawnSelector; 1usize] = [CatSpawnSelector {
+    priority: 0i32,
+    condition: None,
+}];
+static RAGDOLL_SPAWN_SELECTORS: [CatSpawnSelector; 1usize] = [CatSpawnSelector {
+    priority: 0i32,
+    condition: None,
+}];
+static RED_SPAWN_SELECTORS: [CatSpawnSelector; 1usize] = [CatSpawnSelector {
+    priority: 0i32,
+    condition: None,
+}];
+static SIAMESE_SPAWN_SELECTORS: [CatSpawnSelector; 1usize] = [CatSpawnSelector {
+    priority: 0i32,
+    condition: None,
+}];
+static TABBY_SPAWN_SELECTORS: [CatSpawnSelector; 1usize] = [CatSpawnSelector {
+    priority: 0i32,
+    condition: None,
+}];
+static WHITE_SPAWN_SELECTORS: [CatSpawnSelector; 1usize] = [CatSpawnSelector {
+    priority: 0i32,
+    condition: None,
+}];
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 #[repr(u8)]
 pub enum CatVariant {
@@ -105,5 +170,22 @@ impl CatVariant {
             Self::Tabby,
             Self::White,
         ]
+    }
+    #[doc = "Returns the spawn selectors of the cat variant, from its `spawn_conditions`."]
+    #[must_use]
+    pub fn spawn_selectors(&self) -> &'static [CatSpawnSelector] {
+        match self {
+            Self::AllBlack => &ALL_BLACK_SPAWN_SELECTORS,
+            Self::Black => &BLACK_SPAWN_SELECTORS,
+            Self::BritishShorthair => &BRITISH_SHORTHAIR_SPAWN_SELECTORS,
+            Self::Calico => &CALICO_SPAWN_SELECTORS,
+            Self::Jellie => &JELLIE_SPAWN_SELECTORS,
+            Self::Persian => &PERSIAN_SPAWN_SELECTORS,
+            Self::Ragdoll => &RAGDOLL_SPAWN_SELECTORS,
+            Self::Red => &RED_SPAWN_SELECTORS,
+            Self::Siamese => &SIAMESE_SPAWN_SELECTORS,
+            Self::Tabby => &TABBY_SPAWN_SELECTORS,
+            Self::White => &WHITE_SPAWN_SELECTORS,
+        }
     }
 }

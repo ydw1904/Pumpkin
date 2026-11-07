@@ -19,6 +19,7 @@ use pumpkin_inventory::screen_handler::{
 };
 use pumpkin_macros::{pumpkin_block, pumpkin_block_from_tag};
 use pumpkin_util::GameMode;
+use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::text::TextComponent;
 use pumpkin_world::tick::TickPriority;
@@ -33,6 +34,8 @@ use crate::block::{
     RandomTickArgs, registry::BlockActionResult,
 };
 use crate::entity::EntityBase;
+use crate::entity::passive::cat::CatEntity;
+use crate::entity::passive::tamable::TamableAnimal;
 use crate::entity::player::Player;
 use crate::world::World;
 use pumpkin_data::BlockState;
@@ -968,13 +971,22 @@ fn chest_can_connect_to(block: &Block, neighbor: &Block) -> bool {
 }
 
 fn is_chest_blocked(world: &World, block_pos: &BlockPos) -> bool {
-    has_block_on_top(world, block_pos)
-        || crate::entity::passive::cat::is_cat_sitting_on(world, block_pos)
+    has_block_on_top(world, block_pos) || is_cat_sitting_on_chest(world, block_pos)
 }
 fn has_block_on_top(world: &World, block_pos: &BlockPos) -> bool {
     let above_pos = block_pos.up();
     let above_state = world.get_block_state(&above_pos);
     above_state.is_solid_block()
+}
+
+fn is_cat_sitting_on_chest(world: &World, block_pos: &BlockPos) -> bool {
+    let search_box = BoundingBox::from_block(&block_pos.up());
+    world.get_entities_at_box(&search_box).iter().any(|entity| {
+        entity
+            .cast_any()
+            .downcast_ref::<CatEntity>()
+            .is_some_and(TamableAnimal::is_in_sitting_pose)
+    })
 }
 
 trait ChestTypeExt {

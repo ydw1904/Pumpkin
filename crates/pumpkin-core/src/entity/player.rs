@@ -886,6 +886,9 @@ fn decode_skin_png(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
 }
 
 impl Player {
+    /// Vanilla `Player.SLEEP_DURATION`: the sleep timer value of a player in deep sleep.
+    pub const FULL_SLEEP_TICKS: i32 = 100;
+
     pub async fn fetch_skin(
         properties: &[Property],
     ) -> Option<pumpkin_protocol::bedrock::client::Skin> {
