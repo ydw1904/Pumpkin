@@ -378,6 +378,45 @@ pub(super) async fn test_water_flow_keeps_structure_void(
     Ok(())
 }
 
+/// Vanilla `FlowingFluid.getSlopeDistance` finds a hole four blocks past a side, so a source
+/// with a hole five blocks east spreads only east.
+pub(super) async fn test_water_flows_toward_hole_four_blocks_out(
+    helper: GameTestHelper,
+) -> GameTestResult<()> {
+    build_stone_floor(&helper, 8, 5).await?;
+    let hole = BlockPos::new(6, 1, 2);
+    for x in 0..8 {
+        for z in 0..5 {
+            let pos = BlockPos::new(x, 1, z);
+            if pos != hole {
+                helper.set_block_default(&pos, &Block::STONE).await?;
+            }
+        }
+    }
+    helper
+        .set_block_default(&BlockPos::new(1, 2, 2), &Block::WATER)
+        .await?;
+
+    helper
+        .start_sequence()
+        .then_idle(12)
+        .then_execute(|helper| async move {
+            helper
+                .assert_block_present(&BlockPos::new(2, 2, 2), &Block::WATER)
+                .await?;
+            for side in [
+                BlockPos::new(1, 2, 1),
+                BlockPos::new(1, 2, 3),
+                BlockPos::new(0, 2, 2),
+            ] {
+                helper.assert_block_present(&side, &Block::AIR).await?;
+            }
+            Ok(())
+        })
+        .then_succeed();
+    Ok(())
+}
+
 pub(super) async fn test_sponge_ignores_lava_and_stays_dry(
     helper: GameTestHelper,
 ) -> GameTestResult<()> {

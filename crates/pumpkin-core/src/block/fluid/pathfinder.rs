@@ -146,13 +146,11 @@ pub fn get_spread<T: FlowingFluid + Sync + ?Sized>(
     (result, result_count)
 }
 
-/// Performs iterative BFS search to find the shortest distance to a downward flow opportunity.
+/// Vanilla `FlowingFluid.getSlopeDistance` from `start_pos` at pass 1, as a breadth-first
+/// search: the lowest pass whose node has a hole next to it, or 1000 if none within
+/// `get_max_flow_distance` passes does.
 ///
-/// Uses stack-allocated array for zero heap allocations. Searches up to `get_max_flow_distance`
-/// (dynamic) horizontally from the starting position.
-///
-/// # Returns
-/// Distance to nearest hole, or 1000 if no hole found within search distance
+/// Uses a stack-allocated queue, so it never allocates.
 fn get_in_flow_down_distance_iterative<T: FlowingFluid + Sync + ?Sized>(
     fluid_impl: &T,
     world: &Arc<World>,
@@ -161,6 +159,8 @@ fn get_in_flow_down_distance_iterative<T: FlowingFluid + Sync + ?Sized>(
     start_pos: BlockPos,
     initial_exclude_dir: BlockDirection,
 ) -> i32 {
+    // Queued nodes are distinct positions closer than the slope find distance (at most 5, fast
+    // lava) to `start_pos`, so at most 41 are queued.
     const MAX_QUEUE_SIZE: usize = 64;
 
     let mut queue: [PathNode; MAX_QUEUE_SIZE] = [PathNode {
@@ -182,35 +182,25 @@ fn get_in_flow_down_distance_iterative<T: FlowingFluid + Sync + ?Sized>(
     let mut visited_bitset = [0u64; 4];
     let slope_find_distance = fluid_impl.get_max_flow_distance(world);
 
-    let get_bit_index = |pos: BlockPos| -> Option<usize> {
+    // Marks `pos` as queued and returns whether it wasn't already.
+    let mut first_visit = |pos: BlockPos| -> bool {
         let dx = pos.0.x - start_pos.0.x + slope_find_distance;
         let dz = pos.0.z - start_pos.0.z + slope_find_distance;
         let grid_size = slope_find_distance * 2 + 1;
-        (dx >= 0 && dx < grid_size && dz >= 0 && dz < grid_size)
-            .then(|| (dz * grid_size + dx) as usize)
+        if !(0..grid_size).contains(&dx) || !(0..grid_size).contains(&dz) {
+            return true;
+        }
+        let bit_idx = (dz * grid_size + dx) as usize;
+        let bit = 1u64 << (bit_idx % 64);
+        let first = visited_bitset[bit_idx / 64] & bit == 0;
+        visited_bitset[bit_idx / 64] |= bit;
+        first
     };
+    first_visit(start_pos);
 
     while queue_start < queue_end {
         let node = queue[queue_start];
         queue_start += 1;
-
-        if node.distance > slope_find_distance {
-            continue;
-        }
-
-        if let Some(bit_idx) = get_bit_index(node.pos) {
-            let word_idx = bit_idx / 64;
-            let bit_pos = bit_idx % 64;
-            if (visited_bitset[word_idx] & (1u64 << bit_pos)) != 0 {
-                continue;
-            }
-            visited_bitset[word_idx] |= 1u64 << bit_pos;
-        }
-
-        // Check for hole (downward flow opportunity)
-        if physics::can_hold_fluid(cache.get_block(world, &node.pos.down())) {
-            return node.distance;
-        }
 
         for direction in [
             BlockDirection::North,
@@ -237,7 +227,14 @@ fn get_in_flow_down_distance_iterative<T: FlowingFluid + Sync + ?Sized>(
                 continue;
             }
 
-            if queue_end < MAX_QUEUE_SIZE {
+            if is_hole(world, cache, &next_pos) {
+                return node.distance;
+            }
+
+            if node.distance < slope_find_distance
+                && first_visit(next_pos)
+                && queue_end < MAX_QUEUE_SIZE
+            {
                 queue[queue_end] = PathNode {
                     pos: next_pos,
                     distance: node.distance + 1,

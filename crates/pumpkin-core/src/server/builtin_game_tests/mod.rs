@@ -230,7 +230,7 @@ const BUILTIN_TEST_IDS: &[&str] = &[
     "pumpkin:observer_detects_redstone_lamp_state_change",
     "pumpkin:observer_chain_propagates_pulse",
     "pumpkin:target_block_egg_hit_emits_pulse_and_clears",
-    // rails_and_fluids_extended (13)
+    // rails_and_fluids_extended (14)
     "pumpkin:powered_rail_deenergizes_beyond_8_blocks",
     "pumpkin:activator_rail_deenergizes_beyond_8_blocks",
     "pumpkin:powered_rail_bidirectional_boost_from_center",
@@ -242,6 +242,7 @@ const BUILTIN_TEST_IDS: &[&str] = &[
     "pumpkin:lava_source_turned_to_obsidian_by_water",
     "pumpkin:water_flow_breaks_redstone_torch",
     "pumpkin:water_flow_keeps_structure_void",
+    "pumpkin:water_flows_toward_hole_four_blocks_out",
     "pumpkin:sponge_absorbs_multi_block_water_pool",
     "pumpkin:sponge_does_not_absorb_lava",
     // commands_and_entities_extended (11)
@@ -1533,7 +1534,7 @@ pub fn ensure_builtin_game_tests_registered() {
             lamps_bulbs_and_noteblocks_extended::test_target_block_arrow_hit_20_tick_pulse,
         );
 
-        // rails_and_fluids_extended (13)
+        // rails_and_fluids_extended (14)
         register_function_test(
             "pumpkin:powered_rail_deenergizes_beyond_8_blocks",
             "pumpkin:empty_3x4x12",
@@ -1610,6 +1611,19 @@ pub fn ensure_builtin_game_tests_registered() {
             20,
             0,
             rails_and_fluids_extended::test_water_flow_keeps_structure_void,
+        );
+        register_function_test(
+            "pumpkin:water_flows_toward_hole_four_blocks_out",
+            "pumpkin:empty_8x4x5",
+            20,
+            0,
+            rails_and_fluids_extended::test_water_flows_toward_hole_four_blocks_out,
+        );
+        register_function_test(
+                    "pumpkin:empty_5x4x5",
+            20,
+            0,
+            rails_and_fluids_extended::test_water_source_over_water_spreads_to_sides,
         );
         register_function_test(
             "pumpkin:sponge_absorbs_multi_block_water_pool",
