@@ -52,7 +52,13 @@ use tokio_util::task::TaskTracker;
 pub type SyncChunk = Arc<ChunkData>;
 pub type SyncEntityChunk = Arc<ChunkEntityData>;
 pub use crate::chunk_map::ChunkMap;
-pub type ChunkPosSet = dashmap::DashSet<Vector2<i32>, rustc_hash::FxBuildHasher>;
+/// A concurrent set of chunk positions. It is a map with unit values because `DashSet` can't
+/// pick its shard count.
+pub type ChunkPosSet = DashMap<Vector2<i32>, (), rustc_hash::FxBuildHasher>;
+/// Shards of the chunk set the tick walks every tick. A walk locks every shard, and with
+/// dashmap's default of four shards per CPU that costs more than the entries on many-core
+/// machines.
+const SCHEDULED_TICK_CHUNK_SHARDS: usize = 32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LoadedChunkChange {
@@ -314,7 +320,10 @@ impl Level {
             loaded_chunks: Arc::new(ChunkMap::default()),
             loaded_chunk_changes: Arc::new(SegQueue::new()),
             loaded_entity_chunks: Arc::new(DashMap::new()),
-            chunks_with_scheduled_ticks: Arc::new(ChunkPosSet::default()),
+            chunks_with_scheduled_ticks: Arc::new(ChunkPosSet::with_hasher_and_shard_amount(
+                rustc_hash::FxBuildHasher,
+                SCHEDULED_TICK_CHUNK_SHARDS,
+            )),
             chunk_loading: Mutex::new(ChunkLoading::new(level_channel.clone())),
             chunk_watchers: Arc::new(DashMap::new()),
             tasks: TaskTracker::new(),
@@ -687,7 +696,7 @@ impl Level {
         let scheduled_chunk_pos: Vec<_> = self
             .chunks_with_scheduled_ticks
             .iter()
-            .map(|p| *p)
+            .map(|p| *p.key())
             .collect();
         for pos in scheduled_chunk_pos {
             if !ticking.contains(&pos) || !self.is_chunk_ticking_ready(&pos) {
@@ -1195,7 +1204,7 @@ impl Level {
             chunk.block_ticks.schedule_tick(&scheduled_tick, tick_order)
         }) == Some(true)
         {
-            self.chunks_with_scheduled_ticks.insert(chunk_pos);
+            self.chunks_with_scheduled_ticks.insert(chunk_pos, ());
         }
     }
 
@@ -1221,7 +1230,7 @@ impl Level {
             chunk.fluid_ticks.schedule_tick(&scheduled_tick, tick_order)
         }) == Some(true)
         {
-            self.chunks_with_scheduled_ticks.insert(chunk_pos);
+            self.chunks_with_scheduled_ticks.insert(chunk_pos, ());
         }
     }
 

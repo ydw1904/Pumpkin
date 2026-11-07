@@ -114,7 +114,7 @@ impl GenerationSchedule {
         // Ticks saved with the chunk or scheduled while it generated only run once the level
         // knows the chunk has some.
         if chunk.block_ticks.has_ticks() || chunk.fluid_ticks.has_ticks() {
-            self.chunks_with_scheduled_ticks.insert(pos);
+            self.chunks_with_scheduled_ticks.insert(pos, ());
         }
         let previous = self.public_chunk_map.insert(pos, chunk);
         if previous.is_none() {
