@@ -14,6 +14,9 @@ enum BorrowKind {
 struct GoalSlot {
     value: Option<PrioritizedGoal>,
     borrowed: Option<BorrowKind>,
+    /// Threads waiting for the goal to come back. A notify is a syscall even without waiters,
+    /// and goals are returned several times per mob tick.
+    waiters: usize,
 }
 
 struct RegisteredGoal {
@@ -40,11 +43,23 @@ impl Drop for BorrowedGoal<'_> {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         slot.value = self.value.take();
         slot.borrowed = None;
-        self.entry.available.notify_all();
+        if slot.waiters > 0 {
+            self.entry.available.notify_all();
+        }
     }
 }
 
 impl RegisteredGoal {
+    fn wait_available<'a>(&self, mut slot: MutexGuard<'a, GoalSlot>) -> MutexGuard<'a, GoalSlot> {
+        slot.waiters += 1;
+        let mut slot = self
+            .available
+            .wait(slot)
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        slot.waiters -= 1;
+        slot
+    }
+
     fn is_running(&self) -> bool {
         self.registered.load(Relaxed) && self.running.load(Relaxed)
     }
@@ -65,10 +80,7 @@ impl RegisteredGoal {
             if kind == BorrowKind::Reach {
                 return None;
             }
-            slot = self
-                .available
-                .wait(slot)
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            slot = self.wait_available(slot);
         }
         if !self.registered.load(Relaxed) {
             return None;
@@ -92,10 +104,7 @@ impl RegisteredGoal {
                 Some(BorrowKind::Callback) => return,
                 // Reporting must not invoke gameplay callbacks, including stop.
                 Some(BorrowKind::Reach) => {
-                    slot = self
-                        .available
-                        .wait(slot)
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    slot = self.wait_available(slot);
                 }
                 None => break,
             }
@@ -148,6 +157,7 @@ impl GoalSelector {
             goal: Mutex::new(GoalSlot {
                 value: Some(goal),
                 borrowed: None,
+                waiters: 0,
             }),
             available: Condvar::new(),
         }));
