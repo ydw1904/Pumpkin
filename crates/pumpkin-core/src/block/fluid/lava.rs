@@ -10,7 +10,7 @@ use crate::{
 };
 use pumpkin_data::{
     Block, BlockDirection, BlockState, BlockStateId,
-    fluid::{Falling, Fluid, FluidProperties, Level},
+    fluid::{Fluid, FluidProperties},
     tag::{self, Taggable},
     world::WorldEvent,
 };
@@ -274,26 +274,40 @@ impl FlowingFluid for FlowingLava {
         world.level_info.load().game_rules.lava_source_conversion
     }
 
-    fn spread_to(&self, world: &Arc<World>, fluid: &Fluid, pos: &BlockPos, state_id: BlockStateId) {
-        let new_props = FlowingFluidProperties::from_state_id(state_id, fluid);
-        let current_state_id = world.get_block_state_id(pos);
-        let block = Block::from_state_id(current_state_id);
+    fn before_destroying_block(
+        &self,
+        world: &Arc<World>,
+        pos: &BlockPos,
+        _block: &'static Block,
+        _state: &'static BlockState,
+    ) {
+        world.sync_world_event(WorldEvent::LavaFizz, *pos, 0);
+    }
 
-        if new_props.level == Level::L8 && new_props.falling == Falling::True {
-            // Stone creation when lava meets water
-            if block == &Block::WATER {
-                world.set_block_state(pos, Block::STONE.default_state.id, BlockFlags::NOTIFY_ALL);
+    fn spread_to(
+        &self,
+        world: &Arc<World>,
+        fluid: &Fluid,
+        pos: &BlockPos,
+        direction: BlockDirection,
+        state_id: BlockStateId,
+    ) {
+        if direction == BlockDirection::Down {
+            let (block, target_fluid) = world.get_block_and_fluid(pos);
+            if target_fluid.has_tag(&tag::Fluid::MINECRAFT_WATER) {
+                if block == &Block::WATER {
+                    world.set_block_state(
+                        pos,
+                        Block::STONE.default_state.id,
+                        BlockFlags::NOTIFY_ALL,
+                    );
+                }
                 world.sync_world_event(WorldEvent::LavaFizz, *pos, 0);
                 return;
             }
         }
 
-        // Don't flow into waterlogged blocks
-        if block.is_waterlogged(current_state_id) {
-            return;
-        }
-
-        // Delegate quiescence, replacement and scheduling to the shared helper
+        let new_props = FlowingFluidProperties::from_state_id(state_id, fluid);
         self.apply_spread(world, fluid, pos, state_id, new_props);
     }
 }

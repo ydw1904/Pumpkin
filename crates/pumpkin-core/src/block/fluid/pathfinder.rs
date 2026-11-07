@@ -4,7 +4,7 @@ use crate::world::World;
 use pumpkin_data::BlockStateId;
 use pumpkin_data::{
     Block, BlockDirection,
-    fluid::{EnumVariants, Falling, Fluid, FluidProperties, Level},
+    fluid::{Falling, Fluid, FluidProperties, Level},
 };
 use pumpkin_util::math::position::BlockPos;
 use std::sync::Arc;
@@ -127,15 +127,8 @@ pub fn get_spread<T: FlowingFluid + Sync + ?Sized>(
 
         // Add all directions with equal minimum distance
         if slope_dist <= min_dist {
-            // Check if the fluid at this position can be replaced
-            let can_replace = side_fluid_props.as_ref().is_none_or(|sp| {
-                // Can replace if new level is higher or if target is falling
-                let target_level = i32::from(sp.level.to_index()) + 1;
-                let new_level = i32::from(new_fluid_props.level.to_index()) + 1;
-                new_level > target_level || sp.falling == Falling::True
-            });
-
-            if can_replace && result_count < 4 {
+            if physics::can_be_replaced_with(world, &side_pos, fluid, direction) && result_count < 4
+            {
                 result[result_count] = (direction, new_state_id);
                 result_count += 1;
             }

@@ -1,7 +1,9 @@
 use super::{pathfinder, physics};
+use crate::block::drop_loot;
 use crate::world::World;
+use crate::world::loot::LootContextParameters;
 use pumpkin_data::{
-    Block, BlockDirection, BlockStateId,
+    Block, BlockDirection, BlockState, BlockStateId,
     fluid::{EnumVariants, Falling, Fluid, FluidProperties, Level},
 };
 use pumpkin_util::math::position::BlockPos;
@@ -142,13 +144,18 @@ pub trait FlowingFluid: Send + Sync {
     ) {
         let below_pos = block_pos.down();
         let (below_block, below_state_id) = world.get_block_and_state_id(&below_pos);
-        // Water can't replace water from above, nor lava lava (`canBeReplacedWith`), and a
-        // fluid resting on its own kind is in a hole (`isWaterHole`).
-        let below_is_same_fluid = self.has_fluid_at(fluid, below_state_id);
 
-        if physics::can_hold_fluid(below_block) && !below_is_same_fluid {
+        if physics::can_hold_fluid(below_block)
+            && physics::can_be_replaced_with(world, &below_pos, fluid, BlockDirection::Down)
+        {
             let falling_props = self.get_flowing(fluid, Level::L8, true);
-            self.spread_to(world, fluid, &below_pos, falling_props.to_state_id(fluid));
+            self.spread_to(
+                world,
+                fluid,
+                &below_pos,
+                BlockDirection::Down,
+                falling_props.to_state_id(fluid),
+            );
 
             if self.count_source_neighbors(world, fluid, block_pos) >= 3 {
                 self.flow_to_sides(world, fluid, block_pos, props);
@@ -156,8 +163,11 @@ pub trait FlowingFluid: Send + Sync {
             return;
         }
 
+        // `isWaterHole`: resting on its own kind, or on anything it could flow into.
+        let is_water_hole =
+            self.has_fluid_at(fluid, below_state_id) || physics::can_hold_fluid(below_block);
         let is_source = props.level == Level::L8 && props.falling == Falling::False;
-        if is_source || !below_is_same_fluid {
+        if is_source || !is_water_hole {
             self.flow_to_sides(world, fluid, block_pos, props);
         }
     }
@@ -278,15 +288,11 @@ pub trait FlowingFluid: Send + Sync {
         }
     }
 
-    /// Core spread logic with quiescence checks and state updates.
+    /// Vanilla `FlowingFluid.spreadTo` for a block that isn't a `LiquidBlockContainer`: destroys
+    /// what is there and places the fluid.
     ///
-    /// Implements:
-    /// - Quiescence: prevents unnecessary updates (e.g., source blocks, lower levels)
-    /// - Infinite source formation checks (before and after placement)
-    /// - Block replacement for non-fluid blocks
-    /// - Fluid tick scheduling for non-source blocks
-    ///
-    /// Called by `spread_to` implementations after fluid-specific pre-checks.
+    /// Spreading never targets fluid of the same kind (`canBeReplacedWith`), so this only
+    /// replaces air, blocks washed away by fluids, or the other fluid.
     fn apply_spread(
         &self,
         world: &Arc<World>,
@@ -295,50 +301,6 @@ pub trait FlowingFluid: Send + Sync {
         state_id: BlockStateId,
         new_props: FlowingFluidProperties,
     ) {
-        let current_state_id = world.get_block_state_id(pos);
-        if let Some(current_props) = self.get_effective_props(fluid, current_state_id) {
-            let current_level = i32::from(current_props.level.to_index()) + 1;
-            let new_level = i32::from(new_props.level.to_index()) + 1;
-            let current_is_source =
-                current_props.level == Level::L8 && current_props.falling == Falling::False;
-            let new_is_source = new_props.level == Level::L8 && new_props.falling == Falling::False;
-
-            // Never overwrite a source with anything
-            if current_is_source {
-                return;
-            }
-
-            // Check for infinite source formation before quiescence checks
-            if !current_is_source && self.can_convert_to_source(world) {
-                let should_convert = self.check_infinite_source_formation(world, fluid, pos);
-
-                if should_convert {
-                    let source_props = self.get_source(fluid, false);
-                    let source_state_id = source_props.to_state_id(fluid);
-                    world.set_block_state(pos, source_state_id, BlockFlags::NOTIFY_ALL);
-
-                    // Sources don't need ticks
-                    return;
-                }
-            }
-
-            // If new is a source, always accept it
-            if new_is_source {
-                // Continue to set state below
-            } else if current_props.falling == new_props.falling {
-                // Same falling state - check level
-                if new_level <= current_level {
-                    return;
-                }
-            }
-        } else {
-            // Replace non-fluid blocks
-            let block = world.get_block(pos);
-            if block.id != Block::AIR.id {
-                world.break_block(pos, None, BlockFlags::NOTIFY_ALL);
-            }
-        }
-
         let mut event = crate::plugin::api::events::block::block_from_to::BlockFromToEvent::new(
             *pos,
             *pos,
@@ -349,6 +311,11 @@ pub trait FlowingFluid: Send + Sync {
         }
         if event.cancelled {
             return;
+        }
+
+        let (block, state) = world.get_block_and_state(pos);
+        if !state.is_air() {
+            self.before_destroying_block(world, pos, block, state);
         }
 
         world.set_block_state(pos, state_id, BlockFlags::NOTIFY_ALL);
@@ -433,11 +400,35 @@ pub trait FlowingFluid: Send + Sync {
         below_is_same_source || below_state.is_solid_block()
     }
 
-    /// Spreads fluid to a target position with the given state.
+    /// Vanilla `beforeDestroyingBlock`: water drops what it washes away (`WaterFluid`).
+    fn before_destroying_block(
+        &self,
+        world: &Arc<World>,
+        pos: &BlockPos,
+        block: &'static Block,
+        state: &'static BlockState,
+    ) {
+        let params = LootContextParameters {
+            world: Some(world),
+            block_state: Some(state),
+            position: Some(pos.to_f64()),
+            ..Default::default()
+        };
+        drop_loot(world, block, pos, true, &params);
+    }
+
+    /// Spreads fluid in `direction` to `pos` with the given state.
     ///
     /// Default implementation delegates to `apply_spread`. Implementations like
     /// lava can override to add fluid-specific logic (e.g., water -> stone conversion).
-    fn spread_to(&self, world: &Arc<World>, fluid: &Fluid, pos: &BlockPos, state_id: BlockStateId) {
+    fn spread_to(
+        &self,
+        world: &Arc<World>,
+        fluid: &Fluid,
+        pos: &BlockPos,
+        _direction: BlockDirection,
+        state_id: BlockStateId,
+    ) {
         let new_props = FlowingFluidProperties::from_state_id(state_id, fluid);
         self.apply_spread(world, fluid, pos, state_id, new_props);
     }
@@ -470,7 +461,7 @@ pub trait FlowingFluid: Send + Sync {
         for &(direction, state_id) in spread_dirs.iter().take(count) {
             let side_pos = block_pos.offset(direction.to_offset());
 
-            self.spread_to(world, fluid, &side_pos, state_id);
+            self.spread_to(world, fluid, &side_pos, direction, state_id);
         }
     }
 }
