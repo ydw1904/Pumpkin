@@ -1,5 +1,7 @@
 use crate::argument_builder::{ArgumentBuilder, CommandArgumentBuilder};
-use crate::context::command_context::{CommandContext, CommandContextBuilder, ContextChain};
+use crate::context::command_context::{
+    ChainContinuation, CommandContext, CommandContextBuilder, ContextChain,
+};
 use crate::errors::command_syntax_error::CommandSyntaxError;
 use crate::errors::error_types::{
     DISPATCHER_EXPECTED_ARGUMENT_SEPARATOR, DISPATCHER_UNKNOWN_ARGUMENT,
@@ -394,6 +396,20 @@ impl<S: CommandSource> CommandDispatcher<S> {
                 });
                 result
             }
+        }
+    }
+
+    /// Vanilla `BuildContexts.Continuation.execute`: runs the rest of a chain for `sources`,
+    /// parsing the command again the way its original source did.
+    pub fn continue_chain(&self, continuation: &ChainContinuation<S>, sources: Vec<Arc<S>>) {
+        let input = &continuation.input;
+        let source = &continuation.original_source;
+        let parsed = self.parse_input(input, source);
+        let Some(chain) = ContextChain::try_flatten(&parsed.context.build(input)) else {
+            return;
+        };
+        if let Err(error) = chain.execute_from(continuation, sources, self.consumer.as_ref()) {
+            Self::send_error_to_source(source.as_ref(), error, input);
         }
     }
 

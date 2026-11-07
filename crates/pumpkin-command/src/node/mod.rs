@@ -4,7 +4,7 @@ pub mod dispatcher;
 pub mod tree;
 
 use crate::argument_types::argument_type::AnyArgumentType;
-use crate::context::command_context::CommandContext;
+use crate::context::command_context::{ChainContinuation, CommandContext};
 use crate::errors::command_syntax_error::CommandSyntaxError;
 use crate::node::attached::NodeId;
 use crate::node::detached::GlobalNodeId;
@@ -69,14 +69,25 @@ pub enum RedirectModifier<S: CommandSource = DummySource> {
     /// Returns multiple [`CommandSource`]s from one context via
     /// custom behavior.
     Custom(Arc<RedirectModifierExecutor<S>>),
+
+    /// Vanilla `CustomModifierExecutor`: runs once for all sources of its stage and goes on with
+    /// the rest of the chain itself, through the [`ChainContinuation`] it gets.
+    Chain(Arc<ChainModifierExecutor<S>>),
 }
+
+/// A modifier that takes over the rest of the chain: the context with the chain's original
+/// source, the sources reaching this stage, and the rest of the chain.
+pub type ChainModifierExecutor<S = DummySource> = dyn Fn(&CommandContext<S>, Vec<Arc<S>>, ChainContinuation<S>) -> Result<(), CommandSyntaxError>
+    + Send
+    + Sync;
 
 impl<S: CommandSource> RedirectModifier<S> {
     /// Tries to provide a [`Vec`] of [`Arc<S>`] from a
     /// given [`CommandContext`].
     pub fn sources(&self, command_context: &CommandContext<S>) -> RedirectModifierResult<S> {
         match self {
-            Self::KeepSource => Ok(vec![command_context.source.clone()]),
+            // A chain modifier never runs per source; `ContextChain` hands it the chain instead.
+            Self::KeepSource | Self::Chain(_) => Ok(vec![command_context.source.clone()]),
             Self::Custom(function) => function(command_context),
         }
     }

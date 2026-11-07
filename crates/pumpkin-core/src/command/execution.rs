@@ -16,10 +16,6 @@ use crate::server::Server;
 /// Vanilla `ExecutionContext.MAX_QUEUE_DEPTH`.
 const MAX_QUEUE_DEPTH: usize = 10_000_000;
 
-/// How deeply `execute if function` may nest. Vanilla continues the command after the functions
-/// ran from the queue; Pumpkin runs them before the chain goes on, which uses the stack.
-const MAX_NESTED_CALLS: usize = 32;
-
 thread_local! {
     /// Vanilla `Commands.CURRENT_EXECUTION_CONTEXT`.
     static CURRENT: RefCell<Option<Rc<ExecutionContext>>> = const { RefCell::new(None) };
@@ -53,6 +49,13 @@ pub enum Action {
         lines: Arc<[String]>,
         index: usize,
     },
+    /// Vanilla `IsolatedCall` as `execute if function` uses it: the functions run in a new frame
+    /// that reports to `callback`, and fall through if none of them returns.
+    IsolatedCall {
+        source: Box<CommandSource>,
+        functions: Arc<[Arc<[String]>]>,
+        callback: ResultValueTaker,
+    },
     /// Vanilla `FallthroughTask`: the frame returns failure and ends.
     Fallthrough,
     Task(Box<dyn FnOnce()>),
@@ -69,7 +72,6 @@ struct State {
     queue: VecDeque<Entry>,
     new_top_commands: Vec<Entry>,
     current_frame_depth: usize,
-    nested_calls: usize,
 }
 
 /// Clears the thread's current context when the top-level command ends, even by a panic.
@@ -97,7 +99,6 @@ impl ExecutionContext {
                 queue: VecDeque::new(),
                 new_top_commands: Vec::new(),
                 current_frame_depth: 0,
-                nested_calls: 0,
             }),
         }
     }
@@ -212,7 +213,7 @@ impl ExecutionContext {
                 );
                 break;
             }
-            let Some(entry) = self.next_entry(None) else {
+            let Some(entry) = self.next_entry() else {
                 return;
             };
             self.execute(entry);
@@ -227,52 +228,8 @@ impl ExecutionContext {
         self.state.borrow_mut().current_frame_depth = 0;
     }
 
-    /// Runs what `config` queues in a frame below the running command, before the command goes
-    /// on (vanilla `IsolatedCall`, whose result the rest of the command waits for).
-    pub fn run_nested(&self, config: impl FnOnce(&Self, Frame), return_value: ResultValueTaker) {
-        let (outer_new_top, depth) = {
-            let mut state = self.state.borrow_mut();
-            if state.nested_calls >= MAX_NESTED_CALLS {
-                state.command_quota = 0;
-                return;
-            }
-            state.nested_calls += 1;
-            (
-                std::mem::take(&mut state.new_top_commands),
-                state.current_frame_depth,
-            )
-        };
-        let frame = Frame {
-            depth: depth + 1,
-            return_value,
-            control: FrameControl::DiscardAtDepth(depth + 1),
-        };
-        config(self, frame);
-        self.push_new_commands();
-        while !self.quota_exhausted() && !self.state.borrow().queue_overflow {
-            let Some(entry) = self.next_entry(Some(depth)) else {
-                break;
-            };
-            self.execute(entry);
-            self.push_new_commands();
-        }
+    fn next_entry(&self) -> Option<Entry> {
         let mut state = self.state.borrow_mut();
-        state.nested_calls -= 1;
-        state.current_frame_depth = depth;
-        state.new_top_commands = outer_new_top;
-    }
-
-    /// The next entry to run, if it's deeper than `above`.
-    fn next_entry(&self, above: Option<usize>) -> Option<Entry> {
-        let mut state = self.state.borrow_mut();
-        if let Some(depth) = above
-            && state
-                .queue
-                .front()
-                .is_none_or(|entry| entry.frame.depth <= depth)
-        {
-            return None;
-        }
         let entry = state.queue.pop_front()?;
         state.current_frame_depth = entry.frame.depth;
         Some(entry)
@@ -284,6 +241,37 @@ impl ExecutionContext {
         for entry in new_top.into_iter().rev() {
             state.queue.push_front(entry);
         }
+    }
+
+    /// Vanilla `IsolatedCall.execute` with the task `execute if function` gives it.
+    fn isolated_call(
+        &self,
+        frame: &Frame,
+        source: &CommandSource,
+        functions: &[Arc<[String]>],
+        callback: ResultValueTaker,
+    ) {
+        let depth = frame.depth + 1;
+        let frame = Frame {
+            depth,
+            return_value: callback,
+            control: FrameControl::DiscardAtDepth(depth),
+        };
+        for lines in functions {
+            self.queue_next(Entry {
+                frame: frame.clone(),
+                action: Action::CallFunction {
+                    source: Box::new(source.clone()),
+                    lines: lines.clone(),
+                    callback: frame.return_value.clone(),
+                    return_parent: true,
+                },
+            });
+        }
+        self.queue_next(Entry {
+            frame,
+            action: Action::Fallthrough,
+        });
     }
 
     /// Vanilla `CommandQueueEntry.execute`.
@@ -359,6 +347,11 @@ impl ExecutionContext {
                 let dispatcher = source.server().command_dispatcher.load();
                 dispatcher.handle_command(&source, &lines[index]);
             }
+            Action::IsolatedCall {
+                source,
+                functions,
+                callback,
+            } => self.isolated_call(&frame, &source, &functions, callback),
             Action::Fallthrough => {
                 frame.return_failure();
                 frame.discard();

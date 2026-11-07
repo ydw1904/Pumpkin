@@ -26,10 +26,10 @@ const plain = (t) => {
   return t
 }
 bot._client.on('system_chat', (p) => { if (!p.isActionBar) msgs.push(flat(plain(p.content))) })
-async function run (c, wait = 2) {
+async function run (c, wait = 2, timeout = 3000) {
   msgs.length = 0
   bot.chat('/' + c)
-  await h.waitFor(() => msgs.length > 0, 3000)
+  await h.waitFor(() => msgs.length > 0, timeout)
   await h.ticks(wait)
   return msgs.join('|') || 'none'
 }
@@ -51,7 +51,11 @@ const FUNCTIONS = {
   count_ret: 'scoreboard players add #cr fn 1\nreturn 1',
   fork_ret: 'execute as @e[tag=parity_fr] run return run scoreboard players add #fr fn 1\nscoreboard players set #fr fn 100',
   feedback: 'data get storage p:out t\nscoreboard players set #fb fn 1',
-  continued: 'scoreboard players \\\n  set #cont fn 3'
+  continued: 'scoreboard players \\\n  set #cont fn 3',
+  // `execute if function` nests 1500 deep; the rest of each command runs after the call.
+  deep: 'scoreboard players add #dp fn 1\nexecute if score #dp fn matches ..1499 unless function p:deep run scoreboard players add #dpr fn 1',
+  // Never ends: stops at max_command_sequence_length.
+  endless: 'scoreboard players add #inf fn 1\nexecute unless function p:endless run scoreboard players add #infr fn 1'
 }
 
 h.start(async () => {
@@ -127,7 +131,9 @@ h.start(async () => {
     ['if_unknown', 'execute if function p:nope run say x'],
     ['if_macro', 'execute if function p:macro run say x']
   ]) h.result(`cond_fn_${key}`, await run(c))
-  h.result('cond_fn_scores', (await Promise.all(['#if1', '#if2', '#if3', '#if4', '#if5'].map(async (k) => (await score(k)).replace(/.*\((#if\d),(\d+).*/, '$1=$2')))).join(' '))
+  h.result('cond_fn_deep', (await run('function p:deep')) + ' ' + await score('#dp') + ' ' + await score('#dpr'))
+  h.result('cond_fn_endless', (await run('function p:endless', 10, 60000)) + ' ' + await score('#inf') + ' ' + await score('#infr'))
+  h.result('cond_fn_scores',(await Promise.all(['#if1', '#if2', '#if3', '#if4', '#if5'].map(async (k) => (await score(k)).replace(/.*\((#if\d),(\d+).*/, '$1=$2')))).join(' '))
 
   // The fork limit.
   await run('gamerule max_command_forks 2')

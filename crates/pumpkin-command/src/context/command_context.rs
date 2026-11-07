@@ -195,6 +195,20 @@ pub struct ContextChain<'a, S: CommandSource = DummySource> {
     execute: Arc<CommandContext<'a, S>>,
 }
 
+/// Vanilla `BuildContexts.Continuation`: the rest of a chain after a [`RedirectModifier::Chain`].
+///
+/// It keeps the command's input rather than the chain, which borrows the dispatcher, so it can
+/// wait in a command queue; see [`CommandDispatcher::continue_chain`].
+pub struct ChainContinuation<S: CommandSource> {
+    /// The whole command, as the original source parsed it.
+    pub input: String,
+    stage: usize,
+    /// The source the command started with.
+    pub original_source: Arc<S>,
+    forked: bool,
+    returning: bool,
+}
+
 impl<'a, S: CommandSource> ContextChain<'a, S> {
     /// Creates a new chain of contexts from a vector of them and one to execute.
     ///
@@ -306,13 +320,55 @@ impl<'a, S: CommandSource> ContextChain<'a, S> {
         source: &Arc<S>,
         result_consumer: &dyn ResultConsumer<S>,
     ) -> Result<i32, CommandSyntaxError> {
-        let mut forked_mode = false;
-        let mut returning = source.is_returning();
-        let mut current_sources: Vec<Arc<S>> = vec![source.clone()];
+        self.execute_from(
+            &ChainContinuation {
+                input: String::new(),
+                stage: 0,
+                original_source: source.clone(),
+                forked: false,
+                returning: source.is_returning(),
+            },
+            vec![source.clone()],
+            result_consumer,
+        )
+    }
+
+    /// Executes the chain from the stage `state` stopped at, for `current_sources`.
+    pub fn execute_from(
+        &self,
+        state: &ChainContinuation<S>,
+        mut current_sources: Vec<Arc<S>>,
+        result_consumer: &dyn ResultConsumer<S>,
+    ) -> Result<i32, CommandSyntaxError> {
+        let source = &state.original_source;
+        let mut forked_mode = state.forked;
+        let mut returning = state.returning;
         let fork_limit = source.fork_limit();
 
-        for modifier in &self.modifiers {
+        if current_sources.is_empty() {
+            if returning {
+                source.fall_through();
+            }
+            return Ok(0);
+        }
+
+        for (stage, modifier) in self.modifiers.iter().enumerate().skip(state.stage) {
             forked_mode |= modifier.forks;
+            if let RedirectModifier::Chain(function) = &modifier.modifier {
+                let continuation = ChainContinuation {
+                    input: modifier.input.clone(),
+                    stage: stage + 1,
+                    original_source: source.clone(),
+                    forked: forked_mode,
+                    returning,
+                };
+                let context = modifier.with_source(source.clone());
+                return match function(&context, current_sources, continuation) {
+                    Ok(()) => Ok(0),
+                    Err(_) if forked_mode => Ok(0),
+                    Err(error) => Err(error),
+                };
+            }
             if !matches!(modifier.modifier, RedirectModifier::KeepSource) {
                 source.increment_command_cost();
             }
@@ -778,5 +834,63 @@ mod test {
         assert!(chain2.next_stage().is_none());
         let res = chain.execute_all(&source, dispatcher.consumer.as_ref());
         assert!(res.is_ok_and(|val| val == 1));
+    }
+
+    #[test]
+    fn chain_modifier_continues_the_rest_later() {
+        type Saved = Option<(super::ChainContinuation<DummySource>, usize)>;
+        static RUNS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let saved: Arc<std::sync::Mutex<Saved>> = Arc::default();
+        let mut dispatcher = CommandDispatcher::new();
+        dispatcher.register(
+            CommandArgumentBuilder::new("foo", "A test command").executes(
+                |_: &CommandContext<DummySource>| {
+                    RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    Ok(1)
+                },
+            ),
+        );
+        dispatcher.register(
+            CommandArgumentBuilder::new("bar", "Another test command").redirect_with_modifier(
+                Redirection::Root,
+                RedirectModifier::Custom(Arc::new(|context: &CommandContext<DummySource>| {
+                    Ok(vec![context.source.clone(), context.source.clone()])
+                })),
+            ),
+        );
+        let to_save = saved.clone();
+        dispatcher.register(
+            CommandArgumentBuilder::new("defer", "Takes over the chain").redirect_with_modifier(
+                Redirection::Root,
+                RedirectModifier::Chain(Arc::new(
+                    move |_: &CommandContext<DummySource>, sources, continuation| {
+                        *to_save
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                            Some((continuation, sources.len()));
+                        Ok(())
+                    },
+                )),
+            ),
+        );
+
+        let source = DummySource::dummy();
+        assert_eq!(
+            dispatcher.execute_input("bar defer bar foo", &source),
+            Ok(0)
+        );
+        assert_eq!(RUNS.load(std::sync::atomic::Ordering::Relaxed), 0);
+        let (continuation, source_count) = saved
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+            .expect("the chain modifier should have run");
+        assert_eq!(source_count, 2);
+
+        // The stages after `defer` run for the sources the modifier hands back.
+        let source = Arc::new(source);
+        let sources = vec![source.clone(), source.clone(), source];
+        dispatcher.continue_chain(&continuation, sources);
+        assert_eq!(RUNS.load(std::sync::atomic::Ordering::Relaxed), 6);
     }
 }

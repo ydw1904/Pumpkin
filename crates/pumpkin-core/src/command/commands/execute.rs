@@ -14,6 +14,7 @@
 )]
 
 use crate::block::entities::BlockEntity;
+use crate::command::CommandSource;
 use crate::command::argument_builder::{
     ArgumentBuilder, LiteralArgumentBuilder, RequiredArgumentBuilder, argument, command, literal,
 };
@@ -49,7 +50,7 @@ use crate::command::commands::data::{TargetKind, make_target_arg};
 use crate::command::commands::function::{
     FunctionSuggestionProvider, function_source, get_functions, instantiate_functions,
 };
-use crate::command::context::command_context::CommandContext;
+use crate::command::context::command_context::{ChainContinuation, CommandContext};
 use crate::command::context::command_source::{ResultValueTaker, ReturnValue, ReturnValueCallback};
 use crate::command::errors::command_syntax_error::CommandSyntaxError;
 use crate::command::errors::error_types::CommandErrorType;
@@ -83,7 +84,7 @@ use pumpkin_util::math::{atan2, wrap_degrees};
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex;
 use uuid::Uuid;
 
 const DESCRIPTION: &str = "Execute a command with a modified context.";
@@ -1138,62 +1139,88 @@ fn function_conditional(expected: bool) -> LiteralArgumentBuilder {
             .suggests(FunctionSuggestionProvider)
             .fork(
                 Redirection::Root,
-                RedirectModifier::Custom(Arc::new(move |context: &CommandContext| {
-                    execute_if_function_modifier(context, expected)
-                })),
+                RedirectModifier::Chain(Arc::new(
+                    move |context: &CommandContext, sources, continuation| {
+                        schedule_function_conditions_and_test(
+                            context,
+                            sources,
+                            continuation,
+                            expected,
+                        )
+                    },
+                )),
             ),
     )
 }
 
 /// Vanilla `ExecuteCommand.scheduleFunctionConditionsAndTest`: the functions run in an isolated
-/// frame, and the source passes when what they return (0 if they don't) is non-zero as expected.
-fn execute_if_function_modifier(
+/// frame for each source, and the rest of the command is queued after them for the sources
+/// whose functions returned non-zero (0 if they didn't return) as expected.
+fn schedule_function_conditions_and_test(
     context: &CommandContext,
+    sources: Vec<Arc<CommandSource>>,
+    continuation: ChainContinuation<CommandSource>,
     expected: bool,
-) -> RedirectModifierResult {
+) -> Result<(), CommandSyntaxError> {
     let server = context.server();
     let name = FunctionArgumentType::get(context, "name")?;
-    let functions = instantiate_functions(
+    let functions: Arc<[_]> = instantiate_functions(
         get_functions(server, name)?,
         None,
         &ERROR_FUNCTION_CONDITION_INSTANTIATION_FAILURE,
-    )?;
+    )?
+    .into_iter()
+    .map(|(_, lines)| lines)
+    .collect();
     if functions.is_empty() {
-        return Ok(vec![]);
+        return Ok(());
     }
 
-    // The source passes once for every result that matches, like vanilla's callback.
-    let passes = Arc::new(AtomicUsize::new(0));
-    let counter = passes.clone();
-    let callback = ResultValueTaker(vec![Arc::new(move |value: ReturnValue| {
-        if (value.result_value() != 0) == expected {
-            counter.fetch_add(1, Ordering::Relaxed);
-        }
-    })]);
-    let source = function_source(&context.source);
+    // A source passes once for every result that matches, like vanilla's callback. The callback
+    // keeps indices, not sources: a source holds its frame, and with it every caller's.
+    let passed = Arc::new(Mutex::new(Vec::new()));
+    let frame = context.source.frame.clone();
     ExecutionContext::execute_in_context(server, |execution| {
-        execution.run_nested(
-            |execution, frame| {
-                for (_, lines) in functions {
-                    execution.queue_next(Entry {
-                        frame: frame.clone(),
-                        action: Action::CallFunction {
-                            source: Box::new(source.clone()),
-                            lines,
-                            callback: frame.return_value.clone(),
-                            return_parent: true,
-                        },
-                    });
-                }
-                execution.queue_next(Entry {
-                    frame,
-                    action: Action::Fallthrough,
-                });
-            },
-            callback,
-        );
+        for (index, source) in sources.iter().enumerate() {
+            let passed = passed.clone();
+            execution.queue_next(Entry {
+                frame: frame.clone(),
+                action: Action::IsolatedCall {
+                    source: Box::new(function_source(source)),
+                    functions: functions.clone(),
+                    callback: ResultValueTaker(vec![Arc::new(move |value: ReturnValue| {
+                        if (value.result_value() != 0) == expected {
+                            passed
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                .push(index);
+                        }
+                    })]),
+                },
+            });
+        }
+        execution.queue_next(Entry {
+            frame,
+            action: Action::Task(Box::new(move || {
+                let passed = std::mem::take(
+                    &mut *passed
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner),
+                );
+                let sources = passed
+                    .into_iter()
+                    .map(|index| sources[index].clone())
+                    .collect();
+                let dispatcher = continuation
+                    .original_source
+                    .server()
+                    .command_dispatcher
+                    .load_full();
+                dispatcher.continue_chain(&continuation, sources);
+            })),
+        });
     });
-    Ok(vec![context.source.clone(); passes.load(Ordering::Relaxed)])
+    Ok(())
 }
 
 fn check_stopwatch_matches(context: &CommandContext) -> Result<bool, CommandSyntaxError> {
