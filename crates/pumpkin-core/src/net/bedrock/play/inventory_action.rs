@@ -225,28 +225,14 @@ impl BedrockClient {
                     // hold is never trusted.
                     let mut held_item = player.inventory().held_item();
 
-                    let before_use = held_item.clone();
-                    let result = server.block_registry.use_with_item(
-                        block,
-                        player,
-                        &data.block_position,
-                        &BlockHitResult {
-                            face: &face,
-                            cursor_pos: &data.click_position,
-                        },
-                        &mut held_item,
-                        &EquipmentSlot::MAIN_HAND,
-                        &server,
-                        &world,
-                    );
-
-                    if result.consumes_action() {
-                        Self::write_back_held_item(player, &before_use, held_item);
-                        return;
-                    }
-
-                    if matches!(result, BlockActionResult::PassToDefaultBlockAction) {
-                        let result = server.block_registry.on_use(
+                    // Vanilla `ServerPlayerGameMode.useItemOn`: sneaking with anything in either
+                    // hand skips the block's own interaction.
+                    let suppress_using_block = player.get_entity().is_sneaking()
+                        && (!held_item.is_empty()
+                            || !player.inventory().off_hand_item().is_empty());
+                    if !suppress_using_block {
+                        let before_use = held_item.clone();
+                        let result = server.block_registry.use_with_item(
                             block,
                             player,
                             &data.block_position,
@@ -254,12 +240,33 @@ impl BedrockClient {
                                 face: &face,
                                 cursor_pos: &data.click_position,
                             },
+                            &mut held_item,
+                            &EquipmentSlot::MAIN_HAND,
                             &server,
                             &world,
                         );
 
                         if result.consumes_action() {
+                            Self::write_back_held_item(player, &before_use, held_item);
                             return;
+                        }
+
+                        if matches!(result, BlockActionResult::PassToDefaultBlockAction) {
+                            let result = server.block_registry.on_use(
+                                block,
+                                player,
+                                &data.block_position,
+                                &BlockHitResult {
+                                    face: &face,
+                                    cursor_pos: &data.click_position,
+                                },
+                                &server,
+                                &world,
+                            );
+
+                            if result.consumes_action() {
+                                return;
+                            }
                         }
                     }
 
