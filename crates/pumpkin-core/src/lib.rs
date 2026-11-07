@@ -396,7 +396,10 @@ impl PumpkinServer {
             std::thread::Builder::new()
                 .name("Server-Ticker".into())
                 .spawn(move || {
-                    Ticker::run(&ticker_server);
+                    // The loop runs on a simulation thread, so a tick starts without waking one.
+                    ticker_server
+                        .simulation_pool
+                        .install(|| Ticker::run(&ticker_server));
                 })
                 .map_err(ServerSetupError::TickerSpawn)?;
         };
