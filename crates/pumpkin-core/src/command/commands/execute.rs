@@ -43,7 +43,7 @@ use crate::command::argument_types::resource_key::{
     BIOME_REGISTRY, DIMENSION_REGISTRY, ResourceKeyArgument,
 };
 use crate::command::argument_types::resource_or_tag::{ResourceOrTag, ResourceOrTagArgument};
-use crate::command::argument_types::score_holder::ScoreHolderArgumentType;
+use crate::command::argument_types::score_holder::{ResolvedScoreHolder, ScoreHolderArgumentType};
 use crate::command::argument_types::slot::SlotsArgumentType;
 use crate::command::commands::bossbar::{BossbarIdArgumentType, get_bossbar_or_error};
 use crate::command::commands::data::{TargetKind, make_target_arg};
@@ -116,11 +116,7 @@ fn execute_as_modifier(context: &CommandContext) -> crate::command::node::Redire
     let mut sources = Vec::new();
     for target in targets {
         let mut source = context.source.as_ref().clone();
-        let display_name = target.get_display_name();
-        let name = target.get_name().get_text();
-        source.entity = Some(target.clone());
-        source.name = name;
-        source.display_name = display_name;
+        source.set_entity(target);
         sources.push(Arc::new(source));
     }
     Ok(sources)
@@ -1295,11 +1291,7 @@ fn execute_on_owner_modifier(
             if let Some(owner_uuid) = mob.get_owner_uuid() {
                 if let Some(owner) = world.get_player_by_uuid(owner_uuid) {
                     let mut source = context.source.as_ref().clone();
-                    let name = owner.get_name().get_text();
-                    let display_name = owner.get_display_name();
-                    source.entity = Some(owner);
-                    source.name = name;
-                    source.display_name = display_name;
+                    source.set_entity(owner);
                     sources.push(Arc::new(source));
                 }
             }
@@ -1321,11 +1313,7 @@ fn execute_on_leasher_modifier(
             .clone()
         {
             let mut source = context.source.as_ref().clone();
-            let name = leasher.get_name().get_text();
-            let display_name = leasher.get_display_name();
-            source.entity = Some(leasher);
-            source.name = name;
-            source.display_name = display_name;
+            source.set_entity(leasher);
             sources.push(Arc::new(source));
         }
     }
@@ -1340,11 +1328,7 @@ fn execute_on_target_modifier(
         if let Some(mob) = entity.get_mob() {
             if let Some(target) = mob.get_mob_entity().get_target() {
                 let mut source = context.source.as_ref().clone();
-                let name = target.get_name().get_text();
-                let display_name = target.get_display_name();
-                source.entity = Some(target);
-                source.name = name;
-                source.display_name = display_name;
+                source.set_entity(target);
                 sources.push(Arc::new(source));
             }
         }
@@ -1361,11 +1345,7 @@ fn execute_on_attacker_modifier(
             && let Some(attacker) = living.get_last_hurt_by_mob()
         {
             let mut source = context.source.as_ref().clone();
-            let name = attacker.get_name().get_text();
-            let display_name = attacker.get_display_name();
-            source.entity = Some(attacker);
-            source.name = name;
-            source.display_name = display_name;
+            source.set_entity(attacker);
             sources.push(Arc::new(source));
         }
     }
@@ -1385,11 +1365,7 @@ fn execute_on_vehicle_modifier(
             .clone()
         {
             let mut source = context.source.as_ref().clone();
-            let name = vehicle.get_name().get_text();
-            let display_name = vehicle.get_display_name();
-            source.entity = Some(vehicle);
-            source.name = name;
-            source.display_name = display_name;
+            source.set_entity(vehicle);
             sources.push(Arc::new(source));
         }
     }
@@ -1410,11 +1386,7 @@ fn execute_on_controller_modifier(
             .cloned()
         {
             let mut source = context.source.as_ref().clone();
-            let name = controller.get_name().get_text();
-            let display_name = controller.get_display_name();
-            source.entity = Some(controller);
-            source.name = name;
-            source.display_name = display_name;
+            source.set_entity(controller);
             sources.push(Arc::new(source));
         }
     }
@@ -1440,11 +1412,7 @@ fn execute_on_passengers_modifier(
             .clone();
         for passenger in passengers {
             let mut source = context.source.as_ref().clone();
-            let name = passenger.get_name().get_text();
-            let display_name = passenger.get_display_name();
-            source.entity = Some(passenger);
-            source.name = name;
-            source.display_name = display_name;
+            source.set_entity(passenger);
             sources.push(Arc::new(source));
         }
     }
@@ -1489,15 +1457,16 @@ fn store_score_modifier(context: &CommandContext, store_result: bool) -> Redirec
         &objective,
     )?;
     with_store_callback(context, store_result, move |value| {
+        let displays = ResolvedScoreHolder::auto_update_displays(&world, &objective, &holders);
         let mut scoreboard = world
             .scoreboard
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        for holder in &holders {
+        for (index, holder) in holders.iter().enumerate() {
             scoreboard.set_holder_score(
                 &world,
                 &holder.name,
-                holder.entity_display_name.as_ref(),
+                displays.get(index).and_then(Option::as_ref),
                 &objective,
                 value,
             );

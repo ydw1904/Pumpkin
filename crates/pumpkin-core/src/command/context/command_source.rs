@@ -18,7 +18,7 @@ use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::math::wrap_degrees;
 use pumpkin_util::text::TextComponent;
 use pumpkin_util::text::color::{Color, NamedColor};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 pub const REQUIRES_PLAYER: CommandErrorType<0> = CommandErrorType::new(
     translation::java::PERMISSIONS_REQUIRES_PLAYER,
@@ -55,8 +55,7 @@ pub struct CommandSource {
     pub entity: Option<Arc<dyn EntityBase>>,
     pub position: Vector3<f64>,
     pub rotation: Vector2<f32>,
-    pub name: String,
-    pub display_name: TextComponent,
+    names: SourceNames,
     pub server: Option<Arc<Server>>,
     pub silent: bool,
     pub command_result_taker: ResultValueTaker,
@@ -67,6 +66,59 @@ pub struct CommandSource {
     /// A fixed permission level that replaces the output's permissions: a function's commands
     /// get `function-permission-level`, which vanilla compiles them with.
     pub permission_level: Option<PermissionLvl>,
+}
+
+/// Vanilla `CommandSourceStack.textName` and `displayName`, shared by the copies of a source.
+///
+/// Vanilla builds an entity's names in `withEntity`. Most `execute as` sources never read them,
+/// so an entity source builds each one the first time it is read and keeps it.
+#[derive(Clone)]
+struct SourceNames(Arc<SourceNamesInner>);
+
+enum SourceNamesInner {
+    Fixed {
+        name: String,
+        display_name: TextComponent,
+    },
+    Entity {
+        entity: Arc<dyn EntityBase>,
+        name: OnceLock<String>,
+        display_name: OnceLock<TextComponent>,
+    },
+}
+
+impl SourceNames {
+    fn fixed(name: String, display_name: TextComponent) -> Self {
+        Self(Arc::new(SourceNamesInner::Fixed { name, display_name }))
+    }
+
+    fn entity(entity: Arc<dyn EntityBase>) -> Self {
+        Self(Arc::new(SourceNamesInner::Entity {
+            entity,
+            name: OnceLock::new(),
+            display_name: OnceLock::new(),
+        }))
+    }
+
+    fn name(&self) -> &str {
+        match self.0.as_ref() {
+            SourceNamesInner::Fixed { name, .. } => name,
+            SourceNamesInner::Entity { entity, name, .. } => {
+                name.get_or_init(|| entity.get_name().get_text())
+            }
+        }
+    }
+
+    fn display_name(&self) -> &TextComponent {
+        match self.0.as_ref() {
+            SourceNamesInner::Fixed { display_name, .. } => display_name,
+            SourceNamesInner::Entity {
+                entity,
+                display_name,
+                ..
+            } => display_name.get_or_init(|| entity.get_display_name()),
+        }
+    }
 }
 
 /// Vanilla `Frame`: where a `return` in a function, or in a top-level command, reports to.
@@ -122,8 +174,7 @@ impl CommandSource {
             entity: None,
             position: Vector3::default(),
             rotation: Vector2::default(),
-            name: String::new(),
-            display_name: TextComponent::empty(),
+            names: SourceNames::fixed(String::new(), TextComponent::empty()),
             server: None,
             silent: false,
             command_result_taker: ResultValueTaker::new(),
@@ -152,8 +203,7 @@ impl CommandSource {
             entity,
             position,
             rotation,
-            name,
-            display_name,
+            names: SourceNames::fixed(name, display_name),
             server: Some(server),
             silent: false,
             command_result_taker: ResultValueTaker(Vec::new()),
@@ -212,15 +262,28 @@ impl CommandSource {
     /// Returns a new [`CommandSource`] with the specified entity and
     /// everything else from the `source` provided.
     #[must_use]
-    pub fn with_entity(self, entity: Arc<dyn EntityBase>) -> Self {
-        let name = entity.get_name().get_text();
-        let display_name = entity.get_display_name();
-        Self {
-            entity: Some(entity),
-            name,
-            display_name,
-            ..self
-        }
+    pub fn with_entity(mut self, entity: Arc<dyn EntityBase>) -> Self {
+        self.set_entity(entity);
+        self
+    }
+
+    /// Vanilla `withEntity`: the source acts as `entity` and takes its names.
+    pub fn set_entity(&mut self, entity: Arc<dyn EntityBase>) {
+        self.names = SourceNames::entity(entity.clone());
+        self.entity = Some(entity);
+    }
+
+    /// Vanilla `CommandSourceStack.getTextName`.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        self.names.name()
+    }
+
+    /// Vanilla `CommandSourceStack.getDisplayName`. An entity source's display name reads its
+    /// team, so this must not run while the scoreboard is locked.
+    #[must_use]
+    pub fn display_name(&self) -> &TextComponent {
+        self.names.display_name()
     }
 
     /// Returns a new [`CommandSource`] with the specified position and
@@ -374,7 +437,7 @@ impl CommandSource {
         let text = TextComponent::translate_cross(
             "chat.type.admin",
             "chat.type.admin",
-            &[self.display_name.clone(), message],
+            &[self.display_name().clone(), message],
         )
         .color(Color::Named(NamedColor::Gray))
         .italic();

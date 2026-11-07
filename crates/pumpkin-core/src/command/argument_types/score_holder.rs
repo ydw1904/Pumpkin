@@ -13,9 +13,11 @@ use crate::command::{
     suggestion::suggestions::{Suggestions, SuggestionsBuilder},
 };
 use crate::entity::EntityBase;
+use crate::world::World;
 use pumpkin_data::translation;
 use pumpkin_util::text::{TextComponent, hover::HoverEvent};
 use rustc_hash::FxHashSet;
+use std::sync::Arc;
 use uuid::Uuid;
 
 const NO_WILDCARD_RESULTS: CommandErrorType<0> = CommandErrorType::new(
@@ -31,34 +33,64 @@ pub enum ScoreHolder {
     Wildcard,
 }
 
-/// A resolved holder's storage key and its user-facing name.
+/// A resolved holder's storage key. Like vanilla's `ScoreHolder`, an entity holder builds its
+/// names only when they are read.
 pub struct ResolvedScoreHolder {
     pub name: String,
-    /// Vanilla `ScoreHolder.getFeedbackDisplayName`.
-    pub display_name: TextComponent,
-    /// Vanilla `ScoreHolder.getDisplayName`, which only entities have.
-    pub entity_display_name: Option<TextComponent>,
+    entity: Option<Arc<dyn EntityBase>>,
 }
 
 impl ResolvedScoreHolder {
-    fn named(name: String) -> Self {
+    pub(crate) const fn named(name: String) -> Self {
+        Self { name, entity: None }
+    }
+
+    pub(crate) fn entity(entity: Arc<dyn EntityBase>) -> Self {
         Self {
-            display_name: TextComponent::text(name.clone()),
-            entity_display_name: None,
-            name,
+            name: entity.get_scoreboard_name(),
+            entity: Some(entity),
         }
     }
 
-    pub(crate) fn entity(entity: &dyn EntityBase) -> Self {
-        let name = entity.get_scoreboard_name();
-        let display_name = entity.get_display_name();
-        Self {
-            display_name: display_name
-                .clone()
-                .hover_event(HoverEvent::show_text(TextComponent::text(name.clone()))),
-            entity_display_name: Some(display_name),
-            name,
+    /// Vanilla `ScoreHolder.getDisplayName`, which only entities have. An entity's display name
+    /// reads its team, so this must not run while the scoreboard is locked.
+    #[must_use]
+    pub fn entity_display_name(&self) -> Option<TextComponent> {
+        self.entity.as_ref().map(|entity| entity.get_display_name())
+    }
+
+    /// Vanilla `ScoreHolder.getFeedbackDisplayName`.
+    #[must_use]
+    pub fn display_name(&self) -> TextComponent {
+        self.entity_display_name().map_or_else(
+            || TextComponent::text(self.name.clone()),
+            |display_name| {
+                display_name.hover_event(HoverEvent::show_text(TextComponent::text(
+                    self.name.clone(),
+                )))
+            },
+        )
+    }
+
+    /// The display names vanilla `ScoreAccess.set` copies onto the holders' scores, which it
+    /// only reads for `displayAutoUpdate` objectives. Empty when `objective` doesn't auto
+    /// update. Built before the scoreboard is locked for `Scoreboard::set_holder_score`.
+    #[must_use]
+    pub fn auto_update_displays(
+        world: &World,
+        objective: &str,
+        holders: &[Self],
+    ) -> Vec<Option<TextComponent>> {
+        let auto_update = world
+            .scoreboard
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_objective(objective)
+            .is_some_and(|objective| objective.display_auto_update);
+        if !auto_update {
+            return Vec::new();
         }
+        holders.iter().map(Self::entity_display_name).collect()
     }
 
     /// Named online players and UUIDs retain entity feedback; offline names stay literal.
@@ -74,11 +106,11 @@ impl ResolvedScoreHolder {
                     .filter_map(|world| {
                         world
                             .get_entity_by_uuid(uuid)
-                            .map(|entity| Self::entity(entity.as_ref()))
+                            .map(Self::entity)
                             .or_else(|| {
                                 world
                                     .get_player_by_uuid(uuid)
-                                    .map(|player| Self::entity(player.as_ref()))
+                                    .map(|player| Self::entity(player))
                             })
                     })
                     .collect();
@@ -86,7 +118,7 @@ impl ResolvedScoreHolder {
                     return entities;
                 }
             } else if let Some(player) = server.get_player_by_name(name) {
-                return vec![Self::entity(player.as_ref())];
+                return vec![Self::entity(player)];
             }
         }
         vec![Self::named(name.to_string())]
@@ -189,7 +221,7 @@ impl ScoreHolderArgumentType {
             ScoreHolder::Selector(selector) => selector
                 .find_entities(context.source.as_ref())?
                 .into_iter()
-                .map(|entity| ResolvedScoreHolder::entity(entity.as_ref()))
+                .map(ResolvedScoreHolder::entity)
                 .collect(),
             ScoreHolder::Wildcard => {
                 let scoreboard = context

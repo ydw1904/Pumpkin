@@ -370,10 +370,15 @@ impl CommandExecutor for PlayersListExecutor {
         } else {
             None
         };
+        // Built before the lock: an entity's display name reads its team.
+        let holder = holder.map(|holder| {
+            let display_name = holder.display_name();
+            (holder, display_name)
+        });
         let world = context.world().clone();
         let scoreboard = lock_scoreboard(&world);
         let mut feedback = Vec::new();
-        let count = if let Some(holder) = holder {
+        let count = if let Some((holder, holder_display_name)) = holder {
             let mut scores: Vec<_> = scoreboard
                 .get_scores_for_entity(&holder.name)
                 .into_iter()
@@ -383,13 +388,13 @@ impl CommandExecutor for PlayersListExecutor {
             if scores.is_empty() {
                 feedback.push(translated(
                     translation::java::COMMANDS_SCOREBOARD_PLAYERS_LIST_ENTITY_EMPTY,
-                    [holder.display_name],
+                    [holder_display_name],
                 ));
             } else {
                 feedback.push(translated(
                     translation::java::COMMANDS_SCOREBOARD_PLAYERS_LIST_ENTITY_SUCCESS,
                     [
-                        holder.display_name,
+                        holder_display_name,
                         TextComponent::text(scores.len().to_string()),
                     ],
                 ));
@@ -447,22 +452,25 @@ impl CommandExecutor for PlayersEnableExecutor {
 
         let mut scoreboard = lock_scoreboard(&world);
 
-        let (enabled_count, msg) =
+        let (enabled, objective_display_name) =
             Self::enable(&mut scoreboard, &world, &holders, &objective_name_owned)?;
         drop(scoreboard);
-        context.source.send_feedback(msg, true);
-        Ok(enabled_count)
+        context
+            .source
+            .send_feedback_with(|| Self::feedback(&enabled, objective_display_name), true);
+        Ok(enabled.len() as i32)
     }
 }
 
 impl PlayersEnableExecutor {
-    /// Unlocks only disabled trigger scores, preserving their values and formatting.
-    fn enable(
+    /// Unlocks only disabled trigger scores, preserving their values and formatting. Returns the
+    /// holders it enabled and the objective's display name.
+    fn enable<'a>(
         scoreboard: &mut Scoreboard,
         target: &impl ScoreboardTarget,
-        holders: &[ResolvedScoreHolder],
+        holders: &'a [ResolvedScoreHolder],
         objective_name: &str,
-    ) -> Result<(i32, TextComponent), CommandSyntaxError> {
+    ) -> Result<(Vec<&'a ResolvedScoreHolder>, TextComponent), CommandSyntaxError> {
         let objective = ObjectiveArgumentType::objective_or_error(scoreboard, objective_name)?;
 
         if objective.criterion != "trigger" {
@@ -500,23 +508,28 @@ impl PlayersEnableExecutor {
             return Err(FAILED_ENABLE_ERROR.create_without_context());
         }
 
-        let enabled_count = enabled_holders.len() as i32;
-        let msg = if let [holder] = enabled_holders.as_slice() {
+        Ok((enabled_holders, objective_display_name))
+    }
+
+    /// Built after the scoreboard is unlocked: an entity's display name reads its team.
+    fn feedback(
+        enabled: &[&ResolvedScoreHolder],
+        objective_display_name: TextComponent,
+    ) -> TextComponent {
+        if let [holder] = enabled {
             translated(
                 translation::java::COMMANDS_SCOREBOARD_PLAYERS_ENABLE_SUCCESS_SINGLE,
-                [objective_display_name, holder.display_name.clone()],
+                [objective_display_name, holder.display_name()],
             )
         } else {
             translated(
                 translation::java::COMMANDS_SCOREBOARD_PLAYERS_ENABLE_SUCCESS_MULTIPLE,
                 [
                     objective_display_name,
-                    TextComponent::text(enabled_count.to_string()),
+                    TextComponent::text(enabled.len().to_string()),
                 ],
             )
-        };
-
-        Ok((enabled_count, msg))
+        }
     }
 }
 
@@ -551,7 +564,7 @@ impl CommandExecutor for ObjectivesRemoveExecutor {
 /// Vanilla prints the holder name for a single target and a count otherwise.
 fn holder_component(holders: &[ResolvedScoreHolder]) -> (TextComponent, bool) {
     if holders.len() == 1 {
-        (holders[0].display_name.clone(), true)
+        (holders[0].display_name(), true)
     } else {
         (TextComponent::text(holders.len().to_string()), false)
     }
@@ -580,14 +593,15 @@ impl CommandExecutor for PlayersSetExecutor {
         let value = IntegerArgumentType::get(context, ARG_SCORE)?;
 
         let world = context.world();
+        let displays = ResolvedScoreHolder::auto_update_displays(world, objective_name, &holders);
         let mut scoreboard = lock_scoreboard(world);
 
         ObjectiveArgumentType::writable_objective_or_error(&scoreboard, objective_name)?;
-        for holder in &holders {
+        for (index, holder) in holders.iter().enumerate() {
             scoreboard.set_holder_score(
                 world,
                 &holder.name,
-                holder.entity_display_name.as_ref(),
+                displays.get(index).and_then(Option::as_ref),
                 objective_name,
                 value,
             );
@@ -622,40 +636,55 @@ impl CommandExecutor for PlayersGetExecutor {
 
         let world = context.world().clone();
         let scoreboard = lock_scoreboard(&world);
-
-        let (value, feedback) = Self::get(&scoreboard, holder, &objective_name)?;
+        let score = Self::get(&scoreboard, &holder.name, &objective_name)?;
         drop(scoreboard);
-        context.source.send_feedback(feedback, false);
+
+        // Named after the unlock: an entity's display name reads its team.
+        let Some((value, objective_display_name)) = score else {
+            return Err(Self::no_score(&objective_name, holder.display_name()));
+        };
+        context.source.send_feedback_with(
+            || Self::feedback(holder.display_name(), value, objective_display_name),
+            false,
+        );
         Ok(value)
     }
 }
 
 impl PlayersGetExecutor {
-    /// Reads an existing score and builds the non-broadcast query feedback.
+    /// Reads an existing score: its value and the objective's display name.
     fn get(
         scoreboard: &Scoreboard,
-        holder: ResolvedScoreHolder,
+        holder: &str,
         objective_name: &str,
-    ) -> Result<(i32, TextComponent), CommandSyntaxError> {
+    ) -> Result<Option<(i32, TextComponent)>, CommandSyntaxError> {
         let objective = ObjectiveArgumentType::objective_or_error(scoreboard, objective_name)?;
-        let Some(value) = scoreboard.get_score_value(&holder.name, objective_name) else {
-            return Err(NO_SCORE_ERROR.create_without_context(
-                TextComponent::text(objective_name.to_string()),
-                holder.display_name,
-            ));
-        };
+        Ok(scoreboard
+            .get_score_value(holder, objective_name)
+            .map(|value| (value, objective.formatted_display_name())))
+    }
 
-        Ok((
-            value,
-            translated(
-                translation::java::COMMANDS_SCOREBOARD_PLAYERS_GET_SUCCESS,
-                [
-                    holder.display_name,
-                    TextComponent::text(value.to_string()),
-                    objective.formatted_display_name(),
-                ],
-            ),
-        ))
+    fn no_score(objective_name: &str, holder_display_name: TextComponent) -> CommandSyntaxError {
+        NO_SCORE_ERROR.create_without_context(
+            TextComponent::text(objective_name.to_string()),
+            holder_display_name,
+        )
+    }
+
+    /// The non-broadcast query feedback.
+    fn feedback(
+        holder_display_name: TextComponent,
+        value: i32,
+        objective_display_name: TextComponent,
+    ) -> TextComponent {
+        translated(
+            translation::java::COMMANDS_SCOREBOARD_PLAYERS_GET_SUCCESS,
+            [
+                holder_display_name,
+                TextComponent::text(value.to_string()),
+                objective_display_name,
+            ],
+        )
     }
 }
 
@@ -675,11 +704,12 @@ impl CommandExecutor for PlayersAddRemoveExecutor {
         };
 
         let world = context.world();
+        let displays = ResolvedScoreHolder::auto_update_displays(world, objective_name, &holders);
         let mut scoreboard = lock_scoreboard(world);
 
         ObjectiveArgumentType::writable_objective_or_error(&scoreboard, objective_name)?;
         let mut result: i32 = 0;
-        for holder in &holders {
+        for (index, holder) in holders.iter().enumerate() {
             let new_value = scoreboard
                 .get_score_value(&holder.name, objective_name)
                 .unwrap_or(0)
@@ -687,7 +717,7 @@ impl CommandExecutor for PlayersAddRemoveExecutor {
             scoreboard.set_holder_score(
                 world,
                 &holder.name,
-                holder.entity_display_name.as_ref(),
+                displays.get(index).and_then(Option::as_ref),
                 objective_name,
                 new_value,
             );
@@ -743,7 +773,7 @@ impl CommandExecutor for PlayersResetExecutor {
         let world = context.world().clone();
         let mut scoreboard = lock_scoreboard(&world);
 
-        let feedback = if self.has_objective {
+        let objective_display = if self.has_objective {
             let objective_name = ObjectiveArgumentType::get(context, ARG_OBJECTIVE)?.to_string();
             let display_name =
                 ObjectiveArgumentType::objective_or_error(&scoreboard, &objective_name)?
@@ -751,24 +781,32 @@ impl CommandExecutor for PlayersResetExecutor {
             for holder in &holders {
                 scoreboard.remove_score(&world, &holder.name, &objective_name);
             }
-            holder_feedback(
-                &holders,
-                translation::java::COMMANDS_SCOREBOARD_PLAYERS_RESET_SPECIFIC_SINGLE,
-                translation::java::COMMANDS_SCOREBOARD_PLAYERS_RESET_SPECIFIC_MULTIPLE,
-                |holder| [display_name, holder],
-            )
+            Some(display_name)
         } else {
             for holder in &holders {
                 scoreboard.reset_scores_for_entity(&world, &holder.name);
             }
-            holder_feedback(
-                &holders,
-                translation::java::COMMANDS_SCOREBOARD_PLAYERS_RESET_ALL_SINGLE,
-                translation::java::COMMANDS_SCOREBOARD_PLAYERS_RESET_ALL_MULTIPLE,
-                |holder| [holder],
-            )
+            None
         };
         drop(scoreboard);
+        let feedback = objective_display.map_or_else(
+            || {
+                holder_feedback(
+                    &holders,
+                    translation::java::COMMANDS_SCOREBOARD_PLAYERS_RESET_ALL_SINGLE,
+                    translation::java::COMMANDS_SCOREBOARD_PLAYERS_RESET_ALL_MULTIPLE,
+                    |holder| [holder],
+                )
+            },
+            |display_name| {
+                holder_feedback(
+                    &holders,
+                    translation::java::COMMANDS_SCOREBOARD_PLAYERS_RESET_SPECIFIC_SINGLE,
+                    translation::java::COMMANDS_SCOREBOARD_PLAYERS_RESET_SPECIFIC_MULTIPLE,
+                    |holder| [display_name, holder],
+                )
+            },
+        );
         context.source.send_feedback(feedback, true);
 
         Ok(holders.len() as i32)
@@ -893,6 +931,10 @@ impl CommandExecutor for PlayersOperationExecutor {
         let source_objective = ObjectiveArgumentType::get(context, ARG_SOURCE_OBJECTIVE)?;
 
         let world = context.world();
+        let holder_displays =
+            ResolvedScoreHolder::auto_update_displays(world, objective_name, &holders);
+        let source_displays =
+            ResolvedScoreHolder::auto_update_displays(world, source_objective, &sources);
         let mut scoreboard = lock_scoreboard(world);
 
         ObjectiveArgumentType::writable_objective_or_error(&scoreboard, objective_name)?;
@@ -901,10 +943,10 @@ impl CommandExecutor for PlayersOperationExecutor {
         let result = Self::apply(
             &mut scoreboard,
             world,
-            &holders,
+            (&holders, &holder_displays),
             objective_name,
             operation,
-            &sources,
+            (&sources, &source_displays),
             source_objective,
         )?;
         drop(scoreboard);
@@ -937,52 +979,74 @@ impl CommandExecutor for PlayersOperationExecutor {
 }
 
 impl PlayersOperationExecutor {
-    /// Applies each source sequentially and returns the sum of final target scores.
+    /// Applies each source sequentially and returns the sum of final target scores. Holders and
+    /// sources come with their `ResolvedScoreHolder::auto_update_displays`.
     fn apply(
         scoreboard: &mut Scoreboard,
         target: &impl ScoreboardTarget,
-        holders: &[ResolvedScoreHolder],
+        (holders, holder_displays): (&[ResolvedScoreHolder], &[Option<TextComponent>]),
         objective_name: &str,
         operation: ScoreboardOperation,
-        sources: &[ResolvedScoreHolder],
+        (sources, source_displays): (&[ResolvedScoreHolder], &[Option<TextComponent>]),
         source_objective: &str,
     ) -> CommandExecutorResult {
         let set = |scoreboard: &mut Scoreboard,
                    holder: &ResolvedScoreHolder,
+                   display: Option<&Option<TextComponent>>,
                    objective: &str,
                    value: i32| {
             scoreboard.set_holder_score(
                 target,
                 &holder.name,
-                holder.entity_display_name.as_ref(),
+                display.and_then(Option::as_ref),
                 objective,
                 value,
             );
         };
         let mut result: i32 = 0;
-        for holder in holders {
+        for (holder_index, holder) in holders.iter().enumerate() {
+            let holder_display = holder_displays.get(holder_index);
             if scoreboard
                 .get_score_value(&holder.name, objective_name)
                 .is_none()
             {
-                set(scoreboard, holder, objective_name, 0);
+                set(scoreboard, holder, holder_display, objective_name, 0);
             }
-            for source in sources {
+            for (source_index, source) in sources.iter().enumerate() {
+                let source_display = source_displays.get(source_index);
                 let source_value = scoreboard
                     .get_score_value(&source.name, source_objective)
                     .unwrap_or_else(|| {
-                        set(scoreboard, source, source_objective, 0);
+                        set(scoreboard, source, source_display, source_objective, 0);
                         0
                     });
                 let target_value = scoreboard
                     .get_score_value(&holder.name, objective_name)
                     .unwrap_or(0);
                 if operation == ScoreboardOperation::Swap {
-                    set(scoreboard, holder, objective_name, source_value);
-                    set(scoreboard, source, source_objective, target_value);
+                    set(
+                        scoreboard,
+                        holder,
+                        holder_display,
+                        objective_name,
+                        source_value,
+                    );
+                    set(
+                        scoreboard,
+                        source,
+                        source_display,
+                        source_objective,
+                        target_value,
+                    );
                 } else {
                     let new_value = operation.apply(target_value, source_value)?;
-                    set(scoreboard, holder, objective_name, new_value);
+                    set(
+                        scoreboard,
+                        holder,
+                        holder_display,
+                        objective_name,
+                        new_value,
+                    );
                 }
             }
             // Vanilla counts each holder once, with the score left after all of
@@ -1233,11 +1297,7 @@ mod tests {
     }
 
     fn holder(name: &str) -> ResolvedScoreHolder {
-        ResolvedScoreHolder {
-            name: name.to_string(),
-            display_name: TextComponent::text(name.to_string()),
-            entity_display_name: None,
-        }
+        ResolvedScoreHolder::named(name.to_string())
     }
 
     fn scoreboard_with_objective(criterion: &str) -> Scoreboard {
@@ -1259,15 +1319,18 @@ mod tests {
     fn get_returns_the_score_and_orders_feedback_arguments() {
         let mut scoreboard = scoreboard_with_objective("dummy");
         scoreboard.set_score_value(&NoTarget, "entity-uuid", "test", 7);
-        let entity = || ResolvedScoreHolder {
-            name: "entity-uuid".to_string(),
-            display_name: TextComponent::text("Named Pig"),
-            entity_display_name: Some(TextComponent::text("Named Pig")),
-        };
+        let display_name = || TextComponent::text("Named Pig");
 
-        let (value, feedback) = PlayersGetExecutor::get(&scoreboard, entity(), "test").unwrap();
+        let (value, objective) = PlayersGetExecutor::get(&scoreboard, "entity-uuid", "test")
+            .unwrap()
+            .unwrap();
         assert_eq!(value, 7);
-        let feedback = serde_json::to_value(feedback).unwrap();
+        let feedback = serde_json::to_value(PlayersGetExecutor::feedback(
+            display_name(),
+            value,
+            objective,
+        ))
+        .unwrap();
         assert_eq!(
             feedback["translate"],
             translation::java::COMMANDS_SCOREBOARD_PLAYERS_GET_SUCCESS
@@ -1282,7 +1345,12 @@ mod tests {
         assert_eq!(feedback["with"][2]["with"][0]["text"], "Test");
 
         scoreboard.remove_score(&NoTarget, "entity-uuid", "test");
-        let error = PlayersGetExecutor::get(&scoreboard, entity(), "test").unwrap_err();
+        assert!(
+            PlayersGetExecutor::get(&scoreboard, "entity-uuid", "test")
+                .unwrap()
+                .is_none()
+        );
+        let error = PlayersGetExecutor::no_score("test", display_name());
         assert!(error.is(&NO_SCORE_ERROR));
         assert_eq!(
             serde_json::to_value(error.message).unwrap()["with"],
@@ -1301,10 +1369,11 @@ mod tests {
         scoreboard.set_score_value(&NoTarget, "locked", "test", 5);
         let holders = [holder("enabled"), holder("locked"), holder("new")];
 
-        let (count, feedback) =
+        let (enabled, objective) =
             PlayersEnableExecutor::enable(&mut scoreboard, &NoTarget, &holders, "test").unwrap();
-        assert_eq!(count, 2);
-        let feedback = serde_json::to_value(feedback).unwrap();
+        assert_eq!(enabled.len(), 2);
+        let feedback =
+            serde_json::to_value(PlayersEnableExecutor::feedback(&enabled, objective)).unwrap();
         assert_eq!(
             feedback["translate"],
             translation::java::COMMANDS_SCOREBOARD_PLAYERS_ENABLE_SUCCESS_MULTIPLE
@@ -1315,16 +1384,18 @@ mod tests {
             assert_eq!(score.value.0, value);
             assert!(!score.locked);
         }
-        let error = PlayersEnableExecutor::enable(&mut scoreboard, &NoTarget, &holders, "test")
-            .unwrap_err();
-        assert!(error.is(&FAILED_ENABLE_ERROR));
+        assert!(matches!(
+            PlayersEnableExecutor::enable(&mut scoreboard, &NoTarget, &holders, "test"),
+            Err(error) if error.is(&FAILED_ENABLE_ERROR)
+        ));
 
         scoreboard.set_score_value(&NoTarget, "only_new", "test", 9);
         let holders = [holder("enabled"), holder("locked"), holder("only_new")];
-        let (count, feedback) =
+        let (enabled, objective) =
             PlayersEnableExecutor::enable(&mut scoreboard, &NoTarget, &holders, "test").unwrap();
-        assert_eq!(count, 1);
-        let feedback = serde_json::to_value(feedback).unwrap();
+        assert_eq!(enabled.len(), 1);
+        let feedback =
+            serde_json::to_value(PlayersEnableExecutor::feedback(&enabled, objective)).unwrap();
         assert_eq!(
             feedback["translate"],
             translation::java::COMMANDS_SCOREBOARD_PLAYERS_ENABLE_SUCCESS_SINGLE
@@ -1344,10 +1415,10 @@ mod tests {
             let result = PlayersOperationExecutor::apply(
                 &mut scoreboard,
                 &NoTarget,
-                &[holder("target")],
+                (&[holder("target")], &[]),
                 "test",
                 operation,
-                &[holder("source")],
+                (&[holder("source")], &[]),
                 "test",
             );
             assert_eq!(scoreboard.get_score_value("source", "test"), Some(0));
@@ -1375,10 +1446,10 @@ mod tests {
         let result = PlayersOperationExecutor::apply(
             &mut scoreboard,
             &NoTarget,
-            &targets,
+            (&targets, &[]),
             "test",
             ScoreboardOperation::Plus,
-            &[holder("source1"), holder("source2")],
+            (&[holder("source1"), holder("source2")], &[]),
             "test",
         )
         .unwrap();
@@ -1389,10 +1460,10 @@ mod tests {
         let result = PlayersOperationExecutor::apply(
             &mut scoreboard,
             &NoTarget,
-            &targets,
+            (&targets, &[]),
             "test",
             ScoreboardOperation::Swap,
-            &[holder("source1")],
+            (&[holder("source1")], &[]),
             "test",
         )
         .unwrap();
@@ -1404,21 +1475,13 @@ mod tests {
 
     #[test]
     fn holder_component_uses_the_name_for_one_and_a_count_for_many() {
-        let one = vec![ResolvedScoreHolder {
-            name: "entity-uuid".to_string(),
-            display_name: TextComponent::text("Named Pig"),
-            entity_display_name: None,
-        }];
+        let one = vec![holder("Named Pig")];
         let (holder_text, single) = holder_component(&one);
         assert!(single);
         assert_eq!(holder_text.to_pretty_console(), "Named Pig");
 
         let mut many = one;
-        many.push(ResolvedScoreHolder {
-            name: "Coal".to_string(),
-            display_name: TextComponent::text("Coal"),
-            entity_display_name: None,
-        });
+        many.push(holder("Coal"));
         let (holder_text, single) = holder_component(&many);
         assert!(!single);
         assert!(holder_text.to_pretty_console().contains('2'));

@@ -122,7 +122,7 @@ fn changed_holders_feedback<const N: usize>(
     args: impl FnOnce(TextComponent) -> [TextComponent; N],
 ) -> TextComponent {
     if let [holder] = changed {
-        translated(single_key, args(holder.display_name.clone()))
+        translated(single_key, args(holder.display_name()))
     } else {
         translated(
             multiple_key,
@@ -245,7 +245,7 @@ fn members(
         .entity
         .as_ref()
         .ok_or_else(|| REQUIRES_ENTITY.create_without_context())?;
-    Ok(vec![ResolvedScoreHolder::entity(entity.as_ref())])
+    Ok(vec![ResolvedScoreHolder::entity(entity.clone())])
 }
 
 struct TeamJoinExecutor {

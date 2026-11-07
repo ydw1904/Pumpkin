@@ -55,7 +55,7 @@ fn ban_ip(context: &CommandContext, target: &str, reason: Option<String>) -> Com
 
     banned_ips.banned_ips.push(BannedIpEntry::new(
         target_ip,
-        context.source.name.clone(),
+        context.source.name().to_string(),
         None,
         reason.clone(),
     ));
