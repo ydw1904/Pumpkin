@@ -131,13 +131,8 @@ pub trait FlowingFluid: Send + Sync {
         self.try_flow(world, fluid, block_pos, &state_for_spreading);
     }
 
-    /// Attempts to flow fluid from a position, prioritizing downward flow.
-    ///
-    /// Flow priority:
-    /// 1. Down - if space below, create falling fluid (level 8)
-    /// 2. Sides - spread horizontally using pathfinding
-    ///
-    /// Sources with 3+ adjacent sources also spread to sides when flowing down.
+    /// Vanilla `FlowingFluid.spread`: flows down if it can, also to the sides with 3+ adjacent
+    /// sources, and otherwise to the sides.
     fn try_flow(
         &self,
         world: &Arc<World>,
@@ -146,25 +141,25 @@ pub trait FlowingFluid: Send + Sync {
         props: &FlowingFluidProperties,
     ) {
         let below_pos = block_pos.down();
-        let is_hole = physics::can_hold_fluid(world.get_block(&below_pos));
+        let (below_block, below_state_id) = world.get_block_and_state_id(&below_pos);
+        // Water can't replace water from above, nor lava lava (`canBeReplacedWith`), and a
+        // fluid resting on its own kind is in a hole (`isWaterHole`).
+        let below_is_same_fluid = self.has_fluid_at(fluid, below_state_id);
 
-        // Try to flow down first
-        if is_hole {
+        if physics::can_hold_fluid(below_block) && !below_is_same_fluid {
             let falling_props = self.get_flowing(fluid, Level::L8, true);
             self.spread_to(world, fluid, &below_pos, falling_props.to_state_id(fluid));
 
-            // Check if we should also spread to sides
-            if props.level == Level::L8 && props.falling == Falling::False {
-                let source_count = self.count_source_neighbors(world, fluid, block_pos);
-                if source_count >= 3 {
-                    self.flow_to_sides(world, fluid, block_pos, props);
-                }
+            if self.count_source_neighbors(world, fluid, block_pos) >= 3 {
+                self.flow_to_sides(world, fluid, block_pos, props);
             }
             return;
         }
 
-        // Check if fluid should flow to the side(s)
-        self.flow_to_sides(world, fluid, block_pos, props);
+        let is_source = props.level == Level::L8 && props.falling == Falling::False;
+        if is_source || !below_is_same_fluid {
+            self.flow_to_sides(world, fluid, block_pos, props);
+        }
     }
 
     fn count_source_neighbors(

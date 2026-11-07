@@ -417,6 +417,44 @@ pub(super) async fn test_water_flows_toward_hole_four_blocks_out(
     Ok(())
 }
 
+/// Vanilla `FlowingFluid.spread`: water can't replace the water below it, so a source over a
+/// filled hole spreads to its sides.
+pub(super) async fn test_water_source_over_water_spreads_to_sides(
+    helper: GameTestHelper,
+) -> GameTestResult<()> {
+    build_stone_floor(&helper, 5, 5).await?;
+    let hole = BlockPos::new(2, 1, 2);
+    for x in 0..5 {
+        for z in 0..5 {
+            let pos = BlockPos::new(x, 1, z);
+            if pos != hole {
+                helper.set_block_default(&pos, &Block::STONE).await?;
+            }
+        }
+    }
+    helper
+        .set_block_default(&BlockPos::new(2, 2, 2), &Block::WATER)
+        .await?;
+
+    helper
+        .start_sequence()
+        .then_idle(16)
+        .then_execute(move |helper| async move {
+            helper.assert_block_present(&hole, &Block::WATER).await?;
+            for side in [
+                BlockPos::new(1, 2, 2),
+                BlockPos::new(3, 2, 2),
+                BlockPos::new(2, 2, 1),
+                BlockPos::new(2, 2, 3),
+            ] {
+                helper.assert_block_present(&side, &Block::WATER).await?;
+            }
+            Ok(())
+        })
+        .then_succeed();
+    Ok(())
+}
+
 pub(super) async fn test_sponge_ignores_lava_and_stays_dry(
     helper: GameTestHelper,
 ) -> GameTestResult<()> {
