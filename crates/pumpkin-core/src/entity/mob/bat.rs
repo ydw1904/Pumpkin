@@ -41,6 +41,11 @@ impl BatEntity {
         entity
             .synched_data
             .define(tracked_data::bat::DATA_ID_FLAGS, 0i8);
+        // The constructor's `setResting(true)` leaves the value dirty, so loading `BatFlags`
+        // of 0 from NBT is still sent.
+        entity
+            .synched_data
+            .set(tracked_data::bat::DATA_ID_FLAGS, ROOSTING_FLAG);
         let mob_entity = MobEntity::new(entity);
         let bat = Self {
             mob_entity,
