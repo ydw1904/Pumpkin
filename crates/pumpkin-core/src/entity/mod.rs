@@ -190,6 +190,24 @@ pub const fn equipment_break_status(slot: &EquipmentSlot) -> EntityStatus {
     }
 }
 
+/// Runs `f` on the team of a non-player entity, found by its scoreboard name.
+fn with_entity_team<E: EntityBase + ?Sized, R>(
+    entity: &E,
+    f: impl FnOnce(&crate::world::scoreboard::Team) -> R,
+) -> Option<R> {
+    let world = entity.get_entity().world.load();
+    let scoreboard = world
+        .scoreboard
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if scoreboard.get_teams().is_empty() {
+        return None;
+    }
+    scoreboard
+        .get_entity_team(&entity.get_scoreboard_name())
+        .map(f)
+}
+
 impl dyn EntityBase + '_ {
     /// Inherent on the trait object so both sides can be `&dyn EntityBase`.
     #[must_use]
@@ -517,17 +535,7 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         if let Some(player) = self.get_player() {
             return player.get_team();
         }
-        let world = self.get_entity().world.load();
-        let scoreboard = world
-            .scoreboard
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if scoreboard.get_teams().is_empty() {
-            return None;
-        }
-        scoreboard
-            .get_entity_team(&self.get_scoreboard_name())
-            .cloned()
+        with_entity_team(self, Clone::clone)
     }
 
     /// The team name alone, which is all the ally checks need. Worth having because
@@ -537,17 +545,16 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         if let Some(player) = self.get_player() {
             return player.get_team_name();
         }
-        let world = self.get_entity().world.load();
-        let scoreboard = world
-            .scoreboard
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if scoreboard.get_teams().is_empty() {
-            return None;
+        with_entity_team(self, |team| team.name.clone())
+    }
+
+    /// The team's name and collision rule, which is all the push rules need. They run once
+    /// per entity touching a pushing entity, every tick.
+    fn get_team_collision(&self) -> Option<crate::world::scoreboard::TeamCollision> {
+        if let Some(player) = self.get_player() {
+            return player.get_team_collision();
         }
-        scoreboard
-            .get_entity_team(&self.get_scoreboard_name())
-            .map(|team| team.name.clone())
+        with_entity_team(self, crate::world::scoreboard::Team::collision)
     }
 
     fn considers_entity_as_ally(&self, other: &dyn EntityBase) -> bool {

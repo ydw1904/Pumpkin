@@ -345,7 +345,7 @@ impl BoatEntity {
             .bounding_box
             .load()
             .expand(PUSH_GROWTH, PUSH_HEIGHT_GROWTH, PUSH_GROWTH);
-        let own_team = self.get_team();
+        let own_team = self.get_team_collision();
         // Vanilla `EntitySelector.pushableBy`.
         let touching: Vec<_> = world
             .get_all_at_box(&area)
@@ -354,7 +354,10 @@ impl BoatEntity {
                 other.get_entity().entity_id != entity.entity_id
                     && !other.is_spectator()
                     && other.is_pushable()
-                    && is_allowed_by_team_rules(own_team.as_ref(), other.get_team().as_ref())
+                    && is_allowed_by_team_rules(
+                        own_team.as_ref(),
+                        other.get_team_collision().as_ref(),
+                    )
             })
             .collect();
         let add_new_passengers = !self.is_client_authoritative();

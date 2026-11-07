@@ -1182,8 +1182,23 @@ pub struct Team {
     pub players: Vec<String>,
 }
 
+/// What the push rules read from a team, without copying its members.
+#[derive(Clone, Debug)]
+pub struct TeamCollision {
+    pub name: String,
+    pub rule: CollisionRule,
+}
+
 impl Team {
     pub(crate) const ALLOW_FRIENDLY_FIRE: i8 = 0x01;
+
+    #[must_use]
+    pub fn collision(&self) -> TeamCollision {
+        TeamCollision {
+            name: self.name.clone(),
+            rule: self.collision_rule,
+        }
+    }
     pub(crate) const SEE_FRIENDLY_INVISIBLES: i8 = 0x02;
 
     #[must_use]

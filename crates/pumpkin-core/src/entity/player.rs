@@ -4622,7 +4622,8 @@ impl Player {
         }
     }
 
-    pub fn get_team(&self) -> Option<crate::world::scoreboard::Team> {
+    /// Runs `f` on the player's team: on the custom scoreboard first, then the world's.
+    fn with_team<R>(&self, f: impl FnOnce(&crate::world::scoreboard::Team) -> R) -> Option<R> {
         let guard = self
             .custom_scoreboard
             .lock()
@@ -4630,33 +4631,26 @@ impl Player {
         if let Some(CustomScoreboard::Java(sb)) = guard.as_ref()
             && let Some(team) = sb.get_entity_team(&self.gameprofile.name)
         {
-            return Some(team.clone());
+            return Some(f(team));
         }
         let world = self.world();
         let sb = world
             .scoreboard
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        sb.get_entity_team(&self.gameprofile.name).cloned()
+        sb.get_entity_team(&self.gameprofile.name).map(f)
+    }
+
+    pub fn get_team(&self) -> Option<crate::world::scoreboard::Team> {
+        self.with_team(Clone::clone)
     }
 
     pub fn get_team_name(&self) -> Option<String> {
-        let guard = self
-            .custom_scoreboard
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(CustomScoreboard::Java(sb)) = guard.as_ref()
-            && let Some(team) = sb.get_entity_team(&self.gameprofile.name)
-        {
-            return Some(team.name.clone());
-        }
-        let world = self.world();
-        let sb = world
-            .scoreboard
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        sb.get_entity_team(&self.gameprofile.name)
-            .map(|team| team.name.clone())
+        self.with_team(|team| team.name.clone())
+    }
+
+    pub fn get_team_collision(&self) -> Option<crate::world::scoreboard::TeamCollision> {
+        self.with_team(crate::world::scoreboard::Team::collision)
     }
 
     pub fn set_compass_target(&self, pos: pumpkin_util::math::position::BlockPos) {

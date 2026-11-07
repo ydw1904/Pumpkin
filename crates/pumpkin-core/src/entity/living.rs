@@ -206,13 +206,13 @@ impl EffectParticle {
 }
 
 pub(crate) fn is_allowed_by_team_rules(
-    own_team: Option<&crate::world::scoreboard::Team>,
-    their_team: Option<&crate::world::scoreboard::Team>,
+    own_team: Option<&crate::world::scoreboard::TeamCollision>,
+    their_team: Option<&crate::world::scoreboard::TeamCollision>,
 ) -> bool {
     use crate::world::scoreboard::CollisionRule;
 
-    let own_rule = own_team.map_or(CollisionRule::Always, |team| team.collision_rule);
-    let their_rule = their_team.map_or(CollisionRule::Always, |team| team.collision_rule);
+    let own_rule = own_team.map_or(CollisionRule::Always, |team| team.rule);
+    let their_rule = their_team.map_or(CollisionRule::Always, |team| team.rule);
 
     if own_rule == CollisionRule::Never || their_rule == CollisionRule::Never {
         return false;
@@ -2289,7 +2289,7 @@ impl LivingEntity {
 
         let world = self.entity.world.load();
         let entity_bb = self.entity.bounding_box.load();
-        let own_team = dyn_self.get_team();
+        let own_team = dyn_self.get_team_collision();
 
         let pushable: Vec<Arc<dyn EntityBase>> = world
             .get_all_at_box(&entity_bb)
@@ -2299,7 +2299,10 @@ impl LivingEntity {
                 entity_ref.entity_id != self.entity.entity_id
                     && !entity.is_spectator()
                     && entity.is_pushable()
-                    && is_allowed_by_team_rules(own_team.as_ref(), entity.get_team().as_ref())
+                    && is_allowed_by_team_rules(
+                        own_team.as_ref(),
+                        entity.get_team_collision().as_ref(),
+                    )
             })
             .collect();
 
