@@ -10,11 +10,19 @@ use pumpkin_inventory::crafting::recipe_provider::MapDataInfo;
 
 use super::Server;
 
-use pumpkin_inventory::crafting::recipe_provider::RecipeProvider;
+use pumpkin_inventory::crafting::recipe_provider::{RecipeProvider, recipe_property_sets};
+use pumpkin_inventory::stonecutter_screen_handler::stonecutter_recipes;
 pub use pumpkin_protocol::codec::recipe::DynamicRecipe;
 use pumpkin_protocol::codec::recipe::{
-    OwnedCookingRecipe, OwnedCookingRecipeType, recipe_registry_order,
+    OwnedCookingRecipe, OwnedCookingRecipeType, RecipePropertySet, RecipePropertySetKey,
+    SelectableStonecutterRecipe, recipe_registry_order,
 };
+use pumpkin_protocol::java::client::play::{CUpdateRecipes, write_update_recipes};
+use pumpkin_util::version::JavaMinecraftVersion;
+use tracing::error;
+
+use crate::entity::player::Player;
+use crate::net::ClientPlatform;
 
 pub struct RecipeManager {
     dynamic_recipes: RwLock<DynamicRecipes>,
@@ -103,6 +111,49 @@ impl RecipeProvider for RecipeManager {
 
     fn replaces_builtin(&self, recipe_id: &str) -> bool {
         Self::replaces_builtin(self, recipe_id)
+    }
+}
+
+/// `RecipeManager.getSynchronizedItemProperties` and `getSynchronizedStonecutterRecipes`: what
+/// `ClientboundUpdateRecipesPacket` tells clients about the recipes.
+pub struct SynchronizedRecipes {
+    item_sets: Vec<(RecipePropertySetKey, RecipePropertySet)>,
+    stonecutter_recipes: Vec<SelectableStonecutterRecipe>,
+}
+
+impl SynchronizedRecipes {
+    #[must_use]
+    pub fn new(manager: &RecipeManager) -> Self {
+        Self {
+            item_sets: recipe_property_sets(Some(manager)),
+            stonecutter_recipes: stonecutter_recipes(Some(manager)),
+        }
+    }
+
+    /// Sends `ClientboundUpdateRecipesPacket` to a Java client of 1.21.2 or later, which uses
+    /// it for the stonecutter's recipe list and the furnace, smithing and brewing slots.
+    pub fn send_to(&self, player: &Player) {
+        let ClientPlatform::Java(client) = player.client.as_ref() else {
+            return;
+        };
+        let version = client.version.load();
+        if version < JavaMinecraftVersion::V_1_21_2 {
+            return;
+        }
+        let mut data = Vec::new();
+        if let Err(err) = write_update_recipes(
+            &mut data,
+            &self.item_sets,
+            &self.stonecutter_recipes,
+            version,
+        ) {
+            error!(
+                "Failed to write the recipes for {}: {err}",
+                player.gameprofile.name
+            );
+            return;
+        }
+        player.try_send_client_packet(&CUpdateRecipes::new(&data));
     }
 }
 

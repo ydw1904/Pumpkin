@@ -2,7 +2,7 @@ use std::any::Any;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
-use crate::crafting::recipe_provider::RecipeProvider;
+use crate::crafting::recipe_provider::{RecipeProvider, recipe_property_set};
 use crate::player::player_inventory::PlayerInventory;
 use crate::screen_handler::{InventoryPlayer, ScreenHandler, ScreenHandlerBehaviour};
 use crate::slot::{NormalSlot, Slot};
@@ -19,7 +19,7 @@ use pumpkin_data::recipes::{
 use pumpkin_data::screen::WindowType;
 use pumpkin_data::statistic::StatisticCategory;
 use pumpkin_nbt::tag::NbtTag;
-use pumpkin_protocol::codec::recipe::DynamicRecipe;
+use pumpkin_protocol::codec::recipe::{DynamicRecipe, RecipePropertySetKey};
 use pumpkin_protocol::java::server::play::SlotActionType;
 
 const RESULT_SLOT: i32 = 3;
@@ -36,34 +36,15 @@ enum SmithingInput {
 }
 
 impl SmithingInput {
-    const fn pick<'a, T>(self, template: &'a T, base: &'a T, addition: &'a T) -> &'a T {
-        match self {
-            Self::Template => template,
-            Self::Base => base,
-            Self::Addition => addition,
-        }
-    }
-
-    /// Whether any smithing recipe takes `item` in this input, like vanilla's
+    /// Whether any smithing recipe takes `item` in this input: vanilla's
     /// `RecipePropertySet.SMITHING_TEMPLATE`, `SMITHING_BASE` and `SMITHING_ADDITION`.
     fn accepts(self, item: &Item, provider: Option<&Arc<dyn RecipeProvider>>) -> bool {
-        builtin_transforms(provider).any(|r| {
-            self.pick(&r.template, &r.base, &r.addition)
-                .match_item(item)
-        }) || builtin_trims(provider).any(|r| {
-            self.pick(&r.template, &r.base, &r.addition)
-                .match_item(item)
-        }) || provider.is_some_and(|provider| {
-            provider.get_dynamic_recipes().iter().any(|d| match d {
-                DynamicRecipe::SmithingTransform(r) => self
-                    .pick(&r.template, &r.base, &r.addition)
-                    .match_item(item),
-                DynamicRecipe::SmithingTrim(r) => self
-                    .pick(&r.template, &r.base, &r.addition)
-                    .match_item(item),
-                _ => false,
-            })
-        })
+        let key = match self {
+            Self::Template => RecipePropertySetKey::SmithingTemplate,
+            Self::Base => RecipePropertySetKey::SmithingBase,
+            Self::Addition => RecipePropertySetKey::SmithingAddition,
+        };
+        recipe_property_set(key, provider.map(AsRef::as_ref)).test(item)
     }
 }
 

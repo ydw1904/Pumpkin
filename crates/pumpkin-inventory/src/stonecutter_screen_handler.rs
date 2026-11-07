@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::borrow::Cow;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
@@ -14,7 +15,9 @@ use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::recipes::{RECIPES_STONECUTTING, RECIPES_STONECUTTING_IDS};
 use pumpkin_data::screen::WindowType;
 use pumpkin_data::statistic::StatisticCategory;
-use pumpkin_protocol::codec::recipe::DynamicRecipe;
+use pumpkin_protocol::codec::recipe::{
+    DynamicRecipe, ItemHolderSet, SelectableStonecutterRecipe, recipe_registry_order,
+};
 use pumpkin_protocol::java::server::play::SlotActionType;
 
 pub struct StonecutterRecipeChoice {
@@ -89,43 +92,66 @@ impl StonecutterScreenHandler {
         self.update_output();
     }
 
+    /// `SelectableRecipe.SingleInputSet.selectByInput` on the recipes the client was sent.
     #[must_use]
     pub fn get_available_recipes(&self, input: &ItemStack) -> Vec<StonecutterRecipeChoice> {
-        let item = input.item;
-        let mut results = Vec::new();
-        let provider = self.recipe_provider.as_deref();
-        for (r, id) in RECIPES_STONECUTTING.iter().zip(RECIPES_STONECUTTING_IDS) {
-            if provider.is_some_and(|provider| provider.replaces_builtin(id)) {
-                continue;
-            }
-            if r.ingredient.match_item(item) {
-                let key = r
-                    .result
-                    .id
-                    .strip_prefix("minecraft:")
-                    .unwrap_or(r.result.id);
-                let result_item = Item::from_registry_key(key).unwrap_or(&Item::AIR);
-                results.push(StonecutterRecipeChoice {
-                    result: ItemStack::new(r.result.count, result_item),
-                });
-            }
-        }
-        if let Some(provider) = provider {
-            for dynamic in provider.get_dynamic_recipes() {
-                if let DynamicRecipe::Stonecutting(r) = dynamic
-                    && r.ingredient.match_item(item)
-                {
-                    results.push(StonecutterRecipeChoice {
-                        result: r
-                            .result
-                            .to_stack()
-                            .unwrap_or_else(|| ItemStack::EMPTY.clone()),
-                    });
-                }
-            }
-        }
-        results
+        stonecutter_recipes(self.recipe_provider.as_deref())
+            .into_iter()
+            .filter(|recipe| recipe.input.contains(input.item))
+            .map(|recipe| StonecutterRecipeChoice {
+                result: recipe.result,
+            })
+            .collect()
     }
+}
+
+/// `RecipeManager.getSynchronizedStonecutterRecipes`: the stonecutter recipes in registry order.
+///
+/// These are the built-in ones no datapack or plugin recipe replaces and those recipes. Recipes
+/// with an unknown item or tag are left out, as vanilla fails to load them.
+#[must_use]
+pub fn stonecutter_recipes(
+    provider: Option<&dyn RecipeProvider>,
+) -> Vec<SelectableStonecutterRecipe> {
+    let mut recipes: Vec<_> = RECIPES_STONECUTTING
+        .iter()
+        .zip(RECIPES_STONECUTTING_IDS)
+        .filter(|(_, id)| !provider.is_some_and(|provider| provider.replaces_builtin(id)))
+        .filter_map(|(recipe, id)| {
+            let key = recipe
+                .result
+                .id
+                .strip_prefix("minecraft:")
+                .unwrap_or(recipe.result.id);
+            let mut result = ItemStack::new(recipe.result.count, Item::from_registry_key(key)?);
+            for (component, value) in recipe.result.components {
+                result.patch.push((*component, Some(value.clone_dyn())));
+            }
+            Some(SelectableStonecutterRecipe {
+                recipe_id: Cow::Borrowed(*id),
+                input: ItemHolderSet::from_builtin(&recipe.ingredient)?,
+                result,
+            })
+        })
+        .collect();
+    let dynamic = provider.map(RecipeProvider::get_dynamic_recipes);
+    recipes.extend(
+        dynamic
+            .into_iter()
+            .flatten()
+            .filter_map(|recipe| match recipe {
+                DynamicRecipe::Stonecutting(recipe) => Some(SelectableStonecutterRecipe {
+                    input: ItemHolderSet::from_dynamic(&recipe.ingredient)?,
+                    result: recipe.result.to_stack().filter(|stack| !stack.is_empty())?,
+                    recipe_id: Cow::Owned(recipe.recipe_id),
+                }),
+                _ => None,
+            }),
+    );
+    recipes.sort_by(|a, b| {
+        recipe_registry_order(&a.recipe_id).cmp(&recipe_registry_order(&b.recipe_id))
+    });
+    recipes
 }
 
 impl ScreenHandler for StonecutterScreenHandler {

@@ -845,7 +845,9 @@ impl Server {
         for player in &players {
             player.try_send_client_packet(&tags_packet);
         }
+        let recipes = recipe::SynchronizedRecipes::new(&self.recipe_manager);
         for player in &players {
+            recipes.send_to(player);
             player.send_initial_recipe_book();
         }
 

@@ -1,10 +1,13 @@
-use pumpkin_data::recipes::RecipeCategoryTypes;
+use std::borrow::Cow;
+use std::collections::BTreeSet;
+
+use pumpkin_data::recipes::{RecipeCategoryTypes, RecipeIngredientTypes};
 
 use pumpkin_data::data_component::DataComponent;
 use pumpkin_data::data_component_impl::DataComponentImpl;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
-use pumpkin_data::tag::Taggable;
+use pumpkin_data::tag::{RegistryKey, Taggable, get_tag_ids};
 
 /// The order of recipe ids in vanilla's recipe registry: `Identifier.compareTo` compares the
 /// path first, then the namespace.
@@ -12,6 +15,157 @@ use pumpkin_data::tag::Taggable;
 pub fn recipe_registry_order(id: &str) -> (&str, &str) {
     id.split_once(':')
         .map_or((id, "minecraft"), |(namespace, path)| (path, namespace))
+}
+
+/// The `HolderSet<Item>` of an `Ingredient`: an item tag, or the items it lists.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ItemHolderSet {
+    /// The tag's full id and its items as the loaded datapacks define them.
+    Named {
+        tag: String,
+        items: &'static [u16],
+    },
+    Direct(Vec<u16>),
+}
+
+impl ItemHolderSet {
+    /// The holder set of a built-in recipe's ingredient, or `None` if it names an unknown
+    /// item or tag.
+    #[must_use]
+    pub fn from_builtin(ingredient: &RecipeIngredientTypes) -> Option<Self> {
+        match ingredient {
+            RecipeIngredientTypes::Simple(id) => Self::direct([*id]),
+            RecipeIngredientTypes::Tagged(tag) => Self::named(tag),
+            RecipeIngredientTypes::OneOf(ids) => Self::direct(ids.iter().copied()),
+        }
+    }
+
+    /// The holder set of a datapack or plugin recipe's ingredient, or `None` if it names an
+    /// unknown item or tag, which vanilla fails to load the recipe for.
+    #[must_use]
+    pub fn from_dynamic(ingredient: &OwnedRecipeIngredient) -> Option<Self> {
+        match ingredient {
+            OwnedRecipeIngredient::Simple(id) => Self::direct([id.as_str()]),
+            OwnedRecipeIngredient::Tagged(tag) => Self::named(tag),
+            OwnedRecipeIngredient::OneOf(ids) => Self::direct(ids.iter().map(String::as_str)),
+        }
+    }
+
+    fn direct<'a>(ids: impl IntoIterator<Item = &'a str>) -> Option<Self> {
+        let items = ids
+            .into_iter()
+            .map(|id| Item::from_registry_key(id.strip_prefix("minecraft:").unwrap_or(id)))
+            .map(|item| item.map(|item| item.id))
+            .collect::<Option<Vec<_>>>()?;
+        // `Ingredient` refuses an empty list of items.
+        (!items.is_empty()).then_some(Self::Direct(items))
+    }
+
+    fn named(tag: &str) -> Option<Self> {
+        let tag = tag.strip_prefix('#').unwrap_or(tag);
+        let tag = if tag.contains(':') {
+            Cow::Borrowed(tag)
+        } else {
+            Cow::Owned(format!("minecraft:{tag}"))
+        };
+        let items = get_tag_ids(RegistryKey::Item, &tag).or_else(|| {
+            tag.strip_prefix("minecraft:")
+                .and_then(|path| get_tag_ids(RegistryKey::Item, path))
+        })?;
+        Some(Self::Named {
+            tag: tag.into_owned(),
+            items,
+        })
+    }
+
+    /// The ids of the items in the set.
+    #[must_use]
+    pub fn item_ids(&self) -> &[u16] {
+        match self {
+            Self::Named { items, .. } => items,
+            Self::Direct(items) => items,
+        }
+    }
+
+    /// `Ingredient.test` on an item.
+    #[must_use]
+    pub fn contains(&self, item: &Item) -> bool {
+        self.item_ids().contains(&item.id)
+    }
+}
+
+/// The keys of vanilla's `RecipePropertySet`s, in `RecipePropertySet`'s declaration order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RecipePropertySetKey {
+    SmithingBase,
+    SmithingTemplate,
+    SmithingAddition,
+    FurnaceInput,
+    BlastFurnaceInput,
+    SmokerInput,
+    CampfireInput,
+    BrewingInput,
+    BrewingReagent,
+}
+
+impl RecipePropertySetKey {
+    pub const ALL: [Self; 9] = [
+        Self::SmithingBase,
+        Self::SmithingTemplate,
+        Self::SmithingAddition,
+        Self::FurnaceInput,
+        Self::BlastFurnaceInput,
+        Self::SmokerInput,
+        Self::CampfireInput,
+        Self::BrewingInput,
+        Self::BrewingReagent,
+    ];
+
+    #[must_use]
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::SmithingBase => "minecraft:smithing_base",
+            Self::SmithingTemplate => "minecraft:smithing_template",
+            Self::SmithingAddition => "minecraft:smithing_addition",
+            Self::FurnaceInput => "minecraft:furnace_input",
+            Self::BlastFurnaceInput => "minecraft:blast_furnace_input",
+            Self::SmokerInput => "minecraft:smoker_input",
+            Self::CampfireInput => "minecraft:campfire_input",
+            Self::BrewingInput => "minecraft:brewing_input",
+            Self::BrewingReagent => "minecraft:brewing_reagent",
+        }
+    }
+}
+
+/// `RecipePropertySet`: every item some recipe takes in one input.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RecipePropertySet(BTreeSet<u16>);
+
+impl RecipePropertySet {
+    pub fn add(&mut self, ingredient: &ItemHolderSet) {
+        self.0.extend(ingredient.item_ids());
+    }
+
+    pub fn add_item(&mut self, item: &Item) {
+        self.0.insert(item.id);
+    }
+
+    #[must_use]
+    pub fn test(&self, item: &Item) -> bool {
+        self.0.contains(&item.id)
+    }
+
+    pub fn item_ids(&self) -> impl ExactSizeIterator<Item = u16> + '_ {
+        self.0.iter().copied()
+    }
+}
+
+/// A stonecutter recipe as the stonecutter lists it: `SelectableRecipe.SingleInputEntry`.
+#[derive(Clone)]
+pub struct SelectableStonecutterRecipe {
+    pub recipe_id: Cow<'static, str>,
+    pub input: ItemHolderSet,
+    pub result: ItemStack,
 }
 
 #[derive(Clone, Debug)]
