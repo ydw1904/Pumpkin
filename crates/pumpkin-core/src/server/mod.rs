@@ -508,9 +508,17 @@ impl Server {
 
         // `MinecraftServer.configurePackRepository`: packs added to the world's folder since it
         // last ran are enabled, unless the world lists them as disabled.
+        server.datapack_manager.rescan_world_packs(&server);
+        for pack in DatapackManager::missing_packs(&server) {
+            warn!("Missing data pack {pack}");
+        }
         let data_packs = DatapackManager::discover_new_packs(&server);
-        let saved_count = server.level_info.load().data_packs.enabled.len();
-        for pack in &data_packs.enabled[saved_count..] {
+        let saved = server.level_info.load().data_packs.enabled.clone();
+        for pack in data_packs
+            .enabled
+            .iter()
+            .filter(|pack| !saved.contains(pack))
+        {
             info!("Found new data pack {pack}, loading it automatically");
         }
         if server.load_datapacks(&data_packs.enabled).is_err() {

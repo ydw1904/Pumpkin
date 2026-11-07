@@ -1156,6 +1156,8 @@ impl DatapackManager {
             .contains(&name)
     }
 
+    /// Vanilla `PackRepository.getAvailableIds`: the embedded and bundled packs and the world's
+    /// pack folders as last scanned, not what's on disk right now.
     pub fn get_all_known_packs(server: &Server) -> Vec<String> {
         let mut packs: Vec<String> =
             pumpkin_world::generation::structure::template::all_embedded_datapack_names()
@@ -1171,7 +1173,6 @@ impl DatapackManager {
             }
         }
 
-        // The world's pack folders as last scanned, not what's on disk right now.
         for pack_name in server
             .datapack_manager
             .world_packs
@@ -1184,23 +1185,11 @@ impl DatapackManager {
             }
         }
 
-        let level_info = server.level_info.load();
-
-        for pack in &level_info.data_packs.enabled {
-            if !packs.iter().any(|p| p == pack) {
-                packs.push(pack.clone());
-            }
-        }
-
-        for pack in &level_info.data_packs.disabled {
-            if !packs.iter().any(|p| p == pack) {
-                packs.push(pack.clone());
-            }
-        }
-
         packs
     }
 
+    /// The selected packs, without the ones the last scan didn't find (vanilla
+    /// `PackRepository.rebuildSelected`).
     pub fn get_enabled_packs(server: &Server) -> Vec<String> {
         // Compile-time embedded datapacks cannot be disabled at runtime, so
         // expose them as permanently enabled.
@@ -1210,13 +1199,29 @@ impl DatapackManager {
                 .map(|name| (*name).to_owned())
                 .collect();
 
+        let known = Self::get_all_known_packs(server);
         for pack in &server.level_info.load().data_packs.enabled {
-            if !packs.iter().any(|existing| existing == pack) {
+            if known.contains(pack) && !packs.iter().any(|existing| existing == pack) {
                 packs.push(pack.clone());
             }
         }
 
         packs
+    }
+
+    /// The packs the world lists as enabled that the last scan didn't find.
+    #[must_use]
+    pub fn missing_packs(server: &Server) -> Vec<String> {
+        let known = Self::get_all_known_packs(server);
+        server
+            .level_info
+            .load()
+            .data_packs
+            .enabled
+            .iter()
+            .filter(|pack| !known.contains(pack))
+            .cloned()
+            .collect()
     }
 
     pub fn get_available_packs(server: &Server) -> Vec<String> {
@@ -1408,7 +1413,11 @@ impl DatapackManager {
     pub fn discover_new_packs(server: &Server) -> DataPacks {
         server.datapack_manager.rescan_world_packs(server);
         let mut data_packs = server.level_info.load().data_packs.clone();
-        let new_packs: Vec<String> = Self::get_all_known_packs(server)
+        let known = Self::get_all_known_packs(server);
+        // `MinecraftServer.getSelectedPacks` keeps only packs the repository has.
+        data_packs.enabled.retain(|pack| known.contains(pack));
+        data_packs.disabled.retain(|pack| known.contains(pack));
+        let new_packs: Vec<String> = known
             .into_iter()
             .filter(|pack| {
                 pack.starts_with("file/")
