@@ -77,8 +77,6 @@ impl JavaClient {
 
         let mut item = inventory.get_stack_in_hand(hand);
         let before = item.clone();
-        let item_id = item.item.id;
-        player.increment_stat(StatisticCategory::Used, item_id as i32, 1);
 
         let entity = &player.get_entity();
         let world = entity.world.load_full();
@@ -189,6 +187,12 @@ impl JavaClient {
         }
 
         let after = item.clone();
+
+        // Vanilla `ItemStack.useOn`: only an item use that succeeded counts. Blocks that use the
+        // item themselves award the stat on their own.
+        if item_result.consumes_action() || should_try_decrement {
+            player.increment_stat(StatisticCategory::Used, i32::from(before.item.id), 1);
+        }
 
         if item_result.consumes_action() || !item.are_equal(&before) {
             let state = pumpkin_data::block_properties::CopperBulbLikeProperties::handles_block_id(

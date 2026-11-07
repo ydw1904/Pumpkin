@@ -10,6 +10,7 @@ use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
+use pumpkin_data::statistic::{CustomStatistic, StatisticCategory};
 use pumpkin_data::tag::Taggable;
 use pumpkin_data::{Block, BlockId, BlockState};
 use pumpkin_util::biome::Precipitation;
@@ -75,6 +76,12 @@ fn give_stack_or_drop(
     }
 }
 
+/// The two stats vanilla `CauldronInteractions` awards for a bucket or bottle interaction.
+fn award_cauldron_use(player: &crate::entity::player::Player, stat: CustomStatistic, item_id: u16) {
+    player.increment_stat(StatisticCategory::Custom, stat as i32, 1);
+    player.increment_stat(StatisticCategory::Used, i32::from(item_id), 1);
+}
+
 impl BlockBehaviour for CauldronBlock {
     #[allow(clippy::too_many_lines)]
     fn use_with_item(&self, args: UseWithItemArgs<'_>) -> BlockActionResult {
@@ -106,11 +113,7 @@ impl BlockBehaviour for CauldronBlock {
                 );
                 args.item_stack.decrement_unless_creative(gamemode, 1);
                 give_item_or_drop(args.player, args.world, &Item::BUCKET);
-                args.player.increment_stat(
-                    pumpkin_data::statistic::StatisticCategory::Custom,
-                    pumpkin_data::statistic::CustomStatistic::FillCauldron as i32,
-                    1,
-                );
+                award_cauldron_use(args.player, CustomStatistic::FillCauldron, item_id);
                 return BlockActionResult::Success;
             } else if item_id == Item::LAVA_BUCKET.id {
                 args.world.set_block_state(
@@ -125,11 +128,7 @@ impl BlockBehaviour for CauldronBlock {
                 );
                 args.item_stack.decrement_unless_creative(gamemode, 1);
                 give_item_or_drop(args.player, args.world, &Item::BUCKET);
-                args.player.increment_stat(
-                    pumpkin_data::statistic::StatisticCategory::Custom,
-                    pumpkin_data::statistic::CustomStatistic::FillCauldron as i32,
-                    1,
-                );
+                award_cauldron_use(args.player, CustomStatistic::FillCauldron, item_id);
                 return BlockActionResult::Success;
             } else if item_id == Item::POWDER_SNOW_BUCKET.id {
                 let state_id = Block::POWDER_SNOW_CAULDRON
@@ -144,11 +143,7 @@ impl BlockBehaviour for CauldronBlock {
                 );
                 args.item_stack.decrement_unless_creative(gamemode, 1);
                 give_item_or_drop(args.player, args.world, &Item::BUCKET);
-                args.player.increment_stat(
-                    pumpkin_data::statistic::StatisticCategory::Custom,
-                    pumpkin_data::statistic::CustomStatistic::FillCauldron as i32,
-                    1,
-                );
+                award_cauldron_use(args.player, CustomStatistic::FillCauldron, item_id);
                 return BlockActionResult::Success;
             } else if item_id == Item::POTION.id {
                 let state_id = Block::WATER_CAULDRON
@@ -163,11 +158,7 @@ impl BlockBehaviour for CauldronBlock {
                 );
                 args.item_stack.decrement_unless_creative(gamemode, 1);
                 give_item_or_drop(args.player, args.world, &Item::GLASS_BOTTLE);
-                args.player.increment_stat(
-                    pumpkin_data::statistic::StatisticCategory::Custom,
-                    pumpkin_data::statistic::CustomStatistic::UseCauldron as i32,
-                    1,
-                );
+                award_cauldron_use(args.player, CustomStatistic::UseCauldron, item_id);
                 return BlockActionResult::Success;
             }
         }
@@ -207,11 +198,7 @@ impl BlockBehaviour for CauldronBlock {
                     .play_sound(sound, SoundCategory::Blocks, &args.position.to_f64());
                 args.item_stack.decrement_unless_creative(gamemode, 1);
                 give_item_or_drop(args.player, args.world, result_item);
-                args.player.increment_stat(
-                    pumpkin_data::statistic::StatisticCategory::Custom,
-                    pumpkin_data::statistic::CustomStatistic::UseCauldron as i32,
-                    1,
-                );
+                award_cauldron_use(args.player, CustomStatistic::UseCauldron, item_id);
                 return BlockActionResult::Success;
             }
         }
@@ -234,11 +221,7 @@ impl BlockBehaviour for CauldronBlock {
                     );
                     args.item_stack.decrement_unless_creative(gamemode, 1);
                     give_item_or_drop(args.player, args.world, &Item::GLASS_BOTTLE);
-                    args.player.increment_stat(
-                        pumpkin_data::statistic::StatisticCategory::Custom,
-                        pumpkin_data::statistic::CustomStatistic::UseCauldron as i32,
-                        1,
-                    );
+                    award_cauldron_use(args.player, CustomStatistic::UseCauldron, item_id);
                     return BlockActionResult::Success;
                 }
 
@@ -271,11 +254,7 @@ impl BlockBehaviour for CauldronBlock {
                         args.world,
                         crate::item::items::glass_bottle::water_bottle(),
                     );
-                    args.player.increment_stat(
-                        pumpkin_data::statistic::StatisticCategory::Custom,
-                        pumpkin_data::statistic::CustomStatistic::UseCauldron as i32,
-                        1,
-                    );
+                    award_cauldron_use(args.player, CustomStatistic::UseCauldron, item_id);
                     return BlockActionResult::Success;
                 }
 

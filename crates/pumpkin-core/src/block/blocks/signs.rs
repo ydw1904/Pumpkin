@@ -667,6 +667,11 @@ impl BlockBehaviour for SignBlock {
                     text,
                     sign_entity.allow_op_features(),
                 );
+                args.player.increment_stat(
+                    pumpkin_data::statistic::StatisticCategory::Used,
+                    i32::from(args.item_stack.item.id),
+                    1,
+                );
                 if pumpkin_item.as_any().is::<GlowingInkSacItem>() {
                     args.player.trigger_advancement(
                         crate::entity::player::advancement::trigger::AdvancementTrigger::GlowedSign,

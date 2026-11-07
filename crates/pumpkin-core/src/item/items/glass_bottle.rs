@@ -198,7 +198,6 @@ impl ItemBehaviour for GlassBottleItem {
             &location.to_f64(),
         );
         world.emit_game_event(GameEvent::FluidPickup.name(), location.to_f64());
-        player.increment_stat(StatisticCategory::Used, i32::from(Item::GLASS_BOTTLE.id), 1);
 
         let mut water_bottle = water_bottle();
         if item.item_count == 1 && player.gamemode.load() != pumpkin_util::GameMode::Creative {

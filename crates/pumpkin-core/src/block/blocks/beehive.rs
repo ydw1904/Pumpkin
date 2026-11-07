@@ -17,6 +17,7 @@ use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
+use pumpkin_data::statistic::StatisticCategory;
 use pumpkin_data::{BlockId, BlockStateId};
 use pumpkin_util::GameMode;
 use pumpkin_util::math::boundingbox::BoundingBox;
@@ -211,6 +212,8 @@ impl BlockBehaviour for BeehiveBlock {
             }
             Self::release_bees_and_reset_honey_level(args.world, args.position, Some(args.player));
         }
+        args.player
+            .increment_stat(StatisticCategory::Used, i32::from(item.id), 1);
         BlockActionResult::Success
     }
 

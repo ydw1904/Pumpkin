@@ -126,7 +126,11 @@ impl ChiseledBookshelfBlock {
         slot: i8,
         item: &mut ItemStack,
     ) {
-        // TODO: Increment used stats for chiseled bookshelf on the player
+        player.increment_stat(
+            pumpkin_data::statistic::StatisticCategory::Used,
+            i32::from(item.get_item().id),
+            1,
+        );
 
         let sound = if item.get_item() == &Item::ENCHANTED_BOOK {
             Sound::BlockChiseledBookshelfInsertEnchanted

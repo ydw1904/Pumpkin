@@ -100,6 +100,11 @@ impl BlockBehaviour for CakeBlock {
                     GameEvent::BlockChange.name(),
                     args.position.to_centered_f64(),
                 );
+                args.player.increment_stat(
+                    pumpkin_data::statistic::StatisticCategory::Used,
+                    i32::from(item.id),
+                    1,
+                );
                 return BlockActionResult::Success;
             }
         }

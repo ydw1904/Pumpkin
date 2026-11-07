@@ -137,6 +137,11 @@ impl BlockBehaviour for TNTBlock {
                     args.item_stack.decrement(1);
                 }
             }
+            args.player.increment_stat(
+                pumpkin_data::statistic::StatisticCategory::Used,
+                i32::from(item_id),
+                1,
+            );
             BlockActionResult::Success
         } else if !args.world.level_info.load().game_rules.tnt_explodes {
             args.player.send_system_message_raw(

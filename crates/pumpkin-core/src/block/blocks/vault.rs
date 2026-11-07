@@ -78,6 +78,11 @@ impl BlockBehaviour for VaultBlock {
 
         vault_entity.mark_rewarded(player_uuid);
 
+        args.player.increment_stat(
+            pumpkin_data::statistic::StatisticCategory::Used,
+            i32::from(item_id),
+            1,
+        );
         args.item_stack
             .decrement_unless_creative(args.player.gamemode.load(), 1);
 

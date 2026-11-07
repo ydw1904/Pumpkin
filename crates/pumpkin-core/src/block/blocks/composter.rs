@@ -55,6 +55,7 @@ impl BlockBehaviour for ComposterBlock {
         if item_stack.get_data_component::<CompostableImpl>().is_some() && level < 8 {
             if level < 7 {
                 let count = item_stack.item_count;
+                let item_id = item_stack.item.id;
                 let new_state_id =
                     Self::insert_item(None, state_id, args.world, item_stack, args.position);
                 if args.player.has_infinite_materials() {
@@ -64,6 +65,11 @@ impl BlockBehaviour for ComposterBlock {
                     WorldEvent::ComposterFill,
                     *args.position,
                     i32::from(new_state_id != state_id),
+                );
+                args.player.increment_stat(
+                    pumpkin_data::statistic::StatisticCategory::Used,
+                    i32::from(item_id),
+                    1,
                 );
             }
             return BlockActionResult::Success;
