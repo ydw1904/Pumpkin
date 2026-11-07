@@ -85,24 +85,27 @@ impl CommandExecutor for ChangeExecutor {
             ),
         };
 
-        let msg = if targets.len() == 1 {
-            TextComponent::translate_cross(
-                single_key.0,
-                single_key.1,
-                [TextComponent::text(tag), targets[0].get_display_name()],
-            )
-        } else {
-            TextComponent::translate_cross(
-                multiple_key.0,
-                multiple_key.1,
-                [
-                    TextComponent::text(tag),
-                    TextComponent::text(targets.len().to_string()),
-                ],
-            )
-        };
-
-        context.source.send_feedback(msg, true);
+        context.source.send_feedback_with(
+            || {
+                if targets.len() == 1 {
+                    TextComponent::translate_cross(
+                        single_key.0,
+                        single_key.1,
+                        [TextComponent::text(tag), targets[0].get_display_name()],
+                    )
+                } else {
+                    TextComponent::translate_cross(
+                        multiple_key.0,
+                        multiple_key.1,
+                        [
+                            TextComponent::text(tag),
+                            TextComponent::text(targets.len().to_string()),
+                        ],
+                    )
+                }
+            },
+            true,
+        );
 
         Ok(changed)
     }

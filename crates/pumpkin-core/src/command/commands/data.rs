@@ -740,9 +740,10 @@ fn execute_get(
     let accessor = target_kind.access(context, "target")?;
     if !has_path {
         let data = accessor.get_data()?;
-        context
-            .source
-            .send_feedback(accessor.get_print_success(&NbtTag::Compound(data)), false);
+        context.source.send_feedback_with(
+            || accessor.get_print_success(&NbtTag::Compound(data)),
+            false,
+        );
         return Ok(1);
     }
 
@@ -763,8 +764,8 @@ fn execute_get(
             }
         };
         let result = (num * scale).floor() as i32;
-        context.source.send_feedback(
-            accessor.get_print_scaled_success(path, scale, result),
+        context.source.send_feedback_with(
+            || accessor.get_print_scaled_success(path, scale, result),
             false,
         );
         return Ok(result);
@@ -792,7 +793,7 @@ fn execute_get(
     };
     context
         .source
-        .send_feedback(accessor.get_print_success(&tag), false);
+        .send_feedback_with(|| accessor.get_print_success(&tag), false);
     Ok(result)
 }
 
@@ -811,7 +812,7 @@ fn execute_merge(context: &CommandContext, target_kind: TargetKind) -> CommandEx
     accessor.set_data(&updated)?;
     context
         .source
-        .send_feedback(accessor.get_modified_success(), true);
+        .send_feedback_with(|| accessor.get_modified_success(), true);
     Ok(1)
 }
 
@@ -835,7 +836,7 @@ fn execute_remove(context: &CommandContext, target_kind: TargetKind) -> CommandE
     accessor.remove_data(&data, &removed)?;
     context
         .source
-        .send_feedback(accessor.get_modified_success(), true);
+        .send_feedback_with(|| accessor.get_modified_success(), true);
     Ok(count)
 }
 
@@ -977,7 +978,7 @@ fn execute_modify(
     target_accessor.set_data(&target_data)?;
     context
         .source
-        .send_feedback(target_accessor.get_modified_success(), true);
+        .send_feedback_with(|| target_accessor.get_modified_success(), true);
     Ok(result)
 }
 
