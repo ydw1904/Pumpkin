@@ -7627,6 +7627,42 @@ impl World {
             .map_or(&Block::AIR, Block::from_state_id)
     }
 
+    /// Whether [`Self::get_block`] can return `block` anywhere in the box from `min` to `max`.
+    /// Answers from the section palettes, so it may say yes when no block matches.
+    #[must_use]
+    pub fn may_get_block_in(&self, min: BlockPos, max: BlockPos, block: &Block) -> bool {
+        // Unloaded chunks and positions outside the build limit read as air.
+        if block.id == Block::AIR.id {
+            return true;
+        }
+        let min_section_y = get_section_cord(min.0.y.max(self.get_bottom_y()));
+        let max_section_y = get_section_cord(max.0.y.min(self.get_top_y()));
+        (get_section_cord(min.0.x)..=get_section_cord(max.0.x)).any(|chunk_x| {
+            (get_section_cord(min.0.z)..=get_section_cord(max.0.z)).any(|chunk_z| {
+                self.level
+                    .read_chunk_sync(&Vector2::new(chunk_x, chunk_z), |chunk| {
+                        let sections = chunk
+                            .section
+                            .block_sections
+                            .read()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
+                        let bottom = get_section_cord(chunk.section.min_y);
+                        (min_section_y..=max_section_y).any(|section_y| {
+                            usize::try_from(section_y - bottom)
+                                .ok()
+                                .and_then(|index| sections.get(index))
+                                .is_some_and(|palette| {
+                                    palette.contains_matching(|state| {
+                                        Block::from_state_id(state).id == block.id
+                                    })
+                                })
+                        })
+                    })
+                    .unwrap_or(false)
+            })
+        })
+    }
+
     #[must_use]
     pub fn get_block_state_id_if_loaded(&self, position: &BlockPos) -> Option<BlockStateId> {
         if !self.is_in_build_limit(*position) {

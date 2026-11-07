@@ -53,6 +53,27 @@ impl<S: Stepping, M: MoveToTargetPos> StepAndDestroyBlockGoal<S, M> {
             max_y_difference,
         )
     }
+    /// Whether `find_target_pos` can find the target block at all, so the search over every
+    /// block in range can be skipped when no section nearby holds it.
+    fn target_block_may_be_in_range(&self, mob: &dyn Mob, world: &World) -> bool {
+        let goal = &self.move_to_target_pos_goal;
+        let pos = mob.get_entity().block_pos.load();
+        let horizontal = goal.range - 1;
+        // The search steps through vertical offsets from `lowest_y` outwards up to
+        // `max_y_difference`, one block below the mob.
+        let min = BlockPos::new(
+            pos.0.x - horizontal,
+            pos.0.y - 1 + goal.lowest_y.min(-goal.max_y_difference),
+            pos.0.z - horizontal,
+        );
+        let max = BlockPos::new(
+            pos.0.x + horizontal,
+            pos.0.y - 1 + goal.max_y_difference,
+            pos.0.z + horizontal,
+        );
+        world.may_get_block_in(min, max, self.target_block)
+    }
+
     fn tweak_to_proper_pos(&self, pos: BlockPos, world: &World) -> Option<BlockPos> {
         if world.get_block(&pos).id == self.target_block.id {
             Some(pos)
@@ -106,7 +127,9 @@ impl<S: Stepping + Send + Sync, M: MoveToTargetPos + Send + Sync> Goal
         } else if self.move_to_target_pos_goal.cooldown > 0 {
             self.move_to_target_pos_goal.cooldown -= 1;
             false
-        } else if self.move_to_target_pos_goal.find_target_pos(mob) {
+        } else if self.target_block_may_be_in_range(mob, &world)
+            && self.move_to_target_pos_goal.find_target_pos(mob)
+        {
             self.move_to_target_pos_goal.cooldown = to_goal_ticks(MAX_COOLDOWN);
             true
         } else {
