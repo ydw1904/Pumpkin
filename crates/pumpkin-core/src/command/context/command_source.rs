@@ -206,7 +206,7 @@ impl CommandSource {
             names: SourceNames::fixed(name, display_name),
             server: Some(server),
             silent: false,
-            command_result_taker: ResultValueTaker(Vec::new()),
+            command_result_taker: ResultValueTaker::new(),
             entity_anchor: EntityAnchor::Feet,
             frame: Frame::default(),
             returning: false,

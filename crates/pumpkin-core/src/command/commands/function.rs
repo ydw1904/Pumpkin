@@ -118,14 +118,14 @@ fn sender_callback(sender: &CommandSource) -> ResultValueTaker {
     // Only the callbacks are needed; keeping the frame would keep every caller's frame alive.
     let mut sender = sender.clone();
     sender.frame = Frame::default();
-    ResultValueTaker(vec![Arc::new(move |result: ReturnValue| {
+    ResultValueTaker::of(Arc::new(move |result: ReturnValue| {
         pumpkin_command::source::CommandSource::call_result(&sender, result);
-    })])
+    }))
 }
 
 /// Whether the sender has a result callback (vanilla `callback() != CommandResultCallback.EMPTY`).
-fn has_callback(sender: &CommandSource) -> bool {
-    !sender.command_result_taker.0.is_empty()
+const fn has_callback(sender: &CommandSource) -> bool {
+    !sender.command_result_taker.is_empty()
         || matches!(sender.output, CommandSender::CommandBlock(..))
 }
 
@@ -154,7 +154,7 @@ fn decorate_output(
             true,
         );
     });
-    ResultValueTaker::merge(&ResultValueTaker(vec![signal]), &callback)
+    ResultValueTaker::merge(&ResultValueTaker::of(signal), &callback)
 }
 
 /// Vanilla `FunctionCommand.queueFunctions`: the functions run from the command queue once the
@@ -206,12 +206,12 @@ fn queue_functions(
         let sum = Arc::new(Mutex::new(None::<i32>));
         for (id, lines) in functions {
             let sum = sum.clone();
-            let partial = ResultValueTaker(vec![Arc::new(move |result: ReturnValue| {
+            let partial = ResultValueTaker::of(Arc::new(move |result: ReturnValue| {
                 let mut sum = sum
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
                 *sum = Some(sum.unwrap_or(0) + result.result_value());
-            })]);
+            }));
             context.queue_next(call(lines, decorate_output(sender, &id, partial), false));
         }
         let sender = sender.clone();

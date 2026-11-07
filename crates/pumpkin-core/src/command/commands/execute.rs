@@ -1185,14 +1185,14 @@ fn schedule_function_conditions_and_test(
                 action: Action::IsolatedCall {
                     source: Box::new(function_source(source)),
                     functions: functions.clone(),
-                    callback: ResultValueTaker(vec![Arc::new(move |value: ReturnValue| {
+                    callback: ResultValueTaker::of(Arc::new(move |value: ReturnValue| {
                         if (value.result_value() != 0) == expected {
                             passed
                                 .lock()
                                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                                 .push(index);
                         }
-                    })]),
+                    })),
                 },
             });
         }
@@ -1440,7 +1440,7 @@ fn with_store_callback(
         .source
         .as_ref()
         .clone()
-        .merge_command_result_taker(&ResultValueTaker(vec![callback]));
+        .merge_command_result_taker(&ResultValueTaker::of(callback));
     Ok(vec![Arc::new(source)])
 }
 

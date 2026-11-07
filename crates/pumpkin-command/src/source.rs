@@ -19,29 +19,41 @@ impl<F: Fn(ReturnValue) + Send + Sync> ReturnValueCallable for F {
 
 pub type ReturnValueCallback = Arc<dyn ReturnValueCallable>;
 
+/// The callbacks a command's result goes to. Clones share the list, since every command
+/// source carries one and sources are copied for each command they run.
 #[derive(Clone, Default)]
-pub struct ResultValueTaker(pub Vec<ReturnValueCallback>);
+pub struct ResultValueTaker(Option<Arc<[ReturnValueCallback]>>);
 
 impl ResultValueTaker {
     #[must_use]
     pub fn merge(taker_1: &Self, taker_2: &Self) -> Self {
-        let mut takers = Vec::with_capacity(taker_1.0.len() + taker_2.0.len());
-        for taker in &taker_1.0 {
-            takers.push(taker.clone());
+        match (&taker_1.0, &taker_2.0) {
+            (None, _) => taker_2.clone(),
+            (_, None) => taker_1.clone(),
+            (Some(takers_1), Some(takers_2)) => Self(Some(
+                takers_1.iter().chain(takers_2.iter()).cloned().collect(),
+            )),
         }
-        for taker in &taker_2.0 {
-            takers.push(taker.clone());
-        }
-        Self(takers)
     }
 
     #[must_use]
-    pub fn new() -> Self {
-        Self(Vec::new())
+    pub const fn new() -> Self {
+        Self(None)
+    }
+
+    /// A taker with the one callback.
+    #[must_use]
+    pub fn of(callback: ReturnValueCallback) -> Self {
+        Self(Some(Arc::new([callback])))
+    }
+
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.0.is_none()
     }
 
     pub fn call(&self, return_value: ReturnValue) {
-        for callback in &self.0 {
+        for callback in self.0.iter().flat_map(|takers| takers.iter()) {
             callback.call(return_value);
         }
     }
