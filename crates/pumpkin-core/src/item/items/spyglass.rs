@@ -61,6 +61,10 @@ impl ItemBehaviour for SpyglassItem {
         );
     }
 
+    fn on_finish_using(&self, stack: &pumpkin_data::item_stack::ItemStack, player: &Player) {
+        self.on_stopped_using(stack, player);
+    }
+
     fn get_use_duration(&self) -> i32 {
         Self::USE_DURATION
     }

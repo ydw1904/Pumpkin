@@ -74,6 +74,12 @@ impl ItemRegistry {
         }
     }
 
+    pub fn on_finish_using(&self, stack: &ItemStack, player: &Player) {
+        if let Some(behaviour) = self.get_pumpkin_item(stack.item.id) {
+            behaviour.on_finish_using(stack, player);
+        }
+    }
+
     pub fn on_spear_jab(&self, stack: &ItemStack, player: &Player) {
         if let Some(behaviour) = self.get_pumpkin_item(stack.item.id) {
             behaviour.on_spear_jab(stack, player);

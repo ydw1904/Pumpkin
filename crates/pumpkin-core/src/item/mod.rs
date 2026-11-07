@@ -85,6 +85,10 @@ pub trait ItemBehaviour: Send + Sync {
 
     fn on_stopped_using(&self, _stack: &ItemStack, _player: &Player) {}
 
+    /// Vanilla `Item.finishUsingItem` for an item that isn't consumable, when its use duration
+    /// runs out.
+    fn on_finish_using(&self, _stack: &ItemStack, _player: &Player) {}
+
     fn on_spear_jab(&self, _stack: &ItemStack, _player: &Player) {}
 
     fn on_use_tick(&self, _stack: &ItemStack, _player: &Player, _remaining_use_ticks: i32) {}

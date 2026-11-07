@@ -4859,134 +4859,135 @@ impl EntityBase for LivingEntity {
                         ),
                     );
                 }
-                // Consume item
-                if let Some(food) = item.get_data_component::<FoodImpl>()
-                    && let Some(player) = caller.get_player()
-                {
-                    player
-                        .hunger_manager
-                        .eat(food.nutrition as u8, food.saturation);
-                    self.entity.world.load().play_bedrock_level_sound(
-                        "burp",
-                        &self.entity.pos.load(),
-                        -1,
-                    );
-                }
-
-                if caller.get_player().is_none()
-                    && item.get_data_component::<ConsumableImpl>().is_some()
-                {
-                    self.play_consume_sound(caller, item);
-                }
-                self.apply_consumable_effects(caller, item);
-
-                // Handle potion consumption
-                if item
-                    .get_data_component::<pumpkin_data::data_component_impl::PotionContentsImpl>()
-                    .is_some()
-                {
-                    let effects = crate::item::potion::PotionContents::read_potion_effects(item);
-                    crate::item::potion::PotionContents::apply_effects_to(
-                        self,
-                        effects,
-                        1.0,
-                        crate::item::potion::PotionApplicationSource::Normal,
-                        None,
-                    );
-                }
-
-                if let Some(ominous) = item
-                    .get_data_component::<pumpkin_data::data_component_impl::OminousBottleAmplifierImpl>()
-                {
-                    self.add_effect(Effect {
-                        effect_type: &StatusEffect::BAD_OMEN,
-                        duration: 120_000,
-                        amplifier: ominous.amplifier.clamp(0, 4) as u8,
-                        ambient: false,
-                        show_particles: false,
-                        show_icon: true,
-                        blend: false,
-                    });
-                }
-
-                self.apply_suspicious_stew_effects(item);
-
-                if let Some(player) = caller.get_player() {
-                    // Vanilla `Consumable.onConsume`.
-                    if item.get_data_component::<ConsumableImpl>().is_some() {
-                        player.increment_stat(StatisticCategory::Used, i32::from(item.item.id), 1);
-                    }
-                    player.trigger_advancement(
-                        crate::entity::player::advancement::trigger::AdvancementTrigger::ConsumeItem {
-                            item_id: format!("minecraft:{}", item.item.registry_key),
-                        },
-                    );
-
-                    // Vanilla `ItemStack.finishUsingItem`: consume one, then apply `use_remainder`.
-                    let finish_using = |mut stack: ItemStack| {
-                        let stack_count_before_using = stack.item_count;
-                        let gamemode = player.gamemode.load();
-                        stack.decrement_unless_creative(gamemode, 1);
-                        match item.get_data_component::<UseRemainderImpl>() {
-                            Some(use_remainder) => use_remainder.convert_into_remainder(
-                                stack,
-                                stack_count_before_using,
-                                gamemode == GameMode::Creative,
-                                |mut extra| {
-                                    if !player.inventory.insert_stack_anywhere(&mut extra)
-                                        && !extra.is_empty()
-                                    {
-                                        player.drop_item(extra);
-                                    }
-                                },
-                            ),
-                            None => stack,
-                        }
-                    };
-
-                    // Prefer modifying the exact stack that matches the consumed item:
-                    // 1) selected hotbar (held_item)
-                    // 2) off-hand
-                    // 3) fallback to active_hand if the above didn't match
-                    let mut handled = false;
-
-                    // Check main hand (hotbar selected)
-                    let held = player.inventory.held_item();
-                    if held.are_items_and_components_equal(item) {
-                        player.inventory.set_held_item(finish_using(held));
-                        handled = true;
-                    }
-
-                    if !handled {
-                        // Check off-hand
-                        let off_hand = player.inventory.off_hand_item();
-                        if off_hand.are_items_and_components_equal(item) {
-                            player
-                                .inventory
-                                .set_stack_in_hand(Hand::Left, finish_using(off_hand));
-                            handled = true;
-                        }
-                    }
-
-                    if !handled {
-                        // Use stored active_hand (as a fallback)
-                        let active_hand = *self
-                            .active_hand
-                            .lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner);
-                        let hand_to_modify = active_hand.unwrap_or(Hand::Right);
-                        let item_stack = self.get_stack_in_hand(caller, hand_to_modify);
+                // Vanilla `Item.finishUsingItem`: only a consumable is consumed
+                // (`Consumable.onConsume`); a spyglass stops, anything else is left as is.
+                if item.get_data_component::<ConsumableImpl>().is_some() {
+                    // Consume item
+                    if let Some(food) = item.get_data_component::<FoodImpl>()
+                        && let Some(player) = caller.get_player()
+                    {
                         player
-                            .inventory
-                            .set_stack_in_hand(hand_to_modify, finish_using(item_stack));
-                    }
-
-                    if let Some(cooldown) = item.get_use_cooldown() {
-                        player.start_cooldown(
-                            item.cooldown_group(),
-                            (cooldown.seconds * 20.0) as i32,
+                            .hunger_manager
+                            .eat(food.nutrition as u8, food.saturation);
+                        self.entity.world.load().play_bedrock_level_sound(
+                            "burp",
+                            &self.entity.pos.load(),
+                            -1,
                         );
                     }
+
+                    if caller.get_player().is_none() {
+                        self.play_consume_sound(caller, item);
+                    }
+                    self.apply_consumable_effects(caller, item);
+
+                    // Handle potion consumption
+                    if item
+                        .get_data_component::<pumpkin_data::data_component_impl::PotionContentsImpl>()
+                        .is_some()
+                    {
+                        let effects = crate::item::potion::PotionContents::read_potion_effects(item);
+                        crate::item::potion::PotionContents::apply_effects_to(
+                            self,
+                            effects,
+                            1.0,
+                            crate::item::potion::PotionApplicationSource::Normal,
+                            None,
+                        );
+                    }
+
+                    if let Some(ominous) = item
+                        .get_data_component::<pumpkin_data::data_component_impl::OminousBottleAmplifierImpl>()
+                    {
+                        self.add_effect(Effect {
+                            effect_type: &StatusEffect::BAD_OMEN,
+                            duration: 120_000,
+                            amplifier: ominous.amplifier.clamp(0, 4) as u8,
+                            ambient: false,
+                            show_particles: false,
+                            show_icon: true,
+                            blend: false,
+                        });
+                    }
+
+                    self.apply_suspicious_stew_effects(item);
+
+                    if let Some(player) = caller.get_player() {
+                        // Vanilla `Consumable.onConsume`.
+                        player.increment_stat(StatisticCategory::Used, i32::from(item.item.id), 1);
+                        player.trigger_advancement(
+                            crate::entity::player::advancement::trigger::AdvancementTrigger::ConsumeItem {
+                                item_id: format!("minecraft:{}", item.item.registry_key),
+                            },
+                        );
+
+                        // Vanilla `ItemStack.finishUsingItem`: consume one, then apply `use_remainder`.
+                        let finish_using = |mut stack: ItemStack| {
+                            let stack_count_before_using = stack.item_count;
+                            let gamemode = player.gamemode.load();
+                            stack.decrement_unless_creative(gamemode, 1);
+                            match item.get_data_component::<UseRemainderImpl>() {
+                                Some(use_remainder) => use_remainder.convert_into_remainder(
+                                    stack,
+                                    stack_count_before_using,
+                                    gamemode == GameMode::Creative,
+                                    |mut extra| {
+                                        if !player.inventory.insert_stack_anywhere(&mut extra)
+                                            && !extra.is_empty()
+                                        {
+                                            player.drop_item(extra);
+                                        }
+                                    },
+                                ),
+                                None => stack,
+                            }
+                        };
+
+                        // Prefer modifying the exact stack that matches the consumed item:
+                        // 1) selected hotbar (held_item)
+                        // 2) off-hand
+                        // 3) fallback to active_hand if the above didn't match
+                        let mut handled = false;
+
+                        // Check main hand (hotbar selected)
+                        let held = player.inventory.held_item();
+                        if held.are_items_and_components_equal(item) {
+                            player.inventory.set_held_item(finish_using(held));
+                            handled = true;
+                        }
+
+                        if !handled {
+                            // Check off-hand
+                            let off_hand = player.inventory.off_hand_item();
+                            if off_hand.are_items_and_components_equal(item) {
+                                player
+                                    .inventory
+                                    .set_stack_in_hand(Hand::Left, finish_using(off_hand));
+                                handled = true;
+                            }
+                        }
+
+                        if !handled {
+                            // Use stored active_hand (as a fallback)
+                            let active_hand = *self
+                                .active_hand
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner);
+                            let hand_to_modify = active_hand.unwrap_or(Hand::Right);
+                            let item_stack = self.get_stack_in_hand(caller, hand_to_modify);
+                            player
+                                .inventory
+                                .set_stack_in_hand(hand_to_modify, finish_using(item_stack));
+                        }
+                    }
+                } else if let Some(player) = caller.get_player() {
+                    server.item_registry.on_finish_using(item, player);
+                }
+
+                if let Some(player) = caller.get_player()
+                    && let Some(cooldown) = item.get_use_cooldown()
+                {
+                    player.start_cooldown(item.cooldown_group(), (cooldown.seconds * 20.0) as i32);
                 }
 
                 self.clear_active_hand();
