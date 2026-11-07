@@ -202,7 +202,7 @@ impl SynchedEntityData {
         let mut buf = Vec::new();
         let mut has_any = false;
 
-        for item in items.values() {
+        for item in in_id_order(&items) {
             if item.dirty {
                 let before_len = buf.len();
                 if item
@@ -249,7 +249,7 @@ impl SynchedEntityData {
         let mut buf = Vec::new();
         let mut has_any = false;
 
-        for item in items.values() {
+        for item in in_id_order(&items) {
             if !item.is_default {
                 let before_len = buf.len();
                 if item
@@ -272,11 +272,46 @@ impl SynchedEntityData {
     }
 }
 
+/// Vanilla packs data items by id, the order the client applies them in.
+fn in_id_order(items: &HashMap<TrackedData, DataItem>) -> Vec<&DataItem> {
+    let mut ordered: Vec<_> = items.values().collect();
+    ordered.sort_unstable_by_key(|item| item.tracked.id.0);
+    ordered
+}
+
 #[cfg(test)]
 mod test {
     use pumpkin_data::tracked_data::player::PLAYER_MODE_CUSTOMISATION;
 
     use super::*;
+
+    /// Vanilla `packDirty` and `getNonDefaultValues` write the items by id, whatever order
+    /// they were set in.
+    #[test]
+    fn values_are_packed_in_id_order() {
+        use pumpkin_data::tracked_data::entity::{
+            DATA_CUSTOM_NAME_VISIBLE, DATA_NO_GRAVITY, DATA_SHARED_FLAGS_ID, DATA_SILENT,
+        };
+        let version = JavaMinecraftVersion::V_26_3;
+        let data = SynchedEntityData::new();
+        data.set(DATA_NO_GRAVITY, true);
+        data.set(DATA_SILENT, true);
+        data.set(DATA_CUSTOM_NAME_VISIBLE, true);
+        data.set(DATA_SHARED_FLAGS_ID, 1u8);
+        // Each item is `id, type, value` with one-byte values here.
+        let ids = |buf: Box<[u8]>| buf.chunks(3).map(|item| item[0]).collect::<Vec<_>>();
+        let expected = vec![0, 3, 4, 5, 255];
+        assert_eq!(
+            ids(data.pack_dirty_for_version(&version).unwrap_or_default()),
+            expected
+        );
+        assert_eq!(
+            ids(data
+                .get_non_default_values_for_version(&version)
+                .unwrap_or_default()),
+            expected
+        );
+    }
 
     /// Metadata ids no longer vary per version: core serializes the current format for
     /// every client and `pumpkin-java-multiversion` translates. So the senders need no
