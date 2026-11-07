@@ -1,4 +1,4 @@
-use std::sync::{Arc, Weak, atomic::Ordering};
+use std::sync::{Weak, atomic::Ordering};
 
 use pumpkin_data::block_properties::TurtleEggLikeProperties;
 use pumpkin_data::entity::EntityType;
@@ -309,9 +309,9 @@ impl Goal for TurtleLayEggGoal {
 }
 
 impl MoveToTargetPos for TurtleLayEggGoal {
-    fn is_target_pos(&self, world: Arc<World>, block_pos: BlockPos) -> bool {
+    fn is_target_pos(&self, world: &World, block_pos: BlockPos) -> bool {
         world.get_block_state(&block_pos.up()).is_air()
-            && TurtleEggBlock::is_sand(world.as_ref(), &block_pos)
+            && TurtleEggBlock::is_sand(world, &block_pos)
     }
 }
 
@@ -372,7 +372,7 @@ impl Goal for TurtleGoToWaterGoal {
         let entity = mob.get_entity();
         !entity.is_in_water()
             && self.move_to_block.trying_time <= GO_TO_WATER_GIVE_UP_TICKS
-            && self.is_target_pos(entity.world.load_full(), self.move_to_block.target_pos)
+            && self.is_target_pos(&entity.world.load(), self.move_to_block.target_pos)
     }
 
     fn start(&mut self, mob: &dyn Mob) {
@@ -397,7 +397,7 @@ impl Goal for TurtleGoToWaterGoal {
 }
 
 impl MoveToTargetPos for TurtleGoToWaterGoal {
-    fn is_target_pos(&self, world: Arc<World>, block_pos: BlockPos) -> bool {
+    fn is_target_pos(&self, world: &World, block_pos: BlockPos) -> bool {
         world.get_block(&block_pos) == &pumpkin_data::Block::WATER
     }
 

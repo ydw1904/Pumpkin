@@ -90,7 +90,7 @@ impl Goal for StriderGoToLavaGoal {
     fn should_continue(&mut self, mob: &dyn Mob) -> bool {
         let entity = mob.get_entity();
         !entity.touching_lava.load(Ordering::Relaxed)
-            && self.is_target_pos(entity.world.load_full(), self.move_to_block.target_pos)
+            && self.is_target_pos(&entity.world.load(), self.move_to_block.target_pos)
     }
 
     fn start(&mut self, mob: &dyn Mob) {
@@ -115,7 +115,7 @@ impl Goal for StriderGoToLavaGoal {
 }
 
 impl MoveToTargetPos for StriderGoToLavaGoal {
-    fn is_target_pos(&self, world: Arc<World>, block_pos: BlockPos) -> bool {
+    fn is_target_pos(&self, world: &World, block_pos: BlockPos) -> bool {
         let above = block_pos.up();
         let (above_block, above_state) = world.get_block_and_state(&above);
         world.get_block(&block_pos).id == pumpkin_data::Block::LAVA.id

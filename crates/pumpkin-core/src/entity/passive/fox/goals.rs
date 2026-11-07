@@ -900,7 +900,7 @@ struct FoxBerries;
 static FOX_BERRIES: FoxBerries = FoxBerries;
 
 impl MoveToTargetPos for FoxBerries {
-    fn is_target_pos(&self, world: Arc<World>, block_pos: BlockPos) -> bool {
+    fn is_target_pos(&self, world: &World, block_pos: BlockPos) -> bool {
         let (block, state_id) = world.get_block_and_state_id(&block_pos);
         block == &Block::SWEET_BERRY_BUSH
             && NetherWartLikeProperties::from_state_id(state_id).age >= 2

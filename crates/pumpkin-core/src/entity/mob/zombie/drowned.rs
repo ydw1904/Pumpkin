@@ -764,7 +764,7 @@ impl Goal for DrownedGoToBeachGoal {
 }
 
 impl MoveToTargetPos for DrownedGoToBeachGoal {
-    fn is_target_pos(&self, world: Arc<World>, block_pos: BlockPos) -> bool {
+    fn is_target_pos(&self, world: &World, block_pos: BlockPos) -> bool {
         let above = block_pos.up();
         world.get_block_state(&above).is_air()
             && world.get_block_state(&above.up()).is_air()
