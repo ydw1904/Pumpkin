@@ -22,6 +22,7 @@ use std::sync::atomic::{
 use tracing::warn;
 use uuid::Uuid;
 
+use super::decoration::armor_stand::ArmorStandEntity;
 use super::experience_orb::ExperienceOrbEntity;
 use super::{Entity, EntityBase, GearDamage, NBTStorageInit};
 use crate::block::OnLandedUponArgs;
@@ -2144,6 +2145,18 @@ impl LivingEntity {
         world.broadcast_editioned(&je_packet, &be_packet);
     }
 
+    /// Vanilla `isEffectiveAi`: `NoAI` mobs and marker or no-gravity armor stands
+    /// (`ArmorStand.hasPhysics`) don't travel, so they neither move nor fall.
+    fn is_effective_ai(caller: &dyn EntityBase) -> bool {
+        caller
+            .get_mob()
+            .is_none_or(|mob| !mob.get_mob_entity().is_no_ai())
+            && caller
+                .cast_any()
+                .downcast_ref::<ArmorStandEntity>()
+                .is_none_or(ArmorStandEntity::has_physics)
+    }
+
     fn tick_movement(&self, caller: &dyn EntityBase) {
         if let Some(mob) = caller.get_mob() {
             mob.before_mob_ai_step();
@@ -2216,11 +2229,7 @@ impl LivingEntity {
 
         let touching_water = self.entity.touching_water.load(SeqCst);
 
-        // Vanilla Mob.isEffectiveAi: NoAI mobs don't travel, so they neither move nor fall.
-        let effective_ai = caller
-            .get_mob()
-            .is_none_or(|mob| !mob.get_mob_entity().is_no_ai())
-            && !client_controlled;
+        let effective_ai = Self::is_effective_ai(caller) && !client_controlled;
 
         // Vanilla `shouldTravelInFluid`: a strider stands on the lava at its block position.
         let stands_on_fluid = self.entity.entity_type == &EntityType::STRIDER

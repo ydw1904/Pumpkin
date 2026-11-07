@@ -135,6 +135,11 @@ impl ArmorStandEntity {
         self.set_bit_field(ArmorStandFlags::Marker, marker);
     }
 
+    /// Vanilla `ArmorStand.hasPhysics`.
+    pub fn has_physics(&self) -> bool {
+        !self.is_marker() && !self.get_entity().has_no_gravity()
+    }
+
     pub fn is_marker(&self) -> bool {
         (self.armor_stand_flags.load(Ordering::Relaxed) & ArmorStandFlags::Marker as u8) != 0
     }
