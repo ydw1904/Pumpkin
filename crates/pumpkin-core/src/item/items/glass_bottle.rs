@@ -3,7 +3,6 @@ use std::any::Any;
 use crate::entity::EntityBase;
 use crate::entity::player::Player;
 use crate::item::{ItemBehaviour, ItemMetadata};
-use pumpkin_data::Block;
 use pumpkin_data::data_component::DataComponent;
 use pumpkin_data::data_component_impl::PotionContentsImpl;
 use pumpkin_data::entity::EntityType;
@@ -13,6 +12,7 @@ use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::potion::Potion;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::statistic::StatisticCategory;
+use pumpkin_data::tag::{self, Taggable};
 
 /// A potion holding water; the contents component is what names it and makes it
 /// brewable.
@@ -137,12 +137,19 @@ impl ItemBehaviour for GlassBottleItem {
 
         if !hit.is_miss {
             let hit_pos = hit.block_pos;
-            let (block, state_id) = world.get_block_and_state_id(&hit_pos);
-            if block.id == Block::WATER.id || block.is_waterlogged(state_id) {
-                world.play_sound(
+            if !world.may_interact(player, &hit_pos) {
+                return;
+            }
+            if world
+                .get_fluid(&hit_pos)
+                .has_tag(&tag::Fluid::MINECRAFT_WATER)
+            {
+                // The client plays the fill sound itself.
+                world.play_sound_expect(
+                    player,
                     Sound::ItemBottleFill,
                     SoundCategory::Neutral,
-                    &hit_pos.to_f64(),
+                    &player.position(),
                 );
                 world.emit_game_event(GameEvent::FluidPickup.name(), hit_pos.to_f64());
                 Self::turn_bottle_into_item(player, hand, held, water_bottle());

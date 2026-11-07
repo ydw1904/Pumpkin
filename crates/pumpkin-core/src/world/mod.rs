@@ -799,6 +799,18 @@ impl World {
         dx <= radius && dz <= radius
     }
 
+    /// Vanilla `ServerLevel.mayInteract` for a player: outside spawn protection and inside the
+    /// world border.
+    #[must_use]
+    pub fn may_interact(&self, player: &Player, position: &BlockPos) -> bool {
+        !self.is_in_spawn_protection(player, position)
+            && self
+                .worldborder
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .contains(f64::from(position.0.x), f64::from(position.0.z))
+    }
+
     /// Starts updating the light changed during this tick on another thread, like vanilla
     /// `ThreadedLevelLightEngine.tryScheduleUpdate` while the server waits for the next tick.
     pub fn schedule_light_updates(&self) {
