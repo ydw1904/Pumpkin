@@ -536,26 +536,6 @@ const fn java_hash_set_bucket(pos: BlockPos, len: usize) -> u32 {
     spread & (capacity as u32 - 1)
 }
 
-/// The sections exactly `distance` away from `section` in vanilla `SectionTracker` steps,
-/// which reach all 26 neighbours, so the distance is the largest axis difference.
-fn sections_at_distance(section: SectionPos, distance: i32) -> Vec<SectionPos> {
-    let mut result = Vec::new();
-    for dx in -distance..=distance {
-        for dy in -distance..=distance {
-            for dz in -distance..=distance {
-                if dx.abs().max(dy.abs()).max(dz.abs()) == distance {
-                    result.push(SectionPos::new(
-                        section.x + dx,
-                        section.y + dy,
-                        section.z + dz,
-                    ));
-                }
-            }
-        }
-    }
-    result
-}
-
 /// Region-based POI storage using MCA format
 pub struct PoiStorage {
     /// Path to the poi folder
@@ -669,16 +649,13 @@ impl PoiStorage {
             .collect()
     }
 
-    fn is_village_center(&mut self, section: SectionPos) -> bool {
-        let region = self.get_or_load_region(section.x >> 5, section.z >> 5);
-        region.section_entries(section).is_some_and(|entries| {
-            entries.values().any(|entry| {
-                typed_record(entry).is_some_and(|record| {
-                    record
-                        .poi_type
-                        .has_tag(&PointOfInterestType::MINECRAFT_VILLAGE)
-                        && record.is_occupied()
-                })
+    fn is_village_center(entries: &FxHashMap<(i32, i32, i32), PoiEntry>) -> bool {
+        entries.values().any(|entry| {
+            typed_record(entry).is_some_and(|record| {
+                record
+                    .poi_type
+                    .has_tag(&PointOfInterestType::MINECRAFT_VILLAGE)
+                    && record.is_occupied()
             })
         })
     }
@@ -883,16 +860,30 @@ impl PoiStorage {
 
     pub const MAX_VILLAGE_DISTANCE: i32 = 6;
 
+    /// The distance in vanilla `SectionTracker` steps, which reach all 26 neighbours, to the
+    /// nearest section with an occupied village POI, or one past the maximum.
     pub fn sections_to_village(&mut self, section: SectionPos) -> i32 {
-        for distance in 0..=Self::MAX_VILLAGE_DISTANCE {
-            if sections_at_distance(section, distance)
-                .into_iter()
-                .any(|candidate| self.is_village_center(candidate))
-            {
-                return distance;
+        let reach = Self::MAX_VILLAGE_DISTANCE;
+        let regions_x = (section.x - reach) >> 5..=(section.x + reach) >> 5;
+        let regions_z = (section.z - reach) >> 5..=(section.z + reach) >> 5;
+        let mut nearest = reach + 1;
+        // Only sections holding POIs can be village centers, so walk those instead of every
+        // section in range.
+        for rx in regions_x {
+            for rz in regions_z.clone() {
+                let region = self.get_or_load_region(rx, rz);
+                for (candidate, entries) in &region.sections {
+                    let distance = (candidate.x - section.x)
+                        .abs()
+                        .max((candidate.y - section.y).abs())
+                        .max((candidate.z - section.z).abs());
+                    if distance < nearest && Self::is_village_center(entries) {
+                        nearest = distance;
+                    }
+                }
             }
         }
-        Self::MAX_VILLAGE_DISTANCE + 1
+        nearest
     }
 
     pub fn refresh_section(&mut self, section: SectionPos, found: &[(BlockPos, PoiType)]) {
