@@ -177,9 +177,14 @@ impl SmithingTableScreenHandler {
                         .strip_prefix("minecraft:")
                         .unwrap_or(&recipe.result.item_id);
                     if let Some(target_item) = Item::from_registry_key(res_key) {
+                        // `TransmuteResult.apply`: the result's patch goes over the base's.
                         let mut result = base.clone();
                         result.item = target_item;
                         result.item_count = recipe.result.count;
+                        for (component, value) in recipe.result.components {
+                            result.patch.retain(|(existing, _)| *existing != component);
+                            result.patch.push((component, value));
+                        }
                         return Some(result);
                     }
                 }

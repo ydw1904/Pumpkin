@@ -1,6 +1,9 @@
 use pumpkin_data::recipes::RecipeCategoryTypes;
 
+use pumpkin_data::data_component::DataComponent;
+use pumpkin_data::data_component_impl::DataComponentImpl;
 use pumpkin_data::item::Item;
+use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::tag::Taggable;
 
 #[derive(Clone, Debug)]
@@ -27,11 +30,35 @@ impl OwnedRecipeIngredient {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct OwnedRecipeResult {
     pub item_id: String,
     pub count: u8,
-    // TODO: Add components/enchantments if needed for the display result
+    /// The component patch of the result's `ItemStackTemplate`.
+    pub components: Vec<(DataComponent, Option<Box<dyn DataComponentImpl>>)>,
+}
+
+impl OwnedRecipeResult {
+    /// The result as an item stack, or `None` for an unknown item.
+    #[must_use]
+    pub fn to_stack(&self) -> Option<ItemStack> {
+        let key = self
+            .item_id
+            .strip_prefix("minecraft:")
+            .unwrap_or(&self.item_id);
+        let mut stack = ItemStack::new(self.count, Item::from_registry_key(key)?);
+        stack.patch.clone_from(&self.components);
+        Some(stack)
+    }
+}
+
+impl std::fmt::Debug for OwnedRecipeResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OwnedRecipeResult")
+            .field("item_id", &self.item_id)
+            .field("count", &self.count)
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Clone, Debug)]

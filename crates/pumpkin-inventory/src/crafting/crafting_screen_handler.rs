@@ -65,6 +65,8 @@ pub struct RecipeResult {
     pub recipe_id: Option<String>,
     /// Components the recipe sets on its result.
     pub components: &'static [(DataComponent, &'static dyn DataComponentImpl)],
+    /// Components a datapack or plugin recipe sets on its result.
+    pub patch: Vec<(DataComponent, Option<Box<dyn DataComponentImpl>>)>,
 }
 
 impl RecipeResult {
@@ -92,6 +94,7 @@ impl RecipeResult {
         for (component, value) in self.components {
             stack.patch.push((*component, Some(value.clone_dyn())));
         }
+        stack.patch.extend(self.patch.iter().cloned());
         if let Some(sherds) = self.pot_decorations {
             let sherd_names = sherds
                 .into_iter()
@@ -367,6 +370,7 @@ fn recipe_matches(
                 item_id: result.item_id.clone(),
                 count: result.count,
                 pot_decorations: None,
+                patch: result.components.clone(),
                 ..Default::default()
             })
         }
@@ -396,6 +400,7 @@ fn recipe_matches(
                 item_id: result.item_id.clone(),
                 count: result.count,
                 pot_decorations: None,
+                patch: result.components.clone(),
                 ..Default::default()
             })
         }

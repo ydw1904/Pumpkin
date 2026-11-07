@@ -1195,16 +1195,13 @@ fn write_dynamic_result_slot_display(
     result: &crate::codec::recipe::OwnedRecipeResult,
     version: JavaMinecraftVersion,
 ) -> Result<(), WritingError> {
-    let key = result
-        .item_id
-        .strip_prefix("minecraft:")
-        .unwrap_or(&result.item_id);
-    if let Some(item) = Item::from_registry_key(key) {
-        write_item_stack_slot_display(write, item, result.count, version)?;
-    } else {
-        write_empty_slot_display(write, version)?;
+    match result.to_stack().filter(|stack| !stack.is_empty()) {
+        Some(stack) => {
+            write.write_var_int(&VarInt(SLOT_DISPLAY_ITEM_STACK as i32))?;
+            ItemStackTemplateSerializer::from(stack).write_with_version(write, &version)
+        }
+        None => write_empty_slot_display(write, version),
     }
-    Ok(())
 }
 
 fn write_dynamic_crafting_entry(

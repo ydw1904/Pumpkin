@@ -1,3 +1,5 @@
+use pumpkin_data::item::Item;
+use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::recipes::RecipeCategoryTypes;
 use pumpkin_protocol::codec::recipe::{
     DynamicRecipe, OwnedBrewingRecipe, OwnedCookingRecipe, OwnedCookingRecipeType,
@@ -5,6 +7,8 @@ use pumpkin_protocol::codec::recipe::{
     OwnedSmithingTrimRecipe, OwnedSpecialCraftingRecipe, OwnedStonecutterRecipe,
 };
 use serde_json::Value;
+
+use crate::world::loot::apply_component_patch;
 
 pub fn parse_recipe(namespace: &str, name: &str, json_str: &str) -> Option<DynamicRecipe> {
     let value: Value = serde_json::from_str(json_str).ok()?;
@@ -89,11 +93,14 @@ fn parse_ingredient(value: &Value) -> Option<OwnedRecipeIngredient> {
     }
 }
 
+/// `ItemStackTemplate.CODEC`: an item id, or an object with the id, a count and a component
+/// patch.
 fn parse_result(value: &Value) -> Option<OwnedRecipeResult> {
     match value {
         Value::String(s) => Some(OwnedRecipeResult {
             item_id: normalize_id(s),
             count: 1,
+            components: Vec::new(),
         }),
         Value::Object(map) => {
             let id = map
@@ -105,9 +112,22 @@ fn parse_result(value: &Value) -> Option<OwnedRecipeResult> {
                 .and_then(Value::as_u64)
                 .unwrap_or(1)
                 .min(99) as u8;
+            let item_id = normalize_id(id);
+            let components = match map.get("components") {
+                Some(components) => {
+                    let item = Item::from_registry_key(
+                        item_id.strip_prefix("minecraft:").unwrap_or(&item_id),
+                    )?;
+                    let mut stack = ItemStack::new(count.max(1), item);
+                    apply_component_patch(&mut stack, components.as_object()?).ok()?;
+                    stack.patch
+                }
+                None => Vec::new(),
+            };
             Some(OwnedRecipeResult {
-                item_id: normalize_id(id),
+                item_id,
                 count,
+                components,
             })
         }
         _ => None,
@@ -262,6 +282,7 @@ fn parse_transmute(recipe_id: String, value: &Value) -> Option<OwnedCraftingReci
     let result = parse_result(value.get("result")?).unwrap_or(OwnedRecipeResult {
         item_id: "minecraft:filled_map".to_string(),
         count: 1,
+        components: Vec::new(),
     });
     Some(OwnedCraftingRecipe::Shapeless {
         recipe_id: Some(recipe_id),
