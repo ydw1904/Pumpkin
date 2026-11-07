@@ -579,13 +579,14 @@ impl PoiStorage {
         (chunk_x >> 5, chunk_z >> 5)
     }
 
-    fn region_path(&self, rx: i32, rz: i32) -> PathBuf {
-        self.folder.join(format!("r.{rx}.{rz}.mca"))
+    fn region_path(folder: &Path, rx: i32, rz: i32) -> PathBuf {
+        folder.join(format!("r.{rx}.{rz}.mca"))
     }
 
     fn get_or_load_region(&mut self, rx: i32, rz: i32) -> &mut PoiRegion {
-        let path = self.region_path(rx, rz);
+        let folder = &self.folder;
         self.regions.entry((rx, rz)).or_insert_with(|| {
+            let path = Self::region_path(folder, rx, rz);
             PoiRegion::load(&path).unwrap_or_else(|e| {
                 if path.exists() {
                     warn!("Failed to load POI region {}: {}", path.display(), e);
@@ -994,8 +995,7 @@ impl PoiStorage {
         let mut saved = 0;
         for ((rx, rz), region) in &mut self.regions {
             if region.is_dirty() {
-                let path = self.folder.join(format!("r.{rx}.{rz}.mca"));
-                region.save(&path)?;
+                region.save(&Self::region_path(&self.folder, *rx, *rz))?;
                 saved += 1;
             }
         }
