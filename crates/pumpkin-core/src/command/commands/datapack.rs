@@ -64,8 +64,40 @@ fn find_pack_name(server: &Server, input: &str) -> Option<String> {
     crate::data::datapack::DatapackManager::find_pack_name(server, input)
 }
 
-fn format_pack(name: &str) -> TextComponent {
-    TextComponent::text(format!("[{name}]")).color_named(NamedColor::Green)
+/// Vanilla `PackLocationInfo.createChatLink`, without the hover text.
+fn format_pack(name: &str, enabled: bool) -> TextComponent {
+    let source = if name == "vanilla" {
+        translation::java::PACK_SOURCE_BUILTIN
+    } else if name.starts_with("file/") {
+        translation::java::PACK_SOURCE_WORLD
+    } else {
+        translation::java::PACK_SOURCE_FEATURE
+    };
+    // `StringArgumentType.escapeIfRequired`.
+    let insertion = if name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '+'))
+    {
+        name.to_string()
+    } else {
+        format!("\"{}\"", name.replace('\\', "\\\\").replace('"', "\\\""))
+    };
+    TextComponent::translate_cross(
+        translation::java::PACK_NAMEANDSOURCE,
+        translation::java::PACK_NAMEANDSOURCE,
+        [
+            TextComponent::text(name.to_string()),
+            TextComponent::translate_cross(source, source, []),
+        ],
+    )
+    .color_named(NamedColor::Gray)
+    .wrap_in_square_brackets()
+    .color_named(if enabled {
+        NamedColor::Green
+    } else {
+        NamedColor::Red
+    })
+    .insertion(insertion)
 }
 
 struct AvailablePackSuggestionProvider;
@@ -167,7 +199,7 @@ fn send_enabled_list(context: &CommandContext<'_>, enabled: &[String]) {
         );
     } else {
         let packs_component =
-            TextComponent::join_with_comma(enabled.iter().map(|p| format_pack(p)).collect());
+            TextComponent::join_with_comma(enabled.iter().map(|p| format_pack(p, true)).collect());
         context.source.send_feedback(
             TextComponent::translate_cross(
                 translation::java::COMMANDS_DATAPACK_LIST_ENABLED_SUCCESS,
@@ -193,8 +225,9 @@ fn send_available_list(context: &CommandContext<'_>, available: &[String]) {
             false,
         );
     } else {
-        let packs_component =
-            TextComponent::join_with_comma(available.iter().map(|p| format_pack(p)).collect());
+        let packs_component = TextComponent::join_with_comma(
+            available.iter().map(|p| format_pack(p, false)).collect(),
+        );
         context.source.send_feedback(
             TextComponent::translate_cross(
                 translation::java::COMMANDS_DATAPACK_LIST_AVAILABLE_SUCCESS,
@@ -246,7 +279,7 @@ impl CommandExecutor for DatapackEnableExecutor {
             TextComponent::translate_cross(
                 translation::java::COMMANDS_DATAPACK_MODIFY_ENABLE,
                 translation::java::COMMANDS_DATAPACK_MODIFY_ENABLE,
-                [format_pack(&resolved_name)],
+                [format_pack(&resolved_name, true)],
             ),
             true,
         );
@@ -310,7 +343,7 @@ impl CommandExecutor for DatapackEnableExistingExecutor {
             TextComponent::translate_cross(
                 translation::java::COMMANDS_DATAPACK_MODIFY_ENABLE,
                 translation::java::COMMANDS_DATAPACK_MODIFY_ENABLE,
-                [format_pack(&target_pack)],
+                [format_pack(&target_pack, true)],
             ),
             true,
         );
@@ -353,7 +386,7 @@ impl CommandExecutor for DatapackDisableExecutor {
             TextComponent::translate_cross(
                 translation::java::COMMANDS_DATAPACK_MODIFY_DISABLE,
                 translation::java::COMMANDS_DATAPACK_MODIFY_DISABLE,
-                [format_pack(&target_pack)],
+                [format_pack(&target_pack, true)],
             ),
             true,
         );
@@ -513,8 +546,8 @@ mod tests {
 
     #[test]
     fn format_pack_brackets() {
-        let formatted = format_pack("vanilla");
-        assert!(formatted.to_pretty_console().contains("[vanilla]"));
+        let formatted = format_pack("vanilla", true);
+        assert!(formatted.to_pretty_console().contains("vanilla"));
     }
 
     #[test]
