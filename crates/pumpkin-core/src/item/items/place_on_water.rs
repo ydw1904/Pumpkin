@@ -10,7 +10,6 @@ use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
-use pumpkin_data::statistic::StatisticCategory;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::{Block, BlockDirection};
 use pumpkin_inventory::player::player_inventory::PlayerInventory;
@@ -110,7 +109,6 @@ impl ItemBehaviour for PlaceOnWaterBlockItem {
             };
             player.sync_hand_slot(slot_index, stack);
         }
-        player.increment_stat(StatisticCategory::Used, i32::from(item.id), 1);
     }
 
     fn as_any(&self) -> &dyn Any {

@@ -85,16 +85,10 @@ impl BedrockClient {
                                 server,
                                 broken_state,
                             );
-                            player.apply_tool_damage_for_block_break(broken_state);
+                            player.mine_block(broken_state);
                             if can_harvest {
                                 player.add_exhaustion(MINE_BLOCK_EXHAUSTION);
                             }
-                            let item_id = player.inventory().held_item().item.id;
-                            player.increment_stat(
-                                pumpkin_data::statistic::StatisticCategory::Used,
-                                item_id as i32,
-                                1,
-                            );
                             player.increment_stat(
                                 pumpkin_data::statistic::StatisticCategory::Mined,
                                 block.id.as_u16() as i32,
@@ -182,16 +176,10 @@ impl BedrockClient {
                             server
                                 .block_registry
                                 .broken(&world, block, player, &location, server, state);
-                            player.apply_tool_damage_for_block_break(state);
+                            player.mine_block(state);
                             if can_harvest {
                                 player.add_exhaustion(MINE_BLOCK_EXHAUSTION);
                             }
-                            let item_id = player.inventory().held_item().item.id;
-                            player.increment_stat(
-                                pumpkin_data::statistic::StatisticCategory::Used,
-                                item_id as i32,
-                                1,
-                            );
                             player.increment_stat(
                                 pumpkin_data::statistic::StatisticCategory::Mined,
                                 block.id.as_u16() as i32,

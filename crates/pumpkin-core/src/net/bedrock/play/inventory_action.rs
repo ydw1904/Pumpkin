@@ -265,13 +265,7 @@ impl BedrockClient {
 
                     let mut stack = held_item;
                     if !stack.is_empty() {
-                        let item_id = stack.item.id;
                         let before = stack.clone();
-                        player.increment_stat(
-                            pumpkin_data::statistic::StatisticCategory::Used,
-                            item_id as i32,
-                            1,
-                        );
                         let item_result = server.item_registry.use_on_block(
                             &mut stack,
                             player,
@@ -282,6 +276,7 @@ impl BedrockClient {
                             &server,
                         );
 
+                        let mut placed = false;
                         if should_try_block_placement(&item_result) {
                             let item_id = stack.item.id;
                             if let Some(placed_block) = pumpkin_data::Block::from_item_id(item_id) {
@@ -305,8 +300,17 @@ impl BedrockClient {
                                     face,
                                 ) {
                                     server.item_registry.on_placed_as_block(&mut stack, player);
+                                    placed = true;
                                 }
                             }
+                        }
+                        // Vanilla `ItemStack.useOn`: only an item use that succeeded counts.
+                        if item_result.consumes_action() || placed {
+                            player.increment_stat(
+                                pumpkin_data::statistic::StatisticCategory::Used,
+                                i32::from(before.item.id),
+                                1,
+                            );
                         }
                         Self::write_back_held_item(player, &before, stack);
                     }
@@ -317,13 +321,6 @@ impl BedrockClient {
                         HandSlot::Offhand => Hand::Left,
                     };
                     let mut held = player.inventory().get_stack_in_hand(hand);
-                    if !held.is_empty() {
-                        player.increment_stat(
-                            pumpkin_data::statistic::StatisticCategory::Used,
-                            held.item.id as i32,
-                            1,
-                        );
-                    }
 
                     let event = PlayerInteractEvent::new(
                         player,
@@ -475,11 +472,6 @@ impl BedrockClient {
                                 .use_on_entity(&mut stack, player, event.target);
                         }
                         if native_interaction.is_none() && !stack.are_equal(&before) {
-                            player.increment_stat(
-                                pumpkin_data::statistic::StatisticCategory::Used,
-                                item_id as i32,
-                                1,
-                            );
                             if before.is_damageable() && stack.is_empty() {
                                 player.increment_stat(
                                     pumpkin_data::statistic::StatisticCategory::Broken,

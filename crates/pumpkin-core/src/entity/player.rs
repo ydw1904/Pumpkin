@@ -1724,13 +1724,6 @@ impl Player {
         let item_stack = spin_attack
             .as_ref()
             .map_or_else(|| inventory.held_item(), |(_, item)| item.clone());
-        if !item_stack.is_empty() {
-            self.increment_stat(
-                statistics::StatisticCategory::Used,
-                item_stack.item.id as i32,
-                1,
-            );
-        }
 
         // `ATTACK_DAMAGE` is a ranged attribute with a minimum of 0, which Weakness can reach.
         let mut base_damage = spin_attack.map_or_else(
@@ -1944,6 +1937,17 @@ impl Player {
                 .load(std::sync::atomic::Ordering::Relaxed),
             std::sync::atomic::Ordering::Relaxed,
         );
+
+        // Vanilla `ItemStack.hurtEnemy`: only weapons that hit a living target count as used.
+        if victim.get_living_entity().is_some()
+            && item_stack.get_data_component::<WeaponImpl>().is_some()
+        {
+            self.increment_stat(
+                statistics::StatisticCategory::Used,
+                i32::from(item_stack.item.id),
+                1,
+            );
+        }
 
         // NOTE: TOCTOU race condition in single-player context.
         // The weapon cost is computed (cost = 1 or 2) with item_stack locked, then damage_held_item
@@ -2402,7 +2406,9 @@ impl Player {
         self.damage_item_in_slot(&EquipmentSlot::MAIN_HAND, amount)
     }
 
-    pub fn apply_tool_damage_for_block_break(&self, state: &BlockState) {
+    /// Vanilla `ItemStack.mineBlock` after a survival block break: wears the held tool and
+    /// counts it as used. Items without a tool component do neither.
+    pub fn mine_block(&self, state: &BlockState) {
         if matches!(
             self.gamemode.load(),
             GameMode::Creative | GameMode::Spectator
@@ -2411,6 +2417,11 @@ impl Player {
         }
 
         let held = self.inventory().held_item();
+        let Some(tool) = held.get_data_component::<ToolImpl>() else {
+            return;
+        };
+        let damage = tool.damage_per_block as i32;
+        let item_id = held.item.id;
         // Vanilla `ShearsItem.mineBlock` wears shears on everything but fire, while
         // `Item.mineBlock` skips blocks that break instantly.
         let wears = if held.item == &pumpkin_data::item::Item::SHEARS {
@@ -2418,17 +2429,10 @@ impl Player {
         } else {
             state.hardness != 0.0
         };
-        if !wears {
-            return;
-        }
-
-        let damage = held
-            .get_data_component::<ToolImpl>()
-            .map_or(0, |tool| tool.damage_per_block as i32);
-
-        if damage > 0 {
+        if wears && damage > 0 {
             self.damage_held_item(damage);
         }
+        self.increment_stat(StatisticCategory::Used, i32::from(item_id), 1);
     }
 
     pub fn set_respawn_point(
@@ -3601,12 +3605,10 @@ impl Player {
                                 .block_registry
                                 .broken(&world, block, &p, &pos, &server, state);
                         }
-                        p.apply_tool_damage_for_block_break(state);
+                        p.mine_block(state);
                         if can_harvest {
                             p.add_exhaustion(MINE_BLOCK_EXHAUSTION);
                         }
-                        let item_id = p.inventory().held_item().item.id;
-                        p.increment_stat(StatisticCategory::Used, item_id as i32, 1);
                         p.increment_stat(StatisticCategory::Mined, block.id.as_u16() as i32, 1);
                     }
                 }

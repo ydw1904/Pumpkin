@@ -90,8 +90,6 @@ fn try_convert_to_mud(
         BlockFlags::NOTIFY_ALL,
     );
 
-    player.increment_stat(StatisticCategory::Used, i32::from(item.item.id), 1);
-
     let mut glass_bottle = ItemStack::new(1, &Item::GLASS_BOTTLE);
     if item.item_count == 1 && player.gamemode.load() != GameMode::Creative {
         *item = glass_bottle;

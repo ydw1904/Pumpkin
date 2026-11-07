@@ -36,9 +36,6 @@ impl JavaClient {
             return;
         }
 
-        let (item_id, _item) = (item_in_hand.item.id, item_in_hand.item);
-        player.increment_stat(StatisticCategory::Used, item_id as i32, 1);
-
         let hit = player.world().clip(&pumpkin_world::clip::ClipContext::new(
             player.eye_position(),
             player.eye_position().add(
@@ -123,6 +120,8 @@ impl JavaClient {
             if current_equipped.are_items_and_components_equal(held) {
                 return;
             }
+            // Vanilla `Equippable.swapWithEquipmentSlot`.
+            player.increment_stat(StatisticCategory::Used, i32::from(held.item.id), 1);
 
             player.enqueue_equipment_change(&slot, held);
 

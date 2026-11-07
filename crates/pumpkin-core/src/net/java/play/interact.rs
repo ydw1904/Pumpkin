@@ -143,20 +143,16 @@ impl JavaClient {
                                     },
                                 );
                             }
-                            if native_interaction.is_none() && !stack.are_equal(&before) {
-                                player.increment_stat(StatisticCategory::Used, item_id as i32, 1);
-                                if before.is_damageable() && stack.is_empty() {
-                                    player.increment_stat(
-                                        StatisticCategory::Broken,
-                                        item_id as i32,
-                                        1,
-                                    );
-                                    player.world().send_entity_status(
-                                        player.get_entity(),
-                                        equipment_break_status(&EquipmentSlot::MAIN_HAND),
-                                        ActorEventID::None,
-                                    );
-                                }
+                            if native_interaction.is_none()
+                                && before.is_damageable()
+                                && stack.is_empty()
+                            {
+                                player.increment_stat(StatisticCategory::Broken, item_id as i32, 1);
+                                player.world().send_entity_status(
+                                    player.get_entity(),
+                                    equipment_break_status(&EquipmentSlot::MAIN_HAND),
+                                    ActorEventID::None,
+                                );
                             }
                             player.inventory().set_stack_in_hand(hand, stack);
                         }

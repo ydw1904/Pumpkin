@@ -4912,6 +4912,10 @@ impl EntityBase for LivingEntity {
                 self.apply_suspicious_stew_effects(item);
 
                 if let Some(player) = caller.get_player() {
+                    // Vanilla `Consumable.onConsume`.
+                    if item.get_data_component::<ConsumableImpl>().is_some() {
+                        player.increment_stat(StatisticCategory::Used, i32::from(item.item.id), 1);
+                    }
                     player.trigger_advancement(
                         crate::entity::player::advancement::trigger::AdvancementTrigger::ConsumeItem {
                             item_id: format!("minecraft:{}", item.item.registry_key),

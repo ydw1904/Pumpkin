@@ -13,6 +13,7 @@ use pumpkin_data::entity::EntityType;
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::sound::{Sound, SoundCategory};
+use pumpkin_data::statistic::StatisticCategory;
 use pumpkin_util::Hand;
 
 pub struct FishingRodItem;
@@ -42,14 +43,7 @@ impl ItemBehaviour for FishingRodItem {
     }
 
     /// Vanilla `FishingRodItem.use`: cast when no bobber is out, otherwise reel the current one in.
-    fn normal_use_with_hand(
-        &self,
-        _item: &Item,
-        player: &Player,
-        yaw: f32,
-        pitch: f32,
-        hand: Hand,
-    ) {
+    fn normal_use_with_hand(&self, item: &Item, player: &Player, yaw: f32, pitch: f32, hand: Hand) {
         let world = player.world();
         let inventory = player.inventory();
         let used_item = inventory.get_stack_in_hand(hand);
@@ -93,6 +87,7 @@ impl ItemBehaviour for FishingRodItem {
             let bobber_arc: Arc<FishingBobberEntity> = Arc::new(bobber);
             world.spawn_entity(bobber_arc);
 
+            player.increment_stat(StatisticCategory::Used, i32::from(item.id), 1);
             // Vanilla `ItemStack.causeUseVibration(player, ITEM_INTERACT_START)`.
             world.emit_game_event(GameEvent::ItemInteractStart.name(), player.position());
         } else {

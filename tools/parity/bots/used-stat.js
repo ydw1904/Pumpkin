@@ -86,4 +86,74 @@ h.start(async () => {
   await click(X + 4, Y, Z)
   await delta('flint_on_stone', 'flint_and_steel')
   h.cmd(`fill ${X - 6} ${Y + 1} ${Z - 6} ${X + 6} ${Y + 3} ${Z + 6} air`)
+  await h.ticks(5)
+
+  // Uses in the air: only items whose own use counts it.
+  await bot.look(0, 0.3, true)
+  const air = async (key, name, holdTicks = 0) => {
+    await hold(name)
+    bot.activateItem()
+    if (holdTicks) await h.ticks(holdTicks)
+    bot.deactivateItem()
+    await h.ticks(10)
+    await delta(key, name)
+  }
+  await air('stick_in_air', 'stick')
+  await air('snowball_in_air', 'snowball')
+  // Consumables count once they finish.
+  await air('milk_started', 'milk_bucket', 5)
+  await air('milk_finished', 'milk_bucket', 40)
+  // An equippable swaps into its slot, and a second use with the same item swaps nothing.
+  await h.clear()
+  await air('helmet_equipped', 'iron_helmet')
+  h.cmd(`item replace entity ${bot.username} armor.head with iron_helmet`)
+  await h.ticks(5)
+  await air('helmet_same', 'iron_helmet')
+  // Casting a fishing rod counts, reeling in doesn't.
+  await air('rod_cast', 'fishing_rod')
+  await air('rod_reel', 'fishing_rod')
+  // A goat horn counts when played and is still there once it has finished.
+  await h.clear()
+  await air('horn_played', 'goat_horn')
+  await h.ticks(160)
+  h.result('horn_after_playing', h.inv().goat_horn || 0)
+
+  // Mining counts only items with a tool component, and only outside creative.
+  await h.clear()
+  const dig = async (key, name, x, z) => {
+    h.cmd(`setblock ${x} ${Y + 1} ${z} dirt`)
+    await h.waitFor(() => h.blockName(x, Y + 1, z) === 'dirt', 3000)
+    await hold(name)
+    await bot.lookAt(new Vec3(x + 0.5, Y + 1.5, z + 0.5), true)
+    await bot.dig(h.block(x, Y + 1, z), true).catch(e => h.result(`${key}_error`, e.message))
+    await h.ticks(10)
+    await delta(key, name)
+  }
+  await dig('stick_mines_dirt', 'stick', X + 2, Z)
+  await dig('shovel_mines_dirt', 'iron_shovel', X - 2, Z)
+
+  // Hits count only weapons on living targets; using an item on a mob doesn't count.
+  const hit = async (key, name) => {
+    h.cmd('kill @e[type=pig]')
+    h.cmd(`summon pig ${X + 1.5} ${Y + 1} ${Z + 0.5} {NoAI:1b}`)
+    await h.waitFor(() => Object.values(bot.entities).some(e => e.name === 'pig'), 3000)
+    await hold(name)
+    await h.ticks(30)
+    const pig = Object.values(bot.entities).find(e => e.name === 'pig')
+    if (pig) bot.attack(pig)
+    await h.ticks(10)
+    await delta(key, name)
+  }
+  await hit('stick_hits_pig', 'stick')
+  await hit('sword_hits_pig', 'iron_sword')
+  h.cmd('kill @e[type=pig]')
+  h.cmd(`summon sheep ${X + 1.5} ${Y + 1} ${Z + 0.5} {NoAI:1b}`)
+  await h.waitFor(() => Object.values(bot.entities).some(e => e.name === 'sheep'), 3000)
+  await hold('shears')
+  const sheep = Object.values(bot.entities).find(e => e.name === 'sheep')
+  if (sheep) bot.activateEntity(sheep)
+  await h.ticks(10)
+  await delta('shears_on_sheep', 'shears')
+  h.cmd('kill @e[type=sheep]')
+  h.cmd('kill @e[type=item]')
 })
