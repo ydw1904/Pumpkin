@@ -818,8 +818,16 @@ impl Server {
             .datapack_manager
             .execute_function(self, &source, "#minecraft:load");
 
-        // `PlayerList.reloadResources`.
+        // `PlayerList.saveAll`, before the players' advancements start over.
         let players = self.get_all_players();
+        if let Err(err) = self.player_data_storage.save_all_players(self) {
+            error!("Failed to save player data: {err}");
+        }
+        if let Err(err) = self.advancement_manager.save_all_players_now(&players) {
+            error!("Failed to save player advancements: {err}");
+        }
+
+        // `PlayerList.reloadResources`.
         for player in &players {
             player
                 .advancements

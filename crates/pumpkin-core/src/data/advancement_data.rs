@@ -65,6 +65,41 @@ impl AdvancementManager {
         PlayerAdvancement::new(self, owner)
     }
 
+    /// The advancement files of `players` as they would be saved now.
+    fn files_to_save(
+        players: &[Arc<Player>],
+    ) -> Result<Vec<(PathBuf, String)>, AdvancementDataError> {
+        players
+            .iter()
+            .map(|player| {
+                let guard = player
+                    .advancements
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let json =
+                    serde_json::to_string_pretty(&*guard).map_err(AdvancementDataError::Json)?;
+                Ok((guard.path.clone(), json))
+            })
+            .collect()
+    }
+
+    /// Saves the advancements of all provided players without leaving the calling thread, for
+    /// callers that already do their work synchronously, like a datapack reload.
+    pub fn save_all_players_now(
+        &self,
+        players: &[Arc<Player>],
+    ) -> Result<(), AdvancementDataError> {
+        if !self.save_enabled {
+            return Ok(());
+        }
+        let to_write = Self::files_to_save(players)?;
+        create_dir_all(&self.advancement_path).map_err(AdvancementDataError::Io)?;
+        for (path, json) in to_write {
+            std::fs::write(&path, json).map_err(AdvancementDataError::Io)?;
+        }
+        Ok(())
+    }
+
     /// Saves the advancements of all provided players.
     pub async fn save_all_players(
         &self,
@@ -73,15 +108,7 @@ impl AdvancementManager {
         if !self.save_enabled {
             return Ok(());
         }
-        let mut to_write = Vec::with_capacity(players.len());
-        for player in players {
-            let guard = player
-                .advancements
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let json = serde_json::to_string_pretty(&*guard).map_err(AdvancementDataError::Json)?;
-            to_write.push((guard.path.clone(), json));
-        }
+        let to_write = Self::files_to_save(players)?;
 
         if let Err(e) = tokio::fs::create_dir_all(&self.advancement_path).await {
             error!("Failed to create player advancement directory : {e}");
