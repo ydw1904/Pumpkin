@@ -27,7 +27,7 @@ pub fn send_c_commands_packet(
 ) {
     let mut proto_nodes: Vec<ProtoNode> = Vec::with_capacity(dispatcher.tree.len());
     let source = &super::CommandSender::Player(player.clone()).into_source(server);
-    for node in &dispatcher.tree {
+    for node in &*dispatcher.tree {
         let children: Box<[VarInt]> = match node {
             AttachedNode::Root(_) => {
                 // Drop disabled commands from the root's child list so they

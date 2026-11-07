@@ -11,6 +11,7 @@ use tracing::{error, info};
 
 use crate::command::context::command_source::ResultValueTaker;
 use crate::command::context::command_source::{CommandSource, Frame, FrameControl};
+use crate::data::datapack::function_loader::FunctionCommands;
 use crate::server::Server;
 
 /// Vanilla `ExecutionContext.MAX_QUEUE_DEPTH`.
@@ -32,7 +33,7 @@ pub enum Action {
     /// Vanilla `CallFunction`: runs a function's commands in a new frame.
     CallFunction {
         source: Box<CommandSource>,
-        lines: Arc<[String]>,
+        commands: FunctionCommands,
         callback: ResultValueTaker,
         /// A `return` in the function also returns from the calling frame.
         return_parent: bool,
@@ -40,20 +41,20 @@ pub enum Action {
     /// Vanilla `ContinuationTask`: queues one command of a function, then the rest.
     Continue {
         source: Arc<CommandSource>,
-        lines: Arc<[String]>,
+        commands: FunctionCommands,
         index: usize,
     },
     /// Vanilla `BuildContexts.Unbound`: one command of a function.
     Command {
         source: Arc<CommandSource>,
-        lines: Arc<[String]>,
+        commands: FunctionCommands,
         index: usize,
     },
     /// Vanilla `IsolatedCall` as `execute if function` uses it: the functions run in a new frame
     /// that reports to `callback`, and fall through if none of them returns.
     IsolatedCall {
         source: Box<CommandSource>,
-        functions: Arc<[Arc<[String]>]>,
+        functions: Arc<[FunctionCommands]>,
         callback: ResultValueTaker,
     },
     /// Vanilla `FallthroughTask`: the frame returns failure and ends.
@@ -237,9 +238,13 @@ impl ExecutionContext {
 
     fn push_new_commands(&self) {
         let mut state = self.state.borrow_mut();
-        let new_top = std::mem::take(&mut state.new_top_commands);
-        for entry in new_top.into_iter().rev() {
-            state.queue.push_front(entry);
+        let State {
+            queue,
+            new_top_commands,
+            ..
+        } = &mut *state;
+        for entry in new_top_commands.drain(..).rev() {
+            queue.push_front(entry);
         }
     }
 
@@ -247,8 +252,8 @@ impl ExecutionContext {
     fn isolated_call(
         &self,
         frame: &Frame,
-        source: &CommandSource,
-        functions: &[Arc<[String]>],
+        source: Box<CommandSource>,
+        functions: &[FunctionCommands],
         callback: ResultValueTaker,
     ) {
         let depth = frame.depth + 1;
@@ -257,16 +262,21 @@ impl ExecutionContext {
             return_value: callback,
             control: FrameControl::DiscardAtDepth(depth),
         };
-        for lines in functions {
-            self.queue_next(Entry {
-                frame: frame.clone(),
-                action: Action::CallFunction {
-                    source: Box::new(source.clone()),
-                    lines: lines.clone(),
-                    callback: frame.return_value.clone(),
-                    return_parent: true,
-                },
-            });
+        let call = |source, commands: &FunctionCommands| Entry {
+            frame: frame.clone(),
+            action: Action::CallFunction {
+                source,
+                commands: commands.clone(),
+                callback: frame.return_value.clone(),
+                return_parent: true,
+            },
+        };
+        if let Some((last, rest)) = functions.split_last() {
+            for commands in rest {
+                self.queue_next(call(source.clone(), commands));
+            }
+            // The last call takes the source instead of a copy.
+            self.queue_next(call(source, last));
         }
         self.queue_next(Entry {
             frame,
@@ -280,7 +290,7 @@ impl ExecutionContext {
         match entry.action {
             Action::CallFunction {
                 mut source,
-                lines,
+                commands,
                 callback,
                 return_parent,
             } => {
@@ -303,12 +313,12 @@ impl ExecutionContext {
                     .server
                     .as_ref()
                     .map(|server| server.basic_config.function_permission_level);
-                if !lines.is_empty() {
+                if !commands.is_empty() {
                     self.queue_next(Entry {
                         frame,
                         action: Action::Continue {
                             source: Arc::new(*source),
-                            lines,
+                            commands,
                             index: 0,
                         },
                     });
@@ -316,15 +326,15 @@ impl ExecutionContext {
             }
             Action::Continue {
                 source,
-                lines,
+                commands,
                 index,
             } => {
-                let more = index + 1 < lines.len();
+                let more = index + 1 < commands.len();
                 self.queue_next(Entry {
                     frame: frame.clone(),
                     action: Action::Command {
                         source: source.clone(),
-                        lines: lines.clone(),
+                        commands: commands.clone(),
                         index,
                     },
                 });
@@ -333,7 +343,7 @@ impl ExecutionContext {
                         frame,
                         action: Action::Continue {
                             source,
-                            lines,
+                            commands,
                             index: index + 1,
                         },
                     });
@@ -341,17 +351,21 @@ impl ExecutionContext {
             }
             Action::Command {
                 source,
-                lines,
+                commands,
                 index,
             } => {
+                let command = &commands[index];
                 let dispatcher = source.server().command_dispatcher.load();
-                dispatcher.handle_command(&source, &lines[index]);
+                match &command.chain {
+                    Some(chain) => dispatcher.handle_compiled(chain, &source, &command.text),
+                    None => dispatcher.handle_command(&source, &command.text),
+                }
             }
             Action::IsolatedCall {
                 source,
                 functions,
                 callback,
-            } => self.isolated_call(&frame, &source, &functions, callback),
+            } => self.isolated_call(&frame, source, &functions, callback),
             Action::Fallthrough => {
                 frame.return_failure();
                 frame.discard();

@@ -175,7 +175,7 @@ fn absolute_distance(origin: &BlockPos, target: &BlockPos) -> i32 {
 }
 
 fn send_success(
-    context: &CommandContext<'_>,
+    context: &CommandContext,
     java_key: &'static str,
     bedrock_key: &'static str,
     name: String,

@@ -1165,12 +1165,13 @@ fn schedule_function_conditions_and_test(
     let server = context.server();
     let name = FunctionArgumentType::get(context, "name")?;
     let functions: Arc<[_]> = instantiate_functions(
+        server,
         get_functions(server, name)?,
         None,
         &ERROR_FUNCTION_CONDITION_INSTANTIATION_FAILURE,
     )?
     .into_iter()
-    .map(|(_, lines)| lines)
+    .map(|(_, commands)| commands)
     .collect();
     if functions.is_empty() {
         return Ok(());
@@ -2142,7 +2143,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
     let execute_node_id = dispatcher.register(builder);
 
     set_redirects_to_execute(
-        &mut dispatcher.tree,
+        std::sync::Arc::make_mut(&mut dispatcher.tree),
         NodeId::from(execute_node_id),
         execute_node_id,
     );

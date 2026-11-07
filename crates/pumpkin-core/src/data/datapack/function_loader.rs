@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use pumpkin_data::translation;
 use pumpkin_nbt::compound::NbtCompound;
@@ -9,10 +9,222 @@ use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::text::TextComponent;
 use tracing::error;
 
+use crate::command::CommandSender;
 use crate::command::commands::data::snbt_string;
+use crate::command::context::command_context::ContextChain;
+use crate::command::context::command_source::CommandSource;
+use crate::command::node::dispatcher::CommandDispatcher;
+use crate::server::Server;
 
-/// Checks that a function command parses (vanilla `CommandFunction.parseCommand`).
-pub type CommandCompiler<'a> = &'a dyn Fn(&str) -> Result<(), String>;
+/// Vanilla `MacroFunction.MAX_CACHE_ENTRIES`.
+const MAX_CACHE_ENTRIES: usize = 8;
+
+/// One command of a function, parsed once (vanilla `UnboundEntryAction`). A command that
+/// doesn't parse keeps only its text and reports the error each time it runs.
+#[derive(Clone)]
+pub struct FunctionCommand {
+    pub text: Arc<str>,
+    pub chain: Option<ContextChain<CommandSource>>,
+}
+
+/// The commands of a function ready to run.
+pub type FunctionCommands = Arc<[FunctionCommand]>;
+
+/// Parses function commands at `function-permission-level` against the current command
+/// dispatcher (vanilla `ServerFunctionLibrary`'s compilation context).
+pub struct FunctionCompiler {
+    dispatcher: Arc<CommandDispatcher>,
+    source: CommandSource,
+    /// The source parsed commands keep until they run with their own: a stored command must
+    /// not hold the server.
+    unbound: Arc<CommandSource>,
+}
+
+impl FunctionCompiler {
+    #[must_use]
+    pub fn new(server: &Arc<Server>) -> Self {
+        let mut source = CommandSender::Dummy.into_source(server).with_silent();
+        source.permission_level = Some(server.basic_config.function_permission_level);
+        Self {
+            dispatcher: server.command_dispatcher.load_full(),
+            source,
+            unbound: Arc::new(CommandSource::dummy()),
+        }
+    }
+
+    /// Vanilla `CommandFunction.parseCommand`.
+    pub fn compile(&self, command: &str) -> Result<ContextChain<CommandSource>, String> {
+        self.dispatcher
+            .compile(command, &self.source)
+            .map(|chain| chain.with_source(&self.unbound))
+            .map_err(|error| error.message.get_text())
+    }
+
+    fn command(&self, text: &str) -> FunctionCommand {
+        FunctionCommand {
+            text: text.into(),
+            chain: self.compile(text).ok(),
+        }
+    }
+}
+
+/// A loaded function (vanilla `CommandFunction`): its lines, and their commands parsed against
+/// the command dispatcher they last ran with.
+pub struct CommandFunction {
+    lines: Box<[String]>,
+    /// The macro variables in the order they first appear; empty for a plain function.
+    parameters: Box<[String]>,
+    compiled: Mutex<CompiledFunction>,
+}
+
+struct CompiledFunction {
+    dispatcher: Arc<CommandDispatcher>,
+    /// Macro lines are left unparsed here.
+    commands: FunctionCommands,
+    /// Vanilla `MacroFunction.cache`: the commands of recent argument values, newest last.
+    macro_cache: VecDeque<(Box<[String]>, FunctionCommands)>,
+}
+
+impl CommandFunction {
+    pub(crate) fn new(lines: Vec<FunctionLine>, dispatcher: Arc<CommandDispatcher>) -> Self {
+        let mut parameters: Vec<String> = Vec::new();
+        for template in lines.iter().filter_map(|(line, _)| macro_template(line)) {
+            for variable in template.variables {
+                if !parameters.iter().any(|known| known == variable) {
+                    parameters.push(variable.to_string());
+                }
+            }
+        }
+        let commands = lines
+            .iter()
+            .map(|(line, chain)| FunctionCommand {
+                text: line.as_str().into(),
+                chain: chain.clone(),
+            })
+            .collect();
+        Self {
+            lines: lines.into_iter().map(|(line, _)| line).collect(),
+            parameters: parameters.into(),
+            compiled: Mutex::new(CompiledFunction {
+                dispatcher,
+                commands,
+                macro_cache: VecDeque::new(),
+            }),
+        }
+    }
+
+    /// Whether the function has macro lines (vanilla `MacroFunction`).
+    #[must_use]
+    pub fn is_macro(&self) -> bool {
+        !self.parameters.is_empty()
+    }
+
+    /// The function's lines as written, macro lines included.
+    #[must_use]
+    pub fn lines(&self) -> &[String] {
+        &self.lines
+    }
+
+    /// Vanilla `CommandFunction.instantiate`: the function's commands with macro arguments
+    /// filled in. Plain functions ignore `arguments`.
+    pub fn instantiate(
+        &self,
+        id: &str,
+        server: &Arc<Server>,
+        arguments: Option<&NbtCompound>,
+    ) -> Result<FunctionCommands, TextComponent> {
+        let mut compiled = self
+            .compiled
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut compiler = None;
+        if !Arc::ptr_eq(&compiled.dispatcher, &server.command_dispatcher.load()) {
+            // The commands changed since the function was parsed: parse it again.
+            let new = compiler.insert(FunctionCompiler::new(server));
+            compiled.commands = self
+                .lines
+                .iter()
+                .map(|line| {
+                    if macro_template(line).is_some() {
+                        FunctionCommand {
+                            text: line.as_str().into(),
+                            chain: None,
+                        }
+                    } else {
+                        new.command(line)
+                    }
+                })
+                .collect();
+            compiled.dispatcher = new.dispatcher.clone();
+            compiled.macro_cache.clear();
+        }
+        if self.parameters.is_empty() {
+            return Ok(compiled.commands.clone());
+        }
+
+        let Some(arguments) = arguments else {
+            return Err(TextComponent::translate_cross(
+                translation::java::COMMANDS_FUNCTION_ERROR_MISSING_ARGUMENTS,
+                translation::java::COMMANDS_FUNCTION_ERROR_MISSING_ARGUMENTS,
+                [TextComponent::text(id.to_string())],
+            ));
+        };
+        // Parameters are checked in the order they first appear.
+        let mut values = Vec::with_capacity(self.parameters.len());
+        for variable in &self.parameters {
+            let Some(value) = arguments.get(variable) else {
+                return Err(TextComponent::translate_cross(
+                    translation::java::COMMANDS_FUNCTION_ERROR_MISSING_ARGUMENT,
+                    translation::java::COMMANDS_FUNCTION_ERROR_MISSING_ARGUMENT,
+                    [
+                        TextComponent::text(id.to_string()),
+                        TextComponent::text(variable.clone()),
+                    ],
+                ));
+            };
+            values.push(stringify_macro_argument(value));
+        }
+        if let Some(index) = compiled
+            .macro_cache
+            .iter()
+            .position(|(key, _)| **key == *values)
+            && let Some(entry) = compiled.macro_cache.remove(index)
+        {
+            let commands = entry.1.clone();
+            compiled.macro_cache.push_back(entry);
+            return Ok(commands);
+        }
+
+        let compiler = compiler.get_or_insert_with(|| FunctionCompiler::new(server));
+        let by_name: HashMap<&str, &str> = self
+            .parameters
+            .iter()
+            .map(String::as_str)
+            .zip(values.iter().map(String::as_str))
+            .collect();
+        let commands: FunctionCommands = self
+            .lines
+            .iter()
+            .zip(compiled.commands.iter())
+            .map(|(line, command)| {
+                macro_template(line).map_or_else(
+                    || command.clone(),
+                    |template| compiler.command(&template.substitute(&by_name)),
+                )
+            })
+            .collect();
+        if compiled.macro_cache.len() >= MAX_CACHE_ENTRIES {
+            compiled.macro_cache.pop_front();
+        }
+        compiled
+            .macro_cache
+            .push_back((values.into(), commands.clone()));
+        Ok(commands)
+    }
+}
+
+/// A function line, with its parsed command unless it is a macro line.
+pub(crate) type FunctionLine = (String, Option<ContextChain<CommandSource>>);
 
 /// Reads the function files of a namespace, keyed by function id. They are compiled with
 /// [`compile_functions`] once everything they may refer to has loaded.
@@ -31,13 +243,16 @@ pub fn load_functions_from_dir<S: std::hash::BuildHasher>(
 /// out.
 pub fn compile_functions<S: std::hash::BuildHasher>(
     sources: HashMap<String, String, S>,
-    compile: CommandCompiler,
-) -> HashMap<String, Arc<[String]>> {
+    compiler: &FunctionCompiler,
+) -> HashMap<String, Arc<CommandFunction>> {
     let mut functions = HashMap::with_capacity(sources.len());
     for (id, content) in sources {
-        match function_lines(&content, compile) {
+        match function_lines(&content, &|command| compiler.compile(command)) {
             Ok(lines) => {
-                functions.insert(id, lines.into());
+                functions.insert(
+                    id,
+                    Arc::new(CommandFunction::new(lines, compiler.dispatcher.clone())),
+                );
             }
             Err(reason) => error!("Failed to load function {id}: {reason}"),
         }
@@ -80,7 +295,10 @@ fn load_functions_recursive<S: std::hash::BuildHasher>(
 /// The commands of a function file, like vanilla `CommandFunction.fromLines`: a line ending in
 /// `\` continues on the next one, a macro line (`$`) must be a valid template, and every other
 /// command must parse.
-fn function_lines(content: &str, compile: CommandCompiler) -> Result<Vec<String>, String> {
+fn function_lines<T>(
+    content: &str,
+    compile: &dyn Fn(&str) -> Result<T, String>,
+) -> Result<Vec<(String, Option<T>)>, String> {
     let mut lines = Vec::new();
     let mut raw = content.lines().map(str::trim).enumerate();
     while let Some((index, first)) = raw.next() {
@@ -110,14 +328,15 @@ fn function_lines(content: &str, compile: CommandCompiler) -> Result<Vec<String>
                 "Unknown or invalid command '{line}' on line {line_number} (did you mean '{name}'? Do not use a preceding forwards slash.)"
             ));
         }
-        if let Some(macro_line) = line.strip_prefix('$') {
+        let command = if let Some(macro_line) = line.strip_prefix('$') {
             MacroTemplate::parse(macro_line)?;
+            None
         } else {
-            compile(&line).map_err(|reason| {
+            Some(compile(&line).map_err(|reason| {
                 format!("Whilst parsing command on line {line_number}: {reason}")
-            })?;
-        }
-        lines.push(line);
+            })?)
+        };
+        lines.push((line, command));
     }
     Ok(lines)
 }
@@ -166,11 +385,11 @@ impl<'a> MacroTemplate<'a> {
     }
 
     /// Vanilla `StringTemplate.substitute`.
-    fn substitute(&self, values: &HashMap<&str, String>) -> String {
+    fn substitute(&self, values: &HashMap<&str, &str>) -> String {
         let mut command = String::new();
         for (i, variable) in self.variables.iter().enumerate() {
             command.push_str(self.segments[i]);
-            command.push_str(&values[variable]);
+            command.push_str(values[variable]);
         }
         if self.segments.len() > self.variables.len() {
             command.push_str(self.segments[self.segments.len() - 1]);
@@ -208,57 +427,10 @@ fn stringify_macro_argument(tag: &NbtTag) -> String {
     }
 }
 
-/// Vanilla `CommandFunction.instantiate`: a function's commands with macro arguments filled in.
-/// Plain functions ignore `arguments`.
-pub fn instantiate_function(
-    id: &str,
-    lines: &Arc<[String]>,
-    arguments: Option<&NbtCompound>,
-) -> Result<Arc<[String]>, TextComponent> {
-    let templates: Vec<Option<MacroTemplate>> = lines
-        .iter()
-        .map(|line| {
-            line.strip_prefix('$')
-                .and_then(|line| MacroTemplate::parse(line).ok())
-        })
-        .collect();
-    if templates.iter().all(Option::is_none) {
-        return Ok(lines.clone());
-    }
-    let Some(arguments) = arguments else {
-        return Err(TextComponent::translate_cross(
-            translation::java::COMMANDS_FUNCTION_ERROR_MISSING_ARGUMENTS,
-            translation::java::COMMANDS_FUNCTION_ERROR_MISSING_ARGUMENTS,
-            [TextComponent::text(id.to_string())],
-        ));
-    };
-    // Parameters are checked in the order they first appear.
-    let mut values = HashMap::new();
-    for variable in templates.iter().flatten().flat_map(|t| t.variables.iter()) {
-        if values.contains_key(variable) {
-            continue;
-        }
-        let Some(value) = arguments.get(variable) else {
-            return Err(TextComponent::translate_cross(
-                translation::java::COMMANDS_FUNCTION_ERROR_MISSING_ARGUMENT,
-                translation::java::COMMANDS_FUNCTION_ERROR_MISSING_ARGUMENT,
-                [
-                    TextComponent::text(id.to_string()),
-                    TextComponent::text((*variable).to_string()),
-                ],
-            ));
-        };
-        values.insert(*variable, stringify_macro_argument(value));
-    }
-    Ok(lines
-        .iter()
-        .zip(&templates)
-        .map(|(line, template)| {
-            template
-                .as_ref()
-                .map_or_else(|| line.clone(), |template| template.substitute(&values))
-        })
-        .collect())
+/// The template of a macro line (`$`), if it is one.
+fn macro_template(line: &str) -> Option<MacroTemplate<'_>> {
+    line.strip_prefix('$')
+        .and_then(|line| MacroTemplate::parse(line).ok())
 }
 
 pub fn load_function_tags_from_dir<S: std::hash::BuildHasher>(
@@ -315,20 +487,23 @@ fn load_tags_recursive<S: std::hash::BuildHasher>(
 
 #[cfg(test)]
 mod tests {
-    use super::{function_lines, instantiate_function};
-    use pumpkin_nbt::compound::NbtCompound;
+    use super::{function_lines, macro_template, stringify_macro_argument};
     use pumpkin_nbt::tag::NbtTag;
-    use std::sync::Arc;
+    use std::collections::HashMap;
+
+    fn texts<T>(lines: Vec<(String, Option<T>)>) -> Vec<String> {
+        lines.into_iter().map(|(line, _)| line).collect()
+    }
 
     #[test]
     fn parse_mcfunction_content() {
         let content =
             "# This is a comment\nsay Hello world\n\n# Another comment\ngive @p stick 5\n";
         let lines = function_lines(content, &accept).expect("valid function");
-        assert_eq!(lines, ["say Hello world", "give @p stick 5"]);
+        assert_eq!(texts(lines), ["say Hello world", "give @p stick 5"]);
 
         assert_eq!(
-            function_lines("say hi\n/give @p diamond 1\n", &accept),
+            function_lines("say hi\n/give @p diamond 1\n", &accept).map(texts),
             Err("Unknown or invalid command '/give @p diamond 1' on line 2 (did you mean 'give'? Do not use a preceding forwards slash.)".to_string())
         );
         let reject = |command: &str| {
@@ -339,7 +514,7 @@ mod tests {
             }
         };
         assert_eq!(
-            function_lines("say a \\\n b\nbad", &reject),
+            function_lines("say a \\\n b\nbad", &reject).map(texts),
             Err("Whilst parsing command on line 3: Unknown command".to_string())
         );
     }
@@ -356,18 +531,15 @@ mod tests {
     fn continues_lines_and_fills_in_macros() {
         let lines = function_lines("say a \\\n  b\n$say $(x) and $(y)!\n", &accept)
             .expect("valid function");
-        assert_eq!(lines, ["say a b", "$say $(x) and $(y)!"]);
-        let lines: Arc<[String]> = lines.into();
+        assert!(lines[0].1.is_some() && lines[1].1.is_none());
+        assert_eq!(texts(lines), ["say a b", "$say $(x) and $(y)!"]);
         assert!(function_lines("$say no variables", &accept).is_err());
         assert!(function_lines("say end \\", &accept).is_err());
 
-        let mut arguments = NbtCompound::new();
-        arguments.put("x", NbtTag::Float(0.5));
-        arguments.put("y", NbtTag::String("hi".into()));
-        assert_eq!(
-            *instantiate_function("t:f", &lines, Some(&arguments)).expect("arguments given"),
-            ["say a b", "say .5 and hi!"]
-        );
-        assert!(instantiate_function("t:f", &lines, None).is_err());
+        let template = macro_template("$say $(x) and $(y)!").expect("a macro line");
+        let x = stringify_macro_argument(&NbtTag::Float(0.5));
+        let y = stringify_macro_argument(&NbtTag::String("hi".into()));
+        let values = HashMap::from([("x", x.as_str()), ("y", y.as_str())]);
+        assert_eq!(template.substitute(&values), "say .5 and hi!");
     }
 }

@@ -785,20 +785,11 @@ impl Server {
         enabled_packs: &[String],
     ) -> Result<(), RegistryLoadErrors> {
         let world_path = self.basic_config.get_world_path();
-        let dispatcher = self.command_dispatcher.load();
-        let mut source = crate::command::CommandSender::Dummy
-            .into_source(self)
-            .with_silent();
-        source.permission_level = Some(self.basic_config.function_permission_level);
         let advancements = self.datapack_manager.load_all(
             &world_path,
             enabled_packs,
             &self.recipe_manager,
-            &|command| {
-                dispatcher
-                    .validate(command, &source)
-                    .map_err(|error| error.message.get_text())
-            },
+            &crate::data::datapack::function_loader::FunctionCompiler::new(self),
         )?;
         self.advancement_manager.set_advancements(advancements);
         Ok(())

@@ -58,26 +58,26 @@ impl ParsedArgument {
 
 /// Represents the context used when commands are run.
 #[derive(Clone)]
-pub struct CommandContext<'a, S: CommandSource = DummySource> {
+pub struct CommandContext<S: CommandSource = DummySource> {
     /// The source running the commands.
     pub source: Arc<S>,
 
     /// The input string ran as the command.
-    pub input: String,
+    pub input: Arc<str>,
 
     /// Arguments which have been parsed and
     /// can be fetched for command execution.
-    pub arguments: FxHashMap<String, Arc<ParsedArgument>>,
+    pub arguments: Arc<FxHashMap<String, Arc<ParsedArgument>>>,
 
     /// The tree this context is related to.
-    pub tree: &'a Tree<S>,
+    pub tree: Arc<Tree<S>>,
 
     /// The root that this context will use, bound to the tree.
     /// Not necessarily the root node of the tree, however.
     pub root: NodeId,
 
     /// All the parsed nodes of the command.
-    pub nodes: Vec<ParsedNode>,
+    pub nodes: Arc<[ParsedNode]>,
 
     /// The string range of input.
     pub range: StringRange,
@@ -96,7 +96,7 @@ pub struct CommandContext<'a, S: CommandSource = DummySource> {
     pub command: Option<Command<S>>,
 }
 
-impl<S: CommandSource> std::ops::Deref for CommandContext<'_, S> {
+impl<S: CommandSource> std::ops::Deref for CommandContext<S> {
     type Target = S;
 
     fn deref(&self) -> &Self::Target {
@@ -104,7 +104,7 @@ impl<S: CommandSource> std::ops::Deref for CommandContext<'_, S> {
     }
 }
 
-impl<S: CommandSource> CommandContext<'_, S> {
+impl<S: CommandSource> CommandContext<S> {
     /// Copies this context with the source provided.
     #[must_use]
     pub fn with_source(&self, source: Arc<S>) -> Self {
@@ -118,9 +118,20 @@ impl<S: CommandSource> CommandContext<'_, S> {
             modifier: self.modifier.clone(),
             forks: self.forks,
             command: self.command.clone(),
-            tree: self.tree,
+            tree: self.tree.clone(),
             root: self.root,
         }
+    }
+
+    /// Copies this context and its children with the source provided.
+    #[must_use]
+    fn with_source_recursive(&self, source: &Arc<S>) -> Self {
+        let mut context = self.with_source(source.clone());
+        context.child = self
+            .child
+            .as_ref()
+            .map(|child| Arc::new(child.with_source_recursive(source)));
+        context
     }
 
     /// Returns the child immediately below this node.
@@ -187,21 +198,21 @@ impl<S: CommandSource> CommandContext<'_, S> {
 
 /// Represents a linked chain of [`CommandContext`]s, where the previous links to the next as a child.
 #[derive(Clone)]
-pub struct ContextChain<'a, S: CommandSource = DummySource> {
+pub struct ContextChain<S: CommandSource = DummySource> {
     /// The modifiers of this context chain.
-    modifiers: Vec<Arc<CommandContext<'a, S>>>,
+    modifiers: Vec<Arc<CommandContext<S>>>,
 
     /// That specific [`CommandContext`] to execute.
-    execute: Arc<CommandContext<'a, S>>,
+    execute: Arc<CommandContext<S>>,
 }
 
 /// Vanilla `BuildContexts.Continuation`: the rest of a chain after a [`RedirectModifier::Chain`].
 ///
-/// It keeps the command's input rather than the chain, which borrows the dispatcher, so it can
-/// wait in a command queue; see [`CommandDispatcher::continue_chain`].
+/// It can wait in a command queue; see [`CommandDispatcher::continue_chain`].
 pub struct ChainContinuation<S: CommandSource> {
     /// The whole command, as the original source parsed it.
-    pub input: String,
+    pub input: Arc<str>,
+    pub(crate) chain: ContextChain<S>,
     stage: usize,
     /// The source the command started with.
     pub original_source: Arc<S>,
@@ -209,17 +220,14 @@ pub struct ChainContinuation<S: CommandSource> {
     returning: bool,
 }
 
-impl<'a, S: CommandSource> ContextChain<'a, S> {
+impl<S: CommandSource> ContextChain<S> {
     /// Creates a new chain of contexts from a vector of them and one to execute.
     ///
     /// # Panics
     ///
     /// Panics if the `execute` given is non-executable.
     #[must_use]
-    pub fn new(
-        modifiers: Vec<Arc<CommandContext<'a, S>>>,
-        execute: Arc<CommandContext<'a, S>>,
-    ) -> Self {
+    pub fn new(modifiers: Vec<Arc<CommandContext<S>>>, execute: Arc<CommandContext<S>>) -> Self {
         assert!(
             execute.command.is_some(),
             "Expected last command in chain to be executable"
@@ -227,10 +235,21 @@ impl<'a, S: CommandSource> ContextChain<'a, S> {
         Self { modifiers, execute }
     }
 
+    /// Copies this chain with every context bound to the source provided.
+    #[must_use]
+    pub fn with_source(&self, source: &Arc<S>) -> Self {
+        let rebind =
+            |context: &Arc<CommandContext<S>>| Arc::new(context.with_source_recursive(source));
+        Self {
+            modifiers: self.modifiers.iter().map(rebind).collect(),
+            execute: rebind(&self.execute),
+        }
+    }
+
     /// Tries to flatten a [`CommandContext`]. If no command
     /// is available at the end of chain, [`None`] is returned.
     #[must_use]
-    pub fn try_flatten(root: &CommandContext<'a, S>) -> Option<Self> {
+    pub fn try_flatten(root: &CommandContext<S>) -> Option<Self> {
         let mut modifiers = Vec::new();
         let mut current = Arc::new(root.clone());
         loop {
@@ -249,7 +268,7 @@ impl<'a, S: CommandSource> ContextChain<'a, S> {
 
     /// Runs the given modifier with provided details.
     pub fn run_modifier(
-        modifier: &CommandContext<'a, S>,
+        modifier: &CommandContext<S>,
         source: &Arc<S>,
         result_consumer: &dyn ResultConsumer<S>,
         forked_mode: bool,
@@ -279,7 +298,7 @@ impl<'a, S: CommandSource> ContextChain<'a, S> {
     ///
     /// Panics if the `executable` provided cannot be executed.
     pub fn run_executable(
-        executable: &CommandContext<'a, S>,
+        executable: &CommandContext<S>,
         source: &Arc<S>,
         result_consumer: &dyn ResultConsumer<S>,
         forked_mode: bool,
@@ -320,14 +339,10 @@ impl<'a, S: CommandSource> ContextChain<'a, S> {
         source: &Arc<S>,
         result_consumer: &dyn ResultConsumer<S>,
     ) -> Result<i32, CommandSyntaxError> {
-        self.execute_from(
-            &ChainContinuation {
-                input: String::new(),
-                stage: 0,
-                original_source: source.clone(),
-                forked: false,
-                returning: source.is_returning(),
-            },
+        self.execute_stages(
+            0,
+            source,
+            (false, source.is_returning()),
             vec![source.clone()],
             result_consumer,
         )
@@ -337,12 +352,28 @@ impl<'a, S: CommandSource> ContextChain<'a, S> {
     pub fn execute_from(
         &self,
         state: &ChainContinuation<S>,
+        current_sources: Vec<Arc<S>>,
+        result_consumer: &dyn ResultConsumer<S>,
+    ) -> Result<i32, CommandSyntaxError> {
+        self.execute_stages(
+            state.stage,
+            &state.original_source,
+            (state.forked, state.returning),
+            current_sources,
+            result_consumer,
+        )
+    }
+
+    /// Executes the chain from `first_stage` on, for `current_sources`. `modes` holds whether
+    /// the chain already forked and whether it returns.
+    fn execute_stages(
+        &self,
+        first_stage: usize,
+        source: &Arc<S>,
+        (mut forked_mode, mut returning): (bool, bool),
         mut current_sources: Vec<Arc<S>>,
         result_consumer: &dyn ResultConsumer<S>,
     ) -> Result<i32, CommandSyntaxError> {
-        let source = &state.original_source;
-        let mut forked_mode = state.forked;
-        let mut returning = state.returning;
         let fork_limit = source.fork_limit();
 
         if current_sources.is_empty() {
@@ -352,11 +383,12 @@ impl<'a, S: CommandSource> ContextChain<'a, S> {
             return Ok(0);
         }
 
-        for (stage, modifier) in self.modifiers.iter().enumerate().skip(state.stage) {
+        for (stage, modifier) in self.modifiers.iter().enumerate().skip(first_stage) {
             forked_mode |= modifier.forks;
             if let RedirectModifier::Chain(function) = &modifier.modifier {
                 let continuation = ChainContinuation {
                     input: modifier.input.clone(),
+                    chain: self.clone(),
                     stage: stage + 1,
                     original_source: source.clone(),
                     forked: forked_mode,
@@ -443,7 +475,7 @@ impl<'a, S: CommandSource> ContextChain<'a, S> {
 
     /// Gets a reference to the top context of this chain.
     #[must_use]
-    pub fn get_top_context(&'_ self) -> &'_ Arc<CommandContext<'a, S>> {
+    pub fn get_top_context(&'_ self) -> &'_ Arc<CommandContext<S>> {
         if self.modifiers.is_empty() {
             &self.execute
         } else {
@@ -452,7 +484,7 @@ impl<'a, S: CommandSource> ContextChain<'a, S> {
     }
 
     /// Gets a mutable reference to the top context of this chain.
-    pub fn get_top_context_mut(&'_ mut self) -> &mut Arc<CommandContext<'a, S>> {
+    pub fn get_top_context_mut(&'_ mut self) -> &mut Arc<CommandContext<S>> {
         if self.modifiers.is_empty() {
             &mut self.execute
         } else {
@@ -540,16 +572,20 @@ impl<'a, S: CommandSource> CommandContextBuilder<'a, S> {
 
     /// Builds the required [`CommandContext`], consuming itself in the process.
     #[must_use]
-    pub fn build(self, input: &str) -> CommandContext<'a, S> {
+    pub fn build(self, input: &str) -> CommandContext<S> {
+        self.build_shared(&Arc::from(input))
+    }
+
+    fn build_shared(self, input: &Arc<str>) -> CommandContext<S> {
         CommandContext {
             source: self.source,
-            input: input.to_string(),
-            arguments: self.arguments,
-            tree: &self.dispatcher.tree,
+            input: input.clone(),
+            arguments: Arc::new(self.arguments),
+            tree: self.dispatcher.tree.clone(),
             root: self.root,
-            nodes: self.nodes,
+            nodes: self.nodes.into(),
             range: self.range,
-            child: self.child.map(|child| Arc::new(child.build(input))),
+            child: self.child.map(|child| Arc::new(child.build_shared(input))),
             modifier: self.modifier,
             forks: self.forks,
             command: self.command,
@@ -892,5 +928,37 @@ mod test {
         let sources = vec![source.clone(), source.clone(), source];
         dispatcher.continue_chain(&continuation, sources);
         assert_eq!(RUNS.load(std::sync::atomic::Ordering::Relaxed), 6);
+    }
+
+    #[test]
+    fn compiled_chain_runs_for_the_source_it_is_given() {
+        let at = |y: f64| {
+            Arc::new(DummySource {
+                position: Vector3::new(0.0, y, 0.0),
+                ..DummySource::dummy()
+            })
+        };
+        let mut dispatcher = CommandDispatcher::new();
+        dispatcher.register(
+            CommandArgumentBuilder::new("foo", "A test command").executes(
+                |context: &CommandContext<DummySource>| {
+                    Ok(i32::from(context.source.position.y > 2.5))
+                },
+            ),
+        );
+        dispatcher.register(
+            CommandArgumentBuilder::new("bar", "Another test command").redirect_with_modifier(
+                Redirection::Root,
+                RedirectModifier::Custom(Arc::new(|context: &CommandContext<DummySource>| {
+                    Ok(vec![context.source.clone()])
+                })),
+            ),
+        );
+
+        let chain = dispatcher
+            .compile("bar foo", at(1.0).as_ref())
+            .expect("the command parses")
+            .with_source(&at(2.0));
+        assert_eq!(chain.execute_all(&at(3.0), &EmptyResultConsumer), Ok(1));
     }
 }

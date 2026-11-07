@@ -39,6 +39,7 @@ use crate::world::loot::LootTableHandle;
 
 use self::context_provider_loader::ContextProviderRegistry;
 use self::damage_type_loader::{DamageTypeDefinition, DamageTypeEntry, DamageTypeRegistry};
+use self::function_loader::CommandFunction;
 use self::test_loader::{
     TestInstance, TestInstanceRegistry, load_test_instances_from_dir, to_registry_entry,
 };
@@ -84,7 +85,7 @@ pub enum DatapackEnablePosition {
 
 pub struct DatapackManager {
     loaded_packs: RwLock<Vec<LoadedDatapack>>,
-    functions: RwLock<HashMap<String, Arc<[String]>>>,
+    functions: RwLock<HashMap<String, Arc<CommandFunction>>>,
     function_tags: RwLock<HashMap<String, Vec<String>>>,
     test_instances: RwLock<TestInstanceRegistry>,
     context_int_providers: RwLock<ContextProviderRegistry>,
@@ -105,8 +106,8 @@ pub struct DatapackManager {
     world_packs: RwLock<Vec<String>>,
 }
 
-/// A function's id and its commands as loaded.
-pub type FunctionBody = (String, Arc<[String]>);
+/// A function's id and the function.
+pub type FunctionBody = (String, Arc<CommandFunction>);
 
 pub const LOOT_TABLE_REGISTRY: &str = "minecraft:loot_table";
 pub const PREDICATE_REGISTRY: &str = "minecraft:predicate";
@@ -252,7 +253,7 @@ impl DatapackManager {
         world_path: &Path,
         enabled_packs: &[String],
         recipe_manager: &RecipeManager,
-        compile: function_loader::CommandCompiler,
+        compiler: &function_loader::FunctionCompiler,
     ) -> Result<ServerAdvancements, RegistryLoadErrors> {
         let datapacks_dir = world_path.join("datapacks");
         let mut errors = RegistryLoadErrors::default();
@@ -411,7 +412,7 @@ impl DatapackManager {
         // After the dynamic registries, so tags can hold the entries the packs add.
         self.bind_tags(&all_tags);
         // Last, so the commands can refer to everything else the packs define.
-        let all_functions = function_loader::compile_functions(all_functions, compile);
+        let all_functions = function_loader::compile_functions(all_functions, compiler);
         *self
             .functions
             .write()
@@ -574,7 +575,7 @@ impl DatapackManager {
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .iter()
-            .map(|(name, lines)| (name.clone(), lines.to_vec()))
+            .map(|(name, function)| (name.clone(), function.lines().to_vec()))
             .collect()
     }
 
@@ -1137,9 +1138,9 @@ impl DatapackManager {
             .with_silent()
             .with_command_result_taker(ResultValueTaker::new());
         let mut executed = 0;
-        for (id, lines) in self.resolve_functions(name)? {
-            let lines = match function_loader::instantiate_function(&id, &lines, None) {
-                Ok(lines) => lines,
+        for (id, function) in self.resolve_functions(name)? {
+            let commands = match function.instantiate(&id, server, None) {
+                Ok(commands) => commands,
                 Err(reason) => {
                     warn!("Failed to run function {id}: {}", reason.get_text());
                     continue;
@@ -1150,7 +1151,7 @@ impl DatapackManager {
                     frame: context.top_frame(ResultValueTaker::new()),
                     action: Action::CallFunction {
                         source: Box::new(source.clone()),
-                        lines,
+                        commands,
                         callback: ResultValueTaker::new(),
                         return_parent: false,
                     },
@@ -2205,6 +2206,16 @@ fn load_recipes_from_dir(
 #[cfg(test)]
 mod tests {
     use super::DatapackManager;
+    use super::function_loader::CommandFunction;
+    use std::sync::Arc;
+
+    fn function(lines: &[&str]) -> Arc<CommandFunction> {
+        let lines = lines
+            .iter()
+            .map(|line| ((*line).to_string(), None))
+            .collect();
+        Arc::new(CommandFunction::new(lines, Arc::default()))
+    }
 
     #[test]
     fn function_dispatch_releases_the_functions_lock() {
@@ -2215,7 +2226,7 @@ mod tests {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .insert(
                 "test:reentrant".to_string(),
-                vec!["first command".to_string(), "second command".to_string()].into(),
+                function(&["first command", "second command"]),
             );
 
         let functions = manager
@@ -2228,7 +2239,7 @@ mod tests {
                 .expect("function resolution must not hold the functions read lock"),
         );
         assert_eq!(functions.len(), 1);
-        assert_eq!(&*functions[0].1, ["first command", "second command"]);
+        assert_eq!(functions[0].1.lines(), ["first command", "second command"]);
     }
 
     #[test]
@@ -2238,10 +2249,7 @@ mod tests {
             .functions
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .insert(
-                "test:known".to_string(),
-                vec!["known command".to_string()].into(),
-            );
+            .insert("test:known".to_string(), function(&["known command"]));
         manager
             .function_tags
             .write()
@@ -2258,16 +2266,12 @@ mod tests {
         assert_eq!(functions[0].0, "test:known");
 
         assert_eq!(
-            manager
-                .resolve_functions("test:missing")
-                .expect_err("unknown function must fail"),
-            "Unknown function: test:missing"
+            manager.resolve_functions("test:missing").err().as_deref(),
+            Some("Unknown function: test:missing")
         );
         assert_eq!(
-            manager
-                .resolve_functions("#test:missing")
-                .expect_err("unknown function tag must fail"),
-            "Unknown function tag: #test:missing"
+            manager.resolve_functions("#test:missing").err().as_deref(),
+            Some("Unknown function tag: #test:missing")
         );
     }
 

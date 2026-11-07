@@ -77,10 +77,7 @@ pub mod suggestion {
         {
             fn suggest(
                 &self,
-                context: &pumpkin_command::context::command_context::CommandContext<
-                    '_,
-                    CommandSource,
-                >,
+                context: &pumpkin_command::context::command_context::CommandContext<CommandSource>,
                 builder: SuggestionsBuilder,
             ) -> SuggestionProviderResult {
                 self.0.suggest(context, builder)

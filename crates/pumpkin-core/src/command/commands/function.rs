@@ -25,7 +25,7 @@ use crate::command::node::{CommandExecutor, CommandExecutorResult};
 use crate::command::suggestion::provider::{SuggestionProvider, SuggestionProviderResult};
 use crate::command::suggestion::suggestions::SuggestionsBuilder;
 use crate::data::datapack::FunctionBody;
-use crate::data::datapack::function_loader::instantiate_function;
+use crate::data::datapack::function_loader::FunctionCommands;
 use crate::server::Server;
 
 const DESCRIPTION: &str = "Runs commands found in the corresponding function files.";
@@ -69,7 +69,7 @@ impl SuggestionProvider for FunctionSuggestionProvider {
 }
 
 /// A function ready to run: its id and commands, with macro arguments filled in.
-pub type InstantiatedFunction = (String, Arc<[String]>);
+pub type InstantiatedFunction = (String, FunctionCommands);
 
 /// Vanilla `FunctionArgument.getFunctions`: the functions a name or `#tag` stands for.
 pub fn get_functions(server: &Server, name: &str) -> Result<Vec<FunctionBody>, CommandSyntaxError> {
@@ -84,6 +84,7 @@ pub fn get_functions(server: &Server, name: &str) -> Result<Vec<FunctionBody>, C
 /// Vanilla `CommandFunction.instantiate` for each function, with `failure` building the error
 /// for one that can't be instantiated.
 pub fn instantiate_functions(
+    server: &Arc<Server>,
     functions: Vec<FunctionBody>,
     arguments: Option<&NbtCompound>,
     failure: &'static CommandErrorType<2>,
@@ -91,8 +92,8 @@ pub fn instantiate_functions(
     functions
         .into_iter()
         .map(
-            |(id, lines)| match instantiate_function(&id, &lines, arguments) {
-                Ok(lines) => Ok((id, lines)),
+            |(id, function)| match function.instantiate(&id, server, arguments) {
+                Ok(commands) => Ok((id, commands)),
                 Err(reason) => Err(failure.create_without_context(TextComponent::text(id), reason)),
             },
         )
@@ -165,15 +166,16 @@ fn queue_functions(
 ) {
     ExecutionContext::execute_in_context(server, |context| {
         let source = function_source(sender);
-        let call = |lines: Arc<[String]>, callback: ResultValueTaker, return_parent: bool| Entry {
-            frame: sender.frame.clone(),
-            action: Action::CallFunction {
-                source: Box::new(source.clone()),
-                lines,
-                callback,
-                return_parent,
-            },
-        };
+        let call =
+            |commands: FunctionCommands, callback: ResultValueTaker, return_parent: bool| Entry {
+                frame: sender.frame.clone(),
+                action: Action::CallFunction {
+                    source: Box::new(source.clone()),
+                    commands,
+                    callback,
+                    return_parent,
+                },
+            };
         if sender.returning {
             // `queueFunctionsAsReturn`: a `return` in the function ends the caller's frame too.
             let output =
@@ -317,6 +319,7 @@ impl CommandExecutor for FunctionExecutor {
         context.source.send_feedback(msg, true);
 
         let functions = instantiate_functions(
+            server,
             resolved,
             arguments.as_ref(),
             &ERROR_FUNCTION_INSTANTIATION_FAILURE,

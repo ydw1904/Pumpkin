@@ -65,7 +65,7 @@ impl<T: CommandExecutor> pumpkin_command::node::CommandExecutor<CommandSource>
 {
     fn execute(
         &self,
-        context: &pumpkin_command::context::command_context::CommandContext<'_, CommandSource>,
+        context: &pumpkin_command::context::command_context::CommandContext<CommandSource>,
     ) -> pumpkin_command::node::CommandExecutorResult {
         self.0.execute(context)
     }
@@ -80,7 +80,7 @@ pub struct ArcCommandExecutorAdapter(pub std::sync::Arc<dyn CommandExecutor>);
 impl pumpkin_command::node::CommandExecutor<CommandSource> for ArcCommandExecutorAdapter {
     fn execute(
         &self,
-        context: &pumpkin_command::context::command_context::CommandContext<'_, CommandSource>,
+        context: &pumpkin_command::context::command_context::CommandContext<CommandSource>,
     ) -> pumpkin_command::node::CommandExecutorResult {
         self.0.execute(context)
     }

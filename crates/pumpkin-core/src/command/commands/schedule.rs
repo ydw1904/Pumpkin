@@ -88,10 +88,7 @@ fn execute_schedule(context: &CommandContext, replace: bool) -> Result<i32, Comm
         ScheduledCallback::FunctionTag(tag.to_string())
     } else {
         // Vanilla `ScheduleCommand.ERROR_MACRO`: a macro has no arguments to run with later.
-        if functions
-            .iter()
-            .any(|(_, lines)| lines.iter().any(|line| line.starts_with('$')))
-        {
+        if functions.iter().any(|(_, function)| function.is_macro()) {
             return Err(ERROR_MACRO.create_without_context());
         }
         ScheduledCallback::Function(function_name.clone())

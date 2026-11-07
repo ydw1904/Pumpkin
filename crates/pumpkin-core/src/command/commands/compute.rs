@@ -132,10 +132,10 @@ pub struct ComputeContext<'a> {
     pub depth: Cell<usize>,
 }
 
-fn build_context<'a>(
-    context: &'a CommandContext,
+fn build_context(
+    context: &CommandContext,
     target_type: TargetType,
-) -> Result<ComputeContext<'a>, CommandSyntaxError> {
+) -> Result<ComputeContext<'_>, CommandSyntaxError> {
     let datapack_manager = context
         .source
         .server

@@ -108,17 +108,13 @@ impl Frame {
 }
 
 impl CommandSource {
-    /// Creates a dummy [`CommandSource`], great for unit testing.
-    ///
-    /// # Note
-    /// **This should only be used for unit tests!!!**
+    /// Creates a dummy [`CommandSource`], for unit tests and as the source stored function
+    /// commands keep until they run with their own.
     ///
     /// The returned [`CommandSource`] does not contain
     /// a server or a world. If there is attempt to fetch the server or a world from
     /// the returned source, there will be a panic!
     #[must_use]
-    // We use it in tests
-    #[allow(dead_code)]
     pub(crate) fn dummy() -> Self {
         Self {
             output: CommandSender::Dummy,

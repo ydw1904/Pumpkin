@@ -189,7 +189,7 @@ impl CommandExecutor for DatapackListExecutor {
     }
 }
 
-fn send_enabled_list(context: &CommandContext<'_>, enabled: &[String]) {
+fn send_enabled_list(context: &CommandContext, enabled: &[String]) {
     if enabled.is_empty() {
         context.source.send_feedback(
             TextComponent::translate_cross(
@@ -216,7 +216,7 @@ fn send_enabled_list(context: &CommandContext<'_>, enabled: &[String]) {
     }
 }
 
-fn send_available_list(context: &CommandContext<'_>, available: &[String]) {
+fn send_available_list(context: &CommandContext, available: &[String]) {
     if available.is_empty() {
         context.source.send_feedback(
             TextComponent::translate_cross(

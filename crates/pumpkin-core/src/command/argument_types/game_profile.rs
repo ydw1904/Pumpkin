@@ -292,7 +292,7 @@ impl GameProfileArgumentType {
     ///
     /// Instead, call this function *before* using `write()`/`read()` on a lock.
     pub fn get(
-        context: &CommandContext<'_>,
+        context: &CommandContext,
         name: &str,
     ) -> Result<Vec<GameProfile>, CommandSyntaxError> {
         context

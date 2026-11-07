@@ -593,7 +593,7 @@ impl EntitySelectorParserSuggestions {
     }
 
     pub fn list_suggestions(
-        context: &CommandContext<'_>,
+        context: &CommandContext,
         suggestions_builder: &SuggestionsBuilder,
     ) -> Suggestions {
         let mut reader = StringReader::new(suggestions_builder.input.clone());

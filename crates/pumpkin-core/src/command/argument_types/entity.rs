@@ -151,7 +151,7 @@ impl EntityArgumentType {
 
     /// Tries to get a single entity from a parsed argument of the provided [`CommandContext`].
     pub fn get_entity(
-        context: &CommandContext<'_>,
+        context: &CommandContext,
         name: &str,
     ) -> Result<Arc<dyn EntityBase>, CommandSyntaxError> {
         context
@@ -161,7 +161,7 @@ impl EntityArgumentType {
 
     /// Tries to get at least 1 entity from a parsed argument of the provided [`CommandContext`].
     pub fn get_entities(
-        context: &CommandContext<'_>,
+        context: &CommandContext,
         name: &str,
     ) -> Result<Vec<Arc<dyn EntityBase>>, CommandSyntaxError> {
         let entities = Self::get_optional_entities(context, name)?;
@@ -174,7 +174,7 @@ impl EntityArgumentType {
 
     /// Tries to get any number of entities from a parsed argument of the provided [`CommandContext`].
     pub fn get_optional_entities(
-        context: &CommandContext<'_>,
+        context: &CommandContext,
         name: &str,
     ) -> Result<Vec<Arc<dyn EntityBase>>, CommandSyntaxError> {
         context
@@ -184,7 +184,7 @@ impl EntityArgumentType {
 
     /// Tries to get a single player from a parsed argument of the provided [`CommandContext`].
     pub fn get_player(
-        context: &CommandContext<'_>,
+        context: &CommandContext,
         name: &str,
     ) -> Result<Arc<Player>, CommandSyntaxError> {
         context
@@ -194,7 +194,7 @@ impl EntityArgumentType {
 
     /// Tries to get at least 1 player from a parsed argument of the provided [`CommandContext`].
     pub fn get_players(
-        context: &CommandContext<'_>,
+        context: &CommandContext,
         name: &str,
     ) -> Result<Vec<Arc<Player>>, CommandSyntaxError> {
         let players = Self::get_optional_players(context, name)?;
@@ -207,7 +207,7 @@ impl EntityArgumentType {
 
     /// Tries to get any number of players from a parsed argument of the provided [`CommandContext`].
     pub fn get_optional_players(
-        context: &CommandContext<'_>,
+        context: &CommandContext,
         name: &str,
     ) -> Result<Vec<Arc<Player>>, CommandSyntaxError> {
         context

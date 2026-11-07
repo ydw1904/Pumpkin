@@ -71,7 +71,7 @@ impl<S: CommandSource> ResultConsumer<S> for ResultDeferrer {
 /// for more information about nodes.
 #[derive(Clone)]
 pub struct CommandDispatcher<S: CommandSource = DummySource> {
-    pub tree: Tree<S>,
+    pub tree: Arc<Tree<S>>,
     pub consumer: Arc<dyn ResultConsumer<S>>,
 
     /// Primary names of commands that have been turned off through the server
@@ -102,7 +102,7 @@ impl<S: CommandSource> CommandDispatcher<S> {
     #[must_use]
     pub fn from_existing_tree(tree: Tree<S>) -> Self {
         Self {
-            tree,
+            tree: Arc::new(tree),
             consumer: Arc::new(ResultDeferrer),
             disabled: FxHashSet::default(),
             inactive_plugin_commands: FxHashSet::default(),
@@ -261,7 +261,7 @@ impl<S: CommandSource> CommandDispatcher<S> {
         node.meta.literal = name.clone().into();
         node.meta.literal_lowercase.clone_from(&name);
         self.reactivate_plugin_command(&name);
-        let main_node_id = self.tree.add_child_to_root(node);
+        let main_node_id = Arc::make_mut(&mut self.tree).add_child_to_root(node);
 
         // For double-slash or slash-prefixed commands (e.g. //set or /set),
         // automatically register the alternate slash variant as an alias.
@@ -277,7 +277,7 @@ impl<S: CommandSource> CommandDispatcher<S> {
                     alias = alias.executes_arc(executor.clone());
                 }
                 alias = alias.redirect(crate::node::Redirection::Local(main_node_id.into()));
-                self.tree.add_child_to_root(alias.build());
+                Arc::make_mut(&mut self.tree).add_child_to_root(alias.build());
             }
         } else if let Some(stripped) = name.strip_prefix('/') {
             let double_slash = format!("//{stripped}");
@@ -291,7 +291,7 @@ impl<S: CommandSource> CommandDispatcher<S> {
                     alias = alias.executes_arc(executor.clone());
                 }
                 alias = alias.redirect(crate::node::Redirection::Local(main_node_id.into()));
-                self.tree.add_child_to_root(alias.build());
+                Arc::make_mut(&mut self.tree).add_child_to_root(alias.build());
             }
         }
 
@@ -388,28 +388,43 @@ impl<S: CommandSource> CommandDispatcher<S> {
                     .on_command_completion(&original_context, ReturnValue::Failure);
                 Err(Self::unknown_command_error(&parsed.reader))
             }
-            Some(flat_context) => {
-                let source = &original_context.source;
-                let mut result = Ok(0);
-                source.execute_in_context(&mut || {
-                    result = flat_context.execute_all(source, self.consumer.as_ref());
-                });
-                result
-            }
+            Some(flat_context) => self.execute_chain(&flat_context, &original_context.source),
         }
     }
 
-    /// Vanilla `BuildContexts.Continuation.execute`: runs the rest of a chain for `sources`,
-    /// parsing the command again the way its original source did.
-    pub fn continue_chain(&self, continuation: &ChainContinuation<S>, sources: Vec<Arc<S>>) {
-        let input = &continuation.input;
-        let source = &continuation.original_source;
-        let parsed = self.parse_input(input, source);
-        let Some(chain) = ContextChain::try_flatten(&parsed.context.build(input)) else {
-            return;
-        };
-        if let Err(error) = chain.execute_from(continuation, sources, self.consumer.as_ref()) {
+    /// Runs a parsed chain for `source` in the source's execution context.
+    fn execute_chain(
+        &self,
+        chain: &ContextChain<S>,
+        source: &Arc<S>,
+    ) -> Result<i32, CommandSyntaxError> {
+        let mut result = Ok(0);
+        source.execute_in_context(&mut || {
+            result = chain.execute_all(source, self.consumer.as_ref());
+        });
+        result
+    }
+
+    /// Runs a command compiled by [`Self::compile`] for `source`, sending errors to it like
+    /// [`Self::handle_command`] does.
+    pub fn handle_compiled(&self, chain: &ContextChain<S>, source: &Arc<S>, input: &str) {
+        if let Err(error) = self.execute_chain(chain, source) {
             Self::send_error_to_source(source.as_ref(), error, input);
+        }
+    }
+
+    /// Vanilla `BuildContexts.Continuation.execute`: runs the rest of a chain for `sources`.
+    pub fn continue_chain(&self, continuation: &ChainContinuation<S>, sources: Vec<Arc<S>>) {
+        if let Err(error) =
+            continuation
+                .chain
+                .execute_from(continuation, sources, self.consumer.as_ref())
+        {
+            Self::send_error_to_source(
+                continuation.original_source.as_ref(),
+                error,
+                &continuation.input,
+            );
         }
     }
 
@@ -431,18 +446,17 @@ impl<S: CommandSource> CommandDispatcher<S> {
     }
 
     /// Parses a command as running it would, without running it (vanilla
-    /// `CommandFunction.parseCommand`, which compiles a function's commands).
-    pub fn validate(&self, input: &str, source: &S) -> Result<(), CommandSyntaxError> {
+    /// `CommandFunction.parseCommand`, which compiles a function's commands). The chain can
+    /// run later with [`Self::handle_compiled`] as long as this dispatcher is the current one.
+    pub fn compile(&self, input: &str, source: &S) -> Result<ContextChain<S>, CommandSyntaxError> {
         let reader = StringReader::new(input);
         if self.is_disabled(Self::command_name(input)) {
             return Err(Self::unknown_command_error(&reader));
         }
         let parsed = self.parse_input(input, source);
         Self::check_fully_parsed(&parsed)?;
-        if ContextChain::try_flatten(&parsed.context.build(input)).is_none() {
-            return Err(Self::unknown_command_error(&parsed.reader));
-        }
-        Ok(())
+        ContextChain::try_flatten(&parsed.context.build(input))
+            .ok_or_else(|| Self::unknown_command_error(&parsed.reader))
     }
 
     /// Only parses a given source with the specified source.

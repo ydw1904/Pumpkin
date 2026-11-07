@@ -1,7 +1,7 @@
 pub mod command_context {
     pub use pumpkin_command::context::command_context::*;
-    pub type CommandContext<'a> =
-        pumpkin_command::context::CommandContext<'a, crate::command::CommandSource>;
+    pub type CommandContext =
+        pumpkin_command::context::CommandContext<crate::command::CommandSource>;
 }
 pub mod command_source;
 pub mod string_range {
