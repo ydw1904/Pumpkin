@@ -41,6 +41,10 @@ use crate::net::java::JavaClient;
 use crate::world::World;
 use crate::world::chunker::get_view_distance;
 
+/// The fewest tracked entities a rayon job sends changes for. One entity's changes cost
+/// little, so a smaller job costs less than waking a worker for it.
+const TRACKED_SEND_BATCH: usize = 64;
+
 /// Vanilla `VecDeltaCodec.encode`: Java `Math.round` on the 1/4096
 fn encode_pos(value: f64) -> i64 {
     (value * 4096.0 + 0.5).floor() as i64
@@ -1190,9 +1194,14 @@ impl EntityTracker {
     pub fn update_all(&self, world: &World) {
         let players = world.players.load();
         let mut moved_players = Vec::new();
+        // One pass over the map: walking every shard is what costs here, not the entries.
+        let tracked: Vec<_> = self
+            .entity_map
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect();
 
-        for entry in &self.entity_map {
-            let tracked = entry.value();
+        for tracked in &tracked {
             let pos = tracked.entity.get_entity().pos.load();
             let new_pos = Vector3::new(
                 get_section_cord(pos.x.floor() as i32),
@@ -1212,23 +1221,21 @@ impl EntityTracker {
         }
 
         if !moved_players.is_empty() {
-            for entry in &self.entity_map {
-                entry.value().update_players(&moved_players, world);
+            for tracked in &tracked {
+                tracked.update_players(&moved_players, world);
             }
         }
 
         // Each entity's updates are independent, like vanilla's unordered tracked entity map.
-        let tracked: Vec<_> = self
-            .entity_map
-            .iter()
-            .map(|entry| entry.value().clone())
-            .collect();
-        tracked.par_iter().for_each(|tracked| {
-            if tracked.entity.get_player().is_none() {
-                tracked.send_changes(world);
-            } else if tracked.entity.get_entity().synched_data.is_dirty() {
-                tracked.entity.get_entity().send_dirty_entity_data();
-            }
-        });
+        tracked
+            .par_iter()
+            .with_min_len(TRACKED_SEND_BATCH)
+            .for_each(|tracked| {
+                if tracked.entity.get_player().is_none() {
+                    tracked.send_changes(world);
+                } else if tracked.entity.get_entity().synched_data.is_dirty() {
+                    tracked.entity.get_entity().send_dirty_entity_data();
+                }
+            });
     }
 }
