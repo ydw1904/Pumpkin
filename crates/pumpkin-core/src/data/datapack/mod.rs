@@ -182,6 +182,33 @@ fn refuse_element(
     }
 }
 
+/// The loot registries of the loaded packs, for loot data parsed after loading, like an item
+/// modifier given to a command.
+impl pumpkin_util::loot_table::parser::LootResolver for DatapackManager {
+    fn predicate(&self, id: &str) -> Option<serde_json::Value> {
+        self.get_predicate(id)
+            .or_else(|| pumpkin_data::loot_table::get_loot_predicate(id).cloned())
+    }
+
+    fn item_modifier(&self, id: &str) -> Option<serde_json::Value> {
+        self.get_item_modifier(id)
+    }
+
+    fn int_provider(&self, id: &str) -> Option<serde_json::Value> {
+        self.get_context_int_provider(id)
+            .map(|tag| crate::world::loot::nbt_to_json(&tag))
+    }
+
+    fn float_provider(&self, id: &str) -> Option<serde_json::Value> {
+        self.get_context_float_provider(id)
+            .map(|tag| crate::world::loot::nbt_to_json(&tag))
+    }
+
+    fn slot_source(&self, id: &str) -> Option<serde_json::Value> {
+        self.get_slot_source(id)
+    }
+}
+
 impl Default for DatapackManager {
     fn default() -> Self {
         Self::new()
@@ -238,7 +265,7 @@ impl DatapackManager {
         let mut all_context_int_providers: ContextProviderRegistry = HashMap::new();
         let mut all_context_float_providers: ContextProviderRegistry = HashMap::new();
         let mut all_damage_type_defs: HashMap<String, DamageTypeDefinition> = HashMap::new();
-        let mut all_loot_tables: HashMap<String, Arc<DynamicLootTable>> = HashMap::new();
+        let mut all_loot_table_sources: HashMap<String, String> = HashMap::new();
 
         // Embedded test instances are compile-time constants and always load,
         // so on-disk packs can override them by id.
@@ -276,7 +303,7 @@ impl DatapackManager {
             damage_types: &mut all_damage_type_defs,
             context_int_providers: &mut all_context_int_providers,
             context_float_providers: &mut all_context_float_providers,
-            loot_tables: &mut all_loot_tables,
+            loot_tables: &mut all_loot_table_sources,
             dynamic_registries: &mut all_dynamic_registries,
             trade_registry: &mut all_trade_registry,
             advancements: &mut all_advancements,
@@ -293,6 +320,20 @@ impl DatapackManager {
             enabled_packs,
             &mut acc,
             &mut loaded_packs_vec,
+        );
+
+        // Loot tables refer to the predicates, item modifiers, number providers and slot
+        // sources of every pack.
+        let all_loot_tables = loot_table_loader::parse_loot_tables(
+            &all_loot_table_sources,
+            &loot_table_loader::PackLootRegistries {
+                predicates: &all_predicates,
+                item_modifiers: &all_item_modifiers,
+                int_providers: &all_context_int_providers,
+                float_providers: &all_context_float_providers,
+                slot_sources: &all_slot_sources,
+            },
+            &mut errors,
         );
 
         let advancement_definitions: HashMap<String, serde_json::Value> = all_advancements
@@ -1572,7 +1613,8 @@ struct PackContentAccumulators<'a> {
     damage_types: &'a mut HashMap<String, DamageTypeDefinition>,
     context_int_providers: &'a mut ContextProviderRegistry,
     context_float_providers: &'a mut ContextProviderRegistry,
-    loot_tables: &'a mut HashMap<String, Arc<DynamicLootTable>>,
+    /// The JSON of each loot table, parsed once every pack is loaded.
+    loot_tables: &'a mut HashMap<String, String>,
     dynamic_registries: &'a mut HashMap<String, HashMap<String, RegistryEntryData>>,
     trade_registry: &'a mut TradeRegistry,
     advancements: &'a mut HashMap<String, advancement_loader::DynamicAdvancementDefinition>,

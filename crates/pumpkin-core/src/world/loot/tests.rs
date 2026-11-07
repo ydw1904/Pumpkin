@@ -1019,3 +1019,20 @@ fn treasure_map_without_a_found_structure_is_discarded() {
         );
     }
 }
+
+#[test]
+fn context_number_providers_compute_rolls_and_counts() {
+    // Two dirt rolls of 3 * floorMod(-1, 4) = 9; `abs` of the smallest int overflows, which
+    // makes the stone pool roll 0 times.
+    let table = parse_loot_table(r#"{"pools":[{"rolls":{"type":"minecraft:add","inputs":[1,{"type":"minecraft:from_float","input":{"type":"minecraft:ceil","input":0.2}}]},"entries":[{"type":"minecraft:item","name":"minecraft:dirt","functions":[{"function":"minecraft:set_count","count":{"type":"minecraft:mul","inputs":[3,{"type":"minecraft:floor_mod","left":-1,"right":4}]}}]}]},{"rolls":{"type":"minecraft:abs","input":-2147483648},"entries":[{"type":"minecraft:item","name":"minecraft:stone"}]}]}"#).unwrap();
+    for seed in 0..4 {
+        let drops = generate_dynamic_loot(&table, seed);
+        assert_eq!(drops.len(), 2, "seed {seed}");
+        assert!(
+            drops
+                .iter()
+                .all(|stack| stack.item == &Item::DIRT && stack.item_count == 9),
+            "seed {seed}"
+        );
+    }
+}

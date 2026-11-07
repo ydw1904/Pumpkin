@@ -973,7 +973,7 @@ const ERROR_SOURCE_NOT_A_CONTAINER: CommandErrorType<3> = CommandErrorType::new(
 
 /// Vanilla `Entity.getSlot` for the slots Pumpkin models: the items of the slots in `range` that
 /// the entity has.
-pub(super) fn entity_slot_items(entity: &dyn EntityBase, range: &[usize]) -> Vec<ItemStack> {
+pub fn entity_slot_items(entity: &dyn EntityBase, range: &[usize]) -> Vec<ItemStack> {
     let mut items = Vec::new();
     for &slot in range {
         if let Some(player) = entity.get_player() {

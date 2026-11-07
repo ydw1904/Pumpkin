@@ -74,6 +74,12 @@ fn number_tokens(provider: LootNumberProvider) -> TokenStream {
         LootNumberProvider::Binomial { n, probability } => {
             quote! {LootNumberProvider::Binomial {n: #n, probability: #probability}}
         }
+        LootNumberProvider::Int(provider) => {
+            panic!("built-in loot data can't hold the int provider {provider:?}")
+        }
+        LootNumberProvider::Float(provider) => {
+            panic!("built-in loot data can't hold the float provider {provider:?}")
+        }
     }
 }
 
@@ -123,6 +129,10 @@ impl LootConditionGenerator {
             DynamicLootCondition::KilledByPlayer => quote! { LootCondition::KilledByPlayer },
             DynamicLootCondition::RandomChance { chance } => {
                 quote! { LootCondition::RandomChance { chance: #chance } }
+            }
+            DynamicLootCondition::RandomChanceNumber(chance) => {
+                let chance = number_tokens(*chance);
+                quote! { LootCondition::RandomChanceNumber(#chance) }
             }
             DynamicLootCondition::RandomChanceWithEnchantmentLevel {
                 base,
@@ -273,6 +283,7 @@ impl LootConditionGenerator {
                 DynamicLootEntryKind::Group(children) => {let children = self.entries(children); quote! {LootEntryKind::Group(#children)}}
                 DynamicLootEntryKind::Sequence(children) => {let children = self.entries(children); quote! {LootEntryKind::Sequence(#children)}}
                 DynamicLootEntryKind::Alternatives(children) => { let children = self.entries(children); quote! { LootEntryKind::Alternatives(#children) } }
+                DynamicLootEntryKind::Slots(source) => panic!("built-in loot tables can't hold the slots entry {source:?}"),
             };
             let weight = entry.weight;
             let quality = entry.quality;

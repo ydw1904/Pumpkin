@@ -11,14 +11,10 @@ use pumpkin_data::{
     item_stack::ItemStack,
 };
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
-use pumpkin_util::loot_table::LootNumberProvider;
 use pumpkin_util::math::position::BlockPos;
-use pumpkin_util::random::RandomImpl;
 use serde_json::Value;
 
-use super::{
-    EntityBase, LootContextParameters, LootEntityTarget, RandomGenerator, Taggable, World,
-};
+use super::{EntityBase, LootContextParameters, LootEntityTarget, Taggable, World};
 
 pub(super) fn matches_entity(
     target: LootEntityTarget,
@@ -958,25 +954,6 @@ pub(super) fn matches_time(
     integer_matches(effective_time as i32, value)
 }
 
-pub(super) fn matches_value(
-    value: LootNumberProvider,
-    range: &Value,
-    _params: &LootContextParameters<'_>,
-    rng: &mut RandomGenerator,
-) -> bool {
-    let num = match value {
-        LootNumberProvider::Constant(c) => c as f32,
-        LootNumberProvider::Uniform { min, max } => {
-            let (min, max) = (min as f32, max as f32);
-            if min >= max {
-                min
-            } else {
-                min + rng.next_f32() * (max - min)
-            }
-        }
-        LootNumberProvider::Binomial { n, probability } => {
-            (0..n).filter(|_| rng.next_f32() < probability).count() as f32
-        }
-    };
-    float_matches(f64::from(num), range)
+pub(super) fn matches_value(value: f32, range: &Value) -> bool {
+    float_matches(f64::from(value), range)
 }

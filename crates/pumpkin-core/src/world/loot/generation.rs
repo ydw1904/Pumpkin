@@ -3,6 +3,10 @@ use std::collections::HashSet;
 use pumpkin_util::random::gameplay::game_random;
 
 mod functions;
+mod numbers;
+
+use numbers::NumberContext;
+use pumpkin_util::loot_table::{SlotSource, SlotSourceTarget};
 
 pub use functions::apply_component_patch;
 
@@ -56,6 +60,7 @@ enum Kind<'a> {
     Sequence(Entries<'a>),
     Table(&'a str),
     InlineTable(Table<'a>),
+    Slots(&'a SlotSource),
 }
 
 impl<'a> Table<'a> {
@@ -150,6 +155,7 @@ impl<'a> Entry<'a> {
                 DynamicLootEntryKind::InlineTable(table) => {
                     Kind::InlineTable(Table::Dynamic(table))
                 }
+                DynamicLootEntryKind::Slots(source) => Kind::Slots(source),
             },
         }
     }
@@ -354,34 +360,19 @@ impl Generator<'_, '_> {
             ),
         }
     }
-    fn between(&mut self, min: i32, max: i32) -> i32 {
-        if max <= min {
-            return min;
+    const fn numbers(&mut self) -> NumberContext<'_, '_> {
+        NumberContext {
+            params: self.params,
+            rng: &mut self.rng,
+            has_silk_touch: self.has_silk_touch,
+            has_shears: self.has_shears,
         }
-        min + self.rng.next_bounded_i32(max - min + 1)
     }
     fn number_int(&mut self, provider: LootNumberProvider) -> i32 {
-        match provider {
-            LootNumberProvider::Constant(value) => value as i32,
-            LootNumberProvider::Uniform { min, max } => self.between(min as i32, max as i32),
-            LootNumberProvider::Binomial { n, probability } => {
-                (0..n).filter(|_| self.rng.next_f32() < probability).count() as i32
-            }
-        }
+        self.numbers().int(provider)
     }
     fn number_float(&mut self, provider: LootNumberProvider) -> f32 {
-        match provider {
-            LootNumberProvider::Constant(value) => value as f32,
-            LootNumberProvider::Uniform { min, max } => {
-                let (min, max) = (min as f32, max as f32);
-                if min >= max {
-                    min
-                } else {
-                    min + self.rng.next_f32() * (max - min)
-                }
-            }
-            LootNumberProvider::Binomial { .. } => self.number_int(provider) as f32,
-        }
+        self.numbers().float(provider)
     }
     fn table(&mut self, table: Table<'_>, outer: &[Functions<'_>], output: &mut Vec<Stack>) {
         let identity = table.identity();
@@ -548,6 +539,15 @@ impl Generator<'_, '_> {
                 }
             }
             Kind::InlineTable(table) => self.table(table, functions, output),
+            // `SlotLoot.createItemStack`: a copy of each non-empty slot.
+            Kind::Slots(source) => {
+                for stack in slot_source_items(source, self.params) {
+                    if !stack.is_empty() {
+                        let count = i32::from(stack.item_count);
+                        self.emit(Stack { stack, count }, functions, output);
+                    }
+                }
+            }
             Kind::Empty | Kind::Alternatives(_) | Kind::Group(_) | Kind::Sequence(_) => {}
         }
     }
@@ -641,4 +641,92 @@ impl Generator<'_, '_> {
             }
         }
     }
+}
+
+/// `SlotSource.provide(...).itemCopies()`: the items of the slots, empty ones included.
+fn slot_source_items(source: &SlotSource, params: &LootContextParameters<'_>) -> Vec<ItemStack> {
+    match source {
+        SlotSource::Empty => Vec::new(),
+        SlotSource::Group(terms) => terms
+            .iter()
+            .flat_map(|term| slot_source_items(term, params))
+            .collect(),
+        SlotSource::Range { source, slots } => {
+            let Some(range) = pumpkin_data::slot_ranges::get_slot_range(slots) else {
+                return Vec::new();
+            };
+            // Loot contexts don't carry a block entity or a container here.
+            let entity = match source {
+                SlotSourceTarget::Entity(target) => numbers::context_entity(params, *target),
+                SlotSourceTarget::BlockEntity | SlotSourceTarget::Container => None,
+            };
+            entity.map_or_else(Vec::new, |entity| {
+                crate::command::commands::entity_slot_items(entity, range)
+            })
+        }
+        SlotSource::Filtered {
+            source,
+            item_filter,
+        } => slot_source_items(source, params)
+            .into_iter()
+            .filter(|stack| super::predicates::item_matches(stack, item_filter))
+            .collect(),
+        SlotSource::Limit { source, limit } => {
+            let mut items = slot_source_items(source, params);
+            items.truncate(*limit);
+            items
+        }
+        SlotSource::Contents { source, component } => slot_source_items(source, params)
+            .iter()
+            .flat_map(|stack| container_items(stack, component))
+            .collect(),
+    }
+}
+
+/// `ContainerComponentManipulator.getSlots`: the items a container component holds.
+fn container_items(stack: &ItemStack, component: &str) -> Vec<ItemStack> {
+    use pumpkin_data::data_component_impl::{
+        BundleContentsImpl, ChargedProjectilesImpl, ContainerImpl,
+    };
+    match component {
+        "container" => {
+            stack
+                .get_data_component::<ContainerImpl>()
+                .map_or_else(Vec::new, |container| {
+                    let mut items = container.items.clone();
+                    items.sort_by_key(|(slot, _)| *slot);
+                    items.into_iter().map(|(_, item)| item).collect()
+                })
+        }
+        "bundle_contents" => stack
+            .get_data_component::<BundleContentsImpl>()
+            .map_or_else(Vec::new, |bundle| bundle.items.clone()),
+        "charged_projectiles" => stack
+            .get_data_component::<ChargedProjectilesImpl>()
+            .map_or_else(Vec::new, |projectiles| {
+                projectiles
+                    .projectiles
+                    .iter()
+                    .filter_map(ItemStack::read_item_stack)
+                    .collect()
+            }),
+        _ => Vec::new(),
+    }
+}
+
+/// `ContextFloatProvider.getFloat` for a number a condition reads.
+pub(super) fn number_float(
+    provider: LootNumberProvider,
+    has_silk_touch: bool,
+    has_shears: bool,
+    params: &LootContextParameters<'_>,
+    rng: &mut RandomGenerator,
+) -> f32 {
+    NumberContext {
+        params,
+        rng,
+        has_silk_touch,
+        has_shears,
+    }
+    .float(provider)
 }

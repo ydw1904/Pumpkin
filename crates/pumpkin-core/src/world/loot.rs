@@ -180,6 +180,10 @@ fn check_dynamic_condition(
             .explosion_radius
             .is_none_or(|radius| radius <= 1.0 || rng.next_f32() <= 1.0 / radius),
         DynamicLootCondition::RandomChance { chance } => rng.next_f32() < *chance,
+        DynamicLootCondition::RandomChanceNumber(chance) => {
+            let chance = generation::number_float(*chance, has_silk_touch, has_shears, params, rng);
+            rng.next_f32() < chance
+        }
         DynamicLootCondition::RandomChanceWithEnchantmentLevel {
             base,
             per_level_above_first,
@@ -240,7 +244,8 @@ fn check_dynamic_condition(
             predicates::matches_time(value, *period, params)
         }
         DynamicLootCondition::ValueCheck { value, range } => {
-            predicates::matches_value(*value, range, params, rng)
+            let value = generation::number_float(*value, has_silk_touch, has_shears, params, rng);
+            predicates::matches_value(value, range)
         }
         DynamicLootCondition::Reference(name) => evaluate_predicate(name, params),
     }
@@ -284,6 +289,10 @@ fn check_condition(
             .explosion_radius
             .is_none_or(|radius| radius <= 1.0 || rng.next_f32() <= 1.0 / radius),
         LootCondition::RandomChance { chance } => rng.next_f32() < chance,
+        LootCondition::RandomChanceNumber(chance) => {
+            let chance = generation::number_float(chance, has_silk_touch, has_shears, params, rng);
+            rng.next_f32() < chance
+        }
         LootCondition::RandomChanceWithEnchantmentLevel {
             base,
             per_level_above_first,
@@ -341,7 +350,8 @@ fn check_condition(
             predicates::matches_time(value, period, params)
         }
         LootCondition::ValueCheck { value, range } => {
-            predicates::matches_value(value, range, params, rng)
+            let value = generation::number_float(value, has_silk_touch, has_shears, params, rng);
+            predicates::matches_value(value, range)
         }
         LootCondition::Reference(name) => evaluate_predicate(name, params),
     }
@@ -510,7 +520,7 @@ pub fn item_sub_predicate(
 }
 
 /// The JSON form of an SNBT value, for predicates written in commands.
-fn nbt_to_json(tag: &pumpkin_nbt::tag::NbtTag) -> serde_json::Value {
+pub(crate) fn nbt_to_json(tag: &pumpkin_nbt::tag::NbtTag) -> serde_json::Value {
     use pumpkin_nbt::tag::NbtTag;
     match tag {
         NbtTag::End => serde_json::Value::Null,
@@ -538,10 +548,18 @@ pub fn evaluate_predicate_value(
     value: &serde_json::Value,
     params: &LootContextParameters<'_>,
 ) -> bool {
-    pumpkin_util::loot_table::parser::parse_condition_with_predicates(value, &|name| {
-        pumpkin_data::loot_table::get_loot_predicate(name).cloned()
-    })
-    .map_or_else(
+    let server = params.world.and_then(|world| world.server.upgrade());
+    let parsed = server.as_ref().map_or_else(
+        || {
+            pumpkin_util::loot_table::parser::parse_condition_with_predicates(value, &|name| {
+                pumpkin_data::loot_table::get_loot_predicate(name).cloned()
+            })
+        },
+        |server| {
+            pumpkin_util::loot_table::parser::parse_condition_with(value, &*server.datapack_manager)
+        },
+    );
+    parsed.map_or_else(
         || {
             if value.is_object() && params.this_entity.is_some() {
                 predicates::matches_entity(LootEntityTarget::This, value, params)
@@ -571,7 +589,16 @@ pub fn apply_item_modifier(
     stack: &ItemStack,
     params: &LootContextParameters<'_>,
 ) -> ItemStack {
-    let functions = pumpkin_util::loot_table::parser::parse_functions(modifier);
+    let server = params.world.and_then(|world| world.server.upgrade());
+    let functions = server.as_ref().map_or_else(
+        || pumpkin_util::loot_table::parser::parse_functions(modifier),
+        |server| {
+            pumpkin_util::loot_table::parser::parse_functions_with(
+                modifier,
+                &*server.datapack_manager,
+            )
+        },
+    );
     generation::modify(&functions, stack, params)
 }
 

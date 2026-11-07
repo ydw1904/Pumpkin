@@ -1,3 +1,4 @@
+pub mod number;
 pub mod parser;
 pub use serde_json::Value as LootPredicateValue;
 
@@ -23,6 +24,8 @@ pub enum LootCondition {
         base: f32,
         per_level_above_first: f32,
     },
+    /// `random_chance` with any other chance provider.
+    RandomChanceNumber(LootNumberProvider),
     RandomChanceWithEnchantedBonus {
         enchantment: &'static str,
         unenchanted_chance: f32,
@@ -90,8 +93,52 @@ pub enum LootBonusFormula {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LootNumberProvider {
     Constant(f64),
-    Uniform { min: f64, max: f64 },
-    Binomial { n: i32, probability: f32 },
+    Uniform {
+        min: f64,
+        max: f64,
+    },
+    Binomial {
+        n: i32,
+        probability: f32,
+    },
+    /// Any other int provider. Only datapack tables have these.
+    Int(&'static number::IntProvider),
+    /// Any other float provider. Only datapack tables have these.
+    Float(&'static number::FloatProvider),
+}
+
+/// `SlotSource`: the slots a `slots` loot entry takes its items from.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SlotSource {
+    Empty,
+    Group(Vec<Self>),
+    /// `slot_range`: a range of `SlotRanges` names of an entity, the block entity or the
+    /// container of the loot context.
+    Range {
+        source: SlotSourceTarget,
+        slots: String,
+    },
+    Filtered {
+        source: Box<Self>,
+        item_filter: serde_json::Value,
+    },
+    Limit {
+        source: Box<Self>,
+        limit: usize,
+    },
+    /// The items inside the `container`, `bundle_contents` or `charged_projectiles` component.
+    Contents {
+        source: Box<Self>,
+        component: String,
+    },
+}
+
+/// Where a `slot_range` slot source reads slots from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SlotSourceTarget {
+    Entity(number::ScoreEntity),
+    BlockEntity,
+    Container,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -209,6 +256,8 @@ pub enum DynamicLootCondition {
         base: f32,
         per_level_above_first: f32,
     },
+    /// `random_chance` with any other chance provider.
+    RandomChanceNumber(LootNumberProvider),
     RandomChanceWithEnchantedBonus {
         enchantment: String,
         unenchanted_chance: f32,
@@ -278,6 +327,7 @@ impl From<LootCondition> for DynamicLootCondition {
                 base,
                 per_level_above_first,
             },
+            LootCondition::RandomChanceNumber(chance) => Self::RandomChanceNumber(chance),
             LootCondition::RandomChanceWithEnchantedBonus {
                 enchantment,
                 unenchanted_chance,
@@ -382,6 +432,7 @@ pub enum DynamicLootEntryKind {
     Sequence(Vec<DynamicLootEntry>),
     Table(String),
     InlineTable(Box<DynamicLootTable>),
+    Slots(SlotSource),
 }
 
 #[derive(Clone, Debug)]

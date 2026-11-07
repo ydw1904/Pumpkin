@@ -15,7 +15,7 @@ use pumpkin_data::map_decoration::MapDecorationType;
 use pumpkin_data::potion::Potion;
 use pumpkin_data::tag::{RegistryKey, get_tag_values};
 use pumpkin_nbt::tag::NbtTag;
-use pumpkin_util::loot_table::parser::{parse_functions, provider};
+use pumpkin_util::loot_table::parser::{float_provider, int_provider, parse_functions};
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::text::TextComponent;
 use serde_json::Value;
@@ -161,7 +161,7 @@ impl Generator<'_, '_> {
             }
             "set_stew_effect" => self.set_stew_effect(json, stack),
             "set_ominous_bottle_amplifier" => {
-                if let Some(amplifier) = json.get("amplifier").and_then(provider) {
+                if let Some(amplifier) = json.get("amplifier").and_then(int_provider) {
                     let amplifier = self
                         .number_int(amplifier)
                         .clamp(0, MAX_OMINOUS_BOTTLE_AMPLIFIER);
@@ -312,7 +312,7 @@ impl Generator<'_, '_> {
 
     /// `SetItemDamageFunction`: `damage` is the fraction of durability left.
     fn set_damage(&mut self, json: &Value, stack: &mut Stack) {
-        let Some(damage) = json.get("damage").and_then(provider) else {
+        let Some(damage) = json.get("damage").and_then(float_provider) else {
             return;
         };
         let Some(max_damage) = stack
@@ -355,7 +355,7 @@ impl Generator<'_, '_> {
         else {
             return;
         };
-        let Some(duration) = entry.get("duration").and_then(provider) else {
+        let Some(duration) = entry.get("duration").and_then(int_provider) else {
             return;
         };
         let mut duration = self.number_int(duration);
@@ -423,7 +423,7 @@ impl Generator<'_, '_> {
 
     /// `EnchantWithLevelsFunction` and `EnchantmentHelper.enchantItem`.
     fn enchant_with_levels(&mut self, json: &Value, stack: &mut Stack) {
-        let Some(levels) = json.get("levels").and_then(provider) else {
+        let Some(levels) = json.get("levels").and_then(int_provider) else {
             return;
         };
         let cost = self.number_int(levels);
@@ -457,7 +457,8 @@ impl Generator<'_, '_> {
                 &stack.stack,
             );
         for (name, level) in levels {
-            let (Some(enchantment), Some(level)) = (Enchantment::from_name(name), provider(level))
+            let (Some(enchantment), Some(level)) =
+                (Enchantment::from_name(name), int_provider(level))
             else {
                 continue;
             };

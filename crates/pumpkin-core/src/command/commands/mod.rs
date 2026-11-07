@@ -26,6 +26,7 @@ mod difficulty;
 mod effect;
 mod enchant;
 mod execute;
+pub(crate) use execute::entity_slot_items;
 mod experience;
 mod fetchprofile;
 mod fill;
