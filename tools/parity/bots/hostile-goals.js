@@ -157,9 +157,11 @@ h.start(async () => {
     h.cmd(`fill ${EX - 12} ${Y + 1} ${Z - 12} ${EX + 12} ${Y + 3} ${Z + 12} glass hollow`)
     h.cmd(`fill ${EX - 11} ${Y + 1} ${Z - 11} ${EX + 11} ${Y + 3} ${Z + 11} air`)
     h.cmd(`fill ${EX - 12} ${Y + 3} ${Z - 12} ${EX + 12} ${Y + 3} ${Z + 12} air`)
+    // The teleport goes out with this tick's packets, the fill only with the next tick's
+    // chunk broadcast, so wait for the floor first or the bot falls through it.
+    await h.waitFor(() => h.blockName(EX, Y, Z - 9) === 'stone' && h.blockName(EX + 12, Y, Z + 12) === 'stone', 10000)
     h.cmd(`tp ${bot.username} ${EX + 0.5} ${Y + 1} ${Z - 9.5}`)
     await h.waitFor(() => Math.abs(bot.entity.position.x - (EX + 0.5)) < 1, 5000)
-    await h.waitFor(() => h.blockName(EX + 12, Y, Z + 12) === 'stone', 10000)
     await reset()
     h.cmd(`effect give ${bot.username} resistance infinite 255 true`)
     for (let i = 0; i < 8; i++) await summonAt('vex', EX + 14.5, Y + 6, Z + 14.5, 'NoAI:1b')
