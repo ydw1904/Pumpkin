@@ -212,7 +212,10 @@ const MAX_LIGHT_LEVEL: u8 = 15;
 const LIGHTNING_ROD_SEARCH_RADIUS: i32 = 128;
 /// The fewest entities a rayon job takes in the per-entity scans of the tick. Each entity costs
 /// a few loads, so a smaller job costs less than waking a worker for it.
-pub(crate) const ENTITY_SCAN_BATCH: usize = 512;
+const ENTITY_SCAN_BATCH: usize = 512;
+/// Shards of the maps the tick walks every tick. A walk locks every shard, and with dashmap's
+/// default of four shards per CPU that costs more than the entries on many-core machines.
+const TICK_SCANNED_MAP_SHARDS: usize = 32;
 
 fn bedrock_chest_block_actor(state_id: BlockStateId, position: BlockPos) -> Option<NbtCompound> {
     crate::block::entities::chest_like_block_entity::build_chest_actor(position, state_id, None)
@@ -571,7 +574,7 @@ impl World {
             active_chunk_tracker: std::sync::Mutex::new(ActiveChunkTracker::default()),
             forced_chunks: std::sync::Mutex::new(forced_chunks),
             server,
-            block_entities: DashMap::new(),
+            block_entities: DashMap::with_shard_amount(TICK_SCANNED_MAP_SHARDS),
             pending_block_entity_migrations: crossbeam::queue::SegQueue::new(),
             custom_data: std::sync::Mutex::new(custom_data),
             custom_block_entity_data: DashMap::new(),

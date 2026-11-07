@@ -1042,7 +1042,7 @@ impl EntityTracker {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            entity_map: DashMap::new(),
+            entity_map: DashMap::with_shard_amount(super::TICK_SCANNED_MAP_SHARDS),
         }
     }
 
