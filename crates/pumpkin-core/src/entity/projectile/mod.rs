@@ -300,14 +300,7 @@ impl ThrownItemEntity {
         let start_pos = entity.pos.load();
         let delta = velocity;
 
-        // Update position
         let new_pos = start_pos.add(&delta);
-        entity.set_pos(new_pos);
-
-        // Send updated velocity to clients
-        let packet = CEntityVelocity::new(entity.entity_id.into(), velocity);
-        let chunk_pos = entity.chunk_pos.load();
-        world.broadcast_to_chunk(chunk_pos, &packet);
 
         // Calculate search box for collisions
         let search_box = BoundingBox::new(
@@ -383,6 +376,15 @@ impl ThrownItemEntity {
                 });
             }
         }
+
+        // Vanilla moves the projectile to where it hits, so the hit (an explosion, a knockback
+        // source) happens there.
+        entity.set_pos(hit.as_ref().map_or(new_pos, ProjectileHit::hit_pos));
+
+        // Send updated velocity to clients
+        let packet = CEntityVelocity::new(entity.entity_id.into(), velocity);
+        let chunk_pos = entity.chunk_pos.load();
+        world.broadcast_to_chunk(chunk_pos, &packet);
 
         // Handle hit or continue
         if let Some(h) = hit {
