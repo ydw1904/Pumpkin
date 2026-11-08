@@ -124,6 +124,9 @@ pub struct DefaultExplosionDamageCalculator;
 
 impl ExplosionDamageCalculator for DefaultExplosionDamageCalculator {}
 
+/// The resistance vanilla `SimpleExplosionDamageCalculator` gives its immune blocks.
+const IMMUNE_BLOCK_EXPLOSION_RESISTANCE: f32 = 3_600_000.0;
+
 /// A configurable explosion damage calculator (e.g. for wind charges, mace wind bursts).
 pub struct SimpleExplosionDamageCalculator {
     pub damages_entities: bool,
@@ -158,10 +161,11 @@ impl ExplosionDamageCalculator for SimpleExplosionDamageCalculator {
         block: &Block,
         fluid: &pumpkin_data::fluid::FluidState,
     ) -> Option<f32> {
-        if let Some(immune_tag) = self.immune_blocks
-            && block.has_tag(immune_tag)
-        {
-            return None;
+        // Vanilla gives every block outside the tag no resistance, so the blast passes through.
+        if let Some(immune_tag) = self.immune_blocks {
+            return block
+                .has_tag(immune_tag)
+                .then_some(IMMUNE_BLOCK_EXPLOSION_RESISTANCE);
         }
         if block.default_state.is_air() && fluid.is_empty {
             None
@@ -175,18 +179,10 @@ impl ExplosionDamageCalculator for SimpleExplosionDamageCalculator {
         _explosion: &Explosion,
         _world: &World,
         _pos: &BlockPos,
-        block: &Block,
+        _block: &Block,
         _power: f32,
     ) -> bool {
-        if !self.damages_blocks {
-            return false;
-        }
-        if let Some(immune_tag) = self.immune_blocks
-            && block.has_tag(immune_tag)
-        {
-            return false;
-        }
-        true
+        self.damages_blocks
     }
 
     fn should_damage_entity(&self, _explosion: &Explosion, _entity: &dyn EntityBase) -> bool {
