@@ -1,6 +1,6 @@
 use crate::entity::projectile::owner::ProjectileOwner;
 use std::sync::RwLock;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::item::Item;
@@ -13,7 +13,10 @@ use pumpkin_util::math::vector3::Vector3;
 use crate::{
     entity::{
         Entity, EntityBase,
-        projectile::{HURTING_INERTIA, HURTING_LIQUID_INERTIA, ProjectileHit, ThrownItemEntity},
+        projectile::{
+            AccelerationPower, HURTING_INERTIA, HURTING_LIQUID_INERTIA, ProjectileHit,
+            ThrownItemEntity,
+        },
     },
     server::Server,
 };
@@ -37,7 +40,7 @@ pub fn fireball_damage_type(owner: Option<&dyn EntityBase>) -> DamageType {
 pub struct FireballEntity {
     pub thrown: ThrownItemEntity,
     pub item_stack: RwLock<ItemStack>,
-    pub acceleration_power: AtomicU64,
+    pub acceleration_power: AccelerationPower,
     pub explosion_power: AtomicF32,
 }
 
@@ -56,7 +59,7 @@ impl FireballEntity {
         Self {
             thrown,
             item_stack: RwLock::new(Self::get_default_item()),
-            acceleration_power: AtomicU64::new(INITIAL_ACCELERATION_POWER.to_bits()),
+            acceleration_power: AccelerationPower::new(INITIAL_ACCELERATION_POWER),
             explosion_power: AtomicF32::new(DEFAULT_EXPLOSION_POWER),
         }
     }
@@ -71,7 +74,7 @@ impl FireballEntity {
         Self {
             thrown,
             item_stack: RwLock::new(Self::get_default_item()),
-            acceleration_power: AtomicU64::new(accel.to_bits()),
+            acceleration_power: AccelerationPower::new(accel),
             explosion_power: AtomicF32::new(DEFAULT_EXPLOSION_POWER),
         }
     }
@@ -100,7 +103,7 @@ impl FireballEntity {
         Self {
             thrown,
             item_stack: RwLock::new(Self::get_default_item()),
-            acceleration_power: AtomicU64::new(acceleration_power.to_bits()),
+            acceleration_power: AccelerationPower::new(acceleration_power),
             explosion_power: AtomicF32::new(DEFAULT_EXPLOSION_POWER),
         }
     }
@@ -136,15 +139,6 @@ impl FireballEntity {
         );
     }
 
-    pub fn get_acceleration_power(&self) -> f64 {
-        f64::from_bits(self.acceleration_power.load(Ordering::Relaxed))
-    }
-
-    pub fn set_acceleration_power(&self, power: f64) {
-        self.acceleration_power
-            .store(power.to_bits(), Ordering::Relaxed);
-    }
-
     pub fn get_explosion_power(&self) -> f32 {
         self.explosion_power.load(Ordering::Relaxed)
     }
@@ -174,12 +168,7 @@ impl FireballEntity {
 impl EntityBase for FireballEntity {
     /// Vanilla `AbstractHurtingProjectile.onDeflection`.
     fn on_deflection(&self, by_attack: bool) {
-        if by_attack {
-            self.set_acceleration_power(INITIAL_ACCELERATION_POWER);
-        } else {
-            let current = self.get_acceleration_power();
-            self.set_acceleration_power(current * DEFLECTION_SCALE);
-        }
+        self.acceleration_power.on_deflection(by_attack);
     }
 
     fn get_projectile_owner(&self) -> Option<&ProjectileOwner> {
@@ -187,17 +176,12 @@ impl EntityBase for FireballEntity {
     }
 
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
-        nbt.put_double("acceleration_power", self.get_acceleration_power());
+        self.acceleration_power.write_nbt(nbt);
         nbt.put_float("ExplosionPower", self.get_explosion_power());
     }
 
     fn read_custom_nbt(&self, nbt: &NbtCompound) {
-        if let Some(accel) = nbt
-            .get_double("acceleration_power")
-            .or_else(|| nbt.get_double("power"))
-        {
-            self.set_acceleration_power(accel);
-        }
+        self.acceleration_power.read_nbt(nbt);
         if let Some(exp) = nbt.get_float("ExplosionPower") {
             self.set_explosion_power(exp);
         }
@@ -219,7 +203,7 @@ impl EntityBase for FireballEntity {
     fn tick(&self, caller: &dyn EntityBase, _server: &Server) {
         self.thrown.process_hurting_tick(
             caller,
-            self.get_acceleration_power(),
+            self.acceleration_power.get(),
             HURTING_INERTIA,
             HURTING_LIQUID_INERTIA,
             true,

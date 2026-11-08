@@ -1,7 +1,7 @@
 use crate::entity::area_effect_cloud::{AreaEffectCloudEntity, CloudParticle};
 use crate::entity::projectile::fireball::INITIAL_ACCELERATION_POWER;
 use crate::entity::projectile::owner::ProjectileOwner;
-use crate::entity::projectile::{HURTING_INERTIA, HURTING_LIQUID_INERTIA};
+use crate::entity::projectile::{AccelerationPower, HURTING_INERTIA, HURTING_LIQUID_INERTIA};
 use crate::entity::{
     Entity, EntityBase,
     projectile::{ProjectileHit, ThrownItemEntity},
@@ -11,6 +11,7 @@ use pumpkin_data::data_component_impl::StatusEffectInstance;
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::world::WorldEvent;
+use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use std::sync::Arc;
@@ -25,6 +26,7 @@ const CLOUD_MAX_RADIUS: f32 = 7.0;
 /// where it lands.
 pub struct DragonFireballEntity {
     pub thrown: ThrownItemEntity,
+    pub acceleration_power: AccelerationPower,
 }
 
 impl DragonFireballEntity {
@@ -39,6 +41,7 @@ impl DragonFireballEntity {
                 last_deflected_by: crate::entity::projectile_deflection::LastDeflectedBy::new(),
                 gravity: 0.0,
             },
+            acceleration_power: AccelerationPower::new(INITIAL_ACCELERATION_POWER),
         }
     }
 
@@ -53,11 +56,26 @@ impl DragonFireballEntity {
             .entity
             .velocity
             .store(direction.normalize().multiply(accel, accel, accel));
-        Self { thrown }
+        Self {
+            thrown,
+            acceleration_power: AccelerationPower::new(accel),
+        }
     }
 }
 
 impl EntityBase for DragonFireballEntity {
+    fn on_deflection(&self, by_attack: bool) {
+        self.acceleration_power.on_deflection(by_attack);
+    }
+
+    fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
+        self.acceleration_power.write_nbt(nbt);
+    }
+
+    fn read_custom_nbt(&self, nbt: &NbtCompound) {
+        self.acceleration_power.read_nbt(nbt);
+    }
+
     fn get_projectile_owner(&self) -> Option<&ProjectileOwner> {
         Some(&self.thrown.owner)
     }
@@ -65,7 +83,7 @@ impl EntityBase for DragonFireballEntity {
     fn tick(&self, caller: &dyn EntityBase, _server: &Server) {
         self.thrown.process_hurting_tick(
             caller,
-            INITIAL_ACCELERATION_POWER,
+            self.acceleration_power.get(),
             HURTING_INERTIA,
             HURTING_LIQUID_INERTIA,
             false,

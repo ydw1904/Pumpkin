@@ -3,6 +3,7 @@ use pumpkin_data::damage::DamageType;
 use pumpkin_data::particle::Particle;
 use pumpkin_data::sound::Sound;
 use pumpkin_data::tag;
+use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::vector3::Vector3;
 use std::sync::LazyLock;
 use std::{
@@ -17,7 +18,7 @@ use crate::{
     entity::{
         Entity, EntityBase,
         living::LivingEntity,
-        projectile::{ProjectileHit, ThrownItemEntity},
+        projectile::{AccelerationPower, ProjectileHit, ThrownItemEntity},
         projectile_deflection::ProjectileDeflectionType,
     },
     server::Server,
@@ -43,6 +44,7 @@ const WIND_CHARGE_INERTIA: f32 = 1.0;
 pub struct WindChargeEntity {
     kind: WindChargeKind,
     thrown_item_entity: ThrownItemEntity,
+    acceleration_power: AccelerationPower,
 }
 
 pub static WIND_CHARGE_EXPLOSION_DAMAGE_CALCULATOR: LazyLock<Arc<SimpleExplosionDamageCalculator>> =
@@ -74,6 +76,7 @@ impl WindChargeEntity {
                 deflect_cooldown: AtomicU8::new(DEFAULT_DEFLECT_COOLDOWN),
             },
             thrown_item_entity,
+            acceleration_power: AccelerationPower::new(0.0),
         }
     }
 
@@ -82,6 +85,7 @@ impl WindChargeEntity {
         Self {
             kind: WindChargeKind::Breeze,
             thrown_item_entity,
+            acceleration_power: AccelerationPower::new(0.0),
         }
     }
 
@@ -142,6 +146,18 @@ impl WindChargeEntity {
 }
 
 impl EntityBase for WindChargeEntity {
+    fn on_deflection(&self, by_attack: bool) {
+        self.acceleration_power.on_deflection(by_attack);
+    }
+
+    fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
+        self.acceleration_power.write_nbt(nbt);
+    }
+
+    fn read_custom_nbt(&self, nbt: &NbtCompound) {
+        self.acceleration_power.read_nbt(nbt);
+    }
+
     fn get_projectile_owner(&self) -> Option<&ProjectileOwner> {
         Some(&self.thrown_item_entity.owner)
     }
@@ -153,10 +169,10 @@ impl EntityBase for WindChargeEntity {
             entity.remove();
             return;
         }
-        // Vanilla `AbstractWindCharge`: no acceleration and an inertia of 1, in and out of fluids.
+        // Vanilla `AbstractWindCharge`: an inertia of 1, in and out of fluids.
         self.thrown_item_entity.process_hurting_tick(
             caller,
-            0.0,
+            self.acceleration_power.get(),
             WIND_CHARGE_INERTIA,
             WIND_CHARGE_INERTIA,
             false,

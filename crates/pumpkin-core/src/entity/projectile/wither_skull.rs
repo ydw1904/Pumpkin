@@ -1,6 +1,6 @@
 use crate::entity::projectile::owner::ProjectileOwner;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use pumpkin_data::{
     Block, damage::DamageType, effect::StatusEffect, fluid::FluidState, potion::Effect,
@@ -16,8 +16,8 @@ use crate::{
         boss::wither::WitherEntity,
         living::LivingEntity,
         projectile::{
-            HURTING_INERTIA, HURTING_LIQUID_INERTIA, ProjectileHit, ThrownItemEntity,
-            fireball::INITIAL_ACCELERATION_POWER,
+            AccelerationPower, HURTING_INERTIA, HURTING_LIQUID_INERTIA, ProjectileHit,
+            ThrownItemEntity, fireball::INITIAL_ACCELERATION_POWER,
         },
     },
     server::Server,
@@ -59,7 +59,7 @@ impl ExplosionDamageCalculator for DangerousSkullExplosion {
 pub struct WitherSkullEntity {
     pub thrown: ThrownItemEntity,
     pub dangerous: AtomicBool,
-    acceleration_power: AtomicU64,
+    acceleration_power: AccelerationPower,
 }
 
 impl WitherSkullEntity {
@@ -78,7 +78,7 @@ impl WitherSkullEntity {
         Self {
             thrown,
             dangerous: AtomicBool::new(false),
-            acceleration_power: AtomicU64::new(INITIAL_ACCELERATION_POWER.to_bits()),
+            acceleration_power: AccelerationPower::new(INITIAL_ACCELERATION_POWER),
         }
     }
 
@@ -99,7 +99,7 @@ impl WitherSkullEntity {
         Self {
             thrown,
             dangerous: AtomicBool::new(false),
-            acceleration_power: AtomicU64::new(INITIAL_ACCELERATION_POWER.to_bits()),
+            acceleration_power: AccelerationPower::new(INITIAL_ACCELERATION_POWER),
         }
     }
 
@@ -108,10 +108,6 @@ impl WitherSkullEntity {
         entity
             .synched_data
             .define(tracked_data::wither_skull::DATA_DANGEROUS, false);
-    }
-
-    fn acceleration_power(&self) -> f64 {
-        f64::from_bits(self.acceleration_power.load(Ordering::Relaxed))
     }
 
     #[must_use]
@@ -162,21 +158,21 @@ impl WitherSkullEntity {
 }
 
 impl EntityBase for WitherSkullEntity {
+    fn on_deflection(&self, by_attack: bool) {
+        self.acceleration_power.on_deflection(by_attack);
+    }
+
     fn get_projectile_owner(&self) -> Option<&ProjectileOwner> {
         Some(&self.thrown.owner)
     }
 
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
-        nbt.put_double("acceleration_power", self.acceleration_power());
+        self.acceleration_power.write_nbt(nbt);
         nbt.put_bool("dangerous", self.is_dangerous());
     }
 
     fn read_custom_nbt(&self, nbt: &NbtCompound) {
-        let power = nbt
-            .get_double("acceleration_power")
-            .unwrap_or(INITIAL_ACCELERATION_POWER);
-        self.acceleration_power
-            .store(power.to_bits(), Ordering::Relaxed);
+        self.acceleration_power.read_nbt(nbt);
         if let Some(dangerous) = nbt.get_bool("dangerous") {
             self.dangerous.store(dangerous, Ordering::Relaxed);
         }
@@ -198,7 +194,7 @@ impl EntityBase for WitherSkullEntity {
         };
         self.thrown.process_hurting_tick(
             caller,
-            self.acceleration_power(),
+            self.acceleration_power.get(),
             inertia,
             HURTING_LIQUID_INERTIA,
             false,

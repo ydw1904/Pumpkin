@@ -2,13 +2,15 @@ use super::{Entity, EntityBase, living::LivingEntity, projectile_deflection::Las
 use crate::world::World;
 use pumpkin_data::BlockDirection;
 use pumpkin_data::entity::EntityType;
+use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_nbt::tag::NbtTag;
 use pumpkin_protocol::java::client::play::CEntityVelocity;
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
 use pumpkin_util::random::gameplay::game_random;
 use std::{
     sync::Arc,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicBool, AtomicU64, Ordering},
 };
 pub mod arrow;
 pub mod dragon_fireball;
@@ -94,6 +96,48 @@ pub fn apply_on_projectile_spawned(
             weapon,
             projectile_entity,
             arrow,
+        );
+    }
+}
+
+/// Vanilla `AbstractHurtingProjectile.accelerationPower`: how much speed a hurting projectile
+/// gains along its flight each tick.
+pub struct AccelerationPower(AtomicU64);
+
+impl AccelerationPower {
+    #[must_use]
+    pub const fn new(power: f64) -> Self {
+        Self(AtomicU64::new(power.to_bits()))
+    }
+
+    pub fn get(&self) -> f64 {
+        f64::from_bits(self.0.load(Ordering::Relaxed))
+    }
+
+    pub fn set(&self, power: f64) {
+        self.0.store(power.to_bits(), Ordering::Relaxed);
+    }
+
+    /// Vanilla `AbstractHurtingProjectile.onDeflection`.
+    pub fn on_deflection(&self, by_attack: bool) {
+        if by_attack {
+            self.set(fireball::INITIAL_ACCELERATION_POWER);
+        } else {
+            self.set(self.get() * fireball::DEFLECTION_SCALE);
+        }
+    }
+
+    pub fn write_nbt(&self, nbt: &mut NbtCompound) {
+        nbt.put_double("acceleration_power", self.get());
+    }
+
+    /// Vanilla `readAdditionalSaveData`: any number tag, and a missing one reads as the initial
+    /// power, even for wind charges, which are constructed with none.
+    pub fn read_nbt(&self, nbt: &NbtCompound) {
+        self.set(
+            nbt.get("acceleration_power")
+                .and_then(NbtTag::as_numeric_double)
+                .unwrap_or(fireball::INITIAL_ACCELERATION_POWER),
         );
     }
 }

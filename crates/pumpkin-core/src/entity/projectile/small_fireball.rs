@@ -2,6 +2,7 @@ use crate::entity::projectile::owner::ProjectileOwner;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use pumpkin_data::Block;
+use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_world::world::BlockFlags;
 
@@ -10,7 +11,8 @@ use crate::{
     entity::{
         Entity, EntityBase,
         projectile::{
-            HURTING_INERTIA, HURTING_LIQUID_INERTIA, ProjectileHit, ThrownItemEntity,
+            AccelerationPower, HURTING_INERTIA, HURTING_LIQUID_INERTIA, ProjectileHit,
+            ThrownItemEntity,
             fireball::{INITIAL_ACCELERATION_POWER, fireball_damage_type},
         },
     },
@@ -21,6 +23,7 @@ const GRAVITY: f64 = 0.0;
 
 pub struct SmallFireballEntity {
     pub thrown: ThrownItemEntity,
+    pub acceleration_power: AccelerationPower,
 }
 
 impl SmallFireballEntity {
@@ -35,7 +38,10 @@ impl SmallFireballEntity {
             gravity: GRAVITY,
         };
 
-        Self { thrown }
+        Self {
+            thrown,
+            acceleration_power: AccelerationPower::new(INITIAL_ACCELERATION_POWER),
+        }
     }
 
     #[must_use]
@@ -46,7 +52,10 @@ impl SmallFireballEntity {
             .entity
             .velocity
             .store(direction.normalize().multiply(accel, accel, accel));
-        Self { thrown }
+        Self {
+            thrown,
+            acceleration_power: AccelerationPower::new(INITIAL_ACCELERATION_POWER),
+        }
     }
 }
 
@@ -61,6 +70,18 @@ impl EntityBase for SmallFireballEntity {
         );
     }
 
+    fn on_deflection(&self, by_attack: bool) {
+        self.acceleration_power.on_deflection(by_attack);
+    }
+
+    fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
+        self.acceleration_power.write_nbt(nbt);
+    }
+
+    fn read_custom_nbt(&self, nbt: &NbtCompound) {
+        self.acceleration_power.read_nbt(nbt);
+    }
+
     fn get_projectile_owner(&self) -> Option<&ProjectileOwner> {
         Some(&self.thrown.owner)
     }
@@ -68,7 +89,7 @@ impl EntityBase for SmallFireballEntity {
     fn tick(&self, caller: &dyn EntityBase, _server: &Server) {
         self.thrown.process_hurting_tick(
             caller,
-            INITIAL_ACCELERATION_POWER,
+            self.acceleration_power.get(),
             HURTING_INERTIA,
             HURTING_LIQUID_INERTIA,
             true,
