@@ -913,22 +913,20 @@ impl EntityBase for ItemEntity {
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = stack;
         }
 
-        // Vanilla stores Age as a short
-        let age = nbt.get_short("Age").unwrap_or(0);
+        // Vanilla `getShortOr` takes any number, so `/summon` SNBT ints work too.
+        let age = nbt.get_numeric_short("Age").unwrap_or(0);
         self.never_despawn
             .store(age == INFINITE_LIFETIME, Ordering::Relaxed);
         self.item_age.store(i32::from(age), Ordering::Relaxed);
 
-        // Vanilla stores PickupDelay as a short
-        if let Some(delay) = nbt.get_short("PickupDelay") {
+        if let Some(delay) = nbt.get_numeric_short("PickupDelay") {
             self.never_pickup
                 .store(delay == INFINITE_PICKUP_DELAY, Ordering::Relaxed);
             self.pickup_delay
                 .store(delay.clamp(0, i16::from(u8::MAX)) as u8, Ordering::Relaxed);
         }
 
-        // Vanilla stores Health as a short
-        if let Some(health) = nbt.get_short("Health") {
+        if let Some(health) = nbt.get_numeric_short("Health") {
             self.health.store(health as f32, Relaxed);
         }
     }
@@ -1001,30 +999,42 @@ mod tests {
     use pumpkin_util::text::TextComponent;
 
     /// Age -32768 and pickup delay 32767 mark items that never despawn and that nobody can
-    /// pick up. Read as plain numbers, such an item despawned on its first tick.
+    /// pick up. Read as plain numbers, such an item despawned on its first tick. `/summon`
+    /// SNBT gives them as ints, which vanilla's `getShortOr` also takes.
     #[tokio::test]
     async fn infinite_age_and_pickup_delay_survive_a_save() {
         let folder = tempfile::tempdir().unwrap();
         let world = crate::entity::ai::test_support::world(&folder);
-        let mut item = NbtCompound::new();
-        ItemStack::new(2, &Item::NETHER_STAR).write_item_stack(&mut item);
-        let mut nbt = NbtCompound::new();
-        nbt.put_string("id", "minecraft:item".to_string());
-        nbt.put_compound("Item", item);
-        nbt.put_short("Age", -32768);
-        nbt.put_short("PickupDelay", 32767);
+        for as_int in [false, true] {
+            let mut item = NbtCompound::new();
+            ItemStack::new(2, &Item::NETHER_STAR).write_item_stack(&mut item);
+            let mut nbt = NbtCompound::new();
+            nbt.put_string("id", "minecraft:item".to_string());
+            nbt.put_compound("Item", item);
+            if as_int {
+                nbt.put_int("Age", -32768);
+                nbt.put_int("PickupDelay", 32767);
+            } else {
+                nbt.put_short("Age", -32768);
+                nbt.put_short("PickupDelay", 32767);
+            }
 
-        let entity = crate::entity::r#type::load_entity_from_nbt(
-            &nbt,
-            pumpkin_util::math::vector3::Vector3::new(0.5, 64.0, 0.5),
-            &world,
-        )
-        .unwrap();
-        let mut saved = NbtCompound::new();
-        entity.write_nbt(&mut saved);
+            let entity = crate::entity::r#type::load_entity_from_nbt(
+                &nbt,
+                pumpkin_util::math::vector3::Vector3::new(0.5, 64.0, 0.5),
+                &world,
+            )
+            .unwrap();
+            let mut saved = NbtCompound::new();
+            entity.write_nbt(&mut saved);
 
-        assert_eq!(saved.get_short("Age"), Some(-32768));
-        assert_eq!(saved.get_short("PickupDelay"), Some(32767));
+            assert_eq!(saved.get_short("Age"), Some(-32768), "as_int={as_int}");
+            assert_eq!(
+                saved.get_short("PickupDelay"),
+                Some(32767),
+                "as_int={as_int}"
+            );
+        }
         world.level.shutdown().await;
     }
 
