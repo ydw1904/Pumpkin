@@ -88,9 +88,6 @@ impl Goal for MeleeAttackGoal {
     }
 
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
-        if self.gate.is_some_and(|gate| !gate(mob)) {
-            return false;
-        }
         let time = mob.get_entity().world.load().get_world_age();
 
         if time - self.last_update_time < MAX_ATTACK_TIME {
@@ -113,7 +110,10 @@ impl Goal for MeleeAttackGoal {
             target.get_entity().pos.load(),
             0,
         );
-        self.path.is_some() || mob.is_in_attack_range(target.as_ref())
+        // Vanilla subclasses check their gate after `super.canUse()`, so a failed gate still
+        // waits out the 20 tick cooldown.
+        (self.path.is_some() || mob.is_in_attack_range(target.as_ref()))
+            && self.gate.is_none_or(|gate| gate(mob))
     }
 
     fn should_continue(&mut self, mob: &dyn Mob) -> bool {
