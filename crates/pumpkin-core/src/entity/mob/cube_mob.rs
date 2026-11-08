@@ -67,11 +67,12 @@ pub trait CubeMob: Mob {
 
     fn get_sound_pitch(&self) -> f32 {
         let pitch_adjuster = if self.is_tiny() { 1.4 } else { 0.8 };
-        (rand::random_range(0.0..1.0) - rand::random_range(0.0..1.0)) * 0.2 + 1.0 * pitch_adjuster
+        let random = self.get_random();
+        (random.next_f32() - random.next_f32()) * 0.2 + 1.0 * pitch_adjuster
     }
 
     fn get_jump_delay(&self) -> i32 {
-        rand::random_range(10..30)
+        self.get_random().next_bounded_i32(20) + 10
     }
 }
 
@@ -88,13 +89,15 @@ pub fn tick_cube_mob(cube: &dyn CubeMob) {
     let was_on_ground = data.was_on_ground.load(Ordering::Relaxed);
 
     if on_ground && !was_on_ground {
+        let random = cube.get_random();
+        let pitch = ((random.next_f32() - random.next_f32()) * 0.2 + 1.0) / 0.8;
         let world = entity.world.load();
         world.play_sound_fine(
             cube.get_squish_sound(),
             cube.cube_sound_category(),
             &entity.pos.load(),
             cube.get_sound_volume(),
-            ((rand::random_range(0.0..1.0) - rand::random_range(0.0..1.0)) * 0.2 + 1.0) / 0.8,
+            pitch,
         );
 
         data.target_squish.store(-0.5);
@@ -225,7 +228,7 @@ impl Goal for CubeMobFloatGoal {
         let Some(cube) = self.cube.upgrade() else {
             return;
         };
-        if rand::random_range(0.0..1.0) < 0.8 {
+        if cube.get_random().next_f32() < 0.8 {
             cube.get_mob_entity()
                 .jump_control
                 .lock()
@@ -279,8 +282,9 @@ impl Goal for CubeMobRandomDirectionGoal {
         };
         self.next_randomize_time -= 1;
         if self.next_randomize_time <= 0 {
-            self.next_randomize_time = rand::random_range(40..100);
-            self.chosen_degrees = rand::random_range(0.0..360.0);
+            let random = cube.get_random();
+            self.next_randomize_time = self.get_tick_count(40 + random.next_bounded_i32(60));
+            self.chosen_degrees = random.next_bounded_i32(360) as f32;
         }
         let data = cube.cube_data();
         data.target_yaw.store(self.chosen_degrees);
