@@ -22,7 +22,10 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 
 use super::arrow::ArrowPickup;
-use super::{ProjectileHit, calculate_ray_intersection};
+use super::{
+    ProjectileHit, arrow_rest_position, calculate_ray_intersection, compute_margin,
+    entity_hit_result,
+};
 
 pub struct TridentEntity {
     pub entity: Entity,
@@ -45,6 +48,10 @@ pub struct TridentEntity {
     return_ticks: AtomicU32,
     pub last_block_pos: Arc<std::sync::RwLock<Option<BlockPos>>>,
 }
+
+/// The power of the `ProjectileDeflection.REVERSE` vanilla `ThrownTrident.onHitEntity` bounces
+/// the trident back with.
+const TRIDENT_HIT_BOUNCE: Vector3<f64> = Vector3::new(0.02, 0.2, 0.02);
 
 impl TridentEntity {
     const BASE_DAMAGE: f64 = 8.0;
@@ -352,7 +359,6 @@ impl EntityBase for TridentEntity {
         );
 
         let new_pos = start_pos.add(&velocity);
-        entity.set_pos(new_pos);
 
         let packet = CEntityVelocity::new(entity.entity_id.into(), velocity);
         let chunk_pos = entity.chunk_pos.load();
@@ -363,12 +369,17 @@ impl EntityBase for TridentEntity {
             if !in_water {
                 velocity = velocity * Self::AIR_INERTIA;
             }
-            if !no_physics && !trident.in_ground.load(Ordering::Relaxed) {
+            // Vanilla `Entity.applyGravity`, which `NoGravity` turns off.
+            if !no_physics
+                && !trident.in_ground.load(Ordering::Relaxed)
+                && !trident.entity.has_no_gravity()
+            {
                 velocity.y -= Self::GRAVITY;
             }
             trident.entity.velocity.store(velocity);
         };
         if no_physics {
+            entity.set_pos(new_pos);
             entity.velocity.store(velocity);
             after_move(self);
             return;
@@ -418,29 +429,26 @@ impl EntityBase for TridentEntity {
             }
         }
 
-        // Entity collisions, players included
-        let candidates = if self.dealt_damage.load(Ordering::Relaxed) {
-            Vec::new()
+        // Vanilla `ThrownTrident.findHitEntities`: the nearest entity up to the block hit, until
+        // the trident has dealt damage, and the trident moves to where it hits.
+        let block_to = start_pos + velocity * closest_t;
+        let entity_hit = if self.dealt_damage.load(Ordering::Relaxed) {
+            None
         } else {
-            super::hit_candidates(&world, &search_box)
+            let candidates = super::hit_candidates(&world, &search_box)
+                .into_iter()
+                .filter(|cand| !self.should_skip_collision(entity, cand));
+            entity_hit_result(candidates, start_pos, block_to, compute_margin(entity))
         };
-        for cand in candidates {
-            if self.should_skip_collision(entity, &cand) {
-                continue;
-            }
-
-            let ebb = cand.get_entity().bounding_box.load().expand(0.3, 0.3, 0.3);
-            if let Some(t) = calculate_ray_intersection(&start_pos, &velocity, &ebb)
-                && t < closest_t
-            {
-                closest_t = t;
-                let hit_pos = start_pos.add(&velocity.multiply(t, t, t));
-                hit = Some(ProjectileHit::Entity {
-                    entity: cand.clone(),
-                    hit_pos,
-                    normal: velocity.normalize().multiply(-1.0, -1.0, -1.0),
-                });
-            }
+        if let Some((target, hit_pos)) = entity_hit {
+            entity.set_pos(hit_pos);
+            hit = Some(ProjectileHit::Entity {
+                entity: target,
+                hit_pos,
+                normal: velocity.normalize().multiply(-1.0, -1.0, -1.0),
+            });
+        } else {
+            entity.set_pos(block_to);
         }
 
         // Handle hit
@@ -450,6 +458,8 @@ impl EntityBase for TridentEntity {
             && !self.has_hit.swap(true, Ordering::SeqCst)
         {
             caller.on_hit(h);
+            // Vanilla `AbstractArrow.stepMoveAndHit` sets `needsSync` after a hit.
+            entity.velocity_dirty.store(true, Ordering::Relaxed);
         }
         after_move(self);
     }
@@ -564,8 +574,8 @@ impl EntityBase for TridentEntity {
                 );
 
                 // Stop the trident
+                entity.set_pos(arrow_rest_position(hit_pos, entity.velocity.load()));
                 entity.velocity.store(Vector3::new(0.0, 0.0, 0.0));
-                entity.set_pos(hit_pos);
 
                 // Play sound
                 let sound_packet = CSoundEffect::new(
@@ -638,8 +648,8 @@ impl EntityBase for TridentEntity {
                 let chunk_pos = entity.chunk_pos.load();
                 world.broadcast_to_chunk(chunk_pos, &sound_packet);
 
-                // Standard bounce/fall-back behavior
-                entity.velocity.store(Vector3::new(0.0, -0.1, 0.0));
+                // Vanilla bounces it back with `ProjectileDeflection.REVERSE`.
+                crate::entity::projectile_deflection::reverse(self, TRIDENT_HIT_BOUNCE);
                 self.has_hit.store(false, Ordering::Relaxed); // Let it hit the ground
             }
         }

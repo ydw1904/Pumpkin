@@ -1,6 +1,7 @@
 use crate::entity::{Entity, EntityBase};
 use pumpkin_data::sound::Sound;
 use pumpkin_data::tag::{self, Taggable};
+use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicI32, Ordering};
 
@@ -33,24 +34,7 @@ impl ProjectileDeflectionType {
     pub fn deflect(&self, projectile: &dyn EntityBase, hit_entity: Option<&dyn EntityBase>) {
         match self {
             Self::None => {}
-            Self::Simple => {
-                let vel = game_random().random::<f32>().mul_add(20.0, 170.0);
-
-                let current_velocity = projectile
-                    .get_entity()
-                    .velocity
-                    .load()
-                    .multiply(-0.5, -0.5, -0.5);
-
-                let entity = projectile.get_entity();
-                entity.velocity.store(current_velocity);
-
-                let yaw = entity.yaw.load() + vel;
-                let pitch = entity.pitch.load();
-                entity.set_rotation(yaw, pitch);
-                // TODO: Add entity.lastYaw += vel
-                entity.velocity_dirty.store(true, Ordering::Relaxed);
-            }
+            Self::Simple => reverse(projectile, Vector3::new(1.0, 1.0, 1.0)),
             Self::AimDeflect => {
                 if let Some(hit_entity) = hit_entity {
                     let entity = projectile.get_entity();
@@ -82,6 +66,19 @@ impl ProjectileDeflectionType {
             }
         }
     }
+}
+
+/// Vanilla `ProjectileDeflection.REVERSE` with `power`: sends the projectile back at half of
+/// `power` along each axis, turned around by 170 to 190 degrees.
+pub fn reverse(projectile: &dyn EntityBase, power: Vector3<f64>) {
+    let rotation = game_random().random::<f32>().mul_add(20.0, 170.0);
+    let entity = projectile.get_entity();
+    entity
+        .velocity
+        .store(entity.velocity.load() * (power * -0.5));
+    entity.set_rotation(entity.yaw.load() + rotation, entity.pitch.load());
+    // TODO: Add entity.lastYaw += rotation
+    entity.velocity_dirty.store(true, Ordering::Relaxed);
 }
 
 /// Vanilla `Projectile.deflect`: returns whether `projectile` was deflected.
