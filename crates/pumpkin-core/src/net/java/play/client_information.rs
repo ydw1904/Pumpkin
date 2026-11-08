@@ -19,7 +19,7 @@ impl JavaClient {
                 return;
             }
 
-            let (update_settings, update_watched, main_hand_changed, locale_changed) = {
+            let (update_settings, update_watched, main_hand_changed, locale_changed, hat_update) = {
                 // 1. Load current snapshot
                 let current_config = player.config.load();
 
@@ -59,6 +59,9 @@ impl JavaClient {
                     server_listing: client_information.server_listing,
                 };
 
+                let hat_shown = new_config.shows_hat();
+                let hat_update = (current_config.shows_hat() != hat_shown).then_some(hat_shown);
+
                 // 4. Atomically swap the new config into the player
                 player.config.store(std::sync::Arc::new(new_config));
 
@@ -67,6 +70,7 @@ impl JavaClient {
                     update_watched,
                     main_hand_changed,
                     locale_changed,
+                    hat_update,
                 )
             };
 
@@ -94,6 +98,17 @@ impl JavaClient {
                     player.gameprofile.name, self.id,
                 );
                 player.send_client_information();
+            }
+
+            // Vanilla `handleClientInformation` broadcasts the hat layer when it is toggled.
+            if let Some(hat_shown) = hat_update {
+                server.broadcast_packet_all(&CPlayerInfoUpdate::new(
+                    PlayerInfoFlags::UPDATE_HAT.bits(),
+                    &[pumpkin_protocol::java::client::play::Player {
+                        uuid: player.gameprofile.id,
+                        actions: &[PlayerAction::UpdateHat(hat_shown)],
+                    }],
+                ));
             }
         } else {
             self.try_kick(&TextComponent::text("Invalid hand or chat type"));

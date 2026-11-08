@@ -117,6 +117,17 @@ impl Default for PlayerConfig {
     }
 }
 
+impl PlayerConfig {
+    /// Vanilla `PlayerModelPart.HAT`.
+    const HAT_MASK: u8 = 1 << 6;
+
+    /// Whether the hat skin layer is shown, like vanilla `isModelPartShown(PlayerModelPart.HAT)`.
+    #[must_use]
+    pub const fn shows_hat(&self) -> bool {
+        self.skin_parts & Self::HAT_MASK != 0
+    }
+}
+
 pub enum PacketHandlerResult {
     Stop,
     ReadyToPlay(GameProfile, PlayerConfig),

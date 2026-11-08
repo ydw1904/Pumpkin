@@ -4172,7 +4172,7 @@ impl World {
                         PlayerAction::UpdateListed(true),
                         PlayerAction::UpdateLatency(VarInt(0)),
                         PlayerAction::UpdateListOrder(VarInt(0)),
-                        PlayerAction::UpdateHat(true),
+                        PlayerAction::UpdateHat(player.config.load().shows_hat()),
                     ],
                 }],
             ),
@@ -4345,7 +4345,7 @@ impl World {
             PlayerAction::UpdateListed(true),
             PlayerAction::UpdateLatency(VarInt(0)),
             PlayerAction::UpdateListOrder(VarInt(0)),
-            PlayerAction::UpdateHat(true),
+            PlayerAction::UpdateHat(player.config.load().shows_hat()),
         ];
         let java_player = [pumpkin_protocol::java::client::play::Player {
             uuid: gameprofile.id,
@@ -4418,7 +4418,7 @@ impl World {
                     PlayerAction::UpdateListOrder(VarInt(
                         player.tab_list_order.load(Ordering::Relaxed),
                     )),
-                    PlayerAction::UpdateHat(true),
+                    PlayerAction::UpdateHat(player.config.load().shows_hat()),
                 ]);
                 drop(chat_session);
 
