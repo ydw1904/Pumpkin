@@ -82,6 +82,7 @@ const BUILTIN_TEST_IDS: &[&str] = &[
     "pumpkin:item_entities_merge",
     "pumpkin:zombie_pathfinds_to_villager",
     "pumpkin:bee_with_nectar_enters_hive",
+    "pumpkin:creaking_without_protecting_heart_dies",
     "pumpkin:sniffers_breed_into_an_egg",
     "pumpkin:animal_does_not_breed_with_partner_out_of_love",
     "pumpkin:minecart_drops_item_when_destroyed",
