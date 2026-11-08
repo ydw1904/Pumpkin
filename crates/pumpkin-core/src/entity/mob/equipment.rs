@@ -863,6 +863,10 @@ pub fn is_equippable_in_slot(
     stack: &ItemStack,
     slot: &EquipmentSlot,
 ) -> bool {
+    // An emptied stack keeps its item here, but vanilla's empty stack has no components.
+    if stack.is_empty() {
+        return *slot == EquipmentSlot::MAIN_HAND;
+    }
     stack.get_data_component::<EquippableImpl>().map_or_else(
         || *slot == EquipmentSlot::MAIN_HAND,
         |equippable| {
