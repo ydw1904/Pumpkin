@@ -752,6 +752,21 @@ impl Mob for AxolotlEntity {
         true
     }
 
+    // Vanilla `Axolotl.removeWhenFarAway` overrides `Animal`'s, so wild axolotls despawn.
+    fn remove_when_far_away(&self, _distance_sq: f64) -> bool {
+        !self.is_from_bucket() && self.get_entity().custom_name.load().is_none()
+    }
+
+    fn requires_custom_persistence(&self) -> bool {
+        self.is_from_bucket()
+            || self
+                .get_entity()
+                .vehicle
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .is_some()
+    }
+
     /// Vanilla `Axolotl.baseTick`: `handleAirSupply` after `LivingEntity.baseTick`'s air.
     fn base_tick(&self, pre_tick_air_supply: i32) {
         if !self.mob_entity.is_no_ai() {
