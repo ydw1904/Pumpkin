@@ -167,6 +167,29 @@ pub(super) async fn test_creaking_without_protecting_heart_dies(
     })
 }
 
+pub(super) async fn test_sniffers_breed_into_an_egg(helper: GameTestHelper) -> GameTestResult<()> {
+    build_stone_floor(&helper, 5, 5).await?;
+    for x in [1, 3] {
+        helper
+            .execute_command(
+                &BlockPos::new(x, 1, 2),
+                "summon minecraft:sniffer ~0.5 ~ ~0.5 {InLove:600,PersistenceRequired:1b}",
+            )
+            .await?;
+    }
+    helper
+        .assert_entities_present("minecraft:sniffer", 2)
+        .await?;
+
+    // Vanilla `Sniffer.spawnChildFromBreeding` drops an egg instead of a baby.
+    helper.succeed_when(move |helper| async move {
+        helper
+            .assert_item_entity_present("minecraft:sniffer_egg", &BlockPos::new(2, 1, 2), 3.0)
+            .await?;
+        helper.assert_entities_present("minecraft:sniffer", 2).await
+    })
+}
+
 pub(super) async fn test_animal_does_not_breed_with_partner_out_of_love(
     helper: GameTestHelper,
 ) -> GameTestResult<()> {

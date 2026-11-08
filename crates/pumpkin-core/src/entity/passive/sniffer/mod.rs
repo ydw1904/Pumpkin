@@ -9,6 +9,7 @@ use pumpkin_data::BlockState;
 use pumpkin_data::dimension::Dimension;
 use pumpkin_data::entity::{EntityStatus, EntityType};
 use pumpkin_data::game_event::GameEvent;
+use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::Sound;
 use pumpkin_data::tag::{self, Taggable};
@@ -378,6 +379,22 @@ impl Animal for SnifferEntity {
             .cast_any()
             .downcast_ref::<Self>()
             .is_some_and(|partner| mates(self.get_state()) && mates(partner.get_state()))
+    }
+
+    fn spawns_offspring(&self) -> bool {
+        false
+    }
+
+    /// Vanilla `Sniffer.spawnChildFromBreeding`: drops a sniffer egg instead of a baby.
+    fn on_bred_without_offspring(&self, _brain: Option<&mut BrainState>) {
+        let entity = self.get_entity();
+        let world = entity.world.load_full();
+        let egg = Entity::new(world.clone(), entity.pos.load(), &EntityType::ITEM);
+        let egg = Arc::new(ItemEntity::new(egg, ItemStack::new(1, &Item::SNIFFER_EGG)));
+        let random = &mut self.get_random();
+        let pitch = (random.random::<f32>() - random.random::<f32>()).mul_add(0.2, 0.5);
+        self.play_entity_sound(Sound::BlockSnifferEggPlop, 1.0, pitch);
+        world.spawn_entity(egg);
     }
 }
 

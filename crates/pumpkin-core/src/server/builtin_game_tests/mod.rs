@@ -82,6 +82,7 @@ const BUILTIN_TEST_IDS: &[&str] = &[
     "pumpkin:item_entities_merge",
     "pumpkin:zombie_pathfinds_to_villager",
     "pumpkin:bee_with_nectar_enters_hive",
+    "pumpkin:sniffers_breed_into_an_egg",
     "pumpkin:animal_does_not_breed_with_partner_out_of_love",
     "pumpkin:minecart_drops_item_when_destroyed",
     // redstone_wire_and_power (14)
@@ -561,6 +562,13 @@ pub fn ensure_builtin_game_tests_registered() {
             40,
             0,
             entities_and_ai::test_creaking_without_protecting_heart_dies,
+        );
+        register_function_test(
+            "pumpkin:sniffers_breed_into_an_egg",
+            "pumpkin:empty_5x4x5",
+            300,
+            0,
+            entities_and_ai::test_sniffers_breed_into_an_egg,
         );
         register_function_test(
             "pumpkin:animal_does_not_breed_with_partner_out_of_love",
