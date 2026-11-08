@@ -47,6 +47,7 @@ pub enum SensorType {
     NearestItems,
     FoodTemptations,
     FrogTemptations,
+    NautilusTemptations,
     FrogAttackables,
     IsInWater,
     NearestAdult,
@@ -72,6 +73,7 @@ impl SensorType {
             Self::NearestItems => "minecraft:nearest_items",
             Self::FoodTemptations => "minecraft:food_temptations",
             Self::FrogTemptations => "minecraft:frog_temptations",
+            Self::NautilusTemptations => "minecraft:nautilus_temptations",
             Self::FrogAttackables => "minecraft:frog_attackables",
             Self::IsInWater => "minecraft:is_in_water",
             Self::NearestAdult => "minecraft:nearest_adult",
@@ -97,6 +99,7 @@ impl SensorType {
             | Self::NearestItems
             | Self::FoodTemptations
             | Self::FrogTemptations
+            | Self::NautilusTemptations
             | Self::FrogAttackables
             | Self::IsInWater
             | Self::NearestAdult
@@ -121,6 +124,7 @@ impl SensorType {
             Self::NearestItems => Box::new(nearest_items::NearestItemSensor),
             Self::FoodTemptations => Box::new(tempting::TemptingSensor::for_animal()),
             Self::FrogTemptations => Box::new(tempting::TemptingSensor::for_frog()),
+            Self::NautilusTemptations => Box::new(tempting::TemptingSensor::for_nautilus()),
             Self::FrogAttackables => Box::new(frog_attackables::FrogAttackablesSensor),
             Self::IsInWater => Box::new(is_in_water::IsInWaterSensor),
             Self::NearestAdult => Box::new(adult::AdultSensor::same_type()),

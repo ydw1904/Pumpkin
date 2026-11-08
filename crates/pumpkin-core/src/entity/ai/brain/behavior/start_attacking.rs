@@ -10,6 +10,20 @@ pub fn create(
     can_attack: fn(&BrainTick<'_>) -> bool,
     target_finder: fn(&BrainTick<'_>) -> Option<Arc<dyn EntityBase>>,
 ) -> OneShot {
+    create_with_finder(move |tick| {
+        if can_attack(tick) {
+            target_finder(tick)
+        } else {
+            None
+        }
+    })
+}
+
+/// Vanilla `StartAttacking.create(targetFinder)` for finders that write memories or roll
+/// randomness while they look.
+pub fn create_with_finder(
+    target_finder: impl Fn(&mut BrainTick<'_>) -> Option<Arc<dyn EntityBase>> + Send + Sync + 'static,
+) -> OneShot {
     OneShot::new(
         "StartAttacking",
         vec![
@@ -20,9 +34,6 @@ pub fn create(
             ),
         ],
         move |tick| {
-            if !can_attack(tick) {
-                return false;
-            }
             let Some(target) = target_finder(tick) else {
                 return false;
             };
