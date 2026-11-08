@@ -106,6 +106,10 @@ async fn async_main() {
 
     let config = PumpkinConfig::load(&exec_dir);
 
+    if has_init_settings_arg(std::env::args().skip(1)) {
+        exit(0);
+    }
+
     let vanilla_data = VanillaData::load();
 
     pumpkin_core::init_logger(&config.advanced);
@@ -434,6 +438,10 @@ async fn setup_sighandler() -> io::Result<()> {
     }
 
     Ok(())
+}
+
+fn has_init_settings_arg(mut args: impl Iterator<Item = String>) -> bool {
+    args.any(|arg| arg == "--init-settings" || arg == "--initSettings")
 }
 
 fn parse_convert_world_arg(mut args: impl Iterator<Item = String>) -> Option<String> {
