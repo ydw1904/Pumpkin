@@ -736,6 +736,8 @@ pub struct Player {
     /// Vanilla `Player.totalExperience`: every point gained since the last reset, which
     /// spending levels doesn't lower.
     pub total_experience: AtomicI32,
+    /// Vanilla `Player.lastLevelUpTime`: the tick of the last level-up sound.
+    last_level_up_time: AtomicI32,
     pub item_cooldowns: std::sync::Mutex<HashMap<String, ItemCooldown>>,
     pub experience_pick_up_delay: Mutex<u32>,
     pub chunk_sender: Mutex<crate::net::ChunkSender>,
@@ -1117,6 +1119,7 @@ impl Player {
             experience_progress: AtomicCell::new(0.0),
             experience_points: AtomicI32::new(0),
             total_experience: AtomicI32::new(0),
+            last_level_up_time: AtomicI32::new(0),
             item_cooldowns: std::sync::Mutex::new(HashMap::new()),
             chunk_sender: Mutex::new(crate::net::ChunkSender::new()),
             chunk_listener: Mutex::new(world.level.chunk_listener.add_global_chunk_listener()),
@@ -6694,6 +6697,27 @@ impl Player {
             return;
         }
         self.set_experience_level(new_level, true);
+        if added_levels > 0 {
+            self.play_level_up_sound(new_level);
+        }
+    }
+
+    /// The sound part of vanilla `Player.giveExperienceLevels` after gaining levels: every fifth
+    /// level, at most once per 100 ticks.
+    fn play_level_up_sound(&self, level: i32) {
+        let tick = self.tick_counter.load(Ordering::Relaxed);
+        if level % 5 != 0 || self.last_level_up_time.load(Ordering::Relaxed) >= tick - 100 {
+            return;
+        }
+        let volume = if level > 30 { 1.0 } else { level as f32 / 30.0 };
+        self.world().play_sound_fine(
+            Sound::EntityPlayerLevelup,
+            self.sound_source(),
+            &self.living_entity.entity.pos.load(),
+            volume * 0.75,
+            1.0,
+        );
+        self.last_level_up_time.store(tick, Ordering::Relaxed);
     }
 
     /// Set the player's experience points directly. Returns `true` if successful.
@@ -6740,6 +6764,10 @@ impl Player {
         let progress = experience::progress_in_level(new_points, new_level);
 
         self.set_experience(new_level, progress, new_points);
+        // Vanilla gains the levels one `giveExperienceLevels(1)` at a time.
+        for level in current_level + 1..=new_level {
+            self.play_level_up_sound(level);
+        }
     }
 
     pub fn apply_mending_from_xp(&self, mut xp: i32) -> i32 {
