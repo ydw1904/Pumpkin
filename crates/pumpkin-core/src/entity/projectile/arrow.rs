@@ -31,6 +31,10 @@ use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 
+/// The `ProjectileDeflection.REVERSE` power vanilla `AbstractArrow.onHitEntity` bounces an
+/// arrow back with when its damage fails.
+const FAILED_HIT_BOUNCE: f64 = 0.2;
+
 /// Represents the pickup rules for arrows
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArrowPickup {
@@ -255,10 +259,6 @@ impl ArrowEntity {
             show_icon: true,
             blend: false,
         }
-    }
-
-    const fn should_apply_post_hurt_effects(damage_succeeded: bool) -> bool {
-        damage_succeeded
     }
 
     /// Vanilla `Arrow.addEffect`: the effect joins the pickup item's potion contents, which
@@ -818,6 +818,7 @@ impl EntityBase for ArrowEntity {
 
                 let is_enderman =
                     target.get_entity().entity_type == &pumpkin_data::entity::EntityType::ENDERMAN;
+                let remaining_fire_ticks = target.get_entity().fire_ticks.load(Ordering::Relaxed);
                 let is_on_fire = entity.is_on_fire() || self.is_flame.load(Ordering::Relaxed);
                 if is_on_fire && !is_enderman {
                     target.get_entity().set_on_fire_for(5.0);
@@ -853,7 +854,34 @@ impl EntityBase for ArrowEntity {
                     Some(owner_entity.as_deref().unwrap_or(self)),
                 );
 
-                if is_enderman && !damage_succeeded {
+                if !damage_succeeded {
+                    // Vanilla `Enderman.projectileReceivesSideEffectsOnHit` is false for a
+                    // missed hit, so the arrow flies on.
+                    if is_enderman {
+                        return;
+                    }
+                    target
+                        .get_entity()
+                        .fire_ticks
+                        .store(remaining_fire_ticks, Ordering::Relaxed);
+                    crate::entity::projectile_deflection::reverse(
+                        self,
+                        Vector3::new(FAILED_HIT_BOUNCE, FAILED_HIT_BOUNCE, FAILED_HIT_BOUNCE),
+                    );
+                    self.on_deflection(false);
+                    if entity.velocity.load().length_squared() < 1.0E-7 {
+                        if self.pickup.load() == ArrowPickup::Allowed {
+                            let item_stack = self
+                                .item_stack
+                                .read()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner);
+                            entity.spawn_at_location_offset(
+                                Self::pickup_item_stack(&item_stack),
+                                Vector3::new(0.0, 0.1, 0.0),
+                            );
+                        }
+                        entity.remove();
+                    }
                     return;
                 }
 
@@ -870,15 +898,13 @@ impl EntityBase for ArrowEntity {
                         );
                     }
 
-                    if damage_succeeded {
-                        crate::enchantment::EnchantmentHelper::do_post_attack_effects_with_item_source(
-                            target.as_ref(),
-                            DamageType::ARROW,
-                            Some(owner_entity.as_deref().unwrap_or(self)),
-                            Some(self),
-                            self.get_weapon_item().as_ref(),
-                        );
-                    }
+                    crate::enchantment::EnchantmentHelper::do_post_attack_effects_with_item_source(
+                        target.as_ref(),
+                        DamageType::ARROW,
+                        Some(owner_entity.as_deref().unwrap_or(self)),
+                        Some(self),
+                        self.get_weapon_item().as_ref(),
+                    );
 
                     // Play hit sound
                     let sound_pitch = 1.2 / (game_random().random::<f32>() * 0.2 + 0.9);
@@ -893,32 +919,30 @@ impl EntityBase for ArrowEntity {
                     let chunk_pos = entity.chunk_pos.load();
                     world.broadcast_to_chunk(chunk_pos, &sound_packet);
 
-                    if Self::should_apply_post_hurt_effects(damage_succeeded) {
-                        let item_stack = self
-                            .item_stack
-                            .read()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner);
-                        let scale = item_stack
-                            .get_data_component::<PotionDurationScaleImpl>()
-                            .map_or(1.0, |component| component.scale);
-                        crate::item::potion::PotionContents::apply_effects_to(
-                            living,
-                            crate::item::potion::PotionContents::read_potion_effects(&item_stack),
-                            scale,
-                            crate::item::potion::PotionApplicationSource::Arrow,
-                            Some(crate::entity::living::EffectSource {
-                                direct: self,
-                                owner: owner_entity.as_deref(),
-                            }),
-                        );
+                    let item_stack = self
+                        .item_stack
+                        .read()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    let scale = item_stack
+                        .get_data_component::<PotionDurationScaleImpl>()
+                        .map_or(1.0, |component| component.scale);
+                    crate::item::potion::PotionContents::apply_effects_to(
+                        living,
+                        crate::item::potion::PotionContents::read_potion_effects(&item_stack),
+                        scale,
+                        crate::item::potion::PotionApplicationSource::Arrow,
+                        Some(crate::entity::living::EffectSource {
+                            direct: self,
+                            owner: owner_entity.as_deref(),
+                        }),
+                    );
 
-                        if is_spectral {
-                            // Vanilla `Projectile.getEffectSource`: the owner, or the arrow.
-                            living.add_effect_with_source(
-                                Self::spectral_glowing_effect(),
-                                Some(owner_entity.as_deref().unwrap_or(self)),
-                            );
-                        }
+                    if is_spectral {
+                        // Vanilla `Projectile.getEffectSource`: the owner, or the arrow.
+                        living.add_effect_with_source(
+                            Self::spectral_glowing_effect(),
+                            Some(owner_entity.as_deref().unwrap_or(self)),
+                        );
                     }
                 }
 
@@ -1202,12 +1226,6 @@ mod tests {
         assert_eq!(effect.amplifier, 0);
         assert!(effect.show_particles);
         assert!(effect.show_icon);
-    }
-
-    #[test]
-    fn post_hurt_effects_require_successful_arrow_damage() {
-        assert!(!ArrowEntity::should_apply_post_hurt_effects(false));
-        assert!(ArrowEntity::should_apply_post_hurt_effects(true));
     }
 
     #[test]
