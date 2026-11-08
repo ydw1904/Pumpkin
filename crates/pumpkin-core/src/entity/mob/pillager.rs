@@ -223,6 +223,8 @@ impl Mob for PillagerEntity {
 
     fn mob_read_nbt(&self, nbt: &NbtCompound) {
         self.read_raider_nbt(nbt);
+        // Vanilla `Pillager.readAdditionalSaveData` always picks up loot again.
+        self.mob_entity.set_can_pick_up_loot(true);
 
         if let Some(inv_list) = nbt.get_list("Inventory") {
             let mut inv = self

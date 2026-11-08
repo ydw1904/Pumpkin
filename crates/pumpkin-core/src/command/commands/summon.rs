@@ -1,11 +1,11 @@
 use pumpkin_data::translation;
+use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::difficulty::Difficulty;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
-use uuid::Uuid;
 
 use crate::command::argument_builder::{ArgumentBuilder, argument, command};
 use crate::command::argument_types::coordinates::vec3::Vec3ArgumentType;
@@ -16,7 +16,7 @@ use crate::command::errors::error_types::CommandErrorType;
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
 use crate::entity::mob::spawn::finalize_spawn;
-use crate::entity::r#type::{from_type, load_entity, self_and_passengers};
+use crate::entity::r#type::{load_entity, self_and_passengers};
 use crate::world::World;
 
 const DESCRIPTION: &str = "Spawns an entity at position.";
@@ -60,24 +60,20 @@ impl CommandExecutor for SummonExecutor {
             return Err(ERROR_FAILED_PEACEFUL.create_without_context());
         }
 
+        let empty = NbtCompound::new();
         let nbt = if self.has_nbt {
-            Some(NbtCompoundArgumentType::get(context, "nbt")?)
+            NbtCompoundArgumentType::get(context, "nbt")?
         } else {
-            None
+            &empty
         };
 
-        let entity = nbt.map_or_else(
-            || from_type(entity_type, pos, world, Uuid::new_v4()),
-            |nbt| {
-                // Vanilla `loadEntityRecursive` reads the NBT at its `Pos`, or the origin, and
-                // only then moves the entities, so a turtle summoned with NBT gets home 0,0,0.
-                let entity = load_entity(entity_type, Vector3::default(), nbt, world);
-                for entity in self_and_passengers(&entity) {
-                    entity.get_entity().set_pos(pos);
-                }
-                entity
-            },
-        );
+        // Vanilla `loadEntityRecursive` loads every summoned entity from its NBT, an empty one
+        // without the argument, at its `Pos` or the origin, and only then moves the entities, so
+        // a turtle summoned with NBT gets home 0,0,0.
+        let entity = load_entity(entity_type, Vector3::default(), nbt, world);
+        for entity in self_and_passengers(&entity) {
+            entity.get_entity().set_pos(pos);
+        }
         let entities = self_and_passengers(&entity);
 
         if world.entities.load().iter().any(|existing| {

@@ -1118,6 +1118,9 @@ impl Mob for PiglinEntity {
     }
 
     fn mob_read_nbt(&self, nbt: &NbtCompound) {
+        // Vanilla `AbstractPiglin.readAdditionalSaveData`: a piglin picks up loot unless told not.
+        self.mob_entity
+            .set_can_pick_up_loot(nbt.get_bool("CanPickUpLoot").unwrap_or(true));
         self.read_brain_memories(nbt);
         if let Some(immune) = nbt.get_bool("IsImmuneToZombification") {
             self.set_immune_to_zombification(immune);
