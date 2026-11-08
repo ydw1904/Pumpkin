@@ -214,4 +214,59 @@ mod tests {
         world.level.shutdown().await;
         Ok(())
     }
+
+    #[tokio::test]
+    async fn axolotl_bucket_keeps_variant_age_and_hunting_cooldown()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use crate::entity::ageable::AgeableMob;
+        use crate::entity::passive::axolotl::{AxolotlEntity, AxolotlVariant};
+        use pumpkin_data::data_component_impl::AxolotlVariantImpl;
+
+        let folder = tempfile::tempdir()?;
+        let world = world(&folder);
+        let spawn = |x| {
+            from_type(
+                &EntityType::AXOLOTL,
+                Vector3::new(x, 64.0, 0.0),
+                &world,
+                Uuid::new_v4(),
+            )
+        };
+        let source = spawn(0.0);
+        let axolotl = source
+            .cast_any()
+            .downcast_ref::<AxolotlEntity>()
+            .ok_or("not an axolotl")?;
+        axolotl.set_variant(AxolotlVariant::Gold);
+        axolotl.set_age(-1200);
+        axolotl.hunting_cooldown.store(300, Relaxed);
+        axolotl.mob_entity.living_entity.set_health(5.0);
+        let mut bucket = ItemStack::new(1, &Item::AXOLOTL_BUCKET);
+        axolotl.save_to_bucket_tag(&mut bucket);
+        assert_eq!(
+            bucket
+                .get_data_component::<AxolotlVariantImpl>()
+                .map(|variant| variant.value.as_ref()),
+            Some("gold")
+        );
+        let tag = bucket
+            .get_data_component::<BucketEntityDataImpl>()
+            .and_then(|data| data.nbt.clone())
+            .ok_or("missing bucket data")?;
+
+        let restored = spawn(2.0);
+        // `MobBucketItem.spawn`: the item's components, then the bucket tag.
+        crate::item::items::spawn_egg::apply_entity_variant(&bucket, restored.as_ref(), None);
+        let restored_axolotl = restored
+            .cast_any()
+            .downcast_ref::<AxolotlEntity>()
+            .ok_or("not an axolotl")?;
+        restored_axolotl.load_from_bucket_tag(&tag);
+        assert_eq!(restored_axolotl.get_variant(), AxolotlVariant::Gold);
+        assert_eq!(restored_axolotl.get_age(), -1200);
+        assert_eq!(restored_axolotl.hunting_cooldown.load(Relaxed), 300);
+        assert_eq!(restored_axolotl.mob_entity.living_entity.health.load(), 5.0);
+        world.level.shutdown().await;
+        Ok(())
+    }
 }

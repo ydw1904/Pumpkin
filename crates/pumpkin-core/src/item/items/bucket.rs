@@ -648,29 +648,6 @@ impl ItemBehaviour for FilledBucketItem {
         }
     }
 
-    fn use_on_entity(&self, item: &mut ItemStack, player: &Player, entity: Arc<dyn EntityBase>) {
-        if entity
-            .get_mob()
-            .and_then(|mob| mob.as_bucketable())
-            .is_some()
-        {
-            return;
-        }
-        if item.item.id == Item::WATER_BUCKET.id {
-            let entity_type = entity.get_entity().entity_type;
-            let result_item = (entity_type == &EntityType::AXOLOTL)
-                .then_some((&Item::AXOLOTL_BUCKET, Sound::ItemBucketFillAxolotl));
-
-            if let Some((mob_bucket, sound)) = result_item {
-                let ent = entity.get_entity();
-                let world = ent.world.load();
-                world.play_sound(sound, SoundCategory::Neutral, &ent.pos.load());
-                fill_mob_bucket_stack(item, player, mob_bucket, entity.as_ref());
-                ent.remove();
-            }
-        }
-    }
-
     // Powder snow is vanilla's only `SolidBucketItem`; mirrors its `useOn` override.
     fn on_placed_as_block(&self, stack: &mut ItemStack, player: &Player) {
         if stack.item.id == Item::POWDER_SNOW_BUCKET.id {

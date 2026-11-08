@@ -7,12 +7,13 @@ use std::sync::{
 
 use pumpkin_data::Block;
 use pumpkin_data::damage::DamageType;
+use pumpkin_data::data_component_impl::{AxolotlVariantImpl, BucketEntityDataImpl};
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::potion::Effect;
-use pumpkin_data::sound::{Sound, SoundCategory};
+use pumpkin_data::sound::Sound;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
@@ -38,6 +39,7 @@ use crate::entity::{
     ai::target_match::TargetMatch,
     ai::util::land_random_pos,
     area_effect_cloud::INFINITE_DURATION,
+    bucketable::{Bucketable, bucket_mob_pickup},
     living::LivingEntity,
     mob::{
         Mob, MobEntity,
@@ -260,11 +262,6 @@ impl AxolotlEntity {
         );
     }
 
-    #[must_use]
-    pub fn is_from_bucket(&self) -> bool {
-        self.from_bucket.load(Ordering::Relaxed)
-    }
-
     /// Vanilla `Axolotl.onStopAttacking`.
     fn on_stop_attacking(&self, target: &dyn EntityBase) {
         let Some(living) = target.get_living_entity() else {
@@ -327,15 +324,6 @@ impl AxolotlEntity {
         } else {
             entity.set_air_supply(AXOLOTL_TOTAL_AIR_SUPPLY);
         }
-    }
-
-    pub fn set_from_bucket(&self, from_bucket: bool) {
-        self.from_bucket.store(from_bucket, Ordering::Relaxed);
-        let entity = self.get_entity();
-        entity.set_synced_data(
-            pumpkin_data::tracked_data::axolotl::FROM_BUCKET,
-            from_bucket,
-        );
     }
 }
 
@@ -865,6 +853,16 @@ impl Mob for AxolotlEntity {
         Some(self)
     }
 
+    fn as_bucketable(&self) -> Option<&dyn Bucketable> {
+        Some(self)
+    }
+
+    fn mob_set_variant_name(&self, name: &str) {
+        if let Some(variant) = pumpkin_data::entity_variant::AxolotlVariant::from_name(name) {
+            self.set_variant(AxolotlVariant::from_id(variant.id()));
+        }
+    }
+
     fn mob_write_nbt(&self, nbt: &mut NbtCompound) {
         nbt.put_int("Variant", self.get_variant().id());
         nbt.put_bool("FromBucket", self.is_from_bucket());
@@ -992,31 +990,71 @@ impl Mob for AxolotlEntity {
         );
     }
 
+    fn mob_interact_with_hand(
+        &self,
+        player: &Arc<Player>,
+        item_stack: &mut ItemStack,
+        _hand: pumpkin_util::Hand,
+    ) -> Option<bool> {
+        bucket_mob_pickup(player, item_stack, self)
+    }
+
     fn mob_interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
-        let item = item_stack.get_item();
-
-        if item == &Item::WATER_BUCKET {
-            let entity = self.get_entity();
-            let world = entity.world.load();
-            if let Some(server) = world.server.upgrade() {
-                let mut event = crate::plugin::api::events::player::player_bucket_entity::PlayerBucketEntityEvent {
-                    player: player.clone(),
-                    entity_id: entity.entity_id,
-                    bucket_item: "axolotl_bucket".to_string(),
-                    cancelled: false,
-                };
-                server.plugin_manager.fire_blocking(&server, &mut event);
-                if event.cancelled {
-                    return false;
-                }
-            }
-            item_stack.decrement_unless_creative(player.gamemode.load(), 1);
-            let pos = entity.pos.load();
-            world.play_sound(Sound::ItemBucketFillAxolotl, SoundCategory::Neutral, &pos);
-            entity.remove();
-            return true;
-        }
-
         self.animal_interact(player, item_stack)
+    }
+}
+
+impl Bucketable for AxolotlEntity {
+    fn is_from_bucket(&self) -> bool {
+        self.from_bucket.load(Ordering::Relaxed)
+    }
+
+    fn set_from_bucket(&self, from_bucket: bool) {
+        self.from_bucket.store(from_bucket, Ordering::Relaxed);
+        self.get_entity().set_synced_data(
+            pumpkin_data::tracked_data::axolotl::FROM_BUCKET,
+            from_bucket,
+        );
+    }
+
+    fn bucket_item(&self) -> &'static Item {
+        &Item::AXOLOTL_BUCKET
+    }
+
+    fn pickup_sound(&self) -> Sound {
+        Sound::ItemBucketFillAxolotl
+    }
+
+    /// Vanilla `Axolotl.saveToBucketTag`.
+    fn save_to_bucket_tag(&self, bucket: &mut ItemStack) {
+        self.save_default_data_to_bucket_tag(bucket);
+        bucket.set_data_component(AxolotlVariantImpl {
+            value: pumpkin_data::entity_variant::AxolotlVariant::by_id(self.get_variant().id())
+                .name()
+                .into(),
+        });
+        let mut nbt = bucket
+            .get_data_component::<BucketEntityDataImpl>()
+            .and_then(|data| data.nbt.clone())
+            .unwrap_or_default();
+        nbt.put_int("Age", self.get_age());
+        nbt.put_bool("AgeLocked", self.is_age_locked());
+        let hunting_cooldown = self.hunting_cooldown.load(Ordering::Relaxed);
+        if hunting_cooldown > 0 {
+            nbt.put_long("HuntingCooldown", i64::from(hunting_cooldown));
+        }
+        bucket.set_data_component(BucketEntityDataImpl { nbt: Some(nbt) });
+    }
+
+    /// Vanilla `Axolotl.loadFromBucketTag`.
+    fn load_from_bucket_tag(&self, nbt: &NbtCompound) {
+        self.load_default_data_from_bucket_tag(nbt);
+        self.set_age(nbt.get_int("Age").unwrap_or(0));
+        self.set_age_locked(nbt.get_bool("AgeLocked").unwrap_or(false));
+        let hunting_cooldown = nbt
+            .get_long("HuntingCooldown")
+            .map_or(0, |ttl| ttl.clamp(0, i64::from(i32::MAX)) as i32);
+        self.hunting_cooldown
+            .store(hunting_cooldown, Ordering::Relaxed);
     }
 }
