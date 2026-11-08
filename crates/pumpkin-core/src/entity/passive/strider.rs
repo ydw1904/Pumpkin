@@ -14,11 +14,13 @@ use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::gameplay::game_random;
+use uuid::Uuid;
 
 use crate::block::PathComputationType;
 use crate::entity::{
     Entity, EntityBase,
-    ageable::{AgeableData, AgeableMob},
+    ageable::{AgeableData, AgeableMob, STRIDER_BABY_SPAWN_CHANCE},
     ai::goal::{
         Controls, Goal, ParentHandle,
         breed::BreedGoal,
@@ -32,9 +34,15 @@ use crate::entity::{
     },
     ai::pathfinder::{GroundPathNavigation, Navigator, node::PathType},
     item_steerable::{ItemBasedSteering, ItemSteerable},
-    mob::{Mob, MobEntity, equipment::equip_on_target},
+    mob::{
+        Mob, MobEntity,
+        equipment::equip_on_target,
+        spawn::{EntitySpawnReason, SpawnGroupData, finalize_spawn},
+        zombie,
+    },
     passive::animal::Animal,
     player::Player,
+    r#type::from_type,
 };
 use crate::world::World;
 
@@ -221,10 +229,8 @@ impl AgeableMob for StriderEntity {
         &self.ageable_data
     }
 
-    // TODO: vanilla `Strider.finalizeSpawn` jockeys: 1/30 a zombified piglin rider (if monsters
-    // spawn), else 1/10 a baby strider rider; both drop the group's baby chance to 0.
     fn default_baby_spawn_chance(&self) -> f32 {
-        crate::entity::ageable::STRIDER_BABY_SPAWN_CHANCE
+        STRIDER_BABY_SPAWN_CHANCE
     }
 }
 
@@ -235,7 +241,77 @@ impl Animal for StriderEntity {
     }
 }
 
+impl StriderEntity {
+    /// Vanilla `Strider.spawnJockey`: the rider spawns on the strider and rides it once both
+    /// enter the world.
+    fn spawn_jockey(
+        &self,
+        world: &Arc<World>,
+        jockey: Arc<dyn EntityBase>,
+        jockey_group_data: Option<SpawnGroupData>,
+    ) -> SpawnGroupData {
+        jockey
+            .get_entity()
+            .set_rotation(self.get_entity().yaw.load(), 0.0);
+        finalize_spawn(&jockey, world, EntitySpawnReason::Jockey, jockey_group_data);
+        self.mob_entity.add_pending_rider(jockey);
+        SpawnGroupData::Ageable {
+            group_size: 0,
+            should_spawn_baby: true,
+            baby_spawn_chance: 0.0,
+        }
+    }
+}
+
 impl Mob for StriderEntity {
+    /// Vanilla `Strider.finalizeSpawn`: an adult may spawn with a zombified piglin or a baby
+    /// strider riding it, and never shares a group's baby roll.
+    fn finalize_spawn(
+        &self,
+        world: &Arc<World>,
+        _reason: EntitySpawnReason,
+        group_data: Option<SpawnGroupData>,
+    ) -> Option<SpawnGroupData> {
+        if self.is_baby() {
+            return self.finalize_spawn_super(group_data);
+        }
+        let rng = game_random();
+        let pos = self.get_entity().pos.load();
+        let game_rules = &world.level_info.load().game_rules;
+        let spawning_monsters = game_rules.spawn_mobs && game_rules.spawn_monsters;
+        let group_data = if rng.random_range(0..30) == 0 && spawning_monsters {
+            let jockey = from_type(&EntityType::ZOMBIFIED_PIGLIN, pos, world, Uuid::new_v4());
+            let jockey_group_data = SpawnGroupData::Zombie {
+                is_baby: zombie::get_spawn_as_baby_odds(),
+                can_spawn_jockey: false,
+            };
+            let group_data = self.spawn_jockey(world, jockey.clone(), Some(jockey_group_data));
+            if let Some(mob) = jockey.get_mob() {
+                mob.get_mob_entity().set_item_slot(
+                    &EquipmentSlot::MAIN_HAND,
+                    ItemStack::new(1, &Item::WARPED_FUNGUS_ON_A_STICK),
+                );
+            }
+            self.mob_entity
+                .set_item_slot(&EquipmentSlot::SADDLE, ItemStack::new(1, &Item::SADDLE));
+            self.mob_entity.set_guaranteed_drop(&EquipmentSlot::SADDLE);
+            group_data
+        } else if rng.random_range(0..10) == 0 {
+            let jockey = from_type(&EntityType::STRIDER, pos, world, Uuid::new_v4());
+            if let Some(ageable) = jockey.get_mob().and_then(Mob::as_ageable) {
+                ageable.set_baby(true);
+            }
+            self.spawn_jockey(world, jockey, None)
+        } else {
+            SpawnGroupData::Ageable {
+                group_size: 0,
+                should_spawn_baby: true,
+                baby_spawn_chance: STRIDER_BABY_SPAWN_CHANCE,
+            }
+        };
+        self.finalize_spawn_super(Some(group_data))
+    }
+
     fn get_ambient_sound(&self) -> Option<Sound> {
         (!self.is_panicking() && !self.mob_entity.goals_selector.is_running::<TemptGoal>())
             .then_some(Sound::EntityStriderAmbient)

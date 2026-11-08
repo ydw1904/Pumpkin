@@ -66,6 +66,12 @@ const REINFORCEMENT_RANGE_MAX: i32 = 40;
 const REINFORCEMENT_RANGE_MIN: i32 = 7;
 /// Vanilla `Zombie.hurtServer`: no reinforcement spawns this close to a living player.
 const REINFORCEMENT_PLAYER_DISTANCE: f64 = 7.0;
+/// Vanilla `Zombie.getSpawnAsBabyOdds`.
+#[must_use]
+pub fn get_spawn_as_baby_odds() -> bool {
+    game_random().random::<f32>() < 0.05
+}
+
 /// Vanilla `ZOMBIE_REINFORCEMENT_CALLEE_CHARGE` and the caller's charge per call.
 const REINFORCEMENT_CHARGE: f64 = 0.05;
 /// Furthest a call reaches from the caller's body: the spawn offset and the block the caller
@@ -266,7 +272,7 @@ impl ZombieEntityBase {
                 .special_multiplier;
         let group_data = group_data.or_else(|| {
             Some(SpawnGroupData::Zombie {
-                is_baby: game_random().random::<f32>() < 0.05,
+                is_baby: get_spawn_as_baby_odds(),
                 can_spawn_jockey: true,
             })
         });
