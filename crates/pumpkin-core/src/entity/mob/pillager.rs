@@ -156,6 +156,14 @@ impl PillagerEntity {
 }
 
 impl Mob for PillagerEntity {
+    fn mob_considers_entity_as_ally(
+        &self,
+        other: &dyn EntityBase,
+        _brain: Option<&crate::entity::ai::brain::BrainState>,
+    ) -> Option<bool> {
+        Some(raider::illager_considers_entity_as_ally(self, other))
+    }
+
     /// Vanilla `Pillager.getWalkTargetValue`.
     fn get_walk_target_value(
         &self,

@@ -139,6 +139,12 @@ impl VexEntity {
         mob_arc
     }
 
+    /// Vanilla `Vex.getOwner`.
+    #[must_use]
+    pub fn owner(&self, world: &World) -> Option<Arc<dyn EntityBase>> {
+        self.state.owner(world)
+    }
+
     /// Vanilla `Vex.setOwner`.
     pub fn set_owner(&self, owner: &Entity) {
         self.state.owner.set(Some(owner));

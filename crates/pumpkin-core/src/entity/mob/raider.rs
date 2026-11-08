@@ -12,6 +12,7 @@ use pumpkin_data::tracked_data;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::vector3::Vector3;
 
+use crate::entity::EntityBase;
 use crate::entity::ai::behavior::fleeing::Flee;
 use crate::entity::ai::goal::open_door::OpenDoorGoal;
 use crate::entity::ai::goal::revenge::RevengeGoal;
@@ -31,6 +32,19 @@ pub fn define_raider_synched_data(entity: &crate::entity::Entity) {
 #[must_use]
 pub fn is_raider(entity_type: &'static EntityType) -> bool {
     entity_type.has_tag(&tag::EntityType::MINECRAFT_RAIDERS)
+}
+
+/// Vanilla `AbstractIllager.considersEntityAsAlly`: teammates, and `illager_friends` while
+/// neither side is on a team.
+#[must_use]
+pub fn illager_considers_entity_as_ally(illager: &dyn EntityBase, other: &dyn EntityBase) -> bool {
+    illager.is_on_same_team(other)
+        || (other
+            .get_entity()
+            .entity_type
+            .has_tag(&tag::EntityType::MINECRAFT_ILLAGER_FRIENDS)
+            && illager.get_team_name().is_none()
+            && other.get_team_name().is_none())
 }
 
 /// Vanilla `HurtByTargetGoal(this, Raider.class).setAlertOthers()`.

@@ -167,6 +167,28 @@ impl EvokerEntity {
 }
 
 impl Mob for EvokerEntity {
+    fn mob_considers_entity_as_ally(
+        &self,
+        other: &dyn EntityBase,
+        _brain: Option<&crate::entity::ai::brain::BrainState>,
+    ) -> Option<bool> {
+        if other.get_entity().entity_id == self.get_entity().entity_id
+            || raider::illager_considers_entity_as_ally(self, other)
+        {
+            return Some(true);
+        }
+        // Vanilla also counts vexes whose root owner is this evoker or one of its allies.
+        let world = self.get_entity().world.load();
+        let vex_owner = other
+            .get_mob()
+            .and_then(|mob| mob.cast_any().downcast_ref::<VexEntity>())
+            .and_then(|vex| vex.owner(&world));
+        Some(vex_owner.is_some_and(|owner| {
+            owner.get_entity().entity_id == self.get_entity().entity_id
+                || raider::illager_considers_entity_as_ally(self, owner.as_ref())
+        }))
+    }
+
     fn as_patrolling_monster(&self) -> Option<&dyn PatrollingMonster> {
         Some(self)
     }

@@ -144,6 +144,14 @@ impl VindicatorEntity {
 }
 
 impl Mob for VindicatorEntity {
+    fn mob_considers_entity_as_ally(
+        &self,
+        other: &dyn EntityBase,
+        _brain: Option<&crate::entity::ai::brain::BrainState>,
+    ) -> Option<bool> {
+        Some(raider::illager_considers_entity_as_ally(self, other))
+    }
+
     fn get_mob_entity(&self) -> &MobEntity {
         &self.mob_entity
     }
