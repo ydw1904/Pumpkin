@@ -45,13 +45,16 @@ async function light (stand, target) {
   await h.ticks(10)
 }
 
-// Walks into the portal at (x, y, z) and waits for the dimension to change; returns the ticks it took.
+// Walks into the portal at (x, y, z) and waits for the dimension to change; returns the ticks it
+// took. The client's game time only moves on time packets (every 20 ticks and on a dimension
+// change), so a normal trip after the 80 tick portal delay reads anywhere from 80 to 119.
 async function enter (x, y, z) {
   const from = dimName()
   h.cmd(`execute in minecraft:${from} run tp ${bot.username} ${x} ${y} ${z}`)
   const start = bot.time.age
   const ok = await h.waitFor(() => dimName() !== from, 30000)
-  const ticks = ok ? Number(bot.time.age - start) : -1
+  const age = ok ? Number(bot.time.age - start) : -1
+  const ticks = age >= 80 && age < 120 ? '80-119' : age
   await h.waitFor(() => bot.entity && bot.entity.position && h.chunksLoaded(), 60000)
   await h.ticks(20)
   return ticks
