@@ -8,6 +8,7 @@ use crate::command::argument_builder::{ArgumentBuilder, argument, command, liter
 use crate::command::argument_types::core::float::FloatArgumentType;
 use crate::command::argument_types::identifier::IdentifierArgumentType;
 use crate::command::argument_types::registry_id::RegistryIdArgumentType;
+use crate::command::argument_types::resource::ResourceArgument;
 use crate::command::argument_types::time::TimeArgumentType;
 use crate::command::context::command_context::CommandContext;
 use crate::command::errors::command_syntax_error::CommandSyntaxError;
@@ -18,21 +19,27 @@ use crate::command::suggestion::provider::{SuggestionProvider, SuggestionProvide
 use crate::command::suggestion::suggestions::SuggestionsBuilder;
 use crate::world::World;
 use pumpkin_util::identifier::Identifier;
+use std::any::Any;
 use std::sync::Arc;
 
 const DESCRIPTION: &str = "Query or modify the world time and clocks.";
 const PERMISSION: &str = "minecraft:command.time";
 
-const TIMELINE_REGISTRY: &str = "minecraft:timeline";
+static TIMELINE_REGISTRY: &Identifier = &Identifier::vanilla_static("timeline");
 
 static ERROR_NO_DEFAULT_CLOCK: CommandErrorType<1> = CommandErrorType::new(
     translation::java::COMMANDS_TIME_NO_DEFAULT_CLOCK,
     translation::java::COMMANDS_TIME_NO_DEFAULT_CLOCK,
 );
-static ERROR_UNKNOWN_TIMELINE: CommandErrorType<2> = CommandErrorType::new(
-    translation::java::ARGUMENT_RESOURCE_NOT_FOUND,
-    translation::java::ARGUMENT_RESOURCE_NOT_FOUND,
-);
+/// `ResourceArgument.resource(context, Registries.TIMELINE)`: unknown ids fail while parsing.
+static TIMELINE_ARGUMENT: ResourceArgument =
+    ResourceArgument(TIMELINE_REGISTRY, &|id: Identifier| {
+        let id = id.to_string();
+        TIMELINES
+            .iter()
+            .find(|timeline| timeline.name == id)
+            .map(|timeline| timeline as &'static (dyn Any + Send + Sync))
+    });
 static ERROR_NO_TIME_MARKER_FOUND: CommandErrorType<2> = CommandErrorType::new(
     translation::java::COMMANDS_TIME_NO_TIME_MARKER_FOUND,
     translation::java::COMMANDS_TIME_NO_TIME_MARKER_FOUND,
@@ -117,13 +124,8 @@ fn timeline_for_clock(
     context: &CommandContext,
     clock: &str,
 ) -> Result<&'static Timeline, CommandSyntaxError> {
-    let id = RegistryIdArgumentType::get(context, "timeline")?.to_string();
-    let Some(timeline) = TIMELINES.iter().find(|timeline| timeline.name == id) else {
-        return Err(ERROR_UNKNOWN_TIMELINE.create_without_context(
-            TextComponent::text(id),
-            TextComponent::text(TIMELINE_REGISTRY),
-        ));
-    };
+    let timeline =
+        ResourceArgument::get_resource::<Timeline, _>(context, "timeline", TIMELINE_REGISTRY)?;
     if timeline.clock != clock {
         return Err(ERROR_WRONG_TIMELINE_FOR_CLOCK.create_without_context(
             TextComponent::text(timeline.name),
@@ -509,18 +511,15 @@ macro_rules! build_branches {
                 has_clock: $has_clock,
             }))
             .then(
-                argument(
-                    "timeline",
-                    RegistryIdArgumentType::resource(Identifier::vanilla_static("timeline")),
-                )
-                .executes(QueryExecutor {
-                    mode: QueryMode::TimelineTicks,
-                    has_clock: $has_clock,
-                })
-                .then(literal("repetition").executes(QueryExecutor {
-                    mode: QueryMode::TimelineRepetitions,
-                    has_clock: $has_clock,
-                })),
+                argument("timeline", TIMELINE_ARGUMENT.clone())
+                    .executes(QueryExecutor {
+                        mode: QueryMode::TimelineTicks,
+                        has_clock: $has_clock,
+                    })
+                    .then(literal("repetition").executes(QueryExecutor {
+                        mode: QueryMode::TimelineRepetitions,
+                        has_clock: $has_clock,
+                    })),
             );
 
         // `query gametime` only exists without `of <clock>`.
