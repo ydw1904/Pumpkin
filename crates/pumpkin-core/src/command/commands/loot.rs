@@ -502,14 +502,13 @@ impl CommandExecutor for LootExecutor {
             Target::Give => {
                 let targets = EntityArgumentType::get_players(context, "players")?;
                 let mut used_items = Vec::new();
+                // Vanilla `LootCommand.playerGive`: whatever doesn't fit is discarded, and only
+                // stacks that went in at least partly are counted.
                 for stack in &drops {
                     for player in &targets {
-                        let mut remaining = stack.clone();
-                        player.inventory().insert_stack_anywhere(&mut remaining);
-                        if !remaining.is_empty() {
-                            player.drop_item(remaining, false);
+                        if player.inventory().insert_stack_anywhere(&mut stack.clone()) {
+                            used_items.push(stack.clone());
                         }
-                        used_items.push(stack.clone());
                     }
                 }
                 send_callback(context, &used_items, table_id_for_callback.as_deref());
