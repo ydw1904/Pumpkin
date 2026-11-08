@@ -201,6 +201,13 @@ impl ItemEntity {
         self.target.store(uuid);
     }
 
+    /// Vanilla `makeFakeItem`: nobody can pick it up and it despawns on its next tick.
+    pub fn make_fake_item(&self) {
+        self.pickup_delay
+            .store(INFINITE_PICKUP_DELAY, Ordering::Relaxed);
+        self.item_age.store(LIFETIME - 1, Ordering::Relaxed);
+    }
+
     pub fn get_pickup_delay(&self) -> i32 {
         self.pickup_delay.load(Ordering::Relaxed)
     }

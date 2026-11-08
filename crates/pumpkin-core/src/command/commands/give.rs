@@ -61,7 +61,14 @@ impl CommandExecutor for GiveExecutor {
                 let mut stack = parsed_stack.clone();
                 stack.item_count = take as u8;
                 target.inventory().insert_stack_anywhere(&mut stack);
-                if !stack.is_empty() {
+                if stack.is_empty() {
+                    // Vanilla shows a fake item that vanishes on its next tick, then the pickup
+                    // sound.
+                    let mut fake = parsed_stack.clone();
+                    fake.item_count = 1;
+                    target.drop_item(fake, false).make_fake_item();
+                    target.play_item_given_sound();
+                } else {
                     // Vanilla `GiveCommand`: the overflow is reserved for the receiver.
                     let drop = target.drop_item(stack, false);
                     drop.set_pickup_delay(0);

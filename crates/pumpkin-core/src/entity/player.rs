@@ -6258,6 +6258,20 @@ impl Player {
         ));
     }
 
+    /// The pickup sound `GiveCommand` and `AdvancementRewards.grant` play for everyone nearby
+    /// when an item went straight into the inventory.
+    pub fn play_item_given_sound(&self) {
+        let random = game_random();
+        let pitch = ((random.random::<f32>() - random.random::<f32>()) * 0.7 + 1.0) * 2.0;
+        self.world().play_sound_fine(
+            Sound::EntityItemPickup,
+            SoundCategory::Players,
+            &self.living_entity.entity.pos.load(),
+            0.2,
+            pitch,
+        );
+    }
+
     /// Vanilla `ServerPlayer.drop`: only items thrown from the hand get a thrower and count
     /// towards the drop statistics.
     pub fn drop_item(&self, item_stack: ItemStack, thrown_from_hand: bool) -> Arc<ItemEntity> {

@@ -8,7 +8,6 @@ use crate::entity::EntityBase;
 use crate::entity::player::Player;
 use indexmap::IndexMap;
 use pumpkin_data::advancement_data::{AdvancementProgressData, AdvancementRequirement, Criteria};
-use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::{Advancement, translation};
 use pumpkin_protocol::bedrock::server::text::SText;
 use pumpkin_protocol::java::client::play::{
@@ -16,7 +15,6 @@ use pumpkin_protocol::java::client::play::{
 };
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::identifier::Identifier;
-use pumpkin_util::random::gameplay::game_random;
 use pumpkin_util::text::TextComponent;
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -657,16 +655,7 @@ impl PlayerAdvancement {
             for mut stack in crate::world::loot::generate_loot_from_handle(&table, 0, &params) {
                 player.inventory().insert_stack_anywhere(&mut stack);
                 if stack.is_empty() {
-                    let random = game_random();
-                    let pitch =
-                        ((random.random::<f32>() - random.random::<f32>()) * 0.7 + 1.0) * 2.0;
-                    world.play_sound_fine(
-                        Sound::EntityItemPickup,
-                        SoundCategory::Players,
-                        &position,
-                        0.2,
-                        pitch,
-                    );
+                    player.play_item_given_sound();
                 } else {
                     let drop = player.drop_item(stack, false);
                     drop.set_pickup_delay(0);
