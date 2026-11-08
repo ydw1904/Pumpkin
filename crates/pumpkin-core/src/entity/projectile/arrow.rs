@@ -11,7 +11,10 @@ use crate::{
     server::Server,
 };
 use pumpkin_data::damage::DamageType;
-use pumpkin_data::data_component_impl::PotionDurationScaleImpl;
+use pumpkin_data::data_component_impl::{
+    PotionContentsImpl, PotionDurationScaleImpl, StatusEffectInstance,
+};
+use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -249,6 +252,33 @@ impl ArrowEntity {
 
     const fn should_apply_post_hurt_effects(damage_succeeded: bool) -> bool {
         damage_succeeded
+    }
+
+    /// Vanilla `Arrow.addEffect`: the effect joins the pickup item's potion contents, which
+    /// the arrow applies on hit and colours its particles with.
+    pub fn add_effect(&self, effect: &'static StatusEffect, duration: i32) {
+        let mut item_stack = self
+            .item_stack
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut contents = item_stack
+            .get_data_component::<PotionContentsImpl>()
+            .cloned()
+            .unwrap_or(PotionContentsImpl {
+                potion_id: None,
+                custom_color: None,
+                custom_effects: Vec::new(),
+                custom_name: None,
+            });
+        contents.custom_effects.push(StatusEffectInstance {
+            effect_id: effect.minecraft_name.into(),
+            amplifier: 0,
+            duration,
+            ambient: false,
+            show_particles: true,
+            show_icon: true,
+        });
+        item_stack.set_data_component(contents);
     }
 
     #[must_use]

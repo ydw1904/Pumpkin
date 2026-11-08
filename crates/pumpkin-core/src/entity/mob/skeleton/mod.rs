@@ -3,6 +3,7 @@ use pumpkin_util::random::gameplay::game_random;
 use std::sync::{Arc, Weak};
 
 use pumpkin_data::data_component_impl::EquipmentSlot;
+use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -19,6 +20,7 @@ use crate::entity::{
     },
     ai::target_match::TargetMatch,
     mob::{Mob, MobEntity, equipment::RegionalDifficulty},
+    projectile::arrow::ArrowEntity,
 };
 use crate::world::World;
 
@@ -132,6 +134,18 @@ impl SkeletonEntityBase {
 
         mob_arc
     }
+}
+
+/// The stray, bogged and parched `getArrow`: a plain arrow carries their effect.
+fn arrow_with_effect(
+    arrow: ArrowEntity,
+    effect: &'static StatusEffect,
+    duration: i32,
+) -> ArrowEntity {
+    if arrow.entity.entity_type == &EntityType::ARROW {
+        arrow.add_effect(effect, duration);
+    }
+    arrow
 }
 
 pub fn wants_to_pick_up<M: Mob + ?Sized>(mob: &M, stack: &ItemStack) -> bool {

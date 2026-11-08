@@ -2,10 +2,12 @@ use crate::entity::{
     Entity, EntityBase,
     mob::{Mob, MobEntity, skeleton::SkeletonEntityBase},
     player::Player,
+    projectile::arrow::ArrowEntity,
     shearable::{Shearable, drop_from_shearing_loot_table},
 };
 use crate::world::game_event::GameEventContext;
 use pumpkin_data::BlockState;
+use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -95,6 +97,10 @@ impl Mob for BoggedSkeletonEntity {
 
     fn as_shearable(&self) -> Option<&dyn Shearable> {
         Some(self)
+    }
+
+    fn get_arrow(&self, arrow: ArrowEntity) -> ArrowEntity {
+        super::arrow_with_effect(arrow, &StatusEffect::POISON, 100)
     }
 
     fn mob_write_nbt(&self, nbt: &mut NbtCompound) {
