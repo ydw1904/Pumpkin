@@ -83,7 +83,6 @@ pub use active_chunks::ActiveChunks;
 use active_chunks::{ActiveChunkTracker, ActivePlayerArea};
 use arc_swap::{ArcSwap, ArcSwapOption};
 use border::Worldborder;
-use bytes::BufMut;
 pub use explosion::{
     BlockInteraction, DefaultExplosionDamageCalculator, Explosion, ExplosionDamageCalculator,
     ExplosionInteraction, SimpleExplosionDamageCalculator,
@@ -120,7 +119,6 @@ use pumpkin_protocol::java::client::play::{
     CWorldEvent, PlayerSpawnData,
 };
 use pumpkin_protocol::java::client::play::{CPlayerSpawnPosition, CSystemChatMessage};
-use pumpkin_protocol::java::client::play::{CSetEntityMetadata, Metadata};
 use pumpkin_protocol::{
     BClientPacket, ClientPacket, IdOr, SoundEvent,
     bedrock::{
@@ -148,7 +146,7 @@ use pumpkin_protocol::{
         client::play::{
             CBlockEntityData, CDamageEvent, CEntityStatus, CGameEvent, CLogin, CMultiBlockUpdate,
             CPlayerInfoUpdate, CRemoveEntities, CRemovePlayerInfo, CSetSelectedSlot, CSoundEffect,
-            CSpawnEntity, GameEvent, InitChat, PlayerAction, PlayerInfoFlags,
+            GameEvent, InitChat, PlayerAction, PlayerInfoFlags,
         },
         server::play::SChatMessage,
     },
@@ -1093,6 +1091,8 @@ impl World {
     ) {
         if let Some(tracked) = self.entity_tracker.get_tracked_entity(entity.entity_id) {
             tracked.send_to_tracking_players_and_self(packet, self);
+        } else if let Some(player) = self.get_player_by_id(entity.entity_id) {
+            player.try_send_client_packet(packet);
         }
     }
 
@@ -1555,58 +1555,6 @@ impl World {
         let recipients_by_version =
             Self::collect_java_recipients_by_version(java_recipients.into_iter());
         Self::broadcast_java_grouped(je_packet, recipients_by_version);
-        Self::broadcast_bedrock_grouped(be_packet, bedrock_recipients.into_iter());
-    }
-
-    /// Broadcasts the skin layers of a player, encoding the metadata for each Java client's own
-    /// protocol version since the tracked data index differs between versions.
-    fn broadcast_skin_parts<B: BClientPacket>(
-        &self,
-        except: &[uuid::Uuid],
-        entity_id: i32,
-        skin_parts: u8,
-        be_packet: &B,
-    ) {
-        let players = self.players.load();
-        let mut java_recipients = Vec::new();
-        let mut bedrock_recipients = Vec::new();
-
-        for p in players.iter() {
-            if except.contains(&p.gameprofile.id) {
-                continue;
-            }
-            match p.client.as_ref() {
-                ClientPlatform::Java(_) => java_recipients.push(p),
-                ClientPlatform::Bedrock(be_client) => bedrock_recipients.push(be_client),
-            }
-        }
-
-        let recipients_by_version =
-            Self::collect_java_recipients_by_version(java_recipients.into_iter());
-
-        for (version, recipients) in recipients_by_version {
-            let mut buf = Vec::new();
-            for meta in [
-                Metadata::new(
-                    pumpkin_data::tracked_data::player::PLAYER_MODE_CUSTOMISATION,
-                    skin_parts,
-                ),
-                Metadata::new(
-                    pumpkin_data::tracked_data::player::PLAYER_MODE_CUSTOMIZATION_ID,
-                    skin_parts,
-                ),
-            ] {
-                let _ = meta.write(&mut buf, &version);
-            }
-            buf.put_u8(255);
-            let packet = CSetEntityMetadata::new(entity_id.into(), buf.into());
-            if let Ok(packet_data) = JavaClient::serialize_packet_for_version(&packet, version) {
-                for recipient in recipients {
-                    recipient.try_enqueue_packet(packet_data.clone());
-                }
-            }
-        }
-
         Self::broadcast_bedrock_grouped(be_packet, bedrock_recipients.into_iter());
     }
 
@@ -4182,7 +4130,6 @@ impl World {
         // --- MULTIPLAYER BROADCASTING ---
 
         let gameprofile = &player.gameprofile;
-        let velocity = player.get_entity().velocity.load();
 
         // 1. Broadcast the new Bedrock player to everyone else (Java + Bedrock)
         let bedrock_player_list = CPlayerList {
@@ -4231,36 +4178,14 @@ impl World {
             &bedrock_player_list,
         );
 
-        // Bedrock gets `AddPlayer` from the tracker.
-        self.broadcast_packet_except(
-            &[gameprofile.id],
-            &CSpawnEntity::new(
-                (runtime_id as i32).into(),
-                gameprofile.id,
-                i32::from(EntityType::PLAYER.id).into(),
-                position,
-                pitch,
-                yaw,
-                yaw,
-                0.into(),
-                velocity,
-            ),
-        );
+        // Vanilla `addNewPlayer` comes after the tab list: only players in range get the spawn.
+        self.entity_tracker
+            .add_entity(&(player.clone() as Arc<dyn EntityBase>), self);
 
         self.send_player_equipment(&player);
         player
             .living_entity
             .send_current_equipment_attribute_modifiers();
-
-        // Broadcast metadata to Java players so they can correctly interact with the new player
-        let skin_parts = player.config.load().skin_parts;
-
-        self.broadcast_skin_parts(
-            &[gameprofile.id],
-            runtime_id as i32,
-            skin_parts,
-            &actor_data,
-        );
 
         // 2. Spawn existing players for our new Bedrock client
         let players = self.players.load();
@@ -4588,6 +4513,12 @@ impl World {
         player.living_entity.entity.last_pos.store(position);
         chunker::update_position(player);
 
+        // Vanilla `addNewPlayer`, after the tab list: the tracker pairs the player only with
+        // players in range. Client options go in first so they are part of the pairing data.
+        player.send_client_information();
+        self.entity_tracker
+            .add_entity(&(player.clone() as Arc<dyn EntityBase>), self);
+
         let center_chunk = player.living_entity.entity.chunk_pos.load();
         let chunk = self
             .level
@@ -4609,125 +4540,9 @@ impl World {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .mark_sent_out_of_band(center_chunk);
 
-        let velocity = player.living_entity.entity.velocity.load();
-
         debug!("Sending player teleport to {}", player.gameprofile.name);
         player.request_teleport(position, yaw, pitch);
         player.awaiting_java_spawn.store(false, Ordering::Relaxed);
-
-        let gameprofile = &player.gameprofile;
-
-        // Spawn the player for every Java client
-        // Bedrock gets `AddPlayer` from the tracker.
-        let spawn_entity = CSpawnEntity::new(
-            entity_id.into(),
-            gameprofile.id,
-            i32::from(EntityType::PLAYER.id).into(),
-            position,
-            pitch,
-            yaw,
-            yaw,
-            0.into(),
-            velocity,
-        );
-
-        self.broadcast_packet_except(&[player.gameprofile.id], &spawn_entity);
-
-        // Broadcast metadata to Java players so they can correctly interact with the new player
-        let skin_parts = player.config.load().skin_parts;
-
-        self.broadcast_skin_parts(
-            &[gameprofile.id],
-            entity_id,
-            skin_parts,
-            &CSetActorData {
-                target_runtime_id: VarULong(entity_id as u64),
-                actor_data: player.get_entity().bedrock_metadata(),
-                synced_properties: PropertySyncData {
-                    int_entries_list: HashMap::new(),
-                    float_entries_list: HashMap::new(),
-                },
-                tick: VarULong(0),
-            },
-        );
-
-        // Spawn players for our client.
-        let id = player.gameprofile.id;
-        for existing_player in self
-            .players
-            .load()
-            .iter()
-            .filter(|c| c.gameprofile.id != id)
-        {
-            Self::with_player_list_entry(existing_player, |java, bedrock| {
-                player.client.try_enqueue_packet_editioned(java, bedrock);
-            });
-
-            let config = existing_player.config.load();
-            let mut buf = Vec::new();
-            {
-                let meta = Metadata::new(
-                    pumpkin_data::tracked_data::player::PLAYER_MODE_CUSTOMISATION,
-                    config.skin_parts,
-                );
-                let _ = meta.write(&mut buf, &CURRENT_MC_VERSION);
-            };
-            {
-                let meta = Metadata::new(
-                    pumpkin_data::tracked_data::player::PLAYER_MODE_CUSTOMIZATION_ID,
-                    config.skin_parts,
-                );
-                let _ = meta.write(&mut buf, &CURRENT_MC_VERSION);
-            };
-            drop(config);
-            // END
-            buf.put_u8(255);
-            client
-                .enqueue_client_packet(&CSetEntityMetadata::new(
-                    existing_player.get_entity().entity_id.into(),
-                    buf.into(),
-                ))
-                .await;
-
-            {
-                let held_item = existing_player.inventory.held_item();
-                let equipment_list = {
-                    let mut equipment_list =
-                        vec![(EquipmentSlot::MAIN_HAND.discriminant(), held_item.clone())];
-
-                    let equipment_guard = existing_player
-                        .inventory
-                        .entity_equipment
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    for (slot, item_stack) in &equipment_guard.equipment {
-                        equipment_list.push((slot.discriminant(), item_stack.clone()));
-                    }
-                    equipment_list
-                };
-
-                let equipment: Vec<(i8, ItemStackSerializer)> = equipment_list
-                    .iter()
-                    .map(|(slot, stack)| (*slot, ItemStackSerializer::from(stack.clone())))
-                    .collect();
-
-                let je_packet = CSetEquipment::new(existing_player.entity_id().into(), equipment);
-
-                let be_mob_equipment = pumpkin_protocol::bedrock::client::CMobEquipment {
-                    target_runtime_id: (existing_player.entity_id() as u64).into(),
-                    item: (&held_item).into(),
-                    slot: 0,
-                    selected_slot: 0,
-                    container_id: 0,
-                };
-
-                player
-                    .client
-                    .enqueue_packet_editioned(&je_packet, &be_mob_equipment)
-                    .await;
-            }
-        }
-        player.send_client_information();
 
         player.send_abilities_update();
 
@@ -6094,6 +5909,8 @@ impl World {
     /// # Arguments
     ///
     /// * `player`: An `Arc<Player>` reference to the player object.
+    ///
+    /// The spawn functions add the player to the entity tracker once its tab list entry is out.
     pub fn add_player(&self, player: &Arc<Player>) -> Result<(), String> {
         gameplay::register_entity(player.entity_id(), || player.rng_owner_base());
         self.players.rcu(|current_list| {
@@ -6102,8 +5919,6 @@ impl World {
             new_list
         });
         self.update_sleeping_player_list();
-        self.entity_tracker
-            .add_entity(&(player.clone() as Arc<dyn EntityBase>), self);
         Ok(())
     }
 
