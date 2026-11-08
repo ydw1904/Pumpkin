@@ -4636,10 +4636,14 @@ impl World {
         }
         drop(equipment_guard);
 
+        // Vanilla's first `detectEquipmentUpdates` compares against empty slots, so it only
+        // reports the filled ones.
         let equipment: Vec<(i8, ItemStackSerializer)> = equipment_list
             .iter()
+            .filter(|(_, stack)| !stack.is_empty())
             .map(|(slot, stack)| (*slot, ItemStackSerializer::from(stack.clone())))
             .collect();
+        let has_java_equipment = !equipment.is_empty();
         let je_packet = CSetEquipment::new(from.entity_id().into(), equipment);
 
         let be_mob_equipment = pumpkin_protocol::bedrock::client::CMobEquipment {
@@ -4661,7 +4665,15 @@ impl World {
         };
         let be_armor_equipment = from.living_entity.bedrock_armor_packet(&[]);
 
-        self.send_to_tracking_players_editioned(from.get_entity(), &je_packet, &be_mob_equipment);
+        if has_java_equipment {
+            self.send_to_tracking_players_editioned(
+                from.get_entity(),
+                &je_packet,
+                &be_mob_equipment,
+            );
+        } else {
+            self.send_to_tracking_players_bedrock(from.get_entity(), &be_mob_equipment);
+        }
         self.send_to_tracking_players_bedrock(from.get_entity(), &be_offhand_equipment);
         self.send_to_tracking_players_bedrock(from.get_entity(), &be_armor_equipment);
     }
