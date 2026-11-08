@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::{Controls, Goal, GoalReach};
 
 use crate::entity::EntityBase;
@@ -187,10 +189,25 @@ impl Goal for MeleeAttackGoal {
     }
 
     fn tick(&mut self, mob: &dyn Mob) {
-        let target = mob.get_mob_entity().get_target().clone();
-        let Some(target) = target else {
-            return;
-        };
+        if let Some(target) = self.tick_chase(mob) {
+            self.check_and_perform_attack(mob, target.as_ref());
+        }
+    }
+
+    fn should_run_every_tick(&self) -> bool {
+        true
+    }
+
+    fn controls(&self) -> Controls {
+        self.goal_control
+    }
+}
+
+impl MeleeAttackGoal {
+    /// Vanilla `MeleeAttackGoal.tick` up to `checkAndPerformAttack`: looks at and paths to the
+    /// target and counts down the attack cooldown. Returns the target to attack.
+    pub fn tick_chase(&mut self, mob: &dyn Mob) -> Option<Arc<dyn EntityBase>> {
+        let target = mob.get_mob_entity().get_target().clone()?;
 
         mob.get_mob_entity()
             .look_control
@@ -237,27 +254,39 @@ impl Goal for MeleeAttackGoal {
         }
 
         self.cooldown = (self.cooldown - 1).max(0);
+        Some(target)
+    }
 
-        if self.cooldown <= 0
-            && mob.is_in_attack_range(target.as_ref())
-            && mob.has_line_of_sight(target.get_entity())
-        {
-            self.cooldown = self.get_max_cooldown(mob);
-            if let Some(attack) = self.attack {
-                attack(mob, target.as_ref());
-                return;
-            }
-
-            mob.get_mob_entity().living_entity.swing_hand();
-            mob.do_hurt_target(target.as_ref());
+    fn check_and_perform_attack(&mut self, mob: &dyn Mob, target: &dyn EntityBase) {
+        if !self.can_perform_attack(mob, target) {
+            return;
         }
+        self.reset_attack_cooldown(mob);
+        if let Some(attack) = self.attack {
+            attack(mob, target);
+            return;
+        }
+
+        mob.get_mob_entity().living_entity.swing_hand();
+        mob.do_hurt_target(target);
     }
 
-    fn should_run_every_tick(&self) -> bool {
-        true
+    /// Vanilla `MeleeAttackGoal.isTimeToAttack`.
+    #[must_use]
+    pub const fn is_time_to_attack(&self) -> bool {
+        self.cooldown <= 0
     }
 
-    fn controls(&self) -> Controls {
-        self.goal_control
+    /// Vanilla `MeleeAttackGoal.canPerformAttack`.
+    #[must_use]
+    pub fn can_perform_attack(&self, mob: &dyn Mob, target: &dyn EntityBase) -> bool {
+        self.is_time_to_attack()
+            && mob.is_in_attack_range(target)
+            && mob.has_line_of_sight(target.get_entity())
+    }
+
+    /// Vanilla `MeleeAttackGoal.resetAttackCooldown`.
+    pub fn reset_attack_cooldown(&mut self, mob: &dyn Mob) {
+        self.cooldown = self.get_max_cooldown(mob);
     }
 }

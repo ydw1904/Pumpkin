@@ -1,6 +1,6 @@
 use std::sync::{
     Arc, Weak,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicI32, Ordering},
 };
 
 use pumpkin_data::BlockState;
@@ -17,7 +17,7 @@ use crate::entity::{
     ageable::{AgeableData, AgeableMob},
     ai::behavior::neutral::apply_targets,
     ai::goal::{
-        active_target::TargetCondition, escape_danger::EscapeDangerGoal,
+        Controls, Goal, GoalReach, active_target::TargetCondition, escape_danger::EscapeDangerGoal,
         follow_parent::FollowParentGoal, look_around::RandomLookAroundGoal,
         look_at_entity::LookAtEntityGoal, melee_attack::MeleeAttackGoal,
         polar_bear_attack_players::PolarBearAttackPlayersGoal, revenge::RevengeGoal,
@@ -43,7 +43,11 @@ pub struct PolarBearEntity {
     pub ageable_data: AgeableData,
     pub neutral_data: NeutralData,
     pub standing: AtomicBool,
+    warning_sound_ticks: AtomicI32,
 }
+
+/// Vanilla `PolarBear.playWarningSound` cooldown.
+const WARNING_SOUND_COOLDOWN: i32 = 40;
 
 impl PolarBearEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
@@ -58,6 +62,7 @@ impl PolarBearEntity {
             ageable_data: AgeableData::default(),
             neutral_data: NeutralData::default(),
             standing: AtomicBool::new(false),
+            warning_sound_ticks: AtomicI32::new(0),
         };
         let mob_arc = Arc::new(polar_bear);
         let mob_weak: Weak<dyn Mob> = {
@@ -69,7 +74,7 @@ impl PolarBearEntity {
             let goal_selector = &mob_arc.mob_entity.goals_selector;
 
             goal_selector.add_goal(0, Box::new(SwimGoal::default()));
-            goal_selector.add_goal(1, Box::new(MeleeAttackGoal::new(1.25, true)));
+            goal_selector.add_goal(1, Box::new(PolarBearMeleeAttackGoal::new()));
             goal_selector.add_goal(
                 1,
                 EscapeDangerGoal::environmental(2.0)
@@ -116,6 +121,103 @@ impl PolarBearEntity {
             standing,
         );
     }
+
+    fn play_warning_sound(&self) {
+        if self.warning_sound_ticks.load(Ordering::Relaxed) <= 0 {
+            self.make_sound(Sound::EntityPolarBearWarning);
+            self.warning_sound_ticks
+                .store(WARNING_SOUND_COOLDOWN, Ordering::Relaxed);
+        }
+    }
+}
+
+fn as_polar_bear(mob: &dyn Mob) -> Option<&PolarBearEntity> {
+    mob.cast_any().downcast_ref::<PolarBearEntity>()
+}
+
+/// Vanilla `PolarBear.PolarBearMeleeAttackGoal`: the bear rears up and growls while the target is
+/// close but the attack is still cooling down.
+struct PolarBearMeleeAttackGoal {
+    melee: MeleeAttackGoal,
+}
+
+impl PolarBearMeleeAttackGoal {
+    fn new() -> Self {
+        Self {
+            melee: MeleeAttackGoal::new(1.25, true),
+        }
+    }
+
+    fn check_and_perform_attack(&mut self, mob: &dyn Mob, target: &dyn EntityBase) {
+        let Some(bear) = as_polar_bear(mob) else {
+            return;
+        };
+        if self.melee.can_perform_attack(mob, target) {
+            self.melee.reset_attack_cooldown(mob);
+            mob.do_hurt_target(target);
+            bear.set_standing(false);
+            return;
+        }
+        let warn_distance = f64::from(target.get_entity().width()) + 3.0;
+        let distance_sq = mob
+            .get_entity()
+            .pos
+            .load()
+            .squared_distance_to_vec(&target.get_entity().pos.load());
+        if distance_sq < warn_distance * warn_distance {
+            if self.melee.is_time_to_attack() {
+                bear.set_standing(false);
+                self.melee.reset_attack_cooldown(mob);
+            }
+            if self.melee.cooldown <= 10 {
+                bear.set_standing(true);
+                bear.play_warning_sound();
+            }
+        } else {
+            self.melee.reset_attack_cooldown(mob);
+            bear.set_standing(false);
+        }
+    }
+}
+
+impl Goal for PolarBearMeleeAttackGoal {
+    fn tick_reach(&self, mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        // Standing up and the warning sound only touch the bear itself.
+        self.melee.tick_reach(mob, running)
+    }
+
+    fn can_start(&mut self, mob: &dyn Mob) -> bool {
+        self.melee.can_start(mob)
+    }
+
+    fn should_continue(&mut self, mob: &dyn Mob) -> bool {
+        self.melee.should_continue(mob)
+    }
+
+    fn start(&mut self, mob: &dyn Mob) {
+        self.melee.start(mob);
+    }
+
+    fn stop(&mut self, mob: &dyn Mob) {
+        if let Some(bear) = as_polar_bear(mob) {
+            bear.set_standing(false);
+        }
+        self.melee.stop(mob);
+    }
+
+    fn tick(&mut self, mob: &dyn Mob) {
+        if let Some(target) = self.melee.tick_chase(mob) {
+            self.check_and_perform_attack(mob, target.as_ref());
+        }
+    }
+
+    fn should_run_every_tick(&self) -> bool {
+        self.melee.should_run_every_tick()
+    }
+
+    fn controls(&self) -> Controls {
+        self.melee.controls()
+    }
 }
 
 impl AgeableMob for PolarBearEntity {
@@ -147,6 +249,13 @@ impl Mob for PolarBearEntity {
         } else {
             Sound::EntityPolarBearAmbient
         })
+    }
+
+    fn post_tick(&self) {
+        let ticks = self.warning_sound_ticks.load(Ordering::Relaxed);
+        if ticks > 0 {
+            self.warning_sound_ticks.store(ticks - 1, Ordering::Relaxed);
+        }
     }
 
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
