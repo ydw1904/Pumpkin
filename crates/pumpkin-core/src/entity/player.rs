@@ -6253,7 +6253,7 @@ impl Player {
         ));
     }
 
-    pub fn drop_item(&self, item_stack: ItemStack) {
+    pub fn drop_item(&self, item_stack: ItemStack) -> Arc<ItemEntity> {
         self.increment_stat(
             statistics::StatisticCategory::Dropped,
             item_stack.item.id as i32,
@@ -6287,7 +6287,8 @@ impl Player {
         let item_entity = Arc::new(ItemEntity::new_with_velocity(
             entity, item_stack, velocity, 40,
         ));
-        self.world().spawn_entity(item_entity);
+        self.world().spawn_entity(item_entity.clone());
+        item_entity
     }
 
     /// Vanilla `LivingEntity.createItemStackToDrop` with `randomly` set: thrown from the hand in a

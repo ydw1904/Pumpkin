@@ -62,7 +62,10 @@ impl CommandExecutor for GiveExecutor {
                 stack.item_count = take as u8;
                 target.inventory().insert_stack_anywhere(&mut stack);
                 if !stack.is_empty() {
-                    target.drop_item(stack);
+                    // Vanilla `GiveCommand`: the overflow is reserved for the receiver.
+                    let drop = target.drop_item(stack);
+                    drop.set_pickup_delay(0);
+                    drop.set_target(Some(target.gameprofile.id));
                 }
                 remaining -= take;
             }

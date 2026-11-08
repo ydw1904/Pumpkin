@@ -668,7 +668,9 @@ impl PlayerAdvancement {
                         pitch,
                     );
                 } else {
-                    player.drop_item(stack);
+                    let drop = player.drop_item(stack);
+                    drop.set_pickup_delay(0);
+                    drop.set_target(Some(player.gameprofile.id));
                 }
             }
         }

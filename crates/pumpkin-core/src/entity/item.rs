@@ -40,6 +40,8 @@ pub struct ItemEntity {
     entity: Entity,
     item_age: AtomicI32,
     thrower: crossbeam::atomic::AtomicCell<Option<uuid::Uuid>>,
+    /// Vanilla `target`, saved as `Owner`: the only player who may pick the item up.
+    target: crossbeam::atomic::AtomicCell<Option<uuid::Uuid>>,
     // These cannot be atomic values because we mutate their state based on what they are; we run
     // into the ABA problem
     item_stack: Mutex<ItemStack>,
@@ -128,6 +130,7 @@ impl ItemEntity {
             item_stack: Mutex::new(item_stack),
             item_age: AtomicI32::new(0),
             thrower: crossbeam::atomic::AtomicCell::new(None),
+            target: crossbeam::atomic::AtomicCell::new(None),
             pickup_delay: AtomicI32::new(Self::DEFAULT_PICKUP_DELAY),
             health: AtomicF32::new(5.0),
             never_despawn: AtomicBool::new(false),
@@ -151,6 +154,7 @@ impl ItemEntity {
             item_stack: Mutex::new(item_stack),
             item_age: AtomicI32::new(0),
             thrower: crossbeam::atomic::AtomicCell::new(None),
+            target: crossbeam::atomic::AtomicCell::new(None),
             pickup_delay: AtomicI32::new(pickup_delay),
             health: AtomicF32::new(5.0),
             never_despawn: AtomicBool::new(false),
@@ -172,6 +176,7 @@ impl ItemEntity {
             item_stack: Mutex::new(ItemStack::new(1, &pumpkin_data::item::Item::AIR)),
             item_age: AtomicI32::new(0),
             thrower: crossbeam::atomic::AtomicCell::new(None),
+            target: crossbeam::atomic::AtomicCell::new(None),
             pickup_delay: AtomicI32::new(0),
             health: AtomicF32::new(5.0),
             never_despawn: AtomicBool::new(false),
@@ -189,6 +194,11 @@ impl ItemEntity {
 
     pub fn get_thrower(&self) -> Option<uuid::Uuid> {
         self.thrower.load()
+    }
+
+    /// Vanilla `setTarget`.
+    pub fn set_target(&self, uuid: Option<uuid::Uuid>) {
+        self.target.store(uuid);
     }
 
     pub fn get_pickup_delay(&self) -> i32 {
@@ -295,7 +305,9 @@ impl ItemEntity {
                 (&*high_stack, &*low_stack)
             };
 
-            if !Self::are_mergeable(self_stack, other_stack) {
+            if self.target.load() != other.target.load()
+                || !Self::are_mergeable(self_stack, other_stack)
+            {
                 return;
             }
 
@@ -777,6 +789,10 @@ impl EntityBase for ItemEntity {
     fn on_player_collision(&self, player: &Arc<Player>) {
         // Vanilla only picks up at exactly 0, so a negative delay never allows it.
         if self.pickup_delay.load(Ordering::Relaxed) != 0
+            || self
+                .target
+                .load()
+                .is_some_and(|target| target != player.gameprofile.id)
             || player.living_entity.health.load() <= 0.0
             || player.is_spectator()
         {
@@ -897,9 +913,13 @@ impl EntityBase for ItemEntity {
         if let Some(thrower) = self.thrower.load() {
             nbt.put_uuid("Thrower", thrower);
         }
+        if let Some(target) = self.target.load() {
+            nbt.put_uuid("Owner", target);
+        }
     }
 
     fn read_custom_nbt(&self, nbt: &NbtCompound) {
+        self.target.store(nbt.get_uuid("Owner"));
         self.thrower.store(nbt.get_uuid("Thrower"));
         // Restore the item stack from the "Item" compound
         if let Some(item_compound) = nbt.get_compound("Item")
@@ -1032,6 +1052,32 @@ mod tests {
                 "as_int={as_int}"
             );
         }
+        world.level.shutdown().await;
+    }
+
+    /// Vanilla saves `target` as `Owner`; `/summon` and `/give` overflow items rely on it.
+    #[tokio::test]
+    async fn owner_survives_a_save() {
+        let folder = tempfile::tempdir().unwrap();
+        let world = crate::entity::ai::test_support::world(&folder);
+        let owner = uuid::Uuid::from_u128(0x1234_5678_9abc_def0_1234_5678_9abc_def0);
+        let mut item = NbtCompound::new();
+        ItemStack::new(1, &Item::STONE).write_item_stack(&mut item);
+        let mut nbt = NbtCompound::new();
+        nbt.put_string("id", "minecraft:item".to_string());
+        nbt.put_compound("Item", item);
+        nbt.put_uuid("Owner", owner);
+
+        let entity = crate::entity::r#type::load_entity_from_nbt(
+            &nbt,
+            pumpkin_util::math::vector3::Vector3::new(0.5, 64.0, 0.5),
+            &world,
+        )
+        .unwrap();
+        let mut saved = NbtCompound::new();
+        entity.write_nbt(&mut saved);
+
+        assert_eq!(saved.get_uuid("Owner"), Some(owner));
         world.level.shutdown().await;
     }
 
