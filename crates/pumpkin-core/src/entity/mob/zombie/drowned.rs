@@ -30,10 +30,13 @@ use crate::entity::ai::pathfinder::{Navigator, NavigatorGoal};
 use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::ai::util::default_random_pos;
 use crate::entity::living::LivingEntity;
-use crate::entity::mob::spawn::SpawnGroupData;
+use crate::entity::mob::spawn::{
+    EntitySpawnReason, PendingVehicle, SpawnGroupData, finalize_spawn,
+};
 use crate::entity::mob::zombie::ZombieEntityBase;
 use crate::entity::projectile::arrow::ArrowPickup;
 use crate::entity::projectile::trident::TridentEntity;
+use crate::entity::r#type::from_type;
 use crate::entity::{
     Entity, EntityBase,
     mob::{Mob, MobEntity, RangedAttackMob},
@@ -41,7 +44,11 @@ use crate::entity::{
 use crate::world::World;
 use pumpkin_data::entity::EntityType;
 use pumpkin_nbt::compound::NbtCompound;
+use uuid::Uuid;
 
+/// Vanilla `Drowned.finalizeSpawn`: chance an adult trident drowned spawns riding a zombie
+/// nautilus.
+const ZOMBIE_NAUTILUS_JOCKEY_CHANCE: f32 = 0.5;
 /// Vanilla `Drowned.NAUTILUS_SHELL_CHANCE`.
 const NAUTILUS_SHELL_CHANCE: f32 = 0.03;
 /// `DrownedMoveControl`: extra fall speed of a drowned off the ground and out of swimming.
@@ -330,7 +337,7 @@ impl Mob for DrownedEntity {
     fn finalize_spawn(
         &self,
         world: &Arc<World>,
-        _reason: crate::entity::mob::spawn::EntitySpawnReason,
+        reason: EntitySpawnReason,
         group_data: Option<SpawnGroupData>,
     ) -> Option<SpawnGroupData> {
         let group_data = self.entity.finalize_zombie_spawn(self, world, group_data);
@@ -348,6 +355,35 @@ impl Mob for DrownedEntity {
                 ItemStack::new(1, &Item::NAUTILUS_SHELL),
             );
             mob_entity.set_guaranteed_drop(&EquipmentSlot::OFF_HAND);
+        }
+
+        let entity = &mob_entity.living_entity.entity;
+        if matches!(
+            reason,
+            EntitySpawnReason::Natural | EntitySpawnReason::Structure
+        ) && mob_entity.living_entity.held_item(self).item.id == Item::TRIDENT.id
+            && game_random().random::<f32>() < ZOMBIE_NAUTILUS_JOCKEY_CHANCE
+            && !mob_entity.living_entity.is_baby()
+            && !crate::world::natural_spawner::spawn_biome(world, &entity.block_pos.load())
+                .has_tag(&tag::WorldgenBiome::MINECRAFT_MORE_FREQUENT_DROWNED_SPAWNS)
+        {
+            let nautilus = from_type(
+                &EntityType::ZOMBIE_NAUTILUS,
+                entity.pos.load(),
+                world,
+                Uuid::new_v4(),
+            );
+            if reason == EntitySpawnReason::Structure
+                && let Some(nautilus_mob) = nautilus.get_mob()
+            {
+                nautilus_mob
+                    .get_mob_entity()
+                    .persistence_required
+                    .store(true, Ordering::Relaxed);
+            }
+            nautilus.get_entity().set_rotation(entity.yaw.load(), 0.0);
+            finalize_spawn(&nautilus, world, reason, None);
+            mob_entity.set_pending_vehicle(PendingVehicle::New(nautilus));
         }
         group_data
     }
