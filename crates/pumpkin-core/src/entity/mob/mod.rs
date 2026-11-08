@@ -559,7 +559,11 @@ impl MobEntity {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             self.apply_navigation_updates(&mut navigator);
-            navigator.tick(&self.living_entity)
+            if mob.ticks_navigation() {
+                navigator.tick(&self.living_entity)
+            } else {
+                None
+            }
         };
 
         // Vanilla PathNavigation.tick hands its waypoint to `mob.getMoveControl()`.
@@ -2254,6 +2258,12 @@ pub trait Mob: EntityBase + Send + Sync {
 
     /// Vanilla `LookControl.resetXRotOnTick`: the look control levels the pitch each tick.
     fn look_resets_pitch(&self) -> bool {
+        true
+    }
+
+    /// Whether `serverAiStep` ticks the navigation; a species' navigation `tick` override can
+    /// pause it.
+    fn ticks_navigation(&self) -> bool {
         true
     }
 

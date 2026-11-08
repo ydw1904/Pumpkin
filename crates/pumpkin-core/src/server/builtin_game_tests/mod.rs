@@ -81,6 +81,7 @@ const BUILTIN_TEST_IDS: &[&str] = &[
     "pumpkin:wither_pattern_spawns",
     "pumpkin:item_entities_merge",
     "pumpkin:zombie_pathfinds_to_villager",
+    "pumpkin:bee_with_nectar_enters_hive",
     "pumpkin:minecart_drops_item_when_destroyed",
     // redstone_wire_and_power (14)
     "pumpkin:redstone_wire_attenuation_1_to_4",
@@ -545,6 +546,13 @@ pub fn ensure_builtin_game_tests_registered() {
             3,
             1,
             entities_and_ai::test_zombie_pathfinds_to_villager,
+        );
+        register_function_test(
+            "pumpkin:bee_with_nectar_enters_hive",
+            "pumpkin:empty_5x4x5",
+            60,
+            0,
+            entities_and_ai::test_bee_with_nectar_enters_hive,
         );
         register_function_test(
             "pumpkin:minecart_drops_item_when_destroyed",

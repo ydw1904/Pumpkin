@@ -61,6 +61,30 @@ pub fn is_crop_at_max_age(block: &Block, state: BlockStateId) -> Option<bool> {
     })
 }
 
+/// Vanilla `CropBlock.getStateForAge(getAge(state) + 1)` for a crop below `isMaxAge`: `None` for
+/// any other block, `Some(None)` for a grown crop.
+#[must_use]
+pub fn crop_state_for_next_age(block: &Block, state: BlockStateId) -> Option<Option<BlockStateId>> {
+    fn next<C: CropBlockBase>(
+        crop: &C,
+        block: &Block,
+        state: BlockStateId,
+    ) -> Option<BlockStateId> {
+        let age = crop.get_age(state, block);
+        (age < crop.max_age()).then(|| crop.state_with_age(block, state, age + 1))
+    }
+    Some(match block.id {
+        id if id == Block::WHEAT.id => next(&wheat::WheatBlock, block, state),
+        id if id == Block::CARROTS.id => next(&carrot::CarrotBlock, block, state),
+        id if id == Block::POTATOES.id => next(&potatoes::PotatoBlock, block, state),
+        id if id == Block::BEETROOTS.id => next(&beetroot::BeetrootBlock, block, state),
+        id if id == Block::TORCHFLOWER_CROP.id => {
+            next(&torch_flower::TorchFlowerBlock, block, state)
+        }
+        _ => return None,
+    })
+}
+
 trait CropBlockBase: PlantBlockBase {
     // Deliberately NOT named `can_plant_on_top`: that would collide with the
     // `PlantBlockBase` method of the same name without overriding it, and

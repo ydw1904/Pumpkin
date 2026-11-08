@@ -102,3 +102,36 @@ pub(super) async fn test_minecart_drops_item_when_destroyed(
         .then_succeed();
     Ok(())
 }
+
+/// A bee carrying nectar finds the hive beside it through its POI and goes in to make honey.
+pub(super) async fn test_bee_with_nectar_enters_hive(helper: GameTestHelper) -> GameTestResult<()> {
+    build_stone_floor(&helper, 5, 5).await?;
+    let hive = BlockPos::new(2, 1, 2);
+    helper.set_block_default(&hive, &Block::BEEHIVE).await?;
+    helper
+        .execute_command(
+            &BlockPos::new(2, 1, 3),
+            "summon minecraft:bee ~ ~ ~ {HasNectar:1b}",
+        )
+        .await?;
+
+    helper.succeed_when(move |helper| async move {
+        helper.assert_entity_not_present("minecraft:bee").await?;
+        let bees = helper
+            .block_entity_nbt(&hive)
+            .await?
+            .and_then(|nbt| nbt.get_list("bees").map(<[_]>::to_vec))
+            .unwrap_or_default();
+        let min_ticks = bees
+            .first()
+            .and_then(|bee| bee.extract_compound())
+            .and_then(|bee| bee.get_int("min_ticks_in_hive"));
+        helper.assert_true(
+            bees.len() == 1 && min_ticks == Some(2400),
+            format!(
+                "Expected one bee staying 2400 ticks, got {} bees with {min_ticks:?}",
+                bees.len()
+            ),
+        )
+    })
+}

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::block::blocks::campfire::CampfireBlock;
-use crate::block::entities::beehive::BeehiveBlockEntity;
+use crate::block::entities::beehive::{BeeReleaseStatus, BeehiveBlockEntity, MAX_HONEY_LEVELS};
 use crate::block::registry::BlockActionResult;
 use crate::block::{
     BlockBehaviour, BlockMetadata, GetComparatorOutputArgs, OnPlaceArgs, UseWithItemArgs,
@@ -25,8 +25,6 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::world::BlockFlags;
 
-/// Vanilla `BeehiveBlock.MAX_HONEY_LEVELS`.
-const MAX_HONEY_LEVELS: u8 = 5;
 /// The honeycombs the `harvest/beehive` loot table drops.
 const HARVESTED_HONEYCOMBS: u8 = 3;
 
@@ -40,16 +38,14 @@ impl BeehiveBlock {
         world: &Arc<World>,
         pos: &BlockPos,
         player: Option<&Arc<Player>>,
+        status: BeeReleaseStatus,
     ) {
-        let (block, state_id) = world.get_block_and_state_id(pos);
-        let mut props = BeeNestLikeProperties::from_state_id(state_id);
-        let facing = props.facing;
-        props.honey_level = 0;
-        world.set_block_state(pos, props.to_state_id(block), BlockFlags::NOTIFY_ALL);
+        let state_id = world.get_block_state_id(pos);
+        Self::reset_honey_level(world, pos);
         if let Some(block_entity) = world.get_block_entity(pos)
             && let Some(beehive) = block_entity.as_any().downcast_ref::<BeehiveBlockEntity>()
         {
-            beehive.empty_all_living_from_hive(world, facing, player, player.is_some());
+            beehive.empty_all_living_from_hive(world, state_id, player, status);
         }
     }
 
@@ -210,7 +206,12 @@ impl BlockBehaviour for BeehiveBlock {
             if Self::hive_contains_bees(args.world, args.position) {
                 Self::anger_nearby_bees(args.world, args.position);
             }
-            Self::release_bees_and_reset_honey_level(args.world, args.position, Some(args.player));
+            Self::release_bees_and_reset_honey_level(
+                args.world,
+                args.position,
+                Some(args.player),
+                BeeReleaseStatus::Emergency,
+            );
         }
         args.player
             .increment_stat(StatisticCategory::Used, i32::from(item.id), 1);

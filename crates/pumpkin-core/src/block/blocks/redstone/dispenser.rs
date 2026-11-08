@@ -1011,7 +1011,12 @@ impl DispenserBlock {
             target.to_centered_f64(),
             ItemStack::new(HARVESTED_HONEYCOMBS, &Item::HONEYCOMB),
         );
-        BeehiveBlock::release_bees_and_reset_honey_level(ctx.world, &target, None);
+        BeehiveBlock::release_bees_and_reset_honey_level(
+            ctx.world,
+            &target,
+            None,
+            crate::block::entities::beehive::BeeReleaseStatus::BeeReleased,
+        );
         ctx.world
             .emit_game_event(GameEvent::Shear.name(), target.to_centered_f64());
 
@@ -1085,7 +1090,12 @@ impl DispenserBlock {
                 return false;
             }
 
-            BeehiveBlock::release_bees_and_reset_honey_level(ctx.world, &target, None);
+            BeehiveBlock::release_bees_and_reset_honey_level(
+                ctx.world,
+                &target,
+                None,
+                crate::block::entities::beehive::BeeReleaseStatus::BeeReleased,
+            );
             Self::consume_with_remainder(
                 ctx,
                 dispenser,
