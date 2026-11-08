@@ -1,7 +1,11 @@
 use pumpkin_data::fluid::Fluid;
 use pumpkin_data::tag::Taggable;
 use pumpkin_data::{Block, BlockDirection, BlockState};
-use pumpkin_util::math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3};
+use pumpkin_util::math::{
+    boundingbox::BoundingBox,
+    position::BlockPos,
+    vector3::{Axis, Vector3},
+};
 
 use crate::world::BlockAccessor;
 
@@ -134,90 +138,90 @@ impl BlockHitResult {
     }
 }
 
-/// Intersects a ray segment from `from` to `to` with an AABB defined by `min` and `max`.
+/// Vanilla `AABB.clipPoint`'s tolerance, also the smallest ray component whose faces it tests.
+const CLIP_EPSILON: f64 = 1.0e-7;
+/// How far along the ray vanilla `VoxelShape.clip` tests whether it starts inside the shape.
+const INSIDE_TEST_STEP: f64 = 0.001;
+
+/// Ray parameter, hit face, hit position and whether the ray started inside the shape.
+type ShapeHit = (f64, BlockDirection, Vector3<f64>, bool);
+
+/// Vanilla `VoxelShape.clip` for one box given in world coordinates.
 ///
-/// Returns `Some((t, hit_direction, hit_pos, is_inside))` where `t` is in `[0.0, 1.0]`,
-/// or `None` if the ray does not intersect the box.
+/// Returns `Some((t, hit_direction, hit_pos, is_inside))`, or `None` if the ray misses.
 #[must_use]
 pub fn intersects_aabb_with_hit(
     from: Vector3<f64>,
     to: Vector3<f64>,
     min: Vector3<f64>,
     max: Vector3<f64>,
-) -> Option<(f64, BlockDirection, Vector3<f64>, bool)> {
-    let dir = to.sub(&from);
-    let mut tmin: f64 = 0.0;
-    let mut tmax: f64 = 1.0;
-
-    let mut hit_axis = None;
-    let mut hit_is_min = false;
-
-    let is_inside = from.x >= min.x
-        && from.x <= max.x
-        && from.y >= min.y
-        && from.y <= max.y
-        && from.z >= min.z
-        && from.z <= max.z;
-
-    macro_rules! check_axis {
-        ($axis:ident, $dir_axis:ident, $min_axis:ident, $max_axis:ident) => {{
-            if dir.$dir_axis.abs() < 1e-8 {
-                if from.$dir_axis < min.$min_axis || from.$dir_axis > max.$max_axis {
-                    return None;
-                }
-            } else {
-                let inv_d = 1.0 / dir.$dir_axis;
-                let t_near = (min.$min_axis - from.$dir_axis) * inv_d;
-                let t_far = (max.$max_axis - from.$dir_axis) * inv_d;
-
-                let (t_entry, t_exit, is_min_face) = if inv_d >= 0.0 {
-                    (t_near, t_far, true)
-                } else {
-                    (t_far, t_near, false)
-                };
-
-                if t_entry > tmin {
-                    tmin = t_entry;
-                    hit_axis = Some(stringify!($axis));
-                    hit_is_min = is_min_face;
-                }
-                tmax = tmax.min(t_exit);
-                if tmax < tmin {
-                    return None;
-                }
-            }
-        }};
-    }
-
-    check_axis!(x, x, x, x);
-    check_axis!(y, y, y, y);
-    check_axis!(z, z, z, z);
-
-    if tmax < 0.0 || tmin > 1.0 {
-        return None;
-    }
-
-    let direction = if is_inside {
-        BlockDirection::get_nearest(-dir.x, -dir.y, -dir.z)
-    } else {
-        match (hit_axis, hit_is_min) {
-            (Some("x"), true) => BlockDirection::West,
-            (Some("x"), false) => BlockDirection::East,
-            (Some("y"), true) => BlockDirection::Down,
-            (Some("y"), false) => BlockDirection::Up,
-            (Some("z"), true) => BlockDirection::North,
-            (Some("z"), false) => BlockDirection::South,
-            _ => BlockDirection::get_nearest(-dir.x, -dir.y, -dir.z),
-        }
-    };
-
-    let t_hit = tmin.max(0.0);
-    let hit_pos = from + dir * t_hit;
-    Some((t_hit, direction, hit_pos, is_inside))
+) -> Option<ShapeHit> {
+    clip_boxes(std::iter::once((min, max)), from, to)
 }
 
-/// Ray parameter, hit face, hit position and whether the ray started inside the shape.
-type ShapeHit = (f64, BlockDirection, Vector3<f64>, bool);
+/// Vanilla `VoxelShape.clip` for a shape made of `boxes` in world coordinates. A ray whose
+/// first thousandth lies in the shape hits from inside; otherwise only a face the ray enters
+/// counts (`AABB.clip`), so a ray leaving a face it starts on misses.
+fn clip_boxes(
+    boxes: impl Iterator<Item = (Vector3<f64>, Vector3<f64>)>,
+    from: Vector3<f64>,
+    to: Vector3<f64>,
+) -> Option<ShapeHit> {
+    let diff = to.sub(&from);
+    if diff.length_squared() < CLIP_EPSILON {
+        return None;
+    }
+    let test_point = from + diff * INSIDE_TEST_STEP;
+    let mut best_t = 1.0;
+    let mut best_direction = None;
+    for (min, max) in boxes {
+        if AXES.iter().all(|&axis| {
+            min.get_axis(axis) <= test_point.get_axis(axis)
+                && test_point.get_axis(axis) < max.get_axis(axis)
+        }) {
+            let direction = BlockDirection::get_nearest(-diff.x, -diff.y, -diff.z);
+            return Some((INSIDE_TEST_STEP, direction, test_point, true));
+        }
+        for (i, axis) in AXES.into_iter().enumerate() {
+            let d = diff.get_axis(axis);
+            let (plane, direction) = if d > CLIP_EPSILON {
+                (min.get_axis(axis), MIN_FACES[i])
+            } else if d < -CLIP_EPSILON {
+                (max.get_axis(axis), MAX_FACES[i])
+            } else {
+                continue;
+            };
+            let t = (plane - from.get_axis(axis)) / d;
+            if !(0.0 < t && t < best_t) {
+                continue;
+            }
+            let on_face = Axis::excluding(axis).into_iter().all(|other| {
+                let p = from.get_axis(other) + t * diff.get_axis(other);
+                min.get_axis(other) - CLIP_EPSILON < p && p < max.get_axis(other) + CLIP_EPSILON
+            });
+            if on_face {
+                best_t = t;
+                best_direction = Some(direction);
+            }
+        }
+    }
+    best_direction.map(|direction| (best_t, direction, from + diff * best_t, false))
+}
+
+/// Axes in the order vanilla `AABB.getDirection` tests them, which decides ties.
+const AXES: [Axis; 3] = [Axis::X, Axis::Y, Axis::Z];
+/// The face a ray moving towards `+axis` enters, per [`AXES`].
+const MIN_FACES: [BlockDirection; 3] = [
+    BlockDirection::West,
+    BlockDirection::Down,
+    BlockDirection::North,
+];
+/// The face a ray moving towards `-axis` enters, per [`AXES`].
+const MAX_FACES: [BlockDirection; 3] = [
+    BlockDirection::East,
+    BlockDirection::Up,
+    BlockDirection::South,
+];
 
 fn clip_block_shapes(
     shapes: impl Iterator<Item = BoundingBox>,
@@ -226,23 +230,12 @@ fn clip_block_shapes(
     from: Vector3<f64>,
     to: Vector3<f64>,
 ) -> Option<ShapeHit> {
-    let mut closest_hit: Option<ShapeHit> = None;
-
-    for shape in shapes {
-        let world_min = shape.min.add(&block_pos.0.to_f64());
-        let world_max = shape.max.add(&block_pos.0.to_f64());
-
-        if let Some((t, dir, hit_pos, is_inside)) =
-            intersects_aabb_with_hit(from, to, world_min, world_max)
-            && closest_hit
-                .as_ref()
-                .is_none_or(|(closest_t, _, _, _)| t < *closest_t)
-        {
-            closest_hit = Some((t, dir, hit_pos, is_inside));
-        }
-    }
-
-    closest_hit
+    let offset = block_pos.0.to_f64();
+    clip_boxes(
+        shapes.map(|shape| (shape.min.add(&offset), shape.max.add(&offset))),
+        from,
+        to,
+    )
 }
 
 fn clip_fluid(
@@ -671,6 +664,21 @@ mod tests {
         assert!(hit.is_hit());
         assert!(hit.is_inside);
         assert_eq!(hit.block_pos, BlockPos::new(0, 0, 0));
+    }
+
+    #[test]
+    fn ray_leaving_the_face_it_starts_on_misses() {
+        let mut world = TestWorld::new();
+        world.set_block(BlockPos::new(0, 0, 0), &Block::STONE);
+
+        // Like a line of sight from a mob's feet resting on the block.
+        let hit = world.clip(&ClipContext::new(
+            Vector3::new(0.5, 1.0, 0.5),
+            Vector3::new(3.5, 1.5, 0.5),
+            ClipBlock::Collider,
+            ClipFluid::None,
+        ));
+        assert!(hit.is_miss());
     }
 
     #[test]
