@@ -46,9 +46,24 @@ impl TeleportTowardsPlayerGoal {
         }
     }
 
-    /// Vanilla `isAngerInducing`: stared at, or held against by the grudge.
+    /// Vanilla `isAngerInducing`: stared at, or held against by the grudge, and not riding this
+    /// enderman.
     fn is_anger_inducing(&self, player: &Player, world: &World) -> bool {
-        self.enderman.is_player_staring(player) || self.enderman.is_angry_at(player, world)
+        (self.enderman.is_player_staring(player) || self.enderman.is_angry_at(player, world))
+            && !self.has_indirect_passenger(player)
+    }
+
+    /// Vanilla `Entity.hasIndirectPassenger`.
+    fn has_indirect_passenger(&self, target: &dyn EntityBase) -> bool {
+        let enderman_id = self.enderman.mob_entity.living_entity.entity.entity_id;
+        let mut vehicle = target.get_entity().get_vehicle();
+        while let Some(current) = vehicle {
+            if current.get_entity().entity_id == enderman_id {
+                return true;
+            }
+            vehicle = current.get_entity().get_vehicle();
+        }
+        false
     }
 
     fn find_staring_player(&self) -> Option<Arc<Player>> {
@@ -147,9 +162,10 @@ impl Goal for TeleportTowardsPlayerGoal {
         } else if self.target_player.is_some() {
             false
         } else if let Some(target) = &self.committed_target {
-            if target
-                .get_living_entity()
-                .is_none_or(|living| !living.is_alive())
+            if self.has_indirect_passenger(target.as_ref())
+                || target
+                    .get_living_entity()
+                    .is_none_or(|living| !living.is_alive())
             {
                 return false;
             }

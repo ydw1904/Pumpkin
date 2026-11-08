@@ -194,6 +194,7 @@ pub mod environment;
 pub mod natural_spawner;
 pub mod patrol_spawner;
 pub mod phantom_spawner;
+mod player_touch;
 pub mod scoreboard;
 pub mod sleep_status;
 pub mod wandering_trader_spawner;
@@ -203,6 +204,7 @@ pub use environment::EnvironmentAttributes;
 pub use pumpkin_data::environment_attribute::{Activity, MoonPhase};
 
 use crate::world::natural_spawner::{ChunkSpawns, SpawnState, spawn_for_chunk};
+use crate::world::player_touch::touch_entities;
 use pumpkin_config::lighting::LightingEngineConfig;
 use pumpkin_world::chunk::ChunkHeightmapType::{self, MotionBlocking, WorldSurface};
 use uuid::Uuid;
@@ -2030,24 +2032,22 @@ impl World {
 
         let players = self.players.load();
         let player_count = players.len();
-        let players_cache: Vec<_> = players
-            .par_iter()
-            .map(|player| {
-                let entity = player.get_entity();
-                let pos = entity.pos.load();
-                let bb = entity.bounding_box.load().expand(1.0, 0.5, 1.0);
-                let chunk_pos = Vector2::new(
-                    get_section_cord(pos.x.floor() as i32),
-                    get_section_cord(pos.z.floor() as i32),
-                );
-                (player, pos, bb, chunk_pos)
-            })
-            .collect();
 
         let t_players = std::time::Instant::now();
         players.par_iter().for_each(|player| {
             player.tick(server);
         });
+        // Vanilla `ServerPlayer.pushEntities`: one player after another, not while frozen
+        if server.tick_rate_manager.runs_normally() {
+            for player in players.iter() {
+                player.push_entities();
+            }
+        }
+        // One player after another, before entities move, like vanilla `doTick` after the
+        // level tick
+        for player in players.iter() {
+            touch_entities(self, player);
+        }
         let player_elapsed = t_players.elapsed();
 
         let entities_to_tick = self.entities.load();
@@ -2122,7 +2122,7 @@ impl World {
         let first_order = self.level.reserve_entity_tick_orders(tickable.len());
         let server_ref = server.as_ref();
         let tick_entity = |index: usize| {
-            let (entity, entity_chunk) = &tickable[index];
+            let (entity, _) = &tickable[index];
             order::set_entity_order(Some(first_order + index as u64 * order::ORDERS_PER_ENTITY));
 
             entity.get_entity().tick_count.fetch_add(1, Relaxed);
@@ -2134,24 +2134,6 @@ impl World {
             // Riders may tick before or after their vehicle, so both ends re-seat them.
             crate::entity::ride_tick(entity.as_ref());
             crate::entity::position_riders(entity.as_ref());
-
-            let entity_inner = entity.get_entity();
-            let entity_pos = entity_inner.pos.load();
-            let entity_bb = entity_inner.bounding_box.load();
-
-            for (player, player_pos, player_bb, player_chunk) in &players_cache {
-                if player.living_entity.health.load() > 0.0
-                    && !player.is_spectator()
-                    && (player_chunk.x - entity_chunk.x).abs() <= 1
-                    && (player_chunk.y - entity_chunk.y).abs() <= 1
-                    && (player_pos.x - entity_pos.x).abs() < 5.0
-                    && (player_pos.y - entity_pos.y).abs() < 5.0
-                    && (player_pos.z - entity_pos.z).abs() < 5.0
-                    && player_bb.intersects(&entity_bb)
-                {
-                    entity.on_player_collision(player);
-                }
-            }
         };
         let tick_in_order = |run: std::ops::Range<usize>| {
             for index in run {
@@ -2235,6 +2217,12 @@ impl World {
             }
         }
         let entity_elapsed = t_entities.elapsed();
+
+        // Like vanilla `sendChanges`: this tick's knockback and pushes on players go out before
+        // the next packets.
+        for player in players.iter() {
+            player.send_velocity_changes();
+        }
 
         // Vanilla `LevelChunk.isTicking`: block entities tick in block ticking chunks.
         let block_ticking = &active_chunks.block_ticking;
@@ -3171,6 +3159,8 @@ impl World {
             .unwrap_or_default()
     }
 
+    /// Vanilla `findFreePosition`: the point in `allowed_centers` closest to `preferred_center`
+    /// where a box of `size` touches no block inside the world border.
     pub fn find_free_position(
         &self,
         source: &dyn EntityBase,
@@ -3905,7 +3895,8 @@ impl World {
             level_name: "Pumpkin world".to_string(),
             premium_world_template_id: String::new(),
             is_trial: false,
-            rewind_history_size: VarInt(0),
+            // Vanilla rewind window so a tick-tagged `SetActorMotion` can replay a jump
+            rewind_history_size: VarInt(40),
             server_authoritative_block_breaking: true,
             current_level_time: self.get_world_age() as _,
             enchantment_seed: VarInt(0),
@@ -5281,6 +5272,9 @@ impl World {
                 client.send_game_packet(data).await;
             }
         }
+
+        // Vanilla `restartClientLoadTimerAfterRespawn`: invulnerable and still until loaded
+        player.set_client_loaded(false);
 
         player.send_permission_lvl_update();
 
@@ -7785,6 +7779,26 @@ impl World {
     pub fn is_water_source(&self, position: &BlockPos) -> bool {
         let (fluid, state) = self.get_fluid_and_fluid_state(position);
         fluid.matches_type(&Fluid::WATER) && state.is_source
+    }
+
+    /// Whether the fluid at `position` is in `tag`, with a source counting as the still fluid.
+    pub fn fluid_state_has_tag(
+        &self,
+        position: &BlockPos,
+        tag: &'static pumpkin_data::tag::Tag,
+    ) -> bool {
+        use pumpkin_data::tag::Taggable;
+        let (fluid, state) = self.get_fluid_and_fluid_state(position);
+        let fluid = if !state.is_source {
+            fluid
+        } else if fluid.matches_type(&Fluid::WATER) {
+            &Fluid::WATER
+        } else if fluid.matches_type(&Fluid::LAVA) {
+            &Fluid::LAVA
+        } else {
+            fluid
+        };
+        fluid.has_tag(tag)
     }
 
     /// `FluidState#getHeight` includes the full block when the same fluid is above.

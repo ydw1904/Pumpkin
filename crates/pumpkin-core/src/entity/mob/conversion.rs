@@ -43,3 +43,26 @@ pub fn convert_to(
     );
     converted
 }
+
+/// Vanilla `ConversionType.SPLIT_ON_DEATH`: spawns one split-off child of a dying mob. Removal
+/// already detached its riders and leash, so only the common data is copied.
+pub fn split_on_death(
+    from: &dyn Mob,
+    entity_type: &'static EntityType,
+    after_conversion: impl FnOnce(&dyn Mob),
+) {
+    let from_entity = from.get_entity();
+    let world = from_entity.world.load_full();
+    let converted = crate::entity::r#type::from_type(
+        entity_type,
+        from_entity.pos.load(),
+        &world,
+        uuid::Uuid::new_v4(),
+    );
+    let Some(to) = converted.get_mob() else {
+        return;
+    };
+    from.get_mob_entity().convert_common(to, false, false);
+    after_conversion(to);
+    world.spawn_entity(converted);
+}

@@ -526,6 +526,10 @@ impl<'a> Explosion<'a> {
 
     /// Returns the knockback for each hit Java player, which vanilla sends in the explosion
     /// packet for the client to add to its own motion.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "mirrors ServerExplosion.hurtEntities step by step"
+    )]
     fn damage_entities(&self, world: &Arc<World>) -> FxHashMap<i32, Vector3<f64>> {
         let mut hit_players = FxHashMap::default();
         // Explosion is too small
@@ -632,6 +636,17 @@ impl<'a> Explosion<'a> {
             {
                 continue;
             }
+            // A living entity's goes through `EntityKnockbackEvent`
+            let knockback = if entity_base.get_living_entity().is_some() {
+                let Some(knockback) =
+                    entity.fire_knockback_events(knockback_power, knockback, None)
+                else {
+                    continue;
+                };
+                knockback
+            } else {
+                knockback
+            };
             if entity_base
                 .get_player()
                 .is_some_and(|player| matches!(player.client.as_ref(), ClientPlatform::Java(_)))

@@ -50,8 +50,7 @@ impl SpawnParticlesEffect {
                 let bb = entity.bounding_box.load();
                 let width = (bb.max.x - bb.min.x) as f32;
                 let height = (bb.max.y - bb.min.y) as f32;
-                let vel = entity.velocity.load();
-                (width, height, vel)
+                (width, height, entity.known_movement())
             },
         );
 

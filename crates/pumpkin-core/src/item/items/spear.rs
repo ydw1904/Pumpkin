@@ -1,3 +1,4 @@
+use crate::entity::mob::Mob;
 use std::any::Any;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -199,6 +200,7 @@ impl SpearItem {
         } else {
             0.0
         };
+        let old_movement = target_entity.velocity.load();
         let was_hurt = effects.damage
             && target.damage_with_context(
                 target.as_ref(),
@@ -210,14 +212,23 @@ impl SpearItem {
             );
 
         let config = &server.advanced_config.pvp;
-        if effects.knockback && config.knockback && target.get_living_entity().is_some() {
+        if effects.knockback && target.get_living_entity().is_some() {
             let attacker = player.get_entity();
-            combat::handle_knockback(attacker, target.as_ref(), 0.8);
-            let knockback_level = Self::knockback_level(stack);
-            if knockback_level > 0 {
-                combat::handle_knockback(attacker, target.as_ref(), f64::from(knockback_level));
+            if config.knockback {
+                combat::handle_knockback(attacker, target.as_ref(), 0.8, total_damage);
             }
-            target_entity.send_velocity();
+            // Vanilla syncs after the first knockback, so a hit player's own client
+            // doesn't get the enchantment knockback.
+            combat::sync_hit_player_velocity(target.as_ref(), old_movement);
+            let knockback_level = Self::knockback_level(stack);
+            if config.knockback && knockback_level > 0 {
+                combat::handle_knockback(
+                    attacker,
+                    target.as_ref(),
+                    f64::from(knockback_level),
+                    total_damage,
+                );
+            }
         }
 
         let mut dismounted = false;
@@ -412,7 +423,12 @@ impl SpearItem {
         let mut affected = effects.knockback || dealt_damage;
         if effects.knockback {
             let attacker_entity = attacker.get_entity();
-            combat::cause_extra_knockback(attacker_entity, target.as_ref(), MOB_STAB_KNOCKBACK);
+            combat::cause_extra_knockback(
+                attacker_entity,
+                target.as_ref(),
+                MOB_STAB_KNOCKBACK,
+                damage,
+            );
             // Vanilla `LivingEntity.getKnockback`.
             let knockback = attacker.get_living_entity().map_or(0.0, |living| {
                 crate::enchantment::EnchantmentHelper::modify_knockback(
@@ -420,7 +436,7 @@ impl SpearItem {
                     living.get_attribute_value(&Attributes::ATTACK_KNOCKBACK) as f32,
                 ) / 2.0
             });
-            combat::cause_extra_knockback(attacker_entity, target.as_ref(), knockback);
+            combat::cause_extra_knockback(attacker_entity, target.as_ref(), knockback, damage);
             target_entity.send_velocity();
         }
 
@@ -807,7 +823,10 @@ impl SpearItem {
         let entity = target.get_entity();
         if entity.entity_id == attacker.entity_id
             || entity.is_removed()
-            || entity.invulnerable.load(Ordering::Relaxed)
+            || target.get_mob().map_or_else(
+                || entity.invulnerable.load(Ordering::Relaxed),
+                Mob::is_invulnerable_to_piercing_weapon,
+            )
             || target.is_spectator()
         {
             return false;

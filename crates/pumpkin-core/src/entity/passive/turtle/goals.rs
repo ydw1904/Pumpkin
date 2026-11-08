@@ -13,7 +13,7 @@ use super::{TurtleEntity, as_turtle};
 use crate::block::blocks::turtle_egg::TurtleEggBlock;
 use crate::entity::ai::goal::{
     Controls, Goal, GoalReach, ParentHandle,
-    breed::BreedGoal,
+    breed::{BreedGoal, NO_CHILD_ID},
     escape_danger::EscapeDangerGoal,
     goal_selector::GoalSelector,
     look_at_entity::LookAtEntityGoal,
@@ -30,8 +30,6 @@ use crate::entity::{EntityBase, ageable::AgeableMob};
 use crate::world::World;
 use crate::world::game_event::GameEventContext;
 
-/// The `EntityBreedEvent` child of a turtle breeding, which lays an egg instead.
-const NO_CHILD_ID: i32 = 0;
 /// Vanilla `Turtle.TurtleRandomStrollGoal` interval.
 const RANDOM_STROLL_INTERVAL: i32 = 100;
 /// Vanilla `TurtleLayEggGoal`: the turtle lays only this close to home.

@@ -13,6 +13,7 @@ use pumpkin_data::tag::{self, Taggable};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::bedrock::server::ActorEventID;
 use pumpkin_protocol::codec::var_int::VarInt;
+use pumpkin_util::math::boundingbox::EntityDimensions;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 
@@ -137,6 +138,21 @@ impl SnifferEntity {
             pumpkin_data::tracked_data::sniffer::STATE,
             VarInt(state.id()),
         );
+        self.update_dimensions();
+    }
+
+    /// Vanilla `Sniffer.getDefaultDimensions`: 0.4 lower while digging, by age otherwise.
+    fn update_dimensions(&self) {
+        let entity = self.get_entity();
+        let baby = entity.age.load(Ordering::Relaxed) < 0;
+        let dimensions = if self.get_state() == SnifferState::Digging {
+            let size = Entity::type_dimensions(&EntityType::SNIFFER);
+            let digging = EntityDimensions::new(size.width, size.height - 0.4, 0.81);
+            if baby { digging.scale(0.5) } else { digging }
+        } else {
+            Entity::age_dimensions(&EntityType::SNIFFER, baby)
+        };
+        entity.set_default_dimensions(dimensions);
     }
 
     pub fn transition_to(&self, state: SnifferState) {
@@ -327,6 +343,10 @@ impl AgeableMob for SnifferEntity {
     fn get_baby_start_age(&self) -> i32 {
         SNIFFER_BABY_START_AGE
     }
+
+    fn age_boundary_reached(&self) {
+        self.update_dimensions();
+    }
 }
 
 impl Animal for SnifferEntity {
@@ -376,7 +396,7 @@ impl Mob for SnifferEntity {
 
     fn mob_read_nbt(&self, nbt: &NbtCompound) {
         if let Some(state_id) = nbt.get_int("State") {
-            self.state.store(state_id, Ordering::Relaxed);
+            self.set_state(SnifferState::from_id(state_id));
         }
         if let Some(drop_tick) = nbt.get_int("DropSeedAtTick") {
             self.drop_seed_at_tick.store(drop_tick, Ordering::Relaxed);

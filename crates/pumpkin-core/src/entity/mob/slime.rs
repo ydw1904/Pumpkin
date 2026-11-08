@@ -307,7 +307,7 @@ impl SlimeEntity {
         if !self.can_deal_damage()
             || !living.is_alive()
             || !(caller as &dyn EntityBase).do_teams_allow_damage(target)
-            || !self.entity.is_in_attack_range(target)
+            || !caller.is_in_attack_range(target)
             || !caller.has_line_of_sight(target.get_entity())
         {
             return;
@@ -583,6 +583,10 @@ impl Mob for SlimeEntity {
         self.was_on_ground.store(on_ground, Ordering::Relaxed);
         self.target_squish
             .store(self.target_squish.load() * if self.is_magma_cube() { 0.9 } else { 0.6 });
+    }
+
+    fn mob_receives_player_touch(&self) -> bool {
+        true
     }
 
     fn mob_player_collision(&self, player: &Arc<crate::entity::player::Player>) {

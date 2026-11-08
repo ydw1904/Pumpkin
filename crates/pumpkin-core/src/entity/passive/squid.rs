@@ -210,11 +210,6 @@ pub trait Squid: AgeableWaterCreature {
         }
     }
 
-    fn update_squid_dimensions(&self) {
-        let entity = self.get_entity();
-        entity.set_default_dimensions(Entity::age_dimensions(entity.entity_type, self.is_baby()));
-    }
-
     fn init_squid_data(&self) {
         let entity = self.get_entity();
         entity.set_synced_data(
@@ -225,7 +220,6 @@ pub trait Squid: AgeableWaterCreature {
             pumpkin_data::tracked_data::ageable_mob::AGE_LOCKED,
             self.is_age_locked(),
         );
-        self.update_squid_dimensions();
     }
 }
 
@@ -365,9 +359,6 @@ macro_rules! impl_squid {
         impl AgeableMob for $squid {
             fn get_ageable_data(&self) -> &AgeableData {
                 &self.ageable_data
-            }
-            fn age_boundary_reached(&self) {
-                self.update_squid_dimensions();
             }
         }
         impl Squid for $squid {

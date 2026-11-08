@@ -14,6 +14,8 @@ use crate::entity::{EntityBase, ai::pathfinder::NavigatorGoal, mob::Mob, r#type:
 use super::{Controls, Goal, GoalReach};
 
 const PARTNER_RANGE: f64 = 8.0;
+/// The child ID breeding events get when no baby spawns yet (turtle eggs, frog spawn).
+pub(crate) const NO_CHILD_ID: i32 = 0;
 
 pub struct BreedGoal {
     speed: f64,
@@ -32,7 +34,7 @@ impl BreedGoal {
             partners: None,
             mate: None,
             timer: 0,
-            breed: Self::breed,
+            breed: |mob, mate| Self::breed(mob, mate, None),
         })
     }
 
@@ -52,7 +54,7 @@ impl BreedGoal {
             partners: Some(partners),
             mate: None,
             timer: 0,
-            breed: Self::breed,
+            breed: |mob, mate| Self::breed(mob, mate, None),
         })
     }
 
@@ -115,21 +117,41 @@ impl BreedGoal {
         }
     }
 
-    pub(crate) fn breed(mob: &dyn Mob, mate: &dyn EntityBase) {
+    /// `brain` is the breeding mob's brain while its own behavior runs this.
+    pub(crate) fn breed(
+        mob: &dyn Mob,
+        mate: &dyn EntityBase,
+        brain: Option<&mut crate::entity::ai::brain::BrainState>,
+    ) {
         let mob_entity = mob.get_mob_entity();
         let entity = mob.get_entity();
         let world = entity.world.load();
         let world_full = entity.world.load_full();
         let parent_pos = entity.pos.load();
 
-        let baby = mob.as_animal().map_or_else(
-            || from_type(entity.entity_type, parent_pos, &world, Uuid::new_v4()),
-            |animal| animal.get_breed_offspring(mate),
-        );
+        let animal = mob.as_animal();
+        let baby = match animal {
+            Some(animal) if !animal.spawns_offspring() => None,
+            Some(animal) => Some(animal.get_breed_offspring(mate)),
+            None => Some(from_type(
+                entity.entity_type,
+                parent_pos,
+                &world,
+                Uuid::new_v4(),
+            )),
+        };
+        // Vanilla `getBreedOffspring` returns null without a baby form: no offspring.
+        if baby
+            .as_ref()
+            .is_some_and(|baby| !baby.get_mob().is_some_and(Mob::spawn_as_baby))
+        {
+            return;
+        }
         let experience = mob.get_random().random_range(1..8);
         let Some(experience) = mob.approve_breeding(
             mate.get_entity().entity_id,
-            baby.get_entity().entity_id,
+            baby.as_ref()
+                .map_or(NO_CHILD_ID, |baby| baby.get_entity().entity_id),
             experience,
         ) else {
             // Cancelled: end love mode with the usual cooldown, a plugin resets it if wanted.
@@ -143,7 +165,7 @@ impl BreedGoal {
         };
 
         let (first, second) = Self::love_causes(mob, mate);
-        if let Some(baby_mob) = baby.get_mob() {
+        if let Some(baby_mob) = baby.as_ref().and_then(|baby| baby.get_mob()) {
             for breeder in first.into_iter().chain(second) {
                 baby_mob.on_bred_by(breeder);
             }
@@ -160,11 +182,15 @@ impl BreedGoal {
 
         // Vanilla `Animal.spawnChildFromBreeding` calls `setBaby(true)`, which runs the
         // offspring's `ageBoundaryReached`.
-        match baby.get_mob().and_then(Mob::as_ageable) {
-            Some(ageable) => ageable.set_baby(true),
-            None => baby.get_entity().set_age(-24000),
+        if let Some(baby) = baby {
+            match baby.get_mob().and_then(Mob::as_ageable) {
+                Some(ageable) => ageable.set_baby(true),
+                None => baby.get_entity().set_age(-24000),
+            }
+            world_full.spawn_entity(baby);
+        } else if let Some(animal) = animal {
+            animal.on_bred_without_offspring(brain);
         }
-        world_full.spawn_entity(baby);
 
         world_full.send_entity_status(
             entity,

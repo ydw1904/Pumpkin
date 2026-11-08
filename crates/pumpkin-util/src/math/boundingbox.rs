@@ -94,6 +94,13 @@ impl BoundingBox {
         }
     }
 
+    /// Vanilla `AABB.setMinY`.
+    #[must_use]
+    pub const fn with_min_y(mut self, min_y: f64) -> Self {
+        self.min.y = min_y;
+        self
+    }
+
     /// Expands this bounding box towards a specific direction.
     ///
     /// If a provided value is negative, it extends the minimum boundary along that axis.
@@ -155,6 +162,23 @@ impl BoundingBox {
             }
         }
         Self { min, max }
+    }
+
+    /// Returns the smallest box enclosing both boxes
+    #[must_use]
+    pub const fn minmax(&self, other: &Self) -> Self {
+        Self {
+            min: Vector3::new(
+                self.min.x.min(other.min.x),
+                self.min.y.min(other.min.y),
+                self.min.z.min(other.min.z),
+            ),
+            max: Vector3::new(
+                self.max.x.max(other.max.x),
+                self.max.y.max(other.max.y),
+                self.max.z.max(other.max.z),
+            ),
+        }
     }
 
     /// Expands this box uniformly along all axes.
@@ -559,7 +583,7 @@ impl BoundingBox {
 }
 
 /// Represents the dimensions of an entity.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EntityDimensions {
     /// Width of the entity.
     pub width: f32,
@@ -582,6 +606,16 @@ impl EntityDimensions {
             width,
             height,
             eye_height,
+        }
+    }
+
+    /// Vanilla `EntityDimensions.scale` for a non-fixed size.
+    #[must_use]
+    pub const fn scale(self, scale: f32) -> Self {
+        Self {
+            width: self.width * scale,
+            height: self.height * scale,
+            eye_height: self.eye_height * scale,
         }
     }
 }
