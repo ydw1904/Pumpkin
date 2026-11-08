@@ -50,6 +50,7 @@ pub enum SensorType {
     FrogAttackables,
     IsInWater,
     NearestAdult,
+    NearestAdultAnyType,
     WardenEntity,
     NearestBed,
     VillagerBabies,
@@ -74,6 +75,7 @@ impl SensorType {
             Self::FrogAttackables => "minecraft:frog_attackables",
             Self::IsInWater => "minecraft:is_in_water",
             Self::NearestAdult => "minecraft:nearest_adult",
+            Self::NearestAdultAnyType => "minecraft:nearest_adult_any_type",
             Self::WardenEntity => "minecraft:warden_entity_sensor",
             Self::NearestBed => "minecraft:nearest_bed",
             Self::VillagerBabies => "minecraft:villager_babies",
@@ -98,6 +100,7 @@ impl SensorType {
             | Self::FrogAttackables
             | Self::IsInWater
             | Self::NearestAdult
+            | Self::NearestAdultAnyType
             | Self::NearestBed
             | Self::VillagerBabies
             | Self::VillagerHostiles
@@ -120,7 +123,8 @@ impl SensorType {
             Self::FrogTemptations => Box::new(tempting::TemptingSensor::for_frog()),
             Self::FrogAttackables => Box::new(frog_attackables::FrogAttackablesSensor),
             Self::IsInWater => Box::new(is_in_water::IsInWaterSensor),
-            Self::NearestAdult => Box::new(adult::AdultSensor),
+            Self::NearestAdult => Box::new(adult::AdultSensor::same_type()),
+            Self::NearestAdultAnyType => Box::new(adult::AdultSensor::any_type()),
             Self::WardenEntity => Box::new(crate::entity::mob::warden::ai::WardenEntitySensor),
             Self::NearestBed => Box::<nearest_bed::NearestBedSensor>::default(),
             Self::VillagerBabies => Box::new(villager_babies::VillagerBabiesSensor),

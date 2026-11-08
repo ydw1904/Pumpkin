@@ -1491,6 +1491,8 @@ impl PathNavigationTrait for GroundPathNavigation {
 
 pub struct FlyingPathNavigation {
     pub inner: PathNavigation,
+    /// Whether fluids block `canMoveDirectly`; the ghastling's navigation flies through them.
+    blocked_by_fluids: bool,
 }
 
 impl Default for FlyingPathNavigation {
@@ -1504,7 +1506,19 @@ impl FlyingPathNavigation {
     pub fn new() -> Self {
         Self {
             inner: PathNavigation::new(EvaluatorKind::Fly(FlyNodeEvaluator::default())),
+            blocked_by_fluids: true,
         }
+    }
+
+    /// Vanilla `HappyGhast.BabyFlyingPathNavigation`.
+    #[must_use]
+    pub fn ghastling() -> Self {
+        let mut navigation = Self::new();
+        navigation.blocked_by_fluids = false;
+        navigation.set_can_open_doors(false);
+        navigation.set_can_float(true);
+        navigation.set_required_path_length(48.0);
+        navigation
     }
 }
 
@@ -1601,7 +1615,7 @@ impl PathNavigationTrait for FlyingPathNavigation {
                                         mob_pos,
                                         target,
                                         entity.entity.height(),
-                                        true,
+                                        self.blocked_by_fluids,
                                     )
                                 })
                             },

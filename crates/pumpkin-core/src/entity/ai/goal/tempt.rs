@@ -27,6 +27,8 @@ enum TemptItems {
 pub enum TemptNavigation {
     Path,
     CubeMob(Weak<dyn CubeMob>),
+    /// Vanilla `TemptGoal.ForNonPathfinders`: steers the move control straight at the player.
+    MoveControl,
 }
 
 pub struct TemptGoal {
@@ -114,6 +116,21 @@ impl TemptGoal {
         }
     }
 
+    /// Vanilla `TemptGoal.ForNonPathfinders`.
+    #[must_use]
+    pub fn for_non_pathfinders(
+        speed: f64,
+        predicate: fn(&dyn Mob, &pumpkin_data::item_stack::ItemStack) -> bool,
+        can_scare: bool,
+        stop_distance: f64,
+    ) -> Self {
+        Self {
+            tempt_items: TemptItems::Predicate(predicate),
+            navigation: TemptNavigation::MoveControl,
+            ..Self::with_stop_distance(speed, &[], can_scare, stop_distance)
+        }
+    }
+
     #[must_use]
     pub const fn is_running(&self) -> bool {
         self.running
@@ -170,6 +187,9 @@ impl TemptGoal {
                     cube.cube_data().speed_modifier.store(Some(0.0));
                 }
             }
+            TemptNavigation::MoveControl => {
+                mob.get_mob_entity().steered().move_control().set_wait();
+            }
         }
     }
 
@@ -190,6 +210,16 @@ impl TemptGoal {
                     data.target_yaw.store(cube.get_entity().yaw.load());
                     data.is_aggressive.store(true, Ordering::Relaxed);
                 }
+            }
+            TemptNavigation::MoveControl => {
+                let mob_entity = mob.get_mob_entity();
+                let mob_pos = mob_entity.living_entity.entity.pos.load();
+                let fraction = mob.get_random().next_f64();
+                let target = (player.get_entity().get_eye_pos() - mob_pos) * fraction + mob_pos;
+                mob_entity
+                    .steered()
+                    .move_control()
+                    .set_wanted_position(target.x, target.y, target.z, self.speed);
             }
         }
     }

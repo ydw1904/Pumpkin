@@ -43,6 +43,13 @@ impl FollowTemptation {
             look_in_the_eyes: false,
         }
     }
+
+    /// Walks towards the player's eyes instead of their feet, for flying mobs.
+    #[must_use]
+    pub const fn looking_in_the_eyes(mut self) -> Self {
+        self.look_in_the_eyes = true;
+        self
+    }
 }
 
 impl Behavior for FollowTemptation {

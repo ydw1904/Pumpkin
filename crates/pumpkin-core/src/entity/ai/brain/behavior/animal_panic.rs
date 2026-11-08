@@ -6,7 +6,7 @@ use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
 use super::super::BrainTick;
 use super::super::memory::{MemoryModuleId, MemoryStatus, types, walk_target::WalkTarget};
 use super::timed::Behavior;
-use crate::entity::ai::util::{goal_utils, land_random_pos};
+use crate::entity::ai::util::{air_and_water_random_pos, goal_utils, land_random_pos};
 
 const ENTRY_CONDITIONS: [(MemoryModuleId, MemoryStatus); 2] = [
     (types::IS_PANICKING.id(), MemoryStatus::Registered),
@@ -16,6 +16,8 @@ const ENTRY_CONDITIONS: [(MemoryModuleId, MemoryStatus); 2] = [
 pub struct AnimalPanic {
     speed_multiplier: f32,
     panic_causes: &'static tag::Tag,
+    /// Flees through the air this high instead of over land (vanilla's `flyHeight` overload).
+    fly_height: Option<i32>,
 }
 
 impl AnimalPanic {
@@ -34,7 +36,39 @@ impl AnimalPanic {
         Self {
             speed_multiplier,
             panic_causes,
+            fly_height: None,
         }
+    }
+
+    /// Vanilla `AnimalPanic(speedMultiplier, flyHeight)`.
+    #[must_use]
+    pub const fn flying(speed_multiplier: f32, fly_height: i32) -> Self {
+        Self {
+            fly_height: Some(fly_height),
+            ..Self::new(speed_multiplier)
+        }
+    }
+
+    fn panic_pos(&self, tick: &BrainTick<'_>) -> Option<Vector3<f64>> {
+        let Some(fly_height) = self.fly_height else {
+            return land_random_pos::get_pos(
+                tick.mob,
+                Self::PANIC_DISTANCE_HORIZONTAL,
+                Self::PANIC_DISTANCE_VERTICAL,
+            );
+        };
+        let entity = tick.mob.get_entity();
+        let view =
+            Vector3::rotation_vector(f64::from(entity.pitch.load()), f64::from(entity.yaw.load()));
+        air_and_water_random_pos::get_pos(
+            tick.mob,
+            Self::PANIC_DISTANCE_HORIZONTAL,
+            Self::PANIC_DISTANCE_VERTICAL,
+            fly_height,
+            view.x,
+            view.z,
+            f64::from(std::f32::consts::FRAC_PI_2),
+        )
     }
 
     fn look_for_water(tick: &BrainTick<'_>) -> Option<Vector3<f64>> {
@@ -108,13 +142,7 @@ impl Behavior for AnimalPanic {
         let pos = (tick.mob.get_entity().fire_ticks.load(Relaxed) > 0)
             .then(|| Self::look_for_water(tick))
             .flatten()
-            .or_else(|| {
-                land_random_pos::get_pos(
-                    tick.mob,
-                    Self::PANIC_DISTANCE_HORIZONTAL,
-                    Self::PANIC_DISTANCE_VERTICAL,
-                )
-            });
+            .or_else(|| self.panic_pos(tick));
         if let Some(pos) = pos {
             tick.state.set(
                 types::WALK_TARGET,
