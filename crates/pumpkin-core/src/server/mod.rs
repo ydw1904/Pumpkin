@@ -1204,6 +1204,13 @@ impl Server {
         }
     }
 
+    /// Vanilla `PlayerList.broadcastSystemMessage`: every online player, in every dimension.
+    pub fn broadcast_system_message(&self, message: &TextComponent, overlay: bool) {
+        for world in self.worlds.load().iter() {
+            world.broadcast_system_message(message, overlay);
+        }
+    }
+
     /// The client-synced part of vanilla `MinecraftServer.onGameRuleChanged` for boolean rules.
     pub fn on_bool_game_rule_changed(&self, rule: &GameRule, value: bool) {
         match rule {

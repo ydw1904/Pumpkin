@@ -4215,7 +4215,7 @@ impl World {
         server.plugin_manager.fire(server, &mut event).await;
 
         if !event.cancelled {
-            self.broadcast_system_message(&event.join_message, false);
+            server.broadcast_system_message(&event.join_message, false);
             info!("{}", event.join_message.to_pretty_console());
         }
     }
@@ -4617,7 +4617,7 @@ impl World {
         server.plugin_manager.fire(server, &mut event).await;
 
         if !event.cancelled {
-            self.broadcast_system_message(&event.join_message, false);
+            server.broadcast_system_message(&event.join_message, false);
             // TODO: Switch to structured logging, e.g. info!(player = %name, "connected")
             info!("{}", event.join_message.to_pretty_console());
         }
@@ -6000,9 +6000,7 @@ impl World {
                 let mut event = PlayerLeaveEvent::new(player.clone(), msg_comp);
                 server.plugin_manager.fire(&server, &mut event).await;
                 if !event.cancelled {
-                    for player in self.players.load().iter() {
-                        player.send_system_message(&event.leave_message);
-                    }
+                    server.broadcast_system_message(&event.leave_message, false);
                     info!("{}", event.leave_message.to_pretty_console());
                 }
 
