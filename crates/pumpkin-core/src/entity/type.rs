@@ -238,7 +238,9 @@ pub fn from_type(
         id if id == EntityType::TROPICAL_FISH.id => TropicalFishEntity::new(entity),
         id if id == EntityType::TADPOLE.id => TadpoleEntity::new(entity),
         id if id == EntityType::DOLPHIN.id => DolphinEntity::new(entity),
-        id if id == EntityType::NAUTILUS.id => NautilusEntity::new(entity),
+        id if id == EntityType::NAUTILUS.id || id == EntityType::ZOMBIE_NAUTILUS.id => {
+            NautilusEntity::new(entity)
+        }
 
         id if id == EntityType::SNOW_GOLEM.id => SnowGolemEntity::new(entity),
         id if id == EntityType::IRON_GOLEM.id => IronGolemEntity::new(entity),
