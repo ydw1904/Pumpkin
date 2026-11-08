@@ -402,6 +402,7 @@ impl ItemStack {
             .is_none_or(|res| damage_type.is_tagged_with(res.res_type.as_str()) != Some(true))
     }
 
+    /// Vanilla `nextDamageWillBreak`
     #[must_use]
     pub fn next_damage_will_break(&self) -> bool {
         self.is_damageable()

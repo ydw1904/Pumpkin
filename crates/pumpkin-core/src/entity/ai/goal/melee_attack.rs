@@ -3,7 +3,7 @@ use super::{Controls, Goal, GoalReach};
 use crate::entity::EntityBase;
 use crate::entity::ai::goal::revenge::MobFilter;
 use crate::entity::ai::pathfinder::path::Path;
-use crate::entity::mob::{Mob, MobEntity};
+use crate::entity::mob::Mob;
 use crate::entity::predicate::EntityPredicate;
 use crate::plugin::api::events::entity::entity_target::TargetReason;
 use pumpkin_util::math::vector3::Vector3;
@@ -76,12 +76,13 @@ impl Goal for MeleeAttackGoal {
         if self.attack.is_some() || !mob.get_mob_entity().hits_only_its_target() {
             return None;
         }
+        // A target set by another mob this tick is only hit inside the attack box.
+        let reach = mob.get_mob_entity().melee_attack_max_reach();
         Some(GoalReach {
-            // A target set by another mob this tick is only hit inside the attack box.
-            entities: MobEntity::DEFAULT_ATTACK_REACH,
-            players: MobEntity::DEFAULT_ATTACK_REACH,
+            entities: reach,
+            players: reach,
             speed: self.speed,
-            knockback: MobEntity::DEFAULT_ATTACK_REACH,
+            knockback: reach,
             ..GoalReach::default()
         })
     }
@@ -112,7 +113,7 @@ impl Goal for MeleeAttackGoal {
             target.get_entity().pos.load(),
             0,
         );
-        self.path.is_some() || mob_entity.is_in_attack_range(target.as_ref())
+        self.path.is_some() || mob.is_in_attack_range(target.as_ref())
     }
 
     fn should_continue(&mut self, mob: &dyn Mob) -> bool {
@@ -229,7 +230,7 @@ impl Goal for MeleeAttackGoal {
         self.cooldown = (self.cooldown - 1).max(0);
 
         if self.cooldown <= 0
-            && mob.get_mob_entity().is_in_attack_range(target.as_ref())
+            && mob.is_in_attack_range(target.as_ref())
             && mob.has_line_of_sight(target.get_entity())
         {
             self.cooldown = self.get_max_cooldown();

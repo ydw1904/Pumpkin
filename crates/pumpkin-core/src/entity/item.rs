@@ -768,6 +768,10 @@ impl EntityBase for ItemEntity {
         true
     }
 
+    fn receives_player_touch(&self) -> bool {
+        true
+    }
+
     fn on_player_collision(&self, player: &Arc<Player>) {
         if self.pickup_delay.load(Ordering::Relaxed) > 0
             || self.never_pickup.load(Ordering::Relaxed)

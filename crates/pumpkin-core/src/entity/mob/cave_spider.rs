@@ -75,6 +75,14 @@ impl Mob for CaveSpiderEntity {
         true
     }
 
+    /// Vanilla `Spider.onClimbable`: the wall-climb flag, not climbable blocks.
+    fn on_climbable(&self) -> bool {
+        self.mob_entity
+            .living_entity
+            .climbing
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     fn mob_metadata(&self) -> Option<MobMetadata> {
         Some(spider_metadata(&self.mob_entity))
     }

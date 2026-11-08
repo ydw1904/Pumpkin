@@ -24,10 +24,7 @@ pub fn create(cooldown_between_attacks: i32) -> OneShot {
             let Some(target) = tick.state.get(types::ATTACK_TARGET).cloned() else {
                 return false;
             };
-            if !tick
-                .mob
-                .get_mob_entity()
-                .is_in_attack_range(target.as_ref())
+            if !tick.mob.is_in_attack_range(target.as_ref())
                 || !tick
                     .state
                     .get(types::NEAREST_VISIBLE_LIVING_ENTITIES)
