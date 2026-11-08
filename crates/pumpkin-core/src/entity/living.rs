@@ -1567,7 +1567,11 @@ impl LivingEntity {
     }
 
     pub fn reset_effects_and_attributes(&self) {
-        // Clear active effects and reset modified attributes
+        self.remove_all_effects();
+    }
+
+    /// Vanilla `LivingEntity.removeAllEffects`: false when there was nothing to remove.
+    pub fn remove_all_effects(&self) -> bool {
         let effects_to_remove: Vec<_> = {
             let lock = self
                 .active_effects
@@ -1576,9 +1580,11 @@ impl LivingEntity {
             lock.keys().copied().collect()
         };
 
+        let removed = !effects_to_remove.is_empty();
         for effect_type in effects_to_remove {
             self.remove_effect(effect_type);
         }
+        removed
     }
 
     pub const fn entity_id(&self) -> i32 {
@@ -1614,16 +1620,16 @@ impl LivingEntity {
         }
     }
 
-    pub fn add_effect(&self, effect: Effect) {
-        self.add_effect_with_source(effect, None);
+    pub fn add_effect(&self, effect: Effect) -> bool {
+        self.add_effect_with_source(effect, None)
     }
 
     /// Vanilla `LivingEntity.addEffect(effect, source)`: the entity that caused the effect
-    /// reaches the `effects_changed` trigger.
-    pub fn add_effect_with_source(&self, effect: Effect, source: Option<&dyn EntityBase>) {
+    /// reaches the `effects_changed` trigger. False when the effect was refused or changed nothing.
+    pub fn add_effect_with_source(&self, effect: Effect, source: Option<&dyn EntityBase>) -> bool {
         // Vanilla `WitherBoss.addEffect` refuses every effect.
         if self.entity.entity_type == &EntityType::WITHER || !self.can_be_affected(&effect) {
-            return;
+            return false;
         }
 
         let mut effect_event =
@@ -1639,12 +1645,12 @@ impl LivingEntity {
                 .fire_blocking(&server, &mut effect_event);
         }
         if effect_event.cancelled {
-            return;
+            return false;
         }
 
         // Like vanilla, instant effects are never sent or stored as active effects.
         if self.apply_instant_effect(effect.effect_type, effect.amplifier, None, None) {
-            return;
+            return true;
         }
 
         // Vanilla `LivingEntity.addEffect`: an effect already active is only updated, so a
@@ -1680,7 +1686,7 @@ impl LivingEntity {
                     if effect.effect_type == &StatusEffect::ABSORPTION {
                         self.start_absorption(effect.amplifier);
                     }
-                    return;
+                    return false;
                 }
                 updated
             }
@@ -1714,6 +1720,7 @@ impl LivingEntity {
         }
         self.sync_effect_particles();
         self.trigger_effects_changed(source);
+        true
     }
 
     /// Vanilla `LivingEntity.baseTick`: how much a player outside the world border's safe zone

@@ -6661,27 +6661,7 @@ impl Player {
     }
 
     pub fn remove_all_effects(&self) -> bool {
-        let mut succeeded = false;
-        let mut effect_list = vec![];
-        let effects: Vec<_> = self
-            .living_entity
-            .active_effects
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .keys()
-            .copied()
-            .collect();
-        for effect in effects {
-            effect_list.push(effect);
-            succeeded = true;
-        }
-
-        // Need to remove effects afterward here because there would be a deadlock if this is done in the for loop.
-        for effect in effect_list {
-            self.living_entity.remove_effect(effect);
-        }
-
-        succeeded
+        self.living_entity.remove_all_effects()
     }
 
     /// Add experience levels to the player.
