@@ -43,6 +43,12 @@ const SKELETON_HUNTS: &[Hunt] = &[
     hunting::baby_turtles(3, true),
 ];
 
+// Vanilla `AbstractSkeleton` bow intervals, picked by difficulty in `reassessWeaponGoal`.
+const HARD_ATTACK_INTERVAL: i32 = 20;
+const NORMAL_ATTACK_INTERVAL: i32 = 40;
+const INCREASED_HARD_ATTACK_INTERVAL: i32 = 50;
+const INCREASED_NORMAL_ATTACK_INTERVAL: i32 = 70;
+
 pub struct SkeletonEntityBase {
     pub mob_entity: MobEntity,
 }
@@ -65,6 +71,25 @@ impl SkeletonEntityBase {
 
     /// `extra` goes first, like vanilla subclasses adding targets before `super`.
     pub fn with_hunts(entity: Entity, extra: &[Hunt]) -> Arc<Self> {
+        Self::build(entity, extra, NORMAL_ATTACK_INTERVAL, HARD_ATTACK_INTERVAL)
+    }
+
+    /// Bogged and parched shoot slower, with vanilla's `INCREASED_*_ATTACK_INTERVAL`.
+    pub fn with_increased_attack_interval(entity: Entity) -> Arc<Self> {
+        Self::build(
+            entity,
+            &[],
+            INCREASED_NORMAL_ATTACK_INTERVAL,
+            INCREASED_HARD_ATTACK_INTERVAL,
+        )
+    }
+
+    fn build(
+        entity: Entity,
+        extra: &[Hunt],
+        attack_interval: i32,
+        hard_attack_interval: i32,
+    ) -> Arc<Self> {
         let mob_entity = MobEntity::new(entity);
         let mob = Self { mob_entity };
         let mob_arc = Arc::new(mob);
@@ -79,8 +104,13 @@ impl SkeletonEntityBase {
             goal_selector.add_goal(3, Box::new(FleeSunGoal::new(1.0)));
             fleeing::apply(goal_selector, SKELETON_FLEES);
             // Vanilla `reassessWeaponGoal`: the bow or the melee goal at 4, by the held weapon.
-            // TODO: attack interval per type and difficulty (vanilla 40, 20 on hard; bogged and parched 70, 50 on hard).
-            goal_selector.add_goal(4, Box::new(BowAttackGoal::new(1.0, 20, 15.0)));
+            goal_selector.add_goal(
+                4,
+                Box::new(
+                    BowAttackGoal::new(1.0, attack_interval, 15.0)
+                        .with_hard_attack_interval(hard_attack_interval),
+                ),
+            );
             goal_selector.add_goal(
                 4,
                 Box::new(

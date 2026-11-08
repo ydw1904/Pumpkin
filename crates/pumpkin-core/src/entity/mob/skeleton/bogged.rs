@@ -29,7 +29,7 @@ impl BoggedSkeletonEntity {
         entity
             .synched_data
             .define(pumpkin_data::tracked_data::bogged::DATA_SHEARED, false);
-        let entity = SkeletonEntityBase::new(entity);
+        let entity = SkeletonEntityBase::with_increased_attack_interval(entity);
         let bogged = Self {
             entity,
             sheared: AtomicBool::new(false),

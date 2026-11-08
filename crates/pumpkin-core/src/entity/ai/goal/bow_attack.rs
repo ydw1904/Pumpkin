@@ -3,7 +3,7 @@ use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
-use pumpkin_util::Hand;
+use pumpkin_util::{Difficulty, Hand};
 use std::sync::Arc;
 
 use crate::entity::ai::goal::{Controls, Goal, GoalReach};
@@ -19,6 +19,7 @@ pub struct BowAttackGoal {
     goal_control: Controls,
     speed: f64,
     attack_interval: i32,
+    hard_attack_interval: i32,
     squared_range: f64,
     attack_time: i32,
     see_time: i32,
@@ -41,6 +42,7 @@ impl BowAttackGoal {
             goal_control: Controls::MOVE | Controls::LOOK,
             speed,
             attack_interval,
+            hard_attack_interval: attack_interval,
             squared_range: f64::from(range * range),
             attack_time: -1,
             see_time: 0,
@@ -49,6 +51,22 @@ impl BowAttackGoal {
             strafing_time: -1,
             draw_ticks: 0,
             drawing: false,
+        }
+    }
+
+    /// The interval on Hard difficulty, vanilla `AbstractSkeleton.getHardAttackInterval`.
+    #[must_use]
+    pub const fn with_hard_attack_interval(mut self, hard_attack_interval: i32) -> Self {
+        self.hard_attack_interval = hard_attack_interval;
+        self
+    }
+
+    /// Vanilla `AbstractSkeleton.reassessWeaponGoal`: the Hard interval only on Hard.
+    fn min_attack_interval(&self, mob: &dyn Mob) -> i32 {
+        if mob.get_entity().world.load().level_info.load().difficulty == Difficulty::Hard {
+            self.hard_attack_interval
+        } else {
+            self.attack_interval
         }
     }
 
@@ -256,7 +274,7 @@ impl Goal for BowAttackGoal {
                 if self.draw_ticks >= Self::DRAW_TIME {
                     self.stop_drawing(mob);
                     Self::shoot(mob, &target);
-                    self.attack_time = self.attack_interval;
+                    self.attack_time = self.min_attack_interval(mob);
                 }
             }
         } else {

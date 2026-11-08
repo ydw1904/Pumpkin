@@ -15,7 +15,7 @@ pub struct ParchedSkeletonEntity {
 
 impl ParchedSkeletonEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
-        let entity = SkeletonEntityBase::new(entity);
+        let entity = SkeletonEntityBase::with_increased_attack_interval(entity);
         let parched = Self { entity };
         Arc::new(parched)
     }
