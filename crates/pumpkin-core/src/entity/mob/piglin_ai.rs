@@ -466,6 +466,11 @@ pub trait AbstractPiglin: Mob {
     /// Vanilla `AbstractPiglin.canHunt`.
     fn can_hunt(&self) -> bool;
 
+    /// The `HUNTED_RECENTLY` memory, which brutes don't have.
+    fn hunted_recently(&self) -> bool {
+        false
+    }
+
     /// Vanilla `dontKillAnyMoreHoglinsForAWhile`; brutes have no `HUNTED_RECENTLY` memory.
     fn dont_kill_any_more_hoglins_for_a_while(&self) {}
 

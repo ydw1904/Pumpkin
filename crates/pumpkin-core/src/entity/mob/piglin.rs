@@ -21,7 +21,9 @@ use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::math::position::BlockPos;
 
+use crate::entity::ageable::AgeableMob;
 use crate::entity::ai::target_match::TargetMatch;
+use crate::entity::ai::target_predicate::TargetPredicate;
 use crate::entity::item::ItemEntity;
 use crate::entity::living::LivingEntity;
 use crate::entity::mob::{MobMetadata, equipment as mob_equipment};
@@ -39,7 +41,10 @@ use crate::entity::{
         Mob, MobEntity,
         crossbow_attack_mob::CrossbowAttackMob,
         equipment::RegionalDifficulty,
-        piglin_ai::{AbstractPiglin, PiglinAi, PiglinAnger, PiglinAngerTargetGoal},
+        hoglin::HoglinEntity,
+        piglin_ai::{
+            AbstractPiglin, PiglinAi, PiglinAnger, PiglinAngerTargetGoal, as_abstract_piglin,
+        },
     },
 };
 use crate::world::World;
@@ -178,21 +183,6 @@ impl PiglinEntity {
                 3,
                 ActiveTargetGoal::with_default(&mob_arc.mob_entity, TargetMatch::WITHER_LIKE, true),
             );
-
-            let piglin_clone = mob_arc.clone();
-            target_selector.add_goal(
-                4,
-                Box::new(ActiveTargetGoal::new(
-                    &mob_arc.mob_entity,
-                    &EntityType::HOGLIN,
-                    10,
-                    true,
-                    false,
-                    Some(move |_target: &LivingEntity, _world: &World| {
-                        piglin_clone.is_adult() && piglin_clone.can_hunt()
-                    }),
-                )),
-            );
         };
 
         mob_arc
@@ -261,10 +251,77 @@ impl PiglinEntity {
             .set_synced_data(tracked_data::piglin::DATA_IS_DANCING, is_dancing);
     }
 
+    /// The `HUNTED_RECENTLY` memory.
     #[must_use]
-    pub fn can_hunt(&self) -> bool {
-        !self.cannot_hunt.load(Ordering::Relaxed)
-            && self.hunt_cooldown_timer.load(Ordering::Relaxed) <= 0
+    pub fn hunted_recently(&self) -> bool {
+        self.hunt_cooldown_timer.load(Ordering::Relaxed) > 0
+    }
+
+    /// Living entities `NearestVisibleLivingEntities` holds: within the follow range, seen and
+    /// targetable, nearest first.
+    fn nearest_visible_living_entities(&self) -> Vec<Arc<dyn EntityBase>> {
+        let living = &self.mob_entity.living_entity;
+        let entity = &living.entity;
+        let world = entity.world.load();
+        let range = living.get_attribute_value(&Attributes::FOLLOW_RANGE);
+        let pos = entity.pos.load();
+        let targetable = TargetPredicate::create_non_attackable().set_base_max_distance(range);
+        let mut visible: Vec<_> = world
+            .get_entities_at_box(&entity.bounding_box.load().expand(range, range, range))
+            .into_iter()
+            .filter(|other| {
+                other.get_entity().entity_id != entity.entity_id
+                    && other.get_entity().is_alive()
+                    && targetable.test(&world, Some(self), other.as_ref())
+            })
+            .collect();
+        visible.sort_by(|a, b| {
+            a.get_entity()
+                .pos
+                .load()
+                .squared_distance_to_vec(&pos)
+                .total_cmp(&b.get_entity().pos.load().squared_distance_to_vec(&pos))
+        });
+        visible
+    }
+
+    /// Vanilla `StartHuntingHoglin`, an IDLE behaviour behind `Piglin::canHunt`.
+    fn start_hunting_hoglin(&self) {
+        if !self.is_idle()
+            || !AbstractPiglin::can_hunt(self)
+            || self.is_baby()
+            || self.hunted_recently()
+            || self.anger.angry_at().is_some()
+        {
+            return;
+        }
+        let visible = self.nearest_visible_living_entities();
+        // `PiglinSpecificSensor`: the nearest adult hoglin that can be hunted.
+        let Some(hoglin) = visible.iter().find(|other| {
+            other
+                .cast_any()
+                .downcast_ref::<HoglinEntity>()
+                .is_some_and(|hoglin| !hoglin.is_baby() && hoglin.can_be_hunted())
+        }) else {
+            return;
+        };
+        let visible_adult_piglins: Vec<&dyn AbstractPiglin> = visible
+            .iter()
+            .filter_map(|other| as_abstract_piglin(other.as_ref()))
+            .filter(|piglin| piglin.is_adult_piglin())
+            .collect();
+        if visible_adult_piglins
+            .iter()
+            .any(|piglin| piglin.hunted_recently())
+        {
+            return;
+        }
+        PiglinAi::set_anger_target(self, hoglin.as_ref());
+        self.dont_kill_any_more_hoglins_for_a_while();
+        PiglinAi::broadcast_anger_target(self, hoglin.as_ref());
+        for piglin in visible_adult_piglins {
+            piglin.dont_kill_any_more_hoglins_for_a_while();
+        }
     }
 
     pub fn set_cannot_hunt(&self, cannot_hunt: bool) {
@@ -918,6 +975,17 @@ impl Mob for PiglinEntity {
         self.is_baby().then(|| MobMetadata::new().baby(true))
     }
 
+    /// Vanilla `PiglinAi.initMemories`: the first hunt waits 30 to 120 seconds.
+    fn finalize_spawn(
+        &self,
+        _world: &Arc<World>,
+        _reason: crate::entity::mob::spawn::EntitySpawnReason,
+        group_data: Option<crate::entity::mob::spawn::SpawnGroupData>,
+    ) -> Option<crate::entity::mob::spawn::SpawnGroupData> {
+        self.dont_kill_any_more_hoglins_for_a_while();
+        self.finalize_spawn_super(group_data)
+    }
+
     fn spawn_as_baby(&self) -> bool {
         self.set_baby(true);
         true
@@ -1000,7 +1068,7 @@ impl Mob for PiglinEntity {
         if self.is_baby() {
             nbt.put_bool("IsBaby", true);
         }
-        if !self.can_hunt() {
+        if self.cannot_hunt.load(Ordering::Relaxed) {
             nbt.put_bool("CannotHunt", true);
         }
         if self.is_charging_crossbow() {
@@ -1126,6 +1194,7 @@ impl Mob for PiglinEntity {
         self.stop_holding_item_if_no_longer_admiring();
         self.start_admiring_if_seen();
         self.update_activity();
+        self.start_hunting_hoglin();
     }
 
     fn wants_to_pick_up(&self, stack: &ItemStack) -> bool {
@@ -1259,6 +1328,10 @@ impl AbstractPiglin for PiglinEntity {
 
     fn can_hunt(&self) -> bool {
         !self.cannot_hunt.load(Ordering::Relaxed)
+    }
+
+    fn hunted_recently(&self) -> bool {
+        Self::hunted_recently(self)
     }
 
     fn dont_kill_any_more_hoglins_for_a_while(&self) {
