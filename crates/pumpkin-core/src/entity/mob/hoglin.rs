@@ -2,20 +2,26 @@ use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::{Arc, Weak};
 
+use pumpkin_data::Block;
 use pumpkin_data::BlockState;
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
+use pumpkin_data::tag::{self, Taggable};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 
 use crate::entity::mob::spawn::SpawnGroupData;
+use crate::entity::passive::animal::Animal;
+use crate::entity::player::Player;
+use crate::entity::r#type::CreatureSpawnLevel;
 use crate::entity::{
     Entity, EntityBase,
     ageable::{AgeableData, AgeableMob},
     ai::goal::{
-        active_target::ActiveTargetGoal, look_around::RandomLookAroundGoal,
+        active_target::ActiveTargetGoal, breed::BreedGoal, look_around::RandomLookAroundGoal,
         look_at_entity::LookAtEntityGoal, melee_attack::MeleeAttackGoal, revenge::RevengeGoal,
         swim::SwimGoal, wander_around::WanderAroundGoal,
     },
@@ -96,6 +102,8 @@ impl HoglinEntity {
             let goal_selector = &mob_arc.mob_entity.goals_selector;
 
             goal_selector.add_goal(0, Box::new(SwimGoal::default()));
+            // Vanilla `AnimalMakeLove(HOGLIN, 0.6)` runs in both IDLE and FIGHT.
+            goal_selector.add_goal(2, BreedGoal::new(0.6));
             goal_selector.add_goal(
                 4,
                 Box::new(MeleeAttackGoal::new(1.0, true).with_attack_interval(|mob| {
@@ -126,7 +134,7 @@ impl HoglinEntity {
 
     /// Vanilla `Hoglin.canBeHunted`.
     pub fn can_be_hunted(&self) -> bool {
-        !self.cannot_be_hunted.load(Ordering::Relaxed)
+        !self.is_baby() && !self.cannot_be_hunted.load(Ordering::Relaxed)
     }
 
     pub fn is_immune_to_zombification(&self) -> bool {
@@ -206,7 +214,28 @@ impl AgeableMob for HoglinEntity {
     }
 }
 
-// TODO: vanilla hoglins are `Animal`s: crimson fungus breeds adults and grows babies.
+impl Animal for HoglinEntity {
+    fn is_food(&self, item_stack: &ItemStack) -> bool {
+        item_stack.item.has_tag(&tag::Item::MINECRAFT_HOGLIN_FOOD)
+    }
+
+    fn get_breed_offspring(&self, _partner: &dyn EntityBase) -> Arc<dyn EntityBase> {
+        let entity = self.get_entity();
+        let offspring = crate::entity::r#type::from_type(
+            entity.entity_type,
+            entity.pos.load(),
+            &entity.world.load(),
+            uuid::Uuid::new_v4(),
+        );
+        if let Some(mob) = offspring.get_mob() {
+            mob.get_mob_entity()
+                .persistence_required
+                .store(true, Ordering::Relaxed);
+        }
+        offspring
+    }
+}
+
 impl Mob for HoglinEntity {
     fn get_ambient_sound_interval(&self) -> i32 {
         crate::entity::passive::animal::AMBIENT_SOUND_INTERVAL
@@ -234,6 +263,35 @@ impl Mob for HoglinEntity {
 
     fn as_ageable(&self) -> Option<&dyn AgeableMob> {
         Some(self)
+    }
+
+    fn as_animal(&self) -> Option<&dyn Animal> {
+        Some(self)
+    }
+
+    /// Vanilla `Hoglin.mobInteract`: feeding it makes it persistent.
+    fn mob_interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
+        let consumed = self.animal_interact(player, item_stack);
+        if consumed {
+            self.mob_entity
+                .persistence_required
+                .store(true, Ordering::Relaxed);
+        }
+        consumed
+    }
+
+    // Vanilla `Hoglin.removeWhenFarAway` overrides `Animal`'s.
+    fn remove_when_far_away(&self, _distance_sq: f64) -> bool {
+        true
+    }
+
+    /// Vanilla `Hoglin.getWalkTargetValue`.
+    fn get_walk_target_value(&self, level: &dyn CreatureSpawnLevel, pos: &BlockPos) -> f32 {
+        if level.block(&pos.down()).id == Block::CRIMSON_NYLIUM.id {
+            10.0
+        } else {
+            0.0
+        }
     }
 
     fn finalize_spawn(
