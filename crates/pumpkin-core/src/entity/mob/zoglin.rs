@@ -10,6 +10,7 @@ use pumpkin_data::tracked_data;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
 
+use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::{
     Entity, EntityBase,
     ai::goal::{
@@ -106,11 +107,13 @@ impl ZoglinEntity {
 
             let target_selector = &mob_arc.mob_entity.target_selector;
             target_selector.add_goal(1, Box::new(RevengeGoal::new(true)));
+            // Vanilla `Zoglin.findNearestValidAttackTarget`: any attackable living entity but
+            // zoglins and creepers.
             target_selector.add_goal(
                 2,
                 Box::new(ActiveTargetGoal::new(
                     &mob_arc.mob_entity,
-                    &EntityType::PLAYER,
+                    TargetMatch::Any,
                     10,
                     true,
                     false,
