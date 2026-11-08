@@ -307,7 +307,11 @@ impl Player {
 
         self.do_check_fall_damage(delta, requested.on_ground, requested.horizontal_collision);
 
-        if pos_changed && let Some(player) = self.world().get_player_by_uuid(self.gameprofile.id) {
+        // Vanilla `handleMovePlayer` runs `ChunkMap.move` for every accepted position, so a
+        // teleport confirmed at the same spot still starts sending the new chunks.
+        if requested.position.is_some()
+            && let Some(player) = self.world().get_player_by_uuid(self.gameprofile.id)
+        {
             chunker::update_position(&player);
         }
         if delta.length_squared() > 1.0E-5 {
