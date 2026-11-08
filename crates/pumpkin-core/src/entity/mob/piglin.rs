@@ -249,10 +249,16 @@ impl PiglinEntity {
 
             target_selector.add_goal(1, Box::new(PiglinAngerTargetGoal::default()));
 
-            // Vanilla `StartAttacking` only runs for adults.
-            let piglin_weak = Arc::downgrade(&mob_arc);
+            // Vanilla `findNearestValidAttackTarget` picks the nemesis before a player.
             target_selector.add_goal(
                 2,
+                ActiveTargetGoal::with_default(&mob_arc.mob_entity, TargetMatch::WITHER_LIKE, true)
+                    .start_gated_by(Self::may_start_attacking),
+            );
+
+            let piglin_weak = Arc::downgrade(&mob_arc);
+            target_selector.add_goal(
+                3,
                 Box::new(ActiveTargetGoal::new(
                     &mob_arc.mob_entity,
                     &EntityType::PLAYER,
@@ -267,12 +273,6 @@ impl PiglinEntity {
                     }),
                 ))
                 .start_gated_by(Self::may_start_attacking),
-            );
-
-            target_selector.add_goal(
-                3,
-                ActiveTargetGoal::with_default(&mob_arc.mob_entity, TargetMatch::WITHER_LIKE, true)
-                    .start_gated_by(Self::may_start_attacking),
             );
         };
 
@@ -317,14 +317,16 @@ impl PiglinEntity {
         .with_gate(|mob| Self::in_activity(mob, &[PiglinActivity::Avoid]))
     }
 
-    /// Where vanilla runs `StartAttacking`: IDLE and CELEBRATE, and
+    /// Where vanilla runs `StartAttacking`: adults in IDLE and CELEBRATE, and
     /// `findNearestValidAttackTarget` finds nothing near a zombified piglin.
     fn may_start_attacking(mob: &dyn Mob) -> bool {
         mob.cast_any().downcast_ref::<Self>().is_some_and(|piglin| {
-            matches!(
-                piglin.current_activity(),
-                PiglinActivity::Idle | PiglinActivity::Celebrate
-            ) && !piglin.is_near_zombified()
+            piglin.is_adult()
+                && matches!(
+                    piglin.current_activity(),
+                    PiglinActivity::Idle | PiglinActivity::Celebrate
+                )
+                && !piglin.is_near_zombified()
         })
     }
 
