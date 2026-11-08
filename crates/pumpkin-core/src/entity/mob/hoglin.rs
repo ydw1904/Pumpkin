@@ -13,6 +13,9 @@ use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 
+use crate::entity::ai::goal::avoid_repellent::{
+    AvoidRepellentGoal, find_nearest_block_by_manhattan_distance,
+};
 use crate::entity::mob::spawn::SpawnGroupData;
 use crate::entity::passive::animal::Animal;
 use crate::entity::player::Player;
@@ -28,7 +31,9 @@ use crate::entity::{
     living::LivingEntity,
     mob::{Mob, MobEntity},
 };
+use crate::plugin::api::events::entity::entity_target::TargetReason;
 use crate::world::World;
+use crossbeam::atomic::AtomicCell;
 
 /// Vanilla `HoglinAi` and `Zoglin` melee cooldowns: `MeleeAttack.create(40)` for adults,
 /// `MeleeAttack.create(15)` for babies.
@@ -42,7 +47,20 @@ pub struct HoglinEntity {
     pub time_in_overworld: AtomicI32,
     pub cannot_be_hunted: AtomicBool,
     pub ageable_data: AgeableData,
+    /// The `NEAREST_REPELLENT` memory.
+    pub nearest_repellent: AtomicCell<Option<BlockPos>>,
+    /// Ticks left of the `PACIFIED` memory.
+    pub pacified_timer: AtomicI32,
 }
+
+/// Vanilla `HoglinAi` constants.
+const REPELLENT_DETECTION_RANGE_HORIZONTAL: i32 = 8;
+const REPELLENT_DETECTION_RANGE_VERTICAL: i32 = 4;
+const REPELLENT_PACIFY_TIME: i32 = 200;
+/// Vanilla `Sensor` default scan rate, which `HoglinSpecificSensor` keeps.
+const SENSOR_SCAN_INTERVAL: i64 = 20;
+/// Vanilla `HoglinAi.isPosNearNearestRepellent`.
+const NEAR_REPELLENT_DISTANCE: i32 = 8;
 
 impl HoglinEntity {
     pub const CONVERSION_TIME: i32 = 300;
@@ -91,6 +109,8 @@ impl HoglinEntity {
             time_in_overworld: AtomicI32::new(0),
             cannot_be_hunted: AtomicBool::new(false),
             ageable_data: AgeableData::default(),
+            nearest_repellent: AtomicCell::new(None),
+            pacified_timer: AtomicI32::new(0),
         };
         let mob_arc = Arc::new(hoglin);
         let mob_weak: Weak<dyn Mob> = {
@@ -104,6 +124,22 @@ impl HoglinEntity {
             goal_selector.add_goal(0, Box::new(SwimGoal::default()));
             // Vanilla `AnimalMakeLove(HOGLIN, 0.6)` runs in both IDLE and FIGHT.
             goal_selector.add_goal(2, BreedGoal::new(0.6));
+            // Vanilla `SetWalkTargetAwayFrom.pos(NEAREST_REPELLENT, 1.0, 8, true)`, an IDLE
+            // behaviour.
+            goal_selector.add_goal(
+                3,
+                Box::new(
+                    AvoidRepellentGoal::new(
+                        |mob| {
+                            mob.cast_any()
+                                .downcast_ref::<Self>()
+                                .and_then(|hoglin| hoglin.nearest_repellent.load())
+                        },
+                        true,
+                    )
+                    .with_gate(|mob| mob.get_mob_entity().get_target().is_none()),
+                ),
+            );
             goal_selector.add_goal(
                 4,
                 Box::new(MeleeAttackGoal::new(1.0, true).with_attack_interval(|mob| {
@@ -123,9 +159,22 @@ impl HoglinEntity {
 
             let target_selector = &mob_arc.mob_entity.target_selector;
             target_selector.add_goal(1, Box::new(RevengeGoal::new(true)));
+            // Vanilla `findNearestValidAttackTarget`: nothing while pacified.
+            let hoglin_weak = Arc::downgrade(&mob_arc);
             target_selector.add_goal(
                 2,
-                ActiveTargetGoal::with_default(&mob_arc.mob_entity, &EntityType::PLAYER, true),
+                Box::new(ActiveTargetGoal::new(
+                    &mob_arc.mob_entity,
+                    &EntityType::PLAYER,
+                    10,
+                    true,
+                    false,
+                    Some(move |_target: &LivingEntity, _world: &World| {
+                        hoglin_weak
+                            .upgrade()
+                            .is_some_and(|hoglin| !hoglin.is_pacified())
+                    }),
+                )),
             );
         };
 
@@ -135,6 +184,35 @@ impl HoglinEntity {
     /// Vanilla `Hoglin.canBeHunted`.
     pub fn can_be_hunted(&self) -> bool {
         !self.is_baby() && !self.cannot_be_hunted.load(Ordering::Relaxed)
+    }
+
+    /// Vanilla `HoglinAi.isPacified`.
+    pub fn is_pacified(&self) -> bool {
+        self.pacified_timer.load(Ordering::Relaxed) > 0
+    }
+
+    fn is_pos_near_nearest_repellent(&self, pos: &BlockPos) -> bool {
+        self.nearest_repellent.load().is_some_and(|repellent| {
+            let (dx, dy, dz) = (
+                repellent.0.x - pos.0.x,
+                repellent.0.y - pos.0.y,
+                repellent.0.z - pos.0.z,
+            );
+            dx * dx + dy * dy + dz * dz < NEAR_REPELLENT_DISTANCE * NEAR_REPELLENT_DISTANCE
+        })
+    }
+
+    /// Vanilla `HoglinSpecificSensor.findNearestRepellent`.
+    fn refresh_nearest_repellent(&self) {
+        let entity = self.get_entity();
+        let nearest = find_nearest_block_by_manhattan_distance(
+            &entity.world.load(),
+            entity.block_pos.load(),
+            REPELLENT_DETECTION_RANGE_HORIZONTAL,
+            REPELLENT_DETECTION_RANGE_VERTICAL,
+            |block, _state| block.has_tag(&tag::Block::MINECRAFT_HOGLIN_REPELLENTS),
+        );
+        self.nearest_repellent.store(nearest);
     }
 
     pub fn is_immune_to_zombification(&self) -> bool {
@@ -219,6 +297,11 @@ impl Animal for HoglinEntity {
         item_stack.item.has_tag(&tag::Item::MINECRAFT_HOGLIN_FOOD)
     }
 
+    /// Vanilla `Hoglin.canFallInLove`.
+    fn can_fall_in_love(&self) -> bool {
+        !self.is_pacified() && !self.mob_entity.is_in_love()
+    }
+
     fn get_breed_offspring(&self, _partner: &dyn EntityBase) -> Arc<dyn EntityBase> {
         let entity = self.get_entity();
         let offspring = crate::entity::r#type::from_type(
@@ -241,16 +324,45 @@ impl Mob for HoglinEntity {
         crate::entity::passive::animal::AMBIENT_SOUND_INTERVAL
     }
 
-    // Vanilla `HoglinAi.getSoundForActivity`; Pumpkin's hoglin has no avoid activity or
-    // repellent memory, so only conversion makes it retreat.
+    // Vanilla `HoglinAi.getSoundForActivity`; Pumpkin's hoglin has no avoid activity.
     fn get_ambient_sound(&self) -> Option<Sound> {
         Some(if self.is_converting(&self.get_entity().world.load()) {
             Sound::EntityHoglinRetreat
         } else if self.mob_entity.get_target().is_some() {
             Sound::EntityHoglinAngry
+        } else if self.nearest_repellent.load().is_some() {
+            Sound::EntityHoglinRetreat
         } else {
             Sound::EntityHoglinAmbient
         })
+    }
+
+    fn custom_server_ai_step(&self, _caller: &dyn EntityBase) {
+        if self.is_pacified() {
+            self.pacified_timer.fetch_sub(1, Ordering::Relaxed);
+        }
+        let entity = self.get_entity();
+        let tick = entity.world.load().get_world_age() + i64::from(entity.entity_id);
+        if tick.rem_euclid(SENSOR_SCAN_INTERVAL) == 0 {
+            self.refresh_nearest_repellent();
+        }
+        // Vanilla `BecomePassiveIfMemoryPresent(NEAREST_REPELLENT, 200)`.
+        if self.nearest_repellent.load().is_some() && !self.is_pacified() {
+            self.pacified_timer
+                .store(REPELLENT_PACIFY_TIME, Ordering::Relaxed);
+            self.set_mob_target(None, TargetReason::ForgotTarget);
+        }
+    }
+
+    /// Vanilla `HoglinAi.wasHurtBy` forgets the `PACIFIED` memory.
+    fn on_damage_with_context(
+        &self,
+        _damage_type: pumpkin_data::damage::DamageType,
+        _source: Option<&dyn EntityBase>,
+        _cause: Option<&dyn EntityBase>,
+    ) -> bool {
+        self.pacified_timer.store(0, Ordering::Relaxed);
+        true
     }
 
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
@@ -287,7 +399,9 @@ impl Mob for HoglinEntity {
 
     /// Vanilla `Hoglin.getWalkTargetValue`.
     fn get_walk_target_value(&self, level: &dyn CreatureSpawnLevel, pos: &BlockPos) -> f32 {
-        if level.block(&pos.down()).id == Block::CRIMSON_NYLIUM.id {
+        if self.is_pos_near_nearest_repellent(pos) {
+            -1.0
+        } else if level.block(&pos.down()).id == Block::CRIMSON_NYLIUM.id {
             10.0
         } else {
             0.0
