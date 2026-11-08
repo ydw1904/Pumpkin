@@ -1,6 +1,6 @@
 use crate::enchantment::helper::EnchantmentHelper;
 use crate::entity::projectile::owner::ProjectileOwner;
-use crate::entity::projectile_deflection::LastDeflectedBy;
+use crate::entity::projectile_deflection::{LastDeflectedBy, redirect_projectile};
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::data_component_impl::{EnchantmentGlintOverrideImpl, EnchantmentsImpl};
 use pumpkin_util::random::gameplay::game_random;
@@ -298,6 +298,11 @@ impl TridentEntity {
             return true;
         }
 
+        // Vanilla only picks redirectable projectiles.
+        if super::is_projectile(other_ent.entity_type) && !other.can_hit() {
+            return true;
+        }
+
         false
     }
 }
@@ -457,6 +462,9 @@ impl EntityBase for TridentEntity {
                 if self.last_deflected_by.hit_target_or_deflect_self(caller, target.as_ref()))
             && !self.has_hit.swap(true, Ordering::SeqCst)
         {
+            if let ProjectileHit::Entity { entity: target, .. } = &h {
+                redirect_projectile(caller, target.as_ref());
+            }
             caller.on_hit(h);
             // Vanilla `AbstractArrow.stepMoveAndHit` sets `needsSync` after a hit.
             entity.velocity_dirty.store(true, Ordering::Relaxed);

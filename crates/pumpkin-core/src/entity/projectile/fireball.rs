@@ -204,6 +204,11 @@ impl FireballEntity {
 }
 
 impl EntityBase for FireballEntity {
+    /// Vanilla `Projectile.isPickable`: redirectable projectiles can be hit.
+    fn can_hit(&self) -> bool {
+        true
+    }
+
     /// Vanilla `AbstractHurtingProjectile.onDeflection`.
     fn on_deflection(&self, by_attack: bool) {
         self.acceleration_power.on_deflection(by_attack);

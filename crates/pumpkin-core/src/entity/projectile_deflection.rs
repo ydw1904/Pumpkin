@@ -105,6 +105,36 @@ pub fn deflect_projectile(
     true
 }
 
+/// Vanilla `Projectile.onRedirectProjectile`, run by `Projectile.onHit` before the entity hit:
+/// a hit redirectable projectile, like a ghast fireball, flies where `projectile`'s owner looks
+/// and takes that owner.
+pub fn redirect_projectile(projectile: &dyn EntityBase, hit: &dyn EntityBase) {
+    let Some(hit_owner) = hit.get_projectile_owner() else {
+        return;
+    };
+    if !hit
+        .get_entity()
+        .entity_type
+        .has_tag(&tag::EntityType::MINECRAFT_REDIRECTABLE_PROJECTILE)
+    {
+        return;
+    }
+    let world = projectile.get_entity().world.load();
+    let owner = projectile
+        .get_projectile_owner()
+        .and_then(|owner| owner.get(&world));
+    if deflect_projectile(
+        hit,
+        ProjectileDeflectionType::AimDeflect,
+        owner.as_deref(),
+        owner.as_deref().map(EntityBase::get_entity),
+        true,
+    ) && owner.is_none()
+    {
+        hit_owner.clear();
+    }
+}
+
 /// Vanilla `Projectile.lastDeflectedBy`, kept as an entity id.
 pub struct LastDeflectedBy(AtomicI32);
 

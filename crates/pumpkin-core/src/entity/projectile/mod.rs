@@ -1,4 +1,8 @@
-use super::{Entity, EntityBase, living::LivingEntity, projectile_deflection::LastDeflectedBy};
+use super::{
+    Entity, EntityBase,
+    living::LivingEntity,
+    projectile_deflection::{LastDeflectedBy, redirect_projectile},
+};
 use crate::world::World;
 use pumpkin_data::BlockDirection;
 use pumpkin_data::entity::EntityType;
@@ -55,6 +59,11 @@ pub fn is_abstract_arrow(entity_type: &EntityType) -> bool {
     entity_type == &EntityType::ARROW
         || entity_type == &EntityType::SPECTRAL_ARROW
         || entity_type == &EntityType::TRIDENT
+}
+
+/// Vanilla `AbstractWindCharge`: wind charges and breeze wind charges.
+fn is_wind_charge(entity_type: &EntityType) -> bool {
+    entity_type == &EntityType::WIND_CHARGE || entity_type == &EntityType::BREEZE_WIND_CHARGE
 }
 
 #[must_use]
@@ -399,6 +408,9 @@ impl ThrownItemEntity {
                 }
             }
 
+            if let ProjectileHit::Entity { entity: target, .. } = &h {
+                redirect_projectile(caller, target.as_ref());
+            }
             // Just trigger hit effects and remove
             caller.on_hit(h);
             entity.remove();
@@ -431,8 +443,16 @@ impl ThrownItemEntity {
             return true;
         }
 
-        // Projectile vs projectile logic
-        if !self.collides_with_projectiles && is_projectile(other_ent.entity_type) {
+        // Projectile vs projectile logic: vanilla only picks redirectable projectiles.
+        if !self.collides_with_projectiles
+            && is_projectile(other_ent.entity_type)
+            && !other.can_hit()
+        {
+            return true;
+        }
+
+        // Vanilla `AbstractWindCharge.canHitEntity`: wind charges pass through each other.
+        if is_wind_charge(self_ent.entity_type) && is_wind_charge(other_ent.entity_type) {
             return true;
         }
 

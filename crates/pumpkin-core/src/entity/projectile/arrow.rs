@@ -1,5 +1,5 @@
 use crate::entity::projectile::owner::ProjectileOwner;
-use crate::entity::projectile_deflection::LastDeflectedBy;
+use crate::entity::projectile_deflection::{LastDeflectedBy, redirect_projectile};
 use crossbeam::atomic::AtomicCell;
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 
 use crate::entity::projectile::{
     ProjectileHit, arrow_rest_position, calculate_ray_intersection, compute_margin, hit_candidates,
-    many_entity_hit_results,
+    is_projectile, many_entity_hit_results,
 };
 use crate::{
     entity::{Entity, EntityBase, living::LivingEntity, player::Player},
@@ -1065,6 +1065,7 @@ impl ArrowEntity {
                 {
                     return;
                 }
+                redirect_projectile(caller, target.as_ref());
                 caller.on_hit(ProjectileHit::Entity {
                     entity: target,
                     hit_pos,
@@ -1114,6 +1115,11 @@ impl ArrowEntity {
             || other_ent.entity_type == &pumpkin_data::entity::EntityType::FALLING_BLOCK
             || other_ent.entity_type == &pumpkin_data::entity::EntityType::AREA_EFFECT_CLOUD
         {
+            return true;
+        }
+
+        // Vanilla only picks redirectable projectiles.
+        if is_projectile(other_ent.entity_type) && !other.can_hit() {
             return true;
         }
 

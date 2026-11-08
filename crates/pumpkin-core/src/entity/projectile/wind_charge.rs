@@ -130,6 +130,11 @@ impl WindChargeEntity {
 }
 
 impl EntityBase for WindChargeEntity {
+    /// Vanilla `Projectile.isPickable`: redirectable projectiles can be hit.
+    fn can_hit(&self) -> bool {
+        true
+    }
+
     fn on_deflection(&self, by_attack: bool) {
         self.acceleration_power.on_deflection(by_attack);
     }
