@@ -212,7 +212,9 @@ h.start(async () => {
     await bot.equip(bot.inventory.items().find(it => it.name === item), 'hand')
     await bot.lookAt(new h.Vec3(X - 2.5, hy + 0.5, Z + 3.5), true)
     await bot.activateBlock(h.block(X - 3, hy, Z + 3), new h.Vec3(1, 0, 0)).catch(e => h.result(`hive_${key}.error`, e.message))
-    await h.serverTicks(20)
+    // The world age only moves every 20 ticks, so 20 can pass a tick after the bee leaves,
+    // before its anger (set on its first tick) has been sent. 40 is at least 21 ticks.
+    await h.serverTicks(40)
     const hiveState = h.block(X - 3, hy, Z + 3)
     const bees = nearHive(X - 3, Z + 3)
     // The anger end time is only sent once it leaves its default.
