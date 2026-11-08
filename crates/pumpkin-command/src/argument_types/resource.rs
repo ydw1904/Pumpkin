@@ -158,7 +158,7 @@ impl<S: crate::source::CommandSource> ArgumentType<S> for ResourceArgument {
         self.1(identifier.clone()).ok_or_else(|| {
             ERROR_UNKNOWN_RESOURCE.create(
                 reader,
-                TextComponent::text(identifier.path().to_string()),
+                TextComponent::text(identifier.to_string()),
                 TextComponent::text(self.0.to_string()),
             )
         })
