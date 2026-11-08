@@ -4401,7 +4401,6 @@ impl LivingEntity {
         damage
     }
 
-    #[allow(clippy::too_many_lines)]
     pub fn damage_with_context(
         &self,
         caller: &dyn EntityBase,
@@ -4411,12 +4410,25 @@ impl LivingEntity {
         source: Option<&dyn EntityBase>,
         cause: Option<&dyn EntityBase>,
     ) -> bool {
-        let mut amount = amount;
-
-        // Check invulnerability before applying damage
         if self.entity.is_invulnerable_to(&damage_type, cause) {
             return false;
         }
+        self.damage_ignoring_invulnerability(caller, amount, damage_type, position, source, cause)
+    }
+
+    /// [`Self::damage_with_context`] for a mob that decided itself whether it is invulnerable,
+    /// like vanilla overrides of `isInvulnerableTo`.
+    #[allow(clippy::too_many_lines)]
+    pub fn damage_ignoring_invulnerability(
+        &self,
+        caller: &dyn EntityBase,
+        amount: f32,
+        damage_type: DamageType,
+        position: Option<Vector3<f64>>,
+        source: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
+    ) -> bool {
+        let mut amount = amount;
 
         if self.health.load() <= 0.0 || self.dead.load(Relaxed) {
             return false; // Dying or dead

@@ -31,6 +31,8 @@ use crate::world::World;
 pub const LEASH_ELASTIC_DISTANCE: f64 = 10.0;
 /// Vanilla `Ghast.leashSnapDistance`, shared with the happy ghast.
 pub const LEASH_SNAP_DISTANCE: f64 = 16.0;
+/// What vanilla `Ghast.hurtServer` deals for a fireball a player sent back.
+const REFLECTED_FIREBALL_DAMAGE: f32 = 1000.0;
 
 const GHAST_HUNTS: &[Hunt] = &[Hunt::new(1, TargetMatch::Type(&EntityType::PLAYER), true)
     .matching(hunting::within_four_blocks_height)];
@@ -185,12 +187,38 @@ impl Mob for GhastEntity {
         }
     }
 
-    fn modify_incoming_damage(&self, amount: f32, damage_type: DamageType) -> f32 {
-        if damage_type.id == DamageType::FIREBALL.id {
-            1000.0
-        } else {
-            amount
+    /// Vanilla `Ghast.hurtServer`: a ghast fireball a player sent back kills it, despite its fire
+    /// immunity.
+    fn mob_hurt_server(
+        &self,
+        caller: &dyn EntityBase,
+        _amount: f32,
+        damage_type: DamageType,
+        position: Option<Vector3<f64>>,
+        source: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
+    ) -> Option<bool> {
+        let reflected = source.is_some_and(|source| source.cast_any().is::<FireballEntity>())
+            && cause.is_some_and(|cause| cause.get_player().is_some());
+        if !reflected {
+            return None;
         }
+        // Vanilla `Ghast.isInvulnerableTo` lets the reflected fireball past everything except
+        // the `Invulnerable` tag.
+        let living = &self.mob_entity.living_entity;
+        let invulnerable = living.entity.invulnerable.load(Ordering::Relaxed)
+            && !damage_type.has_tag(&tag::DamageType::MINECRAFT_BYPASSES_INVULNERABILITY);
+        if !invulnerable {
+            living.damage_ignoring_invulnerability(
+                caller,
+                REFLECTED_FIREBALL_DAMAGE,
+                damage_type,
+                position,
+                source,
+                cause,
+            );
+        }
+        Some(true)
     }
 
     fn xp_reward(&self) -> u32 {
