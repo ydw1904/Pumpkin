@@ -9,6 +9,7 @@ use pumpkin_data::entity::EntityType;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tracked_data;
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::math::position::BlockPos;
 
 use crate::entity::ai::target_match::TargetMatch;
@@ -17,9 +18,14 @@ use crate::entity::{
     ai::goal::{
         active_target::ActiveTargetGoal, look_around::RandomLookAroundGoal,
         look_at_entity::LookAtEntityGoal, melee_attack::MeleeAttackGoal, open_door::OpenDoorGoal,
-        revenge::RevengeGoal, swim::SwimGoal, wander_around::WanderAroundGoal,
+        swim::SwimGoal, wander_around::WanderAroundGoal,
     },
-    mob::{Mob, MobEntity},
+    mob::{
+        Mob, MobEntity,
+        piglin_ai::{
+            AbstractPiglin, PiglinAi, PiglinAnger, PiglinAngerTargetGoal, as_abstract_piglin,
+        },
+    },
 };
 use crate::world::World;
 
@@ -27,6 +33,7 @@ pub struct PiglinBruteEntity {
     pub mob_entity: MobEntity,
     pub immune_to_zombification: AtomicBool,
     pub time_in_overworld: AtomicI32,
+    pub anger: PiglinAnger,
 }
 
 impl PiglinBruteEntity {
@@ -41,6 +48,7 @@ impl PiglinBruteEntity {
             mob_entity,
             immune_to_zombification: AtomicBool::new(false),
             time_in_overworld: AtomicI32::new(0),
+            anger: PiglinAnger::default(),
         };
         let mob_arc = Arc::new(piglin);
         let mob_weak: Weak<dyn Mob> = {
@@ -66,7 +74,7 @@ impl PiglinBruteEntity {
             goal_selector.add_goal(7, Box::new(RandomLookAroundGoal::default()));
 
             let target_selector = &mob_arc.mob_entity.target_selector;
-            target_selector.add_goal(1, Box::new(RevengeGoal::new(true)));
+            target_selector.add_goal(1, Box::new(PiglinAngerTargetGoal::default()));
             target_selector.add_goal(
                 2,
                 ActiveTargetGoal::with_default(&mob_arc.mob_entity, &EntityType::PLAYER, true),
@@ -164,6 +172,25 @@ impl PiglinBruteEntity {
     }
 }
 
+impl AbstractPiglin for PiglinBruteEntity {
+    fn piglin_anger(&self) -> &PiglinAnger {
+        &self.anger
+    }
+
+    fn is_adult_piglin(&self) -> bool {
+        true
+    }
+
+    fn can_hunt(&self) -> bool {
+        false
+    }
+
+    // A brute's only other activity is fighting its target.
+    fn is_idle(&self) -> bool {
+        self.mob_entity.get_target().is_none()
+    }
+}
+
 impl Mob for PiglinBruteEntity {
     // Vanilla `AbstractPiglin.playAmbientSound` only plays while idle, and a brute's only other
     // activity is fighting its target.
@@ -204,6 +231,13 @@ impl Mob for PiglinBruteEntity {
             nbt.put_int("TimeInOverworld", time_in_overworld);
         }
         nbt.put_bool("CanPickUpLoot", true);
+        let mut memories = NbtCompound::new();
+        self.anger.write_memories(&mut memories);
+        if !memories.child_tags.is_empty() {
+            let mut brain = NbtCompound::new();
+            brain.put("memories", NbtTag::Compound(memories));
+            nbt.put("Brain", NbtTag::Compound(brain));
+        }
     }
 
     fn mob_read_nbt(&self, nbt: &NbtCompound) {
@@ -213,6 +247,34 @@ impl Mob for PiglinBruteEntity {
         if let Some(time) = nbt.get_int("TimeInOverworld") {
             self.time_in_overworld.store(time, Ordering::Relaxed);
         }
+        if let Some(memories) = nbt
+            .get_compound("Brain")
+            .and_then(|brain| brain.get_compound("memories"))
+        {
+            self.anger.read_memories(memories);
+        }
+    }
+
+    fn custom_server_ai_step(&self, _caller: &dyn EntityBase) {
+        self.anger.tick();
+        self.anger
+            .stop_being_angry_if_target_dead(&self.get_entity().world.load());
+    }
+
+    /// Vanilla `PiglinBrute.hurtServer` and `PiglinBruteAi.wasHurtBy`.
+    fn on_damage_with_context(
+        &self,
+        _damage_type: pumpkin_data::damage::DamageType,
+        source: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
+    ) -> bool {
+        if let Some(attacker) = cause.or(source)
+            && attacker.get_living_entity().is_some()
+            && as_abstract_piglin(attacker).is_none()
+        {
+            PiglinAi::maybe_retaliate(self, attacker, false);
+        }
+        true
     }
 
     fn mob_tick(&self, _caller: &dyn EntityBase) {

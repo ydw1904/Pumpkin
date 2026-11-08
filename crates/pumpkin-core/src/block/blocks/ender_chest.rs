@@ -106,7 +106,11 @@ impl BlockBehaviour for EnderChestBlock {
             );
             args.player
                 .open_handled_screen(factory.as_ref(), Some(*args.position));
-            // TODO: PiglinBrain.onGuardedBlockInteracted(serverWorld, player, true);
+            crate::entity::mob::piglin_ai::PiglinAi::anger_nearby_piglins(
+                args.world,
+                args.player,
+                true,
+            );
         }
 
         BlockActionResult::Success

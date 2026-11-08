@@ -7034,6 +7034,10 @@ impl World {
 
         if let Some(player) = cause {
             crate::block::entities::shulker_box::player_will_destroy(self, position, player);
+            // Vanilla `Block.playerWillDestroy`.
+            if broken_block.has_tag(&pumpkin_data::tag::Block::MINECRAFT_GUARDED_BY_PIGLINS) {
+                crate::entity::mob::piglin_ai::PiglinAi::anger_nearby_piglins(self, player, false);
+            }
         }
         // Vanilla `playerDestroy` gets the block entity the block had before it was removed.
         let destroyed_hive =

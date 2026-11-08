@@ -32,12 +32,14 @@ use crate::entity::{
         active_target::ActiveTargetGoal, go_to_wanted_item::GoToWantedItemGoal,
         look_around::RandomLookAroundGoal, look_at_entity::LookAtEntityGoal,
         melee_attack::MeleeAttackGoal, open_door::OpenDoorGoal,
-        ranged_crossbow_attack::RangedCrossbowAttackGoal, revenge::RevengeGoal, swim::SwimGoal,
+        ranged_crossbow_attack::RangedCrossbowAttackGoal, swim::SwimGoal,
         wander_around::WanderAroundGoal,
     },
     mob::{
-        Mob, MobEntity, crossbow_attack_mob::CrossbowAttackMob, equipment::RegionalDifficulty,
-        piglin_ai::PiglinAi,
+        Mob, MobEntity,
+        crossbow_attack_mob::CrossbowAttackMob,
+        equipment::RegionalDifficulty,
+        piglin_ai::{AbstractPiglin, PiglinAi, PiglinAnger, PiglinAngerTargetGoal},
     },
 };
 use crate::world::World;
@@ -71,6 +73,7 @@ pub struct PiglinEntity {
     pub nearest_visible_player: Mutex<Option<Arc<Player>>>,
     pub near_repellent: AtomicBool,
     pub activity: AtomicCell<PiglinActivity>,
+    pub anger: PiglinAnger,
 }
 
 /// Vanilla `AbstractPiglin.defineSynchedData`.
@@ -120,6 +123,7 @@ impl PiglinEntity {
             nearest_visible_player: Mutex::new(None),
             near_repellent: AtomicBool::new(false),
             activity: AtomicCell::new(PiglinActivity::Idle),
+            anger: PiglinAnger::default(),
         };
         let mob_arc = Arc::new(piglin);
         mob_arc.mob_entity.set_can_pick_up_loot(true);
@@ -149,8 +153,10 @@ impl PiglinEntity {
 
             let target_selector = &mob_arc.mob_entity.target_selector;
 
-            target_selector.add_goal(1, Box::new(RevengeGoal::new(true)));
+            target_selector.add_goal(1, Box::new(PiglinAngerTargetGoal::default()));
 
+            // Vanilla `StartAttacking` only runs for adults.
+            let piglin_weak = Arc::downgrade(&mob_arc);
             target_selector.add_goal(
                 2,
                 Box::new(ActiveTargetGoal::new(
@@ -159,8 +165,11 @@ impl PiglinEntity {
                     10,
                     true,
                     false,
-                    Some(|target: &LivingEntity, _world: &World| {
-                        !PiglinAi::is_wearing_safe_armor(target)
+                    Some(move |target: &LivingEntity, _world: &World| {
+                        piglin_weak
+                            .upgrade()
+                            .is_some_and(|piglin| piglin.is_adult())
+                            && !PiglinAi::is_wearing_safe_armor(target)
                     }),
                 )),
             );
@@ -296,6 +305,7 @@ impl PiglinEntity {
                 memories.put(key, NbtTag::Compound(memory));
             }
         }
+        self.anger.write_memories(&mut memories);
         if !memories.child_tags.is_empty() {
             let mut brain = NbtCompound::new();
             brain.put("memories", NbtTag::Compound(memories));
@@ -318,6 +328,7 @@ impl PiglinEntity {
                 timer.store(ttl.clamp(0, i64::from(i32::MAX)) as i32, Ordering::Relaxed);
             }
         }
+        self.anger.read_memories(memories);
     }
 
     #[must_use]
@@ -762,6 +773,8 @@ impl PiglinEntity {
         }
     }
 
+    /// Vanilla `PiglinAi.wasHurtBy`. Pumpkin's piglins have no AVOID activity yet, so a hit
+    /// from an outnumbering hoglin retaliates instead of fleeing.
     pub fn was_hurt_by(&self, attacker: &dyn EntityBase) {
         let attacker_entity = attacker.get_entity();
         if attacker.get_living_entity().is_none()
@@ -778,6 +791,13 @@ impl PiglinEntity {
         if attacker_entity.entity_type.id == EntityType::PLAYER.id {
             self.admiring_disabled_timer
                 .store(PiglinAi::ADMIRING_DISABLED_DURATION, Ordering::Relaxed);
+        }
+        if self.is_baby() {
+            if PiglinAi::is_entity_attackable_ignoring_line_of_sight(self, attacker) {
+                PiglinAi::broadcast_anger_target(self, attacker);
+            }
+        } else {
+            PiglinAi::maybe_retaliate(self, attacker, false);
         }
     }
 
@@ -1074,6 +1094,8 @@ impl Mob for PiglinEntity {
     fn custom_server_ai_step(&self, _caller: &dyn EntityBase) {
         let entity = &self.mob_entity.living_entity.entity;
         let world = entity.world.load();
+        self.anger.tick();
+        self.anger.stop_being_angry_if_target_dead(&world);
         if self.admiring_disabled_timer.load(Ordering::Relaxed) > 0 {
             self.admiring_disabled_timer.fetch_sub(1, Ordering::Relaxed);
         }
@@ -1170,19 +1192,22 @@ impl Mob for PiglinEntity {
         }
     }
 
-    fn on_damage(
+    /// Vanilla `Piglin.hurtServer`: `wasHurtBy` the causing entity runs after the hit, even a
+    /// killing one, so a slain piglin still alerts the others.
+    fn on_damage_with_context(
         &self,
         _damage_type: pumpkin_data::damage::DamageType,
         source: Option<&dyn EntityBase>,
-    ) {
+        cause: Option<&dyn EntityBase>,
+    ) -> bool {
         let living = &self.mob_entity.living_entity;
-        if living.dead.load(Ordering::Relaxed) {
-            if living.should_drop_loot() {
-                self.drop_inventory();
-            }
-        } else if let Some(attacker) = source {
+        if living.dead.load(Ordering::Relaxed) && living.should_drop_loot() {
+            self.drop_inventory();
+        }
+        if let Some(attacker) = cause.or(source) {
             self.was_hurt_by(attacker);
         }
+        true
     }
 
     fn get_preferred_weapon_type(&self) -> Option<&'static tag::Tag> {
@@ -1220,6 +1245,32 @@ impl Mob for PiglinEntity {
 
     fn get_base_experience_reward(&self) -> u32 {
         Self::XP_REWARD
+    }
+}
+
+impl AbstractPiglin for PiglinEntity {
+    fn piglin_anger(&self) -> &PiglinAnger {
+        &self.anger
+    }
+
+    fn is_adult_piglin(&self) -> bool {
+        self.is_adult()
+    }
+
+    fn can_hunt(&self) -> bool {
+        !self.cannot_hunt.load(Ordering::Relaxed)
+    }
+
+    fn dont_kill_any_more_hoglins_for_a_while(&self) {
+        self.hunt_cooldown_timer.store(
+            game_random()
+                .random_range(PiglinAi::MIN_TIME_BETWEEN_HUNTS..=PiglinAi::MAX_TIME_BETWEEN_HUNTS),
+            Ordering::Relaxed,
+        );
+    }
+
+    fn is_idle(&self) -> bool {
+        self.current_activity() == PiglinActivity::Idle
     }
 }
 
