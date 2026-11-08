@@ -380,6 +380,8 @@ impl ThrownItemEntity {
         // Vanilla moves the projectile to where it hits, so the hit (an explosion, a knockback
         // source) happens there.
         entity.set_pos(hit.as_ref().map_or(new_pos, ProjectileHit::hit_pos));
+        // Vanilla `baseTick` after the move: the water state the next tick's inertia reads.
+        entity.update_fluid_state(caller);
 
         // Send updated velocity to clients
         let packet = CEntityVelocity::new(entity.entity_id.into(), velocity);
