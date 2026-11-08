@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use bytes::BufMut;
 use crossbeam::atomic::AtomicCell;
 use dashmap::DashMap;
+use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::packet::CURRENT_MC_VERSION;
 use pumpkin_protocol::bedrock::client::CSetActorMotion;
@@ -603,8 +604,16 @@ impl TrackedEntity {
         }
 
         if let Some(living) = self.entity.get_living_entity() {
+            // A player's main hand is its selected hotbar slot, outside `entity_equipment`.
+            let held_item = self
+                .entity
+                .get_player()
+                .map(|target| target.inventory.held_item());
             if let Ok(equipment_guard) = living.entity_equipment.try_lock() {
                 let mut equipment_list = Vec::new();
+                if let Some(held_item) = held_item.filter(|stack| !stack.is_empty()) {
+                    equipment_list.push((EquipmentSlot::MAIN_HAND.discriminant(), held_item));
+                }
                 for (slot, item_stack) in &equipment_guard.equipment {
                     if !item_stack.is_empty() {
                         equipment_list.push((slot.discriminant(), item_stack.clone()));
@@ -625,7 +634,6 @@ impl TrackedEntity {
                             }
                         }
                         ClientPlatform::Bedrock(client) => {
-                            use pumpkin_data::data_component_impl::EquipmentSlot;
                             use pumpkin_protocol::bedrock::{
                                 client::{
                                     mob_armor_equipment::CMobArmorEquipment,
