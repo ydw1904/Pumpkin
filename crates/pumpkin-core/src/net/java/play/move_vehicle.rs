@@ -16,6 +16,15 @@ impl JavaClient {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone();
+        // Vanilla only moves a vehicle its controlling passenger steers, e.g. not a happy
+        // ghast holding still for someone standing on it.
+        if vehicle.as_ref().is_some_and(|vehicle| {
+            vehicle
+                .get_controlling_passenger()
+                .is_none_or(|rider| rider.get_entity().entity_id != player.entity_id())
+        }) {
+            return;
+        }
         if let Some(vehicle) = &vehicle {
             let vehicle_entity = vehicle.get_entity();
             let old_pos = vehicle_entity.pos.load();
