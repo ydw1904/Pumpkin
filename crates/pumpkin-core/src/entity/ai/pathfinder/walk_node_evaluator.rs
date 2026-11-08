@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use crossbeam::atomic::AtomicCell;
 use pumpkin_data::BlockDirection;
 use pumpkin_util::math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3};
 use rustc_hash::FxHashMap;
@@ -8,11 +11,16 @@ use crate::entity::ai::pathfinder::{
     pathfinding_context::PathfindingContext,
 };
 
+/// Vanilla `Creaking.HomeNodeEvaluator.MAX_DISTANCE_TO_HOME_SQ`.
+const MAX_DISTANCE_TO_HOME_SQ: f64 = 1024.0;
+
 pub struct WalkNodeEvaluator {
     pub base: BaseNodeEvaluator,
     path_types_cache: FxHashMap<Vector3<i32>, PathType>,
     reusable_neighbors: [Option<Node>; 4],
     pub is_amphibious: bool,
+    /// Vanilla `Creaking.HomeNodeEvaluator`: the creaking's heart, shared with the creaking.
+    home: Option<Arc<AtomicCell<Option<BlockPos>>>>,
 }
 
 impl WalkNodeEvaluator {
@@ -23,6 +31,17 @@ impl WalkNodeEvaluator {
             path_types_cache: FxHashMap::default(),
             reusable_neighbors: [None, None, None, None],
             is_amphibious: false,
+            home: None,
+        }
+    }
+
+    /// Vanilla `Creaking.HomeNodeEvaluator`: nodes more than 32 blocks from `home` are blocked
+    /// unless they are no farther than the mob already is.
+    #[must_use]
+    pub fn with_home(home: Arc<AtomicCell<Option<BlockPos>>>) -> Self {
+        Self {
+            home: Some(home),
+            ..Self::new()
         }
     }
 
@@ -641,6 +660,16 @@ impl NodeEvaluator for WalkNodeEvaluator {
     }
 
     fn get_path_type(&mut self, context: &mut PathfindingContext, pos: Vector3<i32>) -> PathType {
+        if let Some(home) = self.home.as_ref().and_then(|home| home.load()) {
+            let distance_sq =
+                |other: Vector3<i32>| home.0.to_f64().squared_distance_to_vec(&other.to_f64());
+            let home_distance = distance_sq(pos);
+            if home_distance > MAX_DISTANCE_TO_HOME_SQ
+                && home_distance >= distance_sq(context.mob_position())
+            {
+                return PathType::Blocked;
+            }
+        }
         context.get_land_node_type(pos)
     }
 

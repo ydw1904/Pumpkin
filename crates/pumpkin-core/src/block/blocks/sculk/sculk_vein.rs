@@ -225,7 +225,19 @@ fn active_directions(props: GlowLichenLikeProperties) -> FxHashSet<BlockDirectio
     set
 }
 
-const fn set_face(props: &mut GlowLichenLikeProperties, direction: BlockDirection) {
+/// Vanilla `MultifaceBlock.hasFace`.
+pub(crate) const fn has_face(props: GlowLichenLikeProperties, direction: BlockDirection) -> bool {
+    match direction {
+        BlockDirection::Down => props.down,
+        BlockDirection::Up => props.up,
+        BlockDirection::North => props.north,
+        BlockDirection::South => props.south,
+        BlockDirection::West => props.west,
+        BlockDirection::East => props.east,
+    }
+}
+
+pub(crate) const fn set_face(props: &mut GlowLichenLikeProperties, direction: BlockDirection) {
     match direction {
         BlockDirection::Down => props.down = true,
         BlockDirection::Up => props.up = true,

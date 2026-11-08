@@ -555,6 +555,13 @@ pub fn ensure_builtin_game_tests_registered() {
             entities_and_ai::test_bee_with_nectar_enters_hive,
         );
         register_function_test(
+            "pumpkin:creaking_without_protecting_heart_dies",
+            "pumpkin:empty_5x4x5",
+            40,
+            0,
+            entities_and_ai::test_creaking_without_protecting_heart_dies,
+        );
+        register_function_test(
             "pumpkin:minecart_drops_item_when_destroyed",
             "pumpkin:empty_5x4x5",
             20,

@@ -578,13 +578,13 @@ impl MobEntity {
 
         mob.custom_server_ai_step(caller);
 
-        {
+        if mob.ticks_move_control() {
             let mut move_control = self
                 .move_control
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             move_control.tick(mob);
-        };
+        }
 
         if mob.ticks_look_control() {
             let mut look_control = self
@@ -2246,6 +2246,12 @@ pub trait Mob: EntityBase + Send + Sync {
         let head = entity.head_yaw.load();
         let diff = pumpkin_util::math::wrap_degrees(entity.body_yaw.load() - head);
         entity.head_yaw.store(head + diff - diff.clamp(-max, max));
+    }
+
+    /// Whether `serverAiStep` ticks the move control; a species' move control `tick` override
+    /// can pause it.
+    fn ticks_move_control(&self) -> bool {
+        true
     }
 
     fn ticks_look_control(&self) -> bool {

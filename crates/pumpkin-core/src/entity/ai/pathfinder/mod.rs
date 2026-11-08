@@ -1229,6 +1229,16 @@ impl GroundPathNavigation {
         }
     }
 
+    /// Vanilla `Creaking.CreakingPathNavigation`: its `HomeNodeEvaluator` keeps the creaking
+    /// near `home`.
+    #[must_use]
+    pub fn creaking(home: std::sync::Arc<crossbeam::atomic::AtomicCell<Option<BlockPos>>>) -> Self {
+        Self {
+            inner: PathNavigation::new(EvaluatorKind::Walk(WalkNodeEvaluator::with_home(home))),
+            lava_is_stable: false,
+        }
+    }
+
     /// Vanilla `Strider.StriderPathNavigation`.
     #[must_use]
     pub fn strider() -> Self {

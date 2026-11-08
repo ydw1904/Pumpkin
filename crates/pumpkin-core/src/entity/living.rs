@@ -473,6 +473,55 @@ impl LivingEntity {
             .store(self.entity.tick_count.load(Relaxed), Relaxed);
     }
 
+    /// Vanilla `resolveMobResponsibleForDamage`; `attacker` is the source's `getEntity`.
+    pub fn resolve_mob_responsible_for_damage(
+        &self,
+        damage_type: DamageType,
+        attacker: Option<&dyn EntityBase>,
+    ) {
+        if let Some(attacker) = attacker
+            && attacker.get_living_entity().is_some()
+            && !damage_type.has_tag(&tag::DamageType::MINECRAFT_NO_ANGER)
+            && (damage_type != DamageType::WIND_CHARGE
+                || !self
+                    .entity
+                    .entity_type
+                    .has_tag(&tag::EntityType::MINECRAFT_NO_ANGER_FROM_WIND_CHARGE))
+        {
+            self.set_last_hurt_by_mob(Some(attacker));
+        }
+    }
+
+    /// Vanilla `resolvePlayerResponsibleForDamage`: blames the attacking player, or a tame
+    /// wolf's owner, and returns whoever is blamed now, which may be from an earlier hit.
+    pub fn resolve_player_responsible_for_damage(
+        &self,
+        attacker: Option<&dyn EntityBase>,
+    ) -> Option<Arc<crate::entity::player::Player>> {
+        if let Some(attacker) = attacker {
+            if let Some(player) = attacker.get_player() {
+                self.last_hurt_by_player.store(Some(player.gameprofile.id));
+                self.last_hurt_by_player_memory_time
+                    .store(LAST_HURT_BY_PLAYER_MEMORY_TIME, Relaxed);
+            } else if attacker.get_entity().entity_type == &EntityType::WOLF
+                && let Some(wolf) = attacker.get_mob()
+                && wolf.is_tamed()
+            {
+                let owner = wolf.get_owner_uuid();
+                self.last_hurt_by_player.store(owner);
+                self.last_hurt_by_player_memory_time.store(
+                    if owner.is_some() {
+                        LAST_HURT_BY_PLAYER_MEMORY_TIME
+                    } else {
+                        0
+                    },
+                    Relaxed,
+                );
+            }
+        }
+        self.get_last_hurt_by_player()
+    }
+
     fn tick_last_hurt_by_mob(&self) {
         if self.last_hurt_by_mob.load().is_none() {
             return;
@@ -3100,12 +3149,24 @@ impl LivingEntity {
     /// flow: stop movement input, attribute the kill, drop loot, broadcast the
     /// `Death` (3) entity event, and hand out XP. Safe to call on every lethal
     /// damage event; only the first call has an effect.
-    #[allow(clippy::too_many_lines)]
     pub fn on_death(
         &self,
         damage_type: DamageType,
         source: Option<&dyn EntityBase>,
         cause: Option<&dyn EntityBase>,
+    ) {
+        self.die(damage_type, source, cause, true);
+    }
+
+    /// [`Self::on_death`], playing the death sound (which vanilla's `hurtServer` plays before
+    /// `die`) only when `play_death_sound` is set.
+    #[allow(clippy::too_many_lines)]
+    pub fn die(
+        &self,
+        damage_type: DamageType,
+        source: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
+        play_death_sound: bool,
     ) {
         let world = self.entity.world.load();
         let Some(dyn_self) = world.get_entity_by_id(self.entity.entity_id) else {
@@ -3136,7 +3197,9 @@ impl LivingEntity {
 
             self.update_death_stats(&*dyn_self, kill_credit.as_deref());
 
-            self.make_voice_sound(&*dyn_self, self.death_sound(&*dyn_self));
+            if play_death_sound {
+                self.make_voice_sound(&*dyn_self, self.death_sound(&*dyn_self));
+            }
             world.send_entity_status(&self.entity, EntityStatus::Death, ActorEventID::Death);
             let looting_level;
             let tool = if let Some(cause_ent) = cause {
@@ -4523,17 +4586,7 @@ impl LivingEntity {
         let Some(server) = world.server.upgrade() else {
             return false;
         };
-        if let Some(attacker) = cause.or(source)
-            && attacker.get_living_entity().is_some()
-            && !damage_type.has_tag(&tag::DamageType::MINECRAFT_NO_ANGER)
-            && (damage_type != DamageType::WIND_CHARGE
-                || !self
-                    .entity
-                    .entity_type
-                    .has_tag(&tag::EntityType::MINECRAFT_NO_ANGER_FROM_WIND_CHARGE))
-        {
-            self.set_last_hurt_by_mob(Some(attacker));
-        }
+        self.resolve_mob_responsible_for_damage(damage_type, cause.or(source));
         let config = &server.advanced_config.pvp;
 
         // Vanilla only shows the hit and pushes the target when the hit wasn't partly absorbed

@@ -1782,6 +1782,45 @@ impl World {
         self.broadcast_packet_all(&packet);
     }
 
+    /// Vanilla `ServerLevel.sendParticles` for a particle with options: `data` is the encoded
+    /// options, and players farther than 32 blocks (512 with `override_limiter`) see nothing.
+    #[expect(clippy::too_many_arguments)]
+    pub fn send_particles_with_data(
+        &self,
+        particle: pumpkin_data::particle::Particle,
+        data: &[u8],
+        override_limiter: bool,
+        always_show: bool,
+        pos: Vector3<f64>,
+        count: i32,
+        offset: Vector3<f32>,
+        max_speed: f32,
+    ) {
+        let packet = CParticle::new(
+            override_limiter,
+            always_show,
+            pos,
+            offset,
+            max_speed,
+            count,
+            VarInt(i32::from(particle.to_id())),
+            data,
+        );
+        let range = if override_limiter { 512.0 } else { 32.0 };
+        for player in self.players.load().iter() {
+            if player
+                .get_entity()
+                .block_pos
+                .load()
+                .to_centered_f64()
+                .squared_distance_to_vec(&pos)
+                < range * range
+            {
+                player.try_send_client_packet(&packet);
+            }
+        }
+    }
+
     /// Plays a Bedrock level sound for players close enough to hear it.
     pub fn play_bedrock_level_sound(
         &self,
@@ -7028,6 +7067,14 @@ impl World {
             flags.remove(BlockFlags::SKIP_DROPS);
         } else {
             flags.insert(BlockFlags::SKIP_DROPS);
+        }
+
+        if let Some(player) = cause
+            && broken_block == &Block::CREAKING_HEART
+        {
+            crate::block::blocks::creaking_heart::CreakingHeartBlock::player_will_destroy(
+                self, position, player,
+            );
         }
 
         if !flags.contains(BlockFlags::SKIP_DROPS) {

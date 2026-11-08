@@ -16,6 +16,8 @@ use crate::world::World;
 #[derive(Clone, Copy)]
 pub enum SpawnStrategy {
     OnTopOfCollider,
+    /// Vanilla `SpawnUtil.Strategy.ON_TOP_OF_COLLIDER_NO_LEAVES`, which creaking hearts use.
+    OnTopOfColliderNoLeaves,
     /// Vanilla `SpawnUtil.Strategy.LEGACY_IRON_GOLEM`, which villagers use.
     LegacyIronGolem,
 }
@@ -25,6 +27,11 @@ impl SpawnStrategy {
         match self {
             Self::OnTopOfCollider => {
                 above_state.get_block_collision_shapes().next().is_none() && is_face_full_up(state)
+            }
+            Self::OnTopOfColliderNoLeaves => {
+                above_state.get_block_collision_shapes().next().is_none()
+                    && !Block::from_state_id(state.id).has_tag(&tag::Block::MINECRAFT_LEAVES)
+                    && is_face_full_up(state)
             }
             Self::LegacyIronGolem => {
                 let block = Block::from_state_id(state.id);

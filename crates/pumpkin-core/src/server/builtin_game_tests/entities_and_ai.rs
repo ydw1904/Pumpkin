@@ -135,3 +135,34 @@ pub(super) async fn test_bee_with_nectar_enters_hive(helper: GameTestHelper) -> 
         )
     })
 }
+
+/// A creaking bound to a heart that doesn't count it as its protector dies at once, like vanilla
+/// `Creaking.tick`, instead of staying invulnerable.
+pub(super) async fn test_creaking_without_protecting_heart_dies(
+    helper: GameTestHelper,
+) -> GameTestResult<()> {
+    build_stone_floor(&helper, 5, 5).await?;
+    let heart = BlockPos::new(2, 1, 2);
+    helper
+        .set_block_default(&heart, &Block::CREAKING_HEART)
+        .await?;
+    helper.assert_true(
+        helper.block_entity_nbt(&heart).await?.is_some(),
+        "Expected the creaking heart's block entity",
+    )?;
+    let home = helper.absolute_vec(Vector3::new(2.0, 1.0, 2.0));
+    helper
+        .execute_command(
+            &BlockPos::new(2, 1, 4),
+            &format!(
+                "summon minecraft:creaking ~ ~ ~ {{home_pos:[I;{},{},{}]}}",
+                home.x as i32, home.y as i32, home.z as i32
+            ),
+        )
+        .await?;
+    helper.assert_entity_present("minecraft:creaking").await?;
+
+    helper.succeed_when(move |helper| async move {
+        helper.assert_entity_not_present("minecraft:creaking").await
+    })
+}

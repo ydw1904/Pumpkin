@@ -409,6 +409,12 @@ impl BoundingBox {
         (width + height + depth) / 3.0
     }
 
+    /// Vanilla `AABB.getCenter`.
+    #[must_use]
+    pub fn get_center(&self) -> Vector3<f64> {
+        (self.min + self.max) * 0.5
+    }
+
     /// Returns the minimum block position covered by this bounding box.
     #[must_use]
     pub const fn min_block_pos(&self) -> BlockPos {
