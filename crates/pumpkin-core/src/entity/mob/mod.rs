@@ -16,6 +16,7 @@ use crate::entity::ai::goal::{
     Controls, GoalReach, escape_danger::EscapeDangerGoal, goal_selector::GoalSelector,
 };
 use crate::entity::ai::sensing::Sensing;
+use crate::entity::average_passenger_attachment;
 use crate::entity::combat;
 use crate::entity::living::prevents_armor_change;
 use crate::entity::player::Player;
@@ -2523,12 +2524,15 @@ pub trait Mob: EntityBase + Send + Sync {
         world.emit_game_event(GameEvent::Unequip.name(), entity.pos.load());
         world.emit_game_event(GameEvent::Shear.name(), entity.pos.load());
         let item_id = format!("minecraft:{}", stack.item.registry_key);
-        entity.spawn_at_location(stack);
+        entity.spawn_at_location_offset(stack, average_passenger_attachment(self));
         player.trigger_advancement(AdvancementTrigger::PlayerShearedEquipment {
             entity_type: format!("minecraft:{}", entity.entity_type.resource_name),
             item_id,
         });
-        world.play_sound_event(&shearing_sound, SoundCategory::Neutral, &entity.pos.load());
+        // Vanilla `Entity.playSound`: in the mob's own source, unless it is silent.
+        if !entity.is_silent() {
+            world.play_sound_event(&shearing_sound, self.sound_source(), &entity.pos.load());
+        }
         true
     }
 

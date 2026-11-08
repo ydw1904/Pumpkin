@@ -1482,7 +1482,7 @@ fn y_rot(vector: Vector3<f64>, angle: f32) -> Vector3<f64> {
 }
 
 /// Attachment points for the entity's current pose and age, and the scale they grow with.
-fn attachments_of(entity: &dyn EntityBase) -> (&'static EntityAttachments, f64) {
+fn attachments_of<E: EntityBase + ?Sized>(entity: &E) -> (&'static EntityAttachments, f64) {
     let base = entity.get_entity();
     let entity_type = base.entity_type;
     let living = entity.get_living_entity();
@@ -1512,6 +1512,22 @@ pub fn default_passenger_attachment_point(
         scale,
         vehicle.get_entity().yaw.load(),
     ))
+}
+
+/// Vanilla `getAttachments().getAverage(EntityAttachment.PASSENGER)`: the unrotated mean of the
+/// seats.
+pub fn average_passenger_attachment<E: EntityBase + ?Sized>(entity: &E) -> Vector3<f64> {
+    let (seats, scale) = attachments_of(entity);
+    if seats.passenger.is_empty() {
+        return Vector3::new(0.0, 0.0, 0.0);
+    }
+    let sum = seats
+        .passenger
+        .iter()
+        .fold(Vector3::new(0.0, 0.0, 0.0), |sum, &[x, y, z]| {
+            sum + Vector3::new(x, y, z) * scale
+        });
+    sum * f64::from(1.0f32 / seats.passenger.len() as f32)
 }
 
 /// Moves `passenger` onto its seat on `vehicle`.
@@ -5870,12 +5886,21 @@ impl Entity {
 
     /// Vanilla `Entity.spawnAtLocation`: drops `stack` at this entity's position.
     pub fn spawn_at_location(&self, stack: ItemStack) -> Option<Arc<ItemEntity>> {
+        self.spawn_at_location_offset(stack, Vector3::new(0.0, 0.0, 0.0))
+    }
+
+    /// Vanilla `spawnAtLocation(level, itemStack, offset)`.
+    pub fn spawn_at_location_offset(
+        &self,
+        stack: ItemStack,
+        offset: Vector3<f64>,
+    ) -> Option<Arc<ItemEntity>> {
         if stack.is_empty() {
             return None;
         }
         let world = self.world.load();
         let item_entity = Arc::new(ItemEntity::new(
-            Self::new(world.clone(), self.pos.load(), &EntityType::ITEM),
+            Self::new(world.clone(), self.pos.load() + offset, &EntityType::ITEM),
             stack,
         ));
         world.spawn_entity(item_entity.clone());
