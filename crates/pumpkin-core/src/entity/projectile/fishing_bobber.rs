@@ -6,7 +6,9 @@ use crossbeam::atomic::AtomicCell;
 use crate::entity::experience_orb::ExperienceOrbEntity;
 use crate::entity::item::ItemEntity;
 use crate::entity::projectile::owner::ProjectileOwner;
-use crate::entity::projectile::{calculate_ray_intersection, is_projectile};
+use crate::entity::projectile::{
+    calculate_ray_intersection, compute_margin, entity_hit_result, is_projectile,
+};
 use crate::entity::util::RandomExt;
 use crate::world::World;
 use crate::world::loot::{LootContextParameters, LootTableHandle, generate_loot_from_handle};
@@ -520,8 +522,6 @@ impl FishingBobberEntity {
         .expand(0.3, 0.3, 0.3);
 
         let mut closest_t = 1.0;
-        let mut hooked = None;
-        let mut hit_block = false;
 
         // A block in front of an entity stops the hook.
         let (block_cols, _) = world.get_block_collisions(search_box, caller);
@@ -530,39 +530,32 @@ impl FishingBobberEntity {
                 && t < closest_t
             {
                 closest_t = t;
-                hooked = None;
-                hit_block = true;
             }
         }
+        let hit_block = closest_t < 1.0;
 
         let left_owner = self.left_owner.load(Ordering::Relaxed);
         let owner_root = root_vehicle_uuid(owner);
         // Vanilla `ProjectileUtil.getEntityHitResult` filters with `Projectile.canHitEntity`, which
         // only rejects the owner's vehicle chain; other players are valid targets.
-        for cand in world.get_all_at_box(&search_box) {
-            let candidate = cand.get_entity();
-            // Vanilla `Projectile.canHitEntity`: not the hook, not a spectator, not a projectile,
-            // alive, and not the owner's vehicle chain until the hook has left it.
-            if candidate.entity_id == self.entity.entity_id
-                || cand.is_spectator()
-                || is_projectile(candidate.entity_type)
-                || (!left_owner && root_vehicle_uuid(cand.as_ref()) == owner_root)
-                || cand
-                    .get_living_entity()
-                    .is_some_and(|living| living.health.load() <= 0.0)
-            {
-                continue;
-            }
-
-            let entity_box = candidate.bounding_box.load().expand(0.3, 0.3, 0.3);
-            if let Some(t) = calculate_ray_intersection(&start_pos, &*velocity, &entity_box)
-                && t < closest_t
-            {
-                closest_t = t;
-                hooked = Some(candidate.entity_id);
-                hit_block = false;
-            }
-        }
+        let candidates = world
+            .get_all_at_box(&search_box)
+            .into_iter()
+            .filter(|cand| {
+                let candidate = cand.get_entity();
+                // Vanilla `Projectile.canHitEntity`: not the hook, not a spectator, not a projectile,
+                // alive, and not the owner's vehicle chain until the hook has left it.
+                !(candidate.entity_id == self.entity.entity_id
+                    || cand.is_spectator()
+                    || is_projectile(candidate.entity_type)
+                    || (!left_owner && root_vehicle_uuid(cand.as_ref()) == owner_root)
+                    || cand
+                        .get_living_entity()
+                        .is_some_and(|living| living.health.load() <= 0.0))
+            });
+        let to = start_pos + *velocity * closest_t;
+        let hooked = entity_hit_result(candidates, start_pos, to, compute_margin(&self.entity))
+            .map(|(hooked, _)| hooked.get_entity().entity_id);
 
         if let Some(id) = hooked {
             self.set_hooked_entity(Some(id));
