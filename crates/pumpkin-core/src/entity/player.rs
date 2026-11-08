@@ -417,6 +417,10 @@ pub const DATA_VERSION: i32 = 5023; // 26.3
 pub const MINE_BLOCK_EXHAUSTION: f32 = 0.005; // Vanilla: 0.005F
 /// Vanilla `ServerPlayer.lastSentHealth` start value, so the first tick always sends health.
 pub const LAST_SENT_HEALTH_UNSENT: f32 = -1.0E8;
+/// Vanilla `Player.stopSleepInBed` sets the sleep counter to 100 unless woken by force.
+const WAKE_SLEEP_TIMER: u8 = 100;
+/// Vanilla `Player.tick` resets the awake sleep counter once it reaches 110.
+const WAKE_SLEEP_TIMER_RESET: u8 = 110;
 
 const fn bedrock_container_slot(
     window_type: Option<WindowType>,
@@ -641,6 +645,9 @@ pub struct Player {
     pub sleeping_since: AtomicCell<Option<u8>>,
     /// Head position of the bed the player is currently sleeping in.
     pub sleeping_bed_pos: AtomicCell<Option<BlockPos>>,
+    /// Vanilla `sleepCounter` once awake: 100 after a normal wake up, counting on to 110 and
+    /// then reset.
+    wake_sleep_timer: AtomicU8,
     /// Whether the player is ignored when calculating the percentage of sleeping players needed to skip the night.
     pub sleeping_ignored: AtomicBool,
     /// Manages the player's hunger level.
@@ -1086,6 +1093,7 @@ impl Player {
             last_death_location: std::sync::Mutex::new(None),
             sleeping_since: AtomicCell::new(None),
             sleeping_bed_pos: AtomicCell::new(None),
+            wake_sleep_timer: AtomicU8::new(0),
             sleeping_ignored: AtomicBool::new(false),
             // We want this to be an impossible watched section so that `chunker::update_position`
             // will mark chunks as watched for a new join rather than a respawn.
@@ -2821,7 +2829,24 @@ impl Player {
 
         self.sleeping_since.store(None);
         self.sleeping_bed_pos.store(None);
+        self.wake_sleep_timer
+            .store(WAKE_SLEEP_TIMER, Ordering::Relaxed);
         world.update_sleeping_player_list();
+    }
+
+    /// Vanilla `Player.stopSleeping`: woken by force, so the sleep timer resets.
+    pub fn stop_sleeping(&self) {
+        self.wake_up();
+        self.wake_sleep_timer.store(0, Ordering::Relaxed);
+    }
+
+    /// Vanilla `Player.getSleepTimer`.
+    #[must_use]
+    pub fn get_sleep_timer(&self) -> i32 {
+        self.sleeping_since.load().map_or_else(
+            || i32::from(self.wake_sleep_timer.load(Ordering::Relaxed)),
+            i32::from,
+        )
     }
 
     pub fn show_title(&self, text: &TextComponent, mode: &TitleMode) {
@@ -3518,10 +3543,23 @@ impl Player {
             .tick_count
             .fetch_add(1, Ordering::Relaxed);
         self.tick_item_cooldowns();
-        if let Some(sleeping_since) = self.sleeping_since.load()
-            && sleeping_since < 101
-        {
-            self.sleeping_since.store(Some(sleeping_since + 1));
+        if let Some(sleeping_since) = self.sleeping_since.load() {
+            if sleeping_since < 101 {
+                self.sleeping_since.store(Some(sleeping_since + 1));
+            }
+        } else {
+            let timer = self.wake_sleep_timer.load(Ordering::Relaxed);
+            if timer > 0 {
+                let timer = timer + 1;
+                self.wake_sleep_timer.store(
+                    if timer >= WAKE_SLEEP_TIMER_RESET {
+                        0
+                    } else {
+                        timer
+                    },
+                    Ordering::Relaxed,
+                );
+            }
         }
 
         if self.mining.load(Ordering::Relaxed)

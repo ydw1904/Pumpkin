@@ -4569,7 +4569,7 @@ impl LivingEntity {
         if let Some(player) = caller.get_player()
             && player.is_sleeping()
         {
-            player.wake_up();
+            player.stop_sleeping();
         }
 
         let (damage_blocked, blocked_with) =

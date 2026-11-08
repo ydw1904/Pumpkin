@@ -139,6 +139,11 @@ pub trait MoveToTargetPos: Send + Sync {
     fn should_recalculate_path(&self, trying_time: i32) -> bool {
         trying_time % 40 == 0
     }
+
+    /// Vanilla `MoveToBlockGoal.nextStartTick`: how long the goal waits before searching again.
+    fn next_start_tick(&self, mob: &dyn Mob) -> i32 {
+        to_goal_ticks(INTERVAL_TICKS + mob.get_random().random_range(0..INTERVAL_TICKS))
+    }
 }
 
 impl<M: MoveToTargetPos> Goal for MoveToTargetPosGoal<M> {
@@ -147,7 +152,10 @@ impl<M: MoveToTargetPos> Goal for MoveToTargetPosGoal<M> {
             self.cooldown -= 1;
             return false;
         }
-        self.cooldown = Self::get_interval(mob);
+        self.cooldown = self
+            .move_to_target_pos
+            .get()
+            .map_or_else(|| Self::get_interval(mob), |m| m.next_start_tick(mob));
         self.find_target_pos(mob)
     }
 

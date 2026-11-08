@@ -12,6 +12,8 @@ pub mod bow_attack;
 pub mod break_door;
 pub mod breath_air;
 pub mod breed;
+pub mod cat_lie_on_block;
+pub mod cat_sit_on_block;
 pub mod chase_player;
 pub mod climb_on_top_of_powder_snow;
 pub mod creeper_ignite;

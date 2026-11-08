@@ -968,8 +968,8 @@ fn chest_can_connect_to(block: &Block, neighbor: &Block) -> bool {
 }
 
 fn is_chest_blocked(world: &World, block_pos: &BlockPos) -> bool {
-    // TODO: Block opening when a cat is sitting on top.
     has_block_on_top(world, block_pos)
+        || crate::entity::passive::cat::is_cat_sitting_on(world, block_pos)
 }
 fn has_block_on_top(world: &World, block_pos: &BlockPos) -> bool {
     let above_pos = block_pos.up();
