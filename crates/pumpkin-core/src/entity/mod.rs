@@ -55,8 +55,9 @@ use pumpkin_protocol::{
 use pumpkin_util::math::vector3::Axis;
 use pumpkin_util::math::{
     boundingbox::{BoundingBox, EntityDimensions},
-    get_section_cord, pack_degrees,
+    cos, get_section_cord, pack_degrees,
     position::BlockPos,
+    sin,
     vector2::Vector2,
     vector3::Vector3,
     wrap_degrees,
@@ -699,6 +700,11 @@ pub trait EntityBase: Send + Sync + std::any::Any {
 
     /// Vanilla `Projectile.onDeflection`.
     fn on_deflection(&self, _by_attack: bool) {}
+
+    /// Whether vanilla `Projectile.deflect` would deflect this projectile now.
+    fn can_be_deflected(&self) -> bool {
+        true
+    }
 
     fn is_immobile(&self) -> bool {
         self.get_living_entity()
@@ -2685,6 +2691,26 @@ impl Entity {
     }
 
     /// Returns entity rotation as vector
+    /// Vanilla `Entity.calculateViewVector`, with vanilla's table sine.
+    #[must_use]
+    pub fn calculate_view_vector(x_rot: f32, y_rot: f32) -> Vector3<f64> {
+        let x_rad = x_rot.to_radians();
+        let y_rad = -y_rot.to_radians();
+        let (y_cos, y_sin) = (cos(y_rad), sin(y_rad));
+        let (x_cos, x_sin) = (cos(x_rad), sin(x_rad));
+        Vector3::new(
+            f64::from(y_sin * x_cos),
+            f64::from(-x_sin),
+            f64::from(y_cos * x_cos),
+        )
+    }
+
+    /// Vanilla `Entity.getLookAngle`.
+    #[must_use]
+    pub fn look_angle(&self) -> Vector3<f64> {
+        Self::calculate_view_vector(self.pitch.load(), self.yaw.load())
+    }
+
     pub fn rotation(&self) -> Vector3<f32> {
         let pitch_rad = self.pitch.load().to_radians();
         let yaw_rad = -self.yaw.load().to_radians();

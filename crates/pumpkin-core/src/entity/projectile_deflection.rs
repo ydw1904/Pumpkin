@@ -9,7 +9,8 @@ pub enum ProjectileDeflectionType {
     None,
     /// Vanilla `ProjectileDeflection.REVERSE`.
     Simple,
-    Redirected,
+    /// Vanilla `ProjectileDeflection.AIM_DEFLECT`: sent where the deflecting entity looks.
+    AimDeflect,
     TransferVelocityDirection,
     /// Vanilla `Breeze.PROJECTILE_DEFLECTION`: the deflect sound at the breeze, then `REVERSE`.
     Breeze,
@@ -50,12 +51,10 @@ impl ProjectileDeflectionType {
                 // TODO: Add entity.lastYaw += vel
                 entity.velocity_dirty.store(true, Ordering::Relaxed);
             }
-            Self::Redirected => {
+            Self::AimDeflect => {
                 if let Some(hit_entity) = hit_entity {
-                    let rotation_vector = hit_entity.get_entity().rotation();
-
                     let entity = projectile.get_entity();
-                    entity.velocity.store(rotation_vector.to_f64());
+                    entity.velocity.store(hit_entity.get_entity().look_angle());
                     entity.velocity_dirty.store(true, Ordering::Relaxed);
                 }
             }
@@ -85,6 +84,30 @@ impl ProjectileDeflectionType {
     }
 }
 
+/// Vanilla `Projectile.deflect`: returns whether `projectile` was deflected.
+///
+/// The projectile goes to `new_owner`, or keeps its owner for `None`. A projectile can refuse,
+/// like a wind charge right after it was shot.
+pub fn deflect_projectile(
+    projectile: &dyn EntityBase,
+    deflection: ProjectileDeflectionType,
+    deflector: Option<&dyn EntityBase>,
+    new_owner: Option<&Entity>,
+    by_attack: bool,
+) -> bool {
+    if !projectile.can_be_deflected() {
+        return false;
+    }
+    deflection.deflect(projectile, deflector);
+    if let Some(new_owner) = new_owner
+        && let Some(owner) = projectile.get_projectile_owner()
+    {
+        owner.set(Some(new_owner));
+    }
+    projectile.on_deflection(by_attack);
+    true
+}
+
 /// Vanilla `Projectile.lastDeflectedBy`, kept as an entity id.
 pub struct LastDeflectedBy(AtomicI32);
 
@@ -109,9 +132,9 @@ impl LastDeflectedBy {
             return false;
         }
         let hit_id = hit.get_entity().entity_id;
-        if self.0.load(Ordering::Relaxed) != hit_id {
-            deflection.deflect(projectile, Some(hit));
-            projectile.on_deflection(false);
+        if self.0.load(Ordering::Relaxed) != hit_id
+            && deflect_projectile(projectile, deflection, Some(hit), None, false)
+        {
             self.0.store(hit_id, Ordering::Relaxed);
         }
         true

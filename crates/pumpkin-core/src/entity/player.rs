@@ -20,6 +20,7 @@ use std::time::{Duration, Instant};
 use crate::entity::attributes::{Modifier, ModifierOperation};
 use crate::entity::passive::abstract_horse::player_jump_pending_scale;
 use crate::entity::passive::nautilus::NautilusEntity;
+use crate::entity::projectile_deflection::{self, ProjectileDeflectionType};
 use crate::plugin::api::events::enchantment::{EnchantItemEvent, PrepareItemEnchantEvent};
 use crate::world::scoreboard::{BedrockScoreboard, Scoreboard};
 use advancement::PlayerAdvancement;
@@ -1753,6 +1754,9 @@ impl Player {
         let magic_boost = attack_strength_scale * extra_ench_damage as f32;
         base_damage *= attack_strength_scale.powi(2).mul_add(0.8, 0.2);
         self.last_attacked_ticks.store(0, Ordering::Relaxed);
+        if self.deflect_projectile(victim.as_ref()) {
+            return;
+        }
         if base_damage <= 0.0 && magic_boost <= 0.0 {
             return;
         }
@@ -1955,6 +1959,32 @@ impl Player {
         self.add_exhaustion(0.1);
 
         if config.swing {}
+    }
+
+    /// Vanilla `Player.deflectProjectile`: a hit on a ghast fireball or wind charge sends it where
+    /// the player looks and makes the player its owner, without hurting it.
+    fn deflect_projectile(&self, target: &dyn EntityBase) -> bool {
+        let entity = &self.living_entity.entity;
+        if !target
+            .get_entity()
+            .entity_type
+            .has_tag(&tag::EntityType::MINECRAFT_REDIRECTABLE_PROJECTILE)
+            || !projectile_deflection::deflect_projectile(
+                target,
+                ProjectileDeflectionType::AimDeflect,
+                Some(self),
+                Some(entity),
+                true,
+            )
+        {
+            return false;
+        }
+        self.world().play_sound(
+            Sound::EntityPlayerAttackNodamage,
+            SoundCategory::Players,
+            &entity.pos.load(),
+        );
+        true
     }
 
     /// Returns the durability cost for using the held item as a weapon in combat.

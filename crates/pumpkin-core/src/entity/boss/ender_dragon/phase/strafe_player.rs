@@ -95,7 +95,7 @@ impl StrafePlayerPhase {
     fn shoot_fireball(dragon: &EnderDragonEntity, target: &Player) {
         let entity = dragon.get_entity();
         let world = entity.world.load();
-        let view = EnderDragonEntity::calculate_view_vector(entity.pitch.load(), entity.yaw.load());
+        let view = Entity::calculate_view_vector(entity.pitch.load(), entity.yaw.load());
         let head = dragon.head_pos();
         let start = Vector3::new(head.x - view.x, head.y + 0.5 + 0.5, head.z - view.z);
         let target_pos = target.get_entity().pos.load();

@@ -19,7 +19,6 @@ use crate::{
         Entity, EntityBase,
         living::LivingEntity,
         projectile::{AccelerationPower, ProjectileHit, ThrownItemEntity},
-        projectile_deflection::ProjectileDeflectionType,
     },
     server::Server,
     world::{SimpleExplosionDamageCalculator, explosion::Explosion},
@@ -128,26 +127,17 @@ impl WindChargeEntity {
         );
         world.run_explosion(&explosion, position, power);
     }
-
-    pub fn deflect(
-        &self,
-        deflection: &ProjectileDeflectionType,
-        deflector: Option<&dyn EntityBase>,
-    ) -> bool {
-        if let Some(cooldown) = self.deflect_cooldown()
-            && cooldown.load(Ordering::Relaxed) > 0
-        {
-            return false;
-        }
-
-        deflection.deflect(self, deflector);
-        true
-    }
 }
 
 impl EntityBase for WindChargeEntity {
     fn on_deflection(&self, by_attack: bool) {
         self.acceleration_power.on_deflection(by_attack);
+    }
+
+    /// Vanilla `WindCharge.deflect` refuses while `noDeflectTicks` runs.
+    fn can_be_deflected(&self) -> bool {
+        self.deflect_cooldown()
+            .is_none_or(|cooldown| cooldown.load(Ordering::Relaxed) == 0)
     }
 
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {

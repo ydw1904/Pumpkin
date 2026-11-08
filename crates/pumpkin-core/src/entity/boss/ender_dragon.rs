@@ -363,20 +363,6 @@ impl EnderDragonEntity {
         BlockPos::new(podium.0.x, y, podium.0.z)
     }
 
-    /// Vanilla `Entity.calculateViewVector`.
-    #[must_use]
-    pub fn calculate_view_vector(x_rot: f32, y_rot: f32) -> Vector3<f64> {
-        let x_rad = x_rot.to_radians();
-        let y_rad = -y_rot.to_radians();
-        let (y_cos, y_sin) = (cos(y_rad), sin(y_rad));
-        let (x_cos, x_sin) = (cos(x_rad), sin(x_rad));
-        Vector3::new(
-            f64::from(y_sin * x_cos),
-            f64::from(-x_sin),
-            f64::from(y_cos * x_cos),
-        )
-    }
-
     /// Vanilla `EnderDragon.getHeadLookVector`.
     #[must_use]
     pub fn head_look_vector(&self) -> Vector3<f64> {
@@ -393,7 +379,7 @@ impl EnderDragonEntity {
             _ if self.is_sitting() => -45.0,
             _ => entity.pitch.load(),
         };
-        Self::calculate_view_vector(x_rot, entity.yaw.load())
+        Entity::calculate_view_vector(x_rot, entity.yaw.load())
     }
 
     /// The nearest player matching `targeting`, measured from `origin`, vanilla
