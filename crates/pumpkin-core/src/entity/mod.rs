@@ -128,6 +128,54 @@ const LEASH_RESTORE_TIMEOUT: i32 = 100;
 /// The maximum number of scoreboard tags an entity can carry, matching Vanilla.
 pub const MAX_SCOREBOARD_TAGS: usize = 1024;
 
+/// Vanilla `Entity.teleportCrossDimension` for anything but a player, in two halves because
+/// Pumpkin finds the destination asynchronously: the originals, non-player passengers
+/// included, leave their world at once, and a copy loaded from their saved data arrives once
+/// the destination is known. Riding players travel on their own.
+struct DimensionDeparture {
+    entity_type: &'static EntityType,
+    nbt: NbtCompound,
+    yaw: f32,
+    pitch: f32,
+    players: Vec<Arc<dyn EntityBase>>,
+}
+
+impl DimensionDeparture {
+    fn leave(entity: &Arc<dyn EntityBase>, from: &World) -> Self {
+        let base = entity.get_entity();
+        let mut nbt = NbtCompound::new();
+        entity.write_nbt(&mut nbt);
+        let mut players = Vec::new();
+        for traveller in self_and_passengers(entity).iter().rev() {
+            if traveller.get_player().is_some() {
+                players.push(traveller.clone());
+            } else {
+                from.remove_entity_with_reason(traveller.as_ref(), RemovalReason::ChangedDimension);
+            }
+        }
+        Self {
+            entity_type: base.entity_type,
+            nbt,
+            yaw: base.yaw.load(),
+            pitch: base.pitch.load(),
+            players,
+        }
+    }
+
+    fn arrive(self, to: &Arc<World>, position: Vector3<f64>, yaw: Option<f32>, pitch: Option<f32>) {
+        let copy = load_entity(self.entity_type, position, &self.nbt, to);
+        copy.get_entity().set_pos(position);
+        copy.get_entity()
+            .set_rotation(yaw.unwrap_or(self.yaw), pitch.unwrap_or(self.pitch));
+        for entity in self_and_passengers(&copy) {
+            to.spawn_entity(entity);
+        }
+        for player in self.players {
+            player.teleport(position, None, None, to.clone());
+        }
+    }
+}
+
 /// Vanilla `Entity.getAirDrag`: a float, even though velocity is a double.
 pub(crate) const AIR_DRAG: f32 = 0.98;
 /// Vanilla `Entity.getBlockBounciness` scales a block's restitution by this for entities that
@@ -4192,6 +4240,42 @@ impl Entity {
                 let yaw = self.yaw.load();
 
                 if let Some(server) = world_clone.server.upgrade() {
+                    // Vanilla moves anything but a player to the other dimension within the
+                    // tick, so it leaves now: nobody sees or picks it up while the destination
+                    // loads.
+                    if caller.get_player().is_none() && !Arc::ptr_eq(&dest_world_opt, &world_clone)
+                    {
+                        let Some(entity_arc) = world_clone.get_entity_by_id(entity_id) else {
+                            return;
+                        };
+                        let departure = DimensionDeparture::leave(&entity_arc, &world_clone);
+                        server.spawn_task(async move {
+                            let transition = portal_type
+                                .get_portal_destination(
+                                    &world_clone,
+                                    dest_world_opt,
+                                    entity_arc.as_ref(),
+                                    src_portal.as_ref(),
+                                )
+                                .await;
+                            match transition {
+                                Some(transition) => departure.arrive(
+                                    &transition.new_world,
+                                    transition.position,
+                                    transition.yaw,
+                                    transition.pitch,
+                                ),
+                                // Without a destination vanilla leaves the entity where it was.
+                                None => departure.arrive(
+                                    &world_clone,
+                                    entity_arc.get_entity().pos.load(),
+                                    None,
+                                    None,
+                                ),
+                            }
+                        });
+                        return;
+                    }
                     server.spawn_task(async move {
                         let Some(entity_arc) = world_clone.get_entity_by_id(entity_id) else {
                             return;
@@ -4210,20 +4294,6 @@ impl Entity {
                             let yaw_val = transition.yaw;
                             let pitch = transition.pitch;
                             let teleport_pos = transition.position;
-
-                            if entity_arc.get_player().is_none()
-                                && !Arc::ptr_eq(&dest_world, &world_clone)
-                            {
-                                Self::teleport_cross_dimension(
-                                    &entity_arc,
-                                    &world_clone,
-                                    &dest_world,
-                                    teleport_pos,
-                                    yaw_val,
-                                    pitch,
-                                );
-                                return;
-                            }
 
                             // Teleport the main entity
                             entity_arc.teleport(teleport_pos, yaw_val, pitch, dest_world.clone());
@@ -4245,43 +4315,6 @@ impl Entity {
         }
         if should_remove {
             *manager_guard = None;
-        }
-    }
-
-    /// Vanilla `Entity.teleportCrossDimension` for anything but a player: a copy loaded from
-    /// the entity's saved data, its non-player passengers included, joins `to` and the
-    /// originals leave `from`. Riding players travel on their own.
-    fn teleport_cross_dimension(
-        entity: &Arc<dyn EntityBase>,
-        from: &Arc<World>,
-        to: &Arc<World>,
-        position: Vector3<f64>,
-        yaw: Option<f32>,
-        pitch: Option<f32>,
-    ) {
-        let base = entity.get_entity();
-        let travellers = self_and_passengers(entity);
-        let mut nbt = NbtCompound::new();
-        entity.write_nbt(&mut nbt);
-        let copy = load_entity(base.entity_type, position, &nbt, to);
-        copy.get_entity().set_pos(position);
-        copy.get_entity().set_rotation(
-            yaw.unwrap_or_else(|| base.yaw.load()),
-            pitch.unwrap_or_else(|| base.pitch.load()),
-        );
-        let mut players = Vec::new();
-        for traveller in travellers.iter().rev() {
-            if traveller.get_player().is_some() {
-                players.push(traveller.clone());
-            } else {
-                from.remove_entity_with_reason(traveller.as_ref(), RemovalReason::ChangedDimension);
-            }
-        }
-        for entity in self_and_passengers(&copy) {
-            to.spawn_entity(entity);
-        }
-        for player in players {
-            player.teleport(position, None, None, to.clone());
         }
     }
 
