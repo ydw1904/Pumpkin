@@ -173,6 +173,8 @@ pub struct MobEntity {
     pending_riders: std::sync::Mutex<Vec<Arc<dyn EntityBase>>>,
     pending_vehicle: std::sync::Mutex<Option<spawn::PendingVehicle>>,
     mob_flags: AtomicU8,
+    /// Vanilla `Mob.canPickUpLoot`: a plain field, not part of the synced mob flags.
+    can_pick_up_loot: AtomicBool,
 }
 
 const FOLLOW_LEASH_WANTED_DISTANCE: f32 = 2.0;
@@ -234,7 +236,6 @@ impl MobEntity {
     const AI_DISABLED_FLAG: u8 = 1;
     const LEFT_HANDED_FLAG: u8 = 2;
     const ATTACKING_FLAG: u8 = 4;
-    const CAN_PICK_UP_LOOT_FLAG: u8 = 8;
 
     pub const MAX_WEARING_ARMOR_CHANCE: f32 = 0.15;
     pub const DEFAULT_AMBIENT_SOUND_INTERVAL: i32 = 80;
@@ -333,6 +334,7 @@ impl MobEntity {
             pending_riders: std::sync::Mutex::new(Vec::new()),
             pending_vehicle: std::sync::Mutex::new(None),
             mob_flags: AtomicU8::new(0),
+            can_pick_up_loot: AtomicBool::new(false),
         }
     }
 
@@ -430,11 +432,11 @@ impl MobEntity {
     }
 
     pub fn can_pick_up_loot(&self) -> bool {
-        (self.mob_flags.load(Relaxed) & Self::CAN_PICK_UP_LOOT_FLAG) != 0
+        self.can_pick_up_loot.load(Relaxed)
     }
 
     pub fn set_can_pick_up_loot(&self, value: bool) {
-        self.set_mob_flag(Self::CAN_PICK_UP_LOOT_FLAG, value);
+        self.can_pick_up_loot.store(value, Relaxed);
     }
 
     pub fn is_left_handed(&self) -> bool {
