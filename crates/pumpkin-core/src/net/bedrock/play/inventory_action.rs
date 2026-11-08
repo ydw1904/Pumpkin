@@ -75,7 +75,7 @@ impl BedrockClient {
                             .get_slot(screen_slot)
                             .get_cloned_stack();
                         if !current_stack.is_empty() {
-                            player.drop_item(current_stack.clone());
+                            player.drop_item(current_stack.clone(), true);
 
                             player_screen_handler
                                 .get_slot(screen_slot)
@@ -114,7 +114,7 @@ impl BedrockClient {
                 let old_stack = descriptor_to_stack(&action.old_item);
                 let new_stack = descriptor_to_stack(&action.new_item);
                 if old_stack.is_empty() && !new_stack.is_empty() {
-                    player.drop_item(new_stack);
+                    player.drop_item(new_stack, true);
                 }
             } else if let Some(window_id) = action.window_id {
                 if let Some(screen_slot) =

@@ -507,7 +507,7 @@ impl CommandExecutor for LootExecutor {
                         let mut remaining = stack.clone();
                         player.inventory().insert_stack_anywhere(&mut remaining);
                         if !remaining.is_empty() {
-                            player.drop_item(remaining);
+                            player.drop_item(remaining, false);
                         }
                         used_items.push(stack.clone());
                     }

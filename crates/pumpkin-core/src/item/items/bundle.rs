@@ -98,7 +98,7 @@ impl BundleItem {
         player.sync_hand_slot(slot_index, updated_bundle);
 
         Self::play_sound(player, Sound::ItemBundleRemoveOne);
-        player.drop_item(item);
+        player.drop_item(item, true);
         Self::play_sound(player, Sound::ItemBundleDropContents);
         player.increment_stat(StatisticCategory::Used, bundle.item.id as i32, 1);
     }

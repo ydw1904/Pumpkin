@@ -6253,16 +6253,17 @@ impl Player {
         ));
     }
 
-    pub fn drop_item(&self, item_stack: ItemStack) -> Arc<ItemEntity> {
-        self.increment_stat(
-            statistics::StatisticCategory::Dropped,
-            item_stack.item.id as i32,
-            item_stack.item_count as i32,
-        );
-        self.increment_custom_stat(
-            statistics::CustomStatistic::Drop,
-            item_stack.item_count as i32,
-        );
+    /// Vanilla `ServerPlayer.drop`: only items thrown from the hand get a thrower and count
+    /// towards the drop statistics.
+    pub fn drop_item(&self, item_stack: ItemStack, thrown_from_hand: bool) -> Arc<ItemEntity> {
+        if thrown_from_hand {
+            self.increment_stat(
+                statistics::StatisticCategory::Dropped,
+                item_stack.item.id as i32,
+                item_stack.item_count as i32,
+            );
+            self.increment_custom_stat(statistics::CustomStatistic::Drop, 1);
+        }
         let item_pos = self.living_entity.entity.pos.load()
             + Vector3::new(0.0, self.living_entity.entity.get_eye_height() - 0.3, 0.0);
         let entity = Entity::new(self.world(), item_pos, &EntityType::ITEM);
@@ -6287,6 +6288,9 @@ impl Player {
         let item_entity = Arc::new(ItemEntity::new_with_velocity(
             entity, item_stack, velocity, 40,
         ));
+        if thrown_from_hand {
+            item_entity.set_thrower(self.gameprofile.id);
+        }
         self.world().spawn_entity(item_entity.clone());
         item_entity
     }
@@ -6339,9 +6343,7 @@ impl Player {
         let updated_stack = item_stack.clone();
         self.inventory().set_held_item(updated_stack.clone());
 
-        // Vanilla `createItemStackToDrop` with `thrownFromHand`.
-        self.drop_item(dropped_stack)
-            .set_thrower(self.gameprofile.id);
+        self.drop_item(dropped_stack, true);
 
         let inv: Arc<dyn Inventory> = self.inventory.clone();
         let screen_binding = self
@@ -9028,11 +9030,7 @@ impl InventoryPlayer for Player {
     }
 
     fn drop_item(&self, item: ItemStack, retain_ownership: bool) {
-        let item = self.drop_item(item);
-        // Vanilla `thrownFromHand`.
-        if retain_ownership {
-            item.set_thrower(self.gameprofile.id);
-        }
+        self.drop_item(item, retain_ownership);
     }
 
     fn has_infinite_materials(&self) -> bool {

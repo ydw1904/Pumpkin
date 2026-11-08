@@ -165,7 +165,7 @@ impl ChiseledBookshelfBlock {
 
         if !player.get_inventory().insert_stack_anywhere(&mut stack) {
             // Drop the item on the ground if the player cannot hold it because of a full inventory
-            player.drop_item(stack);
+            player.drop_item(stack, false);
         }
         entity.update_state(properties, world, slot as usize);
 

@@ -5031,7 +5031,7 @@ impl EntityBase for LivingEntity {
                                         if !player.inventory.insert_stack_anywhere(&mut extra)
                                             && !extra.is_empty()
                                         {
-                                            player.drop_item(extra);
+                                            player.drop_item(extra, false);
                                         }
                                     },
                                 ),

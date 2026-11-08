@@ -329,7 +329,7 @@ impl BedrockClient {
                             let count = count.min(source_stack.item_count);
                             if count > 0 {
                                 let dropped_stack = source_stack.copy_with_count(count);
-                                player.drop_item(dropped_stack);
+                                player.drop_item(dropped_stack, true);
 
                                 source_stack.decrement(count);
                                 let source_stack = if source_stack.is_empty() {

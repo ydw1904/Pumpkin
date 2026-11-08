@@ -68,7 +68,7 @@ impl JavaClient {
                     .creative_drop_spam_count
                     .fetch_add(CREATIVE_DROP_SPAM_STEP, Ordering::Relaxed);
                 if !item_stack.is_empty() {
-                    player.drop_item(item_stack);
+                    player.drop_item(item_stack, true);
                 }
             } else {
                 tracing::warn!(

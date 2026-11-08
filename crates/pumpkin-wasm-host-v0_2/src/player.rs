@@ -3323,7 +3323,7 @@ impl pumpkin::plugin::player::HostPlayerWithStore<PluginHostState> for HasSelf<P
         }
         let player = accessor.get_res(&player)?;
         run_blocking(accessor, move || {
-            player.drop_item(stack);
+            player.drop_item(stack, false);
         })
         .await
     }

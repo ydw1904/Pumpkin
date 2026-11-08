@@ -64,7 +64,7 @@ impl BlockBehaviour for FlowerPotBlock {
             let mut stack = ItemStack::new(1, plant_item);
             args.player.inventory.insert_stack_anywhere(&mut stack);
             if !stack.is_empty() {
-                args.player.drop_item(stack);
+                args.player.drop_item(stack, false);
             }
         }
 

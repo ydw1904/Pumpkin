@@ -1021,7 +1021,7 @@ impl HostPlayerInventoryWithStore<PluginHostState> for HasSelf<PluginHostState> 
             Ok(None)
         } else if drop_leftover {
             super::run_blocking(accessor, move || {
-                player.drop_item(stack);
+                player.drop_item(stack, false);
             })
             .await?;
             Ok(None)
