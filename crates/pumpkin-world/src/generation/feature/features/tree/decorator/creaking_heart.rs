@@ -3,6 +3,7 @@ use pumpkin_data::{
     block_properties::{Axis, CreakingHeartLikeProperties, CreakingHeartState},
     tag,
 };
+use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::{
     math::position::BlockPos,
     random::{RandomGenerator, RandomImpl},
@@ -51,6 +52,13 @@ impl CreakingHeartTreeDecorator {
                 };
                 let state_id = props.to_state_id(&Block::CREAKING_HEART);
                 chunk.set_block_state(&pos.0, BlockState::from_id(state_id));
+                // Vanilla `WorldGenRegion.setBlock` gives the heart its block entity.
+                let mut nbt = NbtCompound::new();
+                nbt.put_string("id", "minecraft:creaking_heart".to_string());
+                nbt.put_int("x", pos.0.x);
+                nbt.put_int("y", pos.0.y);
+                nbt.put_int("z", pos.0.z);
+                chunk.add_block_entity(&pos.0, nbt);
                 decorations.push(pos);
                 break;
             }
