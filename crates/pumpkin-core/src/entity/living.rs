@@ -3329,6 +3329,9 @@ impl LivingEntity {
                     ExperienceOrbEntity::spawn(&world, self.entity.pos.load(), amount);
                 }
             }
+            if perished {
+                self.create_wither_rose(&world, kill_credit.as_deref());
+            }
 
             // Trigger on_mob_death for active status effects
             let active_effects_vec: Vec<_> = {
@@ -3349,6 +3352,42 @@ impl LivingEntity {
 
             self.reset_effects_and_attributes();
         }
+    }
+
+    /// Vanilla `LivingEntity.createWitherRose`: a wither kill plants a wither rose, or drops one
+    /// when mob griefing is off or the rose can't be placed.
+    fn create_wither_rose(&self, world: &Arc<World>, killer: Option<&dyn EntityBase>) {
+        if killer.is_none_or(|k| k.get_entity().entity_type != &EntityType::WITHER) {
+            return;
+        }
+        let pos = self.entity.block_pos.load();
+        let rose = &Block::WITHER_ROSE;
+        let placed = world.level_info.load().game_rules.mob_griefing
+            && world.get_block_state(&pos).is_air()
+            && world.block_registry.can_place_at(
+                None,
+                Some(&**world),
+                &**world,
+                None,
+                rose,
+                rose.default_state,
+                &pos,
+                None,
+                None,
+            );
+        if placed {
+            world.set_block_state(
+                &pos,
+                rose.default_state.id,
+                pumpkin_world::world::BlockFlags::NOTIFY_ALL,
+            );
+            return;
+        }
+        let item_entity = crate::entity::item::ItemEntity::new(
+            Entity::new(world.clone(), self.entity.pos.load(), &EntityType::ITEM),
+            ItemStack::new(1, &pumpkin_data::item::Item::WITHER_ROSE),
+        );
+        world.spawn_entity(Arc::new(item_entity));
     }
 
     fn drop_equipment(&self, looting_level: u32) {
