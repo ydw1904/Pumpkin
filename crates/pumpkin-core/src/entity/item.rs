@@ -830,12 +830,7 @@ impl EntityBase for ItemEntity {
             };
 
             if amount_picked_up > 0 {
-                if inserted
-                    && let Some(thrower) = self
-                        .thrower
-                        .load()
-                        .and_then(|uuid| self.entity.world.load().get_entity_by_uuid(uuid))
-                {
+                if inserted && let Some(thrower) = self.get_owner_entity() {
                     player.trigger_advancement(AdvancementTrigger::ThrownItemPickedUpByPlayer {
                         thrower_type: format!(
                             "minecraft:{}",

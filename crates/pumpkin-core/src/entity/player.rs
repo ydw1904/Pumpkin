@@ -6339,7 +6339,9 @@ impl Player {
         let updated_stack = item_stack.clone();
         self.inventory().set_held_item(updated_stack.clone());
 
-        self.drop_item(dropped_stack);
+        // Vanilla `createItemStackToDrop` with `thrownFromHand`.
+        self.drop_item(dropped_stack)
+            .set_thrower(self.gameprofile.id);
 
         let inv: Arc<dyn Inventory> = self.inventory.clone();
         let screen_binding = self
@@ -9025,8 +9027,12 @@ impl InventoryPlayer for Player {
         self
     }
 
-    fn drop_item(&self, item: ItemStack, _retain_ownership: bool) {
-        self.drop_item(item);
+    fn drop_item(&self, item: ItemStack, retain_ownership: bool) {
+        let item = self.drop_item(item);
+        // Vanilla `thrownFromHand`.
+        if retain_ownership {
+            item.set_thrower(self.gameprofile.id);
+        }
     }
 
     fn has_infinite_materials(&self) -> bool {
