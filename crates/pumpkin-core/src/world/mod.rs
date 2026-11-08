@@ -4700,33 +4700,7 @@ impl World {
             .send_packet(&self.default_spawn_position_packet())
             .await;
 
-        // Send initial weather state
-        let (is_raining, rain_level, thunder_level) = {
-            let weather = self
-                .weather
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            (
-                weather.is_raining(),
-                weather.rain_level,
-                weather.thunder_strength(),
-            )
-        };
-        if is_raining {
-            client
-                .enqueue_client_packet(&CGameEvent::new(GameEvent::BeginRaining, 0.0))
-                .await;
-
-            client
-                .enqueue_client_packet(&CGameEvent::new(GameEvent::RainLevelChange, rain_level))
-                .await;
-            client
-                .enqueue_client_packet(&CGameEvent::new(
-                    GameEvent::ThunderLevelChange,
-                    thunder_level,
-                ))
-                .await;
-        }
+        self.send_weather(player);
 
         let player_bossbars = server
             .bossbars
@@ -4830,6 +4804,31 @@ impl World {
         )
     }
 
+    /// Rain and thunder levels for a client that just made this level; sent only while raining.
+    fn send_weather(&self, player: &Player) {
+        let (is_raining, rain_level, thunder_level) = {
+            let weather = self
+                .weather
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            (
+                weather.is_raining(),
+                weather.rain_level,
+                weather.thunder_strength(),
+            )
+        };
+        if is_raining {
+            player.try_send_client_packet(&CGameEvent::new(GameEvent::BeginRaining, 0.0));
+            player.try_send_client_packet(&CGameEvent::new(GameEvent::RainLevelChange, rain_level));
+            player.try_send_client_packet(&CGameEvent::new(
+                GameEvent::ThunderLevelChange,
+                thunder_level,
+            ));
+        }
+    }
+
+    /// Vanilla `PlayerList.sendLevelInfo`: the client made a new level, so it needs the
+    /// border, clock and weather again.
     pub fn send_world_info(&self, player: &Arc<Player>) {
         if let ClientPlatform::Java(client) = player.client.as_ref() {
             self.worldborder
@@ -4838,7 +4837,9 @@ impl World {
                 .init_client(client);
         }
 
+        player.send_time(self);
         player.try_send_client_packet(&self.default_spawn_position_packet());
+        self.send_weather(player);
 
         if let ClientPlatform::Java(client) = player.client.as_ref()
             && client.version.load() >= JavaMinecraftVersion::V_1_20_2
