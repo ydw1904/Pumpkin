@@ -4598,6 +4598,7 @@ impl World {
                 crate::plugin::world::chunk_send::ChunkSend::new(player.world(), chunk.clone());
             server.plugin_manager.fire(&server, &mut event).await;
             if event.cancelled {
+                player.awaiting_java_spawn.store(false, Ordering::Relaxed);
                 return;
             }
         }
@@ -4612,6 +4613,7 @@ impl World {
 
         debug!("Sending player teleport to {}", player.gameprofile.name);
         player.request_teleport(position, yaw, pitch);
+        player.awaiting_java_spawn.store(false, Ordering::Relaxed);
 
         let gameprofile = &player.gameprofile;
 

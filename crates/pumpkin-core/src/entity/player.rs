@@ -781,6 +781,10 @@ pub struct Player {
     pub won_game: AtomicBool,
     /// Set while `World::respawn_player` runs for this player.
     pub respawning: AtomicBool,
+    /// Set until `World::spawn_java_player` has placed the joining Java player. Vanilla doesn't
+    /// tick a player before `placeNewPlayer` is done, so nothing it sends (health, which bots
+    /// take as the spawn) can get ahead of the join teleport.
+    pub awaiting_java_spawn: AtomicBool,
     pub warden_spawn_tracker: std::sync::Mutex<WardenSpawnTracker>,
     pub score: AtomicI32,
     pub spawn_extra_particles_on_fall: AtomicBool,
@@ -1043,6 +1047,10 @@ impl Player {
                     .new_player_advancement(gameprofile.id),
             )),
             gameprofile,
+            awaiting_java_spawn: AtomicBool::new(matches!(
+                client.as_ref(),
+                ClientPlatform::Java(_)
+            )),
             client,
             awaiting_teleport: Mutex::new(None),
             // TODO: Load this from previous instance
@@ -3283,6 +3291,9 @@ impl Player {
     /// Inbound packets go first, for all players, so every tick sees this tick's moves.
     #[expect(clippy::too_many_lines)]
     pub fn tick<'a>(&'a self, server: &'a Server) {
+        if self.awaiting_java_spawn.load(Ordering::Relaxed) {
+            return;
+        }
         if let ClientPlatform::Bedrock(client) = self.client.as_ref() {
             client.tick_network_latency(self);
         }
@@ -5640,6 +5651,9 @@ impl Player {
     /// Vanilla runs it from the connection tick after the levels ticked, so a hit a mob lands
     /// this tick reaches the client before the entity data the mob's next tick sends.
     pub fn send_tick_stats(&self) {
+        if self.awaiting_java_spawn.load(Ordering::Relaxed) {
+            return;
+        }
         self.tick_health();
         self.tick_criteria_scores();
         self.tick_experience();
