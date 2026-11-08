@@ -4490,7 +4490,7 @@ impl World {
         self.pair_new_player_with_tracked_entities(player);
 
         // Send the current ticking state to the new player so they are in sync.
-        server.tick_rate_manager.update_joining_player(player).await;
+        server.tick_rate_manager.update_joining_player(player);
 
         // Permissions, i.e. the commands a player may use.
         player.send_permission_lvl_update();
@@ -4845,6 +4845,9 @@ impl World {
             && client.version.load() >= JavaMinecraftVersion::V_1_20_2
         {
             player.try_send_client_packet(&CGameEvent::new(GameEvent::StartWaitingChunks, 0.0));
+        }
+        if let Some(server) = self.server.upgrade() {
+            server.tick_rate_manager.update_joining_player(player);
         }
 
         player.send_client_information();
