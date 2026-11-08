@@ -68,7 +68,7 @@ pub trait CubeMob: Mob {
     fn get_sound_pitch(&self) -> f32 {
         let pitch_adjuster = if self.is_tiny() { 1.4 } else { 0.8 };
         let random = self.get_random();
-        (random.next_f32() - random.next_f32()) * 0.2 + 1.0 * pitch_adjuster
+        ((random.next_f32() - random.next_f32()) * 0.2 + 1.0) * pitch_adjuster
     }
 
     fn get_jump_delay(&self) -> i32 {
