@@ -131,7 +131,10 @@ impl CreakingEntity {
             let goal_selector = &mob_arc.mob_entity.goals_selector;
 
             goal_selector.add_goal(0, Box::new(SwimGoal::default()));
-            goal_selector.add_goal(4, Box::new(MeleeAttackGoal::new(1.0, true)));
+            goal_selector.add_goal(
+                4,
+                Box::new(MeleeAttackGoal::new(1.0, true).with_attack_interval(|_| ATTACK_INTERVAL)),
+            );
             // Stands in for a vanilla stroll that ignores the no-action time.
             goal_selector.add_goal(
                 5,

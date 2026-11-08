@@ -18,7 +18,10 @@ use crate::entity::{
         swim::SwimGoal, wander_around::WanderAroundGoal,
     },
     living::LivingEntity,
-    mob::{Mob, MobEntity, MobMetadata, hoglin::throw_target},
+    mob::{
+        Mob, MobEntity, MobMetadata,
+        hoglin::{hoglin_attack_interval, throw_target},
+    },
 };
 use crate::world::World;
 
@@ -80,7 +83,16 @@ impl ZoglinEntity {
             let goal_selector = &mob_arc.mob_entity.goals_selector;
 
             goal_selector.add_goal(0, Box::new(SwimGoal::default()));
-            goal_selector.add_goal(4, Box::new(MeleeAttackGoal::new(1.0, true)));
+            goal_selector.add_goal(
+                4,
+                Box::new(MeleeAttackGoal::new(1.0, true).with_attack_interval(|mob| {
+                    hoglin_attack_interval(
+                        mob.cast_any()
+                            .downcast_ref::<Self>()
+                            .is_some_and(Self::is_baby),
+                    )
+                })),
+            );
             // Stands in for a vanilla stroll that ignores the no-action time.
             goal_selector.add_goal(
                 5,

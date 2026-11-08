@@ -24,6 +24,12 @@ use crate::entity::{
 };
 use crate::world::World;
 
+/// Vanilla `HoglinAi` and `Zoglin` melee cooldowns: `MeleeAttack.create(40)` for adults,
+/// `MeleeAttack.create(15)` for babies.
+pub(crate) const fn hoglin_attack_interval(baby: bool) -> i32 {
+    if baby { 15 } else { 40 }
+}
+
 pub struct HoglinEntity {
     pub mob_entity: MobEntity,
     pub immune_to_zombification: AtomicBool,
@@ -90,7 +96,12 @@ impl HoglinEntity {
             let goal_selector = &mob_arc.mob_entity.goals_selector;
 
             goal_selector.add_goal(0, Box::new(SwimGoal::default()));
-            goal_selector.add_goal(4, Box::new(MeleeAttackGoal::new(1.0, true)));
+            goal_selector.add_goal(
+                4,
+                Box::new(MeleeAttackGoal::new(1.0, true).with_attack_interval(|mob| {
+                    hoglin_attack_interval(mob.get_mob_entity().living_entity.is_baby())
+                })),
+            );
             // Stands in for a vanilla stroll that ignores the no-action time.
             goal_selector.add_goal(
                 5,

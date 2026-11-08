@@ -9,6 +9,8 @@ use crate::plugin::api::events::entity::entity_target::TargetReason;
 use pumpkin_util::math::vector3::Vector3;
 
 const MAX_ATTACK_TIME: i64 = 20;
+/// Vanilla `MeleeAttackGoal.resetAttackCooldown`.
+const ATTACK_INTERVAL: i32 = 20;
 
 pub struct MeleeAttackGoal {
     goal_control: Controls,
@@ -17,8 +19,7 @@ pub struct MeleeAttackGoal {
     path: Option<Path>,
     update_countdown_ticks: i32,
     pub cooldown: i32,
-    #[expect(dead_code)]
-    attack_interval_ticks: i32,
+    attack_interval: fn(&dyn Mob) -> i32,
     last_update_time: i64,
     /// Vanilla `pathedTargetX/Y/Z`, kept across restarts.
     last_target_position: Option<Vector3<f64>>,
@@ -36,7 +37,7 @@ impl MeleeAttackGoal {
             path: None,
             update_countdown_ticks: 0,
             cooldown: 0,
-            attack_interval_ticks: 20,
+            attack_interval: |_| ATTACK_INTERVAL,
             last_update_time: 0,
             last_target_position: None,
             gate: None,
@@ -58,9 +59,17 @@ impl MeleeAttackGoal {
         self
     }
 
+    /// Ticks between hits for the Brain mobs this goal stands in for, vanilla
+    /// `MeleeAttack.create(cooldownBetweenAttacks)`.
     #[must_use]
-    pub fn get_max_cooldown(&self) -> i32 {
-        self.get_tick_count(20)
+    pub const fn with_attack_interval(mut self, attack_interval: fn(&dyn Mob) -> i32) -> Self {
+        self.attack_interval = attack_interval;
+        self
+    }
+
+    #[must_use]
+    pub fn get_max_cooldown(&self, mob: &dyn Mob) -> i32 {
+        self.get_tick_count((self.attack_interval)(mob))
     }
 }
 
@@ -233,7 +242,7 @@ impl Goal for MeleeAttackGoal {
             && mob.is_in_attack_range(target.as_ref())
             && mob.has_line_of_sight(target.get_entity())
         {
-            self.cooldown = self.get_max_cooldown();
+            self.cooldown = self.get_max_cooldown(mob);
             if let Some(attack) = self.attack {
                 attack(mob, target.as_ref());
                 return;
