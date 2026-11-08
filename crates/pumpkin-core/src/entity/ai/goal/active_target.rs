@@ -83,6 +83,7 @@ pub struct ActiveTargetGoal {
     target_predicate: TargetPredicate,
     condition: TargetCondition,
     gate: Option<MobFilter>,
+    start_gate: Option<MobFilter>,
     target_filter: Option<MobFilter>,
     selector: Option<TargetPredicateFn>,
     search_box: Option<SearchBoxFn>,
@@ -122,6 +123,7 @@ impl ActiveTargetGoal {
             target_predicate,
             condition: TargetCondition::Always,
             gate: None,
+            start_gate: None,
             target_filter: None,
             selector: None,
             search_box: None,
@@ -139,6 +141,14 @@ impl ActiveTargetGoal {
     #[must_use]
     pub fn gated_by(mut self: Box<Self>, gate: MobFilter) -> Box<Self> {
         self.gate = Some(gate);
+        self
+    }
+
+    /// Extra condition for starting only, like a brain `StartAttacking` that runs in some
+    /// activities and leaves the target to the others.
+    #[must_use]
+    pub fn start_gated_by(mut self: Box<Self>, gate: MobFilter) -> Box<Self> {
+        self.start_gate = Some(gate);
         self
     }
 
@@ -210,6 +220,7 @@ impl ActiveTargetGoal {
             target_predicate,
             condition: TargetCondition::Always,
             gate: None,
+            start_gate: None,
             target_filter: None,
             selector: None,
             search_box: None,
@@ -321,7 +332,12 @@ impl Goal for ActiveTargetGoal {
     }
 
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
-        if self.gate.is_some_and(|gate| !gate(mob)) {
+        if self
+            .gate
+            .into_iter()
+            .chain(self.start_gate)
+            .any(|gate| !gate(mob))
+        {
             return false;
         }
         // Vanilla `SpiderTargetGoal.canUse` checks the light before the search roll.

@@ -1,4 +1,5 @@
 use pumpkin_util::random::gameplay::game_random;
+use pumpkin_util::random::{RandomImpl, legacy_rand::LegacyRand};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, Ordering};
 
@@ -48,6 +49,23 @@ impl PiglinAi {
     pub const MIN_TIME_BETWEEN_HUNTS: i32 = 600;
     pub const MAX_TIME_BETWEEN_HUNTS: i32 = 2400;
     pub const DESIRED_DISTANCE_FROM_ZOMBIFIED: f64 = 6.0;
+    pub const DESIRED_DISTANCE_FROM_ENTITY_WHEN_AVOIDING: i32 = 12;
+    pub const MAX_WALK_DISTANCE_TO_START_RIDING: f64 = 8.0;
+    pub const MAX_PASSENGERS_ON_ONE_HOGLIN: usize = 3;
+    /// `RIDE_START_INTERVAL`, 10 to 40 seconds.
+    pub const RIDE_START_INTERVAL: (i32, i32) = (200, 800);
+    /// `RIDE_DURATION`, 10 to 30 seconds.
+    pub const RIDE_DURATION: (i32, i32) = (200, 600);
+    /// `RETREAT_DURATION`, 5 to 20 seconds.
+    pub const RETREAT_DURATION: (i32, i32) = (100, 400);
+    /// `AVOID_ZOMBIFIED_DURATION`, 5 to 7 seconds.
+    pub const AVOID_ZOMBIFIED_DURATION: (i32, i32) = (100, 140);
+    /// `BABY_AVOID_NEMESIS_DURATION`, 5 to 7 seconds.
+    pub const BABY_AVOID_NEMESIS_DURATION: (i32, i32) = (100, 140);
+    pub const SPEED_MULTIPLIER_WHEN_AVOIDING: f64 = 1.0;
+    pub const SPEED_MULTIPLIER_WHEN_MOUNTING: f64 = 0.8;
+    pub const SPEED_MULTIPLIER_WHEN_GOING_TO_CELEBRATE_LOCATION: f64 = 1.0;
+    pub const SPEED_MULTIPLIER_WHEN_DANCING: f64 = 0.6;
     pub const PROBABILITY_OF_CELEBRATION_DANCE: f32 = 0.1;
     pub const ITEM_SCAN_RANGE: f64 = 32.0;
     pub const ITEM_SCAN_RANGE_Y: f64 = 16.0;
@@ -80,12 +98,14 @@ impl PiglinAi {
         entity_type.id == EntityType::ZOMBIFIED_PIGLIN.id || entity_type.id == EntityType::ZOGLIN.id
     }
 
+    /// Vanilla `PiglinAi.wantsToDance`: the roll is seeded with the game time, so every piglin
+    /// whose target dies in the same tick makes the same choice.
     #[must_use]
-    pub fn wants_to_dance(killed_target_type: &EntityType) -> bool {
+    pub fn wants_to_dance(killed_target_type: &EntityType, game_time: i64) -> bool {
         if killed_target_type.id != EntityType::HOGLIN.id {
             return false;
         }
-        game_random().random::<f32>() < Self::PROBABILITY_OF_CELEBRATION_DANCE
+        LegacyRand::from_seed(game_time as u64).next_f32() < Self::PROBABILITY_OF_CELEBRATION_DANCE
     }
 
     #[must_use]
@@ -251,7 +271,9 @@ impl PiglinAi {
             return Sound::EntityPiglinAngry;
         }
         let world = piglin.mob_entity.living_entity.entity.world.load();
-        if piglin.is_converting(&world) {
+        if piglin.is_converting(&world)
+            || (activity == PiglinActivity::Avoid && piglin.is_near_avoid_target())
+        {
             return Sound::EntityPiglinRetreat;
         }
         match activity {
@@ -476,6 +498,12 @@ pub trait AbstractPiglin: Mob {
 
     /// Vanilla `PiglinAi.isIdle`.
     fn is_idle(&self) -> bool;
+
+    /// Whether the activity runs `StartAttacking` and `findNearestValidAttackTarget` may find
+    /// a target.
+    fn can_start_attacking(&self) -> bool {
+        true
+    }
 }
 
 #[must_use]
@@ -758,6 +786,9 @@ impl PiglinAngerTargetGoal {
 
 impl Goal for PiglinAngerTargetGoal {
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
+        if !as_abstract_piglin(mob).is_some_and(AbstractPiglin::can_start_attacking) {
+            return false;
+        }
         self.target = Self::anger_target(mob);
         self.target.is_some()
     }

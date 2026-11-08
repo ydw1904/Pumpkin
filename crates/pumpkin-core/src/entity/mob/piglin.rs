@@ -20,8 +20,12 @@ use pumpkin_data::tracked_data;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::math::vector3::Vector3;
 
 use crate::entity::ageable::AgeableMob;
+use crate::entity::ai::brain::behavior::utils;
+use crate::entity::ai::goal::{Controls, Goal};
+use crate::entity::ai::pathfinder::NavigatorGoal;
 use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::ai::target_predicate::TargetPredicate;
 use crate::entity::item::ItemEntity;
@@ -32,7 +36,7 @@ use crate::entity::{
     Entity, EntityBase,
     ai::goal::{
         active_target::ActiveTargetGoal,
-        avoid_repellent::{AvoidRepellentGoal, find_nearest_block_by_manhattan_distance},
+        avoid_repellent::{SetWalkTargetAwayFromGoal, find_nearest_block_by_manhattan_distance},
         go_to_wanted_item::GoToWantedItemGoal,
         look_around::RandomLookAroundGoal,
         look_at_entity::LookAtEntityGoal,
@@ -50,8 +54,10 @@ use crate::entity::{
         piglin_ai::{
             AbstractPiglin, PiglinAi, PiglinAnger, PiglinAngerTargetGoal, as_abstract_piglin,
         },
+        piglin_brute::PiglinBruteEntity,
     },
 };
+use crate::plugin::api::events::entity::entity_target::TargetReason;
 use crate::world::World;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -59,7 +65,61 @@ pub enum PiglinActivity {
     Idle,
     AdmireItem,
     Fight,
+    Avoid,
     Celebrate,
+    Ride,
+}
+
+/// An entity brain memory that expires, like `AVOID_TARGET` and `RIDE_TARGET`.
+#[derive(Default)]
+struct ExpiringEntityMemory(Mutex<Option<(Arc<dyn EntityBase>, i32)>>);
+
+impl ExpiringEntityMemory {
+    fn get(&self) -> Option<Arc<dyn EntityBase>> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map(|(entity, _)| entity.clone())
+    }
+
+    fn set_with_expiry(&self, entity: Arc<dyn EntityBase>, ttl: i32) {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some((entity, ttl));
+    }
+
+    fn erase(&self) {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    }
+
+    /// Vanilla `Brain.forgetOutdatedMemories`.
+    fn tick(&self) {
+        let mut memory = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some((_, ttl)) = memory.as_mut() {
+            *ttl -= 1;
+            if *ttl <= 0 {
+                *memory = None;
+            }
+        }
+    }
+}
+
+/// The `PiglinSpecificSensor` memories the AVOID and RIDE activities read.
+#[derive(Default)]
+struct PiglinSpecificMemories {
+    nearest_visible_nemesis: Option<Arc<dyn EntityBase>>,
+    nearest_visible_zombified: Option<Arc<dyn EntityBase>>,
+    nearest_visible_baby_hoglin: Option<Arc<dyn EntityBase>>,
+    nearest_visible_adult_piglins: Vec<Arc<dyn EntityBase>>,
+    visible_adult_hoglin_count: i32,
 }
 
 pub struct PiglinEntity {
@@ -85,6 +145,18 @@ pub struct PiglinEntity {
     pub nearest_repellent: AtomicCell<Option<BlockPos>>,
     pub activity: AtomicCell<PiglinActivity>,
     pub anger: PiglinAnger,
+    avoid_target: ExpiringEntityMemory,
+    /// The `CELEBRATE_LOCATION` memory, whose ticks left `celebration_timer` counts.
+    celebrate_location: AtomicCell<Option<BlockPos>>,
+    /// The `DANCING` memory, which is set and expires with `CELEBRATE_LOCATION`.
+    dancing_memory: AtomicBool,
+    ride_target: ExpiringEntityMemory,
+    /// The `SetEntityLookTargetSometimes.Ticker` of `babySometimesRideBabyHoglin`.
+    ride_start_ticks: AtomicI32,
+    /// The attack target the previous AI step ended with, the `ATTACK_TARGET` memory the
+    /// behaviours that react to its death read.
+    last_attack_target: Mutex<Option<Arc<dyn EntityBase>>>,
+    specific_memories: Mutex<PiglinSpecificMemories>,
 }
 
 /// Vanilla `AbstractPiglin.defineSynchedData`.
@@ -135,6 +207,13 @@ impl PiglinEntity {
             nearest_repellent: AtomicCell::new(None),
             activity: AtomicCell::new(PiglinActivity::Idle),
             anger: PiglinAnger::default(),
+            avoid_target: ExpiringEntityMemory::default(),
+            celebrate_location: AtomicCell::new(None),
+            dancing_memory: AtomicBool::new(false),
+            ride_target: ExpiringEntityMemory::default(),
+            ride_start_ticks: AtomicI32::new(0),
+            last_attack_target: Mutex::new(None),
+            specific_memories: Mutex::new(PiglinSpecificMemories::default()),
         };
         let mob_arc = Arc::new(piglin);
         mob_arc.mob_entity.set_can_pick_up_loot(true);
@@ -150,8 +229,11 @@ impl PiglinEntity {
             goal_selector.add_goal(1, Box::new(OpenDoorGoal::new(true)));
             goal_selector.add_goal(2, Box::new(GoToWantedItemGoal::new(mob_arc.clone(), 1.0)));
             goal_selector.add_goal(3, Box::new(MeleeAttackGoal::new(1.0, true)));
+            goal_selector.add_goal(3, Box::new(PiglinMountGoal));
             goal_selector.add_goal(4, Box::new(RangedCrossbowAttackGoal::new(1.0, 8.0)));
+            goal_selector.add_goal(4, Box::new(Self::avoid_target_goal()));
             goal_selector.add_goal(5, Box::new(Self::avoid_repellent_goal()));
+            goal_selector.add_goal(5, Box::new(PiglinGoToCelebrateLocationGoal));
             // Stands in for a vanilla stroll that ignores the no-action time.
             goal_selector.add_goal(
                 5,
@@ -183,35 +265,66 @@ impl PiglinEntity {
                             .is_some_and(|piglin| piglin.is_adult())
                             && !PiglinAi::is_wearing_safe_armor(target)
                     }),
-                )),
+                ))
+                .start_gated_by(Self::may_start_attacking),
             );
 
             target_selector.add_goal(
                 3,
-                ActiveTargetGoal::with_default(&mob_arc.mob_entity, TargetMatch::WITHER_LIKE, true),
+                ActiveTargetGoal::with_default(&mob_arc.mob_entity, TargetMatch::WITHER_LIKE, true)
+                    .start_gated_by(Self::may_start_attacking),
             );
         };
 
         mob_arc
     }
 
+    fn in_activity(mob: &dyn Mob, activities: &[PiglinActivity]) -> bool {
+        mob.cast_any()
+            .downcast_ref::<Self>()
+            .is_some_and(|piglin| activities.contains(&piglin.current_activity()))
+    }
+
     /// Vanilla `PiglinAi.avoidRepellent`, in the IDLE and CELEBRATE activities.
-    fn avoid_repellent_goal() -> AvoidRepellentGoal {
-        AvoidRepellentGoal::new(
+    fn avoid_repellent_goal() -> SetWalkTargetAwayFromGoal {
+        SetWalkTargetAwayFromGoal::new(
             |mob| {
                 mob.cast_any()
                     .downcast_ref::<Self>()
                     .and_then(|piglin| piglin.nearest_repellent.load())
+                    .map(SetWalkTargetAwayFromGoal::block_center)
             },
+            PiglinAi::REPELLENT_DETECTION_RANGE_HORIZONTAL,
+            PiglinAi::SPEED_MULTIPLIER_WHEN_AVOIDING,
             false,
         )
-        .with_gate(|mob| {
-            mob.cast_any().downcast_ref::<Self>().is_some_and(|piglin| {
-                matches!(
-                    piglin.current_activity(),
-                    PiglinActivity::Idle | PiglinActivity::Celebrate
-                )
-            })
+        .with_gate(|mob| Self::in_activity(mob, &[PiglinActivity::Idle, PiglinActivity::Celebrate]))
+    }
+
+    /// The AVOID activity's `SetWalkTargetAwayFrom.entity(AVOID_TARGET, 1.0, 12, true)`.
+    fn avoid_target_goal() -> SetWalkTargetAwayFromGoal {
+        SetWalkTargetAwayFromGoal::new(
+            |mob| {
+                mob.cast_any()
+                    .downcast_ref::<Self>()
+                    .and_then(|piglin| piglin.avoid_target.get())
+                    .map(|target| target.get_entity().pos.load())
+            },
+            PiglinAi::DESIRED_DISTANCE_FROM_ENTITY_WHEN_AVOIDING,
+            PiglinAi::SPEED_MULTIPLIER_WHEN_AVOIDING,
+            true,
+        )
+        .with_gate(|mob| Self::in_activity(mob, &[PiglinActivity::Avoid]))
+    }
+
+    /// Where vanilla runs `StartAttacking`: IDLE and CELEBRATE, and
+    /// `findNearestValidAttackTarget` finds nothing near a zombified piglin.
+    fn may_start_attacking(mob: &dyn Mob) -> bool {
+        mob.cast_any().downcast_ref::<Self>().is_some_and(|piglin| {
+            matches!(
+                piglin.current_activity(),
+                PiglinActivity::Idle | PiglinActivity::Celebrate
+            ) && !piglin.is_near_zombified()
         })
     }
 
@@ -349,6 +462,325 @@ impl PiglinEntity {
         for piglin in visible_adult_piglins {
             piglin.dont_kill_any_more_hoglins_for_a_while();
         }
+    }
+
+    fn sample(&self, (min, max): (i32, i32)) -> i32 {
+        self.get_random().random_range(min..=max)
+    }
+
+    /// The `PiglinSpecificSensor` part the AVOID and RIDE activities read.
+    fn refresh_specific_memories(&self) {
+        let mut memories = PiglinSpecificMemories::default();
+        for entity in self.nearest_visible_living_entities() {
+            let any = entity.cast_any();
+            let entity_type = entity.get_entity().entity_type;
+            if let Some(hoglin) = any.downcast_ref::<HoglinEntity>() {
+                if hoglin.is_baby() {
+                    if memories.nearest_visible_baby_hoglin.is_none() {
+                        memories.nearest_visible_baby_hoglin = Some(entity.clone());
+                    }
+                } else {
+                    memories.visible_adult_hoglin_count += 1;
+                }
+            } else if any.is::<PiglinBruteEntity>() {
+                memories.nearest_visible_adult_piglins.push(entity.clone());
+            } else if let Some(piglin) = any.downcast_ref::<Self>() {
+                if piglin.is_adult() {
+                    memories.nearest_visible_adult_piglins.push(entity.clone());
+                }
+            } else if entity.get_player().is_some() {
+            } else if memories.nearest_visible_nemesis.is_none()
+                && (entity_type == &EntityType::WITHER_SKELETON
+                    || entity_type == &EntityType::WITHER)
+            {
+                memories.nearest_visible_nemesis = Some(entity.clone());
+            } else if memories.nearest_visible_zombified.is_none()
+                && PiglinAi::is_zombified(entity_type)
+            {
+                memories.nearest_visible_zombified = Some(entity.clone());
+            }
+        }
+        *self
+            .specific_memories
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = memories;
+    }
+
+    fn specific_memories(&self) -> std::sync::MutexGuard<'_, PiglinSpecificMemories> {
+        self.specific_memories
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Vanilla `PiglinAi.isNearZombified`.
+    fn is_near_zombified(&self) -> bool {
+        let pos = self.mob_entity.living_entity.entity.pos.load();
+        self.specific_memories()
+            .nearest_visible_zombified
+            .as_ref()
+            .is_some_and(|zombified| {
+                zombified
+                    .get_entity()
+                    .pos
+                    .load()
+                    .squared_distance_to_vec(&pos)
+                    < PiglinAi::DESIRED_DISTANCE_FROM_ZOMBIFIED
+                        * PiglinAi::DESIRED_DISTANCE_FROM_ZOMBIFIED
+            })
+    }
+
+    /// Vanilla `PiglinAi.hoglinsOutnumberPiglins`.
+    fn hoglins_outnumber_piglins(&self) -> bool {
+        let memories = self.specific_memories();
+        let piglin_count = memories.nearest_visible_adult_piglins.len() as i32 + 1;
+        memories.visible_adult_hoglin_count > piglin_count
+    }
+
+    /// Vanilla `CopyMemoryWithExpiry` into `AVOID_TARGET`, as `babyAvoidNemesis` and
+    /// `avoidZombified` do.
+    fn avoid_if_absent(&self, target: Option<Arc<dyn EntityBase>>, duration: (i32, i32)) {
+        if self.avoid_target.get().is_none()
+            && let Some(target) = target
+        {
+            self.avoid_target
+                .set_with_expiry(target, self.sample(duration));
+        }
+    }
+
+    /// Vanilla `PiglinAi.babyAvoidNemesis` and `avoidZombified`, CORE behaviours.
+    fn avoid_nemesis_and_zombified(&self) {
+        if self.is_baby() {
+            let nemesis = self.specific_memories().nearest_visible_nemesis.clone();
+            self.avoid_if_absent(nemesis, PiglinAi::BABY_AVOID_NEMESIS_DURATION);
+        }
+        if self.is_near_zombified() {
+            let zombified = self.specific_memories().nearest_visible_zombified.clone();
+            self.avoid_if_absent(zombified, PiglinAi::AVOID_ZOMBIFIED_DURATION);
+        }
+    }
+
+    /// Vanilla `StartCelebratingIfTargetDead.create(300, PiglinAi::wantsToDance)`, a CORE
+    /// behaviour, and the FIGHT activity's `RememberIfHoglinWasKilled`.
+    fn react_to_dead_attack_target(&self, target: &Arc<dyn EntityBase>, world: &World) {
+        let Some(living) = target.get_living_entity() else {
+            return;
+        };
+        if !living.is_dead_or_dying() {
+            return;
+        }
+        let target_type = target.get_entity().entity_type;
+        if self.celebrate_location.load().is_none() {
+            if PiglinAi::wants_to_dance(target_type, world.get_world_age()) {
+                self.dancing_memory.store(true, Ordering::Relaxed);
+            }
+            self.celebrate_location
+                .store(Some(target.get_entity().block_pos.load()));
+            self.celebration_timer
+                .store(PiglinAi::CELEBRATION_TIME, Ordering::Relaxed);
+            if target.get_player().is_none()
+                || world.level_info.load().game_rules.forgive_dead_players
+            {
+                if self.has_attack_target() {
+                    self.set_mob_target(None, TargetReason::ForgotTarget);
+                }
+                self.anger.erase_angry_at();
+            }
+        }
+        if self.activity.load() == PiglinActivity::Fight && target_type == &EntityType::HOGLIN {
+            self.dont_kill_any_more_hoglins_for_a_while();
+        }
+    }
+
+    /// Vanilla `PiglinAi.wantsToStopFleeing`.
+    fn wants_to_stop_fleeing(&self) -> bool {
+        let Some(avoided) = self.avoid_target.get() else {
+            return true;
+        };
+        let avoided_type = avoided.get_entity().entity_type;
+        if avoided_type == &EntityType::HOGLIN {
+            return !self.hoglins_outnumber_piglins();
+        }
+        PiglinAi::is_zombified(avoided_type)
+            && !self
+                .specific_memories()
+                .nearest_visible_zombified
+                .as_ref()
+                .is_some_and(|zombified| {
+                    zombified.get_entity().entity_id == avoided.get_entity().entity_id
+                })
+    }
+
+    /// Vanilla `PiglinAi.setAvoidTargetAndDontHuntForAWhile`.
+    fn set_avoid_target_and_dont_hunt_for_a_while(&self, target: Arc<dyn EntityBase>) {
+        self.anger.erase_angry_at();
+        if self.has_attack_target() {
+            self.set_mob_target(None, TargetReason::ForgotTarget);
+        }
+        self.stop_walking();
+        self.avoid_target
+            .set_with_expiry(target, self.sample(PiglinAi::RETREAT_DURATION));
+        self.dont_kill_any_more_hoglins_for_a_while();
+    }
+
+    /// Vanilla `PiglinAi.broadcastRetreat` and `retreatFromNearestTarget`.
+    fn broadcast_retreat(&self, target: &Arc<dyn EntityBase>) {
+        let piglins = self
+            .specific_memories()
+            .nearest_visible_adult_piglins
+            .clone();
+        for other in piglins {
+            let Some(piglin) = other.cast_any().downcast_ref::<Self>() else {
+                continue;
+            };
+            let nearest =
+                utils::get_nearest_target(piglin, piglin.avoid_target.get(), target.clone());
+            let nearest =
+                utils::get_nearest_target(piglin, piglin.mob_entity.get_target(), nearest);
+            piglin.set_avoid_target_and_dont_hunt_for_a_while(nearest);
+        }
+    }
+
+    /// Vanilla `PiglinAi.babySometimesRideBabyHoglin`, an IDLE behaviour.
+    fn baby_sometimes_ride_baby_hoglin(&self) {
+        if self.ride_target.get().is_some() {
+            return;
+        }
+        let Some(baby_hoglin) = self.specific_memories().nearest_visible_baby_hoglin.clone() else {
+            return;
+        };
+        if !self.is_baby() {
+            return;
+        }
+        // Vanilla `SetEntityLookTargetSometimes.Ticker.tickDownAndCheck`.
+        let ticks = self.ride_start_ticks.load(Ordering::Relaxed);
+        if ticks == 0 {
+            self.ride_start_ticks.store(
+                self.sample(PiglinAi::RIDE_START_INTERVAL) - 1,
+                Ordering::Relaxed,
+            );
+            return;
+        }
+        self.ride_start_ticks.store(ticks - 1, Ordering::Relaxed);
+        if ticks - 1 == 0 {
+            self.ride_target
+                .set_with_expiry(baby_hoglin, self.sample(PiglinAi::RIDE_DURATION));
+        }
+    }
+
+    /// Vanilla `PiglinAi.wantsToStopRiding`.
+    fn wants_to_stop_riding(&self, vehicle: &Arc<dyn EntityBase>) -> bool {
+        let Some(vehicle_mob) = vehicle.get_mob() else {
+            return false;
+        };
+        let vehicle_living = &vehicle_mob.get_mob_entity().living_entity;
+        // Only piglins of these vehicles have the `HURT_BY` memory.
+        let vehicle_piglin = vehicle.cast_any().downcast_ref::<Self>();
+        !vehicle_living.is_baby()
+            || !vehicle_living.entity.is_alive()
+            || self.was_hurt_recently()
+            || vehicle_piglin.is_some_and(Self::was_hurt_recently)
+            || vehicle_piglin.is_some_and(|piglin| !piglin.get_entity().has_vehicle())
+    }
+
+    /// The `HURT_BY` memory.
+    fn was_hurt_recently(&self) -> bool {
+        self.mob_entity
+            .living_entity
+            .get_last_damage_source()
+            .is_some()
+    }
+
+    /// Vanilla `DismountOrSkipMounting.create(8, PiglinAi::wantsToStopRiding)`, a RIDE
+    /// behaviour.
+    fn dismount_or_skip_mounting(&self) {
+        let entity = &self.mob_entity.living_entity.entity;
+        let Some(vehicle) = entity.get_vehicle().or_else(|| self.ride_target.get()) else {
+            return;
+        };
+        let vehicle_entity = vehicle.get_entity();
+        let valid = vehicle_entity.is_alive()
+            && vehicle_entity
+                .pos
+                .load()
+                .squared_distance_to_vec(&entity.pos.load())
+                < PiglinAi::MAX_WALK_DISTANCE_TO_START_RIDING
+                    * PiglinAi::MAX_WALK_DISTANCE_TO_START_RIDING
+            && Arc::ptr_eq(&vehicle_entity.world.load(), &entity.world.load());
+        if valid && !self.wants_to_stop_riding(&vehicle) {
+            return;
+        }
+        self.stop_riding();
+        self.ride_target.erase();
+    }
+
+    fn stop_riding(&self) {
+        let entity = &self.mob_entity.living_entity.entity;
+        if let Some(vehicle) = entity.get_vehicle() {
+            vehicle.get_entity().remove_passenger(entity.entity_id);
+        }
+    }
+
+    /// Vanilla `Piglin.startRiding`: a baby climbs onto the top of up to three riders stacked
+    /// on a hoglin.
+    fn start_riding(&self, vehicle: Arc<dyn EntityBase>) {
+        let entity = &self.mob_entity.living_entity.entity;
+        let mut vehicle = vehicle;
+        if self.is_baby() && vehicle.get_entity().entity_type == &EntityType::HOGLIN {
+            for _ in 1..PiglinAi::MAX_PASSENGERS_ON_ONE_HOGLIN {
+                let first = vehicle
+                    .get_entity()
+                    .passengers
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .first()
+                    .cloned();
+                match first {
+                    Some(passenger) => vehicle = passenger,
+                    None => break,
+                }
+            }
+        }
+        // Vanilla `Entity.startRiding` without force.
+        let vehicle_entity = vehicle.get_entity();
+        if vehicle_entity.entity_id == entity.entity_id
+            || entity
+                .get_vehicle()
+                .is_some_and(|current| current.get_entity().entity_id == vehicle_entity.entity_id)
+            || !entity.can_ride()
+            || vehicle_entity.has_passengers()
+        {
+            return;
+        }
+        let mut riding = vehicle_entity.get_vehicle();
+        while let Some(next) = riding {
+            if next.get_entity().entity_id == entity.entity_id {
+                return;
+            }
+            riding = next.get_entity().get_vehicle();
+        }
+        let world = entity.world.load();
+        let Some(this) = world.get_entity_by_id(entity.entity_id) else {
+            return;
+        };
+        self.stop_riding();
+        vehicle_entity.add_passenger(vehicle.clone(), this);
+    }
+
+    /// Vanilla `PiglinAi.isBabyRidingBaby`.
+    fn is_baby_riding_baby(&self) -> bool {
+        self.is_baby()
+            && self
+                .mob_entity
+                .living_entity
+                .entity
+                .get_vehicle()
+                .is_some_and(|vehicle| {
+                    let any = vehicle.cast_any();
+                    any.downcast_ref::<Self>().is_some_and(Self::is_baby)
+                        || any
+                            .downcast_ref::<HoglinEntity>()
+                            .is_some_and(AgeableMob::is_baby)
+                })
     }
 
     pub fn set_cannot_hunt(&self, cannot_hunt: bool) {
@@ -596,6 +1028,7 @@ impl PiglinEntity {
         self.refresh_nearest_wanted_item();
         self.refresh_nearest_visible_player();
         self.refresh_nearest_repellent();
+        self.refresh_specific_memories();
     }
 
     fn refresh_nearest_wanted_item(&self) {
@@ -704,13 +1137,18 @@ impl PiglinEntity {
             PiglinActivity::AdmireItem
         } else if self.has_attack_target() {
             PiglinActivity::Fight
-        } else if self.celebration_timer.load(Ordering::Relaxed) > 0 {
+        } else if self.avoid_target.get().is_some() {
+            PiglinActivity::Avoid
+        } else if self.celebrate_location.load().is_some() {
             PiglinActivity::Celebrate
+        } else if self.ride_target.get().is_some() {
+            PiglinActivity::Ride
         } else {
             PiglinActivity::Idle
         }
     }
 
+    /// Vanilla `PiglinAi.updateActivity`.
     fn update_activity(&self) {
         let old_activity = self.activity.load();
         let new_activity = self.current_activity();
@@ -718,6 +1156,35 @@ impl PiglinEntity {
             self.activity.store(new_activity);
             self.make_sound(PiglinAi::get_sound_for_activity(self, new_activity));
         }
+        if self.ride_target.get().is_none() && self.is_baby_riding_baby() {
+            self.stop_riding();
+        }
+        if self.celebrate_location.load().is_none() {
+            self.dancing_memory.store(false, Ordering::Relaxed);
+        }
+        let dancing = self.dancing_memory.load(Ordering::Relaxed);
+        if dancing != self.is_dancing() {
+            self.set_dancing(dancing);
+        }
+    }
+
+    /// Vanilla `PiglinAi.isNearAvoidTarget`.
+    #[must_use]
+    pub fn is_near_avoid_target(&self) -> bool {
+        let pos = self.mob_entity.living_entity.entity.pos.load();
+        self.avoid_target.get().is_some_and(|target| {
+            target.get_entity().pos.load().squared_distance_to_vec(&pos)
+                < f64::from(
+                    PiglinAi::DESIRED_DISTANCE_FROM_ENTITY_WHEN_AVOIDING
+                        * PiglinAi::DESIRED_DISTANCE_FROM_ENTITY_WHEN_AVOIDING,
+                )
+        })
+    }
+
+    /// The `AVOID_TARGET` memory.
+    #[must_use]
+    pub fn avoid_target(&self) -> Option<Arc<dyn EntityBase>> {
+        self.avoid_target.get()
     }
 
     fn make_sound(&self, sound: Sound) {
@@ -850,8 +1317,7 @@ impl PiglinEntity {
         }
     }
 
-    /// Vanilla `PiglinAi.wasHurtBy`. Pumpkin's piglins have no AVOID activity yet, so a hit
-    /// from an outnumbering hoglin retaliates instead of fleeing.
+    /// Vanilla `PiglinAi.wasHurtBy`.
     pub fn was_hurt_by(&self, attacker: &dyn EntityBase) {
         let attacker_entity = attacker.get_entity();
         if attacker.get_living_entity().is_none()
@@ -862,19 +1328,48 @@ impl PiglinEntity {
         if self.is_holding_item_in_off_hand() {
             self.stop_holding_off_hand_item(false);
         }
-        self.set_dancing(false);
+        self.celebrate_location.store(None);
         self.celebration_timer.store(0, Ordering::Relaxed);
+        self.dancing_memory.store(false, Ordering::Relaxed);
         self.admire_timer.store(0, Ordering::Relaxed);
         if attacker_entity.entity_type.id == EntityType::PLAYER.id {
             self.admiring_disabled_timer
                 .store(PiglinAi::ADMIRING_DISABLED_DURATION, Ordering::Relaxed);
         }
+        if self
+            .avoid_target
+            .get()
+            .is_some_and(|avoided| avoided.get_entity().entity_type != attacker_entity.entity_type)
+        {
+            self.avoid_target.erase();
+        }
+        let attacker_arc = || {
+            attacker_entity
+                .world
+                .load()
+                .get_entity_by_id(attacker_entity.entity_id)
+        };
         if self.is_baby() {
+            if let Some(attacker) = attacker_arc() {
+                self.avoid_target
+                    .set_with_expiry(attacker, PiglinAi::BABY_FLEE_DURATION);
+            }
             if PiglinAi::is_entity_attackable_ignoring_line_of_sight(self, attacker) {
                 PiglinAi::broadcast_anger_target(self, attacker);
             }
+        } else if attacker_entity.entity_type == &EntityType::HOGLIN
+            && self.hoglins_outnumber_piglins()
+        {
+            if let Some(attacker) = attacker_arc() {
+                self.set_avoid_target_and_dont_hunt_for_a_while(attacker.clone());
+                self.broadcast_retreat(&attacker);
+            }
         } else {
-            PiglinAi::maybe_retaliate(self, attacker, false);
+            PiglinAi::maybe_retaliate(
+                self,
+                attacker,
+                self.activity.load() == PiglinActivity::Avoid,
+            );
         }
     }
 
@@ -1200,24 +1695,56 @@ impl Mob for PiglinEntity {
             self.disable_walk_to_admire_timer
                 .fetch_sub(1, Ordering::Relaxed);
         }
-        if self.celebration_timer.load(Ordering::Relaxed) > 0 {
-            let remaining = self.celebration_timer.fetch_sub(1, Ordering::Relaxed) - 1;
-            if remaining <= 0 {
-                self.set_dancing(false);
-            }
+        if self.celebration_timer.load(Ordering::Relaxed) > 0
+            && self.celebration_timer.fetch_sub(1, Ordering::Relaxed) <= 1
+        {
+            self.celebrate_location.store(None);
+            self.dancing_memory.store(false, Ordering::Relaxed);
         }
         if self.admire_timer.load(Ordering::Relaxed) > 0 {
             self.admire_timer.fetch_sub(1, Ordering::Relaxed);
         }
+        self.avoid_target.tick();
+        self.ride_target.tick();
 
         let tick = world.get_world_age() + i64::from(entity.entity_id);
         if tick.rem_euclid(PiglinAi::SENSOR_SCAN_INTERVAL) == 0 {
             self.tick_sensors();
         }
+        // CORE behaviours.
+        self.avoid_nemesis_and_zombified();
         self.stop_holding_item_if_no_longer_admiring();
         self.start_admiring_if_seen();
+        let last_attack_target = self
+            .last_attack_target
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(target) = &last_attack_target {
+            self.react_to_dead_attack_target(target, &world);
+        }
+        // Activity behaviours of the activity the previous step chose.
+        match self.activity.load() {
+            PiglinActivity::Fight => {
+                if self.is_near_zombified() && self.has_attack_target() {
+                    self.set_mob_target(None, TargetReason::ForgotTarget);
+                }
+            }
+            PiglinActivity::Avoid => {
+                if self.wants_to_stop_fleeing() {
+                    self.avoid_target.erase();
+                }
+            }
+            PiglinActivity::Idle => self.baby_sometimes_ride_baby_hoglin(),
+            PiglinActivity::Ride => self.dismount_or_skip_mounting(),
+            PiglinActivity::AdmireItem | PiglinActivity::Celebrate => {}
+        }
         self.update_activity();
         self.start_hunting_hoglin();
+        *self
+            .last_attack_target
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = self.mob_entity.get_target();
     }
 
     fn wants_to_pick_up(&self, stack: &ItemStack) -> bool {
@@ -1368,6 +1895,10 @@ impl AbstractPiglin for PiglinEntity {
     fn is_idle(&self) -> bool {
         self.current_activity() == PiglinActivity::Idle
     }
+
+    fn can_start_attacking(&self) -> bool {
+        Self::may_start_attacking(self)
+    }
 }
 
 impl CrossbowAttackMob for PiglinEntity {
@@ -1377,5 +1908,123 @@ impl CrossbowAttackMob for PiglinEntity {
 
     fn is_charging_crossbow(&self) -> bool {
         self.is_charging_crossbow()
+    }
+}
+
+fn navigate_to(mob: &dyn Mob, destination: Vector3<f64>, speed: f64) {
+    let pos = mob.get_entity().pos.load();
+    mob.get_mob_entity()
+        .steered()
+        .navigator()
+        .set_progress(NavigatorGoal::new(pos, destination, speed));
+}
+
+/// Vanilla `Mount.create(0.8)`, a RIDE behaviour: walks to the `RIDE_TARGET` and mounts it once
+/// closer than a block.
+struct PiglinMountGoal;
+
+impl PiglinMountGoal {
+    const STEP_STRAIGHT_DISTANCE_SQ: f64 = 4.0;
+
+    fn ride_target(mob: &dyn Mob) -> Option<Arc<dyn EntityBase>> {
+        let piglin = mob.cast_any().downcast_ref::<PiglinEntity>()?;
+        if piglin.current_activity() != PiglinActivity::Ride || piglin.get_entity().has_vehicle() {
+            return None;
+        }
+        piglin.ride_target.get()
+    }
+}
+
+impl Goal for PiglinMountGoal {
+    fn can_start(&mut self, mob: &dyn Mob) -> bool {
+        mob.is_navigator_idle() && Self::ride_target(mob).is_some()
+    }
+
+    fn should_continue(&mut self, mob: &dyn Mob) -> bool {
+        !mob.is_navigator_idle() && Self::ride_target(mob).is_some()
+    }
+
+    fn start(&mut self, mob: &dyn Mob) {
+        let (Some(piglin), Some(target)) = (
+            mob.cast_any().downcast_ref::<PiglinEntity>(),
+            Self::ride_target(mob),
+        ) else {
+            return;
+        };
+        let target_pos = target.get_entity().pos.load();
+        let distance_sq = target_pos.squared_distance_to_vec(&mob.get_entity().pos.load());
+        if distance_sq < 1.0 {
+            piglin.start_riding(target);
+        } else if distance_sq < Self::STEP_STRAIGHT_DISTANCE_SQ {
+            // Pumpkin's navigation ends a little short of an entity it walks to, where vanilla
+            // walks into it and the two push each other; close the gap by moving straight at it.
+            mob.get_mob_entity()
+                .steered()
+                .move_control()
+                .set_wanted_position(
+                    target_pos.x,
+                    target_pos.y,
+                    target_pos.z,
+                    PiglinAi::SPEED_MULTIPLIER_WHEN_MOUNTING,
+                );
+        } else {
+            navigate_to(mob, target_pos, PiglinAi::SPEED_MULTIPLIER_WHEN_MOUNTING);
+        }
+    }
+
+    fn controls(&self) -> Controls {
+        Controls::MOVE
+    }
+}
+
+/// The CELEBRATE activity's `GoToTargetLocation.create(CELEBRATE_LOCATION, 2, 1.0)`, or
+/// `(CELEBRATE_LOCATION, 4, 0.6)` while dancing.
+struct PiglinGoToCelebrateLocationGoal;
+
+impl PiglinGoToCelebrateLocationGoal {
+    fn celebrate_location(mob: &dyn Mob) -> Option<(BlockPos, f64)> {
+        let piglin = mob.cast_any().downcast_ref::<PiglinEntity>()?;
+        if piglin.current_activity() != PiglinActivity::Celebrate || piglin.has_attack_target() {
+            return None;
+        }
+        let location = piglin.celebrate_location.load()?;
+        let (close_enough, speed) = if piglin.is_dancing() {
+            (4, PiglinAi::SPEED_MULTIPLIER_WHEN_DANCING)
+        } else {
+            (
+                2,
+                PiglinAi::SPEED_MULTIPLIER_WHEN_GOING_TO_CELEBRATE_LOCATION,
+            )
+        };
+        // Vanilla `Vec3i.closerThan`: block coordinates, strictly closer.
+        let body = piglin.get_entity().block_pos.load();
+        (location.squared_distance(&body) >= close_enough * close_enough)
+            .then_some((location, speed))
+    }
+}
+
+impl Goal for PiglinGoToCelebrateLocationGoal {
+    fn can_start(&mut self, mob: &dyn Mob) -> bool {
+        mob.is_navigator_idle() && Self::celebrate_location(mob).is_some()
+    }
+
+    fn should_continue(&mut self, mob: &dyn Mob) -> bool {
+        !mob.is_navigator_idle()
+    }
+
+    fn start(&mut self, mob: &dyn Mob) {
+        let Some((location, speed)) = Self::celebrate_location(mob) else {
+            return;
+        };
+        let (dx, dz) = {
+            let random = mob.get_random();
+            (random.random_range(0..3) - 1, random.random_range(0..3) - 1)
+        };
+        let target = location.add(dx, 0, dz);
+        navigate_to(mob, target.to_f64().add_raw(0.5, 0.0, 0.5), speed);
+    }
+
+    fn controls(&self) -> Controls {
+        Controls::MOVE
     }
 }
