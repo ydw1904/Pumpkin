@@ -1,4 +1,5 @@
 use crate::entity::projectile::owner::ProjectileOwner;
+use crate::entity::projectile_deflection::LastDeflectedBy;
 use crossbeam::atomic::AtomicCell;
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
@@ -81,6 +82,7 @@ pub struct ArrowEntity {
     pub life: AtomicU32,
     pub shake_time: AtomicU8,
     pub has_hit: AtomicBool,
+    pub last_deflected_by: LastDeflectedBy,
     pub last_block_pos: Arc<std::sync::RwLock<Option<BlockPos>>>,
     pub pierced_entities: Arc<RwLock<Vec<i32>>>,
     pub weapon: RwLock<Option<ItemStack>>,
@@ -128,6 +130,7 @@ impl ArrowEntity {
             life: AtomicU32::new(0),
             shake_time: AtomicU8::new(0),
             has_hit: AtomicBool::new(false),
+            last_deflected_by: LastDeflectedBy::new(),
             last_block_pos: Arc::new(std::sync::RwLock::new(None)),
             pierced_entities: Arc::new(RwLock::new(Vec::new())),
             weapon: RwLock::new(None),
@@ -170,6 +173,7 @@ impl ArrowEntity {
             life: AtomicU32::new(0),
             shake_time: AtomicU8::new(0),
             has_hit: AtomicBool::new(false),
+            last_deflected_by: LastDeflectedBy::new(),
             last_block_pos: Arc::new(std::sync::RwLock::new(None)),
             pierced_entities: Arc::new(RwLock::new(Vec::new())),
             weapon: RwLock::new(None),
@@ -737,7 +741,15 @@ impl EntityBase for ArrowEntity {
                     }
                     caller.on_hit(h);
                 }
-                ProjectileHit::Entity { .. } => {
+                ProjectileHit::Entity {
+                    entity: ref target, ..
+                } => {
+                    if self
+                        .last_deflected_by
+                        .hit_target_or_deflect_self(caller, target.as_ref())
+                    {
+                        return;
+                    }
                     let pierce = self.pierce_level.load(Ordering::Relaxed);
                     let pierced_len = self
                         .pierced_entities

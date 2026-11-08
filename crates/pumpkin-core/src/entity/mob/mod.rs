@@ -2154,6 +2154,16 @@ pub trait Mob: EntityBase + Send + Sync {
         self.can_attack_base(target)
     }
 
+    /// The mob's `Entity.deflection` override.
+    fn mob_deflection(
+        &self,
+        _projectile: &dyn EntityBase,
+    ) -> crate::entity::projectile_deflection::ProjectileDeflectionType {
+        crate::entity::projectile_deflection::ProjectileDeflectionType::default_for(
+            &self.get_mob_entity().living_entity.entity,
+        )
+    }
+
     fn can_attack_base(&self, target: &dyn EntityBase) -> bool {
         let target_entity = target.get_entity();
         if target_entity.entity_type == &EntityType::GHAST {
@@ -3675,6 +3685,13 @@ impl<T: Mob + Send + 'static> EntityBase for T {
 
     fn can_hit(&self) -> bool {
         true
+    }
+
+    fn deflection(
+        &self,
+        projectile: &dyn EntityBase,
+    ) -> crate::entity::projectile_deflection::ProjectileDeflectionType {
+        self.mob_deflection(projectile)
     }
 
     fn damage_with_context(

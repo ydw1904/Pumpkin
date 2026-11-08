@@ -5,7 +5,8 @@ use crate::block::entities::BlockEntity;
 use crate::block::entities::beehive::{BeeReleaseStatus, BeehiveBlockEntity, MAX_HONEY_LEVELS};
 use crate::block::registry::BlockActionResult;
 use crate::block::{
-    BlockBehaviour, BlockMetadata, GetComparatorOutputArgs, OnPlaceArgs, UseWithItemArgs,
+    BlockBehaviour, BlockMetadata, ExplodeArgs, GetComparatorOutputArgs, OnPlaceArgs,
+    UseWithItemArgs,
 };
 use crate::entity::EntityBase;
 use crate::entity::mob::Mob;
@@ -230,6 +231,16 @@ impl BlockMetadata for BeehiveBlock {
 }
 
 impl BlockBehaviour for BeehiveBlock {
+    // Vanilla `onExplosionHit` angers the bees for every explosion, after a destroying one has
+    // removed the hive.
+    fn explode(&self, args: ExplodeArgs<'_>) {
+        Self::anger_nearby_bees(args.world, args.position);
+    }
+
+    fn on_explosion_hit(&self, args: ExplodeArgs<'_>) {
+        Self::anger_nearby_bees(args.world, args.position);
+    }
+
     fn on_place(&self, args: OnPlaceArgs<'_>) -> BlockStateId {
         let mut props = BeeNestLikeProperties::default(args.block);
         props.facing = args.player.get_entity().get_horizontal_facing().opposite();

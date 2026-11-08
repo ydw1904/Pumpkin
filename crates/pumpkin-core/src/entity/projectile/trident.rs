@@ -1,5 +1,6 @@
 use crate::enchantment::helper::EnchantmentHelper;
 use crate::entity::projectile::owner::ProjectileOwner;
+use crate::entity::projectile_deflection::LastDeflectedBy;
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::data_component_impl::{EnchantmentGlintOverrideImpl, EnchantmentsImpl};
 use pumpkin_util::random::gameplay::game_random;
@@ -33,6 +34,7 @@ pub struct TridentEntity {
     pub life: AtomicU32,
     pub shake_time: AtomicU8,
     pub has_hit: AtomicBool,
+    pub last_deflected_by: LastDeflectedBy,
     /// Vanilla `dealtDamage`: a trident hurts at most one entity.
     pub dealt_damage: AtomicBool,
     /// Vanilla `isNoPhysics`: set while a Loyalty trident flies back through blocks.
@@ -70,6 +72,7 @@ impl TridentEntity {
             life: AtomicU32::new(0),
             shake_time: AtomicU8::new(0),
             has_hit: AtomicBool::new(false),
+            last_deflected_by: LastDeflectedBy::new(),
             dealt_damage: AtomicBool::new(false),
             no_physics: AtomicBool::new(false),
             loyalty: AtomicU8::new(0),
@@ -100,6 +103,7 @@ impl TridentEntity {
             life: AtomicU32::new(0),
             shake_time: AtomicU8::new(0),
             has_hit: AtomicBool::new(false),
+            last_deflected_by: LastDeflectedBy::new(),
             dealt_damage: AtomicBool::new(false),
             no_physics: AtomicBool::new(false),
             loyalty: AtomicU8::new(loyalty),
@@ -441,6 +445,8 @@ impl EntityBase for TridentEntity {
 
         // Handle hit
         if let Some(h) = hit
+            && !matches!(&h, ProjectileHit::Entity { entity: target, .. }
+                if self.last_deflected_by.hit_target_or_deflect_self(caller, target.as_ref()))
             && !self.has_hit.swap(true, Ordering::SeqCst)
         {
             caller.on_hit(h);

@@ -1,4 +1,4 @@
-use super::{Entity, EntityBase, living::LivingEntity};
+use super::{Entity, EntityBase, living::LivingEntity, projectile_deflection::LastDeflectedBy};
 use crate::world::World;
 use pumpkin_data::BlockDirection;
 use pumpkin_data::entity::EntityType;
@@ -103,6 +103,7 @@ pub struct ThrownItemEntity {
     pub owner: owner::ProjectileOwner,
     pub collides_with_projectiles: bool,
     pub has_hit: AtomicBool,
+    pub last_deflected_by: LastDeflectedBy,
     pub gravity: f64,
 }
 
@@ -116,6 +117,7 @@ impl ThrownItemEntity {
             owner: owner::ProjectileOwner::new(Some(owner)),
             collides_with_projectiles: false,
             has_hit: AtomicBool::new(false),
+            last_deflected_by: LastDeflectedBy::new(),
             gravity,
         }
     }
@@ -335,6 +337,13 @@ impl ThrownItemEntity {
 
         // Handle hit or continue
         if let Some(h) = hit {
+            if let ProjectileHit::Entity { entity: target, .. } = &h
+                && self
+                    .last_deflected_by
+                    .hit_target_or_deflect_self(caller, target.as_ref())
+            {
+                return;
+            }
             // Ensure hit is only processed once per projectile
             if self.has_hit.swap(true, Ordering::SeqCst) {
                 return;

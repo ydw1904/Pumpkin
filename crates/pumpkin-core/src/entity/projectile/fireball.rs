@@ -49,6 +49,7 @@ impl FireballEntity {
             owner: ProjectileOwner::none(),
             collides_with_projectiles: false,
             has_hit: AtomicBool::new(false),
+            last_deflected_by: crate::entity::projectile_deflection::LastDeflectedBy::new(),
             gravity: 0.0,
         };
 
@@ -86,6 +87,7 @@ impl FireballEntity {
             owner: ProjectileOwner::none(),
             collides_with_projectiles: false,
             has_hit: AtomicBool::new(false),
+            last_deflected_by: crate::entity::projectile_deflection::LastDeflectedBy::new(),
             gravity: 0.0,
         };
         let vel = direction.normalize().multiply(
@@ -151,15 +153,6 @@ impl FireballEntity {
         self.explosion_power.store(power, Ordering::Relaxed);
     }
 
-    pub fn on_deflection(&self, by_attack: bool) {
-        if by_attack {
-            self.set_acceleration_power(INITIAL_ACCELERATION_POWER);
-        } else {
-            let current = self.get_acceleration_power();
-            self.set_acceleration_power(current * DEFLECTION_SCALE);
-        }
-    }
-
     pub fn should_render_at_sqr_distance(&self, distance_sqr: f64) -> bool {
         if self.get_entity().tick_count.load(Ordering::Relaxed) < 2
             && distance_sqr < f64::from(MIN_CAMERA_DISTANCE_SQUARED)
@@ -179,6 +172,16 @@ impl FireballEntity {
 }
 
 impl EntityBase for FireballEntity {
+    /// Vanilla `AbstractHurtingProjectile.onDeflection`.
+    fn on_deflection(&self, by_attack: bool) {
+        if by_attack {
+            self.set_acceleration_power(INITIAL_ACCELERATION_POWER);
+        } else {
+            let current = self.get_acceleration_power();
+            self.set_acceleration_power(current * DEFLECTION_SCALE);
+        }
+    }
+
     fn get_projectile_owner(&self) -> Option<&ProjectileOwner> {
         Some(&self.thrown.owner)
     }

@@ -29,6 +29,7 @@ impl ExperienceBottleEntity {
                 owner: ProjectileOwner::none(),
                 collides_with_projectiles: false,
                 has_hit: AtomicBool::new(false),
+                last_deflected_by: crate::entity::projectile_deflection::LastDeflectedBy::new(),
                 gravity: GRAVITY,
             },
             item_stack: RwLock::new(ItemStack::new(1, &Item::EXPERIENCE_BOTTLE)),

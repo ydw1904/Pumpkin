@@ -4,9 +4,9 @@ use crate::block::blocks::redstone::block_receives_redstone_power;
 use crate::block::entities::bell::BellBlockEntity;
 use crate::block::registry::BlockActionResult;
 use crate::block::{
-    BlockBehaviour, BlockHitResult, BrokenArgs, CanPlaceAtArgs, GetStateForNeighborUpdateArgs,
-    NormalUseArgs, OnNeighborUpdateArgs, OnPlaceArgs, OnProjectileHitArgs, PathComputationType,
-    PlacedArgs,
+    BlockBehaviour, BlockHitResult, BrokenArgs, CanPlaceAtArgs, ExplodeArgs,
+    GetStateForNeighborUpdateArgs, NormalUseArgs, OnNeighborUpdateArgs, OnPlaceArgs,
+    OnProjectileHitArgs, PathComputationType, PlacedArgs,
 };
 use crate::entity::EntityBase;
 use crate::world::World;
@@ -118,6 +118,10 @@ impl WallMountedBlock for BellBlock {
 }
 
 impl BlockBehaviour for BellBlock {
+    fn on_explosion_hit(&self, args: ExplodeArgs<'_>) {
+        ring_bell(*args.position, args.world, None, None);
+    }
+
     fn can_place_at(&self, args: CanPlaceAtArgs<'_>) -> bool {
         let direction = args
             .direction

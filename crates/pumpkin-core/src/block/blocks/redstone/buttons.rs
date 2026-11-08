@@ -20,7 +20,7 @@ use crate::block::blocks::abstract_wall_mounting::WallMountedBlock;
 use crate::block::blocks::redstone::lever::LeverLikePropertiesExt;
 use crate::block::registry::BlockActionResult;
 use crate::block::{
-    BlockBehaviour, CanPlaceAtArgs, EmitsRedstonePowerArgs, GetRedstonePowerArgs,
+    BlockBehaviour, CanPlaceAtArgs, EmitsRedstonePowerArgs, ExplodeArgs, GetRedstonePowerArgs,
     GetStateForNeighborUpdateArgs, NormalUseArgs, OnEntityCollisionArgs, OnPlaceArgs,
     OnScheduledTickArgs, OnStateReplacedArgs,
 };
@@ -49,6 +49,11 @@ fn get_sound(block: &Block, on: bool) -> Sound {
 pub struct ButtonBlock;
 
 impl BlockBehaviour for ButtonBlock {
+    fn on_explosion_hit(&self, args: ExplodeArgs<'_>) {
+        // `press` leaves an already pressed button alone.
+        Self::press(args.world, args.position, None);
+    }
+
     fn normal_use(&self, args: NormalUseArgs<'_>) -> BlockActionResult {
         if Self::press(args.world, args.position, Some(args.player)) {
             BlockActionResult::Success

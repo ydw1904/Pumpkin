@@ -32,6 +32,11 @@ enum WindChargeKind {
     Breeze,
 }
 
+/// Vanilla `AbstractWindCharge.tick` explodes a charge this far above the build limit.
+const MAX_Y_ABOVE_WORLD: i32 = 30;
+/// The scale of the hit face normal in vanilla `AbstractWindCharge.onHitBlock`.
+const BLOCK_HIT_OFFSET: f64 = 0.25;
+
 /// Vanilla `AbstractWindCharge.getInertia`.
 const WIND_CHARGE_INERTIA: f32 = 1.0;
 
@@ -121,7 +126,7 @@ impl WindChargeEntity {
     }
 
     pub fn deflect(
-        &mut self,
+        &self,
         deflection: &ProjectileDeflectionType,
         deflector: Option<&dyn EntityBase>,
     ) -> bool {
@@ -142,6 +147,12 @@ impl EntityBase for WindChargeEntity {
     }
 
     fn tick(&self, caller: &dyn EntityBase, _server: &Server) {
+        let entity = self.get_entity();
+        if entity.block_pos.load().0.y > entity.world.load().get_top_y() + MAX_Y_ABOVE_WORLD {
+            self.create_explosion(entity.pos.load());
+            entity.remove();
+            return;
+        }
         // Vanilla `AbstractWindCharge`: no acceleration and an inertia of 1, in and out of fluids.
         self.thrown_item_entity.process_hurting_tick(
             caller,
@@ -172,8 +183,11 @@ impl EntityBase for WindChargeEntity {
     }
 
     fn on_hit(&self, hit: ProjectileHit) {
-        let hit_pos = hit.hit_pos();
-        if let ProjectileHit::Entity { ref entity, .. } = hit {
+        let mut hit_pos = hit.hit_pos();
+        if let Some(face) = hit.face() {
+            // Vanilla `onHitBlock` explodes a quarter block out from the hit face.
+            hit_pos += face.to_offset().to_f64() * BLOCK_HIT_OFFSET;
+        } else if let ProjectileHit::Entity { ref entity, .. } = hit {
             let world = self.get_entity().world.load();
             let owner = self.thrown_item_entity.owner.get(&world);
 

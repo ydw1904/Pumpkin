@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use std::sync::atomic::{AtomicI32, Ordering};
+
 use rand::{Rng, RngExt};
 
 use crate::entity::EntityBase;
@@ -54,6 +57,7 @@ pub enum SensorType {
     SecondaryPois,
     GolemDetected,
     ArmadilloScareDetected,
+    BreezeAttackEntity,
 }
 
 impl SensorType {
@@ -77,6 +81,7 @@ impl SensorType {
             Self::SecondaryPois => "minecraft:secondary_pois",
             Self::GolemDetected => "minecraft:golem_detected",
             Self::ArmadilloScareDetected => "minecraft:armadillo_scare_detected",
+            Self::BreezeAttackEntity => "minecraft:breeze_attack_entity_sensor",
         }
     }
 
@@ -96,7 +101,8 @@ impl SensorType {
             | Self::NearestBed
             | Self::VillagerBabies
             | Self::VillagerHostiles
-            | Self::WardenEntity => DEFAULT_SCAN_RATE,
+            | Self::WardenEntity
+            | Self::BreezeAttackEntity => DEFAULT_SCAN_RATE,
             Self::SecondaryPois => 40,
             Self::GolemDetected => 200,
             Self::ArmadilloScareDetected => armadillo::SCARE_SCAN_RATE,
@@ -127,6 +133,9 @@ impl SensorType {
                 types::DANGER_DETECTED_RECENTLY,
                 armadillo::DANGER_DETECTED_RECENTLY_TICKS,
             )),
+            Self::BreezeAttackEntity => {
+                Box::new(crate::entity::mob::breeze::BreezeAttackEntitySensor)
+            }
         }
     }
 
@@ -242,6 +251,22 @@ pub fn is_entity_attackable_ignoring_line_of_sight(
         .test_with_alliance(ctx.world, Some(ctx.mob), target, |tester, target| {
             is_allied(ctx, tester, target)
         })
+}
+
+/// Vanilla `Sensor.wasEntityAttackableLastNTicks`: true while the target was attackable at
+/// some point in the last `ticks` invocations.
+pub fn was_entity_attackable_last_n_ticks(
+    ticks: i32,
+) -> impl Fn(&BrainTick<'_>, &Arc<dyn EntityBase>) -> bool + Send + Sync {
+    let positives_left = AtomicI32::new(0);
+    move |tick, target| {
+        if is_entity_attackable(&tick.visibility(), target.as_ref()) {
+            positives_left.store(ticks, Ordering::Relaxed);
+            true
+        } else {
+            positives_left.fetch_sub(1, Ordering::Relaxed) > 0
+        }
+    }
 }
 
 pub fn remember_positives<T>(

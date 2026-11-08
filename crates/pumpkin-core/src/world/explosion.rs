@@ -748,10 +748,11 @@ impl<'a> Explosion<'a> {
             BlockInteraction::TriggerBlock => {
                 let (blocks, blown) = self.get_blocks_to_destroy(world);
                 let blocks = Self::shuffled(blocks);
-                for (pos, (block, _state)) in &blocks {
-                    let pumpkin_block = world.block_registry.get_pumpkin_block(block.id);
-                    if let Some(pumpkin_block) = pumpkin_block {
-                        pumpkin_block.explode(ExplodeArgs {
+                for (pos, _) in &blocks {
+                    // Vanilla reads each state as it goes, after earlier blocks reacted.
+                    let block = world.get_block(pos);
+                    if let Some(pumpkin_block) = world.block_registry.get_pumpkin_block(block.id) {
+                        pumpkin_block.on_explosion_hit(ExplodeArgs {
                             world,
                             block,
                             position: pos,

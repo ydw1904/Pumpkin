@@ -17,6 +17,7 @@ use std::sync::Arc;
 use crate::block::BlockBehaviour;
 use crate::block::BrokenArgs;
 use crate::block::CanPlaceAtArgs;
+use crate::block::ExplodeArgs;
 use crate::block::GetStateForNeighborUpdateArgs;
 use crate::block::NormalUseArgs;
 use crate::block::OnNeighborUpdateArgs;
@@ -224,6 +225,17 @@ impl DoorBlock {
 }
 
 impl BlockBehaviour for DoorBlock {
+    fn on_explosion_hit(&self, args: ExplodeArgs<'_>) {
+        let props = DoorProperties::from_state_id(args.world.get_block_state_id(args.position));
+        // `BlockSetType.canOpenByWindCharge` is false only for iron, like `canOpenByHand`.
+        if props.half == DoubleBlockHalf::Lower
+            && Self::can_open_by_hand(args.block)
+            && !props.powered
+        {
+            Self::set_open(args.world, args.position, !props.open);
+        }
+    }
+
     fn on_place(&self, args: OnPlaceArgs<'_>) -> BlockStateId {
         let mut door_props = DoorProperties::default(args.block);
         let facing = args.player.living_entity.entity.get_horizontal_facing();

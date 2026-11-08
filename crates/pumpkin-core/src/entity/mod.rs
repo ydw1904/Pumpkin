@@ -670,6 +670,17 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         false
     }
 
+    /// Vanilla `Entity.deflection`: how this entity turns away `projectile` instead of being hit.
+    fn deflection(
+        &self,
+        _projectile: &dyn EntityBase,
+    ) -> projectile_deflection::ProjectileDeflectionType {
+        projectile_deflection::ProjectileDeflectionType::default_for(self.get_entity())
+    }
+
+    /// Vanilla `Projectile.onDeflection`.
+    fn on_deflection(&self, _by_attack: bool) {}
+
     fn is_immobile(&self) -> bool {
         self.get_living_entity()
             .is_some_and(LivingEntity::is_dead_or_dying)
@@ -2657,6 +2668,17 @@ impl Entity {
         let yaw = wrap_degrees((delta.z.atan2(delta.x) as f32).to_degrees() - 90.0);
         self.pitch.store(pitch);
         self.yaw.store(yaw);
+    }
+
+    /// Vanilla `lookAt(EntityAnchorArgument.Anchor.EYES, target)`: turns the body and head so the
+    /// eyes face `target`.
+    pub fn look_at_from_eyes(&self, target: Vector3<f64>) {
+        let delta = target.sub(&self.get_eye_pos());
+        let pitch = wrap_degrees((-delta.y.atan2(delta.x.hypot(delta.z)) as f32).to_degrees());
+        let yaw = wrap_degrees((delta.z.atan2(delta.x) as f32).to_degrees() - 90.0);
+        self.pitch.store(pitch);
+        self.yaw.store(yaw);
+        self.head_yaw.store(yaw);
     }
 
     fn default_portal_cooldown(&self) -> u32 {

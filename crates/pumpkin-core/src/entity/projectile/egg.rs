@@ -35,6 +35,7 @@ impl EggEntity {
             owner: ProjectileOwner::none(),
             collides_with_projectiles: false,
             has_hit: AtomicBool::new(false),
+            last_deflected_by: crate::entity::projectile_deflection::LastDeflectedBy::new(),
             gravity: GRAVITY,
         };
 

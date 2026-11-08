@@ -154,6 +154,11 @@ pub trait BlockBehaviour: Send + Sync {
 
     fn explode(&self, _args: ExplodeArgs<'_>) {}
 
+    /// Vanilla `onExplosionHit` for an explosion that only triggers blocks
+    /// (`explosion.canTriggerBlocks()`), like a wind charge's. Destroying explosions call
+    /// [`Self::explode`] instead.
+    fn on_explosion_hit(&self, _args: ExplodeArgs<'_>) {}
+
     /// Handles the block event, which is an event specific to a block with an integer ID and data.
     ///
     /// returns whether the event was handled successfully

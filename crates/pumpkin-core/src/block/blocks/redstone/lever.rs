@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use crate::block::{
-    CanPlaceAtArgs, EmitsRedstonePowerArgs, GetRedstonePowerArgs, GetStateForNeighborUpdateArgs,
-    OnPlaceArgs, OnStateReplacedArgs, blocks::abstract_wall_mounting::WallMountedBlock,
+    CanPlaceAtArgs, EmitsRedstonePowerArgs, ExplodeArgs, GetRedstonePowerArgs,
+    GetStateForNeighborUpdateArgs, OnPlaceArgs, OnStateReplacedArgs,
+    blocks::abstract_wall_mounting::WallMountedBlock,
 };
 use pumpkin_data::{
     Block, BlockDirection, BlockStateId, HorizontalFacingExt,
@@ -36,6 +37,10 @@ fn play_lever_sound(world: &Arc<World>, block_pos: &BlockPos, powered: bool) {
 pub struct LeverBlock;
 
 impl BlockBehaviour for LeverBlock {
+    fn on_explosion_hit(&self, args: ExplodeArgs<'_>) {
+        Self::pull(args.world, args.position);
+    }
+
     fn normal_use(&self, args: NormalUseArgs<'_>) -> BlockActionResult {
         Self::pull(args.world, args.position);
         BlockActionResult::Success
