@@ -4,11 +4,28 @@
 const { make } = require('./survival-lib')
 const h = make('Weatherman')
 const { bot } = h
+const nbt = require('prismarine-nbt')
 const X = 6400; const Y = 200; const Z = 0
 
-const describe = (j) => j.translate ? j.translate + (j.with ? '(' + j.with.map(w => typeof w === 'object' ? (w.text ?? w.translate) : w).join(',') + ')' : '') : null
+// Reads the raw component: prismarine-chat drops number arguments, which vanilla sends as NBT
+// values (wrapped in a compound under the '' key when the list mixes types). Failures arrive as
+// an empty red text with the translation in `extra`.
+const value = (v) => Array.isArray(v) && v.length === 2 && v.every(n => typeof n === 'number')
+  ? String((BigInt(v[0]) << 32n) | BigInt(v[1] >>> 0))
+  : v
+const arg = (w) => typeof w === 'object' && !Array.isArray(w) ? (w.text ?? w.translate ?? value(w[''])) : value(w)
+const describe = (j) => typeof j !== 'object' || j === null
+  ? null
+  : j.translate
+    ? j.translate + (j.with ? '(' + j.with.map(arg).join(',') + ')' : '')
+    : (j.extra ?? []).map(describe).find(s => s) ?? null
 const msgs = []
-bot.on('message', (j) => { const s = describe(j); if (s) msgs.push(s) })
+bot._client.on('system_chat', (p) => {
+  if (p.isActionBar) return
+  const j = p.content && p.content.type ? nbt.simplify(p.content) : typeof p.content === 'string' ? JSON.parse(p.content) : p.content
+  const s = describe(j)
+  if (s) msgs.push(s)
+})
 const take = () => { const s = msgs.join('|') || 'none'; msgs.length = 0; return s }
 const say = async (c) => { take(); bot.chat(c); await h.ticks(10); return take() }
 const mobs = (name, r = 24) => Object.values(bot.entities).filter(e => e.name === name && e.position.distanceTo(bot.entity.position) < r)
@@ -28,6 +45,9 @@ h.start(async () => {
   h.result('client_clear', `${bot.isRaining} rain=${bot.rainState.toFixed(2)}`)
   h.result('weather_bad', await say('/weather snow'))
 
+  // A stopped clock keeps the queried times from depending on when each command lands.
+  h.cmd('gamerule advance_time false')
+  await h.ticks(5)
   h.result('time_set_day', await say('/time set day'))
   h.result('time_set_night', await say('/time set night'))
   h.result('time_set_noon', await say('/time set noon'))
@@ -37,7 +57,6 @@ h.start(async () => {
   h.result('time_query_day', await say('/time query day'))
   h.result('time_set_1d', await say('/time set 1d'))
   h.result('time_set_negative', await say('/time set -5'))
-  h.cmd('gamerule advance_time false')
   h.cmd('time set 6000')
   await h.ticks(10)
   h.result('client_time', `${bot.time.timeOfDay} cycle=${bot.time.doDaylightCycle}`)
