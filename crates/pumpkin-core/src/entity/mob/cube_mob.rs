@@ -75,6 +75,20 @@ pub trait CubeMob: Mob {
     fn get_jump_delay(&self) -> i32 {
         self.get_random().next_bounded_i32(20) + 10
     }
+
+    /// Vanilla `Entity.playSound`: nothing while silent.
+    fn play_cube_sound(&self, sound: Sound, volume: f32, pitch: f32) {
+        let entity = self.get_entity();
+        if !entity.is_silent() {
+            entity.world.load().play_sound_fine(
+                sound,
+                self.cube_sound_category(),
+                &entity.pos.load(),
+                volume,
+                pitch,
+            );
+        }
+    }
 }
 
 /// Runs the shared cube mob squish and landing sound tick.
@@ -92,14 +106,7 @@ pub fn tick_cube_mob(cube: &dyn CubeMob) {
     if on_ground && !was_on_ground {
         let random = cube.get_random();
         let pitch = ((random.next_f32() - random.next_f32()) * 0.2 + 1.0) / 0.8;
-        let world = entity.world.load();
-        world.play_sound_fine(
-            cube.get_squish_sound(),
-            cube.cube_sound_category(),
-            &entity.pos.load(),
-            cube.get_sound_volume(),
-            pitch,
-        );
+        cube.play_cube_sound(cube.get_squish_sound(), cube.get_sound_volume(), pitch);
 
         data.target_squish.store(-0.5);
     } else if !on_ground && was_on_ground {
@@ -186,11 +193,8 @@ impl MoveControlTrait for CubeMobMoveControl {
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .jump();
                 if cube.do_play_jump_sound() {
-                    let world = entity.world.load();
-                    world.play_sound_fine(
+                    cube.play_cube_sound(
                         cube.get_jump_sound(),
-                        cube.cube_sound_category(),
-                        &entity.pos.load(),
                         cube.get_sound_volume(),
                         cube.get_sound_pitch(),
                     );
