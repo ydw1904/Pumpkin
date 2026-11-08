@@ -35,9 +35,11 @@ use tracing::{debug, error, info, warn};
 use pumpkin_data::entity::EntityStatus;
 use pumpkin_data::game_rules::GameRule;
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
+use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_protocol::java::client::login::CEncryptionRequest;
 use pumpkin_protocol::java::client::play::{
-    CChangeDifficulty, CGameEvent, CTabList, CUpdateTagsPlay, GameEvent,
+    CChangeDifficulty, CGameEvent, CPlayerInfoUpdate, CTabList, CUpdateTagsPlay, GameEvent,
+    PlayerAction, PlayerInfoFlags,
 };
 use pumpkin_protocol::{BClientPacket, ClientPacket, java::client::config::CPluginMessage};
 use pumpkin_util::Difficulty;
@@ -133,6 +135,8 @@ pub struct Server {
     pub enchantment_manager: Arc<enchantment::EnchantmentManager>,
     /// Assigns unique IDs to maps.
     map_id: AtomicI32,
+    /// Vanilla `PlayerList.sendAllPlayerInfoIn`: ticks since the last tab list latency refresh.
+    send_all_player_info_in: AtomicU32,
     /// Mojang's public keys, used for chat session signing
     /// Pulled from Mojang API on startup
     pub mojang_public_keys: ArcSwap<Vec<RsaPublicKey>>,
@@ -346,6 +350,7 @@ impl Server {
             load_functions_pending: AtomicBool::new(false),
             enchantment_manager: Arc::new(enchantment::EnchantmentManager::new()),
             map_id: next_map_id(&world_path, level_info.load().map_id).into(),
+            send_all_player_info_in: AtomicU32::new(0),
             worlds: ArcSwap::from_pointee(vec![]),
             dimensions,
             command_dispatcher,
@@ -1588,6 +1593,7 @@ impl Server {
                 self.tick_players_and_network();
             }
             self.handle_console_inputs();
+            self.tick_player_list();
             for world in self.worlds.load().iter() {
                 world.schedule_light_updates(&self.compute_pool);
             }
@@ -1645,6 +1651,38 @@ impl Server {
                 let _ = done.send(());
             }
         }
+    }
+
+    /// Vanilla `PlayerList.tick`: refreshes every player's tab list latency each 600 ticks.
+    fn tick_player_list(&self) {
+        let ticks = self.send_all_player_info_in.fetch_add(1, Ordering::Relaxed) + 1;
+        if ticks <= 600 {
+            return;
+        }
+        self.send_all_player_info_in.store(0, Ordering::Relaxed);
+        let players = self.get_all_players();
+        let actions: Vec<_> = players
+            .iter()
+            .map(|player| {
+                let latency = player.ping.load(Ordering::Relaxed) as i32;
+                player.tab_list_latency.store(latency, Ordering::Relaxed);
+                [PlayerAction::UpdateLatency(VarInt(latency))]
+            })
+            .collect();
+        let entries: Vec<_> = players
+            .iter()
+            .zip(&actions)
+            .map(
+                |(player, actions)| pumpkin_protocol::java::client::play::Player {
+                    uuid: player.gameprofile.id,
+                    actions,
+                },
+            )
+            .collect();
+        self.broadcast_packet_all(&CPlayerInfoUpdate::new(
+            PlayerInfoFlags::UPDATE_LATENCY.bits(),
+            &entries,
+        ));
     }
 
     /// Ticks essential server functions that must run even when the game is frozen.
