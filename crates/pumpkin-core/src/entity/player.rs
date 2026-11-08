@@ -8019,6 +8019,10 @@ impl EntityBase for Player {
         SoundCategory::Players
     }
 
+    fn get_gravity(&self) -> f64 {
+        self.living_entity.get_gravity()
+    }
+
     /// Vanilla `Entity.interact`: shears cut the leashes this player holds.
     fn interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
         if item_stack.get_item() == &pumpkin_data::item::Item::SHEARS
