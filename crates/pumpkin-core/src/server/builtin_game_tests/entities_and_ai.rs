@@ -166,3 +166,32 @@ pub(super) async fn test_creaking_without_protecting_heart_dies(
         helper.assert_entity_not_present("minecraft:creaking").await
     })
 }
+
+pub(super) async fn test_animal_does_not_breed_with_partner_out_of_love(
+    helper: GameTestHelper,
+) -> GameTestResult<()> {
+    build_stone_floor(&helper, 5, 5).await?;
+    helper
+        .execute_command(
+            &BlockPos::new(1, 1, 2),
+            "summon minecraft:armadillo ~0.5 ~ ~0.5 {InLove:600,PersistenceRequired:1b}",
+        )
+        .await?;
+    helper
+        .execute_command(
+            &BlockPos::new(3, 1, 2),
+            "summon minecraft:armadillo ~0.5 ~ ~0.5 {PersistenceRequired:1b}",
+        )
+        .await?;
+
+    // Vanilla `Animal.canMate` needs both animals in love, so `AnimalMakeLove` never starts.
+    helper
+        .start_sequence()
+        .then_execute_for(250, |helper| async move {
+            helper
+                .assert_entities_present("minecraft:armadillo", 2)
+                .await
+        })
+        .then_succeed();
+    Ok(())
+}

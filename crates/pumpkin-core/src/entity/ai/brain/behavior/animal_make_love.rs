@@ -8,6 +8,7 @@ use super::timed::Behavior;
 use super::utils;
 use crate::entity::EntityBase;
 use crate::entity::ai::goal::breed::BreedGoal;
+use crate::entity::passive::animal::Animal;
 
 const BREED_RANGE: f64 = 3.0;
 const DURATION: i32 = 110;
@@ -59,7 +60,7 @@ impl AnimalMakeLove {
             .find_closest(&tick.visibility(), |entity| {
                 entity.get_entity().entity_type == self.partner_type
                     && entity.get_mob().and_then(|mob| mob.as_animal()).is_some()
-                    && animal.can_mate(entity.as_ref())
+                    && can_mate(tick, animal, entity.as_ref())
                     && !entity.is_panicking()
             })
     }
@@ -70,6 +71,14 @@ impl AnimalMakeLove {
             .filter(|target| target.get_entity().entity_type == self.partner_type)
             .cloned()
     }
+}
+
+/// Vanilla `Animal.canMate`: another entity, both in love, plus the animal's own checks.
+fn can_mate(tick: &BrainTick<'_>, animal: &dyn Animal, partner: &dyn EntityBase) -> bool {
+    partner.get_entity().entity_id != tick.mob.get_entity().entity_id
+        && tick.mob.get_mob_entity().is_in_love()
+        && partner.is_in_love()
+        && animal.can_mate(partner)
 }
 
 impl Behavior for AnimalMakeLove {
@@ -121,7 +130,7 @@ impl Behavior for AnimalMakeLove {
             && tick
                 .mob
                 .as_animal()
-                .is_some_and(|animal| animal.can_mate(partner.as_ref()))
+                .is_some_and(|animal| can_mate(tick, animal, partner.as_ref()))
             && utils::entity_is_visible(&tick.visibility(), partner.as_ref())
             && tick.time <= self.spawn_child_at_time
             && !tick.state.has_memory_value(types::IS_PANICKING.id())

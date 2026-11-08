@@ -82,6 +82,7 @@ const BUILTIN_TEST_IDS: &[&str] = &[
     "pumpkin:item_entities_merge",
     "pumpkin:zombie_pathfinds_to_villager",
     "pumpkin:bee_with_nectar_enters_hive",
+    "pumpkin:animal_does_not_breed_with_partner_out_of_love",
     "pumpkin:minecart_drops_item_when_destroyed",
     // redstone_wire_and_power (14)
     "pumpkin:redstone_wire_attenuation_1_to_4",
@@ -560,6 +561,13 @@ pub fn ensure_builtin_game_tests_registered() {
             40,
             0,
             entities_and_ai::test_creaking_without_protecting_heart_dies,
+        );
+        register_function_test(
+            "pumpkin:animal_does_not_breed_with_partner_out_of_love",
+            "pumpkin:empty_5x4x5",
+            300,
+            0,
+            entities_and_ai::test_animal_does_not_breed_with_partner_out_of_love,
         );
         register_function_test(
             "pumpkin:minecart_drops_item_when_destroyed",
