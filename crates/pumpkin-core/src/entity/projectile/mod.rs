@@ -356,13 +356,18 @@ impl ThrownItemEntity {
         }
 
         // Entity collisions
+        let margin = compute_margin(entity);
         let candidates = hit_candidates(&world, &search_box);
         for cand in candidates {
             if self.should_skip_collision(&world, entity, &cand) {
                 continue;
             }
 
-            let ebb = cand.get_entity().bounding_box.load().expand(0.3, 0.3, 0.3);
+            let ebb = cand
+                .get_entity()
+                .bounding_box
+                .load()
+                .expand(margin, margin, margin);
             if skips_hit_from_inside(cand.as_ref(), &ebb, &start_pos) {
                 continue;
             }
@@ -495,6 +500,16 @@ pub(crate) fn rotate_towards_movement(entity: &Entity, speed: f32) {
     }
     entity.yaw.store(old_yaw + speed * (yaw - old_yaw));
     entity.pitch.store(old_pitch + speed * (pitch - old_pitch));
+}
+
+/// Vanilla `ProjectileUtil.DEFAULT_ENTITY_HIT_RESULT_MARGIN`.
+const DEFAULT_ENTITY_HIT_RESULT_MARGIN: f32 = 0.3;
+
+/// Vanilla `ProjectileUtil.computeMargin`: a projectile hits entities only by their exact box for
+/// its first two ticks, then grows the margin around them to 0.3 over the next six.
+fn compute_margin(entity: &Entity) -> f64 {
+    let ticks = entity.tick_count.load(Ordering::Relaxed);
+    f64::from(((ticks - 2) as f32 / 20.0).clamp(0.0, DEFAULT_ENTITY_HIT_RESULT_MARGIN))
 }
 
 /// Whether a ray starting inside `bb` skips this entity, for mobs that opt out of inside hits.
