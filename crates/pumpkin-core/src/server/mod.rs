@@ -39,7 +39,7 @@ use pumpkin_protocol::java::client::login::CEncryptionRequest;
 use pumpkin_protocol::java::client::play::{
     CChangeDifficulty, CGameEvent, CTabList, CUpdateTagsPlay, GameEvent,
 };
-use pumpkin_protocol::{ClientPacket, java::client::config::CPluginMessage};
+use pumpkin_protocol::{BClientPacket, ClientPacket, java::client::config::CPluginMessage};
 use pumpkin_util::Difficulty;
 use pumpkin_util::text::TextComponent;
 use pumpkin_world::world_info::anvil::{
@@ -1178,6 +1178,29 @@ impl Server {
     pub fn broadcast_packet_all<P: ClientPacket>(&self, packet: &P) {
         for world in self.worlds.load().iter() {
             world.broadcast_packet_all(packet);
+        }
+    }
+
+    /// Vanilla `PlayerList.broadcastAll`, with a separate packet for Bedrock players.
+    pub fn broadcast_editioned<J: ClientPacket, B: BClientPacket>(
+        &self,
+        je_packet: &J,
+        be_packet: &B,
+    ) {
+        for world in self.worlds.load().iter() {
+            world.broadcast_editioned(je_packet, be_packet);
+        }
+    }
+
+    /// [`Self::broadcast_editioned`] to everyone except the players in `except`.
+    pub fn broadcast_packet_except_editioned<J: ClientPacket, B: BClientPacket>(
+        &self,
+        except: &[uuid::Uuid],
+        je_packet: &J,
+        be_packet: &B,
+    ) {
+        for world in self.worlds.load().iter() {
+            world.broadcast_packet_except_editioned(except, je_packet, be_packet);
         }
     }
 

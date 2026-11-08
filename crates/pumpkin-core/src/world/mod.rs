@@ -4149,8 +4149,9 @@ impl World {
             }],
         };
 
+        // The tab list is server-wide, like vanilla `PlayerList`; only entity tracking is per world.
         let gamemode = player.gamemode.load();
-        self.broadcast_packet_except_editioned(
+        server.broadcast_packet_except_editioned(
             &[gameprofile.id],
             &CPlayerInfoUpdate::new(
                 (PlayerInfoFlags::ADD_PLAYER
@@ -4187,10 +4188,9 @@ impl World {
             .living_entity
             .send_current_equipment_attribute_modifiers();
 
-        // 2. Spawn existing players for our new Bedrock client
-        let players = self.players.load();
-
-        for existing_player in players
+        // 2. List the players already online, in every dimension
+        for existing_player in server
+            .get_all_players()
             .iter()
             .filter(|p| p.gameprofile.id != gameprofile.id)
         {
@@ -4353,7 +4353,8 @@ impl World {
         }];
         let player_info_update = CPlayerInfoUpdate::new(Self::TAB_LIST_ADD_FLAGS, &java_player);
 
-        self.broadcast_editioned(&player_info_update, &bedrock_player_list);
+        // The tab list is server-wide, like vanilla `PlayerList`; only entity tracking is per world.
+        server.broadcast_editioned(&player_info_update, &bedrock_player_list);
 
         // If the player has a custom tab_list_name, send an update for it
         if let Some(tab_list_name) = player.get_tab_list_name() {
@@ -4362,16 +4363,16 @@ impl World {
                 uuid: gameprofile.id,
                 actions: &actions,
             }];
-            self.broadcast_packet_all(&CPlayerInfoUpdate::new(
+            server.broadcast_packet_all(&CPlayerInfoUpdate::new(
                 PlayerInfoFlags::UPDATE_DISPLAY_NAME.bits(),
                 &java_player,
             ));
         }
 
-        // Here, we send all the infos of players who already joined.
+        // Here, we send all the infos of players who already joined, in every dimension.
         let mut players_tab_list_names = Vec::new();
         {
-            let players = self.players.load();
+            let players = server.get_all_players();
             let mut data_to_process = Vec::new();
             for p in players
                 .iter()
@@ -5934,51 +5935,9 @@ impl World {
         Ok(())
     }
 
-    /// Tab-list add entry for `player` from its stored state, as Java and Bedrock packets.
-    fn with_player_list_entry<R>(
-        player: &Player,
-        f: impl FnOnce(&CPlayerInfoUpdate<'_>, &CPlayerList) -> R,
-    ) -> R {
-        let profile = &player.gameprofile;
-        let properties = profile.properties.load();
-        let actions = [
-            PlayerAction::AddPlayer {
-                name: &profile.name,
-                properties: &properties,
-            },
-            PlayerAction::UpdateGameMode(VarInt(player.gamemode.load() as i32)),
-            PlayerAction::UpdateListed(player.tab_list_listed.load(Ordering::Relaxed)),
-            PlayerAction::UpdateLatency(VarInt(player.tab_list_latency.load(Ordering::Relaxed))),
-            PlayerAction::UpdateListOrder(VarInt(player.tab_list_order.load(Ordering::Relaxed))),
-            PlayerAction::UpdateHat(true),
-        ];
-        let entry = [pumpkin_protocol::java::client::play::Player {
-            uuid: profile.id,
-            actions: &actions,
-        }];
-        f(
-            &CPlayerInfoUpdate::new(Self::TAB_LIST_ADD_FLAGS, &entry),
-            &player.bedrock_player_list(),
-        )
-    }
-
-    /// Publishes a player from another world -> tab list first, Java drops spawns without it.
+    /// Publishes a player from another world to this world's entity tracker. Its tab list entry
+    /// is server-wide and stays from the join, like vanilla `PlayerList`.
     pub fn add_arriving_player(&self, player: &Arc<Player>) {
-        let id = player.gameprofile.id;
-        Self::with_player_list_entry(player, |java, bedrock| {
-            self.broadcast_packet_except_editioned(&[id], java, bedrock);
-        });
-        for existing in self
-            .players
-            .load()
-            .iter()
-            .filter(|p| p.gameprofile.id != id)
-        {
-            Self::with_player_list_entry(existing, |java, bedrock| {
-                player.client.try_enqueue_packet_editioned(java, bedrock);
-            });
-        }
-
         self.entity_tracker
             .add_entity(&(player.clone() as Arc<dyn EntityBase>), self);
     }
@@ -6007,30 +5966,12 @@ impl World {
             .pair_new_player_with_tracked_entities(player, self);
     }
 
-    /// Removes a player from the world and broadcasts a disconnect message if enabled.
+    /// Removes a player from this world and its entity tracker.
     ///
-    /// This function removes a player from the world based on their `Player` reference.
-    /// It performs the following actions:
-    ///
-    /// 1. Removes the player from the `current_players` map using their UUID.
-    /// 2. Broadcasts a `CRemovePlayerInfo` packet to all connected players to inform them about the player leaving.
-    /// 3. Removes the player's entity from the world using its entity ID.
-    /// 4. Optionally sends a disconnect message to all other players notifying them about the player leaving.
-    ///
-    /// # Arguments
-    ///
-    /// * `player`: A reference to the `Player` object to be removed.
-    /// * `fire_event`: A boolean flag indicating whether to fire a `PlayerLeaveEvent` event.
-    ///
-    /// # Notes
-    ///
-    /// - This function assumes `broadcast_packet_expect` and `remove_entity` are defined elsewhere.
-    /// - The disconnect message sending is currently optional. Consider making it a configurable option.
-    pub async fn remove_player(
-        &self,
-        player: &Arc<Player>,
-        fire_event: bool,
-    ) -> Option<Arc<Player>> {
+    /// `quit` is set when the player leaves the server: then it fires `PlayerLeaveEvent`, sends
+    /// the leave message and removes the tab list entry for every player. A dimension change
+    /// keeps the entry, because the tab list is server-wide like vanilla `PlayerList`.
+    pub async fn remove_player(&self, player: &Arc<Player>, quit: bool) -> Option<Arc<Player>> {
         let mut removed_player: Option<Arc<Player>> = None;
 
         self.players.rcu(|current_list| {
@@ -6048,29 +5989,8 @@ impl World {
             self.update_sleeping_player_list();
             self.entity_tracker
                 .remove_entity(player.as_ref() as &dyn EntityBase, self);
-            let uuid = player.gameprofile.id;
-            let entity_id = player.entity_id();
 
-            let bedrock_remove_player = CPlayerList {
-                action: CPlayerList::ACTION_REMOVE,
-                entries: vec![PlayerListEntry {
-                    uuid,
-                    entity_unique_id: VarLong(entity_id as i64),
-                    username: player.gameprofile.name.clone(),
-                    xuid: String::new(),
-                    platform_chat_id: String::new(),
-                    build_platform: BuildPlatform::Unknown,
-                    skin: Skin::steve(),
-                    is_teacher: false,
-                    is_host: false,
-                    is_sub_client: false,
-                    player_color: [0, 0, 0, 0],
-                }],
-            };
-
-            self.broadcast_editioned(&CRemovePlayerInfo::new(&[uuid]), &bedrock_remove_player);
-
-            if fire_event {
+            if quit && let Some(server) = self.server.upgrade() {
                 let msg_comp = TextComponent::translate_cross(
                     translation::java::MULTIPLAYER_PLAYER_LEFT,
                     translation::bedrock::MULTIPLAYER_PLAYER_LEFT,
@@ -6078,17 +5998,34 @@ impl World {
                 )
                 .color_named(NamedColor::Yellow);
                 let mut event = PlayerLeaveEvent::new(player.clone(), msg_comp);
-
-                if let Some(server) = self.server.upgrade() {
-                    server.plugin_manager.fire(&server, &mut event).await;
-
-                    if !event.cancelled {
-                        for player in self.players.load().iter() {
-                            player.send_system_message(&event.leave_message);
-                        }
-                        info!("{}", event.leave_message.to_pretty_console());
+                server.plugin_manager.fire(&server, &mut event).await;
+                if !event.cancelled {
+                    for player in self.players.load().iter() {
+                        player.send_system_message(&event.leave_message);
                     }
+                    info!("{}", event.leave_message.to_pretty_console());
                 }
+
+                // Vanilla `PlayerList.remove`, after the leave message.
+                let uuid = player.gameprofile.id;
+                let bedrock_remove_player = CPlayerList {
+                    action: CPlayerList::ACTION_REMOVE,
+                    entries: vec![PlayerListEntry {
+                        uuid,
+                        entity_unique_id: VarLong(player.entity_id() as i64),
+                        username: player.gameprofile.name.clone(),
+                        xuid: String::new(),
+                        platform_chat_id: String::new(),
+                        build_platform: BuildPlatform::Unknown,
+                        skin: Skin::steve(),
+                        is_teacher: false,
+                        is_host: false,
+                        is_sub_client: false,
+                        player_color: [0, 0, 0, 0],
+                    }],
+                };
+                server
+                    .broadcast_editioned(&CRemovePlayerInfo::new(&[uuid]), &bedrock_remove_player);
             }
         }
         removed_player
