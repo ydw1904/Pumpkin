@@ -1254,10 +1254,26 @@ impl MobEntity {
     /// widened to double. The attack box grows the mob's box by this much horizontally.
     pub const DEFAULT_ATTACK_REACH: f64 = 0.828_285_648_512_600_4;
 
-    /// How far past its box the held weapon lets the mob hit, see [`Mob::is_in_attack_range`].
+    /// How far past its box the mob may hit in the upcoming tick, see
+    /// [`Mob::is_in_attack_range`]. The tick can start using either hand's item, so this covers
+    /// both hands as well as the item already in use.
     #[must_use]
     pub fn melee_attack_max_reach(&self) -> f64 {
-        melee_attack_range(self).0
+        let living = &self.living_entity;
+        let in_use = living
+            .item_in_use
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        [
+            Some(living.held_item_from_equipment()),
+            Some(living.off_hand_item(living)),
+            in_use,
+        ]
+        .iter()
+        .flatten()
+        .map(|item| attack_range_of(item).0)
+        .fold(Self::DEFAULT_ATTACK_REACH, f64::max)
     }
 
     pub fn is_dark_enough_to_spawn(world: &World, pos: &BlockPos, is_thundering: bool) -> bool {
@@ -1749,8 +1765,19 @@ pub(super) fn attack_bounding_box(entity: &Entity, horizontal_expansion: f64) ->
     base_box.expand(horizontal_expansion, 0.0, horizontal_expansion)
 }
 
-fn melee_attack_range(mob: &MobEntity) -> (f64, f64) {
-    let weapon = mob.living_entity.held_item_from_equipment();
+/// Vanilla `LivingEntity.getActiveItem` for a mob: the item in use, else the main hand.
+fn active_item(mob: &MobEntity) -> ItemStack {
+    let living = &mob.living_entity;
+    let in_use = living
+        .item_in_use
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    in_use.unwrap_or_else(|| living.held_item_from_equipment())
+}
+
+/// The `(max, min)` reach of `weapon`'s `AttackRange`, scaled for mobs.
+fn attack_range_of(weapon: &ItemStack) -> (f64, f64) {
     weapon.get_data_component::<AttackRangeImpl>().map_or(
         (MobEntity::DEFAULT_ATTACK_REACH, 0.0),
         |range| {
@@ -1767,7 +1794,7 @@ fn is_within_melee_attack_range(
     target: &dyn EntityBase,
     attack_box: impl Fn(f64) -> BoundingBox,
 ) -> bool {
-    let (max_range, min_range) = melee_attack_range(mob);
+    let (max_range, min_range) = attack_range_of(&active_item(mob));
     let target_hitbox = target.get_entity().get_hitbox();
     attack_box(max_range).intersects(&target_hitbox)
         && (min_range <= 0.0 || !attack_box(min_range).intersects(&target_hitbox))
