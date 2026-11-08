@@ -6970,6 +6970,7 @@ impl World {
         self.set_block_state(position, state_id, BlockFlags::NOTIFY_ALL);
     }
 
+    #[expect(clippy::too_many_lines)]
     pub fn break_block(
         self: &Arc<Self>,
         position: &BlockPos,
@@ -6995,6 +6996,9 @@ impl World {
         if let Some(player) = cause {
             crate::block::entities::shulker_box::player_will_destroy(self, position, player);
         }
+        // Vanilla `playerDestroy` gets the block entity the block had before it was removed.
+        let destroyed_hive =
+            crate::block::blocks::beehive::BeehiveBlock::destroyed_hive(self, position, cause);
 
         let mut flags = flags;
         if flags.contains(BlockFlags::SKIP_DROPS)
@@ -7050,6 +7054,15 @@ impl World {
 
         let broken_state_id = self.set_block_state(position, new_state_id, flags);
         let broken_block = Block::from_state_id(broken_state_id);
+        if let (Some(player), Some(hive)) = (cause, destroyed_hive) {
+            crate::block::blocks::beehive::BeehiveBlock::player_destroy(
+                self,
+                player,
+                position,
+                broken_state_id,
+                &hive,
+            );
+        }
         if !broken_block.is_air()
             && broken_state_id != new_state_id
             && broken_block != &Block::FIRE

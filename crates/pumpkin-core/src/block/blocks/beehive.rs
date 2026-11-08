@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::block::blocks::campfire::CampfireBlock;
+use crate::block::entities::BlockEntity;
 use crate::block::entities::beehive::{BeeReleaseStatus, BeehiveBlockEntity, MAX_HONEY_LEVELS};
 use crate::block::registry::BlockActionResult;
 use crate::block::{
@@ -10,14 +11,18 @@ use crate::entity::EntityBase;
 use crate::entity::mob::Mob;
 use crate::entity::passive::bee::BeeEntity;
 use crate::entity::player::Player;
+use crate::entity::player::advancement::trigger::AdvancementTrigger;
 use crate::plugin::api::events::entity::entity_target::TargetReason;
 use crate::world::World;
+use pumpkin_data::Block;
 use pumpkin_data::block_properties::BeeNestLikeProperties;
+use pumpkin_data::data_component_impl::EnchantmentsImpl;
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::statistic::StatisticCategory;
+use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::{BlockId, BlockStateId};
 use pumpkin_util::GameMode;
 use pumpkin_util::math::boundingbox::BoundingBox;
@@ -47,6 +52,56 @@ impl BeehiveBlock {
         {
             beehive.empty_all_living_from_hive(world, state_id, player, status);
         }
+    }
+
+    /// The hive block entity at `pos` that a survival player's break is about to destroy.
+    pub fn destroyed_hive(
+        world: &World,
+        pos: &BlockPos,
+        cause: Option<&Arc<Player>>,
+    ) -> Option<Arc<dyn BlockEntity>> {
+        cause.filter(|player| player.gamemode.load() != GameMode::Creative)?;
+        world
+            .get_block_entity(pos)
+            .filter(|entity| entity.as_any().is::<BeehiveBlockEntity>())
+    }
+
+    /// Vanilla `BeehiveBlock.playerDestroy`: unless the tool prevents it, a survival player's
+    /// break releases the bees and angers those nearby. `hive` is the block entity the hive had.
+    pub fn player_destroy(
+        world: &Arc<World>,
+        player: &Arc<Player>,
+        pos: &BlockPos,
+        state_id: BlockStateId,
+        hive: &Arc<dyn BlockEntity>,
+    ) {
+        let Some(hive) = hive.as_any().downcast_ref::<BeehiveBlockEntity>() else {
+            return;
+        };
+        let keeps_bees = player
+            .inventory()
+            .held_item()
+            .get_data_component::<EnchantmentsImpl>()
+            .is_some_and(|enchantments| {
+                enchantments.enchantment.iter().any(|(enchantment, _)| {
+                    enchantment
+                        .has_tag(&tag::Enchantment::MINECRAFT_PREVENTS_BEE_SPAWNS_WHEN_MINING)
+                })
+            });
+        let num_bees_inside = hive.occupant_count() as i32;
+        if !keeps_bees {
+            hive.empty_all_living_from_hive(
+                world,
+                state_id,
+                Some(player),
+                BeeReleaseStatus::Emergency,
+            );
+            Self::anger_nearby_bees(world, pos);
+        }
+        player.trigger_advancement(AdvancementTrigger::BeeNestDestroyed {
+            block_id: format!("minecraft:{}", Block::from_state_id(state_id).name),
+            num_bees_inside,
+        });
     }
 
     /// Vanilla `resetHoneyLevel`.
