@@ -1648,11 +1648,6 @@ impl LivingEntity {
             return false;
         }
 
-        // Like vanilla, instant effects are never sent or stored as active effects.
-        if self.apply_instant_effect(effect.effect_type, effect.amplifier, None, None) {
-            return true;
-        }
-
         // Vanilla `LivingEntity.addEffect`: an effect already active is only updated, so a
         // weaker one never replaces a stronger one.
         let existing = self
@@ -1710,14 +1705,11 @@ impl LivingEntity {
         }
 
         self.broadcast_effect(&effect, blend);
-        if effect.effect_type != &StatusEffect::INSTANT_HEALTH
-            && effect.effect_type != &StatusEffect::INSTANT_DAMAGE
-        {
-            self.active_effects
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .insert(effect.effect_type, effect);
-        }
+        // Instant effects are stored too and applied by `tick_effects` while they last.
+        self.active_effects
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(effect.effect_type, effect);
         self.sync_effect_particles();
         self.trigger_effects_changed(source);
         true

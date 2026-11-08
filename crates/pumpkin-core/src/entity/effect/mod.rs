@@ -1,3 +1,4 @@
+pub mod heal_or_harm;
 pub mod hunger;
 pub mod infested;
 pub mod oozing;
@@ -44,6 +45,10 @@ pub trait MobEffect: Send + Sync {
 pub static REGENERATION: regeneration::RegenerationMobEffect = regeneration::RegenerationMobEffect;
 pub static POISON: poison::PoisonMobEffect = poison::PoisonMobEffect;
 pub static WITHER: wither::WitherMobEffect = wither::WitherMobEffect;
+pub static INSTANT_HEALTH: heal_or_harm::HealOrHarmMobEffect =
+    heal_or_harm::HealOrHarmMobEffect(&StatusEffect::INSTANT_HEALTH);
+pub static INSTANT_DAMAGE: heal_or_harm::HealOrHarmMobEffect =
+    heal_or_harm::HealOrHarmMobEffect(&StatusEffect::INSTANT_DAMAGE);
 pub static HUNGER: hunger::HungerMobEffect = hunger::HungerMobEffect;
 pub static SATURATION: saturation::SaturationMobEffect = saturation::SaturationMobEffect;
 pub static RAID_OMEN: raid_omen::RaidOmenMobEffect = raid_omen::RaidOmenMobEffect;
@@ -60,6 +65,10 @@ pub fn get_mob_effect(effect: &'static StatusEffect) -> Option<&'static dyn MobE
         Some(&POISON)
     } else if effect == &StatusEffect::WITHER {
         Some(&WITHER)
+    } else if effect == &StatusEffect::INSTANT_HEALTH {
+        Some(&INSTANT_HEALTH)
+    } else if effect == &StatusEffect::INSTANT_DAMAGE {
+        Some(&INSTANT_DAMAGE)
     } else if effect == &StatusEffect::HUNGER {
         Some(&HUNGER)
     } else if effect == &StatusEffect::SATURATION {
