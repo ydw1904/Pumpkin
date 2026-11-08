@@ -350,12 +350,12 @@ impl MobEntity {
             LeashTick::NotLeashed => {}
             LeashTick::Snapped => self.goals_selector.disable_control(Controls::MOVE),
             LeashTick::Elastic(holder) => {
-                self.when_leashed_to(&*holder);
+                self.when_leashed_to(mob, &*holder);
                 entity.check_fall_distance_accumulation(&self.living_entity);
                 mob.on_elastic_leash_pull();
             }
             LeashTick::CloseRange(holder) => {
-                self.when_leashed_to(&*holder);
+                self.when_leashed_to(mob, &*holder);
                 self.close_range_leash_behaviour(mob, &*holder);
             }
         }
@@ -364,11 +364,11 @@ impl MobEntity {
         }
     }
 
-    fn when_leashed_to(&self, holder: &dyn EntityBase) {
+    fn when_leashed_to(&self, mob: &dyn Mob, holder: &dyn EntityBase) {
         self.was_leashed.store(true, Relaxed);
         self.set_home_to(
             holder.get_entity().block_pos.load(),
-            Entity::LEASH_ELASTIC_DISTANCE as i32 - 1,
+            mob.mob_leash_elastic_distance() as i32 - 1,
         );
     }
 
@@ -2235,6 +2235,25 @@ pub trait Mob: EntityBase + Send + Sync {
         false
     }
 
+    /// See [`EntityBase::leash_snap_distance`].
+    fn mob_leash_snap_distance(&self) -> f64 {
+        Entity::LEASH_SNAP_DISTANCE
+    }
+
+    /// See [`EntityBase::leash_elastic_distance`].
+    fn mob_leash_elastic_distance(&self) -> f64 {
+        Entity::LEASH_ELASTIC_DISTANCE
+    }
+
+    /// See [`EntityBase::notify_leash_holder`].
+    fn mob_notify_leash_holder(&self, _leashed: &dyn EntityBase) {}
+
+    /// See [`EntityBase::on_passenger_added`].
+    fn mob_on_passenger_added(&self, _passenger: &dyn EntityBase) {}
+
+    /// See [`EntityBase::on_passenger_removed`].
+    fn mob_on_passenger_removed(&self, _passenger: &dyn EntityBase) {}
+
     fn on_elastic_leash_pull(&self) {}
 
     fn follow_leash_speed(&self) -> f64 {
@@ -3597,6 +3616,26 @@ impl<T: Mob + Send + 'static> EntityBase for T {
 
     fn support_quad_leash_as_holder(&self) -> bool {
         self.mob_support_quad_leash_as_holder()
+    }
+
+    fn leash_snap_distance(&self) -> f64 {
+        self.mob_leash_snap_distance()
+    }
+
+    fn leash_elastic_distance(&self) -> f64 {
+        self.mob_leash_elastic_distance()
+    }
+
+    fn notify_leash_holder(&self, leashed: &dyn EntityBase) {
+        self.mob_notify_leash_holder(leashed);
+    }
+
+    fn on_passenger_added(&self, passenger: &dyn EntityBase) {
+        self.mob_on_passenger_added(passenger);
+    }
+
+    fn on_passenger_removed(&self, passenger: &dyn EntityBase) {
+        self.mob_on_passenger_removed(passenger);
     }
 
     fn on_lightning_strike(

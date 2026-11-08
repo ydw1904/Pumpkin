@@ -27,6 +27,9 @@ pub trait MoveControlTrait: Control {
 
     fn strafe(&mut self, _forward: f32, _right: f32) {}
 
+    /// Vanilla `MoveControl.setWait`.
+    fn set_wait(&mut self) {}
+
     fn has_wanted(&self) -> bool {
         false
     }

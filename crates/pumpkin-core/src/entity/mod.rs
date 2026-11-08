@@ -640,6 +640,25 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         false
     }
 
+    /// Vanilla `Leashable.leashSnapDistance`: the leash breaks beyond this.
+    fn leash_snap_distance(&self) -> f64 {
+        Entity::LEASH_SNAP_DISTANCE
+    }
+
+    /// Vanilla `Leashable.leashElasticDistance`: the leash pulls beyond this.
+    fn leash_elastic_distance(&self) -> f64 {
+        Entity::LEASH_ELASTIC_DISTANCE
+    }
+
+    /// Vanilla `Entity.notifyLeashHolder`: called every tick on the holder of `leashed`.
+    fn notify_leash_holder(&self, _leashed: &dyn EntityBase) {}
+
+    /// Vanilla `addPassenger` overrides, after `passenger` got on.
+    fn on_passenger_added(&self, _passenger: &dyn EntityBase) {}
+
+    /// Vanilla `removePassenger` overrides, after `passenger` got off.
+    fn on_passenger_removed(&self, _passenger: &dyn EntityBase) {}
+
     fn is_spectator(&self) -> bool {
         false
     }
@@ -1638,6 +1657,8 @@ pub struct Entity {
     pub water_height: AtomicCell<f64>,
     /// Indicates whether the entity is touching lava
     pub touching_lava: AtomicBool,
+    /// Vanilla `requiresPrecisePosition`: the tracker sends absolute positions instead of deltas.
+    pub requires_precise_position: AtomicBool,
     /// Indicates the fluid height
     pub lava_height: AtomicCell<f64>,
     /// The entity's yaw rotation (horizontal rotation) ← →
@@ -1948,6 +1969,7 @@ impl Entity {
             touching_water: AtomicBool::new(false),
             water_height: AtomicCell::new(0.0),
             touching_lava: AtomicBool::new(false),
+            requires_precise_position: AtomicBool::new(false),
             lava_height: AtomicCell::new(0.0),
             horizontal_collision: AtomicBool::new(false),
             vertical_collision: AtomicBool::new(false),
@@ -5648,7 +5670,8 @@ impl Entity {
         }
 
         let distance = self.leash_distance_to(holder_entity);
-        if distance > Self::LEASH_SNAP_DISTANCE {
+        holder.notify_leash_holder(caller);
+        if distance > caller.leash_snap_distance() {
             let holder_pos = holder_entity.pos.load();
             self.world
                 .load()
@@ -5656,7 +5679,7 @@ impl Entity {
             self.drop_leash();
             return LeashTick::Snapped;
         }
-        let elastic_threshold = Self::LEASH_ELASTIC_DISTANCE
+        let elastic_threshold = caller.leash_elastic_distance()
             - f64::from(holder_entity.width())
             - f64::from(self.width());
         let result = if distance > elastic_threshold
@@ -5688,6 +5711,7 @@ impl Entity {
         };
 
         let holder_entity = holder.get_entity();
+        let slack_distance = caller.leash_elastic_distance();
         let entity_movement = holder_movement(caller);
         let entity_dimensions = Vector3::new(
             f64::from(self.width()),
@@ -5727,11 +5751,11 @@ impl Entity {
                     -holder_yaw,
                 );
             let attach_distance = (holder_attach - entity_attach).length();
-            if attach_distance < Self::LEASH_ELASTIC_DISTANCE {
+            if attach_distance < slack_distance {
                 continue;
             }
-            let mut displacement = (holder_attach - entity_attach).normalize()
-                * (attach_distance - Self::LEASH_ELASTIC_DISTANCE);
+            let mut displacement =
+                (holder_attach - entity_attach).normalize() * (attach_distance - slack_distance);
             torque += lever_arm.z * displacement.x - lever_arm.x * displacement.z;
             if entity_movement.dot(&displacement) >= 0.0 {
                 displacement = displacement * f64::from(0.3f32);
@@ -5941,6 +5965,7 @@ impl Entity {
             return;
         }
 
+        let added = (vehicle.clone(), passenger.clone());
         let passenger_entity = passenger.get_entity();
         *passenger_entity
             .vehicle
@@ -6030,6 +6055,7 @@ impl Entity {
             &passengers_packet,
             &be_link,
         );
+        added.0.on_passenger_added(added.1.as_ref());
     }
 
     /// Sends a passenger change of this vehicle. Like vanilla `ServerPlayer.startRiding` and
@@ -6131,6 +6157,11 @@ impl Entity {
             &CSetPassengers::new(VarInt(self.entity_id), &passenger_ids),
             &be_unlink,
         );
+        if let Some(passenger) = &removed
+            && let Some(vehicle) = self.world.load().get_entity_by_id(self.entity_id)
+        {
+            vehicle.on_passenger_removed(passenger.as_ref());
+        }
     }
 
     pub fn remove_passenger_sync(&self, passenger_id: i32) {
@@ -6262,6 +6293,9 @@ impl Entity {
                 },
             };
             self.broadcast_passenger_change(passenger.get_player(), &passengers_packet, &be_unlink);
+            if let Some(vehicle) = world.get_entity_by_id(self.entity_id) {
+                vehicle.on_passenger_removed(passenger.as_ref());
+            }
 
             if !reposition {
                 return;
