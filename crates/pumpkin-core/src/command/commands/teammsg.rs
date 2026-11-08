@@ -27,11 +27,11 @@ impl CommandExecutor for TeamMsgCommandExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
         let player = context.source.player_or_err()?;
         let sender_name = player.gameprofile.name.clone();
-        let world = context.world().clone();
+        let server = context.server();
         let message_text = StringArgumentType::get(context, ARG_MESSAGE)?.to_string();
         let sender_display_name = context.source.display_name().clone();
 
-        let scoreboard = world
+        let scoreboard = server
             .scoreboard
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -60,10 +60,10 @@ impl CommandExecutor for TeamMsgCommandExecutor {
             });
         let message_component = TextComponent::text(message_text);
 
-        let online_players = world.players.load();
+        // Vanilla sends to every player on the server, not just the sender's dimension.
         let mut recipients = 0;
 
-        for player in online_players.iter() {
+        for player in server.get_all_players() {
             if team.players.contains(&player.gameprofile.name) {
                 let msg = if player.gameprofile.name == sender_name {
                     TextComponent::translate_cross(
