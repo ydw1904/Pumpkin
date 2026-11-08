@@ -1424,7 +1424,7 @@ impl Goal for SulfurCubeSearchForItemsGoal {
                 let Some(item) = candidate.get_item_entity() else {
                     return false;
                 };
-                if item.get_pickup_delay() != 0 || !candidate.get_entity().is_alive() {
+                if item.has_pickup_delay() || !candidate.get_entity().is_alive() {
                     return false;
                 }
                 let stack = item

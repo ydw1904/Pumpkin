@@ -752,13 +752,13 @@ impl HostEntity for PluginHostState {
         let entity = self.get(&this)?;
         Ok(entity
             .get_item_entity()
-            .map(|item_entity| u32::from(item_entity.get_pickup_delay())))
+            .map(|item_entity| item_entity.get_pickup_delay().max(0).cast_unsigned()))
     }
 
     fn set_pickup_delay(&mut self, this: Resource<Entity>, ticks: u8) -> wasmtime::Result<bool> {
         let entity = self.get(&this)?;
         Ok(entity.get_item_entity().is_some_and(|item_entity| {
-            item_entity.set_pickup_delay(ticks);
+            item_entity.set_pickup_delay(i32::from(ticks));
             true
         }))
     }

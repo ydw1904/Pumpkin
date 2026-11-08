@@ -475,7 +475,7 @@ fn allowed_items(mob: &dyn Mob) -> Vec<Arc<dyn EntityBase>> {
         .into_iter()
         .filter(|other| {
             other.get_item_entity().is_some_and(|item| {
-                item.get_pickup_delay() == 0
+                !item.has_pickup_delay()
                     && item.get_entity().is_alive()
                     && item.get_entity().is_in_water()
             })

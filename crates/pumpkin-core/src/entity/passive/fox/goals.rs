@@ -837,7 +837,7 @@ fn items_nearby(mob: &dyn Mob) -> Vec<Arc<dyn EntityBase>> {
         .filter(|candidate| {
             candidate
                 .get_item_entity()
-                .is_some_and(|item| item.get_pickup_delay() == 0 && item.get_entity().is_alive())
+                .is_some_and(|item| !item.has_pickup_delay() && item.get_entity().is_alive())
         })
         .collect()
 }

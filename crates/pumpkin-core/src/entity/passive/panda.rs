@@ -943,7 +943,7 @@ fn can_pick_up_and_eat(item: &ItemEntity) -> bool {
         .item
         .has_tag(&tag::Item::MINECRAFT_PANDA_EATS_FROM_GROUND)
         && item.get_entity().is_alive()
-        && item.get_pickup_delay() == 0
+        && !item.has_pickup_delay()
 }
 
 /// The items within `range` of the panda's box that it would pick up and eat.
