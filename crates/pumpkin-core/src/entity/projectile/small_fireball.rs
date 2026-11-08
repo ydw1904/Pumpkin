@@ -13,7 +13,7 @@ use crate::{
         projectile::{
             AccelerationPower, HURTING_INERTIA, HURTING_LIQUID_INERTIA, ProjectileHit,
             ThrownItemEntity,
-            fireball::{INITIAL_ACCELERATION_POWER, fireball_damage_type},
+            fireball::{FireballItem, INITIAL_ACCELERATION_POWER, fireball_damage_type},
         },
     },
     server::Server,
@@ -23,12 +23,13 @@ const GRAVITY: f64 = 0.0;
 
 pub struct SmallFireballEntity {
     pub thrown: ThrownItemEntity,
+    pub item: FireballItem,
     pub acceleration_power: AccelerationPower,
 }
 
 impl SmallFireballEntity {
     #[must_use]
-    pub const fn new(entity: Entity) -> Self {
+    pub fn new(entity: Entity) -> Self {
         let thrown = ThrownItemEntity {
             entity,
             owner: ProjectileOwner::none(),
@@ -40,6 +41,7 @@ impl SmallFireballEntity {
 
         Self {
             thrown,
+            item: FireballItem::new(),
             acceleration_power: AccelerationPower::new(INITIAL_ACCELERATION_POWER),
         }
     }
@@ -54,20 +56,15 @@ impl SmallFireballEntity {
             .store(direction.normalize().multiply(accel, accel, accel));
         Self {
             thrown,
+            item: FireballItem::new(),
             acceleration_power: AccelerationPower::new(INITIAL_ACCELERATION_POWER),
         }
     }
 }
 
 impl EntityBase for SmallFireballEntity {
-    /// Vanilla compares item stacks by identity, so the item is never at its default and always goes out with the spawn packet.
     fn init_data_tracker(&self) {
-        self.get_entity().set_synced_data(
-            pumpkin_data::tracked_data::small_fireball::DATA_ITEM_STACK,
-            pumpkin_protocol::codec::item_stack_seralizer::ItemStackSerializer::from(
-                pumpkin_data::item_stack::ItemStack::new(1, &pumpkin_data::item::Item::FIRE_CHARGE),
-            ),
-        );
+        self.item.init_data_tracker(self.get_entity());
     }
 
     fn on_deflection(&self, by_attack: bool) {
@@ -76,10 +73,12 @@ impl EntityBase for SmallFireballEntity {
 
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
         self.acceleration_power.write_nbt(nbt);
+        self.item.write_nbt(nbt);
     }
 
     fn read_custom_nbt(&self, nbt: &NbtCompound) {
         self.acceleration_power.read_nbt(nbt);
+        self.item.read_nbt(self.get_entity(), nbt);
     }
 
     fn get_projectile_owner(&self) -> Option<&ProjectileOwner> {

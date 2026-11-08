@@ -38,9 +38,77 @@ pub fn fireball_damage_type(owner: Option<&dyn EntityBase>) -> DamageType {
     }
 }
 
+/// Vanilla `Fireball`'s item, which large and small fireballs render as and save as `Item`.
+pub struct FireballItem(RwLock<ItemStack>);
+
+impl FireballItem {
+    #[must_use]
+    pub fn new() -> Self {
+        Self(RwLock::new(Self::default_item()))
+    }
+
+    #[must_use]
+    pub fn default_item() -> ItemStack {
+        ItemStack::new(1, &Item::FIRE_CHARGE)
+    }
+
+    pub fn get(&self) -> ItemStack {
+        self.0
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Vanilla `Fireball.setItem`: one of `source`, or a fire charge for an empty stack.
+    pub fn set(&self, entity: &Entity, source: ItemStack) {
+        let item = if source.is_empty() {
+            Self::default_item()
+        } else {
+            let mut item = source;
+            item.item_count = 1;
+            item
+        };
+        *self
+            .0
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = item;
+        self.init_data_tracker(entity);
+    }
+
+    /// Vanilla compares item stacks by identity, so the item is never at its default and always
+    /// goes out with the spawn packet.
+    pub fn init_data_tracker(&self, entity: &Entity) {
+        entity.set_synced_data(
+            pumpkin_data::tracked_data::fireball::ITEM_STACK,
+            ItemStackSerializer::from(self.get()),
+        );
+    }
+
+    pub fn write_nbt(&self, nbt: &mut NbtCompound) {
+        let mut item = NbtCompound::new();
+        self.get().write_item_stack(&mut item);
+        nbt.put_compound("Item", item);
+    }
+
+    /// Vanilla `Fireball.readAdditionalSaveData`: a missing or invalid `Item` is a fire charge.
+    pub fn read_nbt(&self, entity: &Entity, nbt: &NbtCompound) {
+        let item = nbt
+            .get_compound("Item")
+            .and_then(ItemStack::read_item_stack)
+            .unwrap_or_else(Self::default_item);
+        self.set(entity, item);
+    }
+}
+
+impl Default for FireballItem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct FireballEntity {
     pub thrown: ThrownItemEntity,
-    pub item_stack: RwLock<ItemStack>,
+    pub item: FireballItem,
     pub acceleration_power: AccelerationPower,
     pub explosion_power: AtomicF32,
 }
@@ -59,7 +127,7 @@ impl FireballEntity {
 
         Self {
             thrown,
-            item_stack: RwLock::new(Self::get_default_item()),
+            item: FireballItem::new(),
             acceleration_power: AccelerationPower::new(INITIAL_ACCELERATION_POWER),
             explosion_power: AtomicF32::new(DEFAULT_EXPLOSION_POWER),
         }
@@ -74,7 +142,7 @@ impl FireballEntity {
 
         Self {
             thrown,
-            item_stack: RwLock::new(Self::get_default_item()),
+            item: FireballItem::new(),
             acceleration_power: AccelerationPower::new(accel),
             explosion_power: AtomicF32::new(DEFAULT_EXPLOSION_POWER),
         }
@@ -103,41 +171,10 @@ impl FireballEntity {
 
         Self {
             thrown,
-            item_stack: RwLock::new(Self::get_default_item()),
+            item: FireballItem::new(),
             acceleration_power: AccelerationPower::new(acceleration_power),
             explosion_power: AtomicF32::new(DEFAULT_EXPLOSION_POWER),
         }
-    }
-
-    #[must_use]
-    pub fn get_default_item() -> ItemStack {
-        ItemStack::new(1, &Item::FIRE_CHARGE)
-    }
-
-    pub fn get_item(&self) -> ItemStack {
-        self.item_stack
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
-    }
-
-    pub fn set_item(&self, source: ItemStack) {
-        let new_item = if source.item_count == 0 {
-            Self::get_default_item()
-        } else {
-            let mut item = source;
-            item.item_count = 1;
-            item
-        };
-        *self
-            .item_stack
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = new_item.clone();
-
-        self.get_entity().set_synced_data(
-            pumpkin_data::tracked_data::fireball::ITEM_STACK,
-            ItemStackSerializer::from(new_item),
-        );
     }
 
     pub fn get_explosion_power(&self) -> f32 {
@@ -178,12 +215,14 @@ impl EntityBase for FireballEntity {
 
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
         self.acceleration_power.write_nbt(nbt);
+        self.item.write_nbt(nbt);
         // Vanilla `LargeFireball` keeps an int power and saves it as a byte.
         nbt.put_byte("ExplosionPower", self.get_explosion_power() as i8);
     }
 
     fn read_custom_nbt(&self, nbt: &NbtCompound) {
         self.acceleration_power.read_nbt(nbt);
+        self.item.read_nbt(self.get_entity(), nbt);
         // Vanilla `getByteOr` takes any number tag, so `{ExplosionPower:4}` works.
         if let Some(power) = nbt.get("ExplosionPower").and_then(NbtTag::as_numeric_int) {
             self.set_explosion_power(f32::from(power as i8));
@@ -191,16 +230,7 @@ impl EntityBase for FireballEntity {
     }
 
     fn init_data_tracker(&self) {
-        let entity = self.get_entity();
-        let stack = self
-            .item_stack
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        entity.set_synced_data(
-            pumpkin_data::tracked_data::fireball::ITEM_STACK,
-            ItemStackSerializer::from(stack.clone()),
-        );
+        self.item.init_data_tracker(self.get_entity());
     }
 
     fn tick(&self, caller: &dyn EntityBase, _server: &Server) {

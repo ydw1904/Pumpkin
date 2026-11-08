@@ -727,13 +727,15 @@ impl DispenserBlock {
     }
 
     fn dispense_fire_charge(ctx: &DispenseContext<'_>, item: &mut ItemStack) {
-        let _ = item.split(1);
+        let dispensed = item.split(1);
         let entity = Entity::new(
             ctx.world.clone(),
             Self::charge_spawn_position(ctx),
             &EntityType::SMALL_FIREBALL,
         );
         let fireball = SmallFireballEntity::new(entity);
+        // Vanilla `FireChargeItem.asProjectile`.
+        fireball.item.set(fireball.get_entity(), dispensed);
         let facing = to_normal(ctx.facing);
         let dir = Vector3::new(
             triangle(game_random(), facing.x, 0.114_850_000_000_000_01),
