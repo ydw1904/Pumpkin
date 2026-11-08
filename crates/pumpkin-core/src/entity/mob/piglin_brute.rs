@@ -5,7 +5,10 @@ use std::sync::{
 
 use pumpkin_data::Block;
 use pumpkin_data::BlockState;
+use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::item::Item;
+use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tracked_data;
 use pumpkin_nbt::compound::NbtCompound;
@@ -22,6 +25,7 @@ use crate::entity::{
     },
     mob::{
         Mob, MobEntity,
+        equipment::RegionalDifficulty,
         piglin_ai::{
             AbstractPiglin, PiglinAi, PiglinAnger, PiglinAngerTargetGoal, as_abstract_piglin,
         },
@@ -198,6 +202,29 @@ impl Mob for PiglinBruteEntity {
         if self.mob_entity.get_target().is_none() {
             self.make_sound(Sound::EntityPiglinBruteAmbient);
         }
+    }
+
+    /// Vanilla `PiglinBrute.finalizeSpawn`.
+    fn finalize_spawn(
+        &self,
+        world: &Arc<World>,
+        _reason: crate::entity::mob::spawn::EntitySpawnReason,
+        group_data: Option<crate::entity::mob::spawn::SpawnGroupData>,
+    ) -> Option<crate::entity::mob::spawn::SpawnGroupData> {
+        let difficulty = RegionalDifficulty::at(world, self.get_entity().pos.load());
+        self.populate_default_equipment_slots(world, &difficulty);
+        self.finalize_spawn_super(group_data)
+    }
+
+    fn populate_default_equipment_slots(
+        &self,
+        _world: &Arc<World>,
+        _difficulty: &RegionalDifficulty,
+    ) {
+        self.mob_entity.set_item_slot(
+            &EquipmentSlot::MAIN_HAND,
+            ItemStack::new(1, &Item::GOLDEN_AXE),
+        );
     }
 
     fn wants_to_pick_up(&self, stack: &pumpkin_data::item_stack::ItemStack) -> bool {
