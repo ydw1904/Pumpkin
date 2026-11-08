@@ -4251,6 +4251,7 @@ impl World {
             server.broadcast_system_message(&event.join_message, false);
             info!("{}", event.join_message.to_pretty_console());
         }
+        server.notify_update_if_op(&player);
     }
 
     /// Sends the Java login packet that opens the play phase.
@@ -4654,6 +4655,7 @@ impl World {
             // TODO: Switch to structured logging, e.g. info!(player = %name, "connected")
             info!("{}", event.join_message.to_pretty_console());
         }
+        server.notify_update_if_op(player);
     }
 
     fn send_player_equipment(&self, from: &Player) {
