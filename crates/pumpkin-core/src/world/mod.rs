@@ -195,6 +195,7 @@ pub mod phantom_spawner;
 mod player_touch;
 pub mod scoreboard;
 pub mod sleep_status;
+pub mod village_siege;
 pub mod wandering_trader_spawner;
 pub mod weather;
 
@@ -338,6 +339,8 @@ pub struct World {
     pub patrol_spawner: std::sync::Mutex<patrol_spawner::PatrolSpawner>,
     /// Vanilla `CatSpawner`; only ticked in the overworld.
     pub cat_spawner: std::sync::Mutex<cat_spawner::CatSpawner>,
+    /// Vanilla `VillageSiege`; only ticked in the overworld.
+    pub village_siege: std::sync::Mutex<village_siege::VillageSiege>,
     /// Vanilla `WanderingTraderSpawner`; only ticked in the overworld.
     pub wandering_trader_spawner:
         std::sync::Mutex<wandering_trader_spawner::WanderingTraderSpawner>,
@@ -565,6 +568,7 @@ impl World {
             phantom_spawner: std::sync::Mutex::default(),
             patrol_spawner: std::sync::Mutex::default(),
             cat_spawner: std::sync::Mutex::default(),
+            village_siege: std::sync::Mutex::default(),
             wandering_trader_spawner,
             dragon_fight,
             spawn_state: ArcSwap::new(Arc::new(SpawnState::empty())),
@@ -2844,6 +2848,10 @@ impl World {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .tick(self);
+            self.village_siege
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .tick(self, !peaceful && spawn_monsters);
             self.wandering_trader_spawner
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
