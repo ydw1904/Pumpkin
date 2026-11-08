@@ -278,8 +278,9 @@ impl AgeableMob for WolfEntity {
 
 impl Animal for WolfEntity {
     fn is_food(&self, item_stack: &ItemStack) -> bool {
-        let item = item_stack.get_item();
-        item.has_tag(&tag::Item::MINECRAFT_WOLF_FOOD) || item == &Item::BONE
+        item_stack
+            .get_item()
+            .has_tag(&tag::Item::MINECRAFT_WOLF_FOOD)
     }
 
     /// Vanilla `Wolf.getBreedOffspring`: either parent's variant, a tame parent's owner with the
