@@ -2,12 +2,16 @@ use pumpkin_data::{
     Block, BlockDirection, BlockState,
     block_properties::{BeehiveProperties, HorizontalFacing},
 };
+use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_util::{
     math::position::BlockPos,
     random::{RandomGenerator, RandomImpl},
 };
 
 use crate::generation::proto_chunk::GenerationCache;
+
+/// Vanilla `BeehiveBlockEntity.MIN_OCCUPATION_TICKS_NECTARLESS`.
+const MIN_OCCUPATION_TICKS_NECTARLESS: i32 = 600;
 
 pub struct BeehiveTreeDecorator {
     pub probability: f32,
@@ -65,9 +69,25 @@ impl BeehiveTreeDecorator {
                 let state_id = props.to_state_id(&Block::BEE_NEST);
                 chunk.set_block_state(&pos.0, BlockState::from_id(state_id));
                 let num_bees = 2 + random.next_bounded_i32(2);
-                for _ in 0..num_bees {
-                    let _ = random.next_bounded_i32(599);
-                }
+                // Vanilla `Occupant.create`: a bee that has already spent some time inside.
+                let bees = (0..num_bees)
+                    .map(|_| {
+                        let mut entity_data = NbtCompound::new();
+                        entity_data.put_string("id", "minecraft:bee".to_string());
+                        let mut occupant = NbtCompound::new();
+                        occupant.put_compound("entity_data", entity_data);
+                        occupant.put_int("ticks_in_hive", random.next_bounded_i32(599));
+                        occupant.put_int("min_ticks_in_hive", MIN_OCCUPATION_TICKS_NECTARLESS);
+                        NbtTag::Compound(occupant)
+                    })
+                    .collect();
+                let mut nbt = NbtCompound::new();
+                nbt.put_string("id", "minecraft:beehive".to_string());
+                nbt.put_int("x", pos.0.x);
+                nbt.put_int("y", pos.0.y);
+                nbt.put_int("z", pos.0.z);
+                nbt.put_list("bees", bees);
+                chunk.add_block_entity(&pos.0, nbt);
                 decorations.push(pos);
                 break;
             }
