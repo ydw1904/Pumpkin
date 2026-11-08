@@ -83,15 +83,51 @@ impl Player {
         }
     }
 
+    /// `syncVelocity` part of vanilla `ServerEntity.sendChanges` for a hurt from a packet or
+    /// command, which vanilla sends before the player's next `doTick` travel.
+    pub fn send_hurt_velocity_before_travel(&self) {
+        let entity = self.get_entity();
+        if entity.sync_velocity.swap(false, Ordering::SeqCst) {
+            self.send_marked_hurt_velocity();
+        }
+    }
+
+    /// `syncVelocity` part of vanilla `ServerEntity.sendChanges` for a hurt during the last
+    /// entity pass or this player tick, sent after that hurt's travel.
+    pub fn send_hurt_velocity_after_travel(&self) {
+        let travelled = self.travelled_for_hurt.swap(false, Ordering::SeqCst);
+        let entity = self.get_entity();
+        if entity.sync_velocity.swap(false, Ordering::SeqCst) || travelled {
+            self.send_marked_hurt_velocity();
+        }
+    }
+
+    fn send_marked_hurt_velocity(&self) {
+        let entity = self.get_entity();
+        // The server velocity already holds the pushes
+        entity.push_impulse.store(Vector3::default());
+        entity.velocity_dirty.store(false, Ordering::SeqCst);
+        self.send_hurt_velocity();
+    }
+
     /// Velocity part of vanilla `ServerEntity.sendChanges`. Runs after the entity pass,
-    /// so this tick's knockback goes out before the next packets and friction.
+    /// so this tick's pushes go out before the next packets and friction.
     pub fn send_velocity_changes(&self) {
         let entity = self.get_entity();
         if entity.sync_velocity.swap(false, Ordering::SeqCst) {
+            // Vanilla runs `doTick` right after the level tick and sends in the next one, so
+            // the motion has this tick's travel, done before the client's next move can land.
+            // The next player tick skips its travel and sends it.
+            let living = &self.living_entity;
+            if !living.dead.load(Ordering::Relaxed) && living.health.load() > 0.0 {
+                living.player_travel(self);
+                self.travelled_for_hurt.store(true, Ordering::SeqCst);
+            } else {
+                entity.sync_velocity.store(true, Ordering::SeqCst);
+            }
             // The server velocity already holds the pushes
             entity.push_impulse.store(Vector3::default());
             entity.velocity_dirty.store(false, Ordering::SeqCst);
-            self.send_hurt_velocity();
             return;
         }
         if entity.velocity_dirty.swap(false, Ordering::SeqCst)

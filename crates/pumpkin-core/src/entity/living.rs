@@ -2655,6 +2655,22 @@ impl LivingEntity {
         }
     }
 
+    /// The `aiStep` movement part of vanilla's server `doTick` for a player, which has no input.
+    pub(crate) fn player_travel(&self, player: &Player) {
+        // Vanilla `aiStep`: tiny leftovers stop before travel
+        self.entity.check_zero_velo();
+        let old_y = self.entity.velocity.load().y;
+        let friction = self.travel(player);
+        player.tick_push_residual(friction);
+        // Vanilla `Player.travel` while flying keeps 0.6 of the old vertical speed
+        if player.is_flying() {
+            let velo = self.entity.velocity.load();
+            self.entity
+                .velocity
+                .store(Vector3::new(velo.x, old_y * 0.6, velo.z));
+        }
+    }
+
     pub(crate) fn make_move(&self, caller: &dyn EntityBase) {
         if self.entity.entity_type == &EntityType::PLAYER {
             // The client owns the position, only the landing of `move` applies
@@ -4902,24 +4918,10 @@ impl EntityBase for LivingEntity {
             // Vanilla-like order: freeze logic runs after movement/collisions.
             self.entity.tick_frozen(caller);
         } else if is_alive {
-            // Vanilla `aiStep`: tiny leftovers stop before travel
-            self.entity.check_zero_velo();
-            // Vanilla server `travel` for a player, which has no input. Unsent knockback
-            // goes out undecayed.
-            if !self.entity.sync_velocity.load(Ordering::SeqCst) {
-                let old_y = self.entity.velocity.load().y;
-                let friction = self.travel(caller);
-                let player = caller.get_player();
-                if let Some(player) = player {
-                    player.tick_push_residual(friction);
-                }
-                // Vanilla `Player.travel` while flying keeps 0.6 of the old vertical speed
-                if player.is_some_and(super::player::Player::is_flying) {
-                    let velo = self.entity.velocity.load();
-                    self.entity
-                        .velocity
-                        .store(Vector3::new(velo.x, old_y * 0.6, velo.z));
-                }
+            if let Some(player) = caller.get_player()
+                && !player.travelled_for_hurt.load(Ordering::SeqCst)
+            {
+                self.player_travel(player);
             }
 
             let suffocating = self.entity.tick_block_collisions(caller);

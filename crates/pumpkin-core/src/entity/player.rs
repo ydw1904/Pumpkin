@@ -711,6 +711,9 @@ pub struct Player {
     /// the teleport there.
     pub changing_dimension: AtomicBool,
     pub bedrock_spawned: AtomicBool,
+    /// A hurt during the entity pass already ran this player's travel; its motion goes out
+    /// after the next player tick, which skips its own travel.
+    pub travelled_for_hurt: AtomicBool,
     /// Whether the player is frozen in place (movement locked for dialogues/cutscenes).
     pub is_movement_locked: AtomicBool,
     /// The amount of time (in ticks) the client has to report having finished loading before being timed out.
@@ -1065,6 +1068,7 @@ impl Player {
             gamemode: AtomicCell::new(gamemode),
             previous_gamemode: AtomicCell::new(None),
             camera_target_id: AtomicCell::new(None),
+            travelled_for_hurt: AtomicBool::new(false),
             is_movement_locked: AtomicBool::new(false),
             respawn_point: std::sync::Mutex::new(None),
             last_death_location: std::sync::Mutex::new(None),

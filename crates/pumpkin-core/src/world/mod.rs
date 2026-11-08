@@ -2073,6 +2073,9 @@ impl World {
         let player_count = players.len();
 
         let t_players = std::time::Instant::now();
+        for player in players.iter() {
+            player.send_hurt_velocity_before_travel();
+        }
         players.par_iter().for_each(|player| {
             player.tick(server);
         });
@@ -2081,6 +2084,9 @@ impl World {
             for player in players.iter() {
                 player.push_entities();
             }
+        }
+        for player in players.iter() {
+            player.send_hurt_velocity_after_travel();
         }
         // One player after another, before entities move, like vanilla `doTick` after the
         // level tick
@@ -2257,8 +2263,8 @@ impl World {
         }
         let entity_elapsed = t_entities.elapsed();
 
-        // Like vanilla `sendChanges`: this tick's knockback and pushes on players go out before
-        // the next packets.
+        // Like vanilla `sendChanges`: this tick's pushes on players go out before the next
+        // packets. Knockback gets its travel here and goes out after the next player tick.
         for player in players.iter() {
             player.send_velocity_changes();
         }
