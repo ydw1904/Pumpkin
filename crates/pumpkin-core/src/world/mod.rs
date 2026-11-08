@@ -145,8 +145,8 @@ use pumpkin_protocol::{
         self,
         client::play::{
             CBlockEntityData, CDamageEvent, CEntityStatus, CGameEvent, CLogin, CMultiBlockUpdate,
-            CPlayerInfoUpdate, CRemoveEntities, CRemovePlayerInfo, CSetSelectedSlot, CSoundEffect,
-            GameEvent, InitChat, PlayerAction, PlayerInfoFlags,
+            CPlayerInfoUpdate, CRemovePlayerInfo, CSetSelectedSlot, CSoundEffect, GameEvent,
+            InitChat, PlayerAction, PlayerInfoFlags,
         },
         server::play::SChatMessage,
     },
@@ -6057,11 +6057,6 @@ impl World {
             };
 
             self.broadcast_editioned(&CRemovePlayerInfo::new(&[uuid]), &bedrock_remove_player);
-
-            self.broadcast_editioned(
-                &CRemoveEntities::new(&[entity_id.into()]),
-                &CRemoveActor::new(VarLong(entity_id as i64)),
-            );
 
             if fire_event {
                 let msg_comp = TextComponent::translate_cross(
