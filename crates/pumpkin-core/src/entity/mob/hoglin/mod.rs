@@ -1,11 +1,12 @@
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use pumpkin_data::Block;
 use pumpkin_data::BlockState;
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::environment_attribute::Activity;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tag::{self, Taggable};
@@ -13,9 +14,8 @@ use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 
-use crate::entity::ai::goal::avoid_repellent::{
-    AvoidRepellentGoal, find_nearest_block_by_manhattan_distance,
-};
+use crate::entity::ai::brain::memory::{PackedMemories, types};
+use crate::entity::ai::brain::{Brain, BrainState};
 use crate::entity::mob::spawn::SpawnGroupData;
 use crate::entity::passive::animal::Animal;
 use crate::entity::player::Player;
@@ -23,11 +23,6 @@ use crate::entity::r#type::CreatureSpawnLevel;
 use crate::entity::{
     Entity, EntityBase,
     ageable::{AgeableData, AgeableMob},
-    ai::goal::{
-        active_target::ActiveTargetGoal, breed::BreedGoal, look_around::RandomLookAroundGoal,
-        look_at_entity::LookAtEntityGoal, melee_attack::MeleeAttackGoal, revenge::RevengeGoal,
-        swim::SwimGoal, wander_around::WanderAroundGoal,
-    },
     living::LivingEntity,
     mob::{Mob, MobEntity},
 };
@@ -35,11 +30,12 @@ use crate::plugin::api::events::entity::entity_target::TargetReason;
 use crate::world::World;
 use crossbeam::atomic::AtomicCell;
 
-/// Vanilla `HoglinAi` and `Zoglin` melee cooldowns: `MeleeAttack.create(40)` for adults,
-/// `MeleeAttack.create(15)` for babies.
-pub(crate) const fn hoglin_attack_interval(baby: bool) -> i32 {
-    if baby { 15 } else { 40 }
-}
+mod ai;
+
+pub use ai::HoglinSpecificSensor;
+pub(crate) use ai::hoglin_attack_interval;
+
+type PendingBrainUpdate = Box<dyn FnOnce(&HoglinEntity, &mut BrainState) + Send>;
 
 pub struct HoglinEntity {
     pub mob_entity: MobEntity,
@@ -47,18 +43,14 @@ pub struct HoglinEntity {
     pub time_in_overworld: AtomicI32,
     pub cannot_be_hunted: AtomicBool,
     pub ageable_data: AgeableData,
-    /// The `NEAREST_REPELLENT` memory.
+    /// The `NEAREST_REPELLENT` memory, for `getWalkTargetValue` during the brain tick.
     pub nearest_repellent: AtomicCell<Option<BlockPos>>,
-    /// Ticks left of the `PACIFIED` memory.
-    pub pacified_timer: AtomicI32,
+    /// The active non-core activity, for the ambient sound.
+    activity: AtomicCell<Option<Activity>>,
+    /// Brain changes from outside the brain tick that found the brain busy.
+    pending_brain_updates: Mutex<Vec<PendingBrainUpdate>>,
 }
 
-/// Vanilla `HoglinAi` constants.
-const REPELLENT_DETECTION_RANGE_HORIZONTAL: i32 = 8;
-const REPELLENT_DETECTION_RANGE_VERTICAL: i32 = 4;
-const REPELLENT_PACIFY_TIME: i32 = 200;
-/// Vanilla `Sensor` default scan rate, which `HoglinSpecificSensor` keeps.
-const SENSOR_SCAN_INTERVAL: i64 = 20;
 /// Vanilla `HoglinAi.isPosNearNearestRepellent`.
 const NEAR_REPELLENT_DISTANCE: i32 = 8;
 
@@ -110,75 +102,10 @@ impl HoglinEntity {
             cannot_be_hunted: AtomicBool::new(false),
             ageable_data: AgeableData::default(),
             nearest_repellent: AtomicCell::new(None),
-            pacified_timer: AtomicI32::new(0),
+            activity: AtomicCell::new(None),
+            pending_brain_updates: Mutex::new(Vec::new()),
         };
-        let mob_arc = Arc::new(hoglin);
-        let mob_weak: Weak<dyn Mob> = {
-            let mob_arc: Arc<dyn Mob> = mob_arc.clone();
-            Arc::downgrade(&mob_arc)
-        };
-
-        {
-            let goal_selector = &mob_arc.mob_entity.goals_selector;
-
-            goal_selector.add_goal(0, Box::new(SwimGoal::default()));
-            // Vanilla `AnimalMakeLove(HOGLIN, 0.6)` runs in both IDLE and FIGHT.
-            goal_selector.add_goal(2, BreedGoal::new(0.6));
-            // Vanilla `SetWalkTargetAwayFrom.pos(NEAREST_REPELLENT, 1.0, 8, true)`, an IDLE
-            // behaviour.
-            goal_selector.add_goal(
-                3,
-                Box::new(
-                    AvoidRepellentGoal::new(
-                        |mob| {
-                            mob.cast_any()
-                                .downcast_ref::<Self>()
-                                .and_then(|hoglin| hoglin.nearest_repellent.load())
-                        },
-                        true,
-                    )
-                    .with_gate(|mob| mob.get_mob_entity().get_target().is_none()),
-                ),
-            );
-            goal_selector.add_goal(
-                4,
-                Box::new(MeleeAttackGoal::new(1.0, true).with_attack_interval(|mob| {
-                    hoglin_attack_interval(mob.get_mob_entity().living_entity.is_baby())
-                })),
-            );
-            // Stands in for a vanilla stroll that ignores the no-action time.
-            goal_selector.add_goal(
-                5,
-                Box::new(WanderAroundGoal::new(1.0).with_check_no_action_time(false)),
-            );
-            goal_selector.add_goal(
-                6,
-                LookAtEntityGoal::with_default(mob_weak.clone(), &EntityType::PLAYER, 8.0),
-            );
-            goal_selector.add_goal(7, Box::new(RandomLookAroundGoal::default()));
-
-            let target_selector = &mob_arc.mob_entity.target_selector;
-            target_selector.add_goal(1, Box::new(RevengeGoal::new(true)));
-            // Vanilla `findNearestValidAttackTarget`: nothing while pacified.
-            let hoglin_weak = Arc::downgrade(&mob_arc);
-            target_selector.add_goal(
-                2,
-                Box::new(ActiveTargetGoal::new(
-                    &mob_arc.mob_entity,
-                    &EntityType::PLAYER,
-                    10,
-                    true,
-                    false,
-                    Some(move |_target: &LivingEntity, _world: &World| {
-                        hoglin_weak
-                            .upgrade()
-                            .is_some_and(|hoglin| !hoglin.is_pacified())
-                    }),
-                )),
-            );
-        };
-
-        mob_arc
+        Arc::new(hoglin)
     }
 
     /// Vanilla `Hoglin.canBeHunted`.
@@ -186,9 +113,45 @@ impl HoglinEntity {
         !self.is_baby() && !self.cannot_be_hunted.load(Ordering::Relaxed)
     }
 
-    /// Vanilla `HoglinAi.isPacified`.
+    /// Vanilla `HoglinAi.isPacified`. A brain busy in its own tick reads as not pacified.
     pub fn is_pacified(&self) -> bool {
-        self.pacified_timer.load(Ordering::Relaxed) > 0
+        self.mob_entity.brain_has_memory_value(types::PACIFIED.id())
+    }
+
+    /// Runs `update` on the brain now, or right after the brain tick that holds it.
+    fn update_brain(&self, update: impl FnOnce(&Self, &mut BrainState) + Send + 'static) {
+        let mut update = Some(update);
+        let ran = self
+            .mob_entity
+            .try_with_brain(self, |brain| {
+                if let Some(update) = update.take() {
+                    update(self, brain);
+                }
+            })
+            .is_some();
+        if !ran && let Some(update) = update {
+            self.pending_brain_updates
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(Box::new(update));
+        }
+    }
+
+    fn run_pending_brain_updates(&self, brain: &mut BrainState) {
+        loop {
+            let pending = std::mem::take(
+                &mut *self
+                    .pending_brain_updates
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner),
+            );
+            if pending.is_empty() {
+                return;
+            }
+            for update in pending {
+                update(self, brain);
+            }
+        }
     }
 
     fn is_pos_near_nearest_repellent(&self, pos: &BlockPos) -> bool {
@@ -200,19 +163,6 @@ impl HoglinEntity {
             );
             dx * dx + dy * dy + dz * dz < NEAR_REPELLENT_DISTANCE * NEAR_REPELLENT_DISTANCE
         })
-    }
-
-    /// Vanilla `HoglinSpecificSensor.findNearestRepellent`.
-    fn refresh_nearest_repellent(&self) {
-        let entity = self.get_entity();
-        let nearest = find_nearest_block_by_manhattan_distance(
-            &entity.world.load(),
-            entity.block_pos.load(),
-            REPELLENT_DETECTION_RANGE_HORIZONTAL,
-            REPELLENT_DETECTION_RANGE_VERTICAL,
-            |block, _state| block.has_tag(&tag::Block::MINECRAFT_HOGLIN_REPELLENTS),
-        );
-        self.nearest_repellent.store(nearest);
     }
 
     pub fn is_immune_to_zombification(&self) -> bool {
@@ -324,44 +274,64 @@ impl Mob for HoglinEntity {
         crate::entity::passive::animal::AMBIENT_SOUND_INTERVAL
     }
 
-    // Vanilla `HoglinAi.getSoundForActivity`; Pumpkin's hoglin has no avoid activity.
+    /// Vanilla `HoglinAi.getSoundForCurrentActivity`.
     fn get_ambient_sound(&self) -> Option<Sound> {
-        Some(if self.is_converting(&self.get_entity().world.load()) {
-            Sound::EntityHoglinRetreat
-        } else if self.mob_entity.get_target().is_some() {
-            Sound::EntityHoglinAngry
-        } else if self.nearest_repellent.load().is_some() {
-            Sound::EntityHoglinRetreat
-        } else {
-            Sound::EntityHoglinAmbient
+        self.activity.load().map(|activity| {
+            ai::sound_for_activity(self, activity, self.nearest_repellent.load().is_some())
         })
     }
 
+    fn make_brain(&self, packed: &PackedMemories) -> Brain {
+        ai::make_brain(self, packed)
+    }
+
     fn custom_server_ai_step(&self, _caller: &dyn EntityBase) {
-        if self.is_pacified() {
-            self.pacified_timer.fetch_sub(1, Ordering::Relaxed);
-        }
         let entity = self.get_entity();
-        let tick = entity.world.load().get_world_age() + i64::from(entity.entity_id);
-        if tick.rem_euclid(SENSOR_SCAN_INTERVAL) == 0 {
-            self.refresh_nearest_repellent();
+        let world = entity.world.load_full();
+        let time = world.get_world_age();
+        let (sound, target) = self.mob_entity.with_brain(self, |brain| {
+            brain.tick(&world, self, time);
+            self.run_pending_brain_updates(brain);
+            let sound = ai::update_activity(self, brain);
+            self.activity.store(brain.get_active_non_core_activity());
+            (sound, brain.get(types::ATTACK_TARGET).cloned())
+        });
+        if let Some(sound) = sound {
+            self.make_sound(sound);
         }
-        // Vanilla `BecomePassiveIfMemoryPresent(NEAREST_REPELLENT, 200)`.
-        if self.nearest_repellent.load().is_some() && !self.is_pacified() {
-            self.pacified_timer
-                .store(REPELLENT_PACIFY_TIME, Ordering::Relaxed);
-            self.set_mob_target(None, TargetReason::ForgotTarget);
+        // `getTarget` reads the brain's attack target.
+        let current = self.mob_entity.get_target();
+        if current.as_ref().map(|t| t.get_entity().entity_id)
+            != target.as_ref().map(|t| t.get_entity().entity_id)
+        {
+            let reason = if target.is_some() {
+                TargetReason::Angry
+            } else {
+                TargetReason::ForgotTarget
+            };
+            if !self.set_mob_target(target.clone(), reason) && target.is_some() {
+                self.mob_entity.set_target(None);
+            }
         }
     }
 
-    /// Vanilla `HoglinAi.wasHurtBy` forgets the `PACIFIED` memory.
+    /// Vanilla `Hoglin.hurtServer`: `HoglinAi.wasHurtBy` the causing living entity.
     fn on_damage_with_context(
         &self,
         _damage_type: pumpkin_data::damage::DamageType,
-        _source: Option<&dyn EntityBase>,
-        _cause: Option<&dyn EntityBase>,
+        source: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
     ) -> bool {
-        self.pacified_timer.store(0, Ordering::Relaxed);
+        if let Some(attacker) = cause.or(source)
+            && attacker.get_living_entity().is_some()
+            && let Some(attacker) = self
+                .get_entity()
+                .world
+                .load()
+                .get_entity_by_id(attacker.get_entity().entity_id)
+        {
+            self.update_brain(move |hoglin, brain| ai::was_hurt_by(hoglin, brain, attacker));
+        }
         true
     }
 
@@ -475,6 +445,15 @@ impl Mob for HoglinEntity {
     }
 
     fn on_attack(&self, target: &dyn EntityBase) {
+        if target.get_living_entity().is_some()
+            && let Some(target) = self
+                .get_entity()
+                .world
+                .load()
+                .get_entity_by_id(target.get_entity().entity_id)
+        {
+            self.update_brain(move |hoglin, brain| ai::on_hit_target(hoglin, brain, &target));
+        }
         // Vanilla HoglinBase.hurtAndThrowTarget: babies don't throw.
         if self.is_baby() {
             return;

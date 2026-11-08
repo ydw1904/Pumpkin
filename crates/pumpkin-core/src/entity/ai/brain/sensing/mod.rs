@@ -60,6 +60,7 @@ pub enum SensorType {
     GolemDetected,
     ArmadilloScareDetected,
     BreezeAttackEntity,
+    HoglinSpecific,
 }
 
 impl SensorType {
@@ -86,6 +87,7 @@ impl SensorType {
             Self::GolemDetected => "minecraft:golem_detected",
             Self::ArmadilloScareDetected => "minecraft:armadillo_scare_detected",
             Self::BreezeAttackEntity => "minecraft:breeze_attack_entity_sensor",
+            Self::HoglinSpecific => "minecraft:hoglin_specific_sensor",
         }
     }
 
@@ -108,7 +110,8 @@ impl SensorType {
             | Self::VillagerBabies
             | Self::VillagerHostiles
             | Self::WardenEntity
-            | Self::BreezeAttackEntity => DEFAULT_SCAN_RATE,
+            | Self::BreezeAttackEntity
+            | Self::HoglinSpecific => DEFAULT_SCAN_RATE,
             Self::SecondaryPois => 40,
             Self::GolemDetected => 200,
             Self::ArmadilloScareDetected => armadillo::SCARE_SCAN_RATE,
@@ -144,6 +147,7 @@ impl SensorType {
             Self::BreezeAttackEntity => {
                 Box::new(crate::entity::mob::breeze::BreezeAttackEntitySensor)
             }
+            Self::HoglinSpecific => Box::new(crate::entity::mob::hoglin::HoglinSpecificSensor),
         }
     }
 
