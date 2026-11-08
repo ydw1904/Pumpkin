@@ -4,10 +4,11 @@ use std::sync::{Arc, Weak};
 
 use pumpkin_data::BlockState;
 use pumpkin_data::attributes::Attributes;
-use pumpkin_data::entity::EntityType;
+use pumpkin_data::entity::{EntityStatus, EntityType};
 use pumpkin_data::sound::Sound;
 use pumpkin_data::tracked_data;
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_protocol::bedrock::server::actor_event::ActorEventID;
 use pumpkin_util::math::position::BlockPos;
 
 use crate::entity::ai::target_match::TargetMatch;
@@ -21,7 +22,7 @@ use crate::entity::{
     living::LivingEntity,
     mob::{
         Mob, MobEntity, MobMetadata,
-        hoglin::{hoglin_attack_interval, throw_target},
+        hoglin::{hoglin_attack_interval, hurt_and_throw_target, throw_target},
     },
 };
 use crate::world::World;
@@ -192,12 +193,19 @@ impl Mob for ZoglinEntity {
         self.set_baby(nbt.get_bool("IsBaby").unwrap_or(false));
     }
 
-    fn on_attack(&self, target: &dyn EntityBase) {
-        // Vanilla HoglinBase.hurtAndThrowTarget: babies don't throw.
-        if self.is_baby() {
-            return;
+    /// Vanilla `Zoglin.doHurtTarget`.
+    fn do_hurt_target(&self, target: &dyn EntityBase) -> bool {
+        if target.get_living_entity().is_none() {
+            return false;
         }
-        throw_target(&self.mob_entity.living_entity, target);
+        let entity = self.get_entity();
+        entity.world.load().send_entity_status(
+            entity,
+            EntityStatus::StartAttacking,
+            ActorEventID::None,
+        );
+        self.make_sound(Sound::EntityZoglinAttack);
+        hurt_and_throw_target(self, target)
     }
 
     fn blocked_by_item(&self, defender: &dyn EntityBase, _fully_blocked: bool) {

@@ -5,7 +5,11 @@ use std::sync::{Arc, Mutex, PoisonError};
 use pumpkin_data::Block;
 use pumpkin_data::BlockState;
 use pumpkin_data::attributes::Attributes;
-use pumpkin_data::entity::EntityType;
+use pumpkin_data::damage::DamageType;
+use pumpkin_data::entity::{EntityStatus, EntityType};
+use pumpkin_protocol::bedrock::server::actor_event::ActorEventID;
+
+use crate::enchantment::EnchantmentHelper;
 use pumpkin_data::environment_attribute::Activity;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
@@ -444,21 +448,19 @@ impl Mob for HoglinEntity {
         }
     }
 
-    fn on_attack(&self, target: &dyn EntityBase) {
-        if target.get_living_entity().is_some()
-            && let Some(target) = self
-                .get_entity()
-                .world
-                .load()
-                .get_entity_by_id(target.get_entity().entity_id)
-        {
+    /// Vanilla `Hoglin.doHurtTarget`.
+    fn do_hurt_target(&self, target: &dyn EntityBase) -> bool {
+        if target.get_living_entity().is_none() {
+            return false;
+        }
+        let entity = self.get_entity();
+        let world = entity.world.load();
+        world.send_entity_status(entity, EntityStatus::StartAttacking, ActorEventID::None);
+        self.make_sound(Sound::EntityHoglinAttack);
+        if let Some(target) = world.get_entity_by_id(target.get_entity().entity_id) {
             self.update_brain(move |hoglin, brain| ai::on_hit_target(hoglin, brain, &target));
         }
-        // Vanilla HoglinBase.hurtAndThrowTarget: babies don't throw.
-        if self.is_baby() {
-            return;
-        }
-        throw_target(&self.mob_entity.living_entity, target);
+        hurt_and_throw_target(self, target)
     }
 
     fn blocked_by_item(&self, defender: &dyn EntityBase, _fully_blocked: bool) {
@@ -466,6 +468,39 @@ impl Mob for HoglinEntity {
             throw_target(&self.mob_entity.living_entity, defender);
         }
     }
+}
+
+/// Vanilla `HoglinBase.hurtAndThrowTarget`, shared with zoglins: adults hit for half their
+/// attack damage plus a random part of it and throw what they hurt.
+pub fn hurt_and_throw_target(attacker: &dyn Mob, target: &dyn EntityBase) -> bool {
+    let living = &attacker.get_mob_entity().living_entity;
+    let attack_damage = living.get_attribute_value(&Attributes::ATTACK_DAMAGE) as f32;
+    let adult = !living.is_baby();
+    let damage = if adult && attack_damage as i32 > 0 {
+        attack_damage / 2.0 + attacker.get_random().random_range(0..attack_damage as i32) as f32
+    } else {
+        attack_damage
+    };
+    let hurt = target.damage_with_context(
+        target,
+        damage,
+        DamageType::MOB_ATTACK,
+        None,
+        Some(attacker),
+        Some(attacker),
+    );
+    if hurt {
+        EnchantmentHelper::do_post_attack_effects(
+            target,
+            DamageType::MOB_ATTACK,
+            Some(attacker),
+            Some(attacker),
+        );
+        if adult {
+            throw_target(living, target);
+        }
+    }
+    hurt
 }
 
 /// Throw impulse of vanilla `HoglinBase.throwTarget`, or `None` if the target resists it fully.
