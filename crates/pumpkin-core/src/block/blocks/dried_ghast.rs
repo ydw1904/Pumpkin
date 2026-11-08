@@ -3,6 +3,7 @@ use pumpkin_data::{
     block_properties::{DriedGhastLikeProperties, HorizontalFacing},
     entity::EntityType,
     fluid::Fluid,
+    game_event::GameEvent,
     sound::{Sound, SoundCategory},
 };
 use pumpkin_macros::pumpkin_block;
@@ -101,6 +102,10 @@ impl BlockBehaviour for DriedGhastBlock {
                     props.to_state_id(args.block),
                     BlockFlags::NOTIFY_LISTENERS,
                 );
+                args.world.emit_game_event(
+                    GameEvent::BlockChange.name(),
+                    args.position.to_centered_f64(),
+                );
             } else {
                 args.world.remove_block(args.position);
                 let spawn_pos = Vector3::new(
@@ -118,7 +123,9 @@ impl BlockBehaviour for DriedGhastBlock {
                     mob.spawn_as_baby();
                 }
                 let entity = ghastling.get_entity();
-                entity.set_rotation(horizontal_facing_to_yaw(props.facing), 0.0);
+                let yaw = horizontal_facing_to_yaw(props.facing);
+                entity.head_yaw.store(yaw);
+                entity.set_rotation(yaw, 0.0);
                 args.world.play_sound(
                     Sound::EntityGhastlingSpawn,
                     SoundCategory::Blocks,
@@ -132,6 +139,10 @@ impl BlockBehaviour for DriedGhastBlock {
                 args.position,
                 props.to_state_id(args.block),
                 BlockFlags::NOTIFY_LISTENERS,
+            );
+            args.world.emit_game_event(
+                GameEvent::BlockChange.name(),
+                args.position.to_centered_f64(),
             );
         }
     }

@@ -3543,6 +3543,19 @@ impl World {
                 .is_rain_at(pos.0.x, pos.0.y, pos.0.z, self.sea_level)
     }
 
+    /// Vanilla `Level.precipitationAt`.
+    pub fn precipitation_at(&self, pos: &BlockPos) -> Precipitation {
+        if !self.is_raining()
+            || !self.can_see_sky(pos)
+            || self.get_heightmap_height(MotionBlocking, pos.0.x, pos.0.z) + 1 > pos.0.y
+        {
+            return Precipitation::None;
+        }
+        self.get_biome(pos)
+            .weather
+            .precipitation_at(pos.0.x, pos.0.y, pos.0.z, self.sea_level)
+    }
+
     /// Vanilla `ServerLevel.tickPrecipitation`: freezes water and piles up snow at the top of the
     /// column at `pos`.
     pub fn tick_precipitation(self: &Arc<Self>, pos: BlockPos) {
