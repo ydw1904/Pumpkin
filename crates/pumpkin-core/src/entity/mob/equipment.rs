@@ -890,32 +890,38 @@ pub fn equip_on_target(mob: &dyn Mob, player: &Player, stack: &mut ItemStack) ->
         return false;
     };
     let slot = equippable.slot;
-    let equip_sound = equippable.equip_sound.clone();
     let mob_entity = mob.get_mob_entity();
-    let living = &mob_entity.living_entity;
     if !mob.is_equippable_in_slot(stack, slot)
         || !mob_entity.is_slot_empty(slot)
-        || !living.entity.is_alive()
+        || !mob_entity.living_entity.entity.is_alive()
     {
         return false;
     }
 
     let equipped = stack.split_unless_creative(player.gamemode.load(), 1);
+    equip_and_drop_when_killed(mob, slot, equipped);
+    true
+}
+
+/// Vanilla `Mob.setItemSlotAndDropWhenKilled` with the equip sound and game event that
+/// `LivingEntity.onEquipItem` adds.
+pub fn equip_and_drop_when_killed(mob: &dyn Mob, slot: &EquipmentSlot, equipped: ItemStack) {
+    let equip_sound = equipped
+        .get_data_component::<EquippableImpl>()
+        .map(|equippable| equippable.equip_sound.clone());
+    let mob_entity = mob.get_mob_entity();
     mob_entity.set_item_slot_and_drop_when_killed(slot, equipped);
-    let entity = &living.entity;
+    let entity = &mob_entity.living_entity.entity;
+    let world = entity.world.load();
+    let pos = entity.pos.load();
     if !entity.is_silent() {
-        let world = entity.world.load();
-        let pos = entity.pos.load();
-        match mob.get_equip_sound(slot) {
-            Some(sound) => world.play_sound(sound, SoundCategory::Neutral, &pos),
-            None => world.play_sound_event(&equip_sound, SoundCategory::Neutral, &pos),
+        match (mob.get_equip_sound(slot), equip_sound) {
+            (Some(sound), _) => world.play_sound(sound, SoundCategory::Neutral, &pos),
+            (None, Some(sound)) => world.play_sound_event(&sound, SoundCategory::Neutral, &pos),
+            (None, None) => {}
         }
     }
-    entity
-        .world
-        .load()
-        .emit_game_event(GameEvent::Equip.name(), entity.pos.load());
-    true
+    world.emit_game_event(GameEvent::Equip.name(), pos);
 }
 
 #[must_use]

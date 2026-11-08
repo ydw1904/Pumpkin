@@ -2780,6 +2780,12 @@ pub trait Mob: EntityBase + Send + Sync {
     ) {
     }
 
+    /// A vanilla `actuallyHurt` override that takes `amount` in place of the armor, magic,
+    /// absorption and health steps, like `Wolf` with body armor. Returns true when it did.
+    fn absorb_actually_hurt(&self, _damage_type: DamageType, _amount: f32) -> bool {
+        false
+    }
+
     fn on_damage_with_context(
         &self,
         damage_type: DamageType,

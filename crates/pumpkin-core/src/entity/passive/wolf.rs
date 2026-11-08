@@ -1,5 +1,6 @@
 use crossbeam::atomic::AtomicCell;
 use pumpkin_util::random::gameplay::game_random;
+use std::borrow::Cow;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicBool, AtomicU8, Ordering},
@@ -7,25 +8,32 @@ use std::sync::{
 
 use pumpkin_data::BlockState;
 use pumpkin_data::damage::DamageType;
+use pumpkin_data::data_component_impl::{EquipmentSlot, FoodImpl, RepairableImpl};
 use pumpkin_data::dye_color::DyeColor;
 use pumpkin_data::entity::{EntityStatus, EntityType};
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::packet::CURRENT_MC_VERSION;
+use pumpkin_data::particle::Particle;
 use pumpkin_data::sound::Sound;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::wolf_sound_variant::WolfSoundVariant;
 use pumpkin_data::wolf_variant::WolfVariant;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::bedrock::server::ActorEventID;
+use pumpkin_protocol::codec::item_stack_seralizer::ItemStackSerializer;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::math::vector3::Vector3;
 
+use crate::entity::crackiness::Crackiness;
 use crate::entity::custom_sound::CustomSound;
+use crate::entity::mob::equipment::equip_and_drop_when_killed;
 use crate::entity::mob::spawn::SpawnGroupData;
 use crate::entity::passive::sheep::get_mixed_color;
 use crate::entity::{
-    Entity, EntityBase,
+    Entity, EntityBase, GearDamage,
     ageable::AgeableMob,
     ai::behavior::{
         fleeing::{self, Flee},
@@ -93,6 +101,11 @@ const WOLF_SOUND_VOLUME: f32 = 0.4;
 /// `shakeAnim` gained per tick; the shake ends once it passes `SHAKE_END`.
 const SHAKE_STEP: f32 = 0.05;
 const SHAKE_END: f32 = 2.0;
+/// The `healingFactor` and `defaultHeal` `Wolf.mobInteract` passes to `TamableAnimal.feed`.
+const FEED_HEALING_FACTOR: f32 = 2.0;
+const FEED_DEFAULT_HEAL: f32 = 2.0;
+/// Share of the armor's durability one scute restores in `Wolf.mobInteract`.
+const ARMOR_REPAIR_FRACTION: f32 = 0.125;
 
 impl WolfEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
@@ -258,6 +271,28 @@ impl WolfEntity {
         }
     }
 
+    /// Vanilla `Mob.getBodyArmorItem`.
+    fn body_armor_item(&self) -> ItemStack {
+        self.mob_entity
+            .living_entity
+            .entity_equipment
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&EquipmentSlot::BODY)
+    }
+
+    /// Vanilla `Mob.isWearingBodyArmor`.
+    fn is_wearing_body_armor(&self) -> bool {
+        let armor = self.body_armor_item();
+        !armor.is_empty() && self.is_equippable_in_slot(&armor, &EquipmentSlot::BODY)
+    }
+
+    /// Vanilla `Wolf.canArmorAbsorb`.
+    fn can_armor_absorb(&self, damage_type: &DamageType) -> bool {
+        self.body_armor_item().get_item() == &Item::WOLF_ARMOR
+            && !damage_type.has_tag(&tag::DamageType::MINECRAFT_BYPASSES_WOLF_ARMOR)
+    }
+
     pub fn get_tame_flags(&self) -> u8 {
         let mut flags = 0u8;
         if self.is_in_sitting_pose() {
@@ -405,6 +440,51 @@ impl Mob for WolfEntity {
             self.order_to_sit(false);
         }
         true
+    }
+
+    /// Vanilla `Wolf.actuallyHurt`: armor that can take the hit loses durability instead of the
+    /// wolf losing health, and cracks audibly at each `Crackiness` step.
+    fn absorb_actually_hurt(&self, damage_type: DamageType, amount: f32) -> bool {
+        if !self.can_armor_absorb(&damage_type) {
+            return false;
+        }
+        let armor_before = self.body_armor_item();
+        let damage_before = armor_before.get_damage();
+        let max_damage = armor_before.get_max_damage().unwrap_or(0);
+        self.mob_entity
+            .hurt_and_break_item_in_slot(&EquipmentSlot::BODY, amount.ceil() as i32);
+        if Crackiness::WOLF_ARMOR.by_damage(damage_before, max_damage)
+            != Crackiness::WOLF_ARMOR.by_item_damage(&self.body_armor_item())
+        {
+            self.play_entity_sound(Sound::ItemWolfArmorCrack, 1.0, 1.0);
+            let mut data = Vec::new();
+            let scute = ItemStack::new(1, &Item::ARMADILLO_SCUTE);
+            if ItemStackSerializer(Cow::Owned(scute))
+                .write_template_with_version(&mut data, &CURRENT_MC_VERSION)
+                .is_ok()
+            {
+                let entity = self.get_entity();
+                entity.world.load().send_particles_with_data(
+                    Particle::Item,
+                    &data,
+                    false,
+                    false,
+                    entity.pos.load().add_raw(0.0, 1.0, 0.0),
+                    20,
+                    Vector3::new(0.2, 0.1, 0.2),
+                    0.1,
+                );
+            }
+        }
+        true
+    }
+
+    /// Vanilla `Wolf.hurtArmor`.
+    fn mob_hurt_gear_slots(&self, gear: GearDamage) -> &'static [EquipmentSlot] {
+        match gear {
+            GearDamage::Armor => &[EquipmentSlot::BODY],
+            GearDamage::Helmet => &[],
+        }
     }
 
     fn post_tick(&self) {
@@ -608,30 +688,59 @@ impl Mob for WolfEntity {
         );
     }
 
+    /// Vanilla `Wolf.mobInteract`.
     fn mob_interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
         let item = item_stack.get_item();
+        let living = &self.mob_entity.living_entity;
+        let gamemode = player.gamemode.load();
         if self.is_tame() {
-            if self.is_food(item_stack)
-                && self.mob_entity.living_entity.health.load()
-                    < self.mob_entity.living_entity.get_max_health()
-            {
-                item_stack.decrement_unless_creative(player.gamemode.load(), 1);
-                self.mob_entity.living_entity.heal(2.0);
+            if self.is_food(item_stack) && living.health.load() < living.get_max_health() {
+                // `TamableAnimal.feed`.
+                let heal = item_stack
+                    .get_data_component::<FoodImpl>()
+                    .map_or(FEED_DEFAULT_HEAL, |food| {
+                        FEED_HEALING_FACTOR * food.nutrition as f32
+                    });
+                item_stack.decrement_unless_creative(gamemode, 1);
+                living.heal(heal);
                 return true;
             }
 
-            if self.is_owned_by(&player.gameprofile.id) {
-                if let Some(dye) =
-                    item_stack.get_data_component::<pumpkin_data::data_component_impl::DyeImpl>()
-                    && dye.color.id() != self.get_collar_color()
+            let is_owner = self.is_owned_by(&player.gameprofile.id);
+            if !item.has_tag(&tag::Item::MINECRAFT_WOLF_COLLAR_DYES) || !is_owner {
+                if is_owner
+                    && self.is_equippable_in_slot(item_stack, &EquipmentSlot::BODY)
+                    && !self.is_wearing_body_armor()
+                    && !self.is_baby()
                 {
-                    self.set_collar_color(dye.color.id());
-                    item_stack.decrement_unless_creative(player.gamemode.load(), 1);
+                    let armor = item_stack.split_unless_creative(gamemode, 1);
+                    equip_and_drop_when_killed(self, &EquipmentSlot::BODY, armor);
                     return true;
                 }
 
+                if is_owner && self.is_in_sitting_pose() && self.is_wearing_body_armor() {
+                    let mut armor = self.body_armor_item();
+                    let repairable = armor
+                        .get_data_component::<RepairableImpl>()
+                        .is_some_and(|repairable| repairable.is_valid_repair_item(item_stack));
+                    if armor.get_damage() > 0
+                        && armor.is_damageable()
+                        && !armor.is_unbreakable()
+                        && repairable
+                    {
+                        // Vanilla shrinks the stack here, so creative players use it up too.
+                        item_stack.decrement(1);
+                        self.play_entity_sound(Sound::ItemWolfArmorRepair, 1.0, 1.0);
+                        let max_damage = armor.get_max_damage().unwrap_or(0);
+                        let repair_unit = (max_damage as f32 * ARMOR_REPAIR_FRACTION) as i32;
+                        armor.set_damage((armor.get_damage() - repair_unit).max(0));
+                        self.mob_entity.set_item_slot(&EquipmentSlot::BODY, armor);
+                        return true;
+                    }
+                }
+
                 let parent_interaction = self.animal_interact(player, item_stack);
-                if !parent_interaction {
+                if !parent_interaction && is_owner {
                     if self.order_to_sit(!self.is_ordered_to_sit()) {
                         self.stop_and_forget_target();
                     }
@@ -639,8 +748,17 @@ impl Mob for WolfEntity {
                 }
                 return parent_interaction;
             }
+
+            if let Some(dye) =
+                item_stack.get_data_component::<pumpkin_data::data_component_impl::DyeImpl>()
+                && dye.color.id() != self.get_collar_color()
+            {
+                self.set_collar_color(dye.color.id());
+                item_stack.decrement_unless_creative(gamemode, 1);
+                return true;
+            }
         } else if item == &Item::BONE && !self.mob_entity.is_attacking() {
-            item_stack.decrement_unless_creative(player.gamemode.load(), 1);
+            item_stack.decrement_unless_creative(gamemode, 1);
             let rng = game_random();
             if rng.random_range(0..3) == 0 && self.approve_taming(player) {
                 TamableAnimal::tame(self, player.gameprofile.id);
@@ -665,7 +783,16 @@ impl CustomSound for WolfEntity {
         Some(sound_variant.death_sound(is_baby))
     }
 
+    /// Vanilla `Wolf.getHurtSound`, which runs after `actuallyHurt` for the hit that just landed.
     fn hurt_sound(&self) -> Option<pumpkin_data::sound::Sound> {
+        if self
+            .mob_entity
+            .living_entity
+            .get_last_damage_type()
+            .is_some_and(|damage_type| self.can_armor_absorb(&damage_type))
+        {
+            return Some(Sound::ItemWolfArmorDamage);
+        }
         let is_baby = self.is_baby();
         let sound_variant = WolfSoundVariant::from_id(self.sound_variant.load(Ordering::Relaxed))
             .unwrap_or_default();

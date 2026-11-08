@@ -4549,18 +4549,25 @@ impl LivingEntity {
             );
         }
 
-        let damage_after_armor = self.get_damage_after_armor_absorb(
-            caller,
-            armor_damage,
-            &damage_type,
-            cause.or(source),
-        );
-        let effective_amount = self.get_damage_after_magic_absorb(
-            damage_after_armor,
-            &damage_type,
-            caller,
-            cause.or(source),
-        );
+        let effective_amount = if caller
+            .get_mob()
+            .is_some_and(|mob| mob.absorb_actually_hurt(damage_type, armor_damage))
+        {
+            0.0
+        } else {
+            let damage_after_armor = self.get_damage_after_armor_absorb(
+                caller,
+                armor_damage,
+                &damage_type,
+                cause.or(source),
+            );
+            self.get_damage_after_magic_absorb(
+                damage_after_armor,
+                &damage_type,
+                caller,
+                cause.or(source),
+            )
+        };
 
         // Finalize state
         self.last_damage_taken.store(amount);
