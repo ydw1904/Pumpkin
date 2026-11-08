@@ -764,9 +764,9 @@ impl Mob for WolfEntity {
                 TamableAnimal::tame(self, player.gameprofile.id);
                 self.stop_and_forget_target();
                 self.set_ordered_to_sit(true);
-                self.spawn_taming_particles(true);
+                self.send_taming_status(true);
             } else {
-                self.spawn_taming_particles(false);
+                self.send_taming_status(false);
             }
             return true;
         }
