@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::attributes::Attributes;
+use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_util::math::vector3::Vector3;
 
@@ -273,7 +274,11 @@ impl Goal for CubeMobRandomDirectionGoal {
         cube.get_mob_entity().get_target().is_none()
             && (entity.on_ground.load(Ordering::Relaxed)
                 || entity.touching_water.load(Ordering::Relaxed)
-                || entity.touching_lava.load(Ordering::Relaxed))
+                || entity.touching_lava.load(Ordering::Relaxed)
+                || cube
+                    .get_mob_entity()
+                    .living_entity
+                    .has_effect(&StatusEffect::LEVITATION))
     }
 
     fn tick(&mut self, _mob: &dyn Mob) {
