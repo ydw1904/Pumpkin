@@ -586,6 +586,42 @@ impl BoundingBox {
 
         (t_min <= t_max && (0.0..=1.0).contains(&t_min)).then_some(t_min)
     }
+
+    /// Vanilla `AABB.clip`: where the segment from `from` to `to` enters this box. A segment
+    /// that starts inside the box misses it.
+    // Vanilla rounds after the multiply and after the add, so no `mul_add` here.
+    #[allow(clippy::suboptimal_flops)]
+    #[must_use]
+    pub fn clip(&self, from: Vector3<f64>, to: Vector3<f64>) -> Option<Vector3<f64>> {
+        // Vanilla `AABB.clipPoint`'s tolerance, also the smallest delta whose faces it tests.
+        const EPSILON: f64 = 1.0E-7;
+        let delta = to - from;
+        let mut scale = 1.0;
+        let mut hit = false;
+        for axis in [Axis::X, Axis::Y, Axis::Z] {
+            let d = delta.get_axis(axis);
+            let plane = if d > EPSILON {
+                self.min.get_axis(axis)
+            } else if d < -EPSILON {
+                self.max.get_axis(axis)
+            } else {
+                continue;
+            };
+            let s = (plane - from.get_axis(axis)) / d;
+            if !(0.0 < s && s < scale) {
+                continue;
+            }
+            let on_face = Axis::excluding(axis).into_iter().all(|other| {
+                let p = from.get_axis(other) + s * delta.get_axis(other);
+                self.min.get_axis(other) - EPSILON < p && p < self.max.get_axis(other) + EPSILON
+            });
+            if on_face {
+                scale = s;
+                hit = true;
+            }
+        }
+        hit.then(|| from + delta * scale)
+    }
 }
 
 /// Represents the dimensions of an entity.

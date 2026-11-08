@@ -2378,7 +2378,8 @@ pub trait Mob: EntityBase + Send + Sync {
         false
     }
 
-    /// Whether a projectile that starts inside this mob's box still hits it.
+    /// Vanilla `Entity.canBePickedFromInside`: whether a look ray starting inside this mob's box
+    /// still picks it.
     fn can_be_picked_from_inside(&self) -> bool {
         true
     }

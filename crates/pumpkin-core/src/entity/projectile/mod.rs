@@ -348,33 +348,19 @@ impl ThrownItemEntity {
             }
         }
 
-        // Entity collisions
-        let margin = compute_margin(entity);
-        let candidates = hit_candidates(&world, &search_box);
-        for cand in candidates {
-            if self.should_skip_collision(&world, entity, &cand) {
-                continue;
-            }
-
-            let ebb = cand
-                .get_entity()
-                .bounding_box
-                .load()
-                .expand(margin, margin, margin);
-            if skips_hit_from_inside(cand.as_ref(), &ebb, &start_pos) {
-                continue;
-            }
-            if let Some(t) = calculate_ray_intersection(&start_pos, &delta, &ebb)
-                && t < closest_t
-            {
-                closest_t = t;
-                let hit_pos = start_pos.add(&delta.multiply(t, t, t));
-                hit = Some(ProjectileHit::Entity {
-                    entity: cand.clone(),
-                    hit_pos,
-                    normal: delta.normalize().multiply(-1.0, -1.0, -1.0),
-                });
-            }
+        // Entities only count up to the block hit, like vanilla `ProjectileUtil.getHitResult`.
+        let to = start_pos + delta * closest_t;
+        let candidates = hit_candidates(&world, &search_box)
+            .into_iter()
+            .filter(|cand| !self.should_skip_collision(&world, entity, cand));
+        if let Some((target, hit_pos)) =
+            entity_hit_result(candidates, start_pos, to, compute_margin(entity))
+        {
+            hit = Some(ProjectileHit::Entity {
+                entity: target,
+                hit_pos,
+                normal: delta.normalize().multiply(-1.0, -1.0, -1.0),
+            });
         }
 
         // Vanilla moves the projectile to where it hits, so the hit (an explosion, a knockback
@@ -511,19 +497,33 @@ const DEFAULT_ENTITY_HIT_RESULT_MARGIN: f32 = 0.3;
 
 /// Vanilla `ProjectileUtil.computeMargin`: a projectile hits entities only by their exact box for
 /// its first two ticks, then grows the margin around them to 0.3 over the next six.
-fn compute_margin(entity: &Entity) -> f64 {
+pub(crate) fn compute_margin(entity: &Entity) -> f64 {
     let ticks = entity.tick_count.load(Ordering::Relaxed);
     f64::from(((ticks - 2) as f32 / 20.0).clamp(0.0, DEFAULT_ENTITY_HIT_RESULT_MARGIN))
 }
 
-/// Whether a ray starting inside `bb` skips this entity, for mobs that opt out of inside hits.
-fn skips_hit_from_inside(entity: &dyn EntityBase, bb: &BoundingBox, start: &Vector3<f64>) -> bool {
-    (bb.min.x..bb.max.x).contains(&start.x)
-        && (bb.min.y..bb.max.y).contains(&start.y)
-        && (bb.min.z..bb.max.z).contains(&start.z)
-        && entity
-            .get_mob()
-            .is_some_and(|mob| !mob.can_be_picked_from_inside())
+/// Vanilla `ProjectileUtil.getEntityHitResult` with a margin: the candidate whose box, grown by
+/// `margin`, the segment from `from` to `to` enters first. A segment starting inside a box misses
+/// that entity.
+pub(crate) fn entity_hit_result(
+    candidates: impl IntoIterator<Item = Arc<dyn EntityBase>>,
+    from: Vector3<f64>,
+    to: Vector3<f64>,
+    margin: f64,
+) -> Option<(Arc<dyn EntityBase>, Vector3<f64>)> {
+    let mut nearest = f64::MAX;
+    let mut hit = None;
+    for candidate in candidates {
+        let bounding_box = candidate.get_entity().bounding_box.load();
+        if let Some(location) = bounding_box.expand_all(margin).clip(from, to) {
+            let distance = from.squared_distance_to_vec(&location);
+            if distance < nearest {
+                nearest = distance;
+                hit = Some((candidate, location));
+            }
+        }
+    }
+    hit
 }
 
 /// Ray intersection algorithm for AABBs, returning a t value
