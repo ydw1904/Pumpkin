@@ -31,10 +31,15 @@ use crate::entity::player::Player;
 use crate::entity::{
     Entity, EntityBase,
     ai::goal::{
-        active_target::ActiveTargetGoal, go_to_wanted_item::GoToWantedItemGoal,
-        look_around::RandomLookAroundGoal, look_at_entity::LookAtEntityGoal,
-        melee_attack::MeleeAttackGoal, open_door::OpenDoorGoal,
-        ranged_crossbow_attack::RangedCrossbowAttackGoal, swim::SwimGoal,
+        active_target::ActiveTargetGoal,
+        avoid_repellent::{AvoidRepellentGoal, find_nearest_block_by_manhattan_distance},
+        go_to_wanted_item::GoToWantedItemGoal,
+        look_around::RandomLookAroundGoal,
+        look_at_entity::LookAtEntityGoal,
+        melee_attack::MeleeAttackGoal,
+        open_door::OpenDoorGoal,
+        ranged_crossbow_attack::RangedCrossbowAttackGoal,
+        swim::SwimGoal,
         wander_around::WanderAroundGoal,
     },
     mob::{
@@ -76,7 +81,8 @@ pub struct PiglinEntity {
     pub admiring_item: Mutex<Option<ItemStack>>,
     pub nearest_wanted_item: Mutex<Option<Arc<dyn EntityBase>>>,
     pub nearest_visible_player: Mutex<Option<Arc<Player>>>,
-    pub near_repellent: AtomicBool,
+    /// The `NEAREST_REPELLENT` memory.
+    pub nearest_repellent: AtomicCell<Option<BlockPos>>,
     pub activity: AtomicCell<PiglinActivity>,
     pub anger: PiglinAnger,
 }
@@ -126,7 +132,7 @@ impl PiglinEntity {
             admiring_item: Mutex::new(None),
             nearest_wanted_item: Mutex::new(None),
             nearest_visible_player: Mutex::new(None),
-            near_repellent: AtomicBool::new(false),
+            nearest_repellent: AtomicCell::new(None),
             activity: AtomicCell::new(PiglinActivity::Idle),
             anger: PiglinAnger::default(),
         };
@@ -145,6 +151,7 @@ impl PiglinEntity {
             goal_selector.add_goal(2, Box::new(GoToWantedItemGoal::new(mob_arc.clone(), 1.0)));
             goal_selector.add_goal(3, Box::new(MeleeAttackGoal::new(1.0, true)));
             goal_selector.add_goal(4, Box::new(RangedCrossbowAttackGoal::new(1.0, 8.0)));
+            goal_selector.add_goal(5, Box::new(Self::avoid_repellent_goal()));
             // Stands in for a vanilla stroll that ignores the no-action time.
             goal_selector.add_goal(
                 5,
@@ -186,6 +193,26 @@ impl PiglinEntity {
         };
 
         mob_arc
+    }
+
+    /// Vanilla `PiglinAi.avoidRepellent`, in the IDLE and CELEBRATE activities.
+    fn avoid_repellent_goal() -> AvoidRepellentGoal {
+        AvoidRepellentGoal::new(
+            |mob| {
+                mob.cast_any()
+                    .downcast_ref::<Self>()
+                    .and_then(|piglin| piglin.nearest_repellent.load())
+            },
+            false,
+        )
+        .with_gate(|mob| {
+            mob.cast_any().downcast_ref::<Self>().is_some_and(|piglin| {
+                matches!(
+                    piglin.current_activity(),
+                    PiglinActivity::Idle | PiglinActivity::Celebrate
+                )
+            })
+        })
     }
 
     #[must_use]
@@ -404,7 +431,7 @@ impl PiglinEntity {
 
     #[must_use]
     pub fn is_near_repellent(&self) -> bool {
-        self.near_repellent.load(Ordering::Relaxed)
+        self.nearest_repellent.load().is_some()
     }
 
     #[must_use]
@@ -657,26 +684,19 @@ impl PiglinEntity {
         let horizontal = PiglinAi::REPELLENT_DETECTION_RANGE_HORIZONTAL;
         let vertical = PiglinAi::REPELLENT_DETECTION_RANGE_VERTICAL;
 
-        let mut found = false;
-        'scan: for dy in -vertical..=vertical {
-            for dx in -horizontal..=horizontal {
-                for dz in -horizontal..=horizontal {
-                    let pos = BlockPos::new(center.0.x + dx, center.0.y + dy, center.0.z + dz);
-                    let (block, state) = world.get_block_and_state(&pos);
-                    if !block.has_tag(&tag::Block::MINECRAFT_PIGLIN_REPELLENTS) {
-                        continue;
-                    }
-                    if block.id == Block::SOUL_CAMPFIRE.id
-                        && !CampfireLikeProperties::from_state_id(state.id).lit
-                    {
-                        continue;
-                    }
-                    found = true;
-                    break 'scan;
-                }
-            }
-        }
-        self.near_repellent.store(found, Ordering::Relaxed);
+        // Vanilla `PiglinSpecificSensor.findNearestRepellent`.
+        let nearest = find_nearest_block_by_manhattan_distance(
+            &world,
+            center,
+            horizontal,
+            vertical,
+            |block, state| {
+                block.has_tag(&tag::Block::MINECRAFT_PIGLIN_REPELLENTS)
+                    && (block.id != Block::SOUL_CAMPFIRE.id
+                        || CampfireLikeProperties::from_state_id(state.id).lit)
+            },
+        );
+        self.nearest_repellent.store(nearest);
     }
 
     fn current_activity(&self) -> PiglinActivity {

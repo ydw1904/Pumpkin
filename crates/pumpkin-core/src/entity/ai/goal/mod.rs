@@ -5,6 +5,7 @@ use std::{any::TypeId, ops::BitOr, ptr};
 
 pub mod active_target;
 pub mod avoid_entity;
+pub mod avoid_repellent;
 pub mod beg;
 pub mod blaze_attack;
 pub mod bow_attack;
