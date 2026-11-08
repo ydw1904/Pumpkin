@@ -6,10 +6,14 @@ use std::sync::Arc;
 use std::sync::RwLock;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 
-use crate::entity::projectile::{ProjectileHit, calculate_ray_intersection, hit_candidates};
+use crate::entity::projectile::{
+    ProjectileHit, arrow_rest_position, calculate_ray_intersection, compute_margin, hit_candidates,
+    many_entity_hit_results,
+};
 use crate::{
     entity::{Entity, EntityBase, living::LivingEntity, player::Player},
     server::Server,
+    world::World,
 };
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::data_component_impl::{
@@ -81,7 +85,6 @@ pub struct ArrowEntity {
     pub in_ground_time: AtomicU32,
     pub life: AtomicU32,
     pub shake_time: AtomicU8,
-    pub has_hit: AtomicBool,
     pub last_deflected_by: LastDeflectedBy,
     pub last_block_pos: Arc<std::sync::RwLock<Option<BlockPos>>>,
     pub pierced_entities: Arc<RwLock<Vec<i32>>>,
@@ -90,8 +93,10 @@ pub struct ArrowEntity {
 
 impl ArrowEntity {
     const ARROW_BASE_DAMAGE: f64 = 2.0;
-    const WATER_INERTIA: f64 = 0.6;
-    const AIR_INERTIA: f64 = 0.99;
+    /// Vanilla `AbstractArrow.getWaterInertia`, a float.
+    const WATER_INERTIA: f64 = 0.6f32 as f64;
+    /// Vanilla `AbstractArrow.getAirDrag`, a float.
+    const AIR_INERTIA: f64 = 0.99f32 as f64;
     const GRAVITY: f64 = 0.05;
     const DESPAWN_TIME: u32 = 1200;
 
@@ -129,7 +134,6 @@ impl ArrowEntity {
             in_ground_time: AtomicU32::new(0),
             life: AtomicU32::new(0),
             shake_time: AtomicU8::new(0),
-            has_hit: AtomicBool::new(false),
             last_deflected_by: LastDeflectedBy::new(),
             last_block_pos: Arc::new(std::sync::RwLock::new(None)),
             pierced_entities: Arc::new(RwLock::new(Vec::new())),
@@ -172,7 +176,6 @@ impl ArrowEntity {
             in_ground_time: AtomicU32::new(0),
             life: AtomicU32::new(0),
             shake_time: AtomicU8::new(0),
-            has_hit: AtomicBool::new(false),
             last_deflected_by: LastDeflectedBy::new(),
             last_block_pos: Arc::new(std::sync::RwLock::new(None)),
             pierced_entities: Arc::new(RwLock::new(Vec::new())),
@@ -443,7 +446,6 @@ impl ArrowEntity {
         self.entity.is_on_fire() || self.is_flame.load(Ordering::Relaxed)
     }
 
-    #[allow(dead_code)]
     fn apply_inertia(&self, inertia: f64) {
         let velocity = self.entity.velocity.load();
         self.entity
@@ -451,8 +453,11 @@ impl ArrowEntity {
             .store(velocity.multiply(inertia, inertia, inertia));
     }
 
-    #[allow(dead_code)]
+    /// Vanilla `Entity.applyGravity`, which `NoGravity` turns off.
     fn apply_gravity(&self) {
+        if self.entity.has_no_gravity() {
+            return;
+        }
         let mut velocity = self.entity.velocity.load();
         velocity.y -= Self::GRAVITY;
         self.entity.velocity.store(velocity);
@@ -634,22 +639,13 @@ impl EntityBase for ArrowEntity {
             return;
         }
 
-        // Arrow is flying
+        // Vanilla `AbstractArrow.tick`: water slows the arrow before it moves, air after, and
+        // gravity comes last.
         let start_pos = entity.pos.load();
-        let mut velocity = entity.velocity.load();
-
-        // Apply gravity
-        velocity.y -= Self::GRAVITY;
-
-        // Apply inertia (air resistance or water drag)
-        let inertia = if in_water {
-            Self::WATER_INERTIA
-        } else {
-            Self::AIR_INERTIA
-        };
-        velocity = velocity.multiply(inertia, inertia, inertia);
-
-        entity.velocity.store(velocity);
+        if in_water {
+            self.apply_inertia(Self::WATER_INERTIA);
+        }
+        let velocity = entity.velocity.load();
 
         // Update rotation based on velocity
         let len = velocity.horizontal_length();
@@ -658,9 +654,7 @@ impl EntityBase for ArrowEntity {
             velocity.y.atan2(len) as f32 * 57.295_776,
         );
 
-        // Move arrow
         let new_pos = start_pos.add(&velocity);
-        entity.set_pos(new_pos);
 
         // Broadcast velocity update
         let packet = CEntityVelocity::new(entity.entity_id.into(), velocity);
@@ -711,57 +705,14 @@ impl EntityBase for ArrowEntity {
             }
         }
 
-        // Entity collisions
-        let candidates = hit_candidates(&world, &search_box);
-        for cand in candidates {
-            if self.should_skip_collision(entity, &cand) {
-                continue;
-            }
+        let block_to = start_pos + velocity * closest_t;
+        self.step_move_and_hit(caller, &world, &search_box, hit, block_to);
 
-            let ebb = cand.get_entity().bounding_box.load().expand(0.3, 0.3, 0.3);
-            if let Some(t) = calculate_ray_intersection(&start_pos, &velocity, &ebb)
-                && t < closest_t
-            {
-                closest_t = t;
-                let hit_pos = start_pos.add(&velocity.multiply(t, t, t));
-                hit = Some(ProjectileHit::Entity {
-                    entity: cand.clone(),
-                    hit_pos,
-                    normal: velocity.normalize().multiply(-1.0, -1.0, -1.0),
-                });
-            }
+        if !in_water {
+            self.apply_inertia(Self::AIR_INERTIA);
         }
-
-        // Handle hit
-        if let Some(h) = hit {
-            match h {
-                ProjectileHit::Block { .. } => {
-                    if self.has_hit.swap(true, Ordering::SeqCst) {
-                        return;
-                    }
-                    caller.on_hit(h);
-                }
-                ProjectileHit::Entity {
-                    entity: ref target, ..
-                } => {
-                    if self
-                        .last_deflected_by
-                        .hit_target_or_deflect_self(caller, target.as_ref())
-                    {
-                        return;
-                    }
-                    let pierce = self.pierce_level.load(Ordering::Relaxed);
-                    let pierced_len = self
-                        .pierced_entities
-                        .read()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .len();
-                    if pierced_len >= pierce as usize && self.has_hit.swap(true, Ordering::SeqCst) {
-                        return;
-                    }
-                    caller.on_hit(h);
-                }
-            }
+        if !self.in_ground.load(Ordering::Relaxed) {
+            self.apply_gravity();
         }
     }
 
@@ -819,15 +770,7 @@ impl EntityBase for ArrowEntity {
                     );
                 }
 
-                // Stop the arrow with slight position offset backwards
-                let velocity = entity.velocity.load();
-                let norm_dir = Vector3::new(
-                    velocity.x.signum(),
-                    velocity.y.signum(),
-                    velocity.z.signum(),
-                );
-                let offset = norm_dir.multiply(0.05, 0.05, 0.05);
-                entity.set_pos(hit_pos.sub(&offset));
+                entity.set_pos(arrow_rest_position(hit_pos, entity.velocity.load()));
                 entity.velocity.store(Vector3::new(0.0, 0.0, 0.0));
 
                 // Notify client that arrow is in ground
@@ -886,10 +829,19 @@ impl EntityBase for ArrowEntity {
 
                 let owner_entity = self.owner.get(&world);
 
-                self.pierced_entities
+                let mut pierced = self
+                    .pierced_entities
                     .write()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .push(target_entity_id);
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                // Vanilla `AbstractArrow.onHitEntity`: a piercing arrow goes through `pierce + 1`
+                // entities and is gone when it reaches one more.
+                if pierce > 0 && pierced.len() > pierce as usize {
+                    drop(pierced);
+                    entity.remove();
+                    return;
+                }
+                pierced.push(target_entity_id);
+                drop(pierced);
 
                 let damage_succeeded = target.damage_with_context(
                     target.as_ref(),
@@ -902,7 +854,6 @@ impl EntityBase for ArrowEntity {
                 );
 
                 if is_enderman && !damage_succeeded {
-                    self.has_hit.store(false, Ordering::Relaxed);
                     return;
                 }
 
@@ -971,13 +922,7 @@ impl EntityBase for ArrowEntity {
                     }
                 }
 
-                // Check pierce level
-                let pierced_count = self
-                    .pierced_entities
-                    .read()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .len();
-                if pierced_count > pierce as usize {
+                if pierce == 0 {
                     entity.remove();
                 }
             }
@@ -1048,6 +993,69 @@ impl EntityBase for ArrowEntity {
 }
 
 impl ArrowEntity {
+    /// Vanilla `AbstractArrow.stepMoveAndHit`: moves to the nearest entity on the way and hits
+    /// every entity there, going on through them while the arrow pierces, or else moves to
+    /// `block_to` and hits the block there.
+    fn step_move_and_hit(
+        &self,
+        caller: &dyn EntityBase,
+        world: &World,
+        search_box: &BoundingBox,
+        block_hit: Option<ProjectileHit>,
+        block_to: Vector3<f64>,
+    ) {
+        let entity = self.get_entity();
+        let normal = entity.velocity.load().normalize() * -1.0;
+        while !entity.is_removed() {
+            let initial = entity.pos.load();
+            let candidates = hit_candidates(world, search_box)
+                .into_iter()
+                .filter(|cand| !self.should_skip_collision(entity, cand));
+            let mut hits = many_entity_hit_results(
+                world,
+                candidates,
+                initial,
+                block_to,
+                compute_margin(entity),
+            );
+            hits.sort_by(|(a, _), (b, _)| {
+                initial
+                    .squared_distance_to_vec(&a.get_entity().pos.load())
+                    .total_cmp(&initial.squared_distance_to_vec(&b.get_entity().pos.load()))
+            });
+            entity.set_pos(hits.first().map_or(block_to, |(_, location)| *location));
+
+            if hits.is_empty() {
+                if let Some(block_hit) = block_hit {
+                    caller.on_hit(block_hit);
+                    entity.velocity_dirty.store(true, Ordering::Relaxed);
+                }
+                return;
+            }
+            // Vanilla sets `needsSync` once the arrow has hit something.
+            entity.velocity_dirty.store(true, Ordering::Relaxed);
+            for (target, hit_pos) in hits {
+                if self
+                    .last_deflected_by
+                    .hit_target_or_deflect_self(caller, target.as_ref())
+                {
+                    return;
+                }
+                caller.on_hit(ProjectileHit::Entity {
+                    entity: target,
+                    hit_pos,
+                    normal,
+                });
+                if entity.is_removed() {
+                    return;
+                }
+            }
+            if self.pierce_level.load(Ordering::Relaxed) == 0 {
+                return;
+            }
+        }
+    }
+
     fn should_skip_collision(&self, self_ent: &Entity, other: &Arc<dyn EntityBase>) -> bool {
         let other_ent = other.get_entity();
 

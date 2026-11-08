@@ -6,8 +6,9 @@ use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_protocol::java::client::play::CEntityVelocity;
 use pumpkin_util::math::boundingbox::BoundingBox;
-use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
+use pumpkin_util::math::{position::BlockPos, signum, vector3::Vector3};
 use pumpkin_util::random::gameplay::game_random;
+use pumpkin_world::clip::{ClipBlock, ClipContext, ClipFluid};
 use std::{
     sync::Arc,
     sync::atomic::{AtomicBool, AtomicU64, Ordering},
@@ -492,6 +493,16 @@ pub(crate) fn rotate_towards_movement(entity: &Entity, speed: f32) {
     entity.pitch.store(old_pitch + speed * (pitch - old_pitch));
 }
 
+/// How far vanilla `AbstractArrow.onHitBlock` backs an arrow off along each axis it moved on.
+const ARROW_BLOCK_HIT_OFFSET: f32 = 0.05;
+
+/// Vanilla `AbstractArrow.onHitBlock`: where an arrow or trident that hit a block at `hit_pos`
+/// while moving by `movement` comes to rest.
+pub(crate) fn arrow_rest_position(hit_pos: Vector3<f64>, movement: Vector3<f64>) -> Vector3<f64> {
+    let direction = Vector3::new(signum(movement.x), signum(movement.y), signum(movement.z));
+    hit_pos - direction * f64::from(ARROW_BLOCK_HIT_OFFSET)
+}
+
 /// Vanilla `ProjectileUtil.DEFAULT_ENTITY_HIT_RESULT_MARGIN`.
 const DEFAULT_ENTITY_HIT_RESULT_MARGIN: f32 = 0.3;
 
@@ -524,6 +535,43 @@ pub(crate) fn entity_hit_result(
         }
     }
     hit
+}
+
+/// Vanilla `ProjectileUtil.getManyEntityHitResult` as `AbstractArrow.findHitEntities` calls it:
+/// every candidate the segment enters, at its exact box, or else where it enters the box grown by
+/// `margin` when no block stands between there and the entity.
+pub(crate) fn many_entity_hit_results(
+    world: &World,
+    candidates: impl IntoIterator<Item = Arc<dyn EntityBase>>,
+    from: Vector3<f64>,
+    to: Vector3<f64>,
+    margin: f64,
+) -> Vec<(Arc<dyn EntityBase>, Vector3<f64>)> {
+    let mut hits = Vec::new();
+    for candidate in candidates {
+        let bounding_box = candidate.get_entity().bounding_box.load();
+        if let Some(location) = bounding_box.clip(from, to) {
+            hits.push((candidate, location));
+        } else if margin > 0.0
+            && let Some(outside) = bounding_box.expand_all(margin).clip(from, to)
+        {
+            let block_hit = world.clip(&ClipContext::new(
+                outside,
+                bounding_box.get_center(),
+                ClipBlock::Collider,
+                ClipFluid::None,
+            ));
+            let towards = if block_hit.is_miss {
+                bounding_box.get_center()
+            } else {
+                block_hit.location
+            };
+            if bounding_box.clip(outside, towards).is_some() {
+                hits.push((candidate, outside));
+            }
+        }
+    }
+    hits
 }
 
 /// Ray intersection algorithm for AABBs, returning a t value
