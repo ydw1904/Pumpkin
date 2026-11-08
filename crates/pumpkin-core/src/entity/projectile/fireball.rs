@@ -6,6 +6,7 @@ use pumpkin_data::damage::DamageType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_nbt::tag::NbtTag;
 use pumpkin_protocol::codec::item_stack_seralizer::ItemStackSerializer;
 use pumpkin_util::math::atomic_f32::AtomicF32;
 use pumpkin_util::math::vector3::Vector3;
@@ -177,13 +178,15 @@ impl EntityBase for FireballEntity {
 
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
         self.acceleration_power.write_nbt(nbt);
-        nbt.put_float("ExplosionPower", self.get_explosion_power());
+        // Vanilla `LargeFireball` keeps an int power and saves it as a byte.
+        nbt.put_byte("ExplosionPower", self.get_explosion_power() as i8);
     }
 
     fn read_custom_nbt(&self, nbt: &NbtCompound) {
         self.acceleration_power.read_nbt(nbt);
-        if let Some(exp) = nbt.get_float("ExplosionPower") {
-            self.set_explosion_power(exp);
+        // Vanilla `getByteOr` takes any number tag, so `{ExplosionPower:4}` works.
+        if let Some(power) = nbt.get("ExplosionPower").and_then(NbtTag::as_numeric_int) {
+            self.set_explosion_power(f32::from(power as i8));
         }
     }
 
