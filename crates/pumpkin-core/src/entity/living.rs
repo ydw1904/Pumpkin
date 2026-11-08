@@ -1119,7 +1119,7 @@ impl LivingEntity {
 
     /// Vanilla `applyItemBlocking`: returns how much damage the used item blocks, and its
     /// `blocks_attacks` component when it took part.
-    fn apply_item_blocking(
+    pub(crate) fn apply_item_blocking(
         &self,
         caller: &dyn EntityBase,
         damage: f32,
@@ -4757,6 +4757,31 @@ impl LivingEntity {
         }
 
         success
+    }
+
+    /// Vanilla `LivingEntity.knockback`, through the mob's override when it has one.
+    pub(crate) fn knockback(
+        &self,
+        caller: &dyn EntityBase,
+        power: f64,
+        dx: f64,
+        dz: f64,
+        source: Option<&Entity>,
+        damage: f32,
+    ) {
+        if caller
+            .get_mob()
+            .is_some_and(|mob| mob.mob_knockback(power, dx, dz, source, damage, false))
+        {
+            return;
+        }
+        let resistance = self.get_attribute_value(&Attributes::KNOCKBACK_RESISTANCE);
+        self.entity.apply_knockback(
+            knockback_after_resistance(power, resistance),
+            dx,
+            dz,
+            source,
+        );
     }
 
     /// Vanilla `LivingEntity.dealDefaultKnockback`: along a projectile's flight, else away from

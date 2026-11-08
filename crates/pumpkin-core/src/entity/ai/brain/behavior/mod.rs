@@ -25,6 +25,7 @@ pub mod melee_attack;
 pub mod move_to_target_sink;
 pub mod one_shot;
 pub mod poi_walk;
+pub mod prepare_ram_nearest_target;
 pub mod random_look_around;
 pub mod random_stroll;
 pub mod rest;

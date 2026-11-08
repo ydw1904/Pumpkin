@@ -1,10 +1,14 @@
+mod ai;
+mod ram_target;
+
 use std::sync::{
-    Arc, Weak,
+    Arc,
     atomic::{AtomicBool, Ordering},
 };
 
 use pumpkin_data::BlockState;
 use pumpkin_data::attributes::Attributes;
+use pumpkin_data::data_component_impl::InstrumentImpl;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -12,17 +16,16 @@ use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::{RandomImpl, legacy_rand::LegacyRand};
 
 use crate::entity::{
     Entity, EntityBase,
     ageable::{AgeableData, AgeableMob},
-    ai::goal::{
-        breed::BreedGoal, escape_danger::EscapeDangerGoal, follow_parent::FollowParentGoal,
-        look_around::RandomLookAroundGoal, look_at_entity::LookAtEntityGoal, swim::SwimGoal,
-        tempt::TemptGoal, wander_around::WanderAroundGoal,
-    },
+    ai::brain::{Brain, memory::PackedMemories},
     ai::pathfinder::node::PathType,
     custom_sound::CustomSound,
+    item::ItemEntity,
     mob::{Mob, MobEntity, spawn::SpawnGroupData},
     passive::animal::Animal,
     player::Player,
@@ -30,12 +33,12 @@ use crate::entity::{
 use crate::item::items::bucket::fill_bucket_stack;
 use crate::world::World;
 
-const TEMPT_ITEMS: &[&Item] = &[&Item::WHEAT];
 const ADULT_ATTACK_DAMAGE: f64 = 2.0;
 const BABY_ATTACK_DAMAGE: f64 = 1.0;
 const GOAT_FALL_DAMAGE_REDUCTION: i32 = 10;
 const GOAT_SCREAMING_CHANCE: f64 = 0.02;
 const UNIHORN_CHANCE: f32 = 0.1;
+const MAX_HEAD_Y_ROT: f32 = 15.0;
 
 pub struct GoatEntity {
     pub mob_entity: MobEntity,
@@ -74,33 +77,7 @@ impl GoatEntity {
             has_left_horn: AtomicBool::new(true),
             has_right_horn: AtomicBool::new(true),
         };
-        let mob_arc = Arc::new(goat);
-        let mob_weak: Weak<dyn Mob> = {
-            let mob_arc: Arc<dyn Mob> = mob_arc.clone();
-            Arc::downgrade(&mob_arc)
-        };
-
-        {
-            let goal_selector = &mob_arc.mob_entity.goals_selector;
-
-            goal_selector.add_goal(0, Box::new(SwimGoal::default()));
-            goal_selector.add_goal(1, EscapeDangerGoal::new(2.0));
-            goal_selector.add_goal(2, BreedGoal::new(1.0));
-            goal_selector.add_goal(3, Box::new(TemptGoal::new(1.25, TEMPT_ITEMS, false)));
-            goal_selector.add_goal(4, Box::new(FollowParentGoal::new(1.25)));
-            // Stands in for a vanilla stroll that ignores the no-action time.
-            goal_selector.add_goal(
-                6,
-                Box::new(WanderAroundGoal::new(1.0).with_check_no_action_time(false)),
-            );
-            goal_selector.add_goal(
-                7,
-                LookAtEntityGoal::with_default(mob_weak, &EntityType::PLAYER, 6.0),
-            );
-            goal_selector.add_goal(8, Box::new(RandomLookAroundGoal::default()));
-        };
-
-        mob_arc
+        Arc::new(goat)
     }
 
     #[must_use]
@@ -151,6 +128,69 @@ impl GoatEntity {
             pumpkin_data::tracked_data::goat::DATA_HAS_RIGHT_HORN,
             has_horn,
         );
+    }
+
+    /// Vanilla `Goat.createHorn`: the instrument is picked with a random seeded by the UUID's
+    /// hash, so every horn of one goat plays the same.
+    #[must_use]
+    pub fn create_horn(&self) -> ItemStack {
+        let (most, least) = self.get_entity().entity_uuid.as_u64_pair();
+        let hilo = most ^ least;
+        let hash = ((hilo >> 32) as i32) ^ (hilo as i32);
+        let mut random = LegacyRand::from_seed(i64::from(hash) as u64);
+        let instruments = if self.is_screaming() {
+            tag::Instrument::MINECRAFT_SCREAMING_GOAT_HORNS.0
+        } else {
+            tag::Instrument::MINECRAFT_REGULAR_GOAT_HORNS.0
+        };
+        let mut horn = ItemStack::new(1, &Item::GOAT_HORN);
+        if !instruments.is_empty() {
+            let index = random.next_bounded_i32(instruments.len() as i32) as usize;
+            horn.set_data_component(InstrumentImpl {
+                instrument: format!("minecraft:{}", instruments[index]).into(),
+            });
+        }
+        horn
+    }
+
+    /// Vanilla `Goat.dropHorn`: an adult loses one of its horns, picked at random when it has
+    /// both, and drops it as a goat horn item.
+    pub fn drop_horn(&self) -> bool {
+        if self.is_baby() {
+            return false;
+        }
+        let (has_left, has_right) = (self.has_left_horn(), self.has_right_horn());
+        if !has_left && !has_right {
+            return false;
+        }
+        let random = &mut self.get_random();
+        let drop_left = if !has_left {
+            false
+        } else if !has_right {
+            true
+        } else {
+            random.random::<bool>()
+        };
+        if drop_left {
+            self.set_has_left_horn(false);
+        } else {
+            self.set_has_right_horn(false);
+        }
+        let entity = self.get_entity();
+        let horn = self.create_horn();
+        let random_between =
+            |min: f32, max: f32| f64::from(random.random::<f32>().mul_add(max - min, min));
+        let velocity = Vector3::new(
+            random_between(-0.2, 0.2),
+            random_between(0.3, 0.7),
+            random_between(-0.2, 0.2),
+        );
+        let world = entity.world.load_full();
+        let item = Entity::new(world.clone(), entity.pos.load(), &EntityType::ITEM);
+        world.spawn_entity(Arc::new(ItemEntity::new_with_velocity(
+            item, horn, velocity, 0,
+        )));
+        true
     }
 }
 
@@ -203,6 +243,9 @@ impl Animal for GoatEntity {
             entity.pos.load(),
             &EntityType::GOAT,
         ));
+        baby.mob_entity.with_brain(baby.as_ref(), |brain| {
+            ai::init_memories(brain, baby.as_ref());
+        });
         let random = self.get_random();
         let selected_parent_screaming = if random.random::<bool>() {
             self.is_screaming()
@@ -220,6 +263,19 @@ impl Animal for GoatEntity {
 }
 
 impl Mob for GoatEntity {
+    fn make_brain(&self, packed: &PackedMemories) -> Brain {
+        ai::make_brain(self, packed)
+    }
+
+    fn custom_server_ai_step(&self, _caller: &dyn EntityBase) {
+        self.mob_entity.tick_brain(self);
+        self.mob_entity.with_brain(self, ai::update_activity);
+    }
+
+    fn get_max_head_rotation(&self) -> f32 {
+        MAX_HEAD_Y_ROT
+    }
+
     fn get_ambient_sound(&self) -> Option<Sound> {
         Some(self.screaming_sound(Sound::EntityGoatAmbient, Sound::EntityGoatScreamingAmbient))
     }
@@ -230,6 +286,8 @@ impl Mob for GoatEntity {
         _reason: crate::entity::mob::spawn::EntitySpawnReason,
         group_data: Option<SpawnGroupData>,
     ) -> Option<SpawnGroupData> {
+        self.mob_entity
+            .with_brain(self, |brain| ai::init_memories(brain, self));
         let random = self.get_random();
         self.set_screaming(random.random::<f64>() < GOAT_SCREAMING_CHANCE);
         self.age_boundary_reached();
