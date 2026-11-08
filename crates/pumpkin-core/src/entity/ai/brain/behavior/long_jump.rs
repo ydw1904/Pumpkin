@@ -131,7 +131,7 @@ pub struct LongJumpToRandomPos {
     max_long_jump_height: i32,
     max_long_jump_width: i32,
     max_jump_velocity_multiplier: f32,
-    jump_sound: Sound,
+    jump_sound: fn(&dyn Mob) -> Sound,
     acceptable_landing_spot: fn(&dyn Mob, BlockPos) -> bool,
     preferred: Option<PreferredBlock>,
     jump_candidates: Vec<PossibleJump>,
@@ -150,7 +150,7 @@ impl LongJumpToRandomPos {
         max_long_jump_height: i32,
         max_long_jump_width: i32,
         max_jump_velocity_multiplier: f32,
-        jump_sound: Sound,
+        jump_sound: fn(&dyn Mob) -> Sound,
         acceptable_landing_spot: fn(&dyn Mob, BlockPos) -> bool,
         preferred: Option<PreferredBlock>,
     ) -> Self {
@@ -368,7 +368,7 @@ impl Behavior for LongJumpToRandomPos {
             entity.set_velocity(chosen_jump * (length_with_jump_boost / length));
             tick.state.set(types::LONG_JUMP_MID_JUMP, true);
             tick.world.play_sound_fine(
-                self.jump_sound,
+                (self.jump_sound)(tick.mob),
                 SoundCategory::Neutral,
                 &entity.pos.load(),
                 1.0,

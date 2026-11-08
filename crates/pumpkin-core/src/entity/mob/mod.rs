@@ -1685,6 +1685,17 @@ pub fn monster_walk_target_value(level: &dyn CreatureSpawnLevel, pos: &BlockPos)
 
 /// Vanilla `Mob.dropFromGiftLootTable` with `spawnAtLocation`; false when nothing dropped.
 pub fn drop_from_gift_loot_table<M: Mob>(mob: &M, loot_table: &str) -> bool {
+    drop_from_gift_loot_table_with(mob, loot_table, |stack| {
+        mob.get_entity().spawn_at_location(stack);
+    })
+}
+
+/// Vanilla `Mob.dropFromGiftLootTable`, handing each drop to `spawn`.
+pub fn drop_from_gift_loot_table_with<M: Mob>(
+    mob: &M,
+    loot_table: &str,
+    mut spawn: impl FnMut(ItemStack),
+) -> bool {
     use crate::plugin::api::events::entity::entity_drop_item::EntityDropItemEvent;
     use crate::world::loot::{LootContextParameters, generate_loot_from_handle};
 
@@ -1715,7 +1726,7 @@ pub fn drop_from_gift_loot_table<M: Mob>(mob: &M, loot_table: &str) -> bool {
         if drop_event.cancelled {
             continue;
         }
-        entity.spawn_at_location(stack);
+        spawn(stack);
         dropped = true;
     }
     dropped
