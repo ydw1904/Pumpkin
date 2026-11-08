@@ -63,7 +63,7 @@ impl CommandExecutor for GetExecutor {
         let target = EntityArgumentType::get_entity(context, ARG_TARGET)?;
         let living = target
             .get_living_entity()
-            .ok_or_else(|| FAILED_ENTITY_ERROR.create_without_context(target.get_name()))?;
+            .ok_or_else(|| FAILED_ENTITY_ERROR.create_without_context(target.get_display_name()))?;
 
         let attribute = AttributeArgumentType::get(context, ARG_ATTRIBUTE)?;
         let scale = if self.has_scale {
@@ -79,7 +79,7 @@ impl CommandExecutor for GetExecutor {
             .contains_key(&attribute.id);
         if !has_attr {
             return Err(NO_ATTRIBUTE_ERROR.create_without_context(
-                target.get_name(),
+                target.get_display_name(),
                 TextComponent::translate(attribute_translation_key(&attribute), []),
             ));
         }
@@ -94,7 +94,7 @@ impl CommandExecutor for GetExecutor {
                     translation::java::COMMANDS_ATTRIBUTE_BASE_VALUE_GET_SUCCESS,
                     [
                         TextComponent::translate(attribute_translation_key(&attribute), []),
-                        target.get_name(),
+                        target.get_display_name(),
                         TextComponent::text(java_double_string(base_value)),
                     ],
                 ),
@@ -112,7 +112,7 @@ impl CommandExecutor for GetExecutor {
                     translation::java::COMMANDS_ATTRIBUTE_VALUE_GET_SUCCESS,
                     [
                         TextComponent::translate(attribute_translation_key(&attribute), []),
-                        target.get_name(),
+                        target.get_display_name(),
                         TextComponent::text(java_double_string(value)),
                     ],
                 ),
@@ -131,7 +131,7 @@ impl CommandExecutor for BaseSetExecutor {
         let target = EntityArgumentType::get_entity(context, ARG_TARGET)?;
         let living = target
             .get_living_entity()
-            .ok_or_else(|| FAILED_ENTITY_ERROR.create_without_context(target.get_name()))?;
+            .ok_or_else(|| FAILED_ENTITY_ERROR.create_without_context(target.get_display_name()))?;
 
         let attribute = AttributeArgumentType::get(context, ARG_ATTRIBUTE)?;
         let value = DoubleArgumentType::get(context, ARG_VALUE)?;
@@ -143,7 +143,7 @@ impl CommandExecutor for BaseSetExecutor {
             .contains_key(&attribute.id);
         if !has_attr {
             return Err(NO_ATTRIBUTE_ERROR.create_without_context(
-                target.get_name(),
+                target.get_display_name(),
                 TextComponent::translate(attribute_translation_key(&attribute), []),
             ));
         }
@@ -160,7 +160,7 @@ impl CommandExecutor for BaseSetExecutor {
                 translation::java::COMMANDS_ATTRIBUTE_BASE_VALUE_SET_SUCCESS,
                 [
                     TextComponent::translate(attribute_translation_key(&attribute), []),
-                    target.get_name(),
+                    target.get_display_name(),
                     TextComponent::text(java_double_string(value)),
                 ],
             ),
@@ -178,7 +178,7 @@ impl CommandExecutor for BaseResetExecutor {
         let target = EntityArgumentType::get_entity(context, ARG_TARGET)?;
         let living = target
             .get_living_entity()
-            .ok_or_else(|| FAILED_ENTITY_ERROR.create_without_context(target.get_name()))?;
+            .ok_or_else(|| FAILED_ENTITY_ERROR.create_without_context(target.get_display_name()))?;
 
         let attribute = AttributeArgumentType::get(context, ARG_ATTRIBUTE)?;
 
@@ -189,7 +189,7 @@ impl CommandExecutor for BaseResetExecutor {
             .contains_key(&attribute.id);
         if !has_attr {
             return Err(NO_ATTRIBUTE_ERROR.create_without_context(
-                target.get_name(),
+                target.get_display_name(),
                 TextComponent::translate(attribute_translation_key(&attribute), []),
             ));
         }
@@ -214,7 +214,7 @@ impl CommandExecutor for BaseResetExecutor {
                 translation::java::COMMANDS_ATTRIBUTE_BASE_VALUE_RESET_SUCCESS,
                 [
                     TextComponent::translate(attribute_translation_key(&attribute), []),
-                    target.get_name(),
+                    target.get_display_name(),
                     TextComponent::text(java_double_string(default_val)),
                 ],
             ),
@@ -234,7 +234,7 @@ impl CommandExecutor for ModifierAddExecutor {
         let target = EntityArgumentType::get_entity(context, ARG_TARGET)?;
         let living = target
             .get_living_entity()
-            .ok_or_else(|| FAILED_ENTITY_ERROR.create_without_context(target.get_name()))?;
+            .ok_or_else(|| FAILED_ENTITY_ERROR.create_without_context(target.get_display_name()))?;
 
         let attribute = AttributeArgumentType::get(context, ARG_ATTRIBUTE)?;
         let modifier_id = IdStringArgumentType::get(context, ARG_ID)?.to_owned();
@@ -247,7 +247,7 @@ impl CommandExecutor for ModifierAddExecutor {
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             let inst = map.get_mut(&attribute.id).ok_or_else(|| {
                 NO_ATTRIBUTE_ERROR.create_without_context(
-                    target.get_name(),
+                    target.get_display_name(),
                     TextComponent::translate(attribute_translation_key(&attribute), []),
                 )
             })?;
@@ -256,7 +256,7 @@ impl CommandExecutor for ModifierAddExecutor {
                 Err(MODIFIER_ALREADY_PRESENT_ERROR.create_without_context(
                     TextComponent::text(modifier_id.clone()),
                     TextComponent::translate(attribute_translation_key(&attribute), []),
-                    target.get_name(),
+                    target.get_display_name(),
                 ))
             } else {
                 inst.add_or_replace_permanent_modifier(crate::entity::attributes::Modifier {
@@ -281,7 +281,7 @@ impl CommandExecutor for ModifierAddExecutor {
                 [
                     TextComponent::text(modifier_id),
                     TextComponent::translate(attribute_translation_key(&attribute), []),
-                    target.get_name(),
+                    target.get_display_name(),
                 ],
             ),
             false,
@@ -298,7 +298,7 @@ impl CommandExecutor for ModifierRemoveExecutor {
         let target = EntityArgumentType::get_entity(context, ARG_TARGET)?;
         let living = target
             .get_living_entity()
-            .ok_or_else(|| FAILED_ENTITY_ERROR.create_without_context(target.get_name()))?;
+            .ok_or_else(|| FAILED_ENTITY_ERROR.create_without_context(target.get_display_name()))?;
 
         let attribute = AttributeArgumentType::get(context, ARG_ATTRIBUTE)?;
         let modifier_id = IdStringArgumentType::get(context, ARG_ID)?.to_owned();
@@ -310,7 +310,7 @@ impl CommandExecutor for ModifierRemoveExecutor {
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             let inst = map.get_mut(&attribute.id).ok_or_else(|| {
                 NO_ATTRIBUTE_ERROR.create_without_context(
-                    target.get_name(),
+                    target.get_display_name(),
                     TextComponent::translate(attribute_translation_key(&attribute), []),
                 )
             })?;
@@ -321,7 +321,7 @@ impl CommandExecutor for ModifierRemoveExecutor {
                 .ok_or_else(|| {
                     NO_MODIFIER_ERROR.create_without_context(
                         TextComponent::translate(attribute_translation_key(&attribute), []),
-                        target.get_name(),
+                        target.get_display_name(),
                         TextComponent::text(modifier_id.clone()),
                     )
                 })?;
@@ -343,7 +343,7 @@ impl CommandExecutor for ModifierRemoveExecutor {
                 [
                     TextComponent::text(modifier_id),
                     TextComponent::translate(attribute_translation_key(&attribute), []),
-                    target.get_name(),
+                    target.get_display_name(),
                 ],
             ),
             false,
@@ -360,7 +360,7 @@ impl CommandExecutor for ModifierGetExecutor {
         let target = EntityArgumentType::get_entity(context, ARG_TARGET)?;
         let living = target
             .get_living_entity()
-            .ok_or_else(|| FAILED_ENTITY_ERROR.create_without_context(target.get_name()))?;
+            .ok_or_else(|| FAILED_ENTITY_ERROR.create_without_context(target.get_display_name()))?;
 
         let attribute = AttributeArgumentType::get(context, ARG_ATTRIBUTE)?;
         let modifier_id = IdStringArgumentType::get(context, ARG_ID)?.to_owned();
@@ -372,7 +372,7 @@ impl CommandExecutor for ModifierGetExecutor {
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             let inst = map.get(&attribute.id).ok_or_else(|| {
                 NO_ATTRIBUTE_ERROR.create_without_context(
-                    target.get_name(),
+                    target.get_display_name(),
                     TextComponent::translate(attribute_translation_key(&attribute), []),
                 )
             })?;
@@ -384,7 +384,7 @@ impl CommandExecutor for ModifierGetExecutor {
                 .ok_or_else(|| {
                     NO_MODIFIER_ERROR.create_without_context(
                         TextComponent::translate(attribute_translation_key(&attribute), []),
-                        target.get_name(),
+                        target.get_display_name(),
                         TextComponent::text(modifier_id.clone()),
                     )
                 })?;
@@ -402,7 +402,7 @@ impl CommandExecutor for ModifierGetExecutor {
                 [
                     TextComponent::text(modifier_id),
                     TextComponent::translate(attribute_translation_key(&attribute), []),
-                    target.get_name(),
+                    target.get_display_name(),
                     TextComponent::text(java_double_string(val)),
                 ],
             ),
