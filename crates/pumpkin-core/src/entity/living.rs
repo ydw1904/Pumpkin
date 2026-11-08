@@ -1599,7 +1599,10 @@ impl LivingEntity {
         {
             return false;
         }
-        if (entity_type == &EntityType::SPIDER || entity_type == &EntityType::CAVE_SPIDER)
+        if (entity_type == &EntityType::SPIDER
+            || entity_type == &EntityType::CAVE_SPIDER
+            || entity_type == &EntityType::NAUTILUS
+            || entity_type == &EntityType::ZOMBIE_NAUTILUS)
             && effect.effect_type == &StatusEffect::POISON
         {
             return false;

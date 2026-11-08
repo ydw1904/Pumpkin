@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 
 use crate::entity::attributes::{Modifier, ModifierOperation};
 use crate::entity::passive::abstract_horse::player_jump_pending_scale;
+use crate::entity::passive::nautilus::NautilusEntity;
 use crate::plugin::api::events::enchantment::{EnchantItemEvent, PrepareItemEnchantEvent};
 use crate::world::scoreboard::{BedrockScoreboard, Scoreboard};
 use advancement::PlayerAdvancement;
@@ -7013,11 +7014,16 @@ impl Player {
         }
     }
 
-    /// Opens the inventory of the horse this player rides. `false` if it isn't riding one.
+    /// Opens the inventory of the horse or nautilus this player rides. `false` if it isn't
+    /// riding one.
     pub fn open_vehicle_inventory(self: &Arc<Self>) -> bool {
         let Some(vehicle) = self.get_entity().get_vehicle() else {
             return false;
         };
+        if let Some(nautilus) = vehicle.cast_any().downcast_ref::<NautilusEntity>() {
+            nautilus.open_custom_inventory_screen(self);
+            return true;
+        }
         let Some(horse) = vehicle.get_mob().and_then(|mob| mob.as_abstract_horse()) else {
             return false;
         };
@@ -7034,6 +7040,13 @@ impl Player {
             .get_controlling_passenger()
             .is_none_or(|rider| rider.get_entity().entity_id != self.entity_id())
         {
+            return;
+        }
+        // Vanilla `AbstractNautilus` is a `PlayerRideableJumping` but no horse.
+        if let Some(nautilus) = vehicle.cast_any().downcast_ref::<NautilusEntity>() {
+            if nautilus.can_jump() && jump_scale > 0 {
+                nautilus.handle_start_jump();
+            }
             return;
         }
         let Some(horse) = vehicle.get_mob().and_then(|mob| mob.as_abstract_horse()) else {
