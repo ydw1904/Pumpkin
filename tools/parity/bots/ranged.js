@@ -61,6 +61,8 @@ h.start(async () => {
   await stand()
 
   // A full draw at 3 blocks: always a crit, whose bonus is random, so only the range is compared.
+  // The shot's spread can push the speed just over 3, so Power V reaches ceil(3.0x * 5) = 16
+  // plus a crit bonus of up to 9.
   // Shorter draws depend on the exact tick the release lands on, which drifts between servers.
   for (const [label, bow] of [['bow_full', 'bow'], ['bow_power5_full', 'bow[enchantments={power:5}]']]) {
     await clearMobs()
@@ -70,7 +72,7 @@ h.start(async () => {
     await h.waitFor(() => health(golem, 100) < 100, 3000)
     await h.ticks(5)
     const dmg = r3(100 - health(golem, 100))
-    const [lo, hi] = label === 'bow_full' ? [6, 11] : [14, 24]
+    const [lo, hi] = label === 'bow_full' ? [6, 11] : [14, 25]
     h.result(label, `damage=${dmg >= lo && dmg <= hi ? `${lo}..${hi}` : dmg} arrows_left=${h.inv().arrow || 0}`)
     await stand()
   }
