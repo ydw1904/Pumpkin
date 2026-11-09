@@ -21,7 +21,6 @@ pub struct MeleeAttackGoal {
     path: Option<Path>,
     update_countdown_ticks: i32,
     pub cooldown: i32,
-    attack_interval: fn(&dyn Mob) -> i32,
     last_update_time: i64,
     /// Vanilla `pathedTargetX/Y/Z`, kept across restarts.
     last_target_position: Option<Vector3<f64>>,
@@ -39,7 +38,6 @@ impl MeleeAttackGoal {
             path: None,
             update_countdown_ticks: 0,
             cooldown: 0,
-            attack_interval: |_| ATTACK_INTERVAL,
             last_update_time: 0,
             last_target_position: None,
             gate: None,
@@ -61,17 +59,9 @@ impl MeleeAttackGoal {
         self
     }
 
-    /// Ticks between hits for the Brain mobs this goal stands in for, vanilla
-    /// `MeleeAttack.create(cooldownBetweenAttacks)`.
     #[must_use]
-    pub const fn with_attack_interval(mut self, attack_interval: fn(&dyn Mob) -> i32) -> Self {
-        self.attack_interval = attack_interval;
-        self
-    }
-
-    #[must_use]
-    pub fn get_max_cooldown(&self, mob: &dyn Mob) -> i32 {
-        self.get_tick_count((self.attack_interval)(mob))
+    pub fn get_max_cooldown(&self) -> i32 {
+        self.get_tick_count(ATTACK_INTERVAL)
     }
 }
 
@@ -261,7 +251,7 @@ impl MeleeAttackGoal {
         if !self.can_perform_attack(mob, target) {
             return;
         }
-        self.reset_attack_cooldown(mob);
+        self.reset_attack_cooldown();
         if let Some(attack) = self.attack {
             attack(mob, target);
             return;
@@ -286,7 +276,7 @@ impl MeleeAttackGoal {
     }
 
     /// Vanilla `MeleeAttackGoal.resetAttackCooldown`.
-    pub fn reset_attack_cooldown(&mut self, mob: &dyn Mob) {
-        self.cooldown = self.get_max_cooldown(mob);
+    pub fn reset_attack_cooldown(&mut self) {
+        self.cooldown = self.get_max_cooldown();
     }
 }

@@ -38,7 +38,6 @@ use crossbeam::atomic::AtomicCell;
 mod ai;
 
 pub use ai::HoglinSpecificSensor;
-pub(crate) use ai::hoglin_attack_interval;
 
 pub struct HoglinEntity {
     pub mob_entity: MobEntity,

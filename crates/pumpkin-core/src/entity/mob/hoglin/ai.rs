@@ -46,15 +46,6 @@ const SPEED_MULTIPLIER_WHEN_FOLLOWING_ADULT: f32 = 0.6;
 /// Vanilla `BehaviorUtils.isOtherTargetMuchFurtherAwayThanCurrentAttackTarget` distance.
 const MUCH_FURTHER_AWAY: f64 = 4.0;
 
-/// Vanilla `HoglinAi` and `Zoglin` melee cooldowns.
-pub const fn hoglin_attack_interval(baby: bool) -> i32 {
-    if baby {
-        BABY_ATTACK_INTERVAL
-    } else {
-        ATTACK_INTERVAL
-    }
-}
-
 pub(super) fn make_brain(hoglin: &HoglinEntity, packed: &PackedMemories) -> Brain {
     BrainProvider {
         memory_types: &[],

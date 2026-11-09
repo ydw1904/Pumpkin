@@ -153,7 +153,7 @@ impl PolarBearMeleeAttackGoal {
             return;
         };
         if self.melee.can_perform_attack(mob, target) {
-            self.melee.reset_attack_cooldown(mob);
+            self.melee.reset_attack_cooldown();
             mob.do_hurt_target(target);
             bear.set_standing(false);
             return;
@@ -167,14 +167,14 @@ impl PolarBearMeleeAttackGoal {
         if distance_sq < warn_distance * warn_distance {
             if self.melee.is_time_to_attack() {
                 bear.set_standing(false);
-                self.melee.reset_attack_cooldown(mob);
+                self.melee.reset_attack_cooldown();
             }
             if self.melee.cooldown <= 10 {
                 bear.set_standing(true);
                 bear.play_warning_sound();
             }
         } else {
-            self.melee.reset_attack_cooldown(mob);
+            self.melee.reset_attack_cooldown();
             bear.set_standing(false);
         }
     }

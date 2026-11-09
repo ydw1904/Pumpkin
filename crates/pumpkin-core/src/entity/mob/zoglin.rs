@@ -1,35 +1,51 @@
 use pumpkin_util::random::gameplay::game_random;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Weak};
 
 use pumpkin_data::BlockState;
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::entity::{EntityStatus, EntityType};
+use pumpkin_data::environment_attribute::Activity;
 use pumpkin_data::sound::Sound;
 use pumpkin_data::tracked_data;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::bedrock::server::actor_event::ActorEventID;
 use pumpkin_util::math::position::BlockPos;
 
-use crate::entity::ai::target_match::TargetMatch;
+use crate::entity::ai::brain::{
+    Brain, BrainProvider, BrainState, BrainTick,
+    activity::ActivityData,
+    behavior::{
+        DoNothing, LookAtTargetSink, MoveToTargetSink, Timed, melee_attack, random_stroll, run_one,
+        set_entity_look_target_sometimes,
+        set_walk_target_from_attack_target_if_target_out_of_reach,
+        set_walk_target_from_look_target, start_attacking, stop_attacking_if_target_invalid, utils,
+    },
+    memory::{MemoryStatus, PackedMemories, types},
+    pending::PendingBrainUpdates,
+    sensing::{SensorType, is_entity_attackable},
+};
 use crate::entity::{
     Entity, EntityBase,
-    ai::goal::{
-        active_target::ActiveTargetGoal, look_around::RandomLookAroundGoal,
-        look_at_entity::LookAtEntityGoal, melee_attack::MeleeAttackGoal, revenge::RevengeGoal,
-        swim::SwimGoal, wander_around::WanderAroundGoal,
-    },
-    living::LivingEntity,
     mob::{
         Mob, MobEntity, MobMetadata,
-        hoglin::{hoglin_attack_interval, hurt_and_throw_target, throw_target},
+        hoglin::{hurt_and_throw_target, throw_target},
     },
 };
+use crate::plugin::api::events::entity::entity_target::TargetReason;
 use crate::world::World;
+
+const ATTACK_INTERVAL: i32 = 40;
+const BABY_ATTACK_INTERVAL: i32 = 15;
+const ATTACK_DURATION: i64 = 200;
+const SPEED_MULTIPLIER_WHEN_IDLING: f32 = 0.4;
+/// Vanilla `Zoglin.hurtServer` distance for `isOtherTargetMuchFurtherAwayThanCurrentAttackTarget`.
+const MUCH_FURTHER_AWAY: f64 = 4.0;
 
 pub struct ZoglinEntity {
     pub mob_entity: MobEntity,
     pub is_baby: AtomicBool,
+    pending_brain_updates: PendingBrainUpdates<Self>,
 }
 
 impl ZoglinEntity {
@@ -71,62 +87,11 @@ impl ZoglinEntity {
         }
         mob_entity.living_entity.health.store(40.0);
 
-        let zoglin = Self {
+        Arc::new(Self {
             mob_entity,
             is_baby: AtomicBool::new(false),
-        };
-        let mob_arc = Arc::new(zoglin);
-        let mob_weak: Weak<dyn Mob> = {
-            let mob_arc: Arc<dyn Mob> = mob_arc.clone();
-            Arc::downgrade(&mob_arc)
-        };
-
-        {
-            let goal_selector = &mob_arc.mob_entity.goals_selector;
-
-            goal_selector.add_goal(0, Box::new(SwimGoal::default()));
-            goal_selector.add_goal(
-                4,
-                Box::new(MeleeAttackGoal::new(1.0, true).with_attack_interval(|mob| {
-                    hoglin_attack_interval(
-                        mob.cast_any()
-                            .downcast_ref::<Self>()
-                            .is_some_and(Self::is_baby),
-                    )
-                })),
-            );
-            // Stands in for a vanilla stroll that ignores the no-action time.
-            goal_selector.add_goal(
-                5,
-                Box::new(WanderAroundGoal::new(1.0).with_check_no_action_time(false)),
-            );
-            goal_selector.add_goal(
-                6,
-                LookAtEntityGoal::with_default(mob_weak.clone(), &EntityType::PLAYER, 8.0),
-            );
-            goal_selector.add_goal(7, Box::new(RandomLookAroundGoal::default()));
-
-            let target_selector = &mob_arc.mob_entity.target_selector;
-            target_selector.add_goal(1, Box::new(RevengeGoal::new(true)));
-            // Vanilla `Zoglin.findNearestValidAttackTarget`: any attackable living entity but
-            // zoglins and creepers.
-            target_selector.add_goal(
-                2,
-                Box::new(ActiveTargetGoal::new(
-                    &mob_arc.mob_entity,
-                    TargetMatch::Any,
-                    10,
-                    true,
-                    false,
-                    Some(|target: &LivingEntity, _world: &World| {
-                        target.entity.entity_type != &EntityType::ZOGLIN
-                            && target.entity.entity_type != &EntityType::CREEPER
-                    }),
-                )),
-            );
-        };
-
-        mob_arc
+            pending_brain_updates: PendingBrainUpdates::default(),
+        })
     }
 
     #[must_use]
@@ -144,15 +109,119 @@ impl ZoglinEntity {
                 .set_attribute_base(&Attributes::ATTACK_DAMAGE, Self::BABY_ATTACK_DAMAGE);
         }
     }
+
+    /// Vanilla `Zoglin.updateActivity`; returns whether the zoglin just started fighting.
+    fn update_activity(&self, brain: &mut BrainState) -> bool {
+        let old_activity = brain.get_active_non_core_activity();
+        brain.set_active_activity_to_first_valid(&[Activity::Fight, Activity::Idle]);
+        let new_activity = brain.get_active_non_core_activity();
+        self.mob_entity
+            .set_attacking(brain.has_memory_value(types::ATTACK_TARGET.id()));
+        new_activity == Some(Activity::Fight) && old_activity != Some(Activity::Fight)
+    }
+}
+
+fn is_adult(mob: &dyn Mob) -> bool {
+    !mob.get_mob_entity().living_entity.is_baby()
+}
+
+fn is_baby(mob: &dyn Mob) -> bool {
+    mob.get_mob_entity().living_entity.is_baby()
+}
+
+fn activities(_mob: &dyn Mob) -> Vec<ActivityData> {
+    vec![core_activity(), idle_activity(), fight_activity()]
+}
+
+fn core_activity() -> ActivityData {
+    ActivityData::with_priority_start(
+        Activity::Core,
+        0,
+        vec![
+            Box::new(Timed::new(LookAtTargetSink::new(45, 90))),
+            Box::new(Timed::new(MoveToTargetSink::default())),
+        ],
+    )
+}
+
+fn idle_activity() -> ActivityData {
+    ActivityData::with_priority_start(
+        Activity::Idle,
+        10,
+        vec![
+            Box::new(start_attacking::create(
+                |_| true,
+                find_nearest_valid_attack_target,
+            )),
+            Box::new(set_entity_look_target_sometimes::create(8.0, 30, 60)),
+            Box::new(run_one(vec![
+                (
+                    Box::new(random_stroll::stroll(SPEED_MULTIPLIER_WHEN_IDLING)),
+                    2,
+                ),
+                (
+                    Box::new(set_walk_target_from_look_target::create(
+                        SPEED_MULTIPLIER_WHEN_IDLING,
+                        3,
+                    )),
+                    2,
+                ),
+                (Box::new(DoNothing::new(30, 60)), 1),
+            ])),
+        ],
+    )
+}
+
+fn fight_activity() -> ActivityData {
+    ActivityData::with_priority_start_and_conditions(
+        Activity::Fight,
+        10,
+        vec![
+            Box::new(set_walk_target_from_attack_target_if_target_out_of_reach::create(1.0)),
+            Box::new(melee_attack::create_when(is_adult, ATTACK_INTERVAL)),
+            Box::new(melee_attack::create_when(is_baby, BABY_ATTACK_INTERVAL)),
+            Box::new(stop_attacking_if_target_invalid::create(
+                |_, _| false,
+                |_, _| {},
+                true,
+            )),
+        ],
+        vec![(types::ATTACK_TARGET.id(), MemoryStatus::ValuePresent)],
+    )
+}
+
+/// Vanilla `Zoglin.findNearestValidAttackTarget`: the closest visible living entity that is
+/// neither a zoglin nor a creeper.
+fn find_nearest_valid_attack_target(tick: &BrainTick<'_>) -> Option<Arc<dyn EntityBase>> {
+    let ctx = tick.visibility();
+    tick.state
+        .get(types::NEAREST_VISIBLE_LIVING_ENTITIES)?
+        .find_closest(&ctx, |target| {
+            let entity_type = target.get_entity().entity_type;
+            entity_type != &EntityType::ZOGLIN
+                && entity_type != &EntityType::CREEPER
+                && is_entity_attackable(&ctx, target.as_ref())
+        })
+}
+
+/// Vanilla `Zoglin.setAttackTarget`.
+fn set_attack_target(brain: &mut BrainState, target: Arc<dyn EntityBase>) {
+    brain.erase(types::CANT_REACH_WALK_TARGET_SINCE.id());
+    brain.set_with_expiry(types::ATTACK_TARGET, target, ATTACK_DURATION);
 }
 
 impl Mob for ZoglinEntity {
     fn get_ambient_sound(&self) -> Option<Sound> {
-        Some(if self.mob_entity.get_target().is_some() {
-            Sound::EntityZoglinAngry
-        } else {
-            Sound::EntityZoglinAmbient
-        })
+        Some(
+            if self
+                .mob_entity
+                .brain_has_memory_value(types::ATTACK_TARGET.id())
+            {
+                Sound::EntityZoglinAngry
+            } else {
+                Sound::EntityZoglinAmbient
+            },
+        )
     }
 
     fn mob_play_step_sound(&self, _pos: &BlockPos, _state: &BlockState) {
@@ -165,6 +234,82 @@ impl Mob for ZoglinEntity {
 
     fn get_mob_entity(&self) -> &MobEntity {
         &self.mob_entity
+    }
+
+    fn make_brain(&self, packed: &PackedMemories) -> Brain {
+        BrainProvider {
+            memory_types: &[],
+            sensor_types: &[
+                SensorType::NearestLivingEntities,
+                SensorType::NearestPlayers,
+            ],
+            activities,
+        }
+        .make_brain(self, packed)
+    }
+
+    /// Vanilla `Zoglin.customServerAiStep`.
+    fn custom_server_ai_step(&self, _caller: &dyn EntityBase) {
+        let world = self.get_entity().world.load_full();
+        let time = world.get_world_age();
+        let (started_fighting, target) = self.mob_entity.with_brain(self, |brain| {
+            brain.tick(&world, self, time);
+            self.pending_brain_updates.run(self, brain);
+            (
+                self.update_activity(brain),
+                brain.get(types::ATTACK_TARGET).cloned(),
+            )
+        });
+        if started_fighting {
+            self.make_sound(Sound::EntityZoglinAngry);
+        }
+        // `getTarget` reads the brain's attack target.
+        let current = self.mob_entity.get_target();
+        if current.as_ref().map(|t| t.get_entity().entity_id)
+            != target.as_ref().map(|t| t.get_entity().entity_id)
+        {
+            let reason = if target.is_some() {
+                TargetReason::Angry
+            } else {
+                TargetReason::ForgotTarget
+            };
+            if !self.set_mob_target(target.clone(), reason) && target.is_some() {
+                self.mob_entity.set_target(None);
+            }
+        }
+    }
+
+    /// Vanilla `Zoglin.hurtServer`: targets the causing living entity unless the current
+    /// target is much closer.
+    fn on_damage_with_context(
+        &self,
+        _damage_type: pumpkin_data::damage::DamageType,
+        source: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
+    ) -> bool {
+        if let Some(attacker) = cause.or(source)
+            && attacker.get_living_entity().is_some()
+            && let Some(attacker) = self
+                .get_entity()
+                .world
+                .load()
+                .get_entity_by_id(attacker.get_entity().entity_id)
+        {
+            self.pending_brain_updates
+                .update(self, move |zoglin, brain| {
+                    if zoglin.can_attack(attacker.as_ref())
+                        && !utils::is_other_target_much_further_away_than_current_attack_target(
+                            brain,
+                            zoglin,
+                            attacker.as_ref(),
+                            MUCH_FURTHER_AWAY,
+                        )
+                    {
+                        set_attack_target(brain, attacker);
+                    }
+                });
+        }
+        true
     }
 
     fn finalize_spawn(
