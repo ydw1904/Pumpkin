@@ -347,6 +347,11 @@ pub struct World {
     /// End Dragon fight manager (only present in `THE_END` dimension).
     pub dragon_fight: Option<std::sync::Mutex<dragon_fight::DragonFight>>,
     pub spawn_state: ArcSwap<SpawnState>,
+    /// Vanilla `ServerChunkCache.spawnEnemies`: `spawn_mobs && spawn_monsters` as of the last
+    /// [`Self::update_mob_spawning_flags`]. Vanilla only refreshes it at startup, on a difficulty
+    /// change and when `spawn_monsters` is set, so turning `spawn_mobs` back on doesn't bring
+    /// monsters back until then.
+    spawn_enemies: std::sync::atomic::AtomicBool,
     pub active_chunks: RwLock<Arc<ActiveChunks>>,
     pub(crate) navigation_change_sequence: std::sync::atomic::AtomicU64,
     /// Entities spawned by ticking entities, with their sequential order.
@@ -474,6 +479,7 @@ impl World {
         } else {
             Weather::new()
         };
+        let spawn_enemies = info.game_rules.spawn_mobs && info.game_rules.spawn_monsters;
         drop(info);
 
         // Load portal POI from disk (PoiStorage::new automatically loads from disk if files exist)
@@ -572,6 +578,7 @@ impl World {
             wandering_trader_spawner,
             dragon_fight,
             spawn_state: ArcSwap::new(Arc::new(SpawnState::empty())),
+            spawn_enemies: std::sync::atomic::AtomicBool::new(spawn_enemies),
             active_chunks: RwLock::new(Arc::default()),
             navigation_change_sequence: std::sync::atomic::AtomicU64::new(0),
             tick_spawns: std::sync::Mutex::new(Vec::new()),
@@ -1147,6 +1154,15 @@ impl World {
     pub fn is_tracked_by_any_player(&self, entity: &Entity) -> bool {
         self.entity_tracker
             .is_tracked_by_any_player(entity.entity_id)
+    }
+
+    /// Vanilla `Level.setSpawnSettings(isSpawningMonsters())`.
+    pub fn update_mob_spawning_flags(&self) {
+        let level_info = self.level_info.load();
+        self.spawn_enemies.store(
+            level_info.game_rules.spawn_mobs && level_info.game_rules.spawn_monsters,
+            Relaxed,
+        );
     }
 
     pub fn set_difficulty(&self, difficulty: Difficulty) {
@@ -2699,18 +2715,17 @@ impl World {
         // Vanilla `ServerChunkCache.tickChunks` spawns in every spawning chunk before it ticks
         // the block ticking chunks (precipitation, then random ticks).
         let spawn_state = self.spawn_state.load();
-        let (spawn_mobs, spawn_monsters, peaceful) = {
+        let (spawn_mobs, peaceful) = {
             let lock = self.level_info.load();
             (
                 lock.game_rules.spawn_mobs,
-                lock.game_rules.spawn_monsters,
                 lock.difficulty == Difficulty::Peaceful,
             )
         };
+        let spawn_enemies = !peaceful && self.spawn_enemies.load(Relaxed);
         // Vanilla `spawnPersistent` follows game time, so `/time set` and a stopped daylight
         // cycle don't shift or stop the 400-tick schedule.
         let spawn_passives = self.get_world_age() % 400 == 0;
-        let spawn_enemies = !peaceful && spawn_monsters && spawn_mobs;
         let spawn_passives = spawn_passives && spawn_mobs;
 
         let spawn_list = Arc::new(natural_spawner::get_filtered_spawning_categories(
@@ -2839,11 +2854,11 @@ impl World {
             self.phantom_spawner
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .tick(self, !peaceful && spawn_monsters);
+                .tick(self, spawn_enemies);
             self.patrol_spawner
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .tick(self, !peaceful && spawn_monsters);
+                .tick(self, spawn_enemies);
             self.cat_spawner
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -2851,7 +2866,7 @@ impl World {
             self.village_siege
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .tick(self, !peaceful && spawn_monsters);
+                .tick(self, spawn_enemies);
             self.wandering_trader_spawner
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)

@@ -1235,6 +1235,12 @@ impl Server {
                 };
                 self.broadcast_packet_all(&CGameEvent::new(event, if value { 1.0 } else { 0.0 }));
             }
+            // Only this rule refreshes the flag; `spawn_mobs` doesn't, as in vanilla.
+            GameRule::SpawnMonsters => {
+                for world in self.worlds.load().iter() {
+                    world.update_mob_spawning_flags();
+                }
+            }
             _ => {}
         }
     }
@@ -1315,10 +1321,6 @@ impl Server {
     ///
     /// * `difficulty`: The new difficulty level to set. This should be one of the variants of the `Difficulty` enum.
     /// * `force_update`: An optional boolean that, if set to `Some(true)`, forces the difficulty to be updated even if it is currently locked.
-    ///
-    /// # Note
-    ///
-    /// This function does not handle the actual mob spawn options update, which is a TODO item for future implementation.
     pub fn set_difficulty(&self, difficulty: Difficulty, force_update: bool) {
         let current_info = self.level_info.load();
         if current_info.difficulty_locked && !force_update {
@@ -1339,6 +1341,7 @@ impl Server {
 
         for world in self.worlds.load().iter() {
             world.set_difficulty(new_difficulty);
+            world.update_mob_spawning_flags();
             world.broadcast_editioned(
                 &CChangeDifficulty::new(new_difficulty as u8, locked),
                 &pumpkin_protocol::bedrock::client::CSetDifficulty {
