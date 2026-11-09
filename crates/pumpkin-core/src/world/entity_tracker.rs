@@ -207,9 +207,18 @@ impl TrackedEntity {
         }
 
         // Vanilla `ServerEntity.sendChanges`: after the needsSync block, `syncVelocity`
-        // (`hurtMarked`) sends motion to tracking players (and self, for players).
+        // (`hurtMarked`) always sends the motion alone, leaving `lastSentMovement` as it was.
         if entity.sync_velocity.swap(false, Ordering::SeqCst) {
-            self.send_motion(entity, world);
+            let velocity = entity.velocity.load();
+            self.send_to_tracking_players_editioned(
+                &CEntityVelocity::new(VarInt(self.entity_id), velocity),
+                &CSetActorMotion {
+                    target_runtime_id: VarULong(self.entity_id as u64),
+                    motion: velocity.to_f32_lossy(),
+                    tick: VarULong(0),
+                },
+                world,
+            );
         }
 
         // Java `CHeadRot` is per-tick. Bedrock watchers of this entity get head yaw from
