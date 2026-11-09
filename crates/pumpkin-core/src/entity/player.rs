@@ -1985,6 +1985,7 @@ impl Player {
                 Some(self),
                 Some(entity),
                 true,
+                1.0,
             )
         {
             return false;

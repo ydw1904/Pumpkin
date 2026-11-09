@@ -1,4 +1,4 @@
-use crate::entity::{Entity, EntityBase};
+use crate::entity::{Entity, EntityBase, known_speed};
 use pumpkin_data::sound::Sound;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_util::math::vector3::Vector3;
@@ -12,7 +12,9 @@ pub enum ProjectileDeflectionType {
     Simple,
     /// Vanilla `ProjectileDeflection.AIM_DEFLECT`: sent where the deflecting entity looks.
     AimDeflect,
-    TransferVelocityDirection,
+    /// Vanilla `ProjectileDeflection.MOMENTUM_DEFLECT`: sent the way the deflecting entity moved
+    /// last tick.
+    MomentumDeflect,
     /// Vanilla `Breeze.PROJECTILE_DEFLECTION`: the deflect sound at the breeze, then `REVERSE`.
     Breeze,
 }
@@ -31,23 +33,31 @@ impl ProjectileDeflectionType {
         }
     }
 
-    pub fn deflect(&self, projectile: &dyn EntityBase, hit_entity: Option<&dyn EntityBase>) {
+    /// Vanilla `ProjectileDeflection.deflect`: `power` scales the new velocity per axis.
+    pub fn deflect(
+        &self,
+        projectile: &dyn EntityBase,
+        hit_entity: Option<&dyn EntityBase>,
+        power: Vector3<f64>,
+    ) {
         match self {
             Self::None => {}
-            Self::Simple => reverse(projectile, Vector3::new(1.0, 1.0, 1.0)),
+            Self::Simple => reverse(projectile, power),
             Self::AimDeflect => {
                 if let Some(hit_entity) = hit_entity {
                     let entity = projectile.get_entity();
-                    entity.velocity.store(hit_entity.get_entity().look_angle());
+                    entity
+                        .velocity
+                        .store(hit_entity.get_entity().look_angle() * power);
                     entity.velocity_dirty.store(true, Ordering::Relaxed);
                 }
             }
-            Self::TransferVelocityDirection => {
+            Self::MomentumDeflect => {
                 if let Some(hit_entity) = hit_entity {
-                    let hit_velocity = hit_entity.get_entity().velocity.load().normalize();
-
                     let entity = projectile.get_entity();
-                    entity.velocity.store(hit_velocity);
+                    entity
+                        .velocity
+                        .store(known_speed(hit_entity).normalize() * power);
                     entity.velocity_dirty.store(true, Ordering::Relaxed);
                 }
             }
@@ -62,7 +72,7 @@ impl ProjectileDeflectionType {
                         1.0,
                     );
                 }
-                Self::Simple.deflect(projectile, hit_entity);
+                Self::Simple.deflect(projectile, hit_entity, power);
             }
         }
     }
@@ -91,11 +101,12 @@ pub fn deflect_projectile(
     deflector: Option<&dyn EntityBase>,
     new_owner: Option<&Entity>,
     by_attack: bool,
+    power: f64,
 ) -> bool {
     if !projectile.can_be_deflected() {
         return false;
     }
-    deflection.deflect(projectile, deflector);
+    deflection.deflect(projectile, deflector, Vector3::new(power, power, power));
     if let Some(new_owner) = new_owner
         && let Some(owner) = projectile.get_projectile_owner()
     {
@@ -129,6 +140,7 @@ pub fn redirect_projectile(projectile: &dyn EntityBase, hit: &dyn EntityBase) {
         owner.as_deref(),
         owner.as_deref().map(EntityBase::get_entity),
         true,
+        1.0,
     ) && owner.is_none()
     {
         hit_owner.clear();
@@ -160,7 +172,7 @@ impl LastDeflectedBy {
         }
         let hit_id = hit.get_entity().entity_id;
         if self.0.load(Ordering::Relaxed) != hit_id
-            && deflect_projectile(projectile, deflection, Some(hit), None, false)
+            && deflect_projectile(projectile, deflection, Some(hit), None, false, 1.0)
         {
             self.0.store(hit_id, Ordering::Relaxed);
         }

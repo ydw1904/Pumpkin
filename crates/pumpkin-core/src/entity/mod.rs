@@ -1661,6 +1661,19 @@ fn known_movement(entity: &dyn EntityBase) -> Vector3<f64> {
     base.velocity.load()
 }
 
+/// Vanilla `getKnownSpeed`: how far the entity moved last tick, or a player's last client move.
+/// A player-controlled vehicle reports its controller's.
+pub(crate) fn known_speed(entity: &dyn EntityBase) -> Vector3<f64> {
+    let base = entity.get_entity();
+    if let Some(controller) = entity.get_controlling_passenger()
+        && controller.get_player().is_some()
+        && base.is_alive()
+    {
+        return controller.get_entity().movement.load();
+    }
+    base.movement.load()
+}
+
 fn holder_movement(entity: &dyn EntityBase) -> Vector3<f64> {
     if entity
         .get_mob()
