@@ -26,7 +26,7 @@ use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_protocol::IdOr;
 use pumpkin_protocol::codec::var_int::VarInt;
-use pumpkin_protocol::java::client::play::CSoundEffect;
+use pumpkin_protocol::java::client::play::{CSoundEffect, GameEvent};
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
@@ -924,6 +924,14 @@ impl EntityBase for ArrowEntity {
                             Self::spectral_glowing_effect(),
                             Some(owner_entity.as_deref().unwrap_or(self)),
                         );
+                    }
+
+                    if target.get_player().is_some()
+                        && !entity.is_silent()
+                        && let Some(owner) = self.owner.get_player(&world)
+                        && owner.entity_id() != target_entity_id
+                    {
+                        owner.send_game_event(GameEvent::ArrowHitPlayer, 0.0);
                     }
                 }
 
