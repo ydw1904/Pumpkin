@@ -1,6 +1,6 @@
 use pumpkin_util::random::gameplay::game_random;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
 
 use pumpkin_data::Block;
 use pumpkin_data::BlockState;
@@ -19,6 +19,7 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 
 use crate::entity::ai::brain::memory::{PackedMemories, types};
+use crate::entity::ai::brain::pending::PendingBrainUpdates;
 use crate::entity::ai::brain::{Brain, BrainState};
 use crate::entity::mob::spawn::SpawnGroupData;
 use crate::entity::passive::animal::Animal;
@@ -39,8 +40,6 @@ mod ai;
 pub use ai::HoglinSpecificSensor;
 pub(crate) use ai::hoglin_attack_interval;
 
-type PendingBrainUpdate = Box<dyn FnOnce(&HoglinEntity, &mut BrainState) + Send>;
-
 pub struct HoglinEntity {
     pub mob_entity: MobEntity,
     pub immune_to_zombification: AtomicBool,
@@ -51,8 +50,7 @@ pub struct HoglinEntity {
     pub nearest_repellent: AtomicCell<Option<BlockPos>>,
     /// The active non-core activity, for the ambient sound.
     activity: AtomicCell<Option<Activity>>,
-    /// Brain changes from outside the brain tick that found the brain busy.
-    pending_brain_updates: Mutex<Vec<PendingBrainUpdate>>,
+    pending_brain_updates: PendingBrainUpdates<Self>,
 }
 
 /// Vanilla `HoglinAi.isPosNearNearestRepellent`.
@@ -107,7 +105,7 @@ impl HoglinEntity {
             ageable_data: AgeableData::default(),
             nearest_repellent: AtomicCell::new(None),
             activity: AtomicCell::new(None),
-            pending_brain_updates: Mutex::new(Vec::new()),
+            pending_brain_updates: PendingBrainUpdates::default(),
         };
         Arc::new(hoglin)
     }
@@ -124,38 +122,7 @@ impl HoglinEntity {
 
     /// Runs `update` on the brain now, or right after the brain tick that holds it.
     fn update_brain(&self, update: impl FnOnce(&Self, &mut BrainState) + Send + 'static) {
-        let mut update = Some(update);
-        let ran = self
-            .mob_entity
-            .try_with_brain(self, |brain| {
-                if let Some(update) = update.take() {
-                    update(self, brain);
-                }
-            })
-            .is_some();
-        if !ran && let Some(update) = update {
-            self.pending_brain_updates
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .push(Box::new(update));
-        }
-    }
-
-    fn run_pending_brain_updates(&self, brain: &mut BrainState) {
-        loop {
-            let pending = std::mem::take(
-                &mut *self
-                    .pending_brain_updates
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner),
-            );
-            if pending.is_empty() {
-                return;
-            }
-            for update in pending {
-                update(self, brain);
-            }
-        }
+        self.pending_brain_updates.update(self, update);
     }
 
     fn is_pos_near_nearest_repellent(&self, pos: &BlockPos) -> bool {
@@ -295,7 +262,7 @@ impl Mob for HoglinEntity {
         let time = world.get_world_age();
         let (sound, target) = self.mob_entity.with_brain(self, |brain| {
             brain.tick(&world, self, time);
-            self.run_pending_brain_updates(brain);
+            self.pending_brain_updates.run(self, brain);
             let sound = ai::update_activity(self, brain);
             self.activity.store(brain.get_active_non_core_activity());
             (sound, brain.get(types::ATTACK_TARGET).cloned())

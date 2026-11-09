@@ -23,7 +23,9 @@ use pumpkin_util::{GameMode, math::vector3::Vector3};
 use crate::entity::{
     Entity, EntityBase,
     ai::{
-        brain::{Brain, BrainState, memory::PackedMemories, memory::types},
+        brain::{
+            Brain, BrainState, memory::PackedMemories, memory::types, pending::PendingBrainUpdates,
+        },
         pathfinder::node::PathType,
     },
     mob::{
@@ -60,8 +62,6 @@ const FIXED_EYE_HEIGHT_RATIO: f32 = 0.85;
 /// Vanilla `Warden.nextStep`: a step sound every 0.55 blocks walked.
 const STEP_DISTANCE: f32 = 0.55;
 
-type PendingBrainUpdate = Box<dyn FnOnce(&WardenEntity, &mut BrainState) + Send>;
-
 pub struct WardenEntity {
     pub mob_entity: MobEntity,
     anger_management: Mutex<AngerManagement>,
@@ -69,9 +69,7 @@ pub struct WardenEntity {
     /// `VIBRATION_COOLDOWN` as of the last brain access, for listeners called during the
     /// warden's own brain tick.
     vibration_cooldown: AtomicBool,
-    /// Brain updates from callbacks that ran while the brain was ticking, such as a thorns hit
-    /// from the warden's own melee attack. They run right after that brain tick.
-    pending_brain_updates: Mutex<Vec<PendingBrainUpdate>>,
+    pending_brain_updates: PendingBrainUpdates<Self>,
 }
 
 impl WardenEntity {
@@ -103,7 +101,7 @@ impl WardenEntity {
             anger_management: Mutex::new(AngerManagement::default()),
             vibration: Mutex::new(VibrationData::default()),
             vibration_cooldown: AtomicBool::new(false),
-            pending_brain_updates: Mutex::new(Vec::new()),
+            pending_brain_updates: PendingBrainUpdates::default(),
         })
     }
 
@@ -164,39 +162,10 @@ impl WardenEntity {
 
     /// Runs `update` on the brain now, or right after the brain tick that holds it.
     fn with_own_brain(&self, update: impl FnOnce(&Self, &mut BrainState) + Send + 'static) {
-        let mut update = Some(update);
-        let ran = self
-            .mob_entity
-            .try_with_brain(self, |brain| {
-                if let Some(update) = update.take() {
-                    update(self, brain);
-                }
-                self.after_brain_access(brain);
-            })
-            .is_some();
-        if !ran && let Some(update) = update {
-            self.pending_brain_updates
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .push(Box::new(update));
-        }
-    }
-
-    fn run_pending_brain_updates(&self, brain: &mut BrainState) {
-        loop {
-            let pending = std::mem::take(
-                &mut *self
-                    .pending_brain_updates
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner),
-            );
-            if pending.is_empty() {
-                return;
-            }
-            for update in pending {
-                update(self, brain);
-            }
-        }
+        self.pending_brain_updates
+            .update_then(self, update, |warden, brain| {
+                warden.after_brain_access(brain);
+            });
     }
 
     /// Keeps the state read outside the brain in step with it.
@@ -701,7 +670,7 @@ impl Mob for WardenEntity {
         let time = world.get_world_age();
         self.mob_entity.with_brain(self, |brain| {
             brain.tick(&world, self, time);
-            self.run_pending_brain_updates(brain);
+            self.pending_brain_updates.run(self, brain);
             let tick_count = entity.tick_count.load(Ordering::Relaxed);
             if (tick_count + entity.entity_id) % DARKNESS_INTERVAL == 0 {
                 Self::apply_darkness_around(&world, entity.pos.load(), Some(self), DARKNESS_RADIUS);

@@ -20,6 +20,7 @@ use sensing::{SensorEntry, SensorType};
 pub mod activity;
 pub mod behavior;
 pub mod memory;
+pub mod pending;
 pub mod sensing;
 
 /// Memory and activity state borrowed by the current sensor or behavior.
