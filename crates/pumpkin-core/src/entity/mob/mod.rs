@@ -1616,10 +1616,6 @@ impl MobEntity {
             return;
         }
 
-        if (**entity.custom_name.load()).is_some() {
-            return;
-        }
-
         // Mobs like a converting zombie villager refuse to despawn (`removeWhenFarAway`).
         if !mob.remove_when_far_away(nearest_dist_sq) {
             return;
