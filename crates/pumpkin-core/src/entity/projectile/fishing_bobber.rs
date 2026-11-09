@@ -9,6 +9,7 @@ use crate::entity::projectile::owner::ProjectileOwner;
 use crate::entity::projectile::{
     calculate_ray_intersection, compute_margin, entity_hit_result, is_projectile,
 };
+use crate::entity::projectile_deflection::redirect_projectile;
 use crate::entity::util::RandomExt;
 use crate::world::World;
 use crate::world::loot::{LootContextParameters, LootTableHandle, generate_loot_from_handle};
@@ -543,22 +544,27 @@ impl FishingBobberEntity {
             .into_iter()
             .filter(|cand| {
                 let candidate = cand.get_entity();
-                // Vanilla `Projectile.canHitEntity`: not the hook, not a spectator, not a projectile,
-                // alive, and not the owner's vehicle chain until the hook has left it.
+                // Vanilla `Projectile.canHitEntity`: not the hook, not a spectator, pickable (no
+                // XP orbs, clouds or projectiles other than redirectable ones), alive, and not the
+                // owner's vehicle chain until the hook has left it.
                 !(candidate.entity_id == self.entity.entity_id
                     || cand.is_spectator()
-                    || is_projectile(candidate.entity_type)
+                    || *candidate.entity_type == EntityType::EXPERIENCE_ORB
+                    || *candidate.entity_type == EntityType::AREA_EFFECT_CLOUD
+                    || (is_projectile(candidate.entity_type) && !cand.can_hit())
                     || (!left_owner && root_vehicle_uuid(cand.as_ref()) == owner_root)
                     || cand
                         .get_living_entity()
                         .is_some_and(|living| living.health.load() <= 0.0))
             });
         let to = start_pos + *velocity * closest_t;
-        let hooked = entity_hit_result(candidates, start_pos, to, compute_margin(&self.entity))
-            .map(|(hooked, _)| hooked.get_entity().entity_id);
+        let hooked = entity_hit_result(candidates, start_pos, to, compute_margin(&self.entity));
 
-        if let Some(id) = hooked {
-            self.set_hooked_entity(Some(id));
+        if let Some((hooked, _)) = hooked {
+            // Vanilla `Projectile.onHit`: a hooked ghast fireball or wind charge is sent where the
+            // angler looks before it is hooked.
+            redirect_projectile(caller, hooked.as_ref());
+            self.set_hooked_entity(Some(hooked.get_entity().entity_id));
             // Clear the momentum so if the hooked entity is removed the hook doesn't carry on moving.
             *velocity = Vector3::new(0.0, 0.0, 0.0);
         } else if hit_block {
