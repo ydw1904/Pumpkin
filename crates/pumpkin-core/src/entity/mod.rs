@@ -67,7 +67,7 @@ use pumpkin_util::text::hover::HoverEvent;
 use pumpkin_util::version::JavaMinecraftVersion;
 use std::collections::{BTreeMap, HashSet};
 use std::sync::{
-    Arc,
+    Arc, Weak,
     atomic::{
         AtomicBool, AtomicI32, AtomicU8, AtomicU32,
         Ordering::{self, Relaxed},
@@ -1037,10 +1037,7 @@ pub trait EntityBase: Send + Sync + std::any::Any {
             }
         }
         let holder = entity
-            .leashed_to
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .as_ref()
+            .get_leash_holder()
             .map(|holder| holder.get_entity().entity_id);
         if let Some(holder_id) = holder {
             let link_packet = pumpkin_protocol::java::client::play::CSetEntityLink::new(
@@ -1802,9 +1799,9 @@ pub struct Entity {
     // The passengers that entity has
     pub passengers: std::sync::Mutex<Vec<Arc<dyn EntityBase>>>,
     /// The vehicle that entity is in
-    pub vehicle: std::sync::Mutex<Option<Arc<dyn EntityBase>>>,
+    pub vehicle: std::sync::Mutex<Option<Weak<dyn EntityBase>>>,
     /// The entity this entity is attached/leashed to (if any)
-    pub leashed_to: std::sync::Mutex<Option<Arc<dyn EntityBase>>>,
+    pub leashed_to: std::sync::Mutex<Option<Weak<dyn EntityBase>>>,
     pub delayed_leash: std::sync::Mutex<Option<DelayedLeash>>,
     /// Spin a taut leash gives the leashed entity, applied to its yaw each tick.
     leash_angular_momentum: AtomicCell<f64>,
@@ -2280,7 +2277,7 @@ impl Entity {
             metadata.set_flag(entity_data_key::FLAGS, entity_data_flag::RIDING as u8, true);
         }
         if let Ok(leash_guard) = self.leashed_to.try_lock()
-            && let Some(holder) = leash_guard.as_ref()
+            && let Some(holder) = leash_guard.as_ref().and_then(Weak::upgrade)
         {
             metadata.set(
                 entity_data_key::LEASH_HOLDER,
@@ -5529,6 +5526,10 @@ impl Entity {
     pub const LEASH_SNAP_DISTANCE: f64 = 12.0;
     pub const LEASH_ELASTIC_DISTANCE: f64 = 6.0;
 
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "callers pass owned or cast Arc<dyn EntityBase>"
+    )]
     pub fn leash_to(&self, holder: Arc<dyn EntityBase>) {
         let holder_entity_id = holder.get_entity().entity_id;
         let world = self.world.load();
@@ -5549,10 +5550,10 @@ impl Entity {
             }
         }
 
-        self.attach_leash(holder);
+        self.attach_leash(&holder);
     }
 
-    pub fn attach_leash(&self, holder: Arc<dyn EntityBase>) {
+    pub fn attach_leash(&self, holder: &Arc<dyn EntityBase>) {
         let holder_entity_id = holder.get_entity().entity_id;
         self.leash_angular_momentum.store(0.0);
         *self
@@ -5563,8 +5564,8 @@ impl Entity {
             .leashed_to
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .replace(holder);
-        if let Some(old_holder) = old_holder
+            .replace(Arc::downgrade(holder));
+        if let Some(old_holder) = old_holder.as_ref().and_then(Weak::upgrade)
             && old_holder.get_entity().entity_id != holder_entity_id
         {
             notify_leashee_removed(old_holder.as_ref());
@@ -5623,7 +5624,7 @@ impl Entity {
             return;
         }
 
-        if let Some(holder) = &old_holder
+        if let Some(holder) = old_holder.as_ref().and_then(Weak::upgrade)
             && let Some(server) = world.server.upgrade()
             && let Some(player) = holder.get_player()
             && let Some(player_arc) = world.get_player_by_uuid(player.gameprofile.id)
@@ -5637,7 +5638,7 @@ impl Entity {
         }
 
         self.send_leash_removed();
-        if let Some(holder) = old_holder {
+        if let Some(holder) = old_holder.as_ref().and_then(Weak::upgrade) {
             notify_leashee_removed(holder.as_ref());
         }
     }
@@ -5650,7 +5651,9 @@ impl Entity {
             .take();
         if let Some(holder) = old_holder {
             self.send_leash_removed();
-            notify_leashee_removed(holder.as_ref());
+            if let Some(holder) = holder.upgrade() {
+                notify_leashee_removed(holder.as_ref());
+            }
         }
     }
 
@@ -5680,11 +5683,7 @@ impl Entity {
     }
 
     pub fn write_leash_data(&self, nbt: &mut NbtCompound) {
-        let holder = self
-            .leashed_to
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
+        let holder = self.get_leash_holder();
         let leash = match holder {
             Some(holder) if holder.get_entity().entity_type == &EntityType::LEASH_KNOT => {
                 Some(DelayedLeash::Knot(holder.get_entity().block_pos.load()))
@@ -5736,7 +5735,7 @@ impl Entity {
             DelayedLeash::Knot(pos) => Some(LeashKnotEntity::get_or_create(&world, pos)),
         };
         if let Some(holder) = holder {
-            self.attach_leash(holder);
+            self.attach_leash(&holder);
         } else if self.tick_count.load(Relaxed) > LEASH_RESTORE_TIMEOUT {
             self.spawn_at_location(ItemStack::new(1, &pumpkin_data::item::Item::LEAD));
             *self
@@ -5762,7 +5761,7 @@ impl Entity {
             let Ok(guard) = self.leashed_to.try_lock() else {
                 return LeashTick::NotLeashed;
             };
-            guard.clone()
+            guard.as_ref().and_then(Weak::upgrade)
         };
         let Some(holder) = holder else {
             return LeashTick::NotLeashed;
@@ -6024,14 +6023,16 @@ impl Entity {
         self.vehicle
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .is_some()
+            .as_ref()
+            .is_some_and(|v| v.strong_count() > 0)
     }
 
     pub fn get_vehicle(&self) -> Option<Arc<dyn EntityBase>> {
         self.vehicle
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
+            .as_ref()
+            .and_then(Weak::upgrade)
     }
 
     /// Vanilla `getRootVehicle`, `None` when not riding.
@@ -6058,17 +6059,23 @@ impl Entity {
         self.leashed_to
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .is_some()
+            .as_ref()
+            .is_some_and(|h| h.strong_count() > 0)
     }
 
     pub fn get_leash_holder(&self) -> Option<Arc<dyn EntityBase>> {
         self.leashed_to
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
+            .as_ref()
+            .and_then(Weak::upgrade)
     }
 
-    #[expect(clippy::too_many_lines)]
+    #[expect(
+        clippy::too_many_lines,
+        clippy::needless_pass_by_value,
+        reason = "callers pass owned Arc for vehicle and passenger"
+    )]
     pub fn add_passenger(&self, vehicle: Arc<dyn EntityBase>, passenger: Arc<dyn EntityBase>) {
         let mut mount_event =
             crate::plugin::api::events::entity::entity_mount::EntityMountEvent::new(
@@ -6097,7 +6104,7 @@ impl Entity {
         *passenger_entity
             .vehicle
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(vehicle);
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::downgrade(&vehicle));
 
         let mut passengers = self
             .passengers
@@ -6206,6 +6213,10 @@ impl Entity {
         world.broadcast_to_chunk_bedrock(chunk_pos, be_link);
     }
 
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "callers pass owned Arc for vehicle and passenger"
+    )]
     pub fn add_passenger_silently(
         &self,
         vehicle: Arc<dyn EntityBase>,
@@ -6215,7 +6226,7 @@ impl Entity {
             .get_entity()
             .vehicle
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(vehicle);
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::downgrade(&vehicle));
         self.passengers
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

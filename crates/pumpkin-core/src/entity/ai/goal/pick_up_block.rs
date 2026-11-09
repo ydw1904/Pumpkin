@@ -1,6 +1,7 @@
-use std::sync::Arc;
+use std::sync::Weak;
 
 use super::{Goal, GoalReach, to_goal_ticks};
+use crate::entity::EntityBase;
 use crate::entity::mob::Mob;
 use crate::entity::mob::enderman::EndermanEntity;
 use crate::world::game_event::GameEventContext;
@@ -11,11 +12,12 @@ use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
 use pumpkin_world::world::BlockFlags;
 
 pub struct PickUpBlockGoal {
-    enderman: Arc<EndermanEntity>,
+    enderman: Weak<EndermanEntity>,
 }
 
 impl PickUpBlockGoal {
-    pub const fn new(enderman: Arc<EndermanEntity>) -> Self {
+    #[must_use]
+    pub const fn new(enderman: Weak<EndermanEntity>) -> Self {
         Self { enderman }
     }
 }
@@ -46,7 +48,10 @@ impl Goal for PickUpBlockGoal {
     }
 
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
-        if self.enderman.get_carried_block().is_some() {
+        let Some(enderman) = self.enderman.upgrade() else {
+            return false;
+        };
+        if enderman.get_carried_block().is_some() {
             return false;
         }
 
@@ -64,6 +69,9 @@ impl Goal for PickUpBlockGoal {
     }
 
     fn tick(&mut self, mob: &dyn Mob) {
+        let Some(enderman) = self.enderman.upgrade() else {
+            return;
+        };
         let entity = &mob.get_mob_entity().living_entity.entity;
         let pos = entity.pos.load();
 
@@ -117,13 +125,14 @@ impl Goal for PickUpBlockGoal {
         }
 
         world.set_block_state(&target_pos, BlockStateId::AIR, BlockFlags::NOTIFY_ALL);
+        let source: &dyn EntityBase = enderman.as_ref();
         world.emit_game_event_with_context(
             GameEvent::BlockDestroy.name(),
             target_pos.to_centered_f64(),
             &GameEventContext {
-                source_entity: Some(self.enderman.as_ref()),
+                source_entity: Some(source),
             },
         );
-        self.enderman.set_carried_block(Some(default_state_id));
+        enderman.set_carried_block(Some(default_state_id));
     }
 }

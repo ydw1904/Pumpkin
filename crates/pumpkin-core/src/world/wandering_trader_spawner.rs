@@ -217,7 +217,7 @@ impl WanderingTraderSpawner {
         if world.spawn_entity(llama.clone() as Arc<dyn EntityBase>) {
             llama
                 .get_entity()
-                .attach_leash(trader.clone() as Arc<dyn EntityBase>);
+                .attach_leash(&(trader.clone() as Arc<dyn EntityBase>));
         }
     }
 

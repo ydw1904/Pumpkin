@@ -18,7 +18,7 @@ pub struct RangedAttackGoal {
     attack_radius_sqr: f64,
     see_time: i32,
     attack_time: i32,
-    target: Option<Arc<dyn EntityBase>>,
+    target: Option<Weak<dyn EntityBase>>,
 }
 
 impl RangedAttackGoal {
@@ -67,6 +67,7 @@ impl Goal for RangedAttackGoal {
         let target = self
             .target
             .iter()
+            .filter_map(Weak::upgrade)
             .map(|target| target.get_entity().entity_id);
         Some(GoalReach {
             speed: self.speed_modifier,
@@ -77,11 +78,11 @@ impl Goal for RangedAttackGoal {
     }
 
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
-        let target = mob.get_mob_entity().get_target().clone();
+        let target = mob.get_mob_entity().get_target();
         if let Some(target) = target
             && target.get_entity().is_alive()
         {
-            self.target = Some(target);
+            self.target = Some(Arc::downgrade(&target));
             true
         } else {
             false
@@ -95,6 +96,7 @@ impl Goal for RangedAttackGoal {
             || (self
                 .target
                 .as_ref()
+                .and_then(Weak::upgrade)
                 .is_some_and(|target| target.get_entity().is_alive())
                 && !mob.get_mob_entity().steered().navigator().is_done())
     }
@@ -115,7 +117,7 @@ impl Goal for RangedAttackGoal {
     }
 
     fn tick(&mut self, mob: &dyn Mob) {
-        let Some(target) = self.target.clone() else {
+        let Some(target) = self.target.as_ref().and_then(Weak::upgrade) else {
             return;
         };
 

@@ -4,12 +4,12 @@ use crate::entity::ai::pathfinder::NavigatorGoal;
 use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::mob::Mob;
 use pumpkin_util::math::vector3::Vector3;
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, Weak};
 
 pub struct FollowMobGoal {
     goal_control: Controls,
-    following_mob: Option<Arc<dyn EntityBase>>,
+    following_mob: Option<Weak<dyn EntityBase>>,
     speed_modifier: f64,
     time_to_recalc_path: i32,
     stop_distance_sq: f64,
@@ -43,6 +43,7 @@ impl Goal for FollowMobGoal {
                 .following_mob
                 .iter()
                 .filter(|_| running)
+                .filter_map(Weak::upgrade)
                 .map(|following| following.get_entity().entity_id)
                 .collect(),
             ..GoalReach::default()
@@ -67,12 +68,14 @@ impl Goal for FollowMobGoal {
                 candidate_entity.entity_type != entity.entity_type
                     && candidate.get_mob().is_some()
                     && !candidate_entity.invisible.load(Ordering::Relaxed)
-            });
+            })
+            .as_ref()
+            .map(Arc::downgrade);
         self.following_mob.is_some()
     }
 
     fn should_continue(&mut self, mob: &dyn Mob) -> bool {
-        let Some(following) = &self.following_mob else {
+        let Some(following) = self.following_mob.as_ref().and_then(Weak::upgrade) else {
             return false;
         };
 
@@ -119,7 +122,7 @@ impl Goal for FollowMobGoal {
         if mob.get_entity().is_leashed() {
             return;
         }
-        let Some(following) = &self.following_mob else {
+        let Some(following) = self.following_mob.as_ref().and_then(Weak::upgrade) else {
             return;
         };
 
@@ -131,7 +134,7 @@ impl Goal for FollowMobGoal {
             .look_control
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .look_at_entity(mob, following);
+            .look_at_entity(mob, &following);
 
         self.time_to_recalc_path -= 1;
         if self.time_to_recalc_path <= 0 {

@@ -152,7 +152,7 @@ pub struct PandaEntity {
     roll_counter: AtomicI32,
     roll_delta: AtomicCell<Vector3<f64>>,
     /// Vanilla `PandaBreedGoal` calling `lookAtPlayerGoal.setTarget`, picked up by the look goal.
-    look_at_player: Mutex<Option<Arc<dyn EntityBase>>>,
+    look_at_player: Mutex<Option<Weak<dyn EntityBase>>>,
 }
 
 impl PandaEntity {
@@ -1056,7 +1056,8 @@ impl Goal for PandaBreedGoal {
             *panda
                 .look_at_player
                 .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = player;
+                .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                player.as_ref().map(Arc::downgrade);
         }
         false
     }
@@ -1122,7 +1123,7 @@ impl Goal for PandaLookAtPlayerGoal {
                 return false;
             }
             if look.target.is_none() {
-                look.target = look.find_target(mob);
+                look.target = look.find_target(mob).as_ref().map(Arc::downgrade);
             }
             panda.can_perform_action() && look.target.is_some()
         })

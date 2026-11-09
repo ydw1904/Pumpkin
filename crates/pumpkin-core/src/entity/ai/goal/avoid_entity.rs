@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use super::{Controls, Goal};
 use crate::entity::ai::goal::revenge::MobFilter;
@@ -45,7 +45,7 @@ pub struct AvoidEntityGoal {
     slow_speed: f64,
     fast_speed: f64,
     selector: ThreatSelector,
-    target: Option<Arc<dyn EntityBase>>,
+    target: Option<Weak<dyn EntityBase>>,
     path: Option<Path>,
     when: Option<MobFilter>,
     keep_when: bool,
@@ -183,8 +183,10 @@ impl Goal for AvoidEntityGoal {
             block_reads: f64::from(HORIZONTAL_RANGE) + 1.0,
             links: self
                 .target
-                .iter()
+                .as_ref()
+                .and_then(Weak::upgrade)
                 .map(|target| target.get_entity().entity_id)
+                .into_iter()
                 .collect(),
             ..super::GoalReach::default()
         })
@@ -230,7 +232,7 @@ impl Goal for AvoidEntityGoal {
             return false;
         };
 
-        self.target = Some(target);
+        self.target = Some(Arc::downgrade(&target));
         self.path = Some(path);
         true
     }
@@ -258,7 +260,7 @@ impl Goal for AvoidEntityGoal {
         if self.drop_target {
             mob.set_mob_target(None, TargetReason::Fleeing);
         }
-        if let Some(target) = &self.target {
+        if let Some(target) = self.target.as_ref().and_then(Weak::upgrade) {
             let mob_pos = mob.get_mob_entity().living_entity.entity.pos.load();
             let threat_pos = target.get_entity().pos.load();
             let dist_sq = mob_pos.squared_distance_to_vec(&threat_pos);

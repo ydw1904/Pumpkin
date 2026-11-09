@@ -10,7 +10,7 @@ use std::sync::{Arc, Weak};
 
 pub struct LookAtEntityGoal {
     goal_control: Controls,
-    pub(crate) target: Option<Arc<dyn EntityBase>>,
+    pub(crate) target: Option<Weak<dyn EntityBase>>,
     range: f32,
     look_time: i32,
     pub(crate) chance: f32,
@@ -136,8 +136,10 @@ impl Goal for LookAtEntityGoal {
             },
             links: self
                 .target
-                .iter()
+                .as_ref()
+                .and_then(Weak::upgrade)
                 .map(|target| target.get_entity().entity_id)
+                .into_iter()
                 .collect(),
             ..GoalReach::default()
         })
@@ -156,17 +158,17 @@ impl Goal for LookAtEntityGoal {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             if mob_target.is_some() {
-                self.target.clone_from(&mob_target);
+                self.target.clone_from(&*mob_target);
             }
         }
 
-        self.target = self.find_target(mob);
+        self.target = self.find_target(mob).as_ref().map(Arc::downgrade);
         self.target.is_some()
     }
 
     fn should_continue(&mut self, mob: &dyn Mob) -> bool {
         let mob_entity = mob.get_mob_entity();
-        if let Some(target) = &self.target {
+        if let Some(target) = self.target.as_ref().and_then(Weak::upgrade) {
             if !target.get_entity().is_alive() {
                 return false;
             }
@@ -190,7 +192,7 @@ impl Goal for LookAtEntityGoal {
 
     fn tick(&mut self, mob: &dyn Mob) {
         let mob_entity = mob.get_mob_entity();
-        if let Some(target) = &self.target
+        if let Some(target) = self.target.as_ref().and_then(Weak::upgrade)
             && target.get_entity().is_alive()
         {
             let target_entity = target.get_entity();

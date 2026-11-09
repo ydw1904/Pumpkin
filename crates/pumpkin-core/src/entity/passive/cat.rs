@@ -678,7 +678,7 @@ const RELAX_LIE_DOWN_TICKS: i32 = 16;
 /// bed, and may leave a morning gift when the owner wakes up.
 struct CatRelaxOnOwnerGoal {
     cat: Weak<CatEntity>,
-    owner_player: Option<Arc<Player>>,
+    owner_player: Option<Weak<Player>>,
     goal_pos: Option<BlockPos>,
     on_bed_ticks: i32,
 }
@@ -784,7 +784,7 @@ impl Goal for CatRelaxOnOwnerGoal {
         let Some(owner) = cat.get_owner().and_then(|id| world.get_player_by_uuid(id)) else {
             return false;
         };
-        self.owner_player = Some(owner.clone());
+        self.owner_player = Some(Arc::downgrade(&owner));
         if !owner.is_sleeping()
             || entity
                 .pos
@@ -818,6 +818,7 @@ impl Goal for CatRelaxOnOwnerGoal {
             && self
                 .owner_player
                 .as_ref()
+                .and_then(Weak::upgrade)
                 .is_some_and(|owner| owner.is_sleeping())
             && self
                 .goal_pos
@@ -838,7 +839,7 @@ impl Goal for CatRelaxOnOwnerGoal {
             return;
         };
         cat.set_lying(false);
-        if let Some(owner) = &self.owner_player
+        if let Some(owner) = self.owner_player.as_ref().and_then(Weak::upgrade)
             && owner.get_sleep_timer() >= Player::FULL_SLEEP_TICKS
         {
             let world = cat.get_entity().world.load();
@@ -856,9 +857,11 @@ impl Goal for CatRelaxOnOwnerGoal {
     }
 
     fn tick(&mut self, _mob: &dyn Mob) {
-        let (Some(cat), Some(owner), Some(goal_pos)) =
-            (self.cat.upgrade(), &self.owner_player, self.goal_pos)
-        else {
+        let (Some(cat), Some(owner), Some(goal_pos)) = (
+            self.cat.upgrade(),
+            self.owner_player.as_ref().and_then(Weak::upgrade),
+            self.goal_pos,
+        ) else {
             return;
         };
         cat.set_in_sitting_pose(false);

@@ -11,11 +11,7 @@ impl JavaClient {
         let entity = player.get_entity();
         let last_pos = entity.pos.load();
         let mut pos = Vector3::new(packet.x, packet.y, packet.z);
-        let vehicle = entity
-            .vehicle
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
+        let vehicle = entity.get_vehicle();
         // Vanilla only moves a vehicle its controlling passenger steers, e.g. not a happy
         // ghast holding still for someone standing on it.
         if vehicle.as_ref().is_some_and(|vehicle| {

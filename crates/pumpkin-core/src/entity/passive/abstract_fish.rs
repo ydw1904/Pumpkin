@@ -117,12 +117,7 @@ pub trait AbstractFish: WaterAnimal + crate::entity::bucketable::Bucketable {
         );
         living.make_move(caller);
         let mut velocity = entity.velocity.load() * WATER_FRICTION;
-        if mob
-            .target
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .is_none()
-        {
+        if mob.get_target().is_none() {
             velocity.y -= SINK_SPEED;
         }
         entity.velocity.store(velocity);

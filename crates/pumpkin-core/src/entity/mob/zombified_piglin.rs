@@ -340,7 +340,8 @@ impl Mob for ZombifiedPiglinEntity {
         *mob_entity
             .target
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = target;
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            target.as_ref().map(Arc::downgrade);
     }
 
     /// Vanilla `ZombifiedPiglin.customServerAiStep`.

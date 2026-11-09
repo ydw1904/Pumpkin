@@ -1,7 +1,8 @@
-use std::sync::Arc;
+use std::sync::Weak;
 
 use super::pick_up_block::enderman_block_reach;
 use super::{Goal, GoalReach, to_goal_ticks};
+use crate::entity::EntityBase;
 use crate::entity::mob::Mob;
 use crate::entity::mob::enderman::EndermanEntity;
 use crate::entity::predicate::EntityPredicate;
@@ -15,11 +16,12 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::world::BlockFlags;
 
 pub struct PlaceBlockGoal {
-    enderman: Arc<EndermanEntity>,
+    enderman: Weak<EndermanEntity>,
 }
 
 impl PlaceBlockGoal {
-    pub const fn new(enderman: Arc<EndermanEntity>) -> Self {
+    #[must_use]
+    pub const fn new(enderman: Weak<EndermanEntity>) -> Self {
         Self { enderman }
     }
 }
@@ -30,7 +32,10 @@ impl Goal for PlaceBlockGoal {
     }
 
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
-        if self.enderman.get_carried_block().is_none() {
+        let Some(enderman) = self.enderman.upgrade() else {
+            return false;
+        };
+        if enderman.get_carried_block().is_none() {
             return false;
         }
 
@@ -48,6 +53,9 @@ impl Goal for PlaceBlockGoal {
     }
 
     fn tick(&mut self, mob: &dyn Mob) {
+        let Some(enderman) = self.enderman.upgrade() else {
+            return;
+        };
         let entity = &mob.get_mob_entity().living_entity.entity;
         let pos = entity.pos.load();
 
@@ -65,7 +73,7 @@ impl Goal for PlaceBlockGoal {
         let target_state_id = world.get_block_state_id(&target_pos);
         let below_pos = target_pos.down();
         let (below_block, below_state) = world.get_block_and_state(&below_pos);
-        let Some(carried) = self.enderman.get_carried_block() else {
+        let Some(carried) = enderman.get_carried_block() else {
             return;
         };
         let carried = world.update_from_neighbor_shapes(carried, &target_pos);
@@ -81,14 +89,15 @@ impl Goal for PlaceBlockGoal {
         }
 
         world.set_block_state(&target_pos, carried, BlockFlags::NOTIFY_ALL);
+        let source: &dyn EntityBase = enderman.as_ref();
         world.emit_game_event_with_context(
             GameEvent::BlockPlace.name(),
             target_pos.to_centered_f64(),
             &GameEventContext {
-                source_entity: Some(self.enderman.as_ref()),
+                source_entity: Some(source),
             },
         );
-        self.enderman.set_carried_block(None);
+        enderman.set_carried_block(None);
     }
 }
 
@@ -123,7 +132,10 @@ impl PlaceBlockGoal {
         ) {
             return false;
         }
-        let enderman_id = self.enderman.mob_entity.living_entity.entity.entity_id;
+        let Some(enderman) = self.enderman.upgrade() else {
+            return false;
+        };
+        let enderman_id = enderman.mob_entity.living_entity.entity.entity_id;
         !world
             .get_all_at_box(&BoundingBox::from_block(pos))
             .iter()
