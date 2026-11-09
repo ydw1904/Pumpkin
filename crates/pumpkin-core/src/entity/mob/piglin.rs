@@ -244,9 +244,24 @@ impl PiglinEntity {
             goal_selector.add_goal(0, Box::new(SwimGoal::default()));
             goal_selector.add_goal(1, Box::new(OpenDoorGoal::new(true)));
             goal_selector.add_goal(2, Box::new(GoToWantedItemGoal::new(mob_arc.clone(), 1.0)));
-            goal_selector.add_goal(3, Box::new(MeleeAttackGoal::new(1.0, true)));
+            // Vanilla `MeleeAttack` skips a mob holding a usable projectile weapon.
+            goal_selector.add_goal(
+                3,
+                Box::new(
+                    MeleeAttackGoal::new(1.0, true)
+                        .gated_by(|mob| !RangedCrossbowAttackGoal::is_holding_crossbow(mob)),
+                ),
+            );
             goal_selector.add_goal(3, Box::new(PiglinMountGoal));
-            goal_selector.add_goal(4, Box::new(RangedCrossbowAttackGoal::new(1.0, 8.0)));
+            goal_selector.add_goal(
+                4,
+                Box::new(RangedCrossbowAttackGoal::brain(
+                    1.0,
+                    8.0,
+                    PiglinAi::MIN_DESIRED_DIST_FROM_TARGET_WHEN_HOLDING_CROSSBOW,
+                    PiglinAi::SPEED_WHEN_STRAFING_BACK_FROM_TARGET,
+                )),
+            );
             goal_selector.add_goal(4, Box::new(Self::avoid_target_goal()));
             goal_selector.add_goal(5, Box::new(Self::avoid_repellent_goal()));
             goal_selector.add_goal(5, Box::new(PiglinGoToCelebrateLocationGoal));

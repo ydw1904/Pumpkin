@@ -7,6 +7,8 @@ use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_util::Hand;
+use pumpkin_util::math::rotate_if_necessary;
+use pumpkin_util::math::vector3::Vector3;
 
 use crate::entity::ai::goal::{Controls, Goal};
 use crate::entity::ai::pathfinder::NavigatorGoal;
@@ -22,8 +24,15 @@ enum CrossbowState {
     ReadyToAttack,
 }
 
+/// Vanilla `BackUpIfTooClose`: strafes back from a visible target that is too close.
+#[derive(Clone, Copy)]
+struct BackUp {
+    distance_sq: f64,
+    strafe_speed: f32,
+}
+
 /// Ranged crossbow attack used by Pillagers, Piglins, and other mobs.
-/// Mirrors vanilla `RangedCrossbowAttackGoal`.
+/// Mirrors vanilla `RangedCrossbowAttackGoal`, or the crossbow fight of a brain mob.
 pub struct RangedCrossbowAttackGoal {
     goal_control: Controls,
     speed: f64,
@@ -33,6 +42,9 @@ pub struct RangedCrossbowAttackGoal {
     attack_delay: i32,
     update_path_delay: i32,
     charge_ticks: i32,
+    /// Set for the brain fight, see [`Self::brain`].
+    back_up: Option<BackUp>,
+    path_target: Option<Vector3<f64>>,
 }
 
 impl RangedCrossbowAttackGoal {
@@ -40,6 +52,8 @@ impl RangedCrossbowAttackGoal {
     const CHARGE_DURATION: i32 = 25;
     /// Vanilla arrow speed for crossbow shots.
     const ARROW_SPEED: f64 = 1.6;
+    /// Vanilla `SetWalkTargetFromAttackTargetIfTargetOutOfReach.PROJECTILE_ATTACK_RANGE_BUFFER`.
+    const PROJECTILE_ATTACK_RANGE_BUFFER: f64 = 1.0;
 
     #[must_use]
     pub fn new(speed: f64, range: f32) -> Self {
@@ -52,10 +66,27 @@ impl RangedCrossbowAttackGoal {
             attack_delay: 0,
             update_path_delay: 0,
             charge_ticks: 0,
+            back_up: None,
+            path_target: None,
         }
     }
 
-    fn is_holding_crossbow(mob: &dyn Mob) -> bool {
+    /// The crossbow part of a brain mob's FIGHT activity, like `PiglinAi.initFightActivity`:
+    /// `BackUpIfTooClose(back_up_distance, back_up_speed)`, then
+    /// `SetWalkTargetFromAttackTargetIfTargetOutOfReach(speed)`, then `CrossbowAttack`, which
+    /// charges and shoots while the target is visible and within `range`.
+    #[must_use]
+    pub fn brain(speed: f64, range: f32, back_up_distance: f64, back_up_speed: f32) -> Self {
+        let mut goal = Self::new(speed, range);
+        goal.back_up = Some(BackUp {
+            distance_sq: back_up_distance * back_up_distance,
+            strafe_speed: back_up_speed,
+        });
+        goal
+    }
+
+    #[must_use]
+    pub fn is_holding_crossbow(mob: &dyn Mob) -> bool {
         let equipment_guard = mob
             .get_mob_entity()
             .living_entity
@@ -151,57 +182,30 @@ impl RangedCrossbowAttackGoal {
             crossbow_mob.on_crossbow_attack_performed();
         }
     }
-}
 
-impl Goal for RangedCrossbowAttackGoal {
-    fn can_start(&mut self, mob: &dyn Mob) -> bool {
-        let target = mob.get_mob_entity().get_target().clone();
-        let Some(target) = target else {
-            return false;
-        };
-        if !target.get_entity().is_alive() {
-            return false;
-        }
-        Self::is_holding_crossbow(mob)
+    fn look_at(mob: &dyn Mob, target: &Arc<dyn EntityBase>) {
+        mob.get_mob_entity()
+            .look_control
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .look_at_entity_with_range(target, 30.0, 30.0);
     }
 
-    fn should_continue(&mut self, mob: &dyn Mob) -> bool {
-        let target = mob.get_mob_entity().get_target().clone();
-        let Some(target) = target else {
-            return false;
-        };
-        target.get_entity().is_alive() && Self::is_holding_crossbow(mob)
-    }
-
-    fn start(&mut self, _mob: &dyn Mob) {
-        self.state = CrossbowState::Uncharged;
-        self.see_time = 0;
-        self.attack_delay = 0;
-        self.update_path_delay = 0;
-        self.charge_ticks = 0;
-    }
-
-    fn stop(&mut self, mob: &dyn Mob) {
+    fn stop_charging(mob: &dyn Mob) {
+        mob.get_mob_entity().living_entity.clear_active_hand();
         if let Some(crossbow_mob) = mob.as_crossbow_attack_mob() {
             crossbow_mob.set_charging_crossbow(false);
         }
-        mob.get_mob_entity().living_entity.clear_active_hand();
-        self.state = CrossbowState::Uncharged;
-        mob.get_mob_entity().steered().navigator().stop();
     }
 
-    #[expect(clippy::too_many_lines)]
-    fn tick(&mut self, mob: &dyn Mob) {
-        let target = mob.get_mob_entity().get_target().clone();
-        let Some(target) = target else {
-            return;
-        };
-
-        let mob_pos = mob.get_entity().pos.load();
-        let target_pos = target.get_entity().pos.load();
-        let distance_sq = mob_pos.squared_distance_to_vec(&target_pos);
-
-        let has_line_of_sight = mob.has_line_of_sight(target.get_entity());
+    /// `RangedCrossbowAttackGoal.tick`'s movement; returns whether the mob still needs to move.
+    fn tick_goal_movement(
+        &mut self,
+        mob: &dyn Mob,
+        target: &Arc<dyn EntityBase>,
+        distance_sq: f64,
+        has_line_of_sight: bool,
+    ) -> bool {
         if has_line_of_sight {
             self.see_time += 1;
         } else {
@@ -223,8 +227,8 @@ impl Goal for RangedCrossbowAttackGoal {
                     .steered()
                     .navigator()
                     .set_progress(NavigatorGoal {
-                        current_progress: mob_pos,
-                        destination: target_pos,
+                        current_progress: mob.get_entity().pos.load(),
+                        destination: target.get_entity().pos.load(),
                         speed: move_speed,
                         reach_range: 1,
                     });
@@ -234,16 +238,69 @@ impl Goal for RangedCrossbowAttackGoal {
             self.update_path_delay = 0;
             mob.get_mob_entity().steered().navigator().stop();
         }
+        needs_to_move
+    }
 
-        mob.get_mob_entity()
-            .look_control
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .look_at_entity_with_range(&target, 30.0, 30.0);
+    /// `BackUpIfTooClose`, then `SetWalkTargetFromAttackTargetIfTargetOutOfReach`.
+    fn tick_brain_movement(
+        &mut self,
+        mob: &dyn Mob,
+        target: &Arc<dyn EntityBase>,
+        distance_sq: f64,
+        visible: bool,
+        back_up: BackUp,
+    ) {
+        let mob_entity = mob.get_mob_entity();
+        // It only backs off while it has no walk target.
+        if visible && distance_sq < back_up.distance_sq && mob.is_navigator_idle() {
+            mob_entity
+                .steered()
+                .move_control()
+                .strafe(-back_up.strafe_speed, 0.0);
+            let entity = mob.get_entity();
+            entity.set_rotation(
+                rotate_if_necessary(entity.yaw.load(), entity.head_yaw.load(), 0.0),
+                entity.pitch.load(),
+            );
+        }
+        // `BehaviorUtils.isWithinAttackRange` for a projectile weapon.
+        let walk_range = self.squared_range.sqrt() - Self::PROJECTILE_ATTACK_RANGE_BUFFER;
+        if visible && distance_sq < walk_range * walk_range {
+            self.path_target = None;
+            mob_entity.steered().navigator().stop();
+            return;
+        }
+        // `MoveToTargetSink` paths again once the target moved away from the last path's end.
+        let target_pos = target.get_entity().pos.load();
+        let moved = self
+            .path_target
+            .is_none_or(|last| last.squared_distance_to_vec(&target_pos) > 1.0);
+        if moved || mob.is_navigator_idle() {
+            mob_entity
+                .steered()
+                .navigator()
+                .set_progress(NavigatorGoal {
+                    current_progress: mob.get_entity().pos.load(),
+                    destination: target_pos,
+                    speed: self.speed,
+                    reach_range: 0,
+                });
+            self.path_target = Some(target_pos);
+        }
+    }
 
+    /// The `CrossbowState` steps; `may_charge` and `may_shoot` gate the uncharged and ready ones.
+    fn tick_crossbow(
+        &mut self,
+        mob: &dyn Mob,
+        target: &Arc<dyn EntityBase>,
+        may_charge: bool,
+        may_shoot: bool,
+    ) {
+        let mob_pos = mob.get_entity().pos.load();
         match self.state {
             CrossbowState::Uncharged => {
-                if !needs_to_move {
+                if may_charge {
                     let stack = mob
                         .get_mob_entity()
                         .living_entity
@@ -280,12 +337,9 @@ impl Goal for RangedCrossbowAttackGoal {
                     );
                 }
                 if self.charge_ticks >= Self::CHARGE_DURATION {
-                    mob.get_mob_entity().living_entity.clear_active_hand();
+                    Self::stop_charging(mob);
                     self.state = CrossbowState::Charged;
                     self.attack_delay = 20 + game_random().random_range(0..20);
-                    if let Some(crossbow_mob) = mob.as_crossbow_attack_mob() {
-                        crossbow_mob.set_charging_crossbow(false);
-                    }
                     mob.get_entity().world.load().play_sound(
                         Sound::ItemCrossbowLoadingEnd,
                         SoundCategory::Hostile,
@@ -300,11 +354,79 @@ impl Goal for RangedCrossbowAttackGoal {
                 }
             }
             CrossbowState::ReadyToAttack => {
-                if has_line_of_sight {
-                    Self::shoot(mob, &target);
+                if may_shoot {
+                    Self::shoot(mob, target);
                     self.state = CrossbowState::Uncharged;
                 }
             }
+        }
+    }
+}
+
+impl Goal for RangedCrossbowAttackGoal {
+    fn can_start(&mut self, mob: &dyn Mob) -> bool {
+        let target = mob.get_mob_entity().get_target().clone();
+        let Some(target) = target else {
+            return false;
+        };
+        if !target.get_entity().is_alive() {
+            return false;
+        }
+        Self::is_holding_crossbow(mob)
+    }
+
+    fn should_continue(&mut self, mob: &dyn Mob) -> bool {
+        let target = mob.get_mob_entity().get_target().clone();
+        let Some(target) = target else {
+            return false;
+        };
+        target.get_entity().is_alive() && Self::is_holding_crossbow(mob)
+    }
+
+    fn start(&mut self, _mob: &dyn Mob) {
+        self.state = CrossbowState::Uncharged;
+        self.see_time = 0;
+        self.attack_delay = 0;
+        self.update_path_delay = 0;
+        self.charge_ticks = 0;
+        self.path_target = None;
+    }
+
+    fn stop(&mut self, mob: &dyn Mob) {
+        Self::stop_charging(mob);
+        self.state = CrossbowState::Uncharged;
+        mob.get_mob_entity().steered().navigator().stop();
+    }
+
+    fn tick(&mut self, mob: &dyn Mob) {
+        let target = mob.get_mob_entity().get_target().clone();
+        let Some(target) = target else {
+            return;
+        };
+
+        let distance_sq = mob
+            .get_entity()
+            .pos
+            .load()
+            .squared_distance_to_vec(&target.get_entity().pos.load());
+        let has_line_of_sight = mob.has_line_of_sight(target.get_entity());
+
+        let Some(back_up) = self.back_up else {
+            let needs_to_move =
+                self.tick_goal_movement(mob, &target, distance_sq, has_line_of_sight);
+            Self::look_at(mob, &target);
+            self.tick_crossbow(mob, &target, !needs_to_move, has_line_of_sight);
+            return;
+        };
+
+        self.tick_brain_movement(mob, &target, distance_sq, has_line_of_sight, back_up);
+        Self::look_at(mob, &target);
+        if has_line_of_sight && distance_sq < self.squared_range {
+            self.tick_crossbow(mob, &target, true, true);
+        } else if self.state == CrossbowState::Charging {
+            // `CrossbowAttack.stop` lets go of the half-charged crossbow.
+            Self::stop_charging(mob);
+            self.state = CrossbowState::Uncharged;
         }
     }
 
