@@ -90,6 +90,14 @@ h.start(async () => {
     const v = number(await ask(`/data get entity @e[type=${type},limit=1] Motion[0]`))
     h.result(`water.${label}.vx_10`, v === null ? 'none' : Math.round(v * 1000) / 1000)
   }
+  // Vanilla `AbstractWindCharge.canHitEntity`: a wind charge flies through an end crystal.
+  h.cmd('kill @e[type=!player]')
+  await h.sleep(500)
+  h.cmd(`summon end_crystal ${X + 6.5} ${Y} ${Z + 0.5} {ShowBottom:0b}`)
+  h.cmd(`summon wind_charge ${X + 0.5} ${Y + 0.5} ${Z + 0.5} {Motion:[0.5d,0d,0d]}`)
+  await h.sleep(500)
+  h.result('crystal.wind_charge_left', await afterStep(30, '/execute if entity @e[type=wind_charge]'))
+  h.result('crystal.crystal_left', await ask('/execute if entity @e[type=end_crystal]'))
   h.cmd('tick unfreeze')
   h.cmd('kill @e[type=!player]')
 })

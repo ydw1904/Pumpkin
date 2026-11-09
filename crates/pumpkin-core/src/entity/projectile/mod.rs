@@ -445,8 +445,12 @@ impl ThrownItemEntity {
             return true;
         }
 
-        // Vanilla `AbstractWindCharge.canHitEntity`: wind charges pass through each other.
-        if is_wind_charge(self_ent.entity_type) && is_wind_charge(other_ent.entity_type) {
+        // Vanilla `AbstractWindCharge.canHitEntity`: wind charges pass through each other and
+        // through end crystals.
+        if is_wind_charge(self_ent.entity_type)
+            && (is_wind_charge(other_ent.entity_type)
+                || *other_ent.entity_type == EntityType::END_CRYSTAL)
+        {
             return true;
         }
 
