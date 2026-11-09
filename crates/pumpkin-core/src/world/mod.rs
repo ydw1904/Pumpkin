@@ -67,8 +67,10 @@ use crate::{
     },
     error::PumpkinError,
     net::{
-        ClientPlatform, bedrock::BedrockClient, java::JavaClient,
-        java::chunk_data::light::changed_light_data,
+        ClientPlatform,
+        bedrock::BedrockClient,
+        java::JavaClient,
+        java::chunk_data::light::{changed_light_data, light_sections_with_data},
     },
     plugin::{
         block::block_break::BlockBreakEvent,
@@ -2400,7 +2402,9 @@ impl World {
             else {
                 continue;
             };
-            let light_data = match changed_light_data(&chunk, &sections) {
+            let light_data = match light_sections_with_data(&self.level, &chunk)
+                .and_then(|light_sections| changed_light_data(&chunk, &sections, &light_sections))
+            {
                 Ok(light_data) => light_data,
                 Err(err) => {
                     error!("Failed to write light update for chunk {chunk_pos:?}: {err}");

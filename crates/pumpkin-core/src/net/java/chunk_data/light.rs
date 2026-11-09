@@ -2,20 +2,31 @@ use pumpkin_protocol::codec::bit_set::BitSet;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_protocol::java::client::play::{CLightUpdate, LightData};
 use pumpkin_protocol::ser::WritingError;
+use pumpkin_util::math::vector2::Vector2;
 use pumpkin_util::version::JavaMinecraftVersion;
 use pumpkin_world::chunk::ChunkData;
 use pumpkin_world::chunk::format::LightContainer;
+use pumpkin_world::chunk::palette::BlockPalette;
+use pumpkin_world::level::Level;
 use pumpkin_world::lighting::runtime::ChangedLightSections;
 
 pub trait ChunkLightExt {
-    fn from_chunk(chunk: &ChunkData, version: JavaMinecraftVersion) -> Result<Self, WritingError>
+    fn from_chunk(
+        chunk: &ChunkData,
+        light_sections: &[bool],
+        version: JavaMinecraftVersion,
+    ) -> Result<Self, WritingError>
     where
         Self: Sized;
 }
 
 impl ChunkLightExt for CLightUpdate {
-    fn from_chunk(chunk: &ChunkData, version: JavaMinecraftVersion) -> Result<Self, WritingError> {
-        let light_data = light_data_from_chunk(chunk, version)?;
+    fn from_chunk(
+        chunk: &ChunkData,
+        light_sections: &[bool],
+        version: JavaMinecraftVersion,
+    ) -> Result<Self, WritingError> {
+        let light_data = light_data_from_chunk(chunk, light_sections, version)?;
         Ok(Self {
             chunk_x: VarInt(chunk.x),
             chunk_z: VarInt(chunk.z),
@@ -24,21 +35,64 @@ impl ChunkLightExt for CLightUpdate {
     }
 }
 
+/// The light sections vanilla keeps light for, and so the only ones it sends to clients.
+///
+/// These are vanilla's `LayerLightSectionStorage.sectionStates`: each section with blocks and
+/// its 26 neighbours, counting the eight chunks around it. Index 0 is the section below the
+/// world.
+pub fn light_sections_with_data(
+    level: &Level,
+    chunk: &ChunkData,
+) -> Result<Vec<bool>, WritingError> {
+    let mut light_sections = vec![false; chunk.section.count + 2];
+    let mut mark = |sections: &[BlockPalette]| {
+        for (index, section) in sections.iter().enumerate() {
+            if !section.has_only_air() {
+                // World section `index` is light section `index + 1`.
+                for light_index in index..=index + 2 {
+                    if let Some(with_data) = light_sections.get_mut(light_index) {
+                        *with_data = true;
+                    }
+                }
+            }
+        }
+    };
+    mark(
+        &chunk
+            .section
+            .block_sections
+            .read()
+            .map_err(|_| WritingError::Message("block_sections lock poisoned".into()))?,
+    );
+    for dx in -1..=1 {
+        for dz in -1..=1 {
+            if dx == 0 && dz == 0 {
+                continue;
+            }
+            level
+                .loaded_chunks
+                .read(&Vector2::new(chunk.x + dx, chunk.z + dz), |neighbour| {
+                    mark(
+                        &neighbour
+                            .section
+                            .block_sections
+                            .read()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner),
+                    );
+                });
+        }
+    }
+    Ok(light_sections)
+}
+
 #[expect(clippy::too_many_lines)]
 pub fn light_data_from_chunk(
     chunk: &ChunkData,
+    light_sections: &[bool],
     version: JavaMinecraftVersion,
 ) -> Result<LightData, WritingError> {
     const BELOW_WORLD: LightContainer = LightContainer::Empty(0);
     const ABOVE_WORLD_SKY: LightContainer = LightContainer::Empty(15);
-    let has_blocks: Vec<bool> = chunk
-        .section
-        .block_sections
-        .read()
-        .map_err(|_| WritingError::Message("block_sections lock poisoned".into()))?
-        .iter()
-        .map(|section| !section.has_only_air())
-        .collect();
     let light_engine = chunk
         .light_engine
         .lock()
@@ -189,46 +243,34 @@ pub fn light_data_from_chunk(
         let mut block_light_mask = 0u64;
         let mut empty_sky_light_mask = 0u64;
         let mut empty_block_light_mask = 0u64;
-        // Vanilla only keeps light for sections with blocks and the sections next to them
-        // (the `LayerLightSectionStorage` section states) and sends nothing for the others.
-        // The client takes missing sky light above the terrain as full, so a far section is
-        // left out when it holds the default light. Neighbouring chunks also count in vanilla,
-        // which only adds sections with that same default light.
-        let near_blocks = |light_index: usize| {
-            (light_index.saturating_sub(2)..=light_index)
-                .any(|section| has_blocks.get(section).copied().unwrap_or(false))
-        };
         // Light section 0 is the one below the world, `num_sections + 1` the one above it.
         for light_index in 0..num_sections + 2 {
-            let (sky, block, outside_world) = match light_index.checked_sub(1) {
+            if !light_sections.get(light_index).copied().unwrap_or(false) {
+                continue;
+            }
+            let (sky, block) = match light_index.checked_sub(1) {
                 Some(section) if section < num_sections => (
                     &light_engine.sky_light[section],
                     &light_engine.block_light[section],
-                    false,
                 ),
-                Some(_) => (&ABOVE_WORLD_SKY, &BELOW_WORLD, true),
-                None => (&BELOW_WORLD, &BELOW_WORLD, true),
+                Some(_) => (&ABOVE_WORLD_SKY, &BELOW_WORLD),
+                None => (&BELOW_WORLD, &BELOW_WORLD),
             };
-            let near = near_blocks(light_index);
             let bit = 1 << light_index;
-            if near || !(outside_world || sky.is_filled_with(15)) {
-                push_section(
-                    sky,
-                    bit,
-                    &mut sky_light_mask,
-                    &mut empty_sky_light_mask,
-                    &mut data.sky_light_arrays,
-                );
-            }
-            if near || !(outside_world || block.is_filled_with(0)) {
-                push_section(
-                    block,
-                    bit,
-                    &mut block_light_mask,
-                    &mut empty_block_light_mask,
-                    &mut data.block_light_arrays,
-                );
-            }
+            push_section(
+                sky,
+                bit,
+                &mut sky_light_mask,
+                &mut empty_sky_light_mask,
+                &mut data.sky_light_arrays,
+            );
+            push_section(
+                block,
+                bit,
+                &mut block_light_mask,
+                &mut empty_block_light_mask,
+                &mut data.block_light_arrays,
+            );
         }
         data.sky_light_mask = BitSet::from_u64(sky_light_mask);
         data.block_light_mask = BitSet::from_u64(block_light_mask);
@@ -238,10 +280,12 @@ pub fn light_data_from_chunk(
     }
 }
 
-/// Vanilla `ClientboundLightUpdatePacketData` for the sections in `changed` only.
+/// Vanilla `ClientboundLightUpdatePacketData` for the sections in `changed` that vanilla keeps
+/// light for (see [`light_sections_with_data`]).
 pub fn changed_light_data(
     chunk: &ChunkData,
     changed: &ChangedLightSections,
+    light_sections: &[bool],
 ) -> Result<LightData, WritingError> {
     let light_engine = chunk
         .light_engine
@@ -260,6 +304,9 @@ pub fn changed_light_data(
         .zip(light_engine.block_light.iter())
         .enumerate()
     {
+        if !light_sections.get(index + 1).copied().unwrap_or(false) {
+            continue;
+        }
         let section_y = min_section + index as i32;
         let bit = 1 << (index + 1);
         if changed.sky.contains(&section_y) {

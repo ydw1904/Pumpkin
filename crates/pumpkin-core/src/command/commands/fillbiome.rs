@@ -121,7 +121,9 @@ impl CommandExecutor for FillBiomeExecutor {
 
             if let Some((count, Some(chunk))) = result {
                 changed_count += count;
-                world.broadcast_to_chunk_except(chunk_pos, &[], &CChunkData(&chunk));
+                if let Ok(packet) = CChunkData::new(&chunk, &world.level) {
+                    world.broadcast_to_chunk_except(chunk_pos, &[], &packet);
+                }
             }
         }
 

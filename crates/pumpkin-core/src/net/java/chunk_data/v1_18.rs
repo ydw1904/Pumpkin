@@ -14,6 +14,7 @@ use std::io::Write;
 #[expect(clippy::too_many_lines)]
 pub fn write_chunk_data(
     chunk: &ChunkData,
+    light_sections: &[bool],
     mut write: impl Write,
     version: &JavaMinecraftVersion,
 ) -> Result<(), WritingError> {
@@ -220,7 +221,7 @@ pub fn write_chunk_data(
         write.write_compound_nbt_with_version(update_tag.as_ref(), version)?;
     }
 
-    light_data_from_chunk(chunk, *version)?.write(&mut write, version)?;
+    light_data_from_chunk(chunk, light_sections, *version)?.write(&mut write, version)?;
 
     Ok(())
 }

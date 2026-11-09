@@ -3473,8 +3473,11 @@ impl Player {
             |batch| match self.client.as_ref() {
                 ClientPlatform::Java(_) => {
                     let mut per_player_cache = rustc_hash::FxHashMap::default();
-                    let encoded =
-                        crate::net::ChunkSender::encode_batch(&batch, &mut per_player_cache);
+                    let encoded = crate::net::ChunkSender::encode_batch(
+                        &batch,
+                        &mut per_player_cache,
+                        &world.level,
+                    );
                     let current_epoch = self.chunk_send_epoch.load(Ordering::Relaxed);
                     let (sent, total_sent_chunks) = self.chunk_sender.try_lock().map_or_else(
                         |_| (Vec::new(), 0),

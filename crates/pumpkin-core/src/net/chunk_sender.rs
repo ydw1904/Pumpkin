@@ -274,6 +274,7 @@ impl ChunkSender {
     pub fn encode_batch(
         batch: &PreparedBatch,
         cache: &mut FxHashMap<Vector2<i32>, EncodedChunk>,
+        level: &Level,
     ) -> Vec<EncodedChunk> {
         let cached_map = &*cache;
 
@@ -296,8 +297,10 @@ impl ChunkSender {
                 {
                     return None;
                 }
-                if CChunkData(chunk)
-                    .write_packet_data(&mut chunk_buf, &CURRENT_MC_VERSION)
+                if CChunkData::new(chunk, level)
+                    .and_then(|packet| {
+                        packet.write_packet_data(&mut chunk_buf, &CURRENT_MC_VERSION)
+                    })
                     .is_err()
                 {
                     return None;

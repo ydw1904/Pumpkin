@@ -10,6 +10,7 @@ use pumpkin_protocol::packet::MultiVersionJavaPacket;
 use pumpkin_protocol::ser::WritingError;
 use pumpkin_util::version::JavaMinecraftVersion;
 use pumpkin_world::chunk::ChunkData;
+use pumpkin_world::level::Level;
 use std::io::Write;
 
 /// Sent by the server to provide the client with the full data for a chunk.
@@ -17,7 +18,11 @@ use std::io::Write;
 /// This includes heightmaps, the actual block and biome data (organized into sections),
 /// block entities (like signs or chests), and the light level information for both
 /// sky and block light.
-pub struct CChunkData<'a>(pub &'a ChunkData);
+pub struct CChunkData<'a> {
+    chunk: &'a ChunkData,
+    /// The light sections sent, from [`light::light_sections_with_data`].
+    light_sections: Vec<bool>,
+}
 
 impl MultiVersionJavaPacket for CChunkData<'_> {
     fn to_id(version: JavaMinecraftVersion) -> i32 {
@@ -26,9 +31,13 @@ impl MultiVersionJavaPacket for CChunkData<'_> {
 }
 
 impl<'a> CChunkData<'a> {
-    #[must_use]
-    pub const fn new(chunk: &'a ChunkData) -> Self {
-        Self(chunk)
+    /// The chunk's packet, with light for the sections vanilla keeps light for, which depends
+    /// on the neighbouring chunks loaded in `level`.
+    pub fn new(chunk: &'a ChunkData, level: &Level) -> Result<Self, WritingError> {
+        Ok(Self {
+            chunk,
+            light_sections: light::light_sections_with_data(level, chunk)?,
+        })
     }
 }
 
@@ -38,7 +47,7 @@ impl ClientPacket for CChunkData<'_> {
         write: impl Write,
         version: &JavaMinecraftVersion,
     ) -> Result<(), WritingError> {
-        v1_18::write_chunk_data(self.0, write, version)
+        v1_18::write_chunk_data(self.chunk, &self.light_sections, write, version)
     }
 }
 
@@ -50,7 +59,10 @@ mod tests {
     #[test]
     fn chunk_data_all_versions() {
         let chunk = ChunkData::empty(0, 0);
-        let packet = CChunkData(&chunk);
+        let packet = CChunkData {
+            chunk: &chunk,
+            light_sections: vec![false; chunk.section.count + 2],
+        };
 
         let versions = [JavaMinecraftVersion::V_26_3];
 
@@ -88,7 +100,10 @@ mod tests {
             nbt,
         );
 
-        let packet = CChunkData(&chunk);
+        let packet = CChunkData {
+            chunk: &chunk,
+            light_sections: vec![false; chunk.section.count + 2],
+        };
 
         let versions = [JavaMinecraftVersion::V_26_3];
 
@@ -107,24 +122,55 @@ mod tests {
         }
     }
 
-    #[test]
-    fn light_leaves_out_sections_far_from_blocks() {
+    #[tokio::test]
+    async fn light_covers_sections_next_to_blocks_in_neighbouring_chunks() {
+        use pumpkin_config::world::LevelConfig;
+        use pumpkin_data::dimension::Dimension;
+        use pumpkin_util::math::vector2::Vector2;
         use pumpkin_world::chunk::format::LightContainer;
-        let chunk = ChunkData::empty(0, 0);
-        chunk
-            .section
-            .set_block_absolute_y(0, 64, 0, pumpkin_data::Block::STONE.default_state.id);
-        let mut light = chunk.light_engine.lock().unwrap();
-        light.sky_light = vec![LightContainer::new_filled(15); 24].into();
-        light.block_light = vec![LightContainer::Empty(0); 24].into();
-        drop(light);
-        let data = light::light_data_from_chunk(&chunk, JavaMinecraftVersion::V_26_3).unwrap();
+
+        let directory = tempfile::TempDir::new().unwrap();
+        let level = Level::from_root_folder(
+            &LevelConfig::default(),
+            directory.path().to_path_buf(),
+            0,
+            Dimension::OVERWORLD,
+        );
+        let lit = |x, z| {
+            let chunk = ChunkData::empty(x, z);
+            let mut light = chunk.light_engine.lock().unwrap();
+            light.sky_light = vec![LightContainer::new_filled(15); 24].into();
+            light.block_light = vec![LightContainer::Empty(0); 24].into();
+            drop(light);
+            std::sync::Arc::new(chunk)
+        };
+        let with_stone = lit(0, 0);
+        with_stone.section.set_block_absolute_y(
+            0,
+            64,
+            0,
+            pumpkin_data::Block::STONE.default_state.id,
+        );
+        level
+            .loaded_chunks
+            .insert(Vector2::new(0, 0), with_stone.clone());
+        let beside = lit(1, 1);
+        level
+            .loaded_chunks
+            .insert(Vector2::new(1, 1), beside.clone());
+        let away = lit(2, 0);
+
         // y = 64 is in world section 8, which is light section 9.
         let near = 0b111 << 8;
-        assert_eq!(data.sky_light_mask.as_u64(), near);
-        assert_eq!(data.sky_light_arrays.len(), 3);
-        assert_eq!(data.empty_sky_light_mask.as_u64(), 0);
-        assert_eq!(data.block_light_mask.as_u64(), 0);
-        assert_eq!(data.empty_block_light_mask.as_u64(), near);
+        for (chunk, mask) in [(&with_stone, near), (&beside, near), (&away, 0)] {
+            let sections = light::light_sections_with_data(&level, chunk).unwrap();
+            let data = light::light_data_from_chunk(chunk, &sections, JavaMinecraftVersion::V_26_3)
+                .unwrap();
+            assert_eq!(data.sky_light_mask.as_u64(), mask);
+            assert_eq!(data.empty_sky_light_mask.as_u64(), 0);
+            assert_eq!(data.block_light_mask.as_u64(), 0);
+            assert_eq!(data.empty_block_light_mask.as_u64(), mask);
+        }
+        level.shutdown().await;
     }
 }
