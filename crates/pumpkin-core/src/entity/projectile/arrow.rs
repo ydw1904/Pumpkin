@@ -93,6 +93,8 @@ pub struct ArrowEntity {
     pub last_block_pos: Arc<std::sync::RwLock<Option<BlockPos>>>,
     pub pierced_entities: Arc<RwLock<Vec<i32>>>,
     pub weapon: RwLock<Option<ItemStack>>,
+    /// Vanilla `AbstractArrow.soundEvent`, played when the arrow hits.
+    sound_event: AtomicCell<Sound>,
 }
 
 impl ArrowEntity {
@@ -103,6 +105,13 @@ impl ArrowEntity {
     const AIR_INERTIA: f64 = 0.99f32 as f64;
     const GRAVITY: f64 = 0.05;
     const DESPAWN_TIME: u32 = 1200;
+    /// Vanilla `AbstractArrow.getDefaultHitGroundSoundEvent`.
+    const DEFAULT_HIT_SOUND: Sound = Sound::EntityArrowHit;
+
+    /// Vanilla `AbstractArrow.setSoundEvent`.
+    pub fn set_sound_event(&self, sound: Sound) {
+        self.sound_event.store(sound);
+    }
 
     pub fn new(entity: Entity, owner: Option<&Entity>) -> Self {
         let item_stack = ItemStack::new(1, Self::default_item(entity.entity_type));
@@ -142,6 +151,7 @@ impl ArrowEntity {
             last_block_pos: Arc::new(std::sync::RwLock::new(None)),
             pierced_entities: Arc::new(RwLock::new(Vec::new())),
             weapon: RwLock::new(None),
+            sound_event: AtomicCell::new(Self::DEFAULT_HIT_SOUND),
         }
     }
 
@@ -184,6 +194,7 @@ impl ArrowEntity {
             last_block_pos: Arc::new(std::sync::RwLock::new(None)),
             pierced_entities: Arc::new(RwLock::new(Vec::new())),
             weapon: RwLock::new(None),
+            sound_event: AtomicCell::new(Self::DEFAULT_HIT_SOUND),
         }
     }
 
@@ -485,6 +496,10 @@ impl EntityBase for ArrowEntity {
             self.pierce_level.load(Ordering::Relaxed) as i8,
         );
         nbt.put_byte("pickup", self.pickup.load().to_byte() as i8);
+        nbt.put_string(
+            "SoundEvent",
+            format!("minecraft:{}", self.sound_event.load().to_name()),
+        );
     }
 
     fn read_custom_nbt(&self, nbt: &pumpkin_nbt::compound::NbtCompound) {
@@ -523,6 +538,11 @@ impl EntityBase for ArrowEntity {
             self.pierce_level
                 .store(pierce.max(0) as u8, Ordering::Relaxed);
         }
+        let sound = nbt
+            .get_string("SoundEvent")
+            .and_then(|name| Sound::from_name(name.strip_prefix("minecraft:").unwrap_or(name)));
+        self.sound_event
+            .store(sound.unwrap_or(Self::DEFAULT_HIT_SOUND));
     }
 
     fn init_data_tracker(&self) {
@@ -773,7 +793,7 @@ impl EntityBase for ArrowEntity {
                 // Play sound with vanilla pitch formula
                 let sound_pitch = 1.2 / (game_random().random::<f32>() * 0.2 + 0.9);
                 let sound_packet = CSoundEffect::new(
-                    IdOr::Id(Sound::EntityArrowHit as u16),
+                    IdOr::Id(self.sound_event.load() as u16),
                     SoundCategory::Neutral,
                     &hit_pos,
                     1.0,
@@ -786,6 +806,7 @@ impl EntityBase for ArrowEntity {
                 // Reset critical flag and pierce level
                 self.set_critical(false);
                 self.set_pierce_level(0);
+                self.set_sound_event(Self::DEFAULT_HIT_SOUND);
                 self.pierced_entities
                     .write()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -941,7 +962,7 @@ impl EntityBase for ArrowEntity {
                 // Vanilla plays the hit sound for any target the arrow hurt, living or not.
                 let sound_pitch = 1.2 / (game_random().random::<f32>() * 0.2 + 0.9);
                 let sound_packet = CSoundEffect::new(
-                    IdOr::Id(Sound::EntityArrowHit as u16),
+                    IdOr::Id(self.sound_event.load() as u16),
                     SoundCategory::Neutral,
                     &hit_pos,
                     1.0,

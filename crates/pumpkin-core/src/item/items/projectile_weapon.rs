@@ -7,6 +7,7 @@ use crate::entity::{Entity, EntityBase};
 use crate::world::World;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::sound::Sound;
 
 /// Abstraction for projectile-firing weapons (Bow, Crossbow), matching vanilla `ProjectileWeaponItem`.
 pub struct ProjectileWeaponItem;
@@ -67,6 +68,10 @@ impl ProjectileWeaponItem {
 
         if is_crit {
             arrow.set_critical(true);
+        }
+        // Vanilla `CrossbowItem.createProjectile`.
+        if weapon.item.id == Item::CROSSBOW.id {
+            arrow.set_sound_event(Sound::ItemCrossbowHit);
         }
 
         arrow

@@ -106,6 +106,8 @@ impl RangedCrossbowAttackGoal {
             );
         }
         arrow.apply_on_projectile_spawned(&projectile);
+        // Vanilla `CrossbowItem.createProjectile`.
+        arrow.set_sound_event(Sound::ItemCrossbowHit);
         if entity.is_on_fire() {
             arrow.set_flame(true);
         }
