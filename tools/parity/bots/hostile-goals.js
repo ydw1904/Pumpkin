@@ -1,6 +1,7 @@
 // Hostile mob goals a client can see: the guardian beam (attack target data, charge time and
 // damage), the elder guardian's mining fatigue, the vex charge flag, its missing gravity and
-// limited life, the illusioner's spells and bow, and the vindicator's Johnny targeting.
+// limited life, the illusioner's spells and bow, the vindicator's Johnny targeting, zoglin
+// targets and hits, and the zoglin, piglin and brute stroll speeds.
 const { make } = require('./survival-lib')
 const h = make('Hunted', 900000)
 const { bot } = h
@@ -203,6 +204,63 @@ h.start(async () => {
     const pig = await summon('pig', 0, 0, -4, 'NoAI:1b')
     await h.waitFor(() => !bot.entities[pig.id], 8000)
     h.result(`vindicator.${label}.kills_pig`, !bot.entities[pig.id])
+  }
+
+  // Zoglin: it goes for the nearest living thing but zoglins and creepers, here a pig behind
+  // both.
+  h.cmd('difficulty normal')
+  await reset()
+  const creeper = await summon('creeper', -3, 0, 4, 'NoAI:1b')
+  const zoglin = await summon('zoglin', 3, 0, 4, 'NoAI:1b')
+  const prey = await summon('pig', 0, 0, -4, 'NoAI:1b')
+  await summon('zoglin', 0, 0, 4)
+  // Its throws can toss the pig off the arena, so only the first hit counts.
+  const hurt = () => !bot.entities[prey.id] || prey.metadata[9] < 10
+  await h.waitFor(hurt, 15000)
+  h.result('zoglin.hurts_pig', hurt())
+  await h.ticks(40)
+  h.result('zoglin.spares', `creeper=${creeper.metadata[9]} zoglin=${zoglin.metadata[9]}`)
+  h.cmd(`gamemode survival ${bot.username}`)
+
+  // An adult hits for half its damage plus up to as much again, every 40 ticks. Full knockback
+  // resistance keeps the bot in reach and cancels the throw.
+  await reset()
+  h.cmd(`attribute ${bot.username} minecraft:knockback_resistance base set 1`)
+  await summon('zoglin', 0, 0, 4)
+  const hits = []
+  let clock = 0
+  const count = () => clock++
+  bot.on('physicsTick', count)
+  for (let i = 0; i < 2; i++) {
+    const health = bot.health
+    if (!await h.waitFor(() => bot.health < health, 15000)) break
+    hits.push({ at: clock, damage: health - bot.health })
+    h.cmd(`effect give ${bot.username} instant_health 1 10`)
+    await h.waitFor(() => bot.health === 20, 3000)
+  }
+  bot.removeListener('physicsTick', count)
+  h.result('zoglin.hits', hits.length)
+  h.result('zoglin.damage_3_to_8', hits.length > 0 && hits.every(x => x.damage >= 3 && x.damage <= 8))
+  h.result('zoglin.interval_10s', hits.length === 2 ? Math.round((hits[1].at - hits[0].at) / 10) * 10 : 'none')
+  h.cmd(`attribute ${bot.username} minecraft:knockback_resistance base set 0`)
+
+  // Idle strolls: zoglins at 0.4 of their speed, piglins and brutes at 0.6. The fastest 10 tick
+  // stretch, since positions only arrive every few ticks.
+  h.cmd(`gamemode creative ${bot.username}`)
+  for (const [type, nbt] of [['zoglin', ''], ['piglin', 'IsImmuneToZombification:1b'], ['piglin_brute', 'IsImmuneToZombification:1b']]) {
+    await reset()
+    const mob = await summon(type, 0, 0, 4, nbt)
+    const trail = []
+    let top = 0
+    const sample = () => {
+      trail.push(mob.position.clone())
+      if (trail.length > 11) trail.shift()
+      if (trail.length === 11) top = Math.max(top, Math.hypot(trail[10].x - trail[0].x, trail[10].z - trail[0].z) / 10)
+    }
+    bot.on('physicsTick', sample)
+    await h.ticks(600)
+    bot.removeListener('physicsTick', sample)
+    h.result(`${type}.stroll_speed`, (Math.round(top * 50) / 50).toFixed(2))
   }
   h.cmd(`gamemode survival ${bot.username}`)
   await reset()
