@@ -9,11 +9,15 @@ use crate::command::argument_builder::{ArgumentBuilder, argument, command, liter
 use crate::command::argument_types::core::bool::BoolArgumentType;
 use crate::command::argument_types::core::integer::IntegerArgumentType;
 use crate::command::context::command_context::CommandContext;
+use crate::command::errors::error_types::CommandErrorType;
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
 
 const DESCRIPTION: &str = "Sets or queries a game rule value.";
 const PERMISSION: &str = "minecraft:command.gamerule";
+
+const ERROR_GAME_RULE_NOT_SET: CommandErrorType<2> =
+    CommandErrorType::new("commands.gamerule.not_set", "commands.gamerule.not_set");
 
 struct QueryExecutor(GameRule);
 
@@ -50,6 +54,12 @@ impl CommandExecutor for SetIntExecutor {
         let arg_value = IntegerArgumentType::get(context, "value")? as i64;
 
         let current_info = context.server().level_info.load();
+        // Vanilla refuses a value the rule already has, so the rule's change hooks don't run.
+        if matches!(current_info.game_rules.get(&self.0), GameRuleValue::Int(value) if *value == arg_value)
+        {
+            return Err(ERROR_GAME_RULE_NOT_SET
+                .create_without_context(key, TextComponent::text(arg_value.to_string())));
+        }
         let mut new_info = (**current_info).clone();
 
         if let GameRuleValue::Int(raw_value) = new_info.game_rules.get_mut(&self.0) {
@@ -80,6 +90,11 @@ impl CommandExecutor for SetBoolExecutor {
         let arg_value = BoolArgumentType::get(context, "value")?;
 
         let current_info = context.server().level_info.load();
+        if matches!(current_info.game_rules.get(&self.0), GameRuleValue::Bool(value) if *value == arg_value)
+        {
+            return Err(ERROR_GAME_RULE_NOT_SET
+                .create_without_context(key, TextComponent::text(arg_value.to_string())));
+        }
         let mut new_info = (**current_info).clone();
 
         if let GameRuleValue::Bool(raw_value) = new_info.game_rules.get_mut(&self.0) {
