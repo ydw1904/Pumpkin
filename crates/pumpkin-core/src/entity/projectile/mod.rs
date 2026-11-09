@@ -239,6 +239,8 @@ impl ThrownItemEntity {
         // Store velocity
         entity.velocity.store(velocity);
 
+        // Vanilla turns the projectile before the hit, which may deflect it.
+        update_rotation(entity);
         self.move_and_hit(caller);
     }
 
@@ -484,6 +486,28 @@ const HURTING_BURN_TICKS: i32 = 20;
 /// rotation towards the flight direction.
 // Vanilla's `Mth.lerp` rounds after the multiply and after the add, so no `mul_add` here.
 #[allow(clippy::suboptimal_flops)]
+/// Vanilla `Projectile.updateRotation`: a fifth of the way towards the direction of movement.
+fn update_rotation(entity: &Entity) {
+    let movement = entity.velocity.load();
+    let to_degrees = 180.0 / f64::from(std::f32::consts::PI);
+    let pitch = (movement.y.atan2(movement.horizontal_length()) * to_degrees) as f32;
+    let yaw = (movement.x.atan2(movement.z) * to_degrees) as f32;
+    // Not `set_rotation`: vanilla leaves the head yaw alone, so no head packets are sent.
+    entity.yaw.store(lerp_rotation(entity.yaw.load(), yaw));
+    entity.set_pitch(lerp_rotation(entity.pitch.load(), pitch));
+}
+
+/// Vanilla `Projectile.lerpRotation`.
+fn lerp_rotation(mut old: f32, new: f32) -> f32 {
+    while new - old < -180.0 {
+        old -= 360.0;
+    }
+    while new - old >= 180.0 {
+        old += 360.0;
+    }
+    old + 0.2 * (new - old)
+}
+
 pub(crate) fn rotate_towards_movement(entity: &Entity, speed: f32) {
     let movement = entity.velocity.load();
     if movement.length_squared() == 0.0 {
