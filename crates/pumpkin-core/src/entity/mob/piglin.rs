@@ -112,12 +112,13 @@ impl ExpiringEntityMemory {
     }
 }
 
-/// The `PiglinSpecificSensor` memories the AVOID and RIDE activities read.
+/// The `PiglinSpecificSensor` memories the AVOID, RIDE and IDLE activities read.
 #[derive(Default)]
 struct PiglinSpecificMemories {
     nearest_visible_nemesis: Option<Arc<dyn EntityBase>>,
     nearest_visible_zombified: Option<Arc<dyn EntityBase>>,
     nearest_visible_baby_hoglin: Option<Arc<dyn EntityBase>>,
+    nearest_visible_huntable_hoglin: Option<Arc<dyn EntityBase>>,
     nearest_visible_adult_piglins: Vec<Arc<dyn EntityBase>>,
     visible_adult_hoglin_count: i32,
 }
@@ -437,20 +438,17 @@ impl PiglinEntity {
         {
             return;
         }
-        let visible = self.nearest_visible_living_entities();
-        // `PiglinSpecificSensor`: the nearest adult hoglin that can be hunted.
-        let Some(hoglin) = visible.iter().find(|other| {
-            other
-                .cast_any()
-                .downcast_ref::<HoglinEntity>()
-                .is_some_and(|hoglin| !hoglin.is_baby() && hoglin.can_be_hunted())
-        }) else {
-            return;
+        // Both memories come from the last `PiglinSpecificSensor` scan.
+        let (hoglin, visible) = {
+            let memories = self.specific_memories();
+            let Some(hoglin) = memories.nearest_visible_huntable_hoglin.clone() else {
+                return;
+            };
+            (hoglin, memories.nearest_visible_adult_piglins.clone())
         };
         let visible_adult_piglins: Vec<&dyn AbstractPiglin> = visible
             .iter()
             .filter_map(|other| as_abstract_piglin(other.as_ref()))
-            .filter(|piglin| piglin.is_adult_piglin())
             .collect();
         if visible_adult_piglins
             .iter()
@@ -470,7 +468,7 @@ impl PiglinEntity {
         self.get_random().random_range(min..=max)
     }
 
-    /// The `PiglinSpecificSensor` part the AVOID and RIDE activities read.
+    /// The `PiglinSpecificSensor` part the AVOID, RIDE and IDLE activities read.
     fn refresh_specific_memories(&self) {
         let mut memories = PiglinSpecificMemories::default();
         for entity in self.nearest_visible_living_entities() {
@@ -483,6 +481,10 @@ impl PiglinEntity {
                     }
                 } else {
                     memories.visible_adult_hoglin_count += 1;
+                    if memories.nearest_visible_huntable_hoglin.is_none() && hoglin.can_be_hunted()
+                    {
+                        memories.nearest_visible_huntable_hoglin = Some(entity.clone());
+                    }
                 }
             } else if any.is::<PiglinBruteEntity>() {
                 memories.nearest_visible_adult_piglins.push(entity.clone());
