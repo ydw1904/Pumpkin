@@ -475,6 +475,22 @@ mod tests {
         assert!((actual - expected).abs() < 1.0e-6, "{actual} != {expected}");
     }
 
+    // Vanilla `Blocks` overrides `isSuffocating`: glass, leaves and grates never suffocate, mud
+    // always does although its collision shape is not a full block.
+    #[test]
+    fn suffocation_follows_vanilla_overrides() {
+        for block in [
+            &Block::GLASS,
+            &Block::RED_STAINED_GLASS,
+            &Block::OAK_LEAVES,
+            &Block::COPPER_GRATE,
+        ] {
+            assert!(!block.default_state.is_suffocating(), "{}", block.name);
+        }
+        assert!(Block::MUD.default_state.is_suffocating());
+        assert!(Block::STONE.default_state.is_suffocating());
+    }
+
     #[test]
     fn bamboo_collision_shape_uses_its_world_position() {
         let state = Block::BAMBOO.default_state;
