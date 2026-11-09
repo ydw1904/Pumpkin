@@ -880,6 +880,9 @@ impl EntityBase for ArrowEntity {
                 }
 
                 if let Some(living) = target.get_living_entity() {
+                    if pierce == 0 {
+                        living.set_arrow_count(living.get_arrow_count() + 1);
+                    }
                     if punch > 0 {
                         let norm = Vector3::new(velocity.x, 0.0, velocity.z).normalize();
                         let push_scale = f64::from(punch) * 0.6;
