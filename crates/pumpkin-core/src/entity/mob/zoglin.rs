@@ -25,6 +25,7 @@ use crate::entity::ai::brain::{
     pending::PendingBrainUpdates,
     sensing::{SensorType, is_entity_attackable},
 };
+use crate::entity::ai::goal::GoalReach;
 use crate::entity::{
     Entity, EntityBase,
     mob::{
@@ -39,6 +40,10 @@ const ATTACK_INTERVAL: i32 = 40;
 const BABY_ATTACK_INTERVAL: i32 = 15;
 const ATTACK_DURATION: i64 = 200;
 const SPEED_MULTIPLIER_WHEN_IDLING: f32 = 0.4;
+/// `SetWalkTargetFromAttackTargetIfTargetOutOfReach.create(1.0)` of the FIGHT activity.
+const SPEED_MULTIPLIER_WHEN_FIGHTING: f32 = 1.0;
+/// `RandomStroll.stroll`'s horizontal range, and the node next to it.
+const STROLL_BLOCK_READS: f64 = 11.0;
 /// Vanilla `Zoglin.hurtServer` distance for `isOtherTargetMuchFurtherAwayThanCurrentAttackTarget`.
 const MUCH_FURTHER_AWAY: f64 = 4.0;
 
@@ -177,7 +182,11 @@ fn fight_activity() -> ActivityData {
         Activity::Fight,
         10,
         vec![
-            Box::new(set_walk_target_from_attack_target_if_target_out_of_reach::create(1.0)),
+            Box::new(
+                set_walk_target_from_attack_target_if_target_out_of_reach::create(
+                    SPEED_MULTIPLIER_WHEN_FIGHTING,
+                ),
+            ),
             Box::new(melee_attack::create_when(is_adult, ATTACK_INTERVAL)),
             Box::new(melee_attack::create_when(is_baby, BABY_ATTACK_INTERVAL)),
             Box::new(stop_attacking_if_target_invalid::create(
@@ -211,6 +220,75 @@ fn set_attack_target(brain: &mut BrainState, target: Arc<dyn EntityBase>) {
 }
 
 impl Mob for ZoglinEntity {
+    fn has_audited_tick(&self) -> bool {
+        // An enchanted or special weapon hits more than the attack target.
+        self.mob_entity.hits_only_its_target()
+    }
+
+    /// The brain's sensors, behaviours and hurt targeting.
+    fn audited_species_reach(&self, _speed: f64) -> GoalReach {
+        let mob_entity = &self.mob_entity;
+        let follow_range = mob_entity
+            .living_entity
+            .get_attribute_value(&Attributes::FOLLOW_RANGE);
+        let melee = mob_entity.melee_attack_max_reach();
+        let mut reach = GoalReach {
+            // The living entity and player sensors scan the follow range and check the sight to
+            // what they find; `MeleeAttack` hits and throws the target within the attack box.
+            entities: follow_range.max(melee),
+            players: follow_range.max(melee),
+            speed: f64::from(SPEED_MULTIPLIER_WHEN_FIGHTING),
+            block_reads: follow_range.max(STROLL_BLOCK_READS),
+            knockback: melee,
+            // `hurtServer` targets an attacker that reaches the zoglin earlier in the tick.
+            spans_contacts: true,
+            ..GoalReach::default()
+        };
+        reach.sight.extend(
+            mob_entity
+                .living_entity
+                .get_last_hurt_by_mob_id()
+                .filter(|id| *id != 0),
+        );
+        // Memories keep the last scan and the targets wherever they are now; the behaviours read
+        // them and check the sight to them.
+        mob_entity.read_brain(|brain| {
+            let Some(brain) = brain else {
+                return;
+            };
+            let id = |entity: &Arc<dyn EntityBase>| entity.get_entity().entity_id;
+            reach.links.extend(
+                brain
+                    .get(types::NEAREST_LIVING_ENTITIES)
+                    .into_iter()
+                    .flatten()
+                    .map(id),
+            );
+            reach.links.extend(
+                brain
+                    .get(types::NEAREST_PLAYERS)
+                    .into_iter()
+                    .flatten()
+                    .map(|player| player.get_entity().entity_id),
+            );
+            reach.links.extend(brain.get(types::ATTACK_TARGET).map(id));
+            reach.links.extend(
+                brain
+                    .get(types::LOOK_TARGET)
+                    .and_then(|target| target.tracked_entity())
+                    .map(id),
+            );
+            reach.links.extend(
+                brain
+                    .get(types::WALK_TARGET)
+                    .and_then(|target| target.target().tracked_entity())
+                    .map(id),
+            );
+        });
+        reach.sight.extend(reach.links.iter().copied());
+        reach
+    }
+
     fn get_ambient_sound(&self) -> Option<Sound> {
         Some(
             if self
@@ -357,5 +435,42 @@ impl Mob for ZoglinEntity {
         if !self.is_baby() {
             throw_target(&self.mob_entity.living_entity, defender);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entity::ai::test_support::world;
+    use crate::entity::passive::pig::PigEntity;
+    use pumpkin_util::math::vector3::Vector3;
+
+    #[tokio::test]
+    async fn audited_reach_links_a_remembered_target_out_of_range()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let folder = tempfile::tempdir()?;
+        let world = world(&folder);
+        let zoglin = ZoglinEntity::new(Entity::new(
+            world.clone(),
+            Vector3::new(0.0, 64.0, 0.0),
+            &EntityType::ZOGLIN,
+        ));
+        let pig: Arc<dyn EntityBase> = PigEntity::new(Entity::new(
+            world.clone(),
+            Vector3::new(100.0, 64.0, 0.0),
+            &EntityType::PIG,
+        ));
+        let pig_id = pig.get_entity().entity_id;
+        zoglin
+            .mob_entity
+            .with_brain(zoglin.as_ref(), |brain| set_attack_target(brain, pig));
+        let reach = zoglin
+            .mob_entity
+            .audited_reach(zoglin.as_ref())
+            .ok_or("missing zoglin reach")?;
+        assert!(reach.links.contains(&pig_id));
+        assert!(reach.sight.contains(&pig_id));
+        world.level.shutdown().await;
+        Ok(())
     }
 }

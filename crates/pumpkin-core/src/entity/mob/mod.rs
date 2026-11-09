@@ -1056,6 +1056,17 @@ impl MobEntity {
             .unwrap_or(false)
     }
 
+    /// Reads the brain without building one, for reach reports between ticks. Never call it from
+    /// the mob's own brain tick.
+    pub fn read_brain<R>(&self, read: impl FnOnce(Option<&Brain>) -> R) -> R {
+        read(
+            self.brain
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .as_ref(),
+        )
+    }
+
     pub fn with_brain<R>(&self, mob: &dyn Mob, callback: impl FnOnce(&mut Brain) -> R) -> R {
         let result = {
             let mut slot = self
