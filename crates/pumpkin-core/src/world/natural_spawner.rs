@@ -912,7 +912,8 @@ pub fn spawn_category_for_position(
 ) {
     let y_start = pos.0.y;
     let state = world.get_block_state(&pos);
-    if state.is_solid_block() || state.is_full_cube() {
+    // Vanilla `isRedstoneConductor`: a pack can start inside glass or leaves.
+    if state.is_solid_block() {
         return;
     }
 
