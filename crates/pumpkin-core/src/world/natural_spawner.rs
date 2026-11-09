@@ -1,4 +1,5 @@
 use crate::block::PathComputationType;
+use crate::block::registry::BlockRegistry;
 use crate::entity::EntityBase;
 use crate::entity::mob::spawn::{PendingVehicle, SpawnGroupData, finalize_spawn};
 use crate::entity::player::Player;
@@ -635,7 +636,9 @@ pub fn spawn_mobs_for_chunk_generation(
 
                 let pos = get_top_non_colliding_pos(world, cache, entity_type, x, z);
 
-                if entity_type.summonable && is_spawn_position_ok_cache(cache, &pos, entity_type) {
+                if entity_type.summonable
+                    && is_spawn_position_ok_cache(&world.block_registry, cache, &pos, entity_type)
+                {
                     let width = f64::from(entity_type.dimension[0]);
                     let fx =
                         (f64::from(x)).clamp(f64::from(xo) + width, f64::from(xo) + 16.0 - width);
@@ -1292,8 +1295,8 @@ pub fn is_spawn_position_ok(
             let is_valid_spawn_below = is_valid_spawn_floor(down, entity_type);
 
             if is_valid_spawn_below {
-                is_valid_empty_spawn_block(cur, entity_type)
-                    && is_valid_empty_spawn_block(up, entity_type)
+                is_valid_empty_spawn_block_at(&world.block_registry, cur, entity_type)
+                    && is_valid_empty_spawn_block_at(&world.block_registry, up, entity_type)
             } else {
                 false
             }
@@ -1304,6 +1307,7 @@ pub fn is_spawn_position_ok(
 
 #[must_use]
 pub fn is_spawn_position_ok_cache(
+    block_registry: &BlockRegistry,
     cache: &dyn GenerationCache,
     block_pos: &BlockPos,
     entity_type: &'static EntityType,
@@ -1333,8 +1337,8 @@ pub fn is_spawn_position_ok_cache(
             let is_valid_spawn_below = is_valid_spawn_floor(down, entity_type);
 
             if is_valid_spawn_below {
-                is_valid_empty_spawn_block(state, entity_type)
-                    && is_valid_empty_spawn_block(up, entity_type)
+                is_valid_empty_spawn_block_at(block_registry, state, entity_type)
+                    && is_valid_empty_spawn_block_at(block_registry, up, entity_type)
             } else {
                 false
             }
@@ -1343,15 +1347,21 @@ pub fn is_spawn_position_ok_cache(
     }
 }
 
+/// Vanilla `NaturalSpawner.isValidEmptySpawnBlock`, with `fluid` the block's fluid.
 #[must_use]
 pub fn is_valid_empty_spawn_block(
+    block_registry: &BlockRegistry,
     state: &'static BlockState,
+    fluid: &Fluid,
     entity_type: &'static EntityType,
 ) -> bool {
     if state.is_full_cube() {
         return false;
     }
-    if state.is_liquid() {
+    if is_signal_source(block_registry, state) {
+        return false;
+    }
+    if fluid.id != Fluid::EMPTY.id {
         return false;
     }
     if Block::from_state_id(state.id).has_tag(&MINECRAFT_PREVENT_MOB_SPAWNING_INSIDE) {
@@ -1377,6 +1387,30 @@ pub(crate) fn is_valid_spawn_floor(
         SpawnFloorPredicate::PolarBear => entity_type == &EntityType::POLAR_BEAR,
         SpawnFloorPredicate::FireImmune => entity_type.fire_immune,
     }
+}
+
+/// Vanilla `BlockState.isSignalSource`. Pumpkin asks per direction, and a repeater only
+/// answers for the side it faces.
+fn is_signal_source(block_registry: &BlockRegistry, state: &'static BlockState) -> bool {
+    let block = Block::from_state_id(state.id);
+    BlockDirection::all()
+        .into_iter()
+        .any(|direction| block_registry.emits_redstone_power(block, state, direction))
+}
+
+/// [`is_valid_empty_spawn_block`] for a block in the world.
+#[must_use]
+pub fn is_valid_empty_spawn_block_at(
+    block_registry: &BlockRegistry,
+    state: &'static BlockState,
+    entity_type: &'static EntityType,
+) -> bool {
+    is_valid_empty_spawn_block(
+        block_registry,
+        state,
+        World::get_fluid_type_from_state_id(state.id),
+        entity_type,
+    )
 }
 
 fn is_block_dangerous(entity_type: &'static EntityType, state: &'static BlockState) -> bool {
@@ -1416,6 +1450,26 @@ mod tests {
             let change = PointCharge(far, 1.0).get_potential_change(&origin);
 
             assert_eq!(change, 1.0 / distance, "wrong potential for {far:?}");
+        }
+    }
+
+    #[test]
+    fn signal_sources_and_fluids_block_spawning() {
+        let registry = crate::block::registry::default_registry();
+        for (block, expected) in [
+            (&Block::AIR, true),
+            (&Block::STONE_BUTTON, false),
+            (&Block::STONE_PRESSURE_PLATE, false),
+            (&Block::REPEATER, false),
+            (&Block::REDSTONE_WIRE, false),
+            (&Block::SEAGRASS, false),
+        ] {
+            assert_eq!(
+                is_valid_empty_spawn_block_at(&registry, block.default_state, &EntityType::ZOMBIE),
+                expected,
+                "{}",
+                block.name
+            );
         }
     }
 

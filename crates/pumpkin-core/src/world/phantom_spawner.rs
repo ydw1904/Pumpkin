@@ -73,7 +73,8 @@ impl PhantomSpawner {
                 player_pos.0.y + up,
                 player_pos.0.z + south,
             );
-            if !natural_spawner::is_valid_empty_spawn_block(
+            if !natural_spawner::is_valid_empty_spawn_block_at(
+                &world.block_registry,
                 world.get_block_state(&spawn_pos),
                 &EntityType::PHANTOM,
             ) {

@@ -7,6 +7,7 @@ use pumpkin_data::BlockState;
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::entity::{EntityStatus, EntityType};
+use pumpkin_data::fluid::Fluid;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::Sound;
@@ -38,7 +39,7 @@ use crate::entity::{
     player::Player,
 };
 use crate::plugin::api::events::entity::entity_target::TargetReason;
-use crate::world::natural_spawner::is_valid_empty_spawn_block;
+use crate::world::natural_spawner::{is_valid_empty_spawn_block, is_valid_empty_spawn_block_at};
 
 const IRON_INGOT_HEAL_AMOUNT: f32 = 25.0;
 const ATTACK_ANIMATION_TICKS: i32 = 10;
@@ -320,8 +321,11 @@ impl Mob for IronGolemEntity {
         if !crate::entity::spawn_util::is_face_full_up(level.block_state(&pos.down())) {
             return false;
         }
+        let world = entity.world.load();
+        let block_registry = &world.block_registry;
         if !(1..3).all(|height| {
-            is_valid_empty_spawn_block(
+            is_valid_empty_spawn_block_at(
+                block_registry,
                 level.block_state(&pos.up_height(height)),
                 entity.entity_type,
             )
@@ -329,12 +333,15 @@ impl Mob for IronGolemEntity {
             return false;
         }
         // Vanilla checks its own block with an empty fluid, so a golem can stand in water.
-        let state = level.block_state(&pos);
-        (state.is_liquid() || is_valid_empty_spawn_block(state, entity.entity_type))
-            && level
-                .entities_at_box(&entity.bounding_box.load())
-                .iter()
-                .all(|other| other.get_living_entity().is_none() || other.get_entity().is_removed())
+        is_valid_empty_spawn_block(
+            block_registry,
+            level.block_state(&pos),
+            &Fluid::EMPTY,
+            entity.entity_type,
+        ) && level
+            .entities_at_box(&entity.bounding_box.load())
+            .iter()
+            .all(|other| other.get_living_entity().is_none() || other.get_entity().is_removed())
     }
 
     fn mob_init_data_tracker(&self) {

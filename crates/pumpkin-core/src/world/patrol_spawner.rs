@@ -85,7 +85,8 @@ impl PatrolSpawner {
     }
 
     fn spawn_patrol_member(world: &Arc<World>, pos: BlockPos, is_leader: bool) -> bool {
-        if !natural_spawner::is_valid_empty_spawn_block(
+        if !natural_spawner::is_valid_empty_spawn_block_at(
+            &world.block_registry,
             world.get_block_state(&pos),
             &EntityType::PILLAGER,
         ) || !check_spawn_rules(
