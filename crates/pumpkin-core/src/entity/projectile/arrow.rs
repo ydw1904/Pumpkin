@@ -15,6 +15,7 @@ use crate::{
     server::Server,
     world::World,
 };
+use pumpkin_data::attributes::Attributes;
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::data_component_impl::{
     PotionContentsImpl, PotionDurationScaleImpl, StatusEffectInstance,
@@ -904,17 +905,7 @@ impl EntityBase for ArrowEntity {
                     if pierce == 0 {
                         living.set_arrow_count(living.get_arrow_count() + 1);
                     }
-                    if punch > 0 {
-                        let norm = Vector3::new(velocity.x, 0.0, velocity.z).normalize();
-                        let push_scale = f64::from(punch) * 0.6;
-                        target.get_entity().velocity.store(
-                            target.get_entity().velocity.load().add(&Vector3::new(
-                                norm.x * push_scale,
-                                0.1,
-                                norm.z * push_scale,
-                            )),
-                        );
-                    }
+                    Self::do_knockback(living, f64::from(punch), velocity);
 
                     crate::enchantment::EnchantmentHelper::do_post_attack_effects_with_item_source(
                         target.as_ref(),
@@ -1042,6 +1033,23 @@ impl EntityBase for ArrowEntity {
 }
 
 impl ArrowEntity {
+    /// Vanilla `AbstractArrow.doKnockback`: the weapon's knockback pushes `living` along the
+    /// arrow's horizontal flight, less its knockback resistance.
+    fn do_knockback(living: &LivingEntity, knockback: f64, movement: Vector3<f64>) {
+        if knockback <= 0.0 {
+            return;
+        }
+        let resistance =
+            (1.0 - living.get_attribute_value(&Attributes::KNOCKBACK_RESISTANCE)).max(0.0);
+        let push = Vector3::new(movement.x, 0.0, movement.z).normalize()
+            * (knockback * PUNCH_KNOCKBACK_SCALE * resistance);
+        if push.length_squared() > 0.0 {
+            living
+                .entity
+                .push_by(Vector3::new(push.x, PUNCH_KNOCKBACK_Y, push.z));
+        }
+    }
+
     /// Vanilla `AbstractArrow.stepMoveAndHit`: moves to the nearest entity on the way and hits
     /// every entity there, going on through them while the arrow pierces, or else moves to
     /// `block_to` and hits the block there.
@@ -1151,6 +1159,11 @@ impl ArrowEntity {
         false
     }
 }
+
+/// The horizontal push per knockback level in vanilla `AbstractArrow.doKnockback`.
+const PUNCH_KNOCKBACK_SCALE: f64 = 0.6;
+/// The upward push of vanilla `AbstractArrow.doKnockback`.
+const PUNCH_KNOCKBACK_Y: f64 = 0.1;
 
 /// Get the face of the block that was hit
 fn get_hit_face(hit_pos: Vector3<f64>, block_pos: BlockPos) -> pumpkin_data::BlockDirection {
