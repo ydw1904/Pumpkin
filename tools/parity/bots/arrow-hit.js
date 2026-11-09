@@ -56,7 +56,34 @@ bot.once('spawn', async () => {
   await sleep(3000)
   result('target_health', target.health)
   result('game_events', events.join(',') || 'none')
+  // The arrow that hurt Target stays stuck in it.
+  const targetEntity = Object.values(bot.entities).find((e) => e.username === 'Target')
+  result('target_arrows', targetEntity ? targetEntity.metadata[12] ?? 0 : 'none')
   target.quit()
+  await sleep(1000)
+  // A Punch crossbow arrow knocks a husk back and plays the crossbow hit sound.
+  const huskSounds = []
+  const soundName = (id) => (bot.registry.sounds && bot.registry.sounds[id] && bot.registry.sounds[id].name) || id
+  bot.on('hardcodedSoundEffectHeard', (id, category, pos) => { if (pos && pos.z > 2) huskSounds.push(soundName(id)) })
+  bot.on('soundEffectHeard', (name, pos) => { if (pos && pos.z > 2) huskSounds.push(name) })
+  const huskVelocities = []
+  command('summon husk 0.5 200 3.5 {NoAI:1b,Silent:1b}')
+  command('give Archer crossbow[charged_projectiles=[{id:"minecraft:arrow",count:1}],enchantments={"minecraft:punch":2}]')
+  await sleep(1500)
+  const husk = Object.values(bot.entities).find((e) => e.name === 'husk')
+  bot._client.on('entity_velocity', (p) => {
+    // The shot's spread is random, so only the push along the flight and up is compared.
+    if (husk && p.entityId === husk.id) huskVelocities.push([Math.hypot(p.velocity.x, p.velocity.z), p.velocity.y].map((n) => Math.round(n * 100) / 100).join(','))
+  })
+  const crossbow = bot.inventory.items().find((i) => i.name === 'crossbow')
+  if (husk && crossbow) {
+    await bot.equip(crossbow, 'hand')
+    await bot.lookAt(husk.position.offset(0, 1.5, 0), true)
+    bot.activateItem()
+    await sleep(2000)
+  }
+  result('punch_knockback', huskVelocities[0] || 'none')
+  result('crossbow_hit_sounds', huskSounds.join(',') || 'none')
   bot.quit()
   setTimeout(() => process.exit(0), 1000)
 })
