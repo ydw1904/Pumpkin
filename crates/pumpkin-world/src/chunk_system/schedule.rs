@@ -947,7 +947,7 @@ impl GenerationSchedule {
         }
     }
 
-    fn process_unload_queue(&mut self) {
+    fn process_unload_queue(&mut self, level: &Level) {
         if self.unload_chunks.is_empty() {
             return;
         }
@@ -965,7 +965,9 @@ impl GenerationSchedule {
                 self.chunk_map.insert(pos, holder);
                 continue;
             }
-            if !holder.occupied.is_null() {
+            // A chunk whose light is still being updated waits, or it would be saved without
+            // that light.
+            if !holder.occupied.is_null() || level.light_engine.is_chunk_busy(&pos) {
                 self.chunk_map.insert(pos, holder);
                 self.unload_chunks.insert(pos);
                 continue;
@@ -1373,7 +1375,7 @@ impl GenerationSchedule {
         loop {
             if level.should_unload.swap(false, Relaxed) {
                 self.garbage_collect_dependencies();
-                self.process_unload_queue();
+                self.process_unload_queue(level);
             }
             if level.should_save.swap(false, Relaxed) {
                 self.save_all_chunk(false);
@@ -1381,7 +1383,7 @@ impl GenerationSchedule {
             if level.shut_down_chunk_system.load(Relaxed) {
                 info!("Saving chunks before shutdown...");
                 self.garbage_collect_dependencies();
-                self.process_unload_queue();
+                self.process_unload_queue(level);
                 self.save_all_chunk(true);
                 break;
             }
@@ -1398,7 +1400,7 @@ impl GenerationSchedule {
             // is what puts stale dependency holders into the queue in the first place.
             if self.last_unload.elapsed() >= std::time::Duration::from_secs(1) {
                 self.garbage_collect_dependencies();
-                self.process_unload_queue();
+                self.process_unload_queue(level);
                 self.check_waiting_tasks();
                 self.last_unload = std::time::Instant::now();
             }

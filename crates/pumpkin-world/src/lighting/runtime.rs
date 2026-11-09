@@ -34,6 +34,10 @@ pub struct DynamicLightEngine {
     /// Sections whose light changed since the last [`Self::take_changed_sections`], like the
     /// `sectionsAffectedByLightUpdates` vanilla reports to `ChunkHolder.sectionLightChanged`.
     changed_sections: Mutex<FxHashMap<Vector2<i32>, ChangedLightSections>>,
+    /// For each chunk, how many queued or unpublished checks may change its light: the chunks
+    /// around each checked position. Such a chunk must stay loaded, as an update can only be
+    /// published to loaded chunks and an unloaded chunk would be saved with its old light.
+    busy_chunks: Mutex<FxHashMap<Vector2<i32>, u32>>,
 }
 
 /// The section Y coordinates of a chunk whose sky or block light changed.
@@ -60,6 +64,8 @@ struct FinishedUpdate {
     sections: Vec<(SectionKey, LightContainer)>,
     /// Sections around every position whose light was set, by layer and section position.
     changed: FxHashSet<(LightLayer, i32, i32, i32)>,
+    /// The checked positions, which stop counting toward `busy_chunks` once published.
+    checked: Vec<BlockPos>,
 }
 
 /// Light access through the level's loaded chunks. Changes go to copies of the sections, like
@@ -138,9 +144,10 @@ impl<'a> LevelLightStorage<'a> {
     }
 
     /// The sections the current update changed, and resets the change tracking.
-    fn finish_update(&mut self) -> FinishedUpdate {
+    fn finish_update(&mut self, checked: Vec<BlockPos>) -> FinishedUpdate {
         let sections = self.sections.get_mut();
         FinishedUpdate {
+            checked,
             sections: self
                 .written
                 .drain()
@@ -242,6 +249,40 @@ impl DynamicLightEngine {
             running: Mutex::new(()),
             finished: Mutex::default(),
             changed_sections: Mutex::default(),
+            busy_chunks: Mutex::default(),
+        }
+    }
+
+    /// Whether queued or unpublished light checks may still change the light of `chunk`.
+    pub fn is_chunk_busy(&self, chunk: &Vector2<i32>) -> bool {
+        self.busy_chunks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains_key(chunk)
+    }
+
+    /// Counts `positions` toward the chunks they may light, or stops counting them.
+    fn mark_busy(&self, positions: &[BlockPos], busy: bool) {
+        // Light spreads at most 15 blocks sideways, so only the neighbouring chunks are reached.
+        let mut busy_chunks = self
+            .busy_chunks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for pos in positions {
+            let center = pos.chunk_and_chunk_relative_position().0;
+            for dx in -1..=1 {
+                for dz in -1..=1 {
+                    let chunk = Vector2::new(center.x + dx, center.y + dz);
+                    if busy {
+                        *busy_chunks.entry(chunk).or_default() += 1;
+                    } else if let Some(count) = busy_chunks.get_mut(&chunk) {
+                        *count -= 1;
+                        if *count == 0 {
+                            busy_chunks.remove(&chunk);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -270,11 +311,13 @@ impl DynamicLightEngine {
             .queued_checks
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let start = queued.order.len();
         for pos in positions {
             if queued.seen.insert(pos) {
                 queued.order.push(pos);
             }
         }
+        self.mark_busy(&queued.order[start..], true);
     }
 
     /// Vanilla `ThreadedLevelLightEngine.tryScheduleUpdate`: starts updating the queued checks
@@ -329,6 +372,7 @@ impl DynamicLightEngine {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         for update in finished {
+            self.mark_busy(&update.checked, false);
             for ((layer, chunk_pos, index), section) in update.sections {
                 level.loaded_chunks.read(&chunk_pos, |chunk| {
                     let mut light = chunk
@@ -386,7 +430,7 @@ impl DynamicLightEngine {
             if positions.is_empty() {
                 return;
             }
-            self.update_lighting(level, &mut storage, &positions);
+            self.update_lighting(level, &mut storage, positions);
         }
     }
 
@@ -406,37 +450,37 @@ impl DynamicLightEngine {
         &self,
         level: &Arc<Level>,
         storage: &mut LevelLightStorage,
-        positions: &[BlockPos],
+        positions: Vec<BlockPos>,
     ) {
         if let Some(value) = level.lighting_config.fixed_level() {
-            for pos in positions {
+            for pos in &positions {
                 self.set_block_light_level(level, pos, value).ok();
                 self.set_sky_light_level(level, pos, value).ok();
             }
+            self.mark_busy(&positions, false);
             return;
         }
 
         let mut block_light = LayerLightEngine::new(LightLayer::Block);
-        for &pos in positions {
+        for &pos in &positions {
             block_light.check_node(storage, pos);
         }
         block_light.run_updates(storage);
 
         if level.world_gen.load().dimension().has_skylight {
             let mut sky_light = LayerLightEngine::new(LightLayer::Sky);
-            for &pos in positions {
+            for &pos in &positions {
                 sky_light.check_node(storage, pos);
             }
             sky_light.run_updates(storage);
         }
 
-        let update = storage.finish_update();
-        if !update.sections.is_empty() || !update.changed.is_empty() {
-            self.finished
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .push(update);
-        }
+        // Pushed even without changes, so publishing it frees the checked chunks.
+        let update = storage.finish_update(positions);
+        self.finished
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(update);
 
         let unloaded = std::mem::take(storage.unloaded.get_mut());
         if unloaded.is_empty() {
@@ -712,6 +756,32 @@ mod tests {
                 .take_changed_sections()
                 .contains_key(&Vector2::new(0, 0))
         );
+        level.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn checked_chunks_stay_busy_until_the_update_is_published() {
+        let temp_dir = TempDir::new().unwrap();
+        let level = Level::from_root_folder(
+            &LevelConfig::default(),
+            temp_dir.path().to_path_buf(),
+            0,
+            Dimension::OVERWORLD,
+        );
+        let chunk = lit_chunk(0, 0);
+        chunk.set_block_absolute_y(15, 64, 8, Block::GLOWSTONE.default_state.id);
+        level.loaded_chunks.insert(Vector2::new(0, 0), chunk);
+        let engine = &level.light_engine;
+        engine.check_block(BlockPos::new(15, 64, 8));
+        engine.check_block(BlockPos::new(15, 64, 8));
+        assert!(engine.is_chunk_busy(&Vector2::new(1, 0)));
+        assert!(!engine.is_chunk_busy(&Vector2::new(2, 0)));
+
+        engine.run_updates(&level);
+        assert!(engine.is_chunk_busy(&Vector2::new(0, 0)));
+        engine.publish_updates(&level);
+        assert!(!engine.is_chunk_busy(&Vector2::new(0, 0)));
+        assert!(!engine.is_chunk_busy(&Vector2::new(1, 0)));
         level.shutdown().await;
     }
 }
