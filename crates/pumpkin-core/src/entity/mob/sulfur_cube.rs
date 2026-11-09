@@ -1187,7 +1187,9 @@ impl Mob for SulfurCubeEntity {
     }
 
     fn requires_custom_persistence(&self) -> bool {
-        self.has_body_item() || self.is_from_bucket()
+        self.get_entity().mob_requires_custom_persistence()
+            || self.has_body_item()
+            || self.is_from_bucket()
     }
 
     fn can_be_leashed(&self) -> bool {

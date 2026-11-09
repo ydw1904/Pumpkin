@@ -758,13 +758,7 @@ impl Mob for AxolotlEntity {
     }
 
     fn requires_custom_persistence(&self) -> bool {
-        self.is_from_bucket()
-            || self
-                .get_entity()
-                .vehicle
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .is_some()
+        self.get_entity().mob_requires_custom_persistence() || self.is_from_bucket()
     }
 
     /// Vanilla `Axolotl.baseTick`: `handleAirSupply` after `LivingEntity.baseTick`'s air.

@@ -6011,6 +6011,11 @@ impl Entity {
         self.root_vehicle_id() == other.root_vehicle_id()
     }
 
+    /// Vanilla `Mob.requiresCustomPersistence`: a riding or leashed mob never despawns.
+    pub fn mob_requires_custom_persistence(&self) -> bool {
+        self.has_vehicle() || self.is_leashed()
+    }
+
     pub fn is_leashed(&self) -> bool {
         self.leashed_to
             .lock()

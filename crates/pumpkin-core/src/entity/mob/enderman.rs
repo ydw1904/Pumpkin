@@ -553,7 +553,7 @@ impl Mob for EndermanEntity {
     }
 
     fn requires_custom_persistence(&self) -> bool {
-        self.get_carried_block().is_some()
+        self.get_entity().mob_requires_custom_persistence() || self.get_carried_block().is_some()
     }
 
     /// Vanilla `Enderman.customServerAiStep`: daylight sends a calm enderman away.

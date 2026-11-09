@@ -649,7 +649,7 @@ impl Mob for NautilusEntity {
     }
 
     fn requires_custom_persistence(&self) -> bool {
-        self.is_tame()
+        self.get_entity().mob_requires_custom_persistence() || self.is_tame()
     }
 
     fn make_brain(&self, packed: &PackedMemories) -> Brain {

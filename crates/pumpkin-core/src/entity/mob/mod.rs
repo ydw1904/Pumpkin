@@ -2206,8 +2206,12 @@ pub trait Mob: EntityBase + Send + Sync {
             .has_line_of_sight(&mob_entity.living_entity, target)
     }
 
+    /// Vanilla `requiresCustomPersistence`, with `Raider`'s raid member check.
     fn requires_custom_persistence(&self) -> bool {
-        false
+        self.get_entity().mob_requires_custom_persistence()
+            || self
+                .as_raider()
+                .is_some_and(raider::Raider::has_active_raid)
     }
 
     /// Whether daylight burns this mob. Default: entity tag `burn_in_daylight`.

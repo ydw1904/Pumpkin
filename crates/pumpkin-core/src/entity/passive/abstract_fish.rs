@@ -196,18 +196,7 @@ pub trait AbstractFish: WaterAnimal + crate::entity::bucketable::Bucketable {
     }
 
     fn fish_requires_custom_persistence(&self) -> bool {
-        let entity = self.get_entity();
-        self.is_from_bucket()
-            || entity
-                .vehicle
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .is_some()
-            || entity
-                .leashed_to
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .is_some()
+        self.get_entity().mob_requires_custom_persistence() || self.is_from_bucket()
     }
 }
 
