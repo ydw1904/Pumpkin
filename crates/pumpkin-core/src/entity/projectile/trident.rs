@@ -358,7 +358,7 @@ impl EntityBase for TridentEntity {
         } else {
             velocity.x.atan2(velocity.z)
         };
-        entity.set_rotation(
+        entity.set_yaw_pitch(
             yaw as f32 * 57.295_776,
             velocity.y.atan2(len) as f32 * 57.295_776,
         );

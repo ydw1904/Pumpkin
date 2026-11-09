@@ -492,9 +492,10 @@ fn update_rotation(entity: &Entity) {
     let to_degrees = 180.0 / f64::from(std::f32::consts::PI);
     let pitch = (movement.y.atan2(movement.horizontal_length()) * to_degrees) as f32;
     let yaw = (movement.x.atan2(movement.z) * to_degrees) as f32;
-    // Not `set_rotation`: vanilla leaves the head yaw alone, so no head packets are sent.
-    entity.yaw.store(lerp_rotation(entity.yaw.load(), yaw));
-    entity.set_pitch(lerp_rotation(entity.pitch.load(), pitch));
+    entity.set_yaw_pitch(
+        lerp_rotation(entity.yaw.load(), yaw),
+        lerp_rotation(entity.pitch.load(), pitch),
+    );
 }
 
 /// Vanilla `Projectile.lerpRotation`.

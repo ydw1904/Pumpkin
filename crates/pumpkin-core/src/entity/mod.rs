@@ -4586,6 +4586,12 @@ impl Entity {
         self.set_pitch(pitch);
     }
 
+    /// Vanilla `setYRot` and `setXRot`: unlike [`Self::set_rotation`], the head yaw stays.
+    pub fn set_yaw_pitch(&self, yaw: f32, pitch: f32) {
+        self.yaw.store(yaw);
+        self.set_pitch(pitch);
+    }
+
     pub fn set_pitch(&self, pitch: f32) {
         self.pitch.store(pitch.clamp(-90.0, 90.0) % 360.0);
     }

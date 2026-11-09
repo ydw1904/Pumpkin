@@ -649,7 +649,7 @@ impl EntityBase for ArrowEntity {
 
         // Update rotation based on velocity
         let len = velocity.horizontal_length();
-        entity.set_rotation(
+        entity.set_yaw_pitch(
             velocity.x.atan2(velocity.z) as f32 * 57.295_776,
             velocity.y.atan2(len) as f32 * 57.295_776,
         );

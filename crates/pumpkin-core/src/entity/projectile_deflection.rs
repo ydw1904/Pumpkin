@@ -76,7 +76,7 @@ pub fn reverse(projectile: &dyn EntityBase, power: Vector3<f64>) {
     entity
         .velocity
         .store(entity.velocity.load() * (power * -0.5));
-    entity.set_rotation(entity.yaw.load() + rotation, entity.pitch.load());
+    entity.set_yaw_pitch(entity.yaw.load() + rotation, entity.pitch.load());
     // TODO: Add entity.lastYaw += rotation
     entity.velocity_dirty.store(true, Ordering::Relaxed);
 }
