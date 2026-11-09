@@ -290,7 +290,7 @@ impl PiglinAi {
         }
     }
 
-    fn sees_player_holding_loved_item(piglin: &PiglinEntity) -> bool {
+    pub(crate) fn sees_player_holding_loved_item(piglin: &PiglinEntity) -> bool {
         piglin
             .nearest_visible_player()
             .is_some_and(|player| Self::is_player_holding_loved_item(&player))

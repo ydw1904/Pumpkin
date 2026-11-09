@@ -23,7 +23,7 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 
 use crate::entity::ageable::AgeableMob;
-use crate::entity::ai::brain::behavior::utils;
+use crate::entity::ai::brain::behavior::{ShufflingList, utils};
 use crate::entity::ai::goal::{Controls, Goal};
 use crate::entity::ai::pathfinder::NavigatorGoal;
 use crate::entity::ai::pathfinder::node::PathType;
@@ -46,7 +46,6 @@ use crate::entity::{
         open_door::OpenDoorGoal,
         ranged_crossbow_attack::RangedCrossbowAttackGoal,
         swim::SwimGoal,
-        wander_around::WanderAroundGoal,
     },
     mob::{
         Mob, MobEntity,
@@ -124,6 +123,10 @@ struct PiglinSpecificMemories {
     nearest_visible_huntable_hoglin: Option<Arc<dyn EntityBase>>,
     nearest_visible_adult_piglins: Vec<Arc<dyn EntityBase>>,
     visible_adult_hoglin_count: i32,
+    /// The closest visible living entity, which the idle look behaviours look at.
+    nearest_visible_living: Option<Arc<dyn EntityBase>>,
+    /// The closest visible piglin of any age, for `InteractWith`.
+    nearest_visible_piglin: Option<Arc<dyn EntityBase>>,
 }
 
 pub struct PiglinEntity {
@@ -247,69 +250,67 @@ impl PiglinEntity {
             goal_selector.add_goal(4, Box::new(Self::avoid_target_goal()));
             goal_selector.add_goal(5, Box::new(Self::avoid_repellent_goal()));
             goal_selector.add_goal(5, Box::new(PiglinGoToCelebrateLocationGoal));
-            goal_selector.add_goal(5, Box::new(Self::idle_stroll_goal()));
-            goal_selector.add_goal(5, Box::new(Self::celebrate_stroll_goal()));
+            goal_selector.add_goal(
+                6,
+                Box::new(PiglinRunOneGoal::new(
+                    &IDLE_MOVEMENT,
+                    &[PiglinActivity::Idle, PiglinActivity::Avoid],
+                )),
+            );
+            goal_selector.add_goal(
+                6,
+                Box::new(PiglinRunOneGoal::new(
+                    &CELEBRATE_MOVEMENT,
+                    &[PiglinActivity::Celebrate],
+                )),
+            );
             goal_selector.add_goal(
                 6,
                 LookAtEntityGoal::with_default(mob_weak.clone(), &EntityType::PLAYER, 8.0),
             );
             goal_selector.add_goal(7, Box::new(RandomLookAroundGoal::default()));
-
-            let target_selector = &mob_arc.mob_entity.target_selector;
-
-            target_selector.add_goal(1, Box::new(PiglinAngerTargetGoal::default()));
-
-            // Vanilla `findNearestValidAttackTarget` picks the nemesis before a player.
-            target_selector.add_goal(
-                2,
-                ActiveTargetGoal::with_default(&mob_arc.mob_entity, TargetMatch::WITHER_LIKE, true)
-                    .start_gated_by(Self::may_start_attacking),
-            );
-
-            let piglin_weak = Arc::downgrade(&mob_arc);
-            target_selector.add_goal(
-                3,
-                Box::new(ActiveTargetGoal::new(
-                    &mob_arc.mob_entity,
-                    &EntityType::PLAYER,
-                    10,
-                    true,
-                    false,
-                    Some(move |target: &LivingEntity, _world: &World| {
-                        piglin_weak
-                            .upgrade()
-                            .is_some_and(|piglin| piglin.is_adult())
-                            && !PiglinAi::is_wearing_safe_armor(target)
-                    }),
-                ))
-                .start_gated_by(Self::may_start_attacking),
-            );
         };
+        Self::add_target_goals(&mob_arc);
 
         mob_arc
+    }
+
+    fn add_target_goals(mob_arc: &Arc<Self>) {
+        let target_selector = &mob_arc.mob_entity.target_selector;
+
+        target_selector.add_goal(1, Box::new(PiglinAngerTargetGoal::default()));
+
+        // Vanilla `findNearestValidAttackTarget` picks the nemesis before a player.
+        target_selector.add_goal(
+            2,
+            ActiveTargetGoal::with_default(&mob_arc.mob_entity, TargetMatch::WITHER_LIKE, true)
+                .start_gated_by(Self::may_start_attacking),
+        );
+
+        let piglin_weak = Arc::downgrade(mob_arc);
+        target_selector.add_goal(
+            3,
+            Box::new(ActiveTargetGoal::new(
+                &mob_arc.mob_entity,
+                &EntityType::PLAYER,
+                10,
+                true,
+                false,
+                Some(move |target: &LivingEntity, _world: &World| {
+                    piglin_weak
+                        .upgrade()
+                        .is_some_and(|piglin| piglin.is_adult())
+                        && !PiglinAi::is_wearing_safe_armor(target)
+                }),
+            ))
+            .start_gated_by(Self::may_start_attacking),
+        );
     }
 
     fn in_activity(mob: &dyn Mob, activities: &[PiglinActivity]) -> bool {
         mob.cast_any()
             .downcast_ref::<Self>()
             .is_some_and(|piglin| activities.contains(&piglin.current_activity()))
-    }
-
-    /// `RandomStroll.stroll(0.6)` of `createIdleMovementBehaviors`, in the IDLE and AVOID
-    /// activities. Stands in for a vanilla stroll that ignores the no-action time.
-    fn idle_stroll_goal() -> WanderAroundGoal {
-        WanderAroundGoal::new(PiglinAi::SPEED_MULTIPLIER_WHEN_IDLING)
-            .with_check_no_action_time(false)
-            .with_position(|mob| land_random_pos::get_pos(mob, 10, 7), 0.0)
-            .gated_by(|mob| Self::in_activity(mob, &[PiglinActivity::Idle, PiglinActivity::Avoid]))
-    }
-
-    /// The CELEBRATE activity's `RandomStroll.stroll(0.6, 2, 1)`.
-    fn celebrate_stroll_goal() -> WanderAroundGoal {
-        WanderAroundGoal::new(PiglinAi::SPEED_MULTIPLIER_WHEN_IDLING)
-            .with_check_no_action_time(false)
-            .with_position(|mob| land_random_pos::get_pos(mob, 2, 1), 0.0)
-            .gated_by(|mob| Self::in_activity(mob, &[PiglinActivity::Celebrate]))
     }
 
     /// Vanilla `PiglinAi.avoidRepellent`, in the IDLE and CELEBRATE activities.
@@ -492,6 +493,12 @@ impl PiglinEntity {
         let mut memories = PiglinSpecificMemories::default();
         for entity in self.nearest_visible_living_entities() {
             let any = entity.cast_any();
+            if memories.nearest_visible_living.is_none() {
+                memories.nearest_visible_living = Some(entity.clone());
+            }
+            if memories.nearest_visible_piglin.is_none() && any.is::<Self>() {
+                memories.nearest_visible_piglin = Some(entity.clone());
+            }
             let entity_type = entity.get_entity().entity_type;
             if let Some(hoglin) = any.downcast_ref::<HoglinEntity>() {
                 if hoglin.is_baby() {
@@ -1982,6 +1989,189 @@ impl Goal for PiglinGoToCelebrateLocationGoal {
         };
         let target = location.add(dx, 0, dz);
         navigate_to(mob, target.to_f64().add_raw(0.5, 0.0, 0.5), speed);
+    }
+
+    fn controls(&self) -> Controls {
+        Controls::MOVE
+    }
+}
+
+/// One choice of a vanilla `RunOne` of piglin idle behaviours.
+#[derive(Clone, Copy)]
+enum IdleChoice {
+    /// `RandomStroll.stroll(0.6, horizontal, vertical)`.
+    Stroll(i32, i32),
+    /// `InteractWith.of(PIGLIN, 8, INTERACTION_TARGET, 0.6, 2)`.
+    InteractWithPiglin,
+    /// `SetWalkTargetFromLookTarget.create(0.6, 3)` behind `doesntSeeAnyPlayerHoldingLovedItem`.
+    WalkToLookTarget,
+    /// `SetEntityLookTarget.create(PIGLIN, 8)`, a look the look goals carry out.
+    LookAtPiglin,
+    DoNothing(i32, i32),
+}
+
+/// `createIdleMovementBehaviors` of the IDLE and AVOID activities.
+const IDLE_MOVEMENT: [(IdleChoice, i32); 4] = [
+    (IdleChoice::Stroll(10, 7), 2),
+    (IdleChoice::InteractWithPiglin, 2),
+    (IdleChoice::WalkToLookTarget, 2),
+    (IdleChoice::DoNothing(30, 60), 1),
+];
+
+/// The CELEBRATE activity's `RunOne`.
+const CELEBRATE_MOVEMENT: [(IdleChoice, i32); 3] = [
+    (IdleChoice::LookAtPiglin, 1),
+    (IdleChoice::Stroll(2, 1), 1),
+    (IdleChoice::DoNothing(10, 20), 1),
+];
+
+/// A vanilla `RunOne` of idle behaviours, run every tick of its activities like the brain does:
+/// a stroll or walk only starts while the piglin has nowhere to walk to, and `DoNothing`, which
+/// needs no memory, also starts while it walks and keeps the next choice waiting.
+struct PiglinRunOneGoal {
+    choices: ShufflingList<IdleChoice>,
+    activities: &'static [PiglinActivity],
+    do_nothing_ticks: i32,
+    walking: bool,
+}
+
+impl PiglinRunOneGoal {
+    const INTERACTION_RANGE_SQ: f64 = 64.0;
+    const INTERACTION_STOP_DISTANCE: i32 = 2;
+    const LOOK_DISTANCE_SQ: f64 = 64.0;
+    const LOOK_TARGET_STOP_DISTANCE: i32 = 3;
+
+    fn new(choices: &[(IdleChoice, i32)], activities: &'static [PiglinActivity]) -> Self {
+        let mut list = ShufflingList::new();
+        for &(choice, weight) in choices {
+            list.add(choice, weight);
+        }
+        Self {
+            choices: list,
+            activities,
+            do_nothing_ticks: 0,
+            walking: false,
+        }
+    }
+
+    fn within(piglin: &PiglinEntity, target: &Arc<dyn EntityBase>, distance_sq: f64) -> bool {
+        target.get_entity().is_alive()
+            && target
+                .get_entity()
+                .pos
+                .load()
+                .squared_distance_to_vec(&piglin.get_entity().pos.load())
+                <= distance_sq
+    }
+
+    fn walk_to(&mut self, mob: &dyn Mob, destination: Vector3<f64>, reach_range: i32) {
+        mob.get_mob_entity()
+            .steered()
+            .navigator()
+            .set_progress(NavigatorGoal {
+                current_progress: mob.get_entity().pos.load(),
+                destination,
+                speed: PiglinAi::SPEED_MULTIPLIER_WHEN_IDLING,
+                reach_range,
+            });
+        self.walking = true;
+    }
+
+    /// The choice's `tryStart`.
+    fn try_start(&mut self, piglin: &PiglinEntity, choice: IdleChoice, can_walk: bool) -> bool {
+        match choice {
+            IdleChoice::Stroll(horizontal, vertical) => {
+                if !can_walk {
+                    return false;
+                }
+                // Started even when no position turns up.
+                if let Some(pos) = land_random_pos::get_pos(piglin, horizontal, vertical) {
+                    self.walk_to(piglin, pos, 1);
+                }
+                true
+            }
+            IdleChoice::InteractWithPiglin => {
+                let Some(target) = can_walk
+                    .then(|| piglin.specific_memories().nearest_visible_piglin.clone())
+                    .flatten()
+                else {
+                    return false;
+                };
+                // Started even when the closest piglin is out of range, without walking.
+                if Self::within(piglin, &target, Self::INTERACTION_RANGE_SQ) {
+                    let pos = target.get_entity().pos.load();
+                    self.walk_to(piglin, pos, Self::INTERACTION_STOP_DISTANCE);
+                }
+                true
+            }
+            IdleChoice::WalkToLookTarget => {
+                if !can_walk || PiglinAi::sees_player_holding_loved_item(piglin) {
+                    return false;
+                }
+                let Some(target) = piglin
+                    .specific_memories()
+                    .nearest_visible_living
+                    .clone()
+                    .filter(|target| Self::within(piglin, target, Self::LOOK_DISTANCE_SQ))
+                else {
+                    return false;
+                };
+                let pos = target.get_entity().pos.load();
+                self.walk_to(piglin, pos, Self::LOOK_TARGET_STOP_DISTANCE);
+                true
+            }
+            IdleChoice::LookAtPiglin => piglin
+                .specific_memories()
+                .nearest_visible_piglin
+                .as_ref()
+                .is_some_and(|target| Self::within(piglin, target, Self::LOOK_DISTANCE_SQ)),
+            IdleChoice::DoNothing(min, max) => {
+                self.do_nothing_ticks = piglin.sample((min, max));
+                true
+            }
+        }
+    }
+}
+
+impl Goal for PiglinRunOneGoal {
+    fn can_start(&mut self, mob: &dyn Mob) -> bool {
+        PiglinEntity::in_activity(mob, self.activities)
+    }
+
+    fn should_continue(&mut self, mob: &dyn Mob) -> bool {
+        PiglinEntity::in_activity(mob, self.activities)
+    }
+
+    fn stop(&mut self, mob: &dyn Mob) {
+        self.do_nothing_ticks = 0;
+        if std::mem::take(&mut self.walking) {
+            mob.get_mob_entity().steered().navigator().stop();
+        }
+    }
+
+    fn tick(&mut self, mob: &dyn Mob) {
+        let Some(piglin) = mob.cast_any().downcast_ref::<PiglinEntity>() else {
+            return;
+        };
+        let can_walk = mob.is_navigator_idle();
+        if can_walk {
+            self.walking = false;
+        }
+        if self.do_nothing_ticks > 0 {
+            self.do_nothing_ticks -= 1;
+            return;
+        }
+        self.choices.shuffle(&mut piglin.get_random());
+        let order: Vec<IdleChoice> = self.choices.iter().copied().collect();
+        for choice in order {
+            if self.try_start(piglin, choice, can_walk) {
+                break;
+            }
+        }
+    }
+
+    fn should_run_every_tick(&self) -> bool {
+        true
     }
 
     fn controls(&self) -> Controls {
