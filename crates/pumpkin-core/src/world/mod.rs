@@ -2194,11 +2194,8 @@ impl World {
                     {
                         let largest = islands.islands.first().map_or(0, Vec::len);
                         largest_island = Some(largest_island.unwrap_or(0).max(largest));
-                        islands
-                            .islands
-                            .par_iter()
-                            .with_max_len(1)
-                            .for_each(|island| {
+                        let tick_islands = |range: std::ops::Range<usize>| {
+                            for island in &islands.islands[range] {
                                 for &slot in island {
                                     let index = start + slot;
                                     #[cfg(debug_assertions)]
@@ -2211,7 +2208,26 @@ impl World {
                                 order::set_entity_order(None);
                                 #[cfg(debug_assertions)]
                                 entity_islands::leave();
-                            });
+                            }
+                        };
+                        let mut jobs = entity_islands::island_jobs(
+                            &islands.islands,
+                            rayon::current_num_threads(),
+                        )
+                        .into_iter();
+                        // All jobs are queued at once rather than split recursively, so idle
+                        // threads don't wake each other one after another. This thread takes
+                        // the largest.
+                        let first = jobs.next();
+                        rayon::scope(|scope| {
+                            let tick_islands = &tick_islands;
+                            for range in jobs {
+                                scope.spawn(move |_| tick_islands(range));
+                            }
+                            if let Some(range) = first {
+                                tick_islands(range);
+                            }
+                        });
                     }
                     _ => tick_in_order(start..end),
                 }

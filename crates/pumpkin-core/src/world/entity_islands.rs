@@ -114,6 +114,32 @@ pub(super) const fn worth_parallel(largest_island: usize, entity_count: usize) -
     largest_island < entity_count - entity_count / PARALLEL_SHARE_DIVISOR
 }
 
+/// Pool threads per entity a parallel job ticks at least. Each job tends to land on another idle
+/// core, which on a large pool wakes from deep sleep with cold caches, costing more than a
+/// small island's tick.
+const THREADS_PER_JOB_ENTITY: usize = 10;
+
+/// Splits largest-first islands into consecutive ranges, each ticked by one job, holding at
+/// least one entity per [`THREADS_PER_JOB_ENTITY`] pool threads; the last range may hold fewer.
+pub(super) fn island_jobs(islands: &[Vec<usize>], threads: usize) -> Vec<std::ops::Range<usize>> {
+    let min_entities = threads / THREADS_PER_JOB_ENTITY;
+    let mut jobs = Vec::new();
+    let mut first = 0;
+    let mut entities = 0;
+    for (index, island) in islands.iter().enumerate() {
+        entities += island.len();
+        if entities >= min_entities {
+            jobs.push(first..index + 1);
+            first = index + 1;
+            entities = 0;
+        }
+    }
+    if first < islands.len() {
+        jobs.push(first..islands.len());
+    }
+    jobs
+}
+
 #[derive(Default)]
 pub(super) struct Schedule {
     entity_count: usize,
@@ -1888,6 +1914,13 @@ impl DisjointSets {
 mod tests {
     use super::*;
     use pumpkin_util::math::vector3::Vector3;
+
+    #[test]
+    fn island_jobs_group_small_islands_on_large_pools() {
+        let islands: Vec<Vec<usize>> = [5, 3, 1, 1, 1].map(|len| vec![0; len]).into();
+        assert_eq!(island_jobs(&islands, 8), [0..1, 1..2, 2..3, 3..4, 4..5]);
+        assert_eq!(island_jobs(&islands, 40), [0..1, 1..3, 3..5]);
+    }
 
     #[test]
     fn serial_schedule_retries_after_twenty_ticks_or_a_large_count_change() {
