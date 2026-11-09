@@ -10,9 +10,11 @@ use pumpkin_data::entity::{EntityStatus, EntityType};
 use pumpkin_protocol::bedrock::server::actor_event::ActorEventID;
 
 use crate::enchantment::EnchantmentHelper;
+use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::environment_attribute::Activity;
 use pumpkin_data::item_stack::ItemStack;
-use pumpkin_data::sound::{Sound, SoundCategory};
+use pumpkin_data::potion::Effect;
+use pumpkin_data::sound::Sound;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
@@ -21,6 +23,7 @@ use pumpkin_util::math::vector3::Vector3;
 use crate::entity::ai::brain::memory::{PackedMemories, types};
 use crate::entity::ai::brain::pending::PendingBrainUpdates;
 use crate::entity::ai::brain::{Brain, BrainState};
+use crate::entity::mob::conversion::{ConversionParams, convert_to};
 use crate::entity::mob::spawn::SpawnGroupData;
 use crate::entity::passive::animal::Animal;
 use crate::entity::player::Player;
@@ -51,6 +54,9 @@ pub struct HoglinEntity {
     activity: AtomicCell<Option<Activity>>,
     pending_brain_updates: PendingBrainUpdates<Self>,
 }
+
+/// Vanilla `Hoglin.finishConversion` nausea on the new zoglin.
+const CONVERTED_NAUSEA_DURATION: i32 = 200;
 
 /// Vanilla `HoglinAi.isPosNearNearestRepellent`.
 const NEAR_REPELLENT_DISTANCE: i32 = 8;
@@ -154,48 +160,25 @@ impl HoglinEntity {
             && world.dimension.piglins_zombify
     }
 
+    /// Vanilla `Hoglin.finishConversion`, after its conversion sound.
     fn convert_to_zoglin(&self) {
-        let entity = &self.mob_entity.living_entity.entity;
-        let world = entity.world.load();
-        let pos = entity.pos.load();
-
-        if world.level_info.load().difficulty != pumpkin_util::Difficulty::Peaceful {
-            world.play_sound(
-                Sound::EntityHoglinConvertedToZombified,
-                SoundCategory::Hostile,
-                &pos,
-            );
-        }
-
-        let zoglin = crate::entity::r#type::from_type(
+        self.make_sound(Sound::EntityHoglinConvertedToZombified);
+        convert_to(
+            self,
             &EntityType::ZOGLIN,
-            pos,
-            &world,
-            uuid::Uuid::new_v4(),
+            ConversionParams::single(true, false),
+            |zoglin| {
+                zoglin.get_mob_entity().living_entity.add_effect(Effect {
+                    effect_type: &StatusEffect::NAUSEA,
+                    duration: CONVERTED_NAUSEA_DURATION,
+                    amplifier: 0,
+                    ambient: false,
+                    show_particles: true,
+                    show_icon: true,
+                    blend: false,
+                });
+            },
         );
-
-        let zoglin_base = zoglin.get_entity();
-        zoglin_base.set_rotation(entity.yaw.load(), entity.pitch.load());
-        zoglin_base.head_yaw.store(entity.head_yaw.load());
-        zoglin_base.velocity.store(entity.velocity.load());
-
-        if let Some(living) = zoglin.get_living_entity() {
-            living.set_health(self.mob_entity.living_entity.health.load());
-        }
-
-        if let Some(custom_name) = &**entity.custom_name.load() {
-            zoglin_base.set_custom_name(custom_name.clone());
-        }
-
-        // Vanilla ConversionType.SINGLE keeps the baby state.
-        if self.is_baby()
-            && let Some(mob) = zoglin.get_mob()
-        {
-            mob.spawn_as_baby();
-        }
-
-        world.spawn_entity(zoglin);
-        entity.remove();
     }
 }
 
