@@ -19,7 +19,6 @@ use living::LivingEntity;
 use player::Player;
 use pumpkin_data::BlockState;
 use pumpkin_data::biome::Biome;
-use pumpkin_data::block_properties::blocks_movement;
 use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::dimension::Dimension;
 use pumpkin_data::entity::{EntityAttachments, EntityStatus};
@@ -5459,38 +5458,25 @@ impl Entity {
         !self.is_removed() && !self.no_physics.load(Ordering::Relaxed)
     }
 
+    /// Vanilla `Entity.isInWall`: whether a suffocating block's collision shape overlaps a thin
+    /// box at eye height, 0.8 of the entity's width across.
     #[must_use]
     pub fn is_in_wall(&self) -> bool {
         if self.no_physics.load(Ordering::Relaxed) {
             return false;
         }
 
-        let eye_pos = self.get_eye_pos();
-        let half_width = (f64::from(self.entity_dimension.load().width) * 0.8) / 2.0;
-        let eye_bb = BoundingBox::new(
-            Vector3::new(eye_pos.x - half_width, eye_pos.y, eye_pos.z - half_width),
-            Vector3::new(
-                eye_pos.x + half_width,
-                eye_pos.y + 1.0e-6,
-                eye_pos.z + half_width,
-            ),
-        );
-        let min = eye_bb.min_block_pos();
-        let max = eye_bb.max_block_pos();
+        let check_width = f64::from(self.entity_dimension.load().width * 0.8);
+        let eye_bb = BoundingBox::of_size(self.get_eye_pos(), check_width, 1.0e-6, check_width);
         let world = self.world.load();
-
-        for pos in BlockPos::iterate(min, max) {
-            let (block, state) = world.get_block_and_state(&pos);
-            if state.is_air() {
-                continue;
-            }
-
-            if blocks_movement(state, block.id) && state.is_full_cube() {
-                return true;
-            }
-        }
-
-        false
+        BlockPos::iterate(eye_bb.min_block_pos(), eye_bb.max_block_pos()).any(|pos| {
+            let state = world.get_block_state(&pos);
+            !state.is_air()
+                && state.is_suffocating()
+                && state
+                    .get_block_collision_shapes_at(&pos)
+                    .any(|shape| shape.at_pos(pos).intersects(&eye_bb))
+        })
     }
 
     pub const LEASH_SNAP_DISTANCE: f64 = 12.0;
