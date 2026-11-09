@@ -186,7 +186,7 @@ pub struct AdvancedConfiguration {
 pub struct BasicConfiguration {
     /// The seed for the world generation.
     pub seed: Seed,
-    /// The default game difficulty.
+    /// The difficulty of a newly created world, easy like vanilla's `server.properties`.
     pub default_difficulty: Difficulty,
     /// The op level assigned by the /op command.
     pub op_permission_level: PermissionLvl,
@@ -232,7 +232,7 @@ impl Default for BasicConfiguration {
     fn default() -> Self {
         Self {
             seed: Seed(random::get_seed()),
-            default_difficulty: Difficulty::Normal,
+            default_difficulty: Difficulty::Easy,
             op_permission_level: PermissionLvl::Four,
             function_permission_level: PermissionLvl::Two,
             allow_nether: true,

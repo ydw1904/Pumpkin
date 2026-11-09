@@ -242,7 +242,9 @@ impl Server {
                     basic_config.seed.0 as i64
                 );
                 fresh_world = true;
-                LevelData::default(basic_config.seed)
+                let mut level_data = LevelData::default(basic_config.seed);
+                level_data.difficulty = basic_config.default_difficulty;
+                level_data
             }
             Err(
                 error @ (WorldInfoError::UnsupportedDataVersion(_)
