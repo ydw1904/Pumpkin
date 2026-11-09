@@ -13,13 +13,14 @@ use uuid::Uuid;
 /// Manages player advancements, including data creation and saving.
 pub struct AdvancementManager {
     pub advancement_path: PathBuf,
+    pub enabled: bool,
     pub save_enabled: bool,
     advancements: ArcSwap<ServerAdvancements>,
 }
 
 impl AdvancementManager {
     /// Creates a new instance of `AdvancementManager` using the player data path.
-    pub fn new(player_data_path: impl Into<PathBuf>, save_enabled: bool) -> Self {
+    pub fn new(player_data_path: impl Into<PathBuf>, enabled: bool, save_enabled: bool) -> Self {
         let path = player_data_path.into().join("advancements");
         if !path.exists()
             && let Err(e) = create_dir_all(&path)
@@ -31,7 +32,8 @@ impl AdvancementManager {
         }
         Self {
             advancement_path: path,
-            save_enabled,
+            enabled,
+            save_enabled: enabled && save_enabled,
             advancements: ArcSwap::from_pointee(ServerAdvancements::default()),
         }
     }
@@ -136,7 +138,7 @@ mod tests {
     #[test]
     fn advancement_manager_new() {
         let path = PathBuf::from("test_data");
-        let manager = AdvancementManager::new(path, true);
+        let manager = AdvancementManager::new(path, true, true);
         assert_eq!(
             manager.advancement_path,
             PathBuf::from("test_data/advancements")
@@ -146,7 +148,7 @@ mod tests {
     #[test]
     fn get_advancement_path() {
         let path = PathBuf::from("world/playerdata");
-        let manager = AdvancementManager::new(path, true);
+        let manager = AdvancementManager::new(path, true, true);
         let advancement_path = manager.advancement_path;
         assert!(advancement_path.ends_with("advancements"));
     }

@@ -355,6 +355,9 @@ impl PlayerAdvancement {
 
     /// Registers listeners for any incomplete criteria of the given advancement.
     pub fn register_listeners(&mut self, advancement: &'static Advancement) {
+        if !self.manager.enabled {
+            return;
+        }
         let tree = self.tree.clone();
         let Some(entry) = tree.get(&advancement.id) else {
             return;
@@ -552,6 +555,9 @@ impl PlayerAdvancement {
 
     /// Flushes any pending advancement state down to the client.
     pub fn flush_dirty(&mut self, player: &Player, show_advancement: bool) {
+        if !self.manager.enabled {
+            return;
+        }
         if self.is_first_packet
             || !self.roots_to_update.is_empty()
             || !self.progress_changed.is_empty()
@@ -675,6 +681,9 @@ impl PlayerAdvancement {
         criterion: &str,
     ) -> AdvancementAward {
         let mut result = AdvancementAward::default();
+        if !self.manager.enabled {
+            return result;
+        }
         let (granted, now_done) = {
             let progress = self.progress.get_mut_or_start_progress(advancement);
             let was_done = progress.is_done();
@@ -848,7 +857,7 @@ mod tests {
     #[test]
     fn new_player_advancement() {
         let temp_dir = tempdir().unwrap();
-        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true));
+        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true, true));
         let id = Uuid::new_v4();
         let pa = PlayerAdvancement::new(manager, id);
         assert!(pa.is_save_enabled());
@@ -860,7 +869,7 @@ mod tests {
     #[test]
     fn get_or_start_progress() {
         let temp_dir = tempdir().unwrap();
-        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true));
+        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true, true));
         let id = Uuid::new_v4();
         let mut pa = PlayerAdvancement::new(manager, id);
         let adv = Advancement::STORY_ROOT;
@@ -871,10 +880,33 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn disabled_advancements_preserve_saved_progress_and_reject_awards() {
+        let temp_dir = tempdir().unwrap();
+        let id = Uuid::new_v4();
+        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true, true));
+        let mut enabled = PlayerAdvancement::new(manager, id);
+        let advancement = Advancement::STORY_ROOT;
+        assert!(enabled.award(advancement, "crafting_table").completed);
+        enabled.save().await.unwrap();
+        let saved = std::fs::read(&enabled.path).unwrap();
+
+        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), false, true));
+        let mut disabled = PlayerAdvancement::new(manager, id);
+        disabled.load().unwrap();
+        disabled.register_listeners(advancement);
+        assert!(disabled.active_listeners.is_empty());
+        assert!(disabled.progress.is_empty());
+        assert!(!disabled.award(advancement, "crafting_table").awarded);
+        assert!(disabled.progress.is_empty());
+        disabled.save().await.unwrap();
+        assert_eq!(std::fs::read(&disabled.path).unwrap(), saved);
+    }
+
     #[test]
     fn revoke_advancement() {
         let temp_dir = tempdir().unwrap();
-        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true));
+        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true, true));
         let id = Uuid::new_v4();
         let mut pa = PlayerAdvancement::new(manager, id);
         let adv = Advancement::STORY_ROOT;
@@ -890,7 +922,7 @@ mod tests {
     #[tokio::test]
     async fn save_advancement_progress() {
         let temp_dir = tempdir().unwrap();
-        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true));
+        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true, true));
         let id = Uuid::new_v4();
         let mut pa = PlayerAdvancement::new(manager, id);
 
@@ -917,7 +949,7 @@ mod tests {
     #[tokio::test]
     async fn save_disabled() {
         let temp_dir = tempdir().unwrap();
-        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), false));
+        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true, false));
         let id = Uuid::new_v4();
         let mut pa = PlayerAdvancement::new(manager, id);
 
@@ -942,7 +974,7 @@ mod tests {
     #[tokio::test]
     async fn load_nonexistent_file() {
         let temp_dir = tempdir().unwrap();
-        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true));
+        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true, true));
         let id = Uuid::new_v4();
         let mut pa = PlayerAdvancement::new(manager, id);
 
@@ -957,7 +989,7 @@ mod tests {
     #[tokio::test]
     async fn load_advancement_progress() {
         let temp_dir = tempdir().unwrap();
-        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true));
+        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true, true));
 
         let id = Uuid::new_v4();
         let mut pa = PlayerAdvancement::new(manager, id);
@@ -983,7 +1015,7 @@ mod tests {
     #[test]
     fn load_vanilla_advancement_file() {
         let temp_dir = tempdir().unwrap();
-        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true));
+        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true, true));
         let mut pa = PlayerAdvancement::new(manager, Uuid::new_v4());
         // Written by a 26.3 server.
         let vanilla = r#"{
@@ -1021,7 +1053,7 @@ mod tests {
         let temp_dir = tempdir().unwrap();
 
         // Create and save advancements
-        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true));
+        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true, true));
         let id = Uuid::new_v4();
         let mut pa = PlayerAdvancement::new(manager.clone(), id);
 
@@ -1053,7 +1085,7 @@ mod tests {
     #[tokio::test]
     async fn load_invalid_advancement_id() {
         let temp_dir = tempdir().unwrap();
-        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true));
+        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true, true));
 
         // Create a JSON file with invalid advancement ID
         let mut criteria = HashMap::new();
@@ -1087,7 +1119,7 @@ mod tests {
     #[tokio::test]
     async fn save_multiple_advancements() {
         let temp_dir = tempdir().unwrap();
-        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true));
+        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true, true));
         let id = Uuid::new_v4();
         let mut pa = PlayerAdvancement::new(manager, id);
 
@@ -1120,7 +1152,7 @@ mod tests {
     #[tokio::test]
     async fn ignore_loading() {
         let temp_dir = tempdir().unwrap();
-        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), false));
+        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true, false));
 
         let id = Uuid::new_v4();
         let mut pa = PlayerAdvancement::new(manager, id);
@@ -1142,7 +1174,7 @@ mod tests {
     #[test]
     fn active_listeners_lifecycle() {
         let temp_dir = tempdir().unwrap();
-        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true));
+        let manager = Arc::new(AdvancementManager::new(temp_dir.path(), true, true));
         let id = Uuid::new_v4();
         let mut pa = PlayerAdvancement::new(manager, id);
 
