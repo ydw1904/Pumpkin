@@ -16,6 +16,7 @@ use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::math::position::BlockPos;
 
 use crate::entity::ai::target_match::TargetMatch;
+use crate::entity::ai::util::land_random_pos;
 use crate::entity::{
     Entity, EntityBase,
     ai::goal::{
@@ -32,6 +33,9 @@ use crate::entity::{
     },
 };
 use crate::world::World;
+
+/// Vanilla `PiglinBruteAi.SPEED_MULTIPLIER_WHEN_IDLING`.
+const SPEED_MULTIPLIER_WHEN_IDLING: f64 = 0.6;
 
 pub struct PiglinBruteEntity {
     pub mob_entity: MobEntity,
@@ -66,10 +70,14 @@ impl PiglinBruteEntity {
             goal_selector.add_goal(0, Box::new(SwimGoal::default()));
             goal_selector.add_goal(1, Box::new(OpenDoorGoal::new(true)));
             goal_selector.add_goal(2, Box::new(MeleeAttackGoal::new(1.0, true)));
-            // Stands in for a vanilla stroll that ignores the no-action time.
+            // Vanilla `RandomStroll.stroll(0.6)`, which ignores the no-action time.
             goal_selector.add_goal(
                 5,
-                Box::new(WanderAroundGoal::new(1.0).with_check_no_action_time(false)),
+                Box::new(
+                    WanderAroundGoal::new(SPEED_MULTIPLIER_WHEN_IDLING)
+                        .with_check_no_action_time(false)
+                        .with_position(|mob| land_random_pos::get_pos(mob, 10, 7), 0.0),
+                ),
             );
             goal_selector.add_goal(
                 6,

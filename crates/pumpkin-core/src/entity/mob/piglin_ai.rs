@@ -66,6 +66,7 @@ impl PiglinAi {
     pub const SPEED_MULTIPLIER_WHEN_MOUNTING: f64 = 0.8;
     pub const SPEED_MULTIPLIER_WHEN_GOING_TO_CELEBRATE_LOCATION: f64 = 1.0;
     pub const SPEED_MULTIPLIER_WHEN_DANCING: f64 = 0.6;
+    pub const SPEED_MULTIPLIER_WHEN_IDLING: f64 = 0.6;
     pub const PROBABILITY_OF_CELEBRATION_DANCE: f32 = 0.1;
     pub const ITEM_SCAN_RANGE: f64 = 32.0;
     pub const ITEM_SCAN_RANGE_Y: f64 = 16.0;
