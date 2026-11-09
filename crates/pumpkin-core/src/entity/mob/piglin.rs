@@ -26,6 +26,7 @@ use crate::entity::ageable::AgeableMob;
 use crate::entity::ai::brain::behavior::utils;
 use crate::entity::ai::goal::{Controls, Goal};
 use crate::entity::ai::pathfinder::NavigatorGoal;
+use crate::entity::ai::pathfinder::node::PathType;
 use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::ai::target_predicate::TargetPredicate;
 use crate::entity::ai::util::land_random_pos;
@@ -169,6 +170,17 @@ pub fn define_abstract_piglin_synched_data(entity: &crate::entity::Entity) {
     );
 }
 
+/// The navigation part of the vanilla `AbstractPiglin` constructor.
+pub fn apply_abstract_piglin_navigation(mob_entity: &mut MobEntity) {
+    let navigator = mob_entity
+        .navigator
+        .get_mut()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    navigator.set_can_open_doors(true);
+    navigator.set_pathfinding_malus(PathType::DangerFire, 16.0);
+    navigator.set_pathfinding_malus(PathType::DamageFire, -1.0);
+}
+
 impl PiglinEntity {
     pub const INVENTORY_SIZE: usize = 8;
     pub const XP_REWARD: u32 = 5;
@@ -185,7 +197,8 @@ impl PiglinEntity {
         entity
             .synched_data
             .define(tracked_data::piglin::DATA_IS_DANCING, false);
-        let mob_entity = MobEntity::new(entity);
+        let mut mob_entity = MobEntity::new(entity);
+        apply_abstract_piglin_navigation(&mut mob_entity);
         let piglin = Self {
             mob_entity,
             zombification: PiglinZombification::default(),

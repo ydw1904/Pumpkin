@@ -47,7 +47,8 @@ impl PiglinBruteEntity {
     pub fn new(entity: Entity) -> Arc<Self> {
         // Vanilla `AbstractPiglin.defineSynchedData`.
         crate::entity::mob::piglin::define_abstract_piglin_synched_data(&entity);
-        let mob_entity = MobEntity::new(entity);
+        let mut mob_entity = MobEntity::new(entity);
+        crate::entity::mob::piglin::apply_abstract_piglin_navigation(&mut mob_entity);
         let piglin = Self {
             mob_entity,
             zombification: PiglinZombification::default(),
