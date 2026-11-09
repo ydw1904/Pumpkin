@@ -1,7 +1,7 @@
 use pumpkin_util::random::gameplay::game_random;
 use pumpkin_util::random::{RandomImpl, legacy_rand::LegacyRand};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 use crossbeam::atomic::AtomicCell;
 use pumpkin_nbt::compound::NbtCompound;
@@ -10,11 +10,14 @@ use uuid::Uuid;
 
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::data_component_impl::EquipmentSlot;
+use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::potion::Effect;
 use pumpkin_data::sound::Sound;
 use pumpkin_data::tag::{self, Taggable};
+use pumpkin_data::tracked_data;
 use pumpkin_util::math::vector3::Vector3;
 
 use crate::entity::Entity;
@@ -24,11 +27,12 @@ use crate::entity::ai::random_pos::land_random_pos;
 use crate::entity::ai::target_predicate::TargetPredicate;
 use crate::entity::item::ItemEntity;
 use crate::entity::living::LivingEntity;
-use crate::entity::mob::Mob;
+use crate::entity::mob::conversion::{ConversionParams, convert_to};
 use crate::entity::mob::hoglin::HoglinEntity;
 use crate::entity::mob::neutral::find_by_uuid;
 use crate::entity::mob::piglin::{PiglinActivity, PiglinEntity};
 use crate::entity::mob::piglin_brute::PiglinBruteEntity;
+use crate::entity::mob::{Mob, MobEntity};
 use crate::entity::player::Player;
 use crate::plugin::api::events::entity::entity_target::TargetReason;
 use crate::world::World;
@@ -477,6 +481,94 @@ impl PiglinAnger {
     fn set_universal_anger(&self) {
         self.universal_anger_ttl
             .store(PiglinAi::ANGER_DURATION, Ordering::Relaxed);
+    }
+}
+
+/// Vanilla `AbstractPiglin`'s zombification: `IsImmuneToZombification` and `TimeInOverworld`.
+#[derive(Default)]
+pub struct PiglinZombification {
+    immune: AtomicBool,
+    time_in_overworld: AtomicI32,
+}
+
+impl PiglinZombification {
+    const CONVERSION_TIME: i32 = 300;
+    /// The nausea `AbstractPiglin.finishConversion` gives the zombified piglin.
+    const CONVERTED_NAUSEA_DURATION: i32 = 200;
+
+    #[must_use]
+    pub fn is_immune(&self) -> bool {
+        self.immune.load(Ordering::Relaxed)
+    }
+
+    pub fn set_immune(&self, mob: &MobEntity, immune: bool) {
+        self.immune.store(immune, Ordering::Relaxed);
+        mob.living_entity.entity.set_synced_data(
+            tracked_data::abstract_piglin::DATA_IMMUNE_TO_ZOMBIFICATION,
+            immune,
+        );
+    }
+
+    /// Vanilla `AbstractPiglin.isConverting`.
+    #[must_use]
+    pub fn is_converting(&self, mob: &MobEntity, world: &World) -> bool {
+        !self.is_immune() && !mob.is_no_ai() && world.dimension.piglins_zombify
+    }
+
+    /// The conversion part of vanilla `AbstractPiglin.customServerAiStep`: once the mob has
+    /// spent more than 300 ticks converting, plays `converted_sound` (not on Peaceful) and
+    /// runs `finish_conversion`.
+    pub fn tick(&self, mob: &dyn Mob, converted_sound: Sound, finish_conversion: impl FnOnce()) {
+        let world = mob.get_entity().world.load();
+        if !self.is_converting(mob.get_mob_entity(), &world) {
+            self.time_in_overworld.store(0, Ordering::Relaxed);
+            return;
+        }
+        if self.time_in_overworld.fetch_add(1, Ordering::Relaxed) + 1 > Self::CONVERSION_TIME {
+            if world.level_info.load().difficulty != pumpkin_util::Difficulty::Peaceful {
+                mob.make_sound(converted_sound);
+            }
+            finish_conversion();
+        }
+    }
+
+    /// Vanilla `AbstractPiglin.finishConversion`.
+    pub fn finish_conversion(mob: &dyn Mob) {
+        convert_to(
+            mob,
+            &EntityType::ZOMBIFIED_PIGLIN,
+            ConversionParams::single(true, true),
+            |zombified| {
+                zombified.get_mob_entity().living_entity.add_effect(Effect {
+                    effect_type: &StatusEffect::NAUSEA,
+                    duration: Self::CONVERTED_NAUSEA_DURATION,
+                    amplifier: 0,
+                    ambient: false,
+                    show_particles: true,
+                    show_icon: true,
+                    blend: false,
+                });
+            },
+        );
+    }
+
+    pub fn write_nbt(&self, nbt: &mut NbtCompound) {
+        nbt.put_bool("IsImmuneToZombification", self.is_immune());
+        nbt.put_int(
+            "TimeInOverworld",
+            self.time_in_overworld.load(Ordering::Relaxed),
+        );
+    }
+
+    pub fn read_nbt(&self, mob: &MobEntity, nbt: &NbtCompound) {
+        self.set_immune(
+            mob,
+            nbt.get_bool("IsImmuneToZombification").unwrap_or(false),
+        );
+        self.time_in_overworld.store(
+            nbt.get_int("TimeInOverworld").unwrap_or(0),
+            Ordering::Relaxed,
+        );
     }
 }
 

@@ -1,7 +1,4 @@
-use std::sync::{
-    Arc, Weak,
-    atomic::{AtomicBool, AtomicI32, Ordering},
-};
+use std::sync::{Arc, Weak};
 
 use pumpkin_data::Block;
 use pumpkin_data::BlockState;
@@ -9,7 +6,7 @@ use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
-use pumpkin_data::sound::{Sound, SoundCategory};
+use pumpkin_data::sound::Sound;
 use pumpkin_data::tracked_data;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
@@ -28,7 +25,8 @@ use crate::entity::{
         Mob, MobEntity,
         equipment::RegionalDifficulty,
         piglin_ai::{
-            AbstractPiglin, PiglinAi, PiglinAnger, PiglinAngerTargetGoal, as_abstract_piglin,
+            AbstractPiglin, PiglinAi, PiglinAnger, PiglinAngerTargetGoal, PiglinZombification,
+            as_abstract_piglin,
         },
     },
 };
@@ -39,13 +37,11 @@ const SPEED_MULTIPLIER_WHEN_IDLING: f64 = 0.6;
 
 pub struct PiglinBruteEntity {
     pub mob_entity: MobEntity,
-    pub immune_to_zombification: AtomicBool,
-    pub time_in_overworld: AtomicI32,
+    pub zombification: PiglinZombification,
     pub anger: PiglinAnger,
 }
 
 impl PiglinBruteEntity {
-    pub const CONVERSION_TIME: i32 = 300;
     pub const XP_REWARD: u32 = 20;
 
     pub fn new(entity: Entity) -> Arc<Self> {
@@ -54,8 +50,7 @@ impl PiglinBruteEntity {
         let mob_entity = MobEntity::new(entity);
         let piglin = Self {
             mob_entity,
-            immune_to_zombification: AtomicBool::new(false),
-            time_in_overworld: AtomicI32::new(0),
+            zombification: PiglinZombification::default(),
             anger: PiglinAnger::default(),
         };
         let mob_arc = Arc::new(piglin);
@@ -102,23 +97,11 @@ impl PiglinBruteEntity {
 
     #[must_use]
     pub fn is_immune_to_zombification(&self) -> bool {
-        self.immune_to_zombification.load(Ordering::Relaxed)
+        self.zombification.is_immune()
     }
 
     pub fn set_immune_to_zombification(&self, immune: bool) {
-        self.immune_to_zombification
-            .store(immune, Ordering::Relaxed);
-        self.mob_entity.living_entity.entity.set_synced_data(
-            tracked_data::piglin_brute::DATA_IMMUNE_TO_ZOMBIFICATION,
-            immune,
-        );
-    }
-
-    #[must_use]
-    pub fn is_converting(&self, world: &World) -> bool {
-        !self.is_immune_to_zombification()
-            && !self.mob_entity.is_no_ai()
-            && world.dimension.piglins_zombify
+        self.zombification.set_immune(&self.mob_entity, immune);
     }
 
     #[must_use]
@@ -126,61 +109,6 @@ impl PiglinBruteEntity {
         let below = BlockPos::new(pos.0.x, pos.0.y - 1, pos.0.z);
         let state = world.get_block_state(&below);
         state.id != Block::NETHER_WART_BLOCK.default_state.id
-    }
-
-    fn convert_to_zombified(&self) {
-        let entity = &self.mob_entity.living_entity.entity;
-        let world = entity.world.load();
-        let pos = entity.pos.load();
-
-        if world.level_info.load().difficulty != pumpkin_util::Difficulty::Peaceful {
-            world.play_sound(
-                Sound::EntityPiglinBruteConvertedToZombified,
-                SoundCategory::Hostile,
-                &pos,
-            );
-        }
-
-        let zombified = crate::entity::r#type::from_type(
-            &EntityType::ZOMBIFIED_PIGLIN,
-            pos,
-            &world,
-            uuid::Uuid::new_v4(),
-        );
-
-        let zombified_base = zombified.get_entity();
-        zombified_base.set_rotation(entity.yaw.load(), entity.pitch.load());
-        zombified_base.head_yaw.store(entity.head_yaw.load());
-        zombified_base.velocity.store(entity.velocity.load());
-
-        if let Some(living) = zombified.get_living_entity() {
-            living.set_health(self.mob_entity.living_entity.health.load());
-        }
-
-        if let Some(custom_name) = &**entity.custom_name.load() {
-            zombified_base.set_custom_name(custom_name.clone());
-        }
-
-        {
-            let src_equip = self
-                .mob_entity
-                .living_entity
-                .entity_equipment
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if let Some(living) = zombified.get_living_entity() {
-                let mut dst_equip = living
-                    .entity_equipment
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                for (slot, item) in &src_equip.equipment {
-                    dst_equip.put(slot, item.clone());
-                }
-            }
-        }
-
-        world.spawn_entity(zombified);
-        entity.remove();
     }
 }
 
@@ -251,20 +179,14 @@ impl Mob for PiglinBruteEntity {
         let entity = self.get_entity();
         if self.is_immune_to_zombification() {
             entity.set_synced_data(
-                tracked_data::piglin_brute::DATA_IMMUNE_TO_ZOMBIFICATION,
+                tracked_data::abstract_piglin::DATA_IMMUNE_TO_ZOMBIFICATION,
                 true,
             );
         }
     }
 
     fn mob_write_nbt(&self, nbt: &mut NbtCompound) {
-        if self.is_immune_to_zombification() {
-            nbt.put_bool("IsImmuneToZombification", true);
-        }
-        let time_in_overworld = self.time_in_overworld.load(Ordering::Relaxed);
-        if time_in_overworld > 0 {
-            nbt.put_int("TimeInOverworld", time_in_overworld);
-        }
+        self.zombification.write_nbt(nbt);
         nbt.put_bool("CanPickUpLoot", true);
         let mut memories = NbtCompound::new();
         self.anger.write_memories(&mut memories);
@@ -276,12 +198,7 @@ impl Mob for PiglinBruteEntity {
     }
 
     fn mob_read_nbt(&self, nbt: &NbtCompound) {
-        if let Some(immune) = nbt.get_bool("IsImmuneToZombification") {
-            self.set_immune_to_zombification(immune);
-        }
-        if let Some(time) = nbt.get_int("TimeInOverworld") {
-            self.time_in_overworld.store(time, Ordering::Relaxed);
-        }
+        self.zombification.read_nbt(&self.mob_entity, nbt);
         if let Some(memories) = nbt
             .get_compound("Brain")
             .and_then(|brain| brain.get_compound("memories"))
@@ -317,16 +234,10 @@ impl Mob for PiglinBruteEntity {
         if !entity.is_alive() {
             return;
         }
-
-        let world = entity.world.load();
-        if self.is_converting(&world) {
-            let time = self.time_in_overworld.fetch_add(1, Ordering::Relaxed) + 1;
-            if time > Self::CONVERSION_TIME {
-                self.convert_to_zombified();
-            }
-        } else {
-            self.time_in_overworld.store(0, Ordering::Relaxed);
-        }
+        self.zombification
+            .tick(self, Sound::EntityPiglinBruteConvertedToZombified, || {
+                PiglinZombification::finish_conversion(self);
+            });
     }
 
     fn xp_reward(&self) -> u32 {
