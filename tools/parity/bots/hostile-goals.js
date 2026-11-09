@@ -1,7 +1,8 @@
 // Hostile mob goals a client can see: the guardian beam (attack target data, charge time and
 // damage), the elder guardian's mining fatigue, the vex charge flag, its missing gravity and
 // limited life, the illusioner's spells and bow, the vindicator's Johnny targeting, zoglin
-// targets and hits, and the zoglin, piglin and brute stroll speeds.
+// targets and hits, piglin crossbow spacing, piglin and brute zombification, and the zoglin,
+// piglin and brute stroll speeds and how often they stroll.
 const { make } = require('./survival-lib')
 const h = make('Hunted', 900000)
 const { bot } = h
@@ -242,26 +243,62 @@ h.start(async () => {
   h.result('zoglin.hits', hits.length)
   h.result('zoglin.damage_3_to_8', hits.length > 0 && hits.every(x => x.damage >= 3 && x.damage <= 8))
   h.result('zoglin.interval_10s', hits.length === 2 ? Math.round((hits[1].at - hits[0].at) / 10) * 10 : 'none')
+  // A crossbow piglin stops walking in once within 7 blocks and backs off at 0.75 while closer
+  // than 5, so one summoned next to the bot ends up between the two.
+  await reset()
+  const archer = await summon('piglin', 0, 0, 2, 'IsImmuneToZombification:1b,equipment:{mainhand:{id:"minecraft:crossbow",count:1}}')
+  await h.ticks(80)
+  const gap = Math.hypot(archer.position.x - bot.entity.position.x, archer.position.z - bot.entity.position.z)
+  h.result('piglin.crossbow_gap_4_to_7', gap > 4 && gap < 7.5)
   h.cmd(`attribute ${bot.username} minecraft:knockback_resistance base set 0`)
 
-  // Idle strolls: zoglins at 0.4 of their speed, piglins and brutes at 0.6. The fastest 10 tick
-  // stretch, since positions only arrive every few ticks.
+  // Piglins and brutes zombify after 300 ticks in the overworld and keep their weapons.
   h.cmd(`gamemode creative ${bot.username}`)
+  for (const [type, weapon] of [['piglin', 'golden_sword'], ['piglin_brute', 'golden_axe']]) {
+    await reset()
+    const old = new Set(mobs('zombified_piglin').map(m => m.id))
+    await summon(type, 0, 0, 4, `equipment:{mainhand:{id:"minecraft:${weapon}",count:1}}`)
+    let zombified
+    await h.waitFor(() => (zombified = mobs('zombified_piglin').find(m => !old.has(m.id))), 25000)
+    h.result(`${type}.zombified_weapon`, zombified ? zombified.equipment[0]?.name : 'none')
+  }
+
+  // Idle strolls: zoglins at 0.4 of their speed, piglins and brutes at 0.6. The fastest 10 tick
+  // stretch, since positions only arrive every few ticks. The bot waits out of sensor range so it
+  // isn't a look target to walk to.
+  h.cmd(`gamemode creative ${bot.username}`)
+  // A wider floor, so most strolls find somewhere to go.
+  h.cmd(`fill ${X - 20} ${Y} ${Z - 20} ${X + 20} ${Y} ${Z + 20} stone`)
+  h.cmd(`setblock ${X} ${Y + 24} ${Z} glass`)
+  h.cmd(`tp ${bot.username} ${X + 0.5} ${Y + 25} ${Z + 0.5}`)
   for (const [type, nbt] of [['zoglin', ''], ['piglin', 'IsImmuneToZombification:1b'], ['piglin_brute', 'IsImmuneToZombification:1b']]) {
     await reset()
     const mob = await summon(type, 0, 0, 4, nbt)
     const trail = []
     let top = 0
+    let moving = 0
+    let samples = 0
     const sample = () => {
       trail.push(mob.position.clone())
       if (trail.length > 11) trail.shift()
-      if (trail.length === 11) top = Math.max(top, Math.hypot(trail[10].x - trail[0].x, trail[10].z - trail[0].z) / 10)
+      if (trail.length === 11) {
+        const step = Math.hypot(trail[10].x - trail[0].x, trail[10].z - trail[0].z)
+        top = Math.max(top, step / 10)
+        samples++
+        if (step > 0.2) moving++
+      }
     }
     bot.on('physicsTick', sample)
-    await h.ticks(600)
+    await h.ticks(1200)
     bot.removeListener('physicsTick', sample)
     h.result(`${type}.stroll_speed`, (Math.round(top * 50) / 50).toFixed(2))
+    // Vanilla's piglins and brutes move 40-60% of the time here, the old 1 in 120 roll 15-25%.
+    h.result(`${type}.strolls_often`, moving > samples * 0.3)
   }
+  h.cmd(`tp ${bot.username} ${X + 0.5} ${Y + 1} ${Z + 0.5}`)
+  h.cmd(`setblock ${X} ${Y + 24} ${Z} air`)
+  h.cmd(`fill ${X - 20} ${Y} ${Z - 20} ${X + 20} ${Y} ${Z + 20} air`)
+  h.cmd(`fill ${X - 8} ${Y} ${Z - 8} ${X + 8} ${Y} ${Z + 8} stone`)
   h.cmd(`gamemode survival ${bot.username}`)
   await reset()
 })
