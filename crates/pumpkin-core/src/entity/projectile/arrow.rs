@@ -822,8 +822,11 @@ impl EntityBase for ArrowEntity {
 
                 // Calculate damage
                 let velocity = entity.velocity.load();
-                let power = velocity.length();
-                let mut damage = (power * self.get_base_damage()).ceil() as i32;
+                // Vanilla takes the speed as a float, then clamps the damage to an int.
+                let power = f64::from(velocity.length() as f32);
+                let mut damage = (power * self.get_base_damage())
+                    .clamp(0.0, f64::from(i32::MAX))
+                    .ceil() as i32;
 
                 // Apply critical hit bonus
                 if self.is_critical.load(Ordering::Relaxed) {
