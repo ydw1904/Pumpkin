@@ -52,6 +52,18 @@ pub(crate) fn hit_candidates(world: &World, area: &BoundingBox) -> Vec<Arc<dyn E
     candidates
 }
 
+/// Vanilla `Entity.isPickable` as far as Pumpkin models it: living entities other than marker
+/// armor stands, and entities that override [`EntityBase::can_hit`].
+pub(crate) fn is_pickable(entity: &dyn EntityBase) -> bool {
+    if entity.get_living_entity().is_none() {
+        return entity.can_hit();
+    }
+    !entity
+        .cast_any()
+        .downcast_ref::<crate::entity::decoration::armor_stand::ArmorStandEntity>()
+        .is_some_and(crate::entity::decoration::armor_stand::ArmorStandEntity::is_marker)
+}
+
 /// Vanilla `AbstractArrow`: arrows, spectral arrows and tridents.
 #[must_use]
 pub fn is_abstract_arrow(entity_type: &EntityType) -> bool {

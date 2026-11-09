@@ -120,6 +120,26 @@ pub fn deflect_projectile(
 /// a hit redirectable projectile, like a ghast fireball, flies where `projectile`'s owner looks
 /// and takes that owner.
 pub fn redirect_projectile(projectile: &dyn EntityBase, hit: &dyn EntityBase) {
+    let world = projectile.get_entity().world.load();
+    let owner = projectile
+        .get_projectile_owner()
+        .and_then(|owner| owner.get(&world));
+    redirect_hit_projectile(
+        hit,
+        ProjectileDeflectionType::AimDeflect,
+        owner.as_deref(),
+        owner.as_deref(),
+    );
+}
+
+/// The redirect of [`redirect_projectile`] with its own deflection: a hit redirectable
+/// projectile is turned by `deflection` from `deflector` and takes `owner`, or loses its owner.
+pub fn redirect_hit_projectile(
+    hit: &dyn EntityBase,
+    deflection: ProjectileDeflectionType,
+    deflector: Option<&dyn EntityBase>,
+    owner: Option<&dyn EntityBase>,
+) {
     let Some(hit_owner) = hit.get_projectile_owner() else {
         return;
     };
@@ -130,15 +150,11 @@ pub fn redirect_projectile(projectile: &dyn EntityBase, hit: &dyn EntityBase) {
     {
         return;
     }
-    let world = projectile.get_entity().world.load();
-    let owner = projectile
-        .get_projectile_owner()
-        .and_then(|owner| owner.get(&world));
     if deflect_projectile(
         hit,
-        ProjectileDeflectionType::AimDeflect,
-        owner.as_deref(),
-        owner.as_deref().map(EntityBase::get_entity),
+        deflection,
+        deflector,
+        owner.map(EntityBase::get_entity),
         true,
         1.0,
     ) && owner.is_none()

@@ -1,22 +1,35 @@
 use crate::entity::projectile::owner::{EntityReference, ProjectileOwner};
+use crate::entity::projectile::{
+    ProjectileHit, compute_margin, entity_hit_result, hit_candidates, is_pickable,
+    rotate_towards_movement,
+};
+use crate::entity::projectile_deflection::{
+    LastDeflectedBy, ProjectileDeflectionType, redirect_hit_projectile,
+};
 use pumpkin_util::random::gameplay::game_random;
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicU8, Ordering};
 
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::particle::Particle;
 use pumpkin_data::potion::Effect;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_util::Difficulty;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_world::clip::{ClipBlock, ClipContext, ClipFluid};
+use pumpkin_world::generation::update_shape::is_face_full;
 use uuid::Uuid;
 
 use crate::entity::mob::shulker::Axis;
 use crate::entity::{Entity, EntityBase};
 use crate::server::Server;
+use crate::world::World;
+use crate::world::game_event::GameEventContext;
 
 // Direction ordinal constants
 const DIR_DOWN: u8 = 0;
@@ -28,6 +41,14 @@ const DIR_EAST: u8 = 5;
 const DIR_NONE: u8 = 255;
 
 const SPEED: f64 = 0.15;
+/// Vanilla `ShulkerBullet.getDefaultGravity`.
+const GRAVITY: f64 = 0.04;
+/// Vanilla `ProjectileUtil.rotateTowardsMovement(this, 0.5F)` in `ShulkerBullet.tick`.
+const ROTATION_SPEED: f32 = 0.5;
+/// Vanilla `ShulkerBullet.onHitEntity` damage.
+const HIT_DAMAGE: f32 = 4.0;
+/// Vanilla `MobEffectInstance(MobEffects.LEVITATION, 200)` from a hit.
+const LEVITATION_TICKS: i32 = 200;
 
 pub struct ShulkerBulletEntity {
     pub entity: Entity,
@@ -42,9 +63,7 @@ pub struct ShulkerBulletEntity {
     target_delta_x: AtomicCell<f64>,
     target_delta_y: AtomicCell<f64>,
     target_delta_z: AtomicCell<f64>,
-    has_hit: AtomicBool,
-    /// Tick counter; bullet is discarded after ~150 ticks if it never reaches its target
-    age: AtomicI32,
+    last_deflected_by: LastDeflectedBy,
 }
 
 impl ShulkerBulletEntity {
@@ -65,6 +84,7 @@ impl ShulkerBulletEntity {
             origin,
             &EntityType::SHULKER_BULLET,
         );
+        entity.no_physics.store(true, Ordering::Relaxed);
 
         let bullet = Self {
             entity,
@@ -75,8 +95,7 @@ impl ShulkerBulletEntity {
             target_delta_x: AtomicCell::new(0.0),
             target_delta_y: AtomicCell::new(0.0),
             target_delta_z: AtomicCell::new(0.0),
-            has_hit: AtomicBool::new(false),
-            age: AtomicI32::new(0),
+            last_deflected_by: LastDeflectedBy::new(),
         };
 
         // Prime target_delta and flight_steps so movement begins on tick 1.
@@ -141,11 +160,11 @@ impl ShulkerBulletEntity {
                 }
             }
 
-            // If options empty, pick a random direction (up to 5 tries for an
-            // unobstructed one); ignore avoidAxis in this fallback.
+            // Without options, a random direction rerolled up to 5 times while it is blocked,
+            // ignoring `avoid_axis`.
             let sel = if options.is_empty() {
                 let mut r = Self::random_dir();
-                for _ in 0..4 {
+                for _ in 0..5 {
                     if is_empty_block(&world, &cur_bp, r) {
                         break;
                     }
@@ -243,7 +262,8 @@ fn is_empty_block(world: &crate::world::World, from: &BlockPos, dir: u8) -> bool
 impl ShulkerBulletEntity {
     /// Create a `ShulkerBulletEntity` from a pre-existing Entity (e.g. loaded from
     /// disk or spawned via the /summon command with no context).
-    pub const fn orphan(entity: Entity) -> Self {
+    pub fn orphan(entity: Entity) -> Self {
+        entity.no_physics.store(true, Ordering::Relaxed);
         Self {
             entity,
             owner: ProjectileOwner::none(),
@@ -253,8 +273,169 @@ impl ShulkerBulletEntity {
             target_delta_x: AtomicCell::new(0.0),
             target_delta_y: AtomicCell::new(0.0),
             target_delta_z: AtomicCell::new(0.0),
-            has_hit: AtomicBool::new(false),
-            age: AtomicI32::new(0),
+            last_deflected_by: LastDeflectedBy::new(),
+        }
+    }
+
+    /// Vanilla `ShulkerBullet.canHitEntity`: `Projectile.canHitEntity` without entities that
+    /// pass through blocks, so bullets never hit each other.
+    fn can_hit_entity(&self, world: &World, other: &dyn EntityBase) -> bool {
+        let other_entity = other.get_entity();
+        other_entity.entity_id != self.entity.entity_id
+            && other_entity.is_alive()
+            && !other.is_spectator()
+            && is_pickable(other)
+            && self.owner.can_hit(world, other_entity)
+            && !other_entity.no_physics.load(Ordering::Relaxed)
+    }
+
+    /// Vanilla `ProjectileUtil.getHitResultOnMoveVector`: the first block on the way, unless an
+    /// entity comes before it.
+    fn hit_result_on_move_vector(&self, world: &World) -> Option<ProjectileHit> {
+        let entity = &self.entity;
+        let from = entity.pos.load();
+        let delta = entity.velocity.load();
+        let block_hit = world.clip(&ClipContext::new(
+            from,
+            from + delta,
+            ClipBlock::Collider,
+            ClipFluid::None,
+        ));
+        let to = block_hit.location;
+        let area = entity
+            .bounding_box
+            .load()
+            .expand_towards(delta.x, delta.y, delta.z)
+            .expand_all(1.0);
+        let candidates = hit_candidates(world, &area)
+            .into_iter()
+            .filter(|candidate| self.can_hit_entity(world, candidate.as_ref()));
+        let normal = delta.normalize() * -1.0;
+        if let Some((target, hit_pos)) =
+            entity_hit_result(candidates, from, to, compute_margin(entity))
+        {
+            return Some(ProjectileHit::Entity {
+                entity: target,
+                hit_pos,
+                normal,
+            });
+        }
+        (!block_hit.is_miss).then_some(ProjectileHit::Block {
+            pos: block_hit.block_pos,
+            face: block_hit.direction,
+            hit_pos: block_hit.location,
+            normal,
+        })
+    }
+
+    /// Vanilla `Projectile.hitTargetOrDeflectSelf`: an entity may deflect the bullet, and a
+    /// block that turned to air since the clip is no hit.
+    fn hit_target_or_deflect_self(&self, caller: &dyn EntityBase, hit: ProjectileHit) {
+        match &hit {
+            ProjectileHit::Entity { entity: target, .. } => {
+                if self
+                    .last_deflected_by
+                    .hit_target_or_deflect_self(caller, target.as_ref())
+                {
+                    return;
+                }
+            }
+            ProjectileHit::Block { pos, .. } => {
+                if self.entity.world.load().get_block_state(pos).is_air() {
+                    return;
+                }
+            }
+        }
+        caller.on_hit(hit);
+    }
+
+    /// Vanilla `ShulkerBullet.onHitEntity`: any target can be hurt, only living ones levitate.
+    fn on_hit_entity(&self, target: &dyn EntityBase, owner: Option<&dyn EntityBase>) {
+        // Vanilla `mobProjectile(this, livingOwner)` credits only a living owner.
+        let cause = owner.filter(|owner| owner.get_living_entity().is_some());
+        if !target.damage_with_context(
+            target,
+            HIT_DAMAGE,
+            DamageType::MOB_PROJECTILE,
+            None,
+            Some(self),
+            cause,
+        ) {
+            return;
+        }
+        crate::enchantment::EnchantmentHelper::do_post_attack_effects(
+            target,
+            DamageType::MOB_PROJECTILE,
+            cause,
+            Some(self),
+        );
+        if let Some(living) = target.get_living_entity() {
+            living.add_effect_with_source(
+                Effect {
+                    effect_type: &StatusEffect::LEVITATION,
+                    duration: LEVITATION_TICKS,
+                    amplifier: 0,
+                    ambient: false,
+                    show_particles: true,
+                    show_icon: true,
+                    blend: false,
+                },
+                Some(owner.unwrap_or(self)),
+            );
+        }
+    }
+
+    /// Vanilla `ShulkerBullet.destroy`.
+    fn destroy(&self) {
+        let entity = &self.entity;
+        entity.remove();
+        entity.world.load().emit_game_event_with_context(
+            GameEvent::EntityDamage.name(),
+            entity.pos.load(),
+            &GameEventContext {
+                source_entity: Some(self),
+            },
+        );
+    }
+
+    /// The steering half of vanilla `ShulkerBullet.tick`: a new direction once the flight steps
+    /// run out, the block ahead can be stood on or the target's row is reached.
+    fn steer(&self, target: &Entity) {
+        let steps = self.flight_steps.load(Ordering::Relaxed);
+        if steps > 0 {
+            self.flight_steps.store(steps - 1, Ordering::Relaxed);
+            if steps == 1 {
+                let axis = dir_axis(self.current_dir.load(Ordering::Relaxed));
+                self.select_next_dir(axis, Some(target));
+            }
+        }
+
+        let dir = self.current_dir.load(Ordering::Relaxed);
+        if dir == DIR_NONE {
+            return;
+        }
+        let current = self.entity.block_pos.load();
+        let axis = dir_axis(dir);
+        let ahead = BlockPos::new(
+            current.0.x + dir_step_x_s(dir),
+            current.0.y + dir_step_y_s(dir),
+            current.0.z + dir_step_z_s(dir),
+        );
+        // Vanilla `loadedAndEntityCanStandOn`: a full top face of the collision shape.
+        let blocked = self
+            .entity
+            .world
+            .load()
+            .get_block_state_id_if_loaded(&ahead)
+            .is_some_and(|state| is_face_full(state, ahead.0, pumpkin_data::BlockDirection::Up));
+        let target_pos = target.block_pos.load();
+        let reached = match axis {
+            0 => current.0.x == target_pos.0.x,
+            1 => current.0.y == target_pos.0.y,
+            _ => current.0.z == target_pos.0.z,
+        };
+        if blocked || reached {
+            self.select_next_dir(axis, Some(target));
         }
     }
 }
@@ -262,6 +443,15 @@ impl ShulkerBulletEntity {
 impl EntityBase for ShulkerBulletEntity {
     fn get_projectile_owner(&self) -> Option<&ProjectileOwner> {
         Some(&self.owner)
+    }
+
+    /// Vanilla `ShulkerBullet.isPickable`: bullets can be shot or punched.
+    fn can_hit(&self) -> bool {
+        true
+    }
+
+    fn sound_source(&self) -> SoundCategory {
+        SoundCategory::Hostile
     }
 
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
@@ -322,7 +512,7 @@ impl EntityBase for ShulkerBulletEntity {
         self
     }
 
-    /// Any hit destroys the bullet (melee, arrow, etc.).
+    /// Vanilla `ShulkerBullet.hurtServer`: any hit destroys the bullet.
     fn damage_with_context(
         &self,
         _caller: &dyn EntityBase,
@@ -332,244 +522,111 @@ impl EntityBase for ShulkerBulletEntity {
         _source: Option<&dyn EntityBase>,
         _cause: Option<&dyn EntityBase>,
     ) -> bool {
-        // Guard against double-hit
-        if self.has_hit.swap(true, Ordering::SeqCst) {
+        let entity = &self.entity;
+        if entity.is_removed() {
             return false;
         }
-        let entity = &self.entity;
-        let world = entity.world.load();
-        let pos = entity.pos.load();
-        world.play_sound_fine(
-            Sound::EntityShulkerBulletHit,
-            SoundCategory::Hostile,
-            &pos,
-            1.0,
-            1.0,
-        );
-        world.spawn_particle(
-            pos,
+        self.play_entity_sound(Sound::EntityShulkerBulletHurt, 1.0, 1.0);
+        entity.world.load().spawn_particle(
+            entity.pos.load(),
             Vector3::new(0.2, 0.2, 0.2),
             0.0,
-            2,
-            Particle::Explosion,
+            15,
+            Particle::Crit,
         );
-        entity.remove();
+        self.destroy();
         true
     }
-    #[allow(clippy::too_many_lines)]
-    fn tick(&self, _caller: &dyn EntityBase, _server: &Server) {
-        if self.has_hit.load(Ordering::Relaxed) {
-            return;
-        }
-        self.owner.check_left_owner(&self.entity);
 
-        // Discard bullet after 150 ticks if it never hits anything
-        let age = self.age.fetch_add(1, Ordering::Relaxed) + 1;
-        if age > 150 {
-            if !self.has_hit.swap(true, Ordering::SeqCst) {
-                let entity = &self.entity;
-                let world = entity.world.load();
-                let pos = entity.pos.load();
-                world.play_sound_fine(
-                    Sound::EntityShulkerBulletHit,
-                    SoundCategory::Hostile,
-                    &pos,
-                    1.0,
-                    1.0,
+    /// Vanilla `ShulkerBullet.onHit`: a hit projectile is turned the way the bullet flew, a block
+    /// hit bursts, and the bullet is gone either way.
+    fn on_hit(&self, hit: ProjectileHit) {
+        let entity = &self.entity;
+        let world = entity.world.load();
+        match hit {
+            ProjectileHit::Entity { entity: target, .. } => {
+                let owner = self.owner.get(&world);
+                redirect_hit_projectile(
+                    target.as_ref(),
+                    ProjectileDeflectionType::MomentumDeflect,
+                    Some(self),
+                    owner.as_deref(),
                 );
+                self.on_hit_entity(target.as_ref(), owner.as_deref());
+            }
+            ProjectileHit::Block { pos, hit_pos, .. } => {
+                let (block, state) = world.get_block_and_state(&pos);
+                if let Some(server) = world.server.upgrade() {
+                    world
+                        .block_registry
+                        .on_projectile_hit(block, &world, self, &pos, state, &hit_pos, &server);
+                }
                 world.spawn_particle(
-                    pos,
+                    entity.pos.load(),
                     Vector3::new(0.2, 0.2, 0.2),
                     0.0,
                     2,
                     Particle::Explosion,
                 );
-                entity.remove();
+                self.play_entity_sound(Sound::EntityShulkerBulletHit, 1.0, 1.0);
             }
-            return;
         }
+        self.destroy();
+    }
 
+    fn tick(&self, caller: &dyn EntityBase, _server: &Server) {
         let entity = &self.entity;
         let world = entity.world.load();
+        // Vanilla `ShulkerBullet.checkDespawn`.
+        if world.level_info.load().difficulty == Difficulty::Peaceful {
+            entity.remove();
+            return;
+        }
+        self.owner.check_left_owner(entity);
+        // `Entity.baseTick` `computeSpeed`, the known speed a momentum deflection reads.
+        entity.update_last_pos();
 
-        let target_opt = self.target.get(&world);
-        if target_opt.is_none() {
+        let target = self.target.get(&world);
+        if target.is_none() {
             self.target.clear();
         }
-
-        // Apply gravity only if target is null, dead, or a spectator.
-        let target_alive = target_opt
-            .as_ref()
-            .is_some_and(|t| t.get_entity().is_alive() && !t.is_spectator());
-
-        if target_alive {
-            // Accelerate target deltas x 1.025, clamped
-            let mut tdx = (self.target_delta_x.load() * 1.025).clamp(-1.0, 1.0);
-            let mut tdy = (self.target_delta_y.load() * 1.025).clamp(-1.0, 1.0);
-            let mut tdz = (self.target_delta_z.load() * 1.025).clamp(-1.0, 1.0);
+        let tracking = target.as_ref().is_some_and(|target| {
+            target.get_entity().is_alive()
+                && !(target.get_player().is_some() && target.is_spectator())
+        });
+        let mut movement = entity.velocity.load();
+        if tracking {
+            let tdx = (self.target_delta_x.load() * 1.025).clamp(-1.0, 1.0);
+            let tdy = (self.target_delta_y.load() * 1.025).clamp(-1.0, 1.0);
+            let tdz = (self.target_delta_z.load() * 1.025).clamp(-1.0, 1.0);
             self.target_delta_x.store(tdx);
             self.target_delta_y.store(tdy);
             self.target_delta_z.store(tdz);
-
-            // Clamp initialised sentinel values
-            if tdx.abs() < 1e-10 && tdy.abs() < 1e-10 && tdz.abs() < 1e-10 {
-                tdx = 0.0;
-                tdy = 0.0;
-                tdz = 0.0;
-            }
-
-            // Lerp actual velocity toward steering delta
-            let mut vel = entity.velocity.load();
-            vel.x += (tdx - vel.x) * 0.2;
-            vel.y += (tdy - vel.y) * 0.2;
-            vel.z += (tdz - vel.z) * 0.2;
-            entity.velocity.store(vel);
-        } else {
-            // No live target – apply gravity and drift
-            let mut vel = entity.velocity.load();
-            vel.y -= 0.04;
-            entity.velocity.store(vel);
+            movement = movement
+                + Vector3::new(
+                    (tdx - movement.x) * 0.2,
+                    (tdy - movement.y) * 0.2,
+                    (tdz - movement.z) * 0.2,
+                );
+        } else if !entity.has_no_gravity() {
+            movement.y -= GRAVITY;
         }
+        entity.velocity.store(movement);
 
-        let vel = entity.velocity.load();
-        let old_pos = entity.pos.load();
-        let new_pos = old_pos.add(&vel);
-        entity.set_pos(new_pos);
+        // Vanilla finds the hit first, then makes the whole move whatever it hit.
+        let hit = self.hit_result_on_move_vector(&world);
+        entity.set_pos(entity.pos.load() + movement);
+        if let Some(hit) = hit {
+            self.hit_target_or_deflect_self(caller, hit);
+        }
+        rotate_towards_movement(entity, ROTATION_SPEED);
 
-        // Check for block collisions
-        let new_bp = entity.block_pos.load();
-        let state = world.get_block_state(&new_bp);
-        if !state.is_air() && state.is_solid() {
-            if !self.has_hit.swap(true, Ordering::SeqCst) {
-                let pos = entity.pos.load();
-                world.play_sound_fine(
-                    Sound::EntityShulkerBulletHit,
-                    SoundCategory::Hostile,
-                    &pos,
-                    1.0,
-                    1.0,
-                );
-                world.spawn_particle(
-                    pos,
-                    Vector3::new(0.2, 0.2, 0.2),
-                    0.0,
-                    2,
-                    Particle::Explosion,
-                );
-                entity.remove();
-            }
+        if entity.is_removed() {
             return;
         }
-
-        // Check for entity collisions
-        let bullet_bb = entity.bounding_box.load().expand(0.1, 0.1, 0.1);
-        let nearby = world.get_entities_and_players_at_box(&bullet_bb);
-        for hit_entity in nearby {
-            let he = hit_entity.get_entity();
-            // Skip self
-            if he.entity_id == entity.entity_id {
-                continue;
-            }
-            if !self.owner.can_hit(&world, he) {
-                continue;
-            }
-            // Must be alive
-            if !he.is_alive() {
-                continue;
-            }
-            // Must be a living entity
-            let Some(living) = hit_entity.get_living_entity() else {
-                continue;
-            };
-            if !living.entity.is_alive() {
-                continue;
-            }
-
-            if self.has_hit.swap(true, Ordering::SeqCst) {
-                break;
-            }
-
-            // Deal 4 (MOB_PROJECTILE) damage
-            let owner = self.owner.get(&world);
-            let damaged = hit_entity.damage_with_context(
-                hit_entity.as_ref(),
-                4.0,
-                DamageType::MOB_PROJECTILE,
-                None,
-                Some(self),
-                owner.as_deref(),
-            );
-            if damaged {
-                crate::enchantment::EnchantmentHelper::do_post_attack_effects(
-                    hit_entity.as_ref(),
-                    DamageType::MOB_PROJECTILE,
-                    owner.as_deref(),
-                    Some(self),
-                );
-            }
-
-            if damaged && let Some(living) = hit_entity.get_living_entity() {
-                // Apply levitation for 200 ticks
-                living.add_effect_with_source(
-                    Effect {
-                        effect_type: &StatusEffect::LEVITATION,
-                        duration: 200,
-                        amplifier: 0,
-                        ambient: false,
-                        show_particles: true,
-                        show_icon: true,
-                        blend: false,
-                    },
-                    Some(owner.as_deref().unwrap_or(self)),
-                );
-            }
-
-            let pos = entity.pos.load();
-            world.spawn_particle(
-                pos,
-                Vector3::new(0.2, 0.2, 0.2),
-                0.0,
-                2,
-                Particle::Explosion,
-            );
-            entity.remove();
-            break;
-        }
-
         // Vanilla steers towards any target still in the world, alive or not.
-        if self.has_hit.load(Ordering::Relaxed) {
-            return;
-        }
-        let Some(target) = target_opt else {
-            return;
-        };
-        let target = target.get_entity();
-
-        let raw_dir = self.current_dir.load(Ordering::Relaxed);
-        let avoid_axis = dir_axis(raw_dir);
-
-        let steps = self.flight_steps.load(Ordering::Relaxed);
-        if steps > 0 {
-            self.flight_steps.store(steps - 1, Ordering::Relaxed);
-            if steps == 1 {
-                self.select_next_dir(avoid_axis, Some(target));
-            }
-        }
-
-        // Re-select when the block ahead is not empty or the target's axis is reached.
-        let dir = self.current_dir.load(Ordering::Relaxed);
-        if dir != DIR_NONE {
-            let cur_bp = entity.block_pos.load();
-            let axis = dir_axis(dir);
-            let tbp = target.block_pos.load();
-            let reached = match axis {
-                0 => cur_bp.0.x == tbp.0.x,
-                1 => cur_bp.0.y == tbp.0.y,
-                _ => cur_bp.0.z == tbp.0.z,
-            };
-            if reached || !is_empty_block(&world, &cur_bp, dir) {
-                self.select_next_dir(axis, Some(target));
-            }
+        if let Some(target) = target {
+            self.steer(target.get_entity());
         }
     }
 }
