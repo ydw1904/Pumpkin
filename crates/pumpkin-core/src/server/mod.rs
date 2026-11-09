@@ -52,7 +52,7 @@ use pumpkin_world::world_info::{
     DataPacks, LevelData, OVERWORLD_CLOCK, WorldInfoError, WorldInfoReader, WorldInfoWriter,
 };
 use rayon::prelude::*;
-use rsa::RsaPublicKey;
+use rsa::PublicKey as RsaPublicKey;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 use std::fs;
