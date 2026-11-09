@@ -34,6 +34,15 @@ bot.once('spawn', async () => {
   const end = Date.now() + 5000
   while (Date.now() < end && bot.health >= healthBefore) await sleep(50)
   result('hurt_by_arrow', bot.health < healthBefore)
+  // An arrow that hurts a non-living target, a minecart, still plays its hit sound.
+  const sounds = []
+  bot.on('hardcodedSoundEffectHeard', (id, category, pos) => { if (pos && Math.abs(pos.x - 6.5) < 2) sounds.push(id) })
+  bot.on('soundEffectHeard', (name, pos) => { if (pos && Math.abs(pos.x - 6.5) < 2) sounds.push(name) })
+  command('summon minecart 6.5 200 0.5 {NoGravity:1b}')
+  await sleep(1000)
+  command('summon minecraft:arrow 6.5 204 0.5 {Motion:[0.0,-1.5,0.0]}')
+  await sleep(3000)
+  result('minecart_hit_sounds', sounds.join(',') || 'none')
   bot.quit()
   setTimeout(() => process.exit(0), 1000)
 })

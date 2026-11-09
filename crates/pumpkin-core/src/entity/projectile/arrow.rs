@@ -900,19 +900,6 @@ impl EntityBase for ArrowEntity {
                         self.get_weapon_item().as_ref(),
                     );
 
-                    // Play hit sound
-                    let sound_pitch = 1.2 / (game_random().random::<f32>() * 0.2 + 0.9);
-                    let sound_packet = CSoundEffect::new(
-                        IdOr::Id(Sound::EntityArrowHit as u16),
-                        SoundCategory::Neutral,
-                        &hit_pos,
-                        1.0,
-                        sound_pitch,
-                        0,
-                    );
-                    let chunk_pos = entity.chunk_pos.load();
-                    world.broadcast_to_chunk(chunk_pos, &sound_packet);
-
                     let item_stack = self
                         .item_stack
                         .read()
@@ -939,6 +926,18 @@ impl EntityBase for ArrowEntity {
                         );
                     }
                 }
+
+                // Vanilla plays the hit sound for any target the arrow hurt, living or not.
+                let sound_pitch = 1.2 / (game_random().random::<f32>() * 0.2 + 0.9);
+                let sound_packet = CSoundEffect::new(
+                    IdOr::Id(Sound::EntityArrowHit as u16),
+                    SoundCategory::Neutral,
+                    &hit_pos,
+                    1.0,
+                    sound_pitch,
+                    0,
+                );
+                world.broadcast_to_chunk(entity.chunk_pos.load(), &sound_packet);
 
                 if pierce == 0 {
                     entity.remove();
