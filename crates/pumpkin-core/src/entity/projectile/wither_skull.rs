@@ -162,6 +162,10 @@ impl EntityBase for WitherSkullEntity {
         self.acceleration_power.on_deflection(by_attack);
     }
 
+    fn acceleration_power(&self) -> Option<f64> {
+        Some(self.acceleration_power.get())
+    }
+
     fn get_projectile_owner(&self) -> Option<&ProjectileOwner> {
         Some(&self.thrown.owner)
     }

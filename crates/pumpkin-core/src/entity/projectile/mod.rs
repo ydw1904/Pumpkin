@@ -8,7 +8,6 @@ use pumpkin_data::BlockDirection;
 use pumpkin_data::entity::EntityType;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
-use pumpkin_protocol::java::client::play::CEntityVelocity;
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::{position::BlockPos, signum, vector3::Vector3};
 use pumpkin_util::random::gameplay::game_random;
@@ -378,11 +377,6 @@ impl ThrownItemEntity {
         entity.set_pos(hit.as_ref().map_or(new_pos, ProjectileHit::hit_pos));
         // Vanilla `baseTick` after the move: the water state the next tick's inertia reads.
         entity.update_fluid_state(caller);
-
-        // Send updated velocity to clients
-        let packet = CEntityVelocity::new(entity.entity_id.into(), velocity);
-        let chunk_pos = entity.chunk_pos.load();
-        world.broadcast_to_chunk(chunk_pos, &packet);
 
         // Handle hit or continue
         if let Some(h) = hit {

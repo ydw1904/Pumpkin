@@ -71,6 +71,10 @@ impl EntityBase for SmallFireballEntity {
         self.acceleration_power.on_deflection(by_attack);
     }
 
+    fn acceleration_power(&self) -> Option<f64> {
+        Some(self.acceleration_power.get())
+    }
+
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
         self.acceleration_power.write_nbt(nbt);
         self.item.write_nbt(nbt);

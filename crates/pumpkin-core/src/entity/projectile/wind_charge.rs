@@ -139,6 +139,10 @@ impl EntityBase for WindChargeEntity {
         self.acceleration_power.on_deflection(by_attack);
     }
 
+    fn acceleration_power(&self) -> Option<f64> {
+        Some(self.acceleration_power.get())
+    }
+
     /// Vanilla `WindCharge.deflect` refuses while `noDeflectTicks` runs.
     fn can_be_deflected(&self) -> bool {
         self.deflect_cooldown()

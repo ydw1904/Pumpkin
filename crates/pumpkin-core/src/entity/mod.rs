@@ -749,6 +749,11 @@ pub trait EntityBase: Send + Sync + std::any::Any {
     /// Vanilla `Projectile.onDeflection`.
     fn on_deflection(&self, _by_attack: bool) {}
 
+    /// Vanilla `AbstractHurtingProjectile.accelerationPower`, `None` for other entities.
+    fn acceleration_power(&self) -> Option<f64> {
+        None
+    }
+
     /// Whether vanilla `Projectile.deflect` would deflect this projectile now.
     fn can_be_deflected(&self) -> bool {
         true

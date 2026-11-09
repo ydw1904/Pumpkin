@@ -22,9 +22,9 @@ use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_protocol::codec::var_long::VarLong;
 use pumpkin_protocol::codec::var_ulong::VarULong;
 use pumpkin_protocol::java::client::play::{
-    CEntityPositionSync, CEntityVelocity, CHeadRot, CRemoveEntities, CSetEntityMetadata,
-    CSetEquipment, CSetPassengers, CUpdateEntityPos, CUpdateEntityPosRot, CUpdateEntityRot,
-    Metadata,
+    CEntityPositionSync, CEntityVelocity, CHeadRot, CProjectilePower, CRemoveEntities,
+    CSetEntityMetadata, CSetEquipment, CSetPassengers, CUpdateEntityPos, CUpdateEntityPosRot,
+    CUpdateEntityRot, Metadata,
 };
 use pumpkin_protocol::{BClientPacket, ClientPacket};
 use pumpkin_util::GameMode;
@@ -310,6 +310,14 @@ impl TrackedEntity {
                 },
                 world,
             );
+            // Vanilla bundles a hurting projectile's motion with its acceleration power, which
+            // the client otherwise only knows from the entity type (deflection changes it).
+            if let Some(power) = self.entity.acceleration_power() {
+                self.send_to_tracking_players(
+                    &CProjectilePower::new(VarInt(self.entity_id), power, 0.0, 0.0),
+                    world,
+                );
+            }
         }
     }
 
