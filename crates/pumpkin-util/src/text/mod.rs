@@ -294,6 +294,17 @@ impl TextComponentBase {
                         click_tag.put_string("value", command.to_string());
                     }
                 }
+                ClickEvent::ShowDialog { dialog } => {
+                    click_tag.put_string("action", "show_dialog".to_string());
+                    click_tag.put("dialog", dialog.to_nbt());
+                }
+                ClickEvent::Custom { id, payload } => {
+                    click_tag.put_string("action", "custom".to_string());
+                    click_tag.put_string("id", id.to_string());
+                    if let Some(payload) = payload {
+                        click_tag.put("payload", payload.to_nbt());
+                    }
+                }
                 ClickEvent::SuggestCommand { command } => {
                     click_tag.put_string("action", "suggest_command".to_string());
                     if *version >= JavaMinecraftVersion::V_1_21_5 {
@@ -315,17 +326,6 @@ impl TextComponentBase {
                 ClickEvent::CopyToClipboard { value } => {
                     click_tag.put_string("action", "copy_to_clipboard".to_string());
                     click_tag.put_string("value", value.to_string());
-                }
-                ClickEvent::ShowDialog { dialog } => {
-                    click_tag.put_string("action", "show_dialog".to_string());
-                    click_tag.put("dialog", dialog.to_nbt());
-                }
-                ClickEvent::Custom { id, payload } => {
-                    click_tag.put_string("action", "custom".to_string());
-                    click_tag.put_string("id", id.to_string());
-                    if let Some(payload) = payload {
-                        click_tag.put("payload", payload.to_nbt());
-                    }
                 }
             }
             let click_key = if *version >= JavaMinecraftVersion::V_1_21_5 {
@@ -757,6 +757,23 @@ impl TextComponentBase {
                         );
                     }
                 }
+                ClickEvent::ShowDialog { dialog } => {
+                    click_map.insert(
+                        "action".to_string(),
+                        serde_json::Value::String("show_dialog".to_string()),
+                    );
+                    click_map.insert("dialog".to_string(), dialog.0.as_ref().clone());
+                }
+                ClickEvent::Custom { id, payload } => {
+                    click_map.insert(
+                        "action".to_string(),
+                        serde_json::Value::String("custom".to_string()),
+                    );
+                    click_map.insert("id".to_string(), serde_json::Value::String(id.to_string()));
+                    if let Some(payload) = payload {
+                        click_map.insert("payload".to_string(), payload.0.as_ref().clone());
+                    }
+                }
                 ClickEvent::SuggestCommand { command } => {
                     click_map.insert(
                         "action".to_string(),
@@ -802,23 +819,6 @@ impl TextComponentBase {
                         "value".to_string(),
                         serde_json::Value::String(value.to_string()),
                     );
-                }
-                ClickEvent::ShowDialog { dialog } => {
-                    click_map.insert(
-                        "action".to_string(),
-                        serde_json::Value::String("show_dialog".to_string()),
-                    );
-                    click_map.insert("dialog".to_string(), dialog.0.clone());
-                }
-                ClickEvent::Custom { id, payload } => {
-                    click_map.insert(
-                        "action".to_string(),
-                        serde_json::Value::String("custom".to_string()),
-                    );
-                    click_map.insert("id".to_string(), serde_json::Value::String(id.to_string()));
-                    if let Some(payload) = payload {
-                        click_map.insert("payload".to_string(), payload.0.clone());
-                    }
                 }
             }
             let click_key = if *version >= JavaMinecraftVersion::V_1_21_5 {
@@ -2278,7 +2278,7 @@ pub enum TextContent {
 /// Tests for the text component implementations.
 #[cfg(test)]
 mod test {
-    use crate::text::click::ClickEvent;
+    use crate::text::click::{ClickEvent, ClickPayload};
     use crate::text::{
         TextComponent,
         color::{Color, NamedColor},
@@ -2461,6 +2461,42 @@ mod test {
         let click = compound.get_compound("click_event").unwrap();
         assert_eq!(click.get_string("url"), Some("https://example.com"));
         assert!(click.get_string("value").is_none());
+    }
+
+    #[test]
+    fn sign_click_actions_round_trip_through_json_and_nbt() {
+        let show = TextComponent::text("dialog").click_event(ClickEvent::ShowDialog {
+            dialog: ClickPayload(Box::new(
+                serde_json::json!({"type":"minecraft:notice","title":"x"}),
+            )),
+        });
+        let json = serde_json::to_string(&show).unwrap();
+        let from_json: TextComponent = serde_json::from_str(&json).unwrap();
+        assert_eq!(from_json, show);
+        let nbt = show
+            .0
+            .to_nbt_compound_for_version(&JavaMinecraftVersion::V_26_3);
+        let from_nbt = TextComponent::from_nbt(&pumpkin_nbt::tag::NbtTag::Compound(nbt));
+        assert_eq!(from_nbt, show);
+
+        let custom = TextComponent::text("custom").click_event(ClickEvent::Custom {
+            id: Cow::Borrowed("example:action"),
+            payload: Some(ClickPayload(Box::new(serde_json::json!({"value": 1})))),
+        });
+        let json = serde_json::to_string(&custom).unwrap();
+        let from_json: TextComponent = serde_json::from_str(&json).unwrap();
+        assert_eq!(from_json, custom);
+        let nbt = custom
+            .0
+            .to_nbt_compound_for_version(&JavaMinecraftVersion::V_26_3);
+        let from_nbt = TextComponent::from_nbt(&pumpkin_nbt::tag::NbtTag::Compound(nbt));
+        assert_eq!(from_nbt, custom);
+    }
+
+    #[test]
+    fn null_dialog_payloads_are_rejected() {
+        let json = r#"{"text":"x","click_event":{"action":"show_dialog","dialog":null}}"#;
+        assert!(serde_json::from_str::<TextComponent>(json).is_err());
     }
 
     #[test]
