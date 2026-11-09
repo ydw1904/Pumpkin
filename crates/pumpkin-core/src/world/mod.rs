@@ -2730,7 +2730,8 @@ impl World {
                 lock.difficulty == Difficulty::Peaceful,
             )
         };
-        let spawn_enemies = !peaceful && self.spawn_enemies.load(Relaxed);
+        // Vanilla spawns no category at all while `spawn_mobs` is off.
+        let spawn_enemies = spawn_mobs && !peaceful && self.spawn_enemies.load(Relaxed);
         // Vanilla `spawnPersistent` follows game time, so `/time set` and a stopped daylight
         // cycle don't shift or stop the 400-tick schedule.
         let spawn_passives = self.get_world_age() % 400 == 0;
