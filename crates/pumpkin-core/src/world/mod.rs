@@ -214,6 +214,9 @@ const LIGHTNING_ROD_SEARCH_RADIUS: i32 = 128;
 /// The fewest entities a rayon job takes in the per-entity scans of the tick. Each entity costs
 /// a few loads, so a smaller job costs less than waking a worker for it.
 const ENTITY_SCAN_BATCH: usize = 512;
+/// The fewest entities a rayon job takes when the tick plans entity islands. A reach report
+/// costs a few microseconds, so a few dozen of them still cost less than waking a worker.
+const ENTITY_REACH_BATCH: usize = 64;
 /// Shards of the maps the tick walks every tick. A walk locks every shard, and with dashmap's
 /// default of four shards per CPU that costs more than the entries on many-core machines.
 const TICK_SCANNED_MAP_SHARDS: usize = 32;
@@ -1903,6 +1906,7 @@ impl World {
         self.contact_sections.store(Some(Arc::default()));
         let mut reports: Vec<_> = tickable
             .par_iter()
+            .with_min_len(ENTITY_REACH_BATCH)
             .map(|(entity, _)| entity_islands::EntityReach::of(entity.as_ref(), config))
             .collect();
         let end = reports
