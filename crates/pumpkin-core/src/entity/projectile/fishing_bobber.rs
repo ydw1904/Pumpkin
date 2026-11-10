@@ -7,7 +7,7 @@ use crate::entity::experience_orb::ExperienceOrbEntity;
 use crate::entity::item::ItemEntity;
 use crate::entity::projectile::owner::ProjectileOwner;
 use crate::entity::projectile::{
-    calculate_ray_intersection, compute_margin, entity_hit_result, is_projectile,
+    calculate_ray_intersection, can_be_hit_by_projectile, compute_margin, entity_hit_result,
 };
 use crate::entity::projectile_deflection::redirect_projectile;
 use crate::entity::util::RandomExt;
@@ -544,18 +544,13 @@ impl FishingBobberEntity {
             .into_iter()
             .filter(|cand| {
                 let candidate = cand.get_entity();
-                // Vanilla `Projectile.canHitEntity`: not the hook, not a spectator, pickable (no
-                // XP orbs, clouds or projectiles other than redirectable ones), alive, and not the
-                // owner's vehicle chain until the hook has left it.
-                !(candidate.entity_id == self.entity.entity_id
-                    || cand.is_spectator()
-                    || *candidate.entity_type == EntityType::EXPERIENCE_ORB
-                    || *candidate.entity_type == EntityType::AREA_EFFECT_CLOUD
-                    || (is_projectile(candidate.entity_type) && !cand.can_hit())
-                    || (!left_owner && root_vehicle_uuid(cand.as_ref()) == owner_root)
-                    || cand
-                        .get_living_entity()
-                        .is_some_and(|living| living.health.load() <= 0.0))
+                // Vanilla `FishingHook.canHitEntity`: `Projectile.canHitEntity` (alive and
+                // pickable, not the owner's vehicle chain until the hook has left it) or a live
+                // item entity.
+                candidate.entity_id != self.entity.entity_id
+                    && ((can_be_hit_by_projectile(cand.as_ref())
+                        && (left_owner || root_vehicle_uuid(cand.as_ref()) != owner_root))
+                        || (candidate.is_alive() && *candidate.entity_type == EntityType::ITEM))
             });
         let to = start_pos + *velocity * closest_t;
         let hooked = entity_hit_result(candidates, start_pos, to, compute_margin(&self.entity));
@@ -870,8 +865,9 @@ mod tests {
     ///
     /// `World::players` is `Vec<Arc<Player>>`, and the test harness has no way to build a
     /// `Player` (`Player::new` needs a live server and connection stack), so the tests below
-    /// stand in with player-type `Entity` values. `get_all_at_box` queries players the same
-    /// way; the real list is covered by the in-game check.
+    /// stand in with player-type `Entity` values, wrapped in a `LivingEntity` where the hook has
+    /// to pick them. `get_all_at_box` queries players the same way; the real list is covered by
+    /// the in-game check.
     fn test_world() -> Arc<World> {
         let path = tempfile::tempdir().expect("temp dir").keep();
         let level = into_level(Dimension::OVERWORLD, &LevelConfig::default(), path, 0);
@@ -991,17 +987,17 @@ mod tests {
     #[tokio::test]
     async fn hook_does_not_target_the_owner_at_spawn() {
         let world = test_world();
-        let owner = Arc::new(Entity::new(
+        let owner = Arc::new(LivingEntity::new(Entity::new(
             world.clone(),
             Vector3::new(0.0, 64.0, 0.0),
             &EntityType::PLAYER,
-        ));
+        )));
         world
             .entities
             .store(Arc::new(vec![owner.clone() as Arc<dyn EntityBase>]));
 
         // The hook leaves the eye 0.3 blocks in front and is thrown back over the owner.
-        let bobber = bobber_for(&world, Vector3::new(0.0, 65.62, -0.3), &owner);
+        let bobber = bobber_for(&world, Vector3::new(0.0, 65.62, -0.3), &owner.entity);
         let mut velocity = Vector3::new(0.0, 0.0, 0.6);
         bobber.update_left_owner(&world, owner.as_ref(), velocity);
         assert!(
@@ -1027,11 +1023,11 @@ mod tests {
             Vector3::new(0.0, 64.0, -4.0),
             &EntityType::PLAYER,
         ));
-        let other = Arc::new(Entity::new(
+        let other = Arc::new(LivingEntity::new(Entity::new(
             world.clone(),
             Vector3::new(0.0, 64.0, 1.0),
             &EntityType::PLAYER,
-        ));
+        )));
         world.entities.store(Arc::new(vec![
             owner.clone() as Arc<dyn EntityBase>,
             other.clone() as Arc<dyn EntityBase>,
@@ -1046,7 +1042,10 @@ mod tests {
             bobber.entity.pos.load(),
             &mut velocity,
         );
-        assert_eq!(bobber.state.load(), HookState::HookedIn(other.entity_id));
+        assert_eq!(
+            bobber.state.load(),
+            HookState::HookedIn(other.entity.entity_id)
+        );
     }
 
     /// `process_tick` stores this velocity on the hook before its move, so hooking has to clear
@@ -1059,11 +1058,11 @@ mod tests {
             Vector3::new(0.0, 64.0, -4.0),
             &EntityType::PLAYER,
         ));
-        let hooked = Arc::new(Entity::new(
+        let hooked = Arc::new(LivingEntity::new(Entity::new(
             world.clone(),
             Vector3::new(0.0, 64.0, 1.0),
             &EntityType::PLAYER,
-        ));
+        )));
         world.entities.store(Arc::new(vec![
             owner.clone() as Arc<dyn EntityBase>,
             hooked.clone() as Arc<dyn EntityBase>,
@@ -1078,7 +1077,10 @@ mod tests {
             bobber.entity.pos.load(),
             &mut velocity,
         );
-        assert_eq!(bobber.state.load(), HookState::HookedIn(hooked.entity_id));
+        assert_eq!(
+            bobber.state.load(),
+            HookState::HookedIn(hooked.entity.entity_id)
+        );
 
         bobber.entity.velocity.store(velocity);
         bobber.entity.move_entity(&bobber, velocity);

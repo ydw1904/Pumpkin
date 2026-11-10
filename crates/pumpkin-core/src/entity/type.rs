@@ -308,7 +308,6 @@ pub fn from_type(
             let thrown = ThrownItemEntity {
                 entity,
                 owner: ProjectileOwner::none(),
-                collides_with_projectiles: false,
                 has_hit: AtomicBool::new(false),
                 last_deflected_by: crate::entity::projectile_deflection::LastDeflectedBy::new(),
                 gravity: WIND_CHARGE_GRAVITY,
@@ -319,7 +318,6 @@ pub fn from_type(
             let thrown = ThrownItemEntity {
                 entity,
                 owner: ProjectileOwner::none(),
-                collides_with_projectiles: false,
                 has_hit: AtomicBool::new(false),
                 last_deflected_by: crate::entity::projectile_deflection::LastDeflectedBy::new(),
                 gravity: WIND_CHARGE_GRAVITY,

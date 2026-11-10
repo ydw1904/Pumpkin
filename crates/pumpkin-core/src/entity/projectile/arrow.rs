@@ -7,8 +7,8 @@ use std::sync::RwLock;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 
 use crate::entity::projectile::{
-    ProjectileHit, arrow_rest_position, calculate_ray_intersection, compute_margin, hit_candidates,
-    is_projectile, many_entity_hit_results,
+    ProjectileHit, arrow_rest_position, calculate_ray_intersection, can_be_hit_by_projectile,
+    compute_margin, hit_candidates, many_entity_hit_results,
 };
 use crate::{
     entity::{Entity, EntityBase, living::LivingEntity, player::Player},
@@ -1139,27 +1139,7 @@ impl ArrowEntity {
             return true;
         }
 
-        // Skip dead entities
-        if !other_ent.is_alive() {
-            return true;
-        }
-
-        // Skip other arrows, item entities, falling block entities, and area effect clouds
-        if (other_ent.entity_type == &pumpkin_data::entity::EntityType::ARROW
-            || other_ent.entity_type == &pumpkin_data::entity::EntityType::SPECTRAL_ARROW)
-            || other_ent.entity_type == &pumpkin_data::entity::EntityType::ITEM
-            || other_ent.entity_type == &pumpkin_data::entity::EntityType::FALLING_BLOCK
-            || other_ent.entity_type == &pumpkin_data::entity::EntityType::AREA_EFFECT_CLOUD
-        {
-            return true;
-        }
-
-        // Vanilla only picks redirectable projectiles.
-        if is_projectile(other_ent.entity_type) && !other.can_hit() {
-            return true;
-        }
-
-        false
+        !can_be_hit_by_projectile(other.as_ref())
     }
 }
 

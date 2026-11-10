@@ -1,6 +1,6 @@
 use crate::entity::projectile::owner::{EntityReference, ProjectileOwner};
 use crate::entity::projectile::{
-    ProjectileHit, compute_margin, entity_hit_result, hit_candidates, is_pickable,
+    ProjectileHit, can_be_hit_by_projectile, compute_margin, entity_hit_result, hit_candidates,
     rotate_towards_movement,
 };
 use crate::entity::projectile_deflection::{
@@ -282,9 +282,7 @@ impl ShulkerBulletEntity {
     fn can_hit_entity(&self, world: &World, other: &dyn EntityBase) -> bool {
         let other_entity = other.get_entity();
         other_entity.entity_id != self.entity.entity_id
-            && other_entity.is_alive()
-            && !other.is_spectator()
-            && is_pickable(other)
+            && can_be_hit_by_projectile(other)
             && self.owner.can_hit(world, other_entity)
             && !other_entity.no_physics.load(Ordering::Relaxed)
     }

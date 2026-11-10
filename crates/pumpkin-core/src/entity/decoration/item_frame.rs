@@ -387,6 +387,11 @@ impl EntityBase for ItemFrameEntity {
         None
     }
 
+    /// Vanilla `BlockAttachedEntity.isPickable`.
+    fn can_hit(&self) -> bool {
+        true
+    }
+
     fn init_data_tracker(&self) {
         let item_serializer = ItemStackSerializer::from(
             self.item_stack

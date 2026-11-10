@@ -111,6 +111,10 @@ impl EntityBase for EndCrystalEntity {
         None
     }
 
+    fn can_hit(&self) -> bool {
+        true
+    }
+
     /// Vanilla `EndCrystal.hurtServer`: any hit but the dragon's destroys the crystal, which
     /// explodes unless an explosion destroyed it.
     fn damage_with_context(

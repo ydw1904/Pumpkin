@@ -52,16 +52,36 @@ pub(crate) fn hit_candidates(world: &World, area: &BoundingBox) -> Vec<Arc<dyn E
     candidates
 }
 
-/// Vanilla `Entity.isPickable` as far as Pumpkin models it: living entities other than marker
-/// armor stands, and entities that override [`EntityBase::can_hit`].
-pub(crate) fn is_pickable(entity: &dyn EntityBase) -> bool {
+/// Vanilla `Entity.isPickable`: living entities that aren't removed, spectators or marker armor
+/// stands, and other entities that override [`EntityBase::can_hit`].
+fn is_pickable(entity: &dyn EntityBase) -> bool {
     if entity.get_living_entity().is_none() {
         return entity.can_hit();
     }
-    !entity
-        .cast_any()
-        .downcast_ref::<crate::entity::decoration::armor_stand::ArmorStandEntity>()
-        .is_some_and(crate::entity::decoration::armor_stand::ArmorStandEntity::is_marker)
+    !entity.get_entity().is_removed()
+        && !entity.is_spectator()
+        && !entity
+            .cast_any()
+            .downcast_ref::<crate::entity::decoration::armor_stand::ArmorStandEntity>()
+            .is_some_and(crate::entity::decoration::armor_stand::ArmorStandEntity::is_marker)
+}
+
+/// Vanilla `Entity.canBeHitByProjectile`: alive and pickable. Interactions are pickable but
+/// never hit by projectiles.
+pub(crate) fn can_be_hit_by_projectile(entity: &dyn EntityBase) -> bool {
+    let alive = entity
+        .get_living_entity()
+        .map_or_else(|| entity.get_entity().is_alive(), LivingEntity::is_alive);
+    alive && *entity.get_entity().entity_type != EntityType::INTERACTION && is_pickable(entity)
+}
+
+/// Vanilla `AbstractHurtingProjectile`: fireballs, wither skulls and wind charges.
+fn is_hurting_projectile(entity_type: &EntityType) -> bool {
+    entity_type == &EntityType::FIREBALL
+        || entity_type == &EntityType::SMALL_FIREBALL
+        || entity_type == &EntityType::DRAGON_FIREBALL
+        || entity_type == &EntityType::WITHER_SKULL
+        || is_wind_charge(entity_type)
 }
 
 /// Vanilla `AbstractArrow`: arrows, spectral arrows and tridents.
@@ -75,26 +95,6 @@ pub fn is_abstract_arrow(entity_type: &EntityType) -> bool {
 /// Vanilla `AbstractWindCharge`: wind charges and breeze wind charges.
 fn is_wind_charge(entity_type: &EntityType) -> bool {
     entity_type == &EntityType::WIND_CHARGE || entity_type == &EntityType::BREEZE_WIND_CHARGE
-}
-
-#[must_use]
-pub fn is_projectile(entity_type: &EntityType) -> bool {
-    *entity_type == EntityType::ARROW
-        || *entity_type == EntityType::TRIDENT
-        || *entity_type == EntityType::EGG
-        || *entity_type == EntityType::EXPERIENCE_BOTTLE
-        || *entity_type == EntityType::SNOWBALL
-        || *entity_type == EntityType::FIREWORK_ROCKET
-        || *entity_type == EntityType::WIND_CHARGE
-        || *entity_type == EntityType::SPLASH_POTION
-        || *entity_type == EntityType::LINGERING_POTION
-        || *entity_type == EntityType::ENDER_PEARL
-        || *entity_type == EntityType::SHULKER_BULLET
-        || *entity_type == EntityType::FIREBALL
-        || *entity_type == EntityType::SMALL_FIREBALL
-        || *entity_type == EntityType::FISHING_BOBBER
-        || *entity_type == EntityType::WITHER_SKULL
-        || *entity_type == EntityType::LLAMA_SPIT
 }
 
 /// Helper to apply projectile spawned enchantment effects matching vanilla `Projectile::applyOnProjectileSpawned`.
@@ -166,7 +166,6 @@ impl AccelerationPower {
 pub struct ThrownItemEntity {
     pub entity: Entity,
     pub owner: owner::ProjectileOwner,
-    pub collides_with_projectiles: bool,
     pub has_hit: AtomicBool,
     pub last_deflected_by: LastDeflectedBy,
     pub gravity: f64,
@@ -180,7 +179,6 @@ impl ThrownItemEntity {
         Self {
             entity,
             owner: owner::ProjectileOwner::new(Some(owner)),
-            collides_with_projectiles: false,
             has_hit: AtomicBool::new(false),
             last_deflected_by: LastDeflectedBy::new(),
             gravity,
@@ -441,20 +439,14 @@ impl ThrownItemEntity {
             return true;
         }
 
-        // Not pickable in vanilla: projectiles pass through these
-        // TODO: replace with `!can_hit()` once Player, TNT, falling blocks, end crystals, item
-        // frames, shulker bullets and redirectable projectiles override it like vanilla `isPickable`
-        if *other_ent.entity_type == EntityType::AREA_EFFECT_CLOUD
-            || *other_ent.entity_type == EntityType::EXPERIENCE_ORB
-            || *other_ent.entity_type == EntityType::ITEM
-        {
+        if !can_be_hit_by_projectile(other.as_ref()) {
             return true;
         }
 
-        // Projectile vs projectile logic: vanilla only picks redirectable projectiles.
-        if !self.collides_with_projectiles
-            && is_projectile(other_ent.entity_type)
-            && !other.can_hit()
+        // Vanilla `AbstractHurtingProjectile.canHitEntity`: entities without physics, like
+        // vexes, are passed through.
+        if is_hurting_projectile(self_ent.entity_type)
+            && other_ent.no_physics.load(Ordering::Relaxed)
         {
             return true;
         }

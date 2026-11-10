@@ -453,6 +453,11 @@ impl EntityBase for FallingEntity {
         false
     }
 
+    /// Vanilla `FallingBlockEntity.isPickable`.
+    fn can_hit(&self) -> bool {
+        !self.entity.is_removed()
+    }
+
     fn get_gravity(&self) -> f64 {
         0.04
     }

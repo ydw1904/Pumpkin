@@ -289,21 +289,7 @@ impl TridentEntity {
             return true;
         }
 
-        // Skip other projectiles and item entities
-        if other_ent.entity_type == &pumpkin_data::entity::EntityType::ARROW
-            || other_ent.entity_type == &pumpkin_data::entity::EntityType::TRIDENT
-            || other_ent.entity_type == &pumpkin_data::entity::EntityType::ITEM
-            || other_ent.entity_type == &pumpkin_data::entity::EntityType::FALLING_BLOCK
-        {
-            return true;
-        }
-
-        // Vanilla only picks redirectable projectiles.
-        if super::is_projectile(other_ent.entity_type) && !other.can_hit() {
-            return true;
-        }
-
-        false
+        !super::can_be_hit_by_projectile(other.as_ref())
     }
 }
 
