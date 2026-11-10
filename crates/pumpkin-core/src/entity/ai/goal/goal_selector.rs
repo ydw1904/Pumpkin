@@ -5,15 +5,10 @@ use std::any::TypeId;
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, TryLockError};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum BorrowKind {
-    Callback,
-    Reach,
-}
-
 struct GoalSlot {
     value: Option<PrioritizedGoal>,
-    borrowed: Option<BorrowKind>,
+    /// A gameplay callback has taken the goal out.
+    borrowed: bool,
     /// Threads waiting for the goal to come back. A notify is a syscall even without waiters,
     /// and goals are returned several times per mob tick.
     waiters: usize,
@@ -42,7 +37,7 @@ impl Drop for BorrowedGoal<'_> {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         slot.value = self.value.take();
-        slot.borrowed = None;
+        slot.borrowed = false;
         if slot.waiters > 0 {
             self.entry.available.notify_all();
         }
@@ -64,29 +59,19 @@ impl RegisteredGoal {
         self.registered.load(Relaxed) && self.running.load(Relaxed)
     }
 
-    fn borrow(&self, kind: BorrowKind) -> Option<BorrowedGoal<'_>> {
-        let mut slot = if kind == BorrowKind::Reach {
-            match self.goal.try_lock() {
-                Ok(slot) => slot,
-                Err(TryLockError::Poisoned(error)) => error.into_inner(),
-                Err(TryLockError::WouldBlock) => return None,
-            }
-        } else {
-            self.goal
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-        };
-        while slot.borrowed.is_some() {
-            if kind == BorrowKind::Reach {
-                return None;
-            }
+    fn borrow(&self) -> Option<BorrowedGoal<'_>> {
+        let mut slot = self
+            .goal
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        while slot.borrowed {
             slot = self.wait_available(slot);
         }
         if !self.registered.load(Relaxed) {
             return None;
         }
         let value = slot.value.take()?;
-        slot.borrowed = Some(kind);
+        slot.borrowed = true;
         Some(BorrowedGoal {
             entry: self,
             value: Some(value),
@@ -98,16 +83,10 @@ impl RegisteredGoal {
             .goal
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        loop {
-            match slot.borrowed {
-                // The gameplay callback completes its own stop after returning.
-                Some(BorrowKind::Callback) => return,
-                // Reporting must not invoke gameplay callbacks, including stop.
-                Some(BorrowKind::Reach) => {
-                    slot = self.wait_available(slot);
-                }
-                None => break,
-            }
+        // The gameplay callback completes its own stop after returning. A goal that is
+        // reporting its reach holds this lock, so its stop waits for the report.
+        if slot.borrowed {
+            return;
         }
         let retired = slot.value.take();
         drop(slot);
@@ -156,7 +135,7 @@ impl GoalSelector {
             controls: AtomicCell::new(goal.controls()),
             goal: Mutex::new(GoalSlot {
                 value: Some(goal),
-                borrowed: None,
+                borrowed: false,
                 waiters: 0,
             }),
             available: Condvar::new(),
@@ -231,10 +210,20 @@ impl GoalSelector {
             if !entry.registered.load(Relaxed) || !(full || entry.running.load(Relaxed)) {
                 continue;
             }
-            let borrowed = entry.borrow(BorrowKind::Reach)?;
-            let goal = borrowed.value.as_ref()?;
+            // The slot stays locked while the goal reports, which is cheaper than taking the
+            // goal out and putting it back. A callback or retirement waits like it would for a
+            // borrowed goal.
+            let slot = match entry.goal.try_lock() {
+                Ok(slot) => slot,
+                Err(TryLockError::Poisoned(error)) => error.into_inner(),
+                Err(TryLockError::WouldBlock) => return None,
+            };
+            if slot.borrowed || !entry.registered.load(Relaxed) {
+                return None;
+            }
+            let goal = slot.value.as_ref()?;
             let report = goal.tick_reach(mob, goal.running);
-            drop(borrowed);
+            drop(slot);
             if !entry.registered.load(Relaxed) {
                 return None;
             }
@@ -258,7 +247,7 @@ impl GoalSelector {
         running: Option<bool>,
         callback: impl FnOnce(&mut PrioritizedGoal) -> R,
     ) -> Option<R> {
-        let Some(mut borrowed) = entry.borrow(BorrowKind::Callback) else {
+        let Some(mut borrowed) = entry.borrow() else {
             if !entry.registered.load(Relaxed) {
                 entry.finish_retirement(mob);
             }
@@ -798,9 +787,7 @@ mod tests {
             mob.0.add_goal(0, count_goal(counts.clone()));
             mob.0.server_ai_step(&mob, &mob);
             let entry = GoalSelector::lock(&mob.0.goals_selector).goals[0].clone();
-            let borrowed = entry
-                .borrow(BorrowKind::Callback)
-                .ok_or("goal was not available")?;
+            let borrowed = entry.borrow().ok_or("goal was not available")?;
             // Retire while the payload is borrowed, as when clear races callback entry.
             mob.0.clear_ai_goals(&mob);
             drop(borrowed);
