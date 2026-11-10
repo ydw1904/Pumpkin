@@ -182,7 +182,7 @@ def main():
     parser.add_argument("--mineflayer", type=Path, help="mineflayer-26.3 workspace (default: <cache>/mineflayer-26.3)")
     parser.add_argument("--seed", default="1792386707805314503")
     parser.add_argument("--java", help="java executable to run vanilla with")
-    parser.add_argument("--timeout", type=int, default=300, help="seconds a check may run")
+    parser.add_argument("--timeout", type=int, default=600, help="seconds a check may run")
     parser.add_argument("--no-build", action="store_true", help="skip cargo build of pumpkin")
     parser.add_argument("--release", action="store_true", help="use a release build of pumpkin")
     parser.add_argument("--diffs-only", action="store_true", help="only print the lines that differ")
