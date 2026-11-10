@@ -2173,6 +2173,7 @@ impl World {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .should_plan(tickable.len());
+        let t_run = std::time::Instant::now();
         if plan_islands {
             let mut largest_island = None;
             let mut start = 0;
@@ -2240,9 +2241,13 @@ impl World {
             self.island_schedule
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .record_plan(largest_island.unwrap_or(tickable.len()));
+                .record_plan(largest_island.unwrap_or(tickable.len()), t_run.elapsed());
         } else {
             tick_in_order(0..tickable.len());
+            self.island_schedule
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .record_serial(t_run.elapsed());
         }
         self.order_tick_spawns();
         // Vanilla `tickPassenger`: after a root vehicle ticked, `rideTick` has each vehicle's

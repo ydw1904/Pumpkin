@@ -4,6 +4,7 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::Relaxed};
+use std::time::Duration;
 
 use rayon::prelude::*;
 
@@ -108,6 +109,8 @@ const PARALLEL_SHARE_DIVISOR: usize = 4;
 /// A serial preference also ends once the entity count moves this share away from the count
 /// it was planned with. Spawns and despawns change the count almost every tick in a busy area.
 const RECOUNT_SHARE_DIVISOR: usize = 8;
+/// A new tick time makes up one part in this many of the averaged serial or planned tick cost.
+const COST_SMOOTHING: u32 = 4;
 
 /// A dominant island leaves too little parallel work to pay for planning.
 pub(super) const fn worth_parallel(largest_island: usize, entity_count: usize) -> bool {
@@ -145,6 +148,11 @@ pub(super) struct Schedule {
     entity_count: usize,
     planned_count: usize,
     ticks_until_probe: u8,
+    /// Parallel ticks since the serial cost was last measured.
+    parallel_ticks: u8,
+    /// Entity tick time per entity of recent serial and planned ticks.
+    serial_cost: Option<Duration>,
+    planned_cost: Option<Duration>,
 }
 
 impl Schedule {
@@ -164,17 +172,57 @@ impl Schedule {
         true
     }
 
-    pub(super) const fn record_plan(&mut self, largest_island: usize) -> bool {
+    /// Records a tick that planned islands and took `elapsed` for its entities, and returns
+    /// whether the next ticks should plan too.
+    ///
+    /// Planning and waking pool threads can cost more than the parallel ticking saves, as with
+    /// few or tiny islands, or on a large pool of idle cores. So a planned tick also loses to a
+    /// serial tick that was cheaper per entity, measured at least every
+    /// [`SERIAL_PROBE_INTERVAL`] parallel ticks. Both ways tick the same, so the choice only
+    /// changes how long the tick takes.
+    pub(super) fn record_plan(&mut self, largest_island: usize, elapsed: Duration) -> bool {
         self.planned_count = self.entity_count;
-        let parallel = worth_parallel(largest_island, self.entity_count);
-        // Only the serial preference is cached; parallel ticks always use a fresh plan.
-        self.ticks_until_probe = if parallel {
-            0
-        } else {
+        let cost = average(self.planned_cost, per_entity(elapsed, self.entity_count));
+        self.planned_cost = Some(cost);
+        let parallel = worth_parallel(largest_island, self.entity_count)
+            && self.serial_cost.is_none_or(|serial| cost <= serial);
+        // Only the serial preference is cached; parallel ticks always use a fresh plan, apart
+        // from a serial tick now and then to keep the comparison current.
+        self.ticks_until_probe = if !parallel {
             SERIAL_PROBE_INTERVAL - 1
+        } else if self.serial_cost.is_none() || self.parallel_ticks + 1 >= SERIAL_PROBE_INTERVAL {
+            self.parallel_ticks = 0;
+            1
+        } else {
+            self.parallel_ticks += 1;
+            0
         };
         parallel
     }
+
+    /// Records a tick of at least [`MIN_PARALLEL_ENTITIES`] entities that ran in list order
+    /// without planning and took `elapsed` for its entities.
+    pub(super) fn record_serial(&mut self, elapsed: Duration) {
+        if self.entity_count < MIN_PARALLEL_ENTITIES {
+            return;
+        }
+        self.serial_cost = Some(average(
+            self.serial_cost,
+            per_entity(elapsed, self.entity_count),
+        ));
+    }
+}
+
+fn per_entity(elapsed: Duration, entity_count: usize) -> Duration {
+    elapsed / u32::try_from(entity_count.max(1)).unwrap_or(u32::MAX)
+}
+
+/// Keeps most of the earlier costs, so one slow tick, like one that finds a path or waits on a
+/// descheduled worker, doesn't decide on its own.
+fn average(previous: Option<Duration>, cost: Duration) -> Duration {
+    previous.map_or(cost, |previous| {
+        (previous * (COST_SMOOTHING - 1) + cost) / COST_SMOOTHING
+    })
 }
 
 /// A plugin listens to an event an entity tick can fire.
@@ -1924,27 +1972,57 @@ mod tests {
 
     #[test]
     fn serial_schedule_retries_after_twenty_ticks_or_a_large_count_change() {
+        let cost = Duration::from_micros(64);
         let mut schedule = Schedule::default();
         assert!(!schedule.should_plan(1));
         assert!(schedule.should_plan(64));
-        assert!(!schedule.record_plan(64));
+        assert!(!schedule.record_plan(64, cost));
         // Small spawns and despawns keep the serial preference.
         for tick in 0..19 {
             assert!(!schedule.should_plan(64 + tick % 9));
         }
         assert!(schedule.should_plan(64));
-        assert!(!schedule.record_plan(48));
+        assert!(!schedule.record_plan(48, cost));
         assert!(!schedule.should_plan(56));
         assert!(schedule.should_plan(73));
-        assert!(schedule.record_plan(49));
+        assert!(schedule.record_plan(49, cost));
+        // The first parallel tick is followed by a serial one to compare with.
+        assert!(!schedule.should_plan(73));
+        schedule.record_serial(Duration::from_micros(2 * 73));
         // Parallel ticks always plan.
         assert!(schedule.should_plan(73));
+        assert!(schedule.record_plan(49, cost));
         assert!(schedule.should_plan(70));
-        assert!(!schedule.record_plan(70));
+        assert!(!schedule.record_plan(70, cost));
         assert!(!schedule.should_plan(1));
         assert!(schedule.should_plan(65));
-        assert!(schedule.record_plan(48));
+        assert!(schedule.record_plan(48, cost));
         assert!(schedule.should_plan(65));
+    }
+
+    #[test]
+    fn planned_ticks_slower_than_serial_ones_cache_the_serial_preference() {
+        let planned = Duration::from_micros(800);
+        let mut schedule = Schedule::default();
+        assert!(schedule.should_plan(40));
+        assert!(schedule.record_plan(8, planned));
+        assert!(!schedule.should_plan(40));
+        schedule.record_serial(Duration::from_micros(600));
+        assert!(schedule.should_plan(40));
+        assert!(!schedule.record_plan(8, planned));
+        for _ in 0..19 {
+            assert!(!schedule.should_plan(40));
+            schedule.record_serial(Duration::from_micros(1200));
+        }
+        // Serial ticks got slower, so planning wins again.
+        assert!(schedule.should_plan(40));
+        assert!(schedule.record_plan(8, planned));
+        // Twenty parallel ticks in a row measure a serial one again.
+        for _ in 0..19 {
+            assert!(schedule.should_plan(40));
+            assert!(schedule.record_plan(8, planned));
+        }
+        assert!(!schedule.should_plan(40));
     }
 
     #[expect(
