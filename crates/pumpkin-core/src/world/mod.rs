@@ -307,7 +307,7 @@ pub struct World {
     pub(crate) game_event_listeners: ArcSwapOption<Vec<(i32, BoundingBox)>>,
     /// Whether each chunk section holds a block that changes on contact, while island planning
     /// runs.
-    pub(crate) contact_sections: ArcSwapOption<dashmap::DashMap<(i32, i32, i32), bool>>,
+    pub(crate) contact_sections: ArcSwapOption<entity_islands::ContactSections>,
     /// Lookup-only entities (e.g. multipart-mob hitboxes): findable by id, never ticked or saved.
     pub lookup_only_entities: ArcSwap<Vec<Arc<dyn EntityBase>>>,
     /// The server's scoreboard, which every dimension shares like vanilla.

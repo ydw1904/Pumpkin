@@ -410,6 +410,7 @@ impl AuditedReach {
         let (min, max) = (area.min_block_pos().0, area.max_block_pos().0);
         let bottom = get_section_cord(world.get_bottom_y());
         let top = get_section_cord(world.get_top_y());
+        let sections = world.contact_sections.load();
         for x in get_section_cord(min.x)..=get_section_cord(max.x) {
             for z in get_section_cord(min.z)..=get_section_cord(max.z) {
                 // Teleports never land in unloaded chunks.
@@ -421,7 +422,7 @@ impl AuditedReach {
                     continue;
                 }
                 for y in get_section_cord(min.y).max(bottom)..=get_section_cord(max.y).min(top) {
-                    if !contact_section_may_change_blocks(world, x, y, z) {
+                    if !contact_section_may_change_blocks(world, sections.as_deref(), x, y, z) {
                         continue;
                     }
                     self.changes_blocks = true;
@@ -458,12 +459,13 @@ impl AuditedReach {
             return;
         }
         let (min, max) = (area.min_block_pos().0, area.max_block_pos().0);
+        let sections = world.contact_sections.load();
         for x in get_section_cord(min.x)..=get_section_cord(max.x) {
             for z in get_section_cord(min.z)..=get_section_cord(max.z) {
                 for y in get_section_cord(min.y.max(world.get_bottom_y()))
                     ..=get_section_cord(max.y.min(world.get_top_y()))
                 {
-                    if !contact_section_may_change_blocks(world, x, y, z) {
+                    if !contact_section_may_change_blocks(world, sections.as_deref(), x, y, z) {
                         continue;
                     }
                     let start = Vector3::new(x, y, z) * CHUNK_WIDTH as i32;
@@ -908,10 +910,15 @@ fn contact_may_change_blocks(
     for x in min[0]..=max[0] {
         for z in min[2]..=max[2] {
             for y in min[1]..=max[1] {
-                if *sections
-                    .entry((x, y, z))
-                    .or_insert_with(|| contact_section_may_change_blocks(world, x, y, z))
-                {
+                if *sections.entry((x, y, z)).or_insert_with(|| {
+                    contact_section_may_change_blocks(
+                        world,
+                        world.contact_sections.load().as_deref(),
+                        x,
+                        y,
+                        z,
+                    )
+                }) {
                     return true;
                 }
             }
@@ -920,9 +927,21 @@ fn contact_may_change_blocks(
     false
 }
 
-fn contact_section_may_change_blocks(world: &World, x: i32, y: i32, z: i32) -> bool {
+/// Whether each chunk section holds a block that changes on contact, shared by one planning's
+/// reports.
+pub(crate) type ContactSections =
+    dashmap::DashMap<(i32, i32, i32), bool, rustc_hash::FxBuildHasher>;
+
+/// `sections` is [`World::contact_sections`], loaded once by the caller.
+fn contact_section_may_change_blocks(
+    world: &World,
+    sections: Option<&ContactSections>,
+    x: i32,
+    y: i32,
+    z: i32,
+) -> bool {
     // Island planning checks each section once for all reports.
-    if let Some(sections) = world.contact_sections.load().as_ref() {
+    if let Some(sections) = sections {
         if let Some(changes) = sections.get(&(x, y, z)) {
             return *changes;
         }

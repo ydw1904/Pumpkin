@@ -1897,6 +1897,14 @@ pub(crate) fn game_event_listener_links(
     moved: &BoundingBox,
     links: &mut Vec<i32>,
 ) {
+    // Island planning lists the listeners once instead of searching around every entity.
+    let listeners = world.game_event_listeners.load();
+    if listeners
+        .as_ref()
+        .is_some_and(|listeners| listeners.is_empty())
+    {
+        return;
+    }
     let emitted: &[GameEvent] = if emits_movement_events {
         &[
             GameEvent::Splash,
@@ -1917,8 +1925,7 @@ pub(crate) fn game_event_listener_links(
         notified_area(moved.min, radius).min,
         notified_area(moved.max, radius).max,
     );
-    // Island planning lists the listeners once instead of searching around every entity.
-    if let Some(listeners) = world.game_event_listeners.load().as_ref() {
+    if let Some(listeners) = listeners.as_ref() {
         links.extend(
             listeners
                 .iter()
@@ -2039,7 +2046,9 @@ impl MobEntity {
             velocity.x.hypot(velocity.z) + goals.impulse + acceleration + fluid_push + spawns;
         let vertical = velocity.y.abs()
             + goals.impulse
-            + living.get_jump_velocity(1.0)
+            // `get_jump_velocity` without effects, whose block factor is at most 1. Skipping
+            // its two block reads keeps the bound.
+            + living.get_attribute_value(&Attributes::JUMP_STRENGTH)
             + living.get_attribute_value(&Attributes::GRAVITY)
             + SURFACE_UPWARD_ACCELERATION
             + fluid_push
