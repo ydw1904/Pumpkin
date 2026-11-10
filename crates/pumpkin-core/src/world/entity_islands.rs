@@ -730,24 +730,25 @@ impl HurtReach {
 /// `knockback_reach` within reach of an unaudited entity or the hits of an earlier audited one.
 /// Returns `None` when the tick needs serial execution or planning exceeds its budget.
 #[must_use]
-pub fn resolve(reports: Vec<EntityReach>, config: &EntityIslandsConfig) -> Option<Vec<TickReach>> {
-    resolve_bounded(reports, config, usize::MAX)
+pub fn resolve(reports: &[EntityReach], config: &EntityIslandsConfig) -> Option<Vec<TickReach>> {
+    let reports: Vec<_> = reports.iter().collect();
+    resolve_bounded(&reports, config, usize::MAX)
 }
 
 /// [`resolve`], but also `None` when an audited entity counts more than `max_pushers`.
 fn resolve_bounded(
-    reports: Vec<EntityReach>,
+    reports: &[&EntityReach],
     config: &EntityIslandsConfig,
     max_pushers: usize,
 ) -> Option<Vec<TickReach>> {
-    if reports.iter().any(EntityReach::is_global) {
+    if reports.iter().any(|report| report.is_global()) {
         return None;
     }
     let mut budget = PlanningBudget::default();
     budget.spend(reports.len())?;
     let mut pushers = Grid::default();
     let mut threats = Grid::default();
-    for report in &reports {
+    for report in reports {
         if let EntityReach::Conservative(reach) = report {
             pushers.insert(pushers.boxes.len(), reach.body, &mut budget)?;
             threats.insert(threats.boxes.len(), reach.entities, &mut budget)?;
@@ -757,7 +758,7 @@ fn resolve_bounded(
     let mut reaches = Vec::with_capacity(reports.len());
     for report in reports {
         match report {
-            EntityReach::Conservative(reach) => reaches.push(reach),
+            EntityReach::Conservative(reach) => reaches.push(reach.clone()),
             EntityReach::Audited(audited) => {
                 let mut count = 0;
                 pushers.for_each_overlapping(
@@ -770,7 +771,7 @@ fn resolve_bounded(
                     return None;
                 }
                 let pushes = PUSH_SPEED * count as f64;
-                let probe = grown_body(&audited, pushes + config.knockback_reach.max(PUSH_SLACK));
+                let probe = grown_body(audited, pushes + config.knockback_reach.max(PUSH_SLACK));
                 let mut threatened = false;
                 threats
                     .for_each_overlapping(&mut query, &probe, &mut budget, |_| threatened = true)?;
@@ -1032,23 +1033,23 @@ impl FinishedAreas {
     }
 }
 
-fn finish(audited: AuditedReach, extra: f64) -> TickReach {
-    let areas = FinishedAreas::of(&audited, extra);
+fn finish(audited: &AuditedReach, extra: f64) -> TickReach {
+    let areas = FinishedAreas::of(audited, extra);
     TickReach {
         body: areas.body,
         entities: areas.entities,
         players: areas.players,
         typed_entities: audited
             .typed_entities
-            .into_iter()
-            .map(|(distance, target)| (areas.around(distance), target))
+            .iter()
+            .map(|&(distance, target)| (areas.around(distance), target))
             .collect(),
         kind: audited.kind,
         block_reads: areas.block_reads,
         block_writes: areas.block_writes,
         global: audited.global,
-        links: audited.links,
-        sight: audited.sight,
+        links: audited.links.clone(),
+        sight: audited.sight.clone(),
         spans_contacts: audited.spans_contacts,
     }
 }
@@ -1104,7 +1105,7 @@ pub type IslandMap = FxHashMap<i32, usize>;
 pub(crate) fn plan(
     world: &World,
     ids: &[i32],
-    reports: Vec<EntityReach>,
+    reports: &[EntityReach],
     checks: &[BlockWriteCheck],
     stand_ins: &[(i32, TickReach)],
     idle_entities: &[IdleEntity],
@@ -1138,7 +1139,7 @@ pub(crate) fn plan(
 fn plan_with_stand_ins(
     world: &World,
     ids: &[i32],
-    reports: Vec<EntityReach>,
+    reports: &[EntityReach],
     checks: &[BlockWriteCheck],
     stand_ins: &[(i32, TickReach)],
     idle_entities: &[IdleEntity],
@@ -1152,7 +1153,7 @@ fn plan_with_stand_ins(
         PUSH_SPEED * MAX_GROUPED_PUSHERS as f64 + config.knockback_reach.max(PUSH_SLACK);
     let bounds: Vec<_> = ids
         .iter()
-        .zip(&reports)
+        .zip(reports)
         .map(|(id, report)| {
             let bounds = match report {
                 EntityReach::Conservative(reach) => total_bounds(reach),
@@ -1181,13 +1182,13 @@ fn plan_with_stand_ins(
         .par_iter()
         .map(|group| {
             // Stand-ins follow the ticking nodes in the group, like in the whole tick.
-            let group_reports = group
+            let group_reports: Vec<_> = group
                 .nodes
                 .iter()
                 .filter(|&&slot| slot < ticking)
-                .map(|&slot| reports[slot].clone())
+                .map(|&slot| &reports[slot])
                 .collect();
-            let mut reaches = resolve_bounded(group_reports, config, MAX_GROUPED_PUSHERS)?;
+            let mut reaches = resolve_bounded(&group_reports, config, MAX_GROUPED_PUSHERS)?;
             reaches.extend(
                 group
                     .nodes
@@ -2292,7 +2293,7 @@ mod tests {
             nbt.put_short("fuse", fuse);
             nbt.put_float("explosion_power", 128.0);
             tnt.read_custom_nbt(&nbt);
-            let reaches = resolve(vec![EntityReach::of(&tnt, &config)], &config);
+            let reaches = resolve(&[EntityReach::of(&tnt, &config)], &config);
             if fuse <= 1 {
                 assert!(reaches.is_none());
                 continue;
@@ -2327,7 +2328,7 @@ mod tests {
             bear.get_entity()
                 .velocity
                 .store(Vector3::new(speed, 0.0, 0.0));
-            let reaches = resolve(vec![EntityReach::of(bear.as_ref(), &config)], &config)
+            let reaches = resolve(&[EntityReach::of(bear.as_ref(), &config)], &config)
                 .ok_or("unexpected serial fallback")?;
             let nodes = [
                 (bear.get_entity().entity_id, reaches[0].clone()),
@@ -2455,7 +2456,7 @@ mod tests {
         creeper
             .current_fuse_time
             .store(creeper.get_fuse() - 1, std::sync::atomic::Ordering::Relaxed);
-        assert!(resolve(vec![EntityReach::of(creeper.as_ref(), &config)], &config).is_none());
+        assert!(resolve(&[EntityReach::of(creeper.as_ref(), &config)], &config).is_none());
         world.level.shutdown().await;
         Ok(())
     }
@@ -2506,15 +2507,15 @@ mod tests {
             conservative @ EntityReach::Conservative(_) => conservative,
         };
         let still = finish(
-            match audited(1.5) {
+            &match audited(1.5) {
                 EntityReach::Audited(reach) => reach,
                 EntityReach::Conservative(_) => return Err("fixture is audited"),
             },
             0.0,
         );
-        let before = resolve(vec![audited(1.5), attacker()], &config).ok_or("serial")?;
+        let before = resolve(&[audited(1.5), attacker()], &config).ok_or("serial")?;
         assert_box(&before[0].body, &still.body);
-        let after = resolve(vec![attacker(), audited(1.5)], &config).ok_or("serial")?;
+        let after = resolve(&[attacker(), audited(1.5)], &config).ok_or("serial")?;
         assert_box(
             &after[1].body,
             &still.body.expand(
@@ -2571,7 +2572,7 @@ mod tests {
             assert!(reach.global);
             assert!(
                 resolve(
-                    vec![EntityReach::Audited(reach.clone())],
+                    &[EntityReach::Audited(reach.clone())],
                     &EntityIslandsConfig::default()
                 )
                 .is_none()
@@ -2601,10 +2602,10 @@ mod tests {
             .living_entity
             .set_attribute_base(&Attributes::FOLLOW_RANGE, 1000.0);
         let config = EntityIslandsConfig::default();
-        let reports = (0..256)
+        let reports: Vec<_> = (0..256)
             .map(|_| EntityReach::of(zombie.as_ref(), &config))
             .collect();
-        assert!(resolve(reports, &config).is_none());
+        assert!(resolve(&reports, &config).is_none());
         assert_eq!(
             zombie
                 .get_mob_entity()
@@ -2711,19 +2712,10 @@ mod tests {
         for reports in [pushed, crowded] {
             let ids: Vec<i32> = (0..reports.len() as i32).collect();
             let checks = vec![BlockWriteCheck::Unconditional; reports.len()];
-            let mut grouped = plan(
-                &world,
-                &ids,
-                reports.clone(),
-                &checks,
-                &[],
-                &[],
-                &[],
-                &config,
-            )
-            .ok_or("grouped planning refused")?
-            .islands;
-            let mut reaches = resolve(reports, &config).ok_or("resolve refused")?;
+            let mut grouped = plan(&world, &ids, &reports, &checks, &[], &[], &[], &config)
+                .ok_or("grouped planning refused")?
+                .islands;
+            let mut reaches = resolve(&reports, &config).ok_or("resolve refused")?;
             prune_block_writes(&world, &mut reaches, &checks).ok_or("pruning refused")?;
             let nodes: Vec<_> = ids.iter().copied().zip(reaches).collect();
             let whole = Group {
@@ -2744,11 +2736,11 @@ mod tests {
 
     #[test]
     fn only_earlier_pushers_grow_current_turn() -> Result<(), &'static str> {
-        let alone = resolve(vec![audited(0.0)], &EntityIslandsConfig::default())
+        let alone = resolve(&[audited(0.0)], &EntityIslandsConfig::default())
             .ok_or("unexpected serial fallback")?;
         assert_box(&alone[0].body, &cube(0.0, 1.0).expand(0.25, 0.5, 0.25));
         let crowded = resolve(
-            vec![audited(0.0), audited(0.0), audited(0.0)],
+            &[audited(0.0), audited(0.0), audited(0.0)],
             &EntityIslandsConfig::default(),
         )
         .ok_or("unexpected serial fallback")?;
@@ -2764,7 +2756,7 @@ mod tests {
         let zombie =
             EntityReach::Conservative(TickReach::conservative(&cube(10.0, 1.0), 10.0, Vec::new()));
         let reaches = resolve(
-            vec![audited(0.0), zombie, audited(40.0)],
+            &[audited(0.0), zombie, audited(40.0)],
             &EntityIslandsConfig::default(),
         )
         .ok_or("unexpected serial fallback")?;
@@ -2894,7 +2886,7 @@ mod tests {
                        idle: &[IdleEntity]|
          -> Result<Vec<Vec<usize>>, &'static str> {
             let ids: Vec<_> = ticking.iter().map(|(id, _)| *id).collect();
-            let reports = ticking
+            let reports: Vec<_> = ticking
                 .iter()
                 .map(|(_, reach)| EntityReach::Conservative(reach.clone()))
                 .collect();
@@ -2902,7 +2894,7 @@ mod tests {
             let mut islands = plan(
                 &world,
                 &ids,
-                reports,
+                &reports,
                 &checks,
                 stand_ins,
                 idle,
@@ -2973,7 +2965,7 @@ mod tests {
             let report = EntityReach::of(&cart, &config);
             assert!(matches!(report, EntityReach::Audited(_)));
             let checks = [report.block_write_check(), BlockWriteCheck::Unconditional];
-            let mut reaches = resolve(vec![report], &config).ok_or("unexpected serial fallback")?;
+            let mut reaches = resolve(&[report], &config).ok_or("unexpected serial fallback")?;
             reaches.push(reader.clone());
             prune_block_writes(&world, &mut reaches, &checks)
                 .ok_or("unexpected pruning budget exhaustion")?;

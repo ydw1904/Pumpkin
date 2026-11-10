@@ -1920,7 +1920,7 @@ impl World {
             .unwrap_or(reports.len());
         reports.truncate(end);
         let islands = (end >= entity_islands::MIN_PARALLEL_ENTITIES)
-            .then(|| self.plan_islands(&tickable[..end], reports, players, config))
+            .then(|| self.plan_islands(&tickable[..end], &reports, players, config))
             .flatten();
         self.game_event_listeners.store(None);
         self.contact_sections.store(None);
@@ -1930,7 +1930,7 @@ impl World {
     fn plan_islands(
         &self,
         run: &[(&Arc<dyn EntityBase>, Vector2<i32>)],
-        reports: Vec<entity_islands::EntityReach>,
+        reports: &[entity_islands::EntityReach],
         players: &[Arc<Player>],
         config: &pumpkin_config::world::EntityIslandsConfig,
     ) -> Option<entity_islands::Islands> {
