@@ -1524,6 +1524,9 @@ fn union_block_conflicts(
     }
     let mut query = Query::new(sets.len());
     for (slot, writes) in writers {
+        if sets.nodes_joined() {
+            break;
+        }
         block_grid.union_overlapping(sets, &mut query, slot, &writes, budget)?;
     }
     Some(())
@@ -1562,7 +1565,10 @@ fn partition_group(
     budget.spend(group.idle_entities.len())?;
     budget.spend(players.len())?;
 
-    let mut sets = DisjointSets::new(group.nodes.len() + group.idle_entities.len() + players.len());
+    let mut sets = DisjointSets::with_nodes(
+        group.nodes.len() + group.idle_entities.len() + players.len(),
+        group.nodes.len(),
+    );
     let mut slots: FxHashMap<i32, usize> = FxHashMap::default();
     let bodies = (0..group.nodes.len())
         .map(|slot| (node(slot).0, node(slot).1.body, node(slot).1.kind))
@@ -1587,6 +1593,9 @@ fn partition_group(
 
     let mut query = Query::new(sets.len());
     for slot in 0..group.nodes.len() {
+        if sets.nodes_joined() {
+            break;
+        }
         let reach = &node(slot).1;
         entity_grid.union_overlapping(&mut sets, &mut query, slot, &reach.entities, &mut budget)?;
         union_typed(
@@ -1614,7 +1623,7 @@ fn partition_group(
     let writers: Vec<_> = (0..group.nodes.len())
         .filter_map(|slot| node(slot).1.block_writes.map(|writes| (slot, writes)))
         .collect();
-    if !writers.is_empty() {
+    if !writers.is_empty() && !sets.nodes_joined() {
         let reaches: Vec<_> = (0..group.nodes.len()).map(node).collect();
         let bodies = Bodies {
             grid: &entity_grid,
@@ -1942,13 +1951,29 @@ impl Query {
 
 struct DisjointSets {
     parent: Vec<usize>,
+    /// The first `nodes` indices are ticking nodes.
+    nodes: usize,
+    /// Sets holding a node. A root is the lowest index of its set, so these are the roots
+    /// below `nodes`.
+    node_sets: usize,
 }
 
 impl DisjointSets {
     fn new(len: usize) -> Self {
+        Self::with_nodes(len, 0)
+    }
+
+    fn with_nodes(len: usize, nodes: usize) -> Self {
         Self {
             parent: (0..len).collect(),
+            nodes,
+            node_sets: nodes,
         }
+    }
+
+    /// Every node is in one set, so further unions can't change the islands.
+    const fn nodes_joined(&self) -> bool {
+        self.node_sets <= 1
     }
 
     const fn len(&self) -> usize {
@@ -1974,6 +1999,9 @@ impl DisjointSets {
         if a != b {
             // Keep the lower index as root so it does not depend on union order.
             self.parent[a.max(b)] = a.min(b);
+            if a.max(b) < self.nodes {
+                self.node_sets -= 1;
+            }
         }
     }
 }
