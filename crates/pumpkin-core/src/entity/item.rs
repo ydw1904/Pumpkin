@@ -491,7 +491,7 @@ impl ItemEntity {
                 velo.y += 5.0e-4;
             }
         } else {
-            velo.y -= <Self as EntityBase>::get_gravity(self);
+            velo.y -= self.get_gravity_unless_disabled();
         }
 
         velo

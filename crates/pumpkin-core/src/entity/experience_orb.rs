@@ -412,7 +412,7 @@ impl EntityBase for ExperienceOrbEntity {
                 velo.z * f64::from(0.99f32),
             );
         } else if !colliding {
-            velo.y -= self.get_gravity();
+            velo.y -= self.get_gravity_unless_disabled();
         }
         if world
             .get_fluid(&entity.block_pos.load())
@@ -462,7 +462,7 @@ impl EntityBase for ExperienceOrbEntity {
             friction *= block.slipperiness;
         }
         let mut velocity = entity.velocity.load() * f64::from(friction);
-        if on_ground && velo.y < -self.get_gravity() {
+        if on_ground && velo.y < -self.get_gravity_unless_disabled() {
             velocity.y = -velo.y * 0.4;
         }
         entity.velocity.store(velocity);

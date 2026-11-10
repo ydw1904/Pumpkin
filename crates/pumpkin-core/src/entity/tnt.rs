@@ -130,7 +130,7 @@ impl EntityBase for TNTEntity {
         let entity = &self.entity;
 
         let mut velo = entity.velocity.load();
-        velo.y -= self.get_gravity();
+        velo.y -= self.get_gravity_unless_disabled();
         entity.velocity.store(velo);
 
         entity.move_entity(caller, velo);

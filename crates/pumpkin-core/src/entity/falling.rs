@@ -336,7 +336,7 @@ impl EntityBase for FallingEntity {
         }
         let time = self.time.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
         let mut velo = entity.velocity.load();
-        velo.y -= self.get_gravity();
+        velo.y -= self.get_gravity_unless_disabled();
 
         entity.velocity.store(velo);
 

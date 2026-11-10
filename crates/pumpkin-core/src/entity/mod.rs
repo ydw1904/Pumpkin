@@ -554,8 +554,18 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         false
     }
 
+    /// Vanilla `Entity.getDefaultGravity`.
     fn get_gravity(&self) -> f64 {
         0.0
+    }
+
+    /// Vanilla `Entity.getGravity`: [`Self::get_gravity`], or none with the `NoGravity` flag.
+    fn get_gravity_unless_disabled(&self) -> f64 {
+        if self.get_entity().has_no_gravity() {
+            0.0
+        } else {
+            self.get_gravity()
+        }
     }
 
     /// Extra metadata to accompany this entity when spawned for Bedrock clients (e.g. falling block variant, TNT fuse).
