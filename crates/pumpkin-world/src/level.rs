@@ -1056,7 +1056,7 @@ impl Level {
         })
     }
 
-    pub fn read_chunk_sync<R, F: Fn(&SyncChunk) -> R>(
+    pub fn read_chunk_sync<R, F: FnOnce(&SyncChunk) -> R>(
         &self,
         coordinates: &Vector2<i32>,
         f: F,

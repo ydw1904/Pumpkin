@@ -3357,9 +3357,16 @@ impl Entity {
 
         let mut suffocating = false;
         let world = self.world.load();
+        // Read up front until a collision callback runs, as it may change the blocks after it.
+        let mut read_ahead = true;
 
-        for pos in BlockPos::iterate(min, max) {
-            let (block, state) = world.get_block_and_state(&pos);
+        for (pos, id) in BlockPos::iterate(min, max).zip(world.get_block_state_ids_in(min, max)) {
+            let id = if read_ahead {
+                id
+            } else {
+                world.get_block_state_id(&pos)
+            };
+            let (block, state) = BlockState::from_id_with_block(id);
             if state.is_air() {
                 continue;
             }
@@ -3391,6 +3398,7 @@ impl Entity {
                     self.is_in_powder_snow.store(true, Relaxed);
                 }
                 if let Some(server_arc) = world.server.upgrade() {
+                    read_ahead = false;
                     world.block_registry.on_entity_collision(
                         block,
                         &world,
@@ -3485,13 +3493,19 @@ impl Entity {
         let max = bounding_box.max_block_pos();
 
         let world = self.world.load();
+        let ids = world.get_block_state_ids_in(min, max);
+        let size_x = (max.0.x - min.0.x + 1) as usize;
+        let size_y = (max.0.y - min.0.y + 1) as usize;
 
         for x in min.0.x..=max.0.x {
             for y in min.0.y..=max.0.y {
                 for z in min.0.z..=max.0.z {
                     let pos = BlockPos::new(x, y, z);
 
-                    let (fluid, state) = world.get_fluid_and_fluid_state(&pos);
+                    // `ids` is in `BlockPos::iterate` order: x, then y, then z.
+                    let index = ((z - min.0.z) as usize * size_y + (y - min.0.y) as usize) * size_x
+                        + (x - min.0.x) as usize;
+                    let (fluid, state) = World::fluid_state_from_block_state(ids[index]);
 
                     if fluid.id != Fluid::EMPTY.id {
                         let surface_y =

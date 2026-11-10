@@ -167,6 +167,7 @@ use pumpkin_util::{
     Difficulty,
     math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3},
 };
+use pumpkin_world::chunk::CHUNK_WIDTH;
 use pumpkin_world::world::{GetBlockError, WorldPortalExt};
 use pumpkin_world::world_info::OVERWORLD_CLOCK;
 use pumpkin_world::{
@@ -3122,7 +3123,7 @@ impl World {
 
         let min = BlockPos::floored_v(bounding_box.min.add_raw(0.0, -0.50001, 0.0));
         let max = bounding_box.max_block_pos();
-        let pos_iter = BlockPos::iterate(min, max);
+        let states = BlockPos::iterate(min, max).zip(self.get_block_state_ids_in(min, max));
 
         let mut push_shapes = |pos: BlockPos, shapes: &mut dyn Iterator<Item = BoundingBox>| {
             let mut collided = false;
@@ -3138,8 +3139,8 @@ impl World {
             }
         };
 
-        for pos in pos_iter {
-            let state = self.get_block_state(&pos);
+        for (pos, id) in states {
+            let state = BlockState::from_id(id);
 
             if state.is_air() {
                 continue;
@@ -7642,7 +7643,7 @@ impl World {
         }
     }
 
-    fn fluid_state_from_block_state(id: BlockStateId) -> (&'static Fluid, FluidState) {
+    pub(crate) fn fluid_state_from_block_state(id: BlockStateId) -> (&'static Fluid, FluidState) {
         let fluid = Self::get_fluid_from_state_id(id);
         let source = if fluid.matches_type(&Fluid::WATER) {
             &Fluid::WATER
@@ -7744,6 +7745,63 @@ impl World {
     pub fn get_block_state_id(&self, position: &BlockPos) -> BlockStateId {
         self.get_block_state_id_if_loaded(position)
             .unwrap_or(Block::AIR.default_state.id)
+    }
+
+    /// [`Self::get_block_state_id`] of every position in the box, in [`BlockPos::iterate`]
+    /// order. Each chunk is looked up and locked once instead of once per block, which matters
+    /// when entities in parallel islands read the same chunk.
+    #[must_use]
+    pub fn get_block_state_ids_in(&self, a: BlockPos, b: BlockPos) -> Vec<BlockStateId> {
+        let min = Vector3::new(a.0.x.min(b.0.x), a.0.y.min(b.0.y), a.0.z.min(b.0.z));
+        let max = Vector3::new(a.0.x.max(b.0.x), a.0.y.max(b.0.y), a.0.z.max(b.0.z));
+        if !Self::is_valid_horizontally(BlockPos(min))
+            || !Self::is_valid_horizontally(BlockPos(max))
+        {
+            return BlockPos::iterate(a, b)
+                .map(|pos| self.get_block_state_id(&pos))
+                .collect();
+        }
+        let size_x = (max.x - min.x + 1) as usize;
+        let size_y = (max.y - min.y + 1) as usize;
+        let size_z = (max.z - min.z + 1) as usize;
+        let mut ids = vec![Block::AIR.default_state.id; size_x * size_y * size_z];
+        let (bottom, top) = (min.y.max(self.get_bottom_y()), max.y.min(self.get_top_y()));
+        let chunk_width = CHUNK_WIDTH as i32;
+        for chunk_z in get_section_cord(min.z)..=get_section_cord(max.z) {
+            for chunk_x in get_section_cord(min.x)..=get_section_cord(max.x) {
+                self.level
+                    .read_chunk_sync(&Vector2::new(chunk_x, chunk_z), |chunk| {
+                        let sections = chunk
+                            .section
+                            .block_sections
+                            .read()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
+                        let (start_x, start_z) = (chunk_x * chunk_width, chunk_z * chunk_width);
+                        for z in min.z.max(start_z)..=max.z.min(start_z + chunk_width - 1) {
+                            for y in bottom..=top {
+                                // `ChunkSections::get_block_absolute_y`.
+                                let Ok(relative_y) = usize::try_from(y - chunk.section.min_y)
+                                else {
+                                    continue;
+                                };
+                                let Some(section) = sections.get(relative_y / CHUNK_WIDTH) else {
+                                    continue;
+                                };
+                                let row =
+                                    ((z - min.z) as usize * size_y + (y - min.y) as usize) * size_x;
+                                for x in min.x.max(start_x)..=max.x.min(start_x + chunk_width - 1) {
+                                    ids[row + (x - min.x) as usize] = section.get(
+                                        (x - start_x) as usize,
+                                        relative_y % CHUNK_WIDTH,
+                                        (z - start_z) as usize,
+                                    );
+                                }
+                            }
+                        }
+                    });
+            }
+        }
+        ids
     }
 
     /// Gets the `BlockState` from the block registry. Returns Air if the block state was not found.
