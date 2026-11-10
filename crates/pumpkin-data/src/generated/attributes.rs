@@ -6,6 +6,7 @@ pub struct Attributes {
     pub default_value: f64,
     pub min_value: f64,
     pub max_value: f64,
+    pub client_syncable: bool,
     pub name: &'static str,
 }
 impl PartialEq for Attributes {
@@ -25,6 +26,7 @@ impl Attributes {
         default_value: 1f64,
         min_value: 0f64,
         max_value: 2048f64,
+        client_syncable: true,
         name: "minecraft:air_drag_modifier",
     };
     pub const ARMOR: Self = Self {
@@ -32,6 +34,7 @@ impl Attributes {
         default_value: 0f64,
         min_value: 0f64,
         max_value: 30f64,
+        client_syncable: true,
         name: "minecraft:armor",
     };
     pub const ARMOR_TOUGHNESS: Self = Self {
@@ -39,6 +42,7 @@ impl Attributes {
         default_value: 0f64,
         min_value: 0f64,
         max_value: 20f64,
+        client_syncable: true,
         name: "minecraft:armor_toughness",
     };
     pub const ATTACK_DAMAGE: Self = Self {
@@ -46,6 +50,7 @@ impl Attributes {
         default_value: 2f64,
         min_value: 0f64,
         max_value: 2048f64,
+        client_syncable: false,
         name: "minecraft:attack_damage",
     };
     pub const ATTACK_KNOCKBACK: Self = Self {
@@ -53,6 +58,7 @@ impl Attributes {
         default_value: 0f64,
         min_value: 0f64,
         max_value: 5f64,
+        client_syncable: false,
         name: "minecraft:attack_knockback",
     };
     pub const ATTACK_SPEED: Self = Self {
@@ -60,6 +66,7 @@ impl Attributes {
         default_value: 4f64,
         min_value: 0f64,
         max_value: 1024f64,
+        client_syncable: true,
         name: "minecraft:attack_speed",
     };
     pub const BELOW_NAME_DISTANCE: Self = Self {
@@ -67,6 +74,7 @@ impl Attributes {
         default_value: 10f64,
         min_value: 0f64,
         max_value: 512f64,
+        client_syncable: true,
         name: "minecraft:below_name_distance",
     };
     pub const BLOCK_BREAK_SPEED: Self = Self {
@@ -74,6 +82,7 @@ impl Attributes {
         default_value: 1f64,
         min_value: 0f64,
         max_value: 1024f64,
+        client_syncable: true,
         name: "minecraft:block_break_speed",
     };
     pub const BLOCK_INTERACTION_RANGE: Self = Self {
@@ -81,6 +90,7 @@ impl Attributes {
         default_value: 4.5f64,
         min_value: 0f64,
         max_value: 64f64,
+        client_syncable: true,
         name: "minecraft:block_interaction_range",
     };
     pub const BOUNCINESS: Self = Self {
@@ -88,6 +98,7 @@ impl Attributes {
         default_value: 0f64,
         min_value: 0f64,
         max_value: 1f64,
+        client_syncable: true,
         name: "minecraft:bounciness",
     };
     pub const BURNING_TIME: Self = Self {
@@ -95,6 +106,7 @@ impl Attributes {
         default_value: 1f64,
         min_value: 0f64,
         max_value: 1024f64,
+        client_syncable: true,
         name: "minecraft:burning_time",
     };
     pub const CAMERA_DISTANCE: Self = Self {
@@ -102,6 +114,7 @@ impl Attributes {
         default_value: 4f64,
         min_value: 0f64,
         max_value: 32f64,
+        client_syncable: true,
         name: "minecraft:camera_distance",
     };
     pub const EXPLOSION_KNOCKBACK_RESISTANCE: Self = Self {
@@ -109,6 +122,7 @@ impl Attributes {
         default_value: 0f64,
         min_value: 0f64,
         max_value: 1f64,
+        client_syncable: true,
         name: "minecraft:explosion_knockback_resistance",
     };
     pub const ENTITY_INTERACTION_RANGE: Self = Self {
@@ -116,6 +130,7 @@ impl Attributes {
         default_value: 3f64,
         min_value: 0f64,
         max_value: 64f64,
+        client_syncable: true,
         name: "minecraft:entity_interaction_range",
     };
     pub const FALL_DAMAGE_MULTIPLIER: Self = Self {
@@ -123,6 +138,7 @@ impl Attributes {
         default_value: 1f64,
         min_value: 0f64,
         max_value: 100f64,
+        client_syncable: true,
         name: "minecraft:fall_damage_multiplier",
     };
     pub const FLYING_SPEED: Self = Self {
@@ -130,6 +146,7 @@ impl Attributes {
         default_value: 0.4f64,
         min_value: 0f64,
         max_value: 1024f64,
+        client_syncable: true,
         name: "minecraft:flying_speed",
     };
     pub const FOLLOW_RANGE: Self = Self {
@@ -137,6 +154,7 @@ impl Attributes {
         default_value: 32f64,
         min_value: 0f64,
         max_value: 2048f64,
+        client_syncable: false,
         name: "minecraft:follow_range",
     };
     pub const FRICTION_MODIFIER: Self = Self {
@@ -144,6 +162,7 @@ impl Attributes {
         default_value: 1f64,
         min_value: 0f64,
         max_value: 2048f64,
+        client_syncable: true,
         name: "minecraft:friction_modifier",
     };
     pub const GRAVITY: Self = Self {
@@ -151,6 +170,7 @@ impl Attributes {
         default_value: 0.08f64,
         min_value: -1f64,
         max_value: 1f64,
+        client_syncable: true,
         name: "minecraft:gravity",
     };
     pub const JUMP_STRENGTH: Self = Self {
@@ -158,6 +178,7 @@ impl Attributes {
         default_value: 0.41999998688697815f64,
         min_value: 0f64,
         max_value: 32f64,
+        client_syncable: true,
         name: "minecraft:jump_strength",
     };
     pub const KNOCKBACK_RESISTANCE: Self = Self {
@@ -165,6 +186,7 @@ impl Attributes {
         default_value: 0f64,
         min_value: -2f64,
         max_value: 1f64,
+        client_syncable: false,
         name: "minecraft:knockback_resistance",
     };
     pub const LUCK: Self = Self {
@@ -172,6 +194,7 @@ impl Attributes {
         default_value: 0f64,
         min_value: -1024f64,
         max_value: 1024f64,
+        client_syncable: true,
         name: "minecraft:luck",
     };
     pub const MAX_ABSORPTION: Self = Self {
@@ -179,6 +202,7 @@ impl Attributes {
         default_value: 0f64,
         min_value: 0f64,
         max_value: 2048f64,
+        client_syncable: true,
         name: "minecraft:max_absorption",
     };
     pub const MAX_HEALTH: Self = Self {
@@ -186,6 +210,7 @@ impl Attributes {
         default_value: 20f64,
         min_value: 1f64,
         max_value: 1024f64,
+        client_syncable: true,
         name: "minecraft:max_health",
     };
     pub const MINING_EFFICIENCY: Self = Self {
@@ -193,6 +218,7 @@ impl Attributes {
         default_value: 0f64,
         min_value: 0f64,
         max_value: 1024f64,
+        client_syncable: true,
         name: "minecraft:mining_efficiency",
     };
     pub const MOVEMENT_EFFICIENCY: Self = Self {
@@ -200,6 +226,7 @@ impl Attributes {
         default_value: 0f64,
         min_value: 0f64,
         max_value: 1f64,
+        client_syncable: true,
         name: "minecraft:movement_efficiency",
     };
     pub const MOVEMENT_SPEED: Self = Self {
@@ -207,6 +234,7 @@ impl Attributes {
         default_value: 0.7f64,
         min_value: 0f64,
         max_value: 1024f64,
+        client_syncable: true,
         name: "minecraft:movement_speed",
     };
     pub const NAME_TAG_DISTANCE: Self = Self {
@@ -214,6 +242,7 @@ impl Attributes {
         default_value: 64f64,
         min_value: 0f64,
         max_value: 512f64,
+        client_syncable: true,
         name: "minecraft:name_tag_distance",
     };
     pub const OXYGEN_BONUS: Self = Self {
@@ -221,6 +250,7 @@ impl Attributes {
         default_value: 0f64,
         min_value: 0f64,
         max_value: 1024f64,
+        client_syncable: true,
         name: "minecraft:oxygen_bonus",
     };
     pub const SAFE_FALL_DISTANCE: Self = Self {
@@ -228,6 +258,7 @@ impl Attributes {
         default_value: 3f64,
         min_value: -1024f64,
         max_value: 1024f64,
+        client_syncable: true,
         name: "minecraft:safe_fall_distance",
     };
     pub const SCALE: Self = Self {
@@ -235,6 +266,7 @@ impl Attributes {
         default_value: 1f64,
         min_value: 0.0625f64,
         max_value: 16f64,
+        client_syncable: true,
         name: "minecraft:scale",
     };
     pub const SNEAKING_SPEED: Self = Self {
@@ -242,6 +274,7 @@ impl Attributes {
         default_value: 0.3f64,
         min_value: 0f64,
         max_value: 1f64,
+        client_syncable: true,
         name: "minecraft:sneaking_speed",
     };
     pub const SPAWN_REINFORCEMENTS: Self = Self {
@@ -249,6 +282,7 @@ impl Attributes {
         default_value: 0f64,
         min_value: 0f64,
         max_value: 1f64,
+        client_syncable: false,
         name: "minecraft:spawn_reinforcements",
     };
     pub const STEP_HEIGHT: Self = Self {
@@ -256,6 +290,7 @@ impl Attributes {
         default_value: 0.6f64,
         min_value: 0f64,
         max_value: 10f64,
+        client_syncable: true,
         name: "minecraft:step_height",
     };
     pub const SUBMERGED_MINING_SPEED: Self = Self {
@@ -263,6 +298,7 @@ impl Attributes {
         default_value: 0.2f64,
         min_value: 0f64,
         max_value: 20f64,
+        client_syncable: true,
         name: "minecraft:submerged_mining_speed",
     };
     pub const SWEEPING_DAMAGE_RATIO: Self = Self {
@@ -270,6 +306,7 @@ impl Attributes {
         default_value: 0f64,
         min_value: 0f64,
         max_value: 1f64,
+        client_syncable: true,
         name: "minecraft:sweeping_damage_ratio",
     };
     pub const TEMPT_RANGE: Self = Self {
@@ -277,6 +314,7 @@ impl Attributes {
         default_value: 10f64,
         min_value: 0f64,
         max_value: 2048f64,
+        client_syncable: false,
         name: "minecraft:tempt_range",
     };
     pub const WATER_MOVEMENT_EFFICIENCY: Self = Self {
@@ -284,6 +322,7 @@ impl Attributes {
         default_value: 0f64,
         min_value: 0f64,
         max_value: 1f64,
+        client_syncable: true,
         name: "minecraft:water_movement_efficiency",
     };
     pub const WAYPOINT_TRANSMIT_RANGE: Self = Self {
@@ -291,6 +330,7 @@ impl Attributes {
         default_value: 0f64,
         min_value: 0f64,
         max_value: 60000000f64,
+        client_syncable: false,
         name: "minecraft:waypoint_transmit_range",
     };
     pub const WAYPOINT_RECEIVE_RANGE: Self = Self {
@@ -298,6 +338,7 @@ impl Attributes {
         default_value: 0f64,
         min_value: 0f64,
         max_value: 60000000f64,
+        client_syncable: false,
         name: "minecraft:waypoint_receive_range",
     };
     pub const ALL: &'static [Self] = &[
@@ -342,4 +383,12 @@ impl Attributes {
         Self::WAYPOINT_TRANSMIT_RANGE,
         Self::WAYPOINT_RECEIVE_RANGE,
     ];
+    #[must_use]
+    pub const fn sanitize_value(&self, value: f64) -> f64 {
+        if value.is_nan() {
+            self.min_value
+        } else {
+            value.clamp(self.min_value, self.max_value)
+        }
+    }
 }

@@ -1511,8 +1511,9 @@ impl LivingEntity {
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         map.get(&attribute.id)
-            .map_or(attribute.default_value, AttributeInstance::value)
-            .clamp(attribute.min_value, attribute.max_value)
+            .map_or(attribute.default_value, |instance| {
+                instance.sanitized_value(attribute)
+            })
     }
 
     #[must_use]
