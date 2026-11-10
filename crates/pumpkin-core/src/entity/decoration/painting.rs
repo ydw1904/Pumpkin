@@ -226,8 +226,8 @@ impl PaintingEntity {
                 .is_some_and(Player::is_creative)
         });
 
-        if !is_creative {
-            world.drop_stack(&entity.block_pos.load(), ItemStack::new(1, &Item::PAINTING));
+        if !is_creative && world.level_info.load().game_rules.entity_drops {
+            entity.spawn_at_location(ItemStack::new(1, &Item::PAINTING));
         }
 
         entity.remove();
@@ -316,14 +316,32 @@ impl EntityBase for PaintingEntity {
 
     fn damage_with_context(
         &self,
-        caller: &dyn EntityBase,
+        _caller: &dyn EntityBase,
         _amount: f32,
-        _damage_type: DamageType,
+        damage_type: DamageType,
         _position: Option<Vector3<f64>>,
         _source: Option<&dyn EntityBase>,
-        _cause: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
     ) -> bool {
-        self.drop_and_remove(Some(caller));
+        // Vanilla `BlockAttachedEntity.hurtServer`: drops are decided by the attacker, not by
+        // the projectile that hit.
+        if self.entity.is_invulnerable_to(&damage_type, cause) {
+            return false;
+        }
+        let mob_griefing = self
+            .entity
+            .world
+            .load()
+            .level_info
+            .load()
+            .game_rules
+            .mob_griefing;
+        if !mob_griefing && cause.is_some_and(|cause| cause.get_mob().is_some()) {
+            return false;
+        }
+        if !self.entity.is_removed() {
+            self.drop_and_remove(cause);
+        }
         true
     }
 

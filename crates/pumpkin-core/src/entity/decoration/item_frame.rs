@@ -297,21 +297,28 @@ impl ItemFrameEntity {
                 .is_some_and(Player::is_creative)
         });
 
-        if is_creative_player {
+        let entity_drops = self
+            .entity
+            .world
+            .load()
+            .level_info
+            .load()
+            .game_rules
+            .entity_drops;
+        if is_creative_player || !entity_drops {
             return;
         }
 
-        let world = self.entity.world.load();
-        let pos = self.entity.block_pos.load();
-
+        // Vanilla `spawnAtLocation`: at the frame, not scattered in its block.
         if with_frame {
-            world.drop_stack(&pos, self.get_frame_item_stack_with_data());
+            self.entity
+                .spawn_at_location(self.get_frame_item_stack_with_data());
         }
 
         if !item_stack.is_empty() {
             let drop_chance = self.item_drop_chance.load();
             if game_random().random::<f32>() < drop_chance {
-                world.drop_stack(&pos, item_stack);
+                self.entity.spawn_at_location(item_stack);
             }
         }
     }
@@ -442,11 +449,11 @@ impl EntityBase for ItemFrameEntity {
         _amount: f32,
         damage_type: DamageType,
         _position: Option<Vector3<f64>>,
-        source: Option<&dyn EntityBase>,
-        _cause: Option<&dyn EntityBase>,
+        _source: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
     ) -> bool {
         let fixed = self.is_fixed();
-        let is_creative_player = source.is_some_and(|s| {
+        let is_creative_player = cause.is_some_and(|s| {
             s.cast_any()
                 .downcast_ref::<Player>()
                 .is_some_and(Player::is_creative)
@@ -458,9 +465,12 @@ impl EntityBase for ItemFrameEntity {
             if !bypasses_invuln && !is_creative_player {
                 return false;
             }
-            self.drop_item(source, true);
+            self.drop_item(cause, true);
             self.entity.remove();
             return true;
+        }
+        if self.entity.is_invulnerable_to(&damage_type, cause) {
+            return false;
         }
 
         let has_item = !self.get_item().is_empty();
@@ -468,10 +478,10 @@ impl EntityBase for ItemFrameEntity {
             damage_type == DamageType::EXPLOSION || damage_type == DamageType::PLAYER_EXPLOSION;
 
         if !is_explosion && has_item {
-            self.drop_item(source, false);
+            self.drop_item(cause, false);
             self.entity.play_sound(self.get_remove_item_sound());
         } else {
-            self.drop_item(source, true);
+            self.drop_item(cause, true);
             self.entity.play_sound(self.get_break_sound());
             self.entity.remove();
         }
