@@ -84,7 +84,6 @@ pub struct ArrowEntity {
     pub is_critical: AtomicBool,
     pub no_physics: AtomicBool,
     pub pierce_level: AtomicU8,
-    pub punch_level: AtomicU8,
     pub is_flame: AtomicBool,
     pub in_ground: AtomicBool,
     pub in_ground_time: AtomicU32,
@@ -142,7 +141,6 @@ impl ArrowEntity {
             is_critical: AtomicBool::new(false),
             no_physics: AtomicBool::new(false),
             pierce_level: AtomicU8::new(0),
-            punch_level: AtomicU8::new(0),
             is_flame: AtomicBool::new(false),
             in_ground: AtomicBool::new(false),
             in_ground_time: AtomicU32::new(0),
@@ -185,7 +183,6 @@ impl ArrowEntity {
             is_critical: AtomicBool::new(false),
             no_physics: AtomicBool::new(false),
             pierce_level: AtomicU8::new(0),
-            punch_level: AtomicU8::new(0),
             is_flame: AtomicBool::new(false),
             in_ground: AtomicBool::new(false),
             in_ground_time: AtomicU32::new(0),
@@ -487,6 +484,11 @@ impl EntityBase for ArrowEntity {
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         Self::write_item_stack_nbt(&item_stack, nbt);
+        if let Some(weapon) = self.get_weapon_item() {
+            let mut weapon_nbt = pumpkin_nbt::compound::NbtCompound::new();
+            weapon.write_item_stack(&mut weapon_nbt);
+            nbt.put_compound("weapon", weapon_nbt);
+        }
         nbt.put_bool("crit", self.is_critical.load(Ordering::Relaxed));
         nbt.put_double("damage", self.get_base_damage());
         nbt.put_bool("inGround", self.in_ground.load(Ordering::Relaxed));
@@ -510,6 +512,12 @@ impl EntityBase for ArrowEntity {
                 .write()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = item_stack;
         }
+        *self
+            .weapon
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = nbt
+            .get_compound("weapon")
+            .and_then(ItemStack::read_item_stack);
         if let Some(crit) = nbt.get_bool("crit") {
             self.is_critical.store(crit, Ordering::Relaxed);
         }
@@ -824,9 +832,19 @@ impl EntityBase for ArrowEntity {
                 let velocity = entity.velocity.load();
                 // Vanilla takes the speed as a float, then clamps the damage to an int.
                 let power = f64::from(velocity.length() as f32);
-                let mut damage = (power * self.get_base_damage())
-                    .clamp(0.0, f64::from(i32::MAX))
-                    .ceil() as i32;
+                // Vanilla applies the weapon's Power when the arrow hits, not when it is shot.
+                let weapon = self.get_weapon_item();
+                let base_damage = weapon.as_ref().map_or_else(
+                    || self.get_base_damage(),
+                    |weapon| {
+                        crate::enchantment::EnchantmentHelper::modify_damage(
+                            weapon,
+                            self.get_base_damage(),
+                        )
+                    },
+                );
+                let mut damage =
+                    (power * base_damage).clamp(0.0, f64::from(i32::MAX)).ceil() as i32;
 
                 // Apply critical hit bonus
                 if self.is_critical.load(Ordering::Relaxed) {
@@ -843,7 +861,9 @@ impl EntityBase for ArrowEntity {
                     target.get_entity().set_on_fire_for(5.0);
                 }
 
-                let punch = self.punch_level.load(Ordering::Relaxed);
+                let punch = weapon.as_ref().map_or(0.0, |weapon| {
+                    crate::enchantment::EnchantmentHelper::modify_knockback(weapon, 0.0)
+                });
                 let is_spectral = entity.entity_type.id == EntityType::SPECTRAL_ARROW.id;
                 let pierce = self.pierce_level.load(Ordering::Relaxed);
 
@@ -915,7 +935,7 @@ impl EntityBase for ArrowEntity {
                         DamageType::ARROW,
                         Some(owner_entity.as_deref().unwrap_or(self)),
                         Some(self),
-                        self.get_weapon_item().as_ref(),
+                        weapon.as_ref(),
                     );
 
                     let item_stack = self

@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 
 use crate::enchantment::EnchantmentHelper;
 use crate::entity::projectile::arrow::{ArrowEntity, ArrowPickup};
@@ -52,15 +51,7 @@ impl ProjectileWeaponItem {
         let arrow =
             ArrowEntity::new_shot_with_weapon(arrow_entity, shooter, projectile, weapon, pickup);
 
-        // Apply data-driven weapon enchantment modifications
-        arrow.set_base_damage(EnchantmentHelper::modify_damage(
-            weapon,
-            arrow.get_base_damage(),
-        ));
-        arrow.punch_level.store(
-            EnchantmentHelper::modify_knockback(weapon, 0.0) as u8,
-            Ordering::Relaxed,
-        );
+        // Power and Punch come from the weapon when the arrow hits.
         arrow.set_pierce_level(EnchantmentHelper::process_projectile_piercing(weapon, 0));
 
         // Data-driven PROJECTILE_SPAWNED effects (e.g. Flame enchantment -> Ignite effect)
