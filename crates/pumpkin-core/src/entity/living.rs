@@ -161,6 +161,10 @@ pub struct LivingEntity {
     arrow_count: AtomicI32,
     /// Vanilla `removeArrowTime`.
     remove_arrow_time: AtomicI32,
+    /// Vanilla `DATA_STINGER_COUNT_ID`, the bee stingers drawn stuck in the entity.
+    stinger_count: AtomicI32,
+    /// Vanilla `removeStingerTime`.
+    remove_stinger_time: AtomicI32,
 
     water_movement_speed_multiplier: f32,
     livings_flags: AtomicU8,
@@ -404,6 +408,8 @@ impl LivingEntity {
             no_action_time: AtomicI32::new(0),
             arrow_count: AtomicI32::new(0),
             remove_arrow_time: AtomicI32::new(0),
+            stinger_count: AtomicI32::new(0),
+            remove_stinger_time: AtomicI32::new(0),
             movement_input: AtomicCell::new(Vector3::default()),
             speed: AtomicCell::new(0.0),
             water_movement_speed_multiplier,
@@ -542,19 +548,43 @@ impl LivingEntity {
         );
     }
 
-    /// The stuck arrows part of vanilla `LivingEntity.tick`: one falls out every
-    /// `20 * (30 - count)` ticks.
-    fn tick_arrow_count(&self) {
+    /// Vanilla `LivingEntity.getStingerCount`.
+    pub fn get_stinger_count(&self) -> i32 {
+        self.stinger_count.load(Relaxed)
+    }
+
+    /// Vanilla `LivingEntity.setStingerCount`.
+    pub fn set_stinger_count(&self, count: i32) {
+        self.stinger_count.store(count, Relaxed);
+        self.entity.set_synced_data(
+            tracked_data::living_entity::DATA_STINGER_COUNT_ID,
+            VarInt(count),
+        );
+    }
+
+    /// The stuck arrows and stingers part of vanilla `LivingEntity.tick`: one of each falls out
+    /// every `20 * (30 - count)` ticks.
+    fn tick_stuck_arrows_and_stingers(&self) {
         let arrow_count = self.get_arrow_count();
-        if arrow_count <= 0 {
-            return;
+        if arrow_count > 0 {
+            if self.remove_arrow_time.load(Relaxed) <= 0 {
+                self.remove_arrow_time
+                    .store(20 * (30 - arrow_count), Relaxed);
+            }
+            if self.remove_arrow_time.fetch_sub(1, Relaxed) - 1 <= 0 {
+                self.set_arrow_count(arrow_count - 1);
+            }
         }
-        if self.remove_arrow_time.load(Relaxed) <= 0 {
-            self.remove_arrow_time
-                .store(20 * (30 - arrow_count), Relaxed);
-        }
-        if self.remove_arrow_time.fetch_sub(1, Relaxed) - 1 <= 0 {
-            self.set_arrow_count(arrow_count - 1);
+
+        let stinger_count = self.get_stinger_count();
+        if stinger_count > 0 {
+            if self.remove_stinger_time.load(Relaxed) <= 0 {
+                self.remove_stinger_time
+                    .store(20 * (30 - stinger_count), Relaxed);
+            }
+            if self.remove_stinger_time.fetch_sub(1, Relaxed) - 1 <= 0 {
+                self.set_stinger_count(stinger_count - 1);
+            }
         }
     }
 
@@ -4106,6 +4136,8 @@ impl LivingEntity {
         self.hurt_cooldown.store(0, Relaxed);
         self.set_arrow_count(0);
         self.remove_arrow_time.store(0, Relaxed);
+        self.set_stinger_count(0);
+        self.remove_stinger_time.store(0, Relaxed);
         self.last_damage_taken.store(0f32);
 
         self.entity.portal_cooldown.store(0, Relaxed);
@@ -5011,7 +5043,7 @@ impl EntityBase for LivingEntity {
             mob.tick_ambient_sound();
             mob.base_tick(pre_tick_air_supply);
         }
-        self.tick_arrow_count();
+        self.tick_stuck_arrows_and_stingers();
 
         // Only tick movement if the entity is alive. This prevents a dead "corpse"
         // from continuing to be simulated (accumulating fall_distance/velocity).

@@ -607,6 +607,7 @@ impl Mob for BeeEntity {
             Some(self),
         );
         if let Some(living) = target.get_living_entity() {
+            living.set_stinger_count(living.get_stinger_count() + 1);
             let world = self.get_entity().world.load();
             let poison_seconds = match world.level_info.load().difficulty {
                 Difficulty::Normal => 10,
