@@ -306,6 +306,18 @@ impl Player {
         }
 
         self.do_check_fall_damage(delta, requested.on_ground, requested.horizontal_collision);
+        if delta.y > 0.0 {
+            self.living_entity.fall_distance.store(0.0);
+        }
+        if requested.on_ground
+            || self.living_entity.has_landed_in_liquid()
+            || self.on_climbable()
+            || self.is_spectator()
+            || entity.is_fall_flying()
+            || self.living_entity.is_auto_spin_attack()
+        {
+            self.living_entity.try_reset_current_impulse_context();
+        }
 
         // Vanilla `handleMovePlayer` runs `ChunkMap.move` for every accepted position, so a
         // teleport confirmed at the same spot still starts sending the new chunks.

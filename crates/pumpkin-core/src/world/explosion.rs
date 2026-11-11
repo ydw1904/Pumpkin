@@ -625,6 +625,19 @@ impl<'a> Explosion<'a> {
                 knockback_resistance,
             );
             let knockback = direction * knockback_power;
+            // Vanilla `ServerPlayer.onExplosionHit`: a wind charge's blast spares the fall it
+            // starts, any other blast ends that grace.
+            if let Some(player) = entity_base.get_player() {
+                let from_wind_charge = self.source.is_some_and(|source| {
+                    source.get_entity().entity_type == &EntityType::WIND_CHARGE
+                });
+                player
+                    .living_entity
+                    .set_ignore_fall_damage_from_current_impulse(
+                        from_wind_charge,
+                        player.position(),
+                    );
+            }
             // Vanilla `ServerExplosion.hurtEntities`: creative flyers get no knockback.
             if entity_base
                 .get_player()
