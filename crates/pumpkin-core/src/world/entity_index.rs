@@ -5,6 +5,7 @@ use rustc_hash::FxHashMap;
 use uuid::Uuid;
 
 use crate::entity::EntityBase;
+use crate::entity::mob::has_game_event_listener;
 use crossbeam::atomic::AtomicCell;
 
 type Registry = Vec<Arc<dyn EntityBase>>;
@@ -155,6 +156,8 @@ struct Index {
     entries: FxHashMap<i32, Tracked>,
     uuids: FxHashMap<Uuid, usize>,
     buckets: Buckets,
+    /// Slots of mobs with game event listeners, in list order.
+    listeners: Vec<usize>,
 }
 
 impl Index {
@@ -166,8 +169,12 @@ impl Index {
         self.generation = self.generation.wrapping_add(1);
         let generation = self.generation;
         self.uuids.clear();
-        for (slot, entity) in registry.iter().enumerate() {
-            let entity = entity.get_entity();
+        self.listeners.clear();
+        for (slot, registered) in registry.iter().enumerate() {
+            if registered.get_mob().is_some_and(has_game_event_listener) {
+                self.listeners.push(slot);
+            }
+            let entity = registered.get_entity();
             // The first in list order wins, like a linear search.
             self.uuids.entry(entity.entity_uuid).or_insert(slot);
             let range = Self::entity_range(&entity.bounding_box.load());
@@ -308,6 +315,20 @@ impl EntityIndex {
         // Keep the registry order, including entities spanning several cells.
         slots.sort_unstable();
         slots.dedup();
+        slots.into_iter().filter_map(move |slot| {
+            let entity = &registry[slot];
+            area.intersects(&entity.get_entity().bounding_box.load())
+                .then(|| entity.clone())
+        })
+    }
+
+    /// Mobs with game event listeners whose body overlaps `area`, in list order.
+    pub fn listeners(
+        &self,
+        registry: Arc<Registry>,
+        area: BoundingBox,
+    ) -> impl Iterator<Item = Arc<dyn EntityBase>> + use<> {
+        let slots = self.with_index(&registry, |index| index.listeners.clone());
         slots.into_iter().filter_map(move |slot| {
             let entity = &registry[slot];
             area.intersects(&entity.get_entity().bounding_box.load())
