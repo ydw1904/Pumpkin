@@ -641,6 +641,7 @@ impl EntityBase for ArrowEntity {
                 .last_block_pos
                 .read()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut started_falling = false;
             if let Some(pos) = last_pos {
                 let block = world.get_block(&pos);
                 if block.is_air() {
@@ -654,15 +655,15 @@ impl EntityBase for ArrowEntity {
                     vel.y *= game_random().random::<f64>() * 0.2;
                     vel.z *= game_random().random::<f64>() * 0.2;
                     entity.velocity.store(vel);
+                    // Vanilla `startFalling`: restart the despawn timer.
+                    self.life.store(0, Ordering::Relaxed);
+                    started_falling = true;
                 }
             }
 
-            // Increment in-ground time and life
             let _in_ground_time = self.in_ground_time.fetch_add(1, Ordering::Relaxed);
-            let life = self.life.fetch_add(1, Ordering::Relaxed);
-
-            // Despawn after enough time
-            if life >= Self::DESPAWN_TIME {
+            // Vanilla either starts falling or ticks the despawn timer, never both.
+            if !started_falling && self.life.fetch_add(1, Ordering::Relaxed) >= Self::DESPAWN_TIME {
                 entity.remove();
             }
             return;
