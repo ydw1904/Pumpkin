@@ -55,13 +55,12 @@ impl HopperMinecart {
                 {
                     continue;
                 }
-                let backup = stack.clone();
                 let one = source.remove_stack_specific(slot, 1);
                 if HopperBlockEntity::add_one_item(source.as_ref(), inventory.as_ref(), &one, None)
                 {
                     return;
                 }
-                source.set_stack(slot, backup);
+                source.set_stack(slot, stack);
             }
             return;
         }
