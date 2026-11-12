@@ -54,7 +54,7 @@ pub fn use_berries(world: &Arc<World>, pos: &BlockPos, source: &dyn EntityBase) 
     } else {
         return false;
     };
-    world.drop_stack(pos, ItemStack::new(1, &Item::GLOW_BERRIES));
+    CaveVinesBlock::drop_berries(world, pos, state_id, source);
     let pitch = game_random().random_range(0.8f32..1.2f32);
     world.play_sound_fine(
         Sound::BlockCaveVinesPickBerries,
@@ -89,6 +89,37 @@ impl CaveVinesBlock {
             return true;
         }
         support_state.is_side_solid(BlockDirection::Down)
+    }
+
+    /// Vanilla `Block.dropFromBlockInteractLootTable` with `harvest/cave_vine`.
+    fn drop_berries(
+        world: &Arc<World>,
+        pos: &BlockPos,
+        state_id: BlockStateId,
+        source: &dyn EntityBase,
+    ) {
+        let drops = world
+            .get_loot_table("minecraft:harvest/cave_vine")
+            .map_or_else(
+                || vec![ItemStack::new(1, &Item::GLOW_BERRIES)],
+                |handle| {
+                    let params = crate::world::loot::LootContextParameters {
+                        world: Some(world),
+                        position: Some(pos.to_centered_f64()),
+                        block_state: Some(pumpkin_data::BlockState::from_id(state_id)),
+                        this_entity: Some(source),
+                        ..Default::default()
+                    };
+                    crate::world::loot::generate_loot_from_handle(
+                        &handle,
+                        game_random().random(),
+                        &params,
+                    )
+                },
+            );
+        for stack in drops {
+            world.drop_stack(pos, stack);
+        }
     }
 }
 

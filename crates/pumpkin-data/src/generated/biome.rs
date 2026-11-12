@@ -18,6 +18,8 @@ pub struct Biome {
     pub carvers: &'static [&'static crate::carver::CarverConfig],
     pub features: &'static [&'static [crate::placed_feature::PlacedFeature]],
     pub creature_spawn_probability: f32,
+    #[doc = r" The biome's `gameplay/increased_fire_burnout` environment attribute."]
+    pub increased_fire_burnout: bool,
     #[doc = r" The biome's `gameplay/snow_golem_melts` environment attribute."]
     pub snow_golem_melts: bool,
     #[doc = r" The biome's `gameplay/can_pillager_patrol_spawn` environment attribute."]
@@ -164,6 +166,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.03f32,
+        increased_fire_burnout: false,
         snow_golem_melts: true,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -344,6 +347,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: true,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -503,6 +507,7 @@ impl Biome {
         ],
         carvers: &[&crate::carver::NETHER_CAVE],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -607,6 +612,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -761,6 +767,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -929,6 +936,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -1096,6 +1104,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -1240,6 +1249,7 @@ impl Biome {
         ],
         carvers: &[&crate::carver::NETHER_CAVE],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -1347,6 +1357,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -1532,6 +1543,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -1705,6 +1717,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -1879,6 +1892,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -1970,6 +1984,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -2147,6 +2162,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -2339,6 +2355,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -2518,6 +2535,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: true,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -2694,6 +2712,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -2781,6 +2800,7 @@ impl Biome {
         features: &[],
         carvers: &[],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -2819,6 +2839,7 @@ impl Biome {
         ],
         carvers: &[],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -2846,6 +2867,7 @@ impl Biome {
         features: &[],
         carvers: &[],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -2940,6 +2962,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.03f32,
+        increased_fire_burnout: false,
         snow_golem_melts: true,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -3118,6 +3141,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -3297,6 +3321,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -3478,6 +3503,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -3645,6 +3671,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: true,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -3797,6 +3824,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -3955,6 +3983,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -4123,6 +4152,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.07f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -4280,6 +4310,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: true,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -4434,6 +4465,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: true,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -4631,6 +4663,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -4822,6 +4855,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -4977,6 +5011,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: true,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -5143,6 +5178,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -5305,6 +5341,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: true,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: false,
         spawners: SpawnGroups {
@@ -5373,6 +5410,7 @@ impl Biome {
         ],
         carvers: &[&crate::carver::NETHER_CAVE],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -5498,6 +5536,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -5677,6 +5716,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -5856,6 +5896,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -6053,6 +6094,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -6242,6 +6284,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -6390,6 +6433,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -6581,6 +6625,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -6744,6 +6789,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: true,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -6940,6 +6986,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: true,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -7082,6 +7129,7 @@ impl Biome {
         features: &[&[crate::placed_feature::PlacedFeature::EndIslandDecorated]],
         carvers: &[],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -7173,6 +7221,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -7319,6 +7368,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.07f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -7485,6 +7535,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: true,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -7646,6 +7697,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -7797,6 +7849,7 @@ impl Biome {
         ],
         carvers: &[&crate::carver::NETHER_CAVE],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -7910,6 +7963,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -8084,6 +8138,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -8229,6 +8284,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -8373,6 +8429,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -8522,6 +8579,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -8717,6 +8775,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: true,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -8908,6 +8967,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -9044,6 +9104,7 @@ impl Biome {
         ],
         carvers: &[],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -9083,6 +9144,7 @@ impl Biome {
         ],
         carvers: &[],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -9173,6 +9235,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -9325,6 +9388,7 @@ impl Biome {
         ],
         carvers: &[&crate::carver::NETHER_CAVE],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -9424,6 +9488,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -9603,6 +9668,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -9782,6 +9848,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: false,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -9959,6 +10026,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.1f32,
+        increased_fire_burnout: false,
         snow_golem_melts: true,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {
@@ -10157,6 +10225,7 @@ impl Biome {
             &crate::carver::CANYON,
         ],
         creature_spawn_probability: 0.04f32,
+        increased_fire_burnout: false,
         snow_golem_melts: true,
         can_pillager_patrol_spawn: true,
         spawners: SpawnGroups {

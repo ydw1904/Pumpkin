@@ -680730,6 +680730,23 @@ impl Block {
             _ => panic!("Invalid props"),
         }
     }
+    #[doc = r" Copies matching block properties from `source_state_id` of `source_block` onto `self`."]
+    #[must_use]
+    pub fn with_properties_of(
+        &self,
+        source_block: &Self,
+        source_state_id: BlockStateId,
+    ) -> BlockStateId {
+        if self.states.len() <= 1 {
+            return self.default_state.id;
+        }
+        if let Some(source_props) = source_block.properties(source_state_id) {
+            let props = source_props.to_props();
+            self.from_properties(&props).to_state_id(self)
+        } else {
+            self.default_state.id
+        }
+    }
 }
 impl BlockId {
     pub const AIR: Self = BlockId::new(0u16).unwrap();

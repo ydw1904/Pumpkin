@@ -61,6 +61,12 @@ pub struct Biome {
 }
 
 impl Biome {
+    fn attr_bool(&self, key: &str) -> Option<bool> {
+        let val = self.attributes.get(key)?;
+        val.as_bool()
+            .or_else(|| val.get("argument").and_then(Value::as_bool))
+    }
+
     /// Replaces the spawners and spawn costs with the ones from the 26.3
     /// `natural_mob_spawns` attribute, panicking if the spawn list is malformed.
     fn apply_natural_mob_spawns(&mut self, name: &str) {
@@ -391,6 +397,9 @@ pub fn build() -> TokenStream {
             .get("minecraft:gameplay/creature_world_gen_spawn_probability")
             .and_then(Value::as_f64)
             .map_or(0.1, |probability| probability as f32);
+        let increased_fire_burnout = biome
+            .attr_bool("minecraft:gameplay/increased_fire_burnout")
+            .unwrap_or(false);
 
         let temperature_modifier = biome
             .temperature_modifier
@@ -495,6 +504,7 @@ pub fn build() -> TokenStream {
                 features: &[#(#features),*],
                 carvers: &[#(#carvers),*],
                 creature_spawn_probability: #creature_spawn_probability,
+                increased_fire_burnout: #increased_fire_burnout,
                 snow_golem_melts: #snow_golem_melts,
                 can_pillager_patrol_spawn: #can_pillager_patrol_spawn,
                 spawners: #spawners,
@@ -529,6 +539,8 @@ pub fn build() -> TokenStream {
             pub carvers: &'static [&'static crate::carver::CarverConfig],
             pub features: &'static [&'static [crate::placed_feature::PlacedFeature]],
             pub creature_spawn_probability: f32,
+            /// The biome's `gameplay/increased_fire_burnout` environment attribute.
+            pub increased_fire_burnout: bool,
             /// The biome's `gameplay/snow_golem_melts` environment attribute.
             pub snow_golem_melts: bool,
             /// The biome's `gameplay/can_pillager_patrol_spawn` environment attribute.

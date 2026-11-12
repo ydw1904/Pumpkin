@@ -225,6 +225,9 @@ impl<'a> EnvironmentAttributes<'a> {
             EnvironmentAttribute::GameplayCanPillagerPatrolSpawn => {
                 value && self.world.get_biome(pos).can_pillager_patrol_spawn
             }
+            EnvironmentAttribute::GameplayIncreasedFireBurnout => {
+                value || self.world.get_biome(pos).increased_fire_burnout
+            }
             _ => value,
         }
     }

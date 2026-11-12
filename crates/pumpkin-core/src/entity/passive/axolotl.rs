@@ -700,8 +700,6 @@ impl AgeableMob for AxolotlEntity {
 impl Animal for AxolotlEntity {
     fn is_food(&self, item_stack: &ItemStack) -> bool {
         item_stack.item.has_tag(&tag::Item::MINECRAFT_AXOLOTL_FOOD)
-            || item_stack.item == &Item::TROPICAL_FISH_BUCKET
-            || item_stack.item == &Item::TROPICAL_FISH
     }
 
     /// Vanilla `Axolotl.getBreedOffspring`: a rare blue, else either parent's variant.

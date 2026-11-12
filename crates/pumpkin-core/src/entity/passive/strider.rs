@@ -237,7 +237,6 @@ impl AgeableMob for StriderEntity {
 impl Animal for StriderEntity {
     fn is_food(&self, item_stack: &ItemStack) -> bool {
         item_stack.item.has_tag(&tag::Item::MINECRAFT_STRIDER_FOOD)
-            || item_stack.item == &Item::WARPED_FUNGUS
     }
 }
 

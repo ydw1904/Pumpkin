@@ -12,7 +12,6 @@ use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::entity_variant::PandaGene;
 use pumpkin_data::game_event::GameEvent;
-use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::Sound;
 use pumpkin_data::tag::{self, Taggable};
@@ -46,8 +45,6 @@ use crate::entity::{
 };
 use crate::world::World;
 use crate::world::loot::{LootContextParameters, generate_loot_from_handle};
-
-const TEMPT_ITEMS: &[&Item] = &[&Item::BAMBOO];
 
 pub const FLAG_SNEEZE: u8 = 2;
 pub const FLAG_ROLL: u8 = 4;
@@ -231,7 +228,8 @@ impl PandaEntity {
                     melee_attack: MeleeAttackGoal::new(f64::from(1.2f32), true),
                 }),
             );
-            goal_selector.add_goal(4, Box::new(TemptGoal::new(1.0, TEMPT_ITEMS, false)));
+            let tempt = TemptGoal::with_tag(1.0, &tag::Item::MINECRAFT_PANDA_FOOD, false);
+            goal_selector.add_goal(4, Box::new(tempt));
             fleeing::apply(goal_selector, PANDA_FLEES);
             goal_selector.add_goal(7, Box::new(PandaSitGoal { cooldown: 0 }));
             goal_selector.add_goal(8, Box::new(PandaLieOnBackGoal { cooldown: 0 }));
@@ -1578,8 +1576,8 @@ mod tests {
         let world = world(&folder);
         let panda = panda(&world);
 
-        assert!(panda.is_food(&ItemStack::new(1, &Item::BAMBOO)));
-        assert!(!panda.is_food(&ItemStack::new(1, &Item::CAKE)));
+        assert!(panda.is_food(&ItemStack::new(1, &pumpkin_data::item::Item::BAMBOO)));
+        assert!(!panda.is_food(&ItemStack::new(1, &pumpkin_data::item::Item::CAKE)));
         assert!(!panda.can_be_leashed());
         assert!(panda.mob_entity.can_pick_up_loot());
 

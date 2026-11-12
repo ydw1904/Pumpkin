@@ -1327,6 +1327,10 @@ impl BlockRegistry {
                 fall_distance,
                 entity,
             });
+        } else if let Some(living) = entity.get_living_entity() {
+            let reduced_fall_distance =
+                fall_distance * f64::from(1.0 - block.get_fall_distance_reduction());
+            living.handle_fall_damage(entity, reduced_fall_distance, 1.0);
         }
     }
 
