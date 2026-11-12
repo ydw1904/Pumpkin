@@ -1027,6 +1027,10 @@ mod random_positions_and_hypot {
 
     #[test]
     #[expect(clippy::too_many_lines)]
+    #[allow(
+        clippy::large_stack_arrays,
+        reason = "Rust 1.100 clippy flags the expected state table"
+    )]
     fn get_fluid_block_state() {
         let (_, mut router, _) = create_aquifer(&PROTO_ROUTER);
         let level = FluidLevel::new(0, &WATER_BLOCK);
