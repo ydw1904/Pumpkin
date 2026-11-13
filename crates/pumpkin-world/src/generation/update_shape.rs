@@ -246,7 +246,7 @@ pub fn update_from_neighbour_shapes<L: BlockPlacer + ?Sized>(
 
 /// Vanilla `BlockState.getFluidState`: the fluid's type and whether it is a source.
 #[must_use]
-pub fn fluid_state(state: BlockStateId) -> (&'static Fluid, bool) {
+pub const fn fluid_state(state: BlockStateId) -> (&'static Fluid, bool) {
     match Fluid::from_state_id(state) {
         Some(fluid) => (
             fluid,

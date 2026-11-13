@@ -7780,7 +7780,7 @@ impl World {
 
     /// Vanilla `FluidState.getType`: unlike [`Self::get_fluid_from_state_id`], a source is
     /// `WATER` or `LAVA`. Scheduled fluid ticks are keyed and run by this exact type.
-    pub(crate) fn get_fluid_type_from_state_id(
+    pub(crate) const fn get_fluid_type_from_state_id(
         id: BlockStateId,
     ) -> &'static pumpkin_data::fluid::Fluid {
         if let Some(fluid) = Fluid::from_state_id(id) {
