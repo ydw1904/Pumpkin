@@ -23,19 +23,10 @@ use std::sync::atomic::{AtomicU32, Ordering};
 mod categories;
 
 /// The item left behind when one of `item` is used up by crafting, as furnace fuel or as a
-/// brewing ingredient.
-///
-/// The Extractor doesn't dump `Item.craftingRemainingItem`, so this mirrors the `craftRemainder`
-/// calls in vanilla's `Items`.
+/// brewing ingredient (vanilla `Item.craftingRemainingItem`).
 #[must_use]
-pub fn crafting_remainder(item: &Item) -> Option<&'static Item> {
-    if item == &Item::WATER_BUCKET || item == &Item::LAVA_BUCKET || item == &Item::MILK_BUCKET {
-        Some(&Item::BUCKET)
-    } else if item == &Item::DRAGON_BREATH || item == &Item::HONEY_BOTTLE {
-        Some(&Item::GLASS_BOTTLE)
-    } else {
-        None
-    }
+pub const fn crafting_remainder(item: &Item) -> Option<&'static Item> {
+    item.crafting_remainder
 }
 
 /// The outcome of a [`ItemStack::damage_item`] call.

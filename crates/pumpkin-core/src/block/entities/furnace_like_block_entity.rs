@@ -484,11 +484,7 @@ macro_rules! impl_block_entity_for_cooking {
                                 is_dirty = true;
                                 if let Ok(mut items_guard) = self.items.try_write() {
                                     if !items_guard[1].is_empty() {
-                                        // consumeFuel: the item's crafting remainder replaces
-                                        // the last fuel item, or drops if fuel is left.
-                                        let remainder = pumpkin_data::item_stack::crafting_remainder(
-                                            items_guard[1].item,
-                                        );
+                                        let remainder = items_guard[1].item.crafting_remainder;
                                         items_guard[1].decrement(1);
                                         if let Some(remainder_item) = remainder
                                         {
