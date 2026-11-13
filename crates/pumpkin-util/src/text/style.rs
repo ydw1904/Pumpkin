@@ -6,25 +6,6 @@ use super::{
 use crate::text::color::ARGBColor;
 use serde::{Deserialize, Serialize};
 
-/// Reads a style flag as a bool or, like vanilla's `Codec.BOOL` on NBT and JSON, as a number
-/// whose `byteValue()` is non-zero (`0b`/`1b` in SNBT).
-fn bool_or_number<'de, D: serde::Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<bool>, D::Error> {
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum Flag {
-        Bool(bool),
-        Number(f64),
-    }
-    Ok(
-        Option::<Flag>::deserialize(deserializer)?.map(|flag| match flag {
-            Flag::Bool(value) => value,
-            Flag::Number(value) => value as i32 as i8 != 0,
-        }),
-    )
-}
-
 /// Represents the styling options for a text component.
 #[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq, Eq, Hash)]
 pub struct Style {
@@ -35,35 +16,35 @@ pub struct Style {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "bool_or_number"
+        deserialize_with = "super::short_form::flag"
     )]
     pub bold: Option<bool>,
     /// Whether to render the content in italic.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "bool_or_number"
+        deserialize_with = "super::short_form::flag"
     )]
     pub italic: Option<bool>,
     /// Whether to render the content in underlined.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "bool_or_number"
+        deserialize_with = "super::short_form::flag"
     )]
     pub underlined: Option<bool>,
     /// Whether to render the content in strikethrough.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "bool_or_number"
+        deserialize_with = "super::short_form::flag"
     )]
     pub strikethrough: Option<bool>,
     /// Whether to render the content in obfuscated.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "bool_or_number"
+        deserialize_with = "super::short_form::flag"
     )]
     pub obfuscated: Option<bool>,
     /// When the text is shift-clicked by a player, this string is inserted in their chat input. It does not overwrite any existing text the player was writing. This only works in chat messages.

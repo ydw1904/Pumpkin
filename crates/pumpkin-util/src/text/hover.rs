@@ -70,27 +70,13 @@ pub(super) fn json_to_nbt(value: &serde_json::Value) -> pumpkin_nbt::tag::NbtTag
     }
 }
 
-/// Vanilla's `ComponentSerialization.CODEC`: one component, written as a string, a list or an
-/// object.
-fn component<'de, D: serde::Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Vec<TextComponentBase>, D::Error> {
-    Ok(vec![TextComponent::deserialize(deserializer)?.0])
-}
-
-fn optional_component<'de, D: serde::Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<Vec<TextComponentBase>>, D::Error> {
-    component(deserializer).map(Some)
-}
-
 /// Represents the hover event action in a chat component.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum HoverEvent {
     /// Displays a tooltip with the given text.
     ShowText {
-        #[serde(deserialize_with = "component")]
+        #[serde(deserialize_with = "super::short_form::one_component")]
         value: Vec<TextComponentBase>,
     },
     /// Shows an item.
@@ -117,7 +103,7 @@ pub enum HoverEvent {
         #[serde(
             default,
             skip_serializing_if = "Option::is_none",
-            deserialize_with = "optional_component"
+            deserialize_with = "super::short_form::optional_component"
         )]
         name: Option<Vec<TextComponentBase>>,
     },
