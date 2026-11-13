@@ -3,9 +3,9 @@ use crate::data_component::DataComponent;
 use crate::data_component::DataComponent::Enchantments;
 use crate::data_component_impl::{
     BlocksAttacksImpl, ConsumableImpl, CustomDataImpl, DamageImpl, DamageResistantImpl,
-    DataComponentImpl, EnchantmentsImpl, IDSet, MaxDamageImpl, MaxStackSizeImpl, Rarity,
-    RarityImpl, StoredEnchantmentsImpl, SwingAnimationImpl, ToolImpl, UnbreakableImpl,
-    UseCooldownImpl, get, get_mut, read_data,
+    DataComponentImpl, EnchantmentsImpl, IDSet, MAX_ENCHANTMENT_LEVEL, MaxDamageImpl,
+    MaxStackSizeImpl, Rarity, RarityImpl, StoredEnchantmentsImpl, SwingAnimationImpl, ToolImpl,
+    UnbreakableImpl, UseCooldownImpl, get, get_mut, read_data,
 };
 
 use crate::item::Item;
@@ -750,7 +750,7 @@ impl ItemStack {
         if level <= 0 {
             return;
         }
-        let level = min(level, 255);
+        let level = min(level, MAX_ENCHANTMENT_LEVEL);
         if self.item == &Item::ENCHANTED_BOOK {
             let mut stored = self
                 .get_data_component::<StoredEnchantmentsImpl>()

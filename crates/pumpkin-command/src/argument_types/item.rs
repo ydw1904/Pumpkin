@@ -202,4 +202,17 @@ mod test {
         assert_eq!(name.name.clone().get_text(), "Named");
         assert_eq!(name.name.0.style.italic, Some(false));
     }
+
+    #[test]
+    fn rejects_enchantment_levels_outside_vanilla_range() {
+        assert!(parse("trident[minecraft:enchantments={riptide:0}]").is_err());
+        assert!(parse("trident[minecraft:enchantments={riptide:2000}]").is_err());
+        assert!(parse("enchanted_book[minecraft:stored_enchantments={mending:2000}]").is_err());
+    }
+
+    #[test]
+    fn accepts_enchantment_levels_at_vanilla_limit() {
+        assert!(parse("trident[minecraft:enchantments={riptide:255}]").is_ok());
+        assert!(parse("enchanted_book[minecraft:stored_enchantments={mending:255}]").is_ok());
+    }
 }
