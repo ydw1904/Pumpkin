@@ -947,6 +947,43 @@ mod tests {
         (handler, player)
     }
 
+    fn test_handler() -> (CraftingTableScreenHandler, Arc<PlayerInventory>, TestPlayer) {
+        let player_inventory = Arc::new(PlayerInventory::new(
+            Arc::new(Mutex::new(EntityEquipment::new())),
+            Arc::new(rustc_hash::FxHashMap::default()),
+        ));
+        let player = TestPlayer {
+            inventory: player_inventory.clone(),
+            dropped: Mutex::new(Vec::new()),
+        };
+        let handler = CraftingTableScreenHandler::new(1, &player_inventory, None);
+        (handler, player_inventory, player)
+    }
+
+    fn set_slot(handler: &CraftingTableScreenHandler, slot: usize, stack: ItemStack) {
+        handler.get_behaviour().slots[slot].set_stack(stack);
+    }
+
+    fn grid_stack(handler: &CraftingTableScreenHandler, slot: usize) -> ItemStack {
+        handler.get_behaviour().slots[slot].get_stack()
+    }
+
+    fn refresh_result(handler: &CraftingTableScreenHandler) {
+        handler.get_behaviour().slots[0].set_stack(ItemStack::EMPTY.clone());
+    }
+
+    fn place_cake(handler: &CraftingTableScreenHandler) {
+        for slot in 1..=3 {
+            set_slot(handler, slot, ItemStack::new(1, &Item::MILK_BUCKET));
+        }
+        set_slot(handler, 4, ItemStack::new(1, &Item::SUGAR));
+        set_slot(handler, 5, ItemStack::new(1, &Item::EGG));
+        set_slot(handler, 6, ItemStack::new(1, &Item::SUGAR));
+        for slot in 7..=9 {
+            set_slot(handler, slot, ItemStack::new(1, &Item::WHEAT));
+        }
+    }
+
     #[test]
     fn throw_one_from_result_crafts_once() {
         let (mut handler, player) = handler_with_logs(2);
@@ -1028,6 +1065,99 @@ mod tests {
                 Some("minecraft:mace"),
                 "grid {grid_size}x{grid_size}, top slot {top_slot}"
             );
+        }
+    }
+
+    #[test]
+    fn taking_cake_returns_empty_buckets_and_consumes_other_ingredients() {
+        let (mut handler, _, player) = test_handler();
+        place_cake(&handler);
+        refresh_result(&handler);
+        assert_eq!(grid_stack(&handler, 0).item.id, Item::CAKE.id);
+
+        handler.on_slot_click(0, 0, SlotActionType::Pickup, &player);
+
+        for slot in 1..=3 {
+            assert_eq!(grid_stack(&handler, slot).item.id, Item::BUCKET.id);
+        }
+        for slot in 4..=9 {
+            assert!(grid_stack(&handler, slot).is_empty());
+        }
+    }
+
+    #[test]
+    fn taking_honey_block_returns_glass_bottles() {
+        let (mut handler, _, player) = test_handler();
+        for slot in [1, 2, 4, 5] {
+            set_slot(&handler, slot, ItemStack::new(1, &Item::HONEY_BOTTLE));
+        }
+        refresh_result(&handler);
+        assert_eq!(grid_stack(&handler, 0).item.id, Item::HONEY_BLOCK.id);
+
+        handler.on_slot_click(0, 0, SlotActionType::Pickup, &player);
+
+        for slot in [1, 2, 4, 5] {
+            assert_eq!(grid_stack(&handler, slot).item.id, Item::GLASS_BOTTLE.id);
+        }
+    }
+
+    #[test]
+    fn taking_sugar_returns_the_honey_bottle_remainder() {
+        let (mut handler, _, player) = test_handler();
+        set_slot(&handler, 1, ItemStack::new(1, &Item::HONEY_BOTTLE));
+        refresh_result(&handler);
+        assert_eq!(grid_stack(&handler, 0).item.id, Item::SUGAR.id);
+
+        handler.on_slot_click(0, 0, SlotActionType::Pickup, &player);
+
+        assert_eq!(grid_stack(&handler, 1).item.id, Item::GLASS_BOTTLE.id);
+    }
+
+    #[test]
+    fn taking_a_recipe_without_remainders_still_consumes_the_grid() {
+        let (mut handler, _, player) = test_handler();
+        set_slot(&handler, 1, ItemStack::new(1, &Item::OAK_LOG));
+        refresh_result(&handler);
+        assert_eq!(grid_stack(&handler, 0).item.id, Item::OAK_PLANKS.id);
+
+        handler.on_slot_click(0, 0, SlotActionType::Pickup, &player);
+
+        assert!(grid_stack(&handler, 1).is_empty());
+    }
+
+    #[test]
+    fn occupied_input_slot_drops_the_remainder() {
+        let (mut handler, player_inventory, player) = test_handler();
+        place_cake(&handler);
+        set_slot(&handler, 1, ItemStack::new(2, &Item::MILK_BUCKET));
+        for slot in 0..player_inventory.size() {
+            player_inventory.set_stack(slot, ItemStack::new(64, &Item::DIRT));
+        }
+        refresh_result(&handler);
+
+        handler.on_slot_click(0, 0, SlotActionType::Pickup, &player);
+
+        let milk = grid_stack(&handler, 1);
+        assert_eq!(milk.item.id, Item::MILK_BUCKET.id);
+        assert_eq!(milk.item_count, 1);
+        let drops = player
+            .dropped
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert_eq!(drops.len(), 1);
+        assert_eq!(drops[0].item.id, Item::BUCKET.id);
+    }
+
+    #[test]
+    fn shift_clicking_the_result_returns_remainders() {
+        let (mut handler, _, player) = test_handler();
+        place_cake(&handler);
+        refresh_result(&handler);
+
+        handler.on_slot_click(0, 0, SlotActionType::QuickMove, &player);
+
+        for slot in 1..=3 {
+            assert_eq!(grid_stack(&handler, slot).item.id, Item::BUCKET.id);
         }
     }
 }
