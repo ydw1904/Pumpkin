@@ -3298,7 +3298,7 @@ impl Player {
         };
 
         let mut first = first;
-        while let Some(packet) = first.take().or_else(|| self.inbound_packets.pop()) {
+        while let Some(mut packet) = first.take().or_else(|| self.inbound_packets.pop()) {
             if self.client.closed() {
                 break;
             }
@@ -3344,6 +3344,12 @@ impl Player {
                         server_arc
                             .plugin_manager
                             .fire_blocking(&server_arc, &mut event);
+                        if !event.cancelled {
+                            packet = RawPacket {
+                                id: event.packet_id,
+                                payload: event.payload,
+                            };
+                        }
                         event.cancelled
                     } else {
                         false
@@ -5256,12 +5262,17 @@ impl Player {
         self.living_entity.entity.set_pos(position);
         let entity = &self.living_entity.entity;
         entity.set_rotation(yaw, pitch);
-        // Moves are ignored until the client confirms, for both editions
-        *self
-            .awaiting_teleport
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) =
-            Some((teleport_id.into(), position));
+        // Moves are ignored until the client confirms (teleport confirmation was added in 1.9).
+        if !matches!(
+            self.client.as_ref(),
+            ClientPlatform::Java(c) if c.version.load() < JavaMinecraftVersion::V_1_9
+        ) {
+            *self
+                .awaiting_teleport
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                Some((teleport_id.into(), position));
+        }
         match self.client.as_ref() {
             ClientPlatform::Java(client) => {
                 let packet = CPlayerPosition::new(
