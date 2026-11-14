@@ -6669,8 +6669,14 @@ impl World {
         let old_block = Block::from_state_id(old_state_id);
         let new_block = Block::from_state_id(state_id);
         if old_block != new_block {
-            self.block_registry
-                .on_state_replaced(self, old_block, position, old_state_id, false);
+            self.block_registry.on_state_replaced(
+                self,
+                old_block,
+                position,
+                old_state_id,
+                false,
+                BlockFlags::empty(),
+            );
         }
         self.update_neighbors_at(position, new_block, None);
         if state_id.has_analog_output_signal() {
@@ -6813,6 +6819,7 @@ impl World {
                 position,
                 replaced_block_state_id,
                 block_moved,
+                flags,
             );
         }
 

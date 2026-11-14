@@ -131,7 +131,7 @@ impl BlockBehaviour for BedBlock {
                 args.world.break_block(
                     &other_half_pos,
                     None,
-                    BlockFlags::SKIP_DROPS | BlockFlags::NOTIFY_ALL,
+                    (args.flags & BlockFlags::SKIP_DROPS) | BlockFlags::NOTIFY_ALL,
                 );
             }
         }
