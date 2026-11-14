@@ -46,8 +46,7 @@ fn verify_biome_hashes_for_dimension(dim: Dimension, data: &DimensionBiomeHashes
 
 #[test]
 fn nether_biome_hashes_match_vanilla() {
-    let json: BiomeHashesJson =
-        pumpkin_util::read_data_from_file!("../../../../../assets/tests/biome_hashes.json");
+    let json: BiomeHashesJson = include_json!("../../../../../assets/tests/biome_hashes.json");
     verify_biome_hashes_for_dimension(Dimension::THE_NETHER, &json.the_nether, json.seed);
 }
 
@@ -88,15 +87,13 @@ fn nether_chunk_biomes_ignore_earlier_samples() {
 
 #[test]
 fn end_biome_hashes_match_vanilla() {
-    let json: BiomeHashesJson =
-        pumpkin_util::read_data_from_file!("../../../../../assets/tests/biome_hashes.json");
+    let json: BiomeHashesJson = include_json!("../../../../../assets/tests/biome_hashes.json");
     verify_biome_hashes_for_dimension(Dimension::THE_END, &json.the_end, json.seed);
 }
 
 #[test]
 fn overworld_biome_hashes_match_vanilla() {
-    let json: BiomeHashesJson =
-        pumpkin_util::read_data_from_file!("../../../../../assets/tests/biome_hashes.json");
+    let json: BiomeHashesJson = include_json!("../../../../../assets/tests/biome_hashes.json");
     verify_biome_hashes_for_dimension(Dimension::OVERWORLD, &json.overworld, json.seed);
 }
 
