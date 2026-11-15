@@ -705,6 +705,12 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         None
     }
 
+    /// The entity's inventory when it is a vanilla `Container` (chest and hopper minecarts, chest
+    /// boats), with any loot table unpacked like vanilla's container accessors do.
+    fn get_container_inventory(&self) -> Option<Arc<dyn pumpkin_inventory::Inventory>> {
+        None
+    }
+
     /// Players are tracked by profile name, every other entity by its UUID.
     fn get_scoreboard_name(&self) -> String {
         self.get_player().map_or_else(

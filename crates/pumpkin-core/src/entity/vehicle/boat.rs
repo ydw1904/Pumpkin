@@ -481,6 +481,14 @@ impl EntityBase for BoatEntity {
         1.0
     }
 
+    fn get_container_inventory(&self) -> Option<Arc<dyn Inventory>> {
+        let BoatKind::Chest(boat) = &self.kind else {
+            return None;
+        };
+        boat.inventory().unpack_loot(&self.vehicle.entity, None);
+        Some(boat.inventory().clone() as Arc<dyn Inventory>)
+    }
+
     /// The tick floats and moves the boat by its speed, fluid push, gravity and buoyancy (or
     /// lifts it onto the water it fell into), reads the blocks under and around it, takes the
     /// effects of blocks it touches, ejects its passengers (linked) and pushes or picks up what

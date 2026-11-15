@@ -8449,21 +8449,23 @@ impl World {
             .collect()
     }
 
-    /// Vanilla `BlockEntity.setLevel`, for the containers that unpack their loot table into it.
+    /// Vanilla `BlockEntity.setLevel`, for the containers that unpack their loot table into it
+    /// and the block entities whose container writes change their block.
     fn set_block_entity_world(&self, block_entity: &dyn BlockEntity) {
-        let Some(loot) = block_entity.container_loot() else {
-            return;
-        };
-        if let Some(world) = self.server.upgrade().and_then(|server| {
+        let Some(world) = self.server.upgrade().and_then(|server| {
             server
                 .worlds
                 .load()
                 .iter()
                 .find(|world| std::ptr::eq(world.as_ref(), self))
                 .cloned()
-        }) {
+        }) else {
+            return;
+        };
+        if let Some(loot) = block_entity.container_loot() {
             loot.set_world(&world);
         }
+        block_entity.set_world(Arc::downgrade(&world));
     }
 
     pub fn add_block_entity(&self, block_entity: Arc<dyn BlockEntity>) {

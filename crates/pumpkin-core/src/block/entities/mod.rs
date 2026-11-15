@@ -85,6 +85,10 @@ pub trait BlockEntity: Any + Send + Sync {
     /// before this entity replaces the one at its position, which is still in the world.
     fn loaded_in_world(&self, _world: &Arc<World>) {}
 
+    /// Vanilla `BlockEntity.setLevel`: the world the entity was added to, for container writes
+    /// (hoppers) that change its block.
+    fn set_world(&self, _world: std::sync::Weak<World>) {}
+
     fn resource_location(&self) -> &'static str;
     fn get_position(&self) -> BlockPos;
 

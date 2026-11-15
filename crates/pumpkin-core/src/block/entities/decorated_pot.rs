@@ -6,6 +6,7 @@ use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::GameMode;
 use pumpkin_util::math::position::BlockPos;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::world::World;
@@ -15,6 +16,8 @@ pub struct DecoratedPotBlockEntity {
     pub sherds: Mutex<Option<Vec<NbtTag>>>,
     pub item: Mutex<Option<ItemStack>>,
     pub loot: ContainerLoot,
+    pub dirty: AtomicBool,
+    pub comparator_dirty: AtomicBool,
 }
 
 impl BlockEntity for DecoratedPotBlockEntity {
@@ -49,6 +52,8 @@ impl BlockEntity for DecoratedPotBlockEntity {
             sherds: Mutex::new(sherds),
             item: Mutex::new(item),
             loot,
+            dirty: AtomicBool::new(false),
+            comparator_dirty: AtomicBool::new(false),
         }
     }
 
@@ -151,6 +156,28 @@ impl BlockEntity for DecoratedPotBlockEntity {
         }
     }
 
+    /// Vanilla `ContainerSingleItem`: hoppers and droppers use the pot's slot.
+    fn get_inventory(self: Arc<Self>) -> Option<Arc<dyn Inventory>> {
+        self.unpack();
+        Some(self)
+    }
+
+    fn is_dirty(&self) -> bool {
+        self.dirty.load(Ordering::Relaxed)
+    }
+
+    fn clear_dirty(&self) {
+        self.dirty.store(false, Ordering::Relaxed);
+    }
+
+    fn is_comparator_dirty(&self) -> bool {
+        self.comparator_dirty.load(Ordering::Relaxed)
+    }
+
+    fn clear_comparator_dirty(&self) {
+        self.comparator_dirty.store(false, Ordering::Relaxed);
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -166,6 +193,8 @@ impl DecoratedPotBlockEntity {
             sherds: Mutex::new(None),
             item: Mutex::new(None),
             loot: ContainerLoot::new(),
+            dirty: AtomicBool::new(false),
+            comparator_dirty: AtomicBool::new(false),
         }
     }
 
@@ -238,8 +267,7 @@ impl DecoratedPotBlockEntity {
     }
 }
 
-/// The pot's single slot (vanilla `ContainerSingleItem`), here only the container its loot
-/// table fills: the pot isn't exposed as an inventory.
+/// The pot's single slot (vanilla `ContainerSingleItem`).
 impl Inventory for DecoratedPotBlockEntity {
     fn size(&self) -> usize {
         1
@@ -258,27 +286,46 @@ impl Inventory for DecoratedPotBlockEntity {
     }
 
     fn remove_stack(&self, _slot: usize) -> ItemStack {
-        self.item
+        let removed = self
+            .item
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take()
-            .unwrap_or_else(|| ItemStack::EMPTY.clone())
+            .unwrap_or_else(|| ItemStack::EMPTY.clone());
+        self.mark_dirty();
+        removed
     }
 
     fn remove_stack_specific(&self, _slot: usize, amount: u8) -> ItemStack {
-        let mut item = self
-            .item
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        item.as_mut()
-            .map_or_else(|| ItemStack::EMPTY.clone(), |item| item.split(amount))
+        let split = {
+            let mut item = self
+                .item
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let split = item
+                .as_mut()
+                .map_or_else(|| ItemStack::EMPTY.clone(), |item| item.split(amount));
+            if item.as_ref().is_some_and(ItemStack::is_empty) {
+                *item = None;
+            }
+            split
+        };
+        self.mark_dirty();
+        split
     }
 
     fn set_stack(&self, _slot: usize, stack: ItemStack) {
         *self
             .item
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(stack);
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            (!stack.is_empty()).then_some(stack);
+        self.mark_dirty();
+    }
+
+    fn mark_dirty(&self) {
+        self.dirty.store(true, Ordering::Relaxed);
+        self.comparator_dirty.store(true, Ordering::Relaxed);
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

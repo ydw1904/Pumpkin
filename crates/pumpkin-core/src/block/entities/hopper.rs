@@ -1,15 +1,15 @@
 use crate::block::blocks::chests::{chest_container, is_chest_block_entity};
+use crate::block::blocks::composter::ComposterBlock;
 use crate::block::entities::BlockEntity;
 use crate::block::entities::base_container::BaseContainer;
 use crate::block::entities::container_loot::ContainerLoot;
 use crate::entity::item::ItemEntity;
-use crate::entity::vehicle::minecart::MinecartEntity;
 use crate::world::World;
 use pumpkin_data::block_properties::{FacingHopper, HopperLikeProperties};
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::tag;
 use pumpkin_data::tag::Taggable;
-use pumpkin_data::{BlockDirection, BlockId, BlockStateId};
+use pumpkin_data::{Block, BlockDirection, BlockId, BlockStateId};
 use pumpkin_inventory::{Clearable, Inventory};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
@@ -63,7 +63,12 @@ const fn facing_direction(facing: FacingHopper) -> BlockDirection {
 
 /// `HopperBlockEntity.getBlockContainer`: the block entity's container, with both halves of a
 /// double chest combined whether or not they are blocked.
-pub fn block_container(world: &World, pos: &BlockPos) -> Option<Arc<dyn Inventory>> {
+pub fn block_container(world: &Arc<World>, pos: &BlockPos) -> Option<Arc<dyn Inventory>> {
+    // `WorldlyContainerHolder`: the composter makes a container from its state.
+    let (block, state_id) = world.get_block_and_state_id(pos);
+    if block == &Block::COMPOSTER {
+        return Some(ComposterBlock::get_container(state_id, world, pos));
+    }
     let entity = world.get_block_entity(pos)?;
     if is_chest_block_entity(entity.as_ref()) {
         chest_container(world, pos, true)
@@ -72,8 +77,8 @@ pub fn block_container(world: &World, pos: &BlockPos) -> Option<Arc<dyn Inventor
     }
 }
 
-/// `HopperBlockEntity.getContainerAt`: the block's container, or else a random container
-/// minecart inside the block.
+/// `HopperBlockEntity.getContainerAt`: the block's container, or else a random container entity
+/// (chest or hopper minecart, chest boat) inside the block.
 pub fn container_at(world: &Arc<World>, pos: BlockPos) -> Option<Arc<dyn Inventory>> {
     if let Some(container) = block_container(world, &pos) {
         return Some(container);
@@ -84,12 +89,7 @@ pub fn container_at(world: &Arc<World>, pos: BlockPos) -> Option<Arc<dyn Invento
         .get_entities_at_box(&block)
         .into_iter()
         .filter(|entity| entity.get_entity().is_alive())
-        .filter_map(|entity| {
-            entity
-                .cast_any()
-                .downcast_ref::<MinecartEntity>()
-                .and_then(MinecartEntity::container_inventory)
-        })
+        .filter_map(|entity| entity.get_container_inventory())
         .collect();
     if containers.is_empty() {
         return None;

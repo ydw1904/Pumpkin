@@ -22,6 +22,8 @@ use pumpkin_util::math::vector3::Vector3;
 
 pub struct BrewingStandBlockEntity {
     pub position: BlockPos,
+    /// Set on the first tick: datapack brewing recipes decide what may be placed.
+    world: std::sync::OnceLock<std::sync::Weak<crate::world::World>>,
     pub items: RwLock<[ItemStack; Self::INVENTORY_SIZE]>,
     pub dirty: AtomicBool,
     pub comparator_dirty: AtomicBool,
@@ -41,6 +43,7 @@ impl BrewingStandBlockEntity {
         use std::array::from_fn;
         Self {
             position,
+            world: std::sync::OnceLock::new(),
             items: RwLock::new(from_fn(|_| ItemStack::EMPTY.clone())),
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
@@ -50,6 +53,36 @@ impl BrewingStandBlockEntity {
             ingredient_item: StdMutex::new(None),
             base: BaseContainer::new(),
         }
+    }
+
+    fn is_dynamic_reagent(&self, stack: &ItemStack) -> bool {
+        let Some(world) = self.world.get().and_then(std::sync::Weak::upgrade) else {
+            return false;
+        };
+        let Some(server) = world.server.upgrade() else {
+            return false;
+        };
+        let key = format!("minecraft:{}", stack.get_item().registry_key);
+        server
+            .recipe_manager
+            .get_dynamic_recipes_internal()
+            .iter()
+            .any(|recipe| matches!(recipe, DynamicRecipe::Brewing(r) if r.reagent == key))
+    }
+
+    fn is_dynamic_potion_input(&self, stack: &ItemStack) -> bool {
+        let Some(world) = self.world.get().and_then(std::sync::Weak::upgrade) else {
+            return false;
+        };
+        let Some(server) = world.server.upgrade() else {
+            return false;
+        };
+        let key = format!("minecraft:{}", stack.get_item().registry_key);
+        server
+            .recipe_manager
+            .get_dynamic_recipes_internal()
+            .iter()
+            .any(|recipe| matches!(recipe, DynamicRecipe::Brewing(r) if r.input_item == key))
     }
 
     /// Vanilla `setChanged` only persists the entity, comparators react to slot changes instead.
@@ -457,8 +490,17 @@ impl pumpkin_inventory::Inventory for BrewingStandBlockEntity {
     fn is_valid_slot_for(&self, slot: usize, stack: &ItemStack) -> bool {
         match slot {
             4 => is_fuel(stack),
-            3 => is_ingredient(stack.item),
-            0..=2 => is_potion_item(stack.item) && self.get_stack(slot).is_empty(),
+            // `RecipePropertySet.BREWING_REAGENTS`, which includes datapack brewing recipes.
+            3 => is_ingredient(stack.item) || self.is_dynamic_reagent(stack),
+            // `PotionIngredient.isPotionInput`.
+            0..=2 => {
+                self.get_stack(slot).is_empty()
+                    && (is_potion_item(stack.item)
+                        || BREWING_RECIPES
+                            .iter()
+                            .any(|recipe| recipe.from_item().id == stack.item.id)
+                        || self.is_dynamic_potion_input(stack))
+            }
             _ => false,
         }
     }
@@ -639,6 +681,7 @@ impl crate::block::entities::BlockEntity for BrewingStandBlockEntity {
 
     #[allow(clippy::too_many_lines)]
     fn tick(&self, world: &Arc<crate::world::World>) {
+        let _ = self.world.set(Arc::downgrade(world));
         // Refill fuel counter from fuel item if needed
         let fuel_refilled = self.try_refill_fuel(world);
 

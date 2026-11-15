@@ -632,6 +632,10 @@ impl MinecartEntity {
 }
 
 impl EntityBase for MinecartEntity {
+    fn get_container_inventory(&self) -> Option<Arc<dyn pumpkin_inventory::Inventory>> {
+        self.container_inventory()
+    }
+
     fn get_air_drag(&self) -> f64 {
         AIR_DRAG
     }

@@ -7395,8 +7395,8 @@ impl Player {
         }
     }
 
-    /// Opens the inventory of the horse or nautilus this player rides. `false` if it isn't
-    /// riding one.
+    /// Opens the inventory of the horse, nautilus or chest boat this player rides
+    /// (`HasCustomInventoryScreen`). `false` if it isn't riding one.
     pub fn open_vehicle_inventory(self: &Arc<Self>) -> bool {
         let Some(vehicle) = self.get_entity().get_vehicle() else {
             return false;
@@ -7404,6 +7404,12 @@ impl Player {
         if let Some(nautilus) = vehicle.cast_any().downcast_ref::<NautilusEntity>() {
             nautilus.open_custom_inventory_screen(self);
             return true;
+        }
+        if let Some(boat) = vehicle
+            .cast_any()
+            .downcast_ref::<crate::entity::vehicle::boat::BoatEntity>()
+        {
+            return boat.open_inventory(self);
         }
         let Some(horse) = vehicle.get_mob().and_then(|mob| mob.as_abstract_horse()) else {
             return false;
