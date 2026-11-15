@@ -8298,6 +8298,27 @@ impl NBTStorage for EnderChestInventory {
 impl NBTStorageInit for EnderChestInventory {}
 
 impl EntityBase for Player {
+    /// Vanilla `Player`: a flying player isn't pushed by bubble columns.
+    fn on_above_bubble_column(&self, drag_down: bool, pos: &BlockPos) {
+        if !self.is_flying() {
+            crate::block::blocks::bubble_column::handle_on_above_bubble_column(
+                &self.living_entity.entity,
+                drag_down,
+                pos,
+            );
+        }
+    }
+
+    fn on_inside_bubble_column(&self, drag_down: bool) {
+        if !self.is_flying() {
+            crate::block::blocks::bubble_column::handle_on_inside_bubble_column(
+                &self.living_entity.entity,
+                drag_down,
+            );
+            self.living_entity.fall_distance.store(0.0);
+        }
+    }
+
     fn sound_source(&self) -> SoundCategory {
         SoundCategory::Players
     }

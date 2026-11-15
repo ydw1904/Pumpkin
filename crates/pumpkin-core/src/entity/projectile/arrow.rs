@@ -474,6 +474,23 @@ impl ArrowEntity {
 }
 
 impl EntityBase for ArrowEntity {
+    /// Vanilla `AbstractArrow`: a stuck arrow ignores bubble columns.
+    fn on_above_bubble_column(&self, drag_down: bool, pos: &BlockPos) {
+        if !self.in_ground.load(Ordering::Relaxed) {
+            crate::block::blocks::bubble_column::push_projectile(&self.entity, drag_down, true);
+            crate::block::blocks::bubble_column::send_bubble_column_particles(
+                &self.entity.world.load(),
+                pos,
+            );
+        }
+    }
+
+    fn on_inside_bubble_column(&self, drag_down: bool) {
+        if !self.in_ground.load(Ordering::Relaxed) {
+            crate::block::blocks::bubble_column::push_projectile(&self.entity, drag_down, false);
+        }
+    }
+
     fn get_projectile_owner(&self) -> Option<&ProjectileOwner> {
         Some(&self.owner)
     }

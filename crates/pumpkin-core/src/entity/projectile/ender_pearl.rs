@@ -15,6 +15,7 @@ use pumpkin_data::entity::{EntityPose, EntityStatus};
 use pumpkin_data::particle::Particle;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_protocol::bedrock::server::actor_event::ActorEventID;
+use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 
 const GRAVITY: f64 = 0.03;
@@ -48,6 +49,22 @@ impl EnderPearlEntity {
 }
 
 impl EntityBase for EnderPearlEntity {
+    /// Vanilla `ThrownEnderpearl` takes the capped push other entities get.
+    fn on_above_bubble_column(&self, drag_down: bool, pos: &BlockPos) {
+        crate::block::blocks::bubble_column::handle_on_above_bubble_column(
+            &self.thrown.entity,
+            drag_down,
+            pos,
+        );
+    }
+
+    fn on_inside_bubble_column(&self, drag_down: bool) {
+        crate::block::blocks::bubble_column::handle_on_inside_bubble_column(
+            &self.thrown.entity,
+            drag_down,
+        );
+    }
+
     /// Vanilla compares item stacks by identity, so the item is never at its default and always goes out with the spawn packet.
     fn init_data_tracker(&self) {
         self.get_entity().set_synced_data(

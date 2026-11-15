@@ -2,10 +2,12 @@ use std::sync::Arc;
 
 use pumpkin_data::block_properties::BubbleColumnLikeProperties;
 use pumpkin_data::fluid::Fluid;
+use pumpkin_data::particle::Particle;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::{Block, BlockDirection, BlockId, BlockStateId};
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::tick::TickPriority;
 use pumpkin_world::world::BlockFlags;
 
@@ -28,6 +30,7 @@ pub(crate) const SURFACE_UPWARD_ACCELERATION: f64 = 0.1;
 const SURFACE_UPWARD_MAX_SPEED: f64 = 1.8;
 const DOWNWARD_ACCELERATION: f64 = -0.03;
 const DOWNWARD_MIN_SPEED: f64 = -0.3;
+const SURFACE_DOWNWARD_MIN_SPEED: f64 = -0.9;
 
 pub struct BubbleColumnBlock;
 
@@ -151,7 +154,10 @@ fn bubble_column_vertical_velocity(
         (BubbleColumnKind::Upward, false) => {
             (current_y + UPWARD_ACCELERATION).min(UPWARD_MAX_SPEED)
         }
-        (BubbleColumnKind::Downward, _) => {
+        (BubbleColumnKind::Downward, true) => {
+            (current_y + DOWNWARD_ACCELERATION).max(SURFACE_DOWNWARD_MIN_SPEED)
+        }
+        (BubbleColumnKind::Downward, false) => {
             (current_y + DOWNWARD_ACCELERATION).max(DOWNWARD_MIN_SPEED)
         }
     }
@@ -175,13 +181,58 @@ const fn kind_of(drag_down: bool) -> BubbleColumnKind {
 }
 
 /// Vanilla `Entity.handleOnAboveBubbleColumn`.
-pub(crate) fn handle_on_above_bubble_column(entity: &Entity, drag_down: bool) {
+pub(crate) fn handle_on_above_bubble_column(entity: &Entity, drag_down: bool, pos: &BlockPos) {
     apply_bubble_column_velocity(entity, kind_of(drag_down), true);
+    send_bubble_column_particles(&entity.world.load(), pos);
 }
 
-/// Vanilla `Entity.handleOnInsideBubbleColumn`.
+/// Vanilla `Entity.handleOnInsideBubbleColumn`, without the fall distance reset.
 pub(crate) fn handle_on_inside_bubble_column(entity: &Entity, drag_down: bool) {
     apply_bubble_column_velocity(entity, kind_of(drag_down), false);
+}
+
+/// Vanilla `Projectile.onAboveBubbleColumn` and `onInsideBubbleColumn`: the same pushes as
+/// other entities, without the speed caps.
+pub(crate) fn push_projectile(entity: &Entity, drag_down: bool, at_surface: bool) {
+    let push = match (kind_of(drag_down), at_surface) {
+        (BubbleColumnKind::Downward, _) => DOWNWARD_ACCELERATION,
+        (BubbleColumnKind::Upward, true) => SURFACE_UPWARD_ACCELERATION,
+        (BubbleColumnKind::Upward, false) => UPWARD_ACCELERATION,
+    };
+    entity
+        .velocity
+        .store(entity.velocity.load() + Vector3::new(0.0, push, 0.0));
+}
+
+/// Vanilla `Entity.sendBubbleColumnParticles`.
+pub(crate) fn send_bubble_column_particles(world: &World, pos: &BlockPos) {
+    let random = game_random();
+    for _ in 0..2 {
+        let splash = Vector3::new(
+            f64::from(pos.0.x) + random.random::<f64>(),
+            f64::from(pos.0.y + 1),
+            f64::from(pos.0.z) + random.random::<f64>(),
+        );
+        world.spawn_particle(
+            splash,
+            Vector3::new(0.0, 0.0, 0.0),
+            1.0,
+            1,
+            Particle::Splash,
+        );
+        let bubble = Vector3::new(
+            f64::from(pos.0.x) + random.random::<f64>(),
+            f64::from(pos.0.y + 1),
+            f64::from(pos.0.z) + random.random::<f64>(),
+        );
+        world.spawn_particle(
+            bubble,
+            Vector3::new(0.0, 0.01, 0.0),
+            0.2,
+            1,
+            Particle::Bubble,
+        );
+    }
 }
 
 impl BlockBehaviour for BubbleColumnBlock {
@@ -192,7 +243,11 @@ impl BlockBehaviour for BubbleColumnBlock {
             }
 
             let drag_down = kind_from_state(args.state.id) == BubbleColumnKind::Downward;
-            if args.world.get_block(&args.position.up()) == &Block::AIR {
+            // Vanilla: nothing above when the block over the column has no collision and no fluid.
+            let above = args.world.get_block_state(&args.position.up());
+            if above.collision_shapes.is_empty()
+                && World::get_fluid_type_from_state_id(above.id) == &Fluid::EMPTY
+            {
                 args.entity.on_above_bubble_column(drag_down, args.position);
             } else {
                 args.entity.on_inside_bubble_column(drag_down);

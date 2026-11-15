@@ -1319,20 +1319,30 @@ pub trait EntityBase: Send + Sync + std::any::Any {
 
     fn set_paddle_state(&self, _left: bool, _right: bool) {}
 
-    /// Vanilla `onAboveBubbleColumn`: touching the top block of a column.
-    fn on_above_bubble_column(&self, drag_down: bool, _pos: &BlockPos) {
-        crate::block::blocks::bubble_column::handle_on_above_bubble_column(
-            self.get_entity(),
-            drag_down,
-        );
+    /// Vanilla `onAboveBubbleColumn`: touching the top block of a column. Projectiles override
+    /// it in vanilla `Projectile` with an uncapped push.
+    fn on_above_bubble_column(&self, drag_down: bool, pos: &BlockPos) {
+        use crate::block::blocks::bubble_column;
+        let entity = self.get_entity();
+        if self.get_projectile_owner().is_some() {
+            bubble_column::push_projectile(entity, drag_down, true);
+            bubble_column::send_bubble_column_particles(&entity.world.load(), pos);
+        } else {
+            bubble_column::handle_on_above_bubble_column(entity, drag_down, pos);
+        }
     }
 
     /// Vanilla `onInsideBubbleColumn`.
     fn on_inside_bubble_column(&self, drag_down: bool) {
-        crate::block::blocks::bubble_column::handle_on_inside_bubble_column(
-            self.get_entity(),
-            drag_down,
-        );
+        use crate::block::blocks::bubble_column;
+        if self.get_projectile_owner().is_some() {
+            bubble_column::push_projectile(self.get_entity(), drag_down, false);
+        } else {
+            bubble_column::handle_on_inside_bubble_column(self.get_entity(), drag_down);
+        }
+        if let Some(living) = self.get_living_entity() {
+            living.fall_distance.store(0.0);
+        }
     }
 
     fn is_in_love(&self) -> bool {
