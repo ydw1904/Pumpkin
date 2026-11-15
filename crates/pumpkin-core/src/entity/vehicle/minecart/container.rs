@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, RwLock};
 
+use crossbeam::atomic::AtomicCell;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_inventory::generic_container_screen_handler::{create_generic_9x3, create_hopper};
 use pumpkin_inventory::player::player_inventory::PlayerInventory;
@@ -22,6 +23,8 @@ pub(super) struct MinecartInventory {
     size: usize,
     loot: ContainerLoot,
     drops_claimed: AtomicBool,
+    /// The chest minecart this inventory belongs to, for its `container_close` game event.
+    chest_owner: AtomicCell<Option<i32>>,
 }
 
 impl MinecartInventory {
@@ -31,7 +34,12 @@ impl MinecartInventory {
             size,
             loot: ContainerLoot::new(),
             drops_claimed: AtomicBool::new(false),
+            chest_owner: AtomicCell::new(None),
         }
+    }
+
+    pub(super) fn set_chest_owner(&self, entity_id: i32) {
+        self.chest_owner.store(Some(entity_id));
     }
 
     pub(super) fn claim_drops(&self) -> bool {
@@ -128,6 +136,12 @@ impl Inventory for MinecartInventory {
         self.items
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner)[slot] = stack;
+    }
+
+    fn on_close_by(&self, player: &dyn InventoryPlayer) {
+        if let Some(entity_id) = self.chest_owner.load() {
+            crate::entity::vehicle::chest_vehicle_closed(entity_id, player);
+        }
     }
 
     fn as_any(&self) -> &dyn Any {

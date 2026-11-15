@@ -3,6 +3,7 @@ use std::{
     sync::{Arc, Mutex, RwLock},
 };
 
+use crossbeam::atomic::AtomicCell;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_inventory::{
     Clearable, Inventory,
@@ -20,6 +21,8 @@ pub(super) struct BoatInventory {
     items: RwLock<Vec<ItemStack>>,
     size: usize,
     loot: ContainerLoot,
+    /// The chest boat this inventory belongs to, for its `container_close` game event.
+    owner: AtomicCell<Option<i32>>,
 }
 
 impl BoatInventory {
@@ -28,7 +31,12 @@ impl BoatInventory {
             items: RwLock::new(vec![ItemStack::EMPTY.clone(); size]),
             size,
             loot: ContainerLoot::new(),
+            owner: AtomicCell::new(None),
         }
+    }
+
+    pub(super) fn set_owner(&self, entity_id: i32) {
+        self.owner.store(Some(entity_id));
     }
 
     pub(super) fn read_nbt(&self, nbt: &NbtCompound) {
@@ -119,6 +127,12 @@ impl Inventory for BoatInventory {
         self.items
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner)[slot] = stack;
+    }
+
+    fn on_close_by(&self, player: &dyn InventoryPlayer) {
+        if let Some(entity_id) = self.owner.load() {
+            crate::entity::vehicle::chest_vehicle_closed(entity_id, player);
+        }
     }
 
     fn as_any(&self) -> &dyn Any {

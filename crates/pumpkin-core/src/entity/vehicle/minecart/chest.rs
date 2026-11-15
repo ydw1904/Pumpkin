@@ -25,6 +25,7 @@ impl ChestMinecart {
     }
 
     pub(super) fn interact(&self, entity: &crate::entity::Entity, player: &Arc<Player>) -> bool {
+        self.inventory.set_chest_owner(entity.entity_id);
         let opened = container::open(
             entity,
             player,

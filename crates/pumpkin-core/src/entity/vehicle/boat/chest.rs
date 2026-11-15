@@ -32,6 +32,7 @@ impl ChestBoat {
         default_boat_name: TextComponent,
         player: &Arc<Player>,
     ) -> bool {
+        self.inventory.set_owner(entity.entity_id);
         // Vanilla `AbstractChestBoat.createMenu`.
         if !player.is_spectator() {
             self.inventory.unpack_loot(entity, Some(player));

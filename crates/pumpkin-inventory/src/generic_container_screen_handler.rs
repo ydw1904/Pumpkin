@@ -240,7 +240,7 @@ impl ScreenHandler for GenericContainerScreenHandler {
     fn on_closed(&mut self, player: &dyn InventoryPlayer) {
         self.default_on_closed(player);
         if !self.is_spectator && !player.is_spectator() {
-            self.inventory.on_close();
+            self.inventory.on_close_by(player);
         }
     }
 
