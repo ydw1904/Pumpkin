@@ -5,8 +5,8 @@ use crate::block::entities::BlockEntity;
 use crate::block::entities::beehive::{BeeReleaseStatus, BeehiveBlockEntity, MAX_HONEY_LEVELS};
 use crate::block::registry::BlockActionResult;
 use crate::block::{
-    BlockBehaviour, BlockMetadata, ExplodeArgs, GetComparatorOutputArgs, OnPlaceArgs,
-    UseWithItemArgs,
+    BlockBehaviour, BlockMetadata, ExplodeArgs, GetComparatorOutputArgs,
+    GetStateForNeighborUpdateArgs, OnPlaceArgs, UseWithItemArgs,
 };
 use crate::entity::EntityBase;
 use crate::entity::mob::Mob;
@@ -239,6 +239,23 @@ impl BlockBehaviour for BeehiveBlock {
 
     fn on_explosion_hit(&self, args: ExplodeArgs<'_>) {
         Self::anger_nearby_bees(args.world, args.position);
+    }
+
+    /// Vanilla `BeehiveBlock.updateShape`: fire next to the hive drives its bees out.
+    fn get_state_for_neighbor_update(&self, args: GetStateForNeighborUpdateArgs<'_>) -> BlockStateId {
+        if args.world.get_block(args.neighbor_position) == &Block::FIRE
+            && let Some(block_entity) = args.world.get_block_entity(args.position)
+            && let Some(hive) = block_entity.as_any().downcast_ref::<BeehiveBlockEntity>()
+            && let Some(server) = args.world.server.upgrade()
+            && let Some(world) = server
+                .worlds
+                .load()
+                .iter()
+                .find(|world| std::ptr::eq(world.as_ref(), args.world))
+        {
+            hive.empty_all_living_from_hive(world, args.state_id, None, BeeReleaseStatus::Emergency);
+        }
+        args.state_id
     }
 
     fn on_place(&self, args: OnPlaceArgs<'_>) -> BlockStateId {
