@@ -645,6 +645,10 @@ impl<'a> Explosion<'a> {
             {
                 continue;
             }
+            // `pushFromExplosion` goes through `push`, which some entities ignore.
+            if !entity_base.accepts_push_impulse() {
+                continue;
+            }
             // A living entity's goes through `EntityKnockbackEvent`
             let knockback = if entity_base.get_living_entity().is_some() {
                 let Some(knockback) =
@@ -767,6 +771,7 @@ impl<'a> Explosion<'a> {
                             position: pos,
                             indirect_source: self.indirect_source_entity(),
                             source: self.source,
+                            damage_source: self.damage_source(),
                         });
                     }
                 }
@@ -806,11 +811,7 @@ impl<'a> Explosion<'a> {
                         let params = LootContextParameters {
                             block_state: Some(state),
                             explosion_radius,
-                            position: Some(pumpkin_util::math::vector3::Vector3::new(
-                                pos.0.x as f64,
-                                pos.0.y as f64,
-                                pos.0.z as f64,
-                            )),
+                            position: Some(pos.to_f64()),
                             world_time: world.level_info.load().day_time as u64,
                             is_raining: Some(is_raining),
                             is_thundering: Some(is_thundering),
@@ -823,6 +824,7 @@ impl<'a> Explosion<'a> {
                                 position: pos,
                                 indirect_source: self.indirect_source_entity(),
                                 source: self.source,
+                                damage_source: self.damage_source(),
                             });
                         }
                         for stack in collect_loot(world, block, pos, &params) {
@@ -840,6 +842,7 @@ impl<'a> Explosion<'a> {
                             position: pos,
                             indirect_source: self.indirect_source_entity(),
                             source: self.source,
+                            damage_source: self.damage_source(),
                         });
                     }
                 }

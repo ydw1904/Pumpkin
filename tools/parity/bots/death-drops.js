@@ -60,4 +60,28 @@ h.start(async () => {
   const helmets = ['diamond_helmet', 'golden_helmet', 'chainmail_helmet']
   const seen = Object.values(bot.entities).filter(e => e.name === 'item' && e.getDroppedItem()).map(e => e.getDroppedItem().name).concat(Object.keys(h.inv()))
   h.result('mob_equipment_drops', helmets.filter(n => seen.includes(n)).join(',') || 'none')
+
+  // A natural creaking heart blown up by the bot's TNT kills its creaking with the death effects
+  // (it lingers for the death animation).
+  await h.clear()
+  h.cmd(`effect give ${bot.username} resistance infinite 255 true`)
+  const hx = X - 6; const hz = Z - 6
+  h.cmd(`setblock ${hx} ${Y + 1} ${hz} pale_oak_log[axis=y]`)
+  h.cmd(`setblock ${hx} ${Y + 3} ${hz} pale_oak_log[axis=y]`)
+  h.cmd(`setblock ${hx} ${Y + 2} ${hz} creaking_heart[axis=y,natural=true,creaking_heart_state=awake]{creaking:[I;1,2,3,4]}`)
+  h.cmd(`summon creaking ${hx + 3.5} ${Y + 1} ${hz + 0.5} {NoAI:1b,PersistenceRequired:1b,UUID:[I;1,2,3,4],home_pos:[I;${hx},${Y + 2},${hz}]}`)
+  let creaking
+  await h.waitFor(() => (creaking = Object.values(bot.entities).find(e => e.name === 'creaking')), 3000)
+  let died = false
+  bot._client.on('entity_status', (p) => { if (creaking && p.entityId === creaking.id && p.entityStatus === 3) died = true })
+  await h.tp(hx + 2.5, Y + 1, hz + 3.5)
+  await h.serverTicks(5)
+  const owner = bot.player.uuid.replace(/-/g, '').match(/.{8}/g).map(part => parseInt(part, 16) | 0).join(',')
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    h.cmd(`summon tnt ${hx + dx + 0.5} ${Y + 2} ${hz + dz + 0.5} {fuse:0,NoGravity:1b,owner:[I;${owner}]}`)
+  }
+  await h.serverTicks(10)
+  const heart = h.blockName(hx, Y + 2, hz)
+  const lingering = !!(creaking && bot.entities[creaking.id])
+  h.result('creaking_heart_tnt', `heart=${heart} died=${died} lingering=${lingering}`)
 })

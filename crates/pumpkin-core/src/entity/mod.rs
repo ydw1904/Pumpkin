@@ -554,6 +554,17 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         false
     }
 
+    /// Whether vanilla `push(x, y, z)` adds the impulse; a frozen creaking drops it.
+    fn accepts_push_impulse(&self) -> bool {
+        true
+    }
+
+    /// The type-specific part of vanilla `canUsePortal`, which portal blocks check before an
+    /// entity counts as inside them.
+    fn can_use_portal(&self) -> bool {
+        true
+    }
+
     /// Vanilla `Entity.getDefaultGravity`.
     fn get_gravity(&self) -> f64 {
         0.0

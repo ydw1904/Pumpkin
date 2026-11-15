@@ -3,6 +3,7 @@ use std::sync::Arc;
 use pumpkin_data::block_properties::{
     Axis, CreakingHeartLikeProperties, CreakingHeartState, PaleOakWoodLikeProperties,
 };
+use pumpkin_data::damage::DamageType;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::{Block, BlockStateId};
 use pumpkin_macros::pumpkin_block;
@@ -14,9 +15,10 @@ use pumpkin_world::world::{BlockAccessor, BlockFlags};
 
 use crate::block::entities::creaking_heart::CreakingHeartBlockEntity;
 use crate::block::{
-    BlockBehaviour, GetComparatorOutputArgs, GetStateForNeighborUpdateArgs, OnPlaceArgs,
-    OnScheduledTickArgs,
+    BlockBehaviour, ExplodeArgs, GetComparatorOutputArgs, GetStateForNeighborUpdateArgs,
+    OnPlaceArgs, OnScheduledTickArgs,
 };
+use crate::entity::EntityBase;
 use crate::entity::experience_orb::ExperienceOrbEntity;
 use crate::entity::player::Player;
 use crate::world::World;
@@ -67,7 +69,11 @@ impl CreakingHeartBlock {
         else {
             return;
         };
-        heart.remove_protector(world, Some(player));
+        let attacker: &dyn EntityBase = player.as_ref();
+        heart.remove_protector(
+            world,
+            Some((DamageType::PLAYER_ATTACK, Some(attacker), Some(attacker))),
+        );
         Self::try_award_experience(world, pos, player);
     }
 
@@ -95,6 +101,24 @@ impl BlockBehaviour for CreakingHeartBlock {
             pumpkin_data::BlockDirection::Up | pumpkin_data::BlockDirection::Down => Axis::Y,
         };
         Self::update_state(args.world, args.position, props.to_state_id(args.block))
+    }
+
+    /// Vanilla `onExplosionHit` for a destroying explosion, which runs before the drops; a
+    /// creaking heart always drops from explosions, so this hook always sees it.
+    fn on_explosion_drops(&self, args: ExplodeArgs<'_>) {
+        let Some(block_entity) = args.world.get_block_entity(args.position) else {
+            return;
+        };
+        let Some(heart) = block_entity
+            .as_any()
+            .downcast_ref::<CreakingHeartBlockEntity>()
+        else {
+            return;
+        };
+        heart.remove_protector(args.world, Some(args.damage_source));
+        if let Some(player) = args.indirect_source.and_then(EntityBase::get_player) {
+            Self::try_award_experience(args.world, args.position, player);
+        }
     }
 
     fn get_state_for_neighbor_update(

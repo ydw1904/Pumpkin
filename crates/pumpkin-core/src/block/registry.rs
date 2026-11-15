@@ -1104,6 +1104,7 @@ impl BlockRegistry {
                 position,
                 indirect_source: None,
                 source: None,
+                damage_source: (pumpkin_data::damage::DamageType::EXPLOSION, None, None),
             });
         }
     }

@@ -19,6 +19,9 @@ impl BlockBehaviour for EndPortalBlock {
     }
 
     fn on_entity_collision(&self, args: OnEntityCollisionArgs<'_>) {
+        if !args.entity.can_use_portal() {
+            return;
+        }
         let target_world =
             if args.world.dimension.minecraft_name == Dimension::THE_END.minecraft_name {
                 args.server.get_world_from_dimension(&Dimension::OVERWORLD)

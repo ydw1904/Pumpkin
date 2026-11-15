@@ -22,12 +22,12 @@ use rustc_hash::FxHashSet;
 use uuid::Uuid;
 
 use super::BlockEntity;
+use crate::block::DamageSource;
 use crate::block::blocks::creaking_heart::CreakingHeartBlock;
 use crate::block::blocks::sculk::sculk_vein::{has_face, set_face};
 use crate::entity::EntityBase;
 use crate::entity::mob::Mob;
 use crate::entity::mob::creaking::{CREAKING_GRAY, CREAKING_ORANGE, CreakingEntity};
-use crate::entity::player::Player;
 use crate::entity::spawn_util::{SpawnStrategy, try_spawn_mob};
 use crate::world::World;
 use crate::world::game_event::GameEventContext;
@@ -519,17 +519,17 @@ impl CreakingHeartBlockEntity {
         }
     }
 
-    /// Vanilla `removeProtector`: tears the protector down, or with a `killer` lets it die
-    /// with the death effects first.
-    pub fn remove_protector(&self, world: &World, killer: Option<&Arc<Player>>) {
+    /// Vanilla `removeProtector`: tears the protector down, or with a damage source lets it
+    /// die from it with the death effects first.
+    pub fn remove_protector(&self, world: &World, damage_source: Option<DamageSource<'_>>) {
         let Some(entity) = self.get_creaking_protector(world) else {
             return;
         };
         if let Some(creaking) = as_creaking(&entity) {
-            match killer {
+            match damage_source {
                 None => creaking.tear_down(),
-                Some(killer) => {
-                    creaking.creaking_death_effects(killer);
+                Some((damage_type, source, cause)) => {
+                    creaking.creaking_death_effects(damage_type, source, cause);
                     creaking.set_tearing_down();
                     creaking.mob_entity.living_entity.set_health(0.0);
                 }

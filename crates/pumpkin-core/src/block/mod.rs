@@ -362,7 +362,16 @@ pub struct ExplodeArgs<'a> {
     pub indirect_source: Option<&'a dyn EntityBase>,
     /// The explosion's `getDirectSourceEntity`.
     pub source: Option<&'a dyn EntityBase>,
+    /// The explosion's `getDamageSource`.
+    pub damage_source: DamageSource<'a>,
 }
+
+/// A damage source's type, direct entity and causing entity.
+pub type DamageSource<'a> = (
+    pumpkin_data::damage::DamageType,
+    Option<&'a dyn EntityBase>,
+    Option<&'a dyn EntityBase>,
+);
 
 pub struct OnSyncedBlockEventArgs<'a> {
     pub world: &'a Arc<World>,

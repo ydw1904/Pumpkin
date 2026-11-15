@@ -3554,6 +3554,16 @@ pub trait Mob: EntityBase + Send + Sync {
         false
     }
 
+    /// See [`EntityBase::accepts_push_impulse`].
+    fn mob_accepts_push_impulse(&self) -> bool {
+        true
+    }
+
+    /// See [`EntityBase::can_use_portal`].
+    fn mob_can_use_portal(&self) -> bool {
+        true
+    }
+
     fn can_push_entity(&self, _other: &dyn EntityBase) -> bool {
         true
     }
@@ -3605,6 +3615,14 @@ impl<T: Mob + Send + 'static> EntityBase for T {
 
     fn is_immune_to_explosion(&self) -> bool {
         self.mob_ignores_explosion()
+    }
+
+    fn accepts_push_impulse(&self) -> bool {
+        self.mob_accepts_push_impulse()
+    }
+
+    fn can_use_portal(&self) -> bool {
+        self.mob_can_use_portal()
     }
 
     fn is_flapping(&self) -> bool {

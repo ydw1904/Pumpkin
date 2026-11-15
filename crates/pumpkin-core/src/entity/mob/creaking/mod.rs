@@ -423,12 +423,17 @@ impl CreakingEntity {
         entity.remove();
     }
 
-    /// Vanilla `creakingDeathEffects`: dies by `killer`'s hand and twitches.
-    pub fn creaking_death_effects(&self, killer: &Arc<Player>) {
+    /// Vanilla `creakingDeathEffects`: dies from the damage source and twitches.
+    pub fn creaking_death_effects(
+        &self,
+        damage_type: DamageType,
+        source: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
+    ) {
         let living = &self.mob_entity.living_entity;
-        let attacker: &dyn EntityBase = killer.as_ref();
-        living.resolve_mob_responsible_for_damage(DamageType::PLAYER_ATTACK, Some(attacker));
-        living.resolve_player_responsible_for_damage(Some(attacker));
+        // `blameSourceForDamage`.
+        living.resolve_mob_responsible_for_damage(damage_type, cause);
+        living.resolve_player_responsible_for_damage(cause);
         let mut death_event =
             crate::plugin::api::events::entity::entity_death::EntityDeathEvent::new(
                 self.get_entity().entity_id,
@@ -440,12 +445,7 @@ impl CreakingEntity {
                 .fire_blocking(&server, &mut death_event);
         }
         // `die` without the death sound, which plays when it finishes tearing down.
-        living.die(
-            DamageType::PLAYER_ATTACK,
-            Some(attacker),
-            Some(attacker),
-            false,
-        );
+        living.die(damage_type, source, cause, false);
         self.make_sound(Sound::EntityCreakingTwitch);
     }
 
@@ -493,6 +493,16 @@ impl Mob for CreakingEntity {
 
     fn mob_is_pushable(&self) -> bool {
         self.mob_entity.living_entity.is_pushable() && self.can_move()
+    }
+
+    /// Vanilla `Creaking.push`.
+    fn mob_accepts_push_impulse(&self) -> bool {
+        self.can_move()
+    }
+
+    /// Vanilla `Creaking.canUsePortal`.
+    fn mob_can_use_portal(&self) -> bool {
+        !self.is_heart_bound()
     }
 
     fn mob_knockback(
