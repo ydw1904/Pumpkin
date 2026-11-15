@@ -299,7 +299,9 @@ impl ShulkerBulletEntity {
             ClipBlock::Collider,
             ClipFluid::None,
         ));
-        let to = block_hit.location;
+        // Vanilla `clipIncludingBorder`.
+        let border_hit = world.clip_world_border(from, block_hit.location);
+        let to = border_hit.map_or(block_hit.location, |(location, _)| location);
         let area = entity
             .bounding_box
             .load()
@@ -318,11 +320,21 @@ impl ShulkerBulletEntity {
                 normal,
             });
         }
+        if let Some((location, face)) = border_hit {
+            return Some(ProjectileHit::Block {
+                pos: BlockPos::floored_v(location),
+                face,
+                hit_pos: location,
+                normal,
+                world_border: true,
+            });
+        }
         (!block_hit.is_miss).then_some(ProjectileHit::Block {
             pos: block_hit.block_pos,
             face: block_hit.direction,
             hit_pos: block_hit.location,
             normal,
+            world_border: false,
         })
     }
 
@@ -338,8 +350,10 @@ impl ShulkerBulletEntity {
                     return;
                 }
             }
-            ProjectileHit::Block { pos, .. } => {
-                if self.entity.world.load().get_block_state(pos).is_air() {
+            ProjectileHit::Block {
+                pos, world_border, ..
+            } => {
+                if !world_border && self.entity.world.load().get_block_state(pos).is_air() {
                     return;
                 }
             }

@@ -1,6 +1,8 @@
 use crate::enchantment::helper::EnchantmentHelper;
 use crate::entity::projectile::owner::ProjectileOwner;
-use crate::entity::projectile_deflection::{LastDeflectedBy, redirect_projectile};
+use crate::entity::projectile_deflection::{
+    LastDeflectedBy, ProjectileDeflectionType, deflect_projectile, redirect_projectile,
+};
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::data_component_impl::{EnchantmentGlintOverrideImpl, EnchantmentsImpl};
 use pumpkin_util::random::gameplay::game_random;
@@ -23,8 +25,8 @@ use pumpkin_util::math::vector3::Vector3;
 
 use super::arrow::ArrowPickup;
 use super::{
-    ProjectileHit, arrow_rest_position, calculate_ray_intersection, compute_margin,
-    entity_hit_result,
+    ProjectileHit, WORLD_BORDER_BOUNCE, arrow_rest_position, calculate_ray_intersection,
+    compute_margin, entity_hit_result,
 };
 
 pub struct TridentEntity {
@@ -449,6 +451,7 @@ impl EntityBase for TridentEntity {
                             face: get_hit_face(hit_pos, *pos),
                             hit_pos,
                             normal: velocity.normalize().multiply(-1.0, -1.0, -1.0),
+                            world_border: false,
                         });
                         break;
                     }
@@ -458,7 +461,17 @@ impl EntityBase for TridentEntity {
 
         // Vanilla `ThrownTrident.findHitEntities`: the nearest entity up to the block hit, until
         // the trident has dealt damage, and the trident moves to where it hits.
-        let block_to = start_pos + velocity * closest_t;
+        let mut block_to = start_pos + velocity * closest_t;
+        if let Some((location, face)) = world.clip_world_border(start_pos, block_to) {
+            block_to = location;
+            hit = Some(ProjectileHit::Block {
+                pos: BlockPos::floored_v(location),
+                face,
+                hit_pos: location,
+                normal: velocity.normalize().multiply(-1.0, -1.0, -1.0),
+                world_border: true,
+            });
+        }
         let entity_hit = if self.dealt_damage.load(Ordering::Relaxed) {
             None
         } else {
@@ -480,17 +493,35 @@ impl EntityBase for TridentEntity {
         entity.apply_effects_from_blocks(caller, start_pos, entity.pos.load());
 
         // Handle hit
-        if let Some(h) = hit.filter(|_| !entity.is_removed())
-            && !matches!(&h, ProjectileHit::Entity { entity: target, .. }
+        if let Some(h) = hit.filter(|_| !entity.is_removed()) {
+            if matches!(
+                h,
+                ProjectileHit::Block {
+                    world_border: true,
+                    ..
+                }
+            ) {
+                // Vanilla `AbstractArrow.shouldBounceOnWorldBorder`.
+                deflect_projectile(
+                    caller,
+                    ProjectileDeflectionType::Simple,
+                    None,
+                    None,
+                    false,
+                    WORLD_BORDER_BOUNCE,
+                );
+                entity.velocity_dirty.store(true, Ordering::Relaxed);
+            } else if !matches!(&h, ProjectileHit::Entity { entity: target, .. }
                 if self.last_deflected_by.hit_target_or_deflect_self(caller, target.as_ref()))
-            && !self.has_hit.swap(true, Ordering::SeqCst)
-        {
-            if let ProjectileHit::Entity { entity: target, .. } = &h {
-                redirect_projectile(caller, target.as_ref());
+                && !self.has_hit.swap(true, Ordering::SeqCst)
+            {
+                if let ProjectileHit::Entity { entity: target, .. } = &h {
+                    redirect_projectile(caller, target.as_ref());
+                }
+                caller.on_hit(h);
+                // Vanilla `AbstractArrow.stepMoveAndHit` sets `needsSync` after a hit.
+                entity.velocity_dirty.store(true, Ordering::Relaxed);
             }
-            caller.on_hit(h);
-            // Vanilla `AbstractArrow.stepMoveAndHit` sets `needsSync` after a hit.
-            entity.velocity_dirty.store(true, Ordering::Relaxed);
         }
         after_move(self);
         Self::base_tick(entity, caller);

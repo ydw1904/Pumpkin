@@ -4,6 +4,7 @@ use pumpkin_protocol::java::client::play::{
 };
 
 use pumpkin_util::math::boundingbox::BoundingBox;
+use pumpkin_util::math::vector3::Vector3;
 use pumpkin_world::world_info::data_files::WorldBorderData;
 
 use crate::entity::Entity;
@@ -217,6 +218,22 @@ impl Worldborder {
     #[must_use]
     pub fn contains(&self, x: f64, z: f64) -> bool {
         self.is_within_bounds(x, z, 0.0)
+    }
+
+    /// Vanilla `WorldBorder.clampVec3ToBound`: pulls `x` and `z` just inside the border.
+    #[must_use]
+    pub fn clamp_vec3_to_bound(&self, position: Vector3<f64>) -> Vector3<f64> {
+        let half = self.new_diameter / 2.0;
+        let epsilon = f64::from(1.0E-5f32);
+        Vector3::new(
+            position
+                .x
+                .clamp(self.center_x - half, self.center_x + half - epsilon),
+            position.y,
+            position
+                .z
+                .clamp(self.center_z - half, self.center_z + half - epsilon),
+        )
     }
 
     /// Vanilla `WorldBorder.isWithinBounds(AABB)`.

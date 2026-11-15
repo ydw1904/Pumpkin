@@ -8744,6 +8744,29 @@ impl World {
         pumpkin_world::clip::clip(self, context)
     }
 
+    /// The world border part of vanilla `CollisionGetter.clipIncludingBorder`: for a ray from
+    /// `from` inside the border that stops at `to` (its block hit or its end) outside of it,
+    /// where it leaves the border and the face it hits there.
+    #[must_use]
+    pub fn clip_world_border(
+        &self,
+        from: Vector3<f64>,
+        to: Vector3<f64>,
+    ) -> Option<(Vector3<f64>, BlockDirection)> {
+        let border = self
+            .worldborder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !border.contains(from.x, from.z) || border.contains(to.x, to.z) {
+            return None;
+        }
+        let delta = to - from;
+        Some((
+            border.clamp_vec3_to_bound(to),
+            BlockDirection::get_nearest(delta.x, delta.y, delta.z),
+        ))
+    }
+
     pub fn ray_trace_block(
         &self,
         start_pos: Vector3<f64>,

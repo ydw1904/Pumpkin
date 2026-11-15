@@ -39,6 +39,10 @@ pub mod wither_skull;
 
 use pumpkin_data::item_stack::ItemStack;
 
+/// The power of the `ProjectileDeflection.REVERSE` arrows and fishing hooks bounce off the
+/// world border with, vanilla `Projectile.hitTargetOrDeflectSelf`.
+pub(crate) const WORLD_BORDER_BOUNCE: f64 = 0.2;
+
 /// The entities vanilla `ProjectileUtil.getEntityHitResult` considers: `level.getEntities`,
 /// which includes the ender dragon's parts, without the dragon itself, which is not pickable.
 pub(crate) fn hit_candidates(world: &World, area: &BoundingBox) -> Vec<Arc<dyn EntityBase>> {
@@ -322,6 +326,10 @@ impl ThrownItemEntity {
     /// Moves the projectile by its velocity, then hits the first block or entity on the way.
     /// The block effects, fluid state and fire tick come between the move and the hit, like
     /// vanilla's `applyEffectsFromBlocks` and `super.tick()`.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "mirrors the vanilla move, effects and hit order"
+    )]
     fn move_and_hit(&self, caller: &dyn EntityBase, should_burn: bool) {
         let entity = self.get_entity();
         let world = entity.world.load();
@@ -370,6 +378,7 @@ impl ThrownItemEntity {
                             face: get_hit_face(hit_pos, *pos),
                             hit_pos,
                             normal: delta.normalize().multiply(-1.0, -1.0, -1.0),
+                            world_border: false,
                         });
                         break;
                     }
@@ -377,7 +386,18 @@ impl ThrownItemEntity {
             }
         }
 
-        let to = start_pos + delta * closest_t;
+        // Vanilla `clipIncludingBorder`: leaving the world border counts as a block hit there.
+        let mut to = start_pos + delta * closest_t;
+        if let Some((location, face)) = world.clip_world_border(start_pos, to) {
+            to = location;
+            hit = Some(ProjectileHit::Block {
+                pos: BlockPos::floored_v(location),
+                face,
+                hit_pos: location,
+                normal: delta.normalize().multiply(-1.0, -1.0, -1.0),
+                world_border: true,
+            });
+        }
 
         // Entities only count up to the block hit, like vanilla `ProjectileUtil.getHitResult`.
         let candidates = hit_candidates(&world, &search_box)
@@ -714,6 +734,8 @@ pub enum ProjectileHit {
         face: BlockDirection,
         hit_pos: Vector3<f64>,
         normal: Vector3<f64>,
+        /// Vanilla `BlockHitResult.isWorldBorderHit`: the ray stopped at the world border.
+        world_border: bool,
     },
     Entity {
         entity: Arc<dyn EntityBase>,

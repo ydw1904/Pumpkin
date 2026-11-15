@@ -7,9 +7,12 @@ use crate::entity::experience_orb::ExperienceOrbEntity;
 use crate::entity::item::ItemEntity;
 use crate::entity::projectile::owner::ProjectileOwner;
 use crate::entity::projectile::{
-    calculate_ray_intersection, can_be_hit_by_projectile, compute_margin, entity_hit_result,
+    WORLD_BORDER_BOUNCE, calculate_ray_intersection, can_be_hit_by_projectile, compute_margin,
+    entity_hit_result,
 };
-use crate::entity::projectile_deflection::redirect_projectile;
+use crate::entity::projectile_deflection::{
+    ProjectileDeflectionType, deflect_projectile, redirect_projectile,
+};
 use crate::entity::util::RandomExt;
 use crate::world::World;
 use crate::world::loot::{LootContextParameters, LootTableHandle, generate_loot_from_handle};
@@ -556,7 +559,12 @@ impl FishingBobberEntity {
                         && (left_owner || root_vehicle_uuid(cand.as_ref()) != owner_root))
                         || (candidate.is_alive() && *candidate.entity_type == EntityType::ITEM))
             });
-        let to = start_pos + *velocity * closest_t;
+        let mut to = start_pos + *velocity * closest_t;
+        // Vanilla `clipIncludingBorder`: the world border stops the ray like a block.
+        let border_hit = world.clip_world_border(start_pos, to);
+        if let Some((location, _)) = border_hit {
+            to = location;
+        }
         let hooked = entity_hit_result(candidates, start_pos, to, compute_margin(&self.entity));
 
         if let Some((hooked, _)) = hooked {
@@ -566,6 +574,18 @@ impl FishingBobberEntity {
             self.set_hooked_entity(Some(hooked.get_entity().entity_id));
             // Clear the momentum so if the hooked entity is removed the hook doesn't carry on moving.
             *velocity = Vector3::new(0.0, 0.0, 0.0);
+        } else if border_hit.is_some() {
+            // Vanilla `FishingHook.shouldBounceOnWorldBorder`.
+            self.entity.velocity.store(*velocity);
+            deflect_projectile(
+                caller,
+                ProjectileDeflectionType::Simple,
+                None,
+                None,
+                false,
+                WORLD_BORDER_BOUNCE,
+            );
+            *velocity = self.entity.velocity.load();
         } else if hit_block {
             // Vanilla `FishingHook.onHitBlock`: stop the hook at the block face instead of carrying
             // its tangential motion to the edge.

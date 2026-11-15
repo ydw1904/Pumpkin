@@ -1,5 +1,7 @@
 use crate::entity::projectile::owner::ProjectileOwner;
-use crate::entity::projectile_deflection::{LastDeflectedBy, redirect_projectile};
+use crate::entity::projectile_deflection::{
+    LastDeflectedBy, ProjectileDeflectionType, deflect_projectile, redirect_projectile,
+};
 use crossbeam::atomic::AtomicCell;
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
@@ -7,8 +9,8 @@ use std::sync::RwLock;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 
 use crate::entity::projectile::{
-    ProjectileHit, arrow_rest_position, calculate_ray_intersection, can_be_hit_by_projectile,
-    compute_margin, hit_candidates, many_entity_hit_results,
+    ProjectileHit, WORLD_BORDER_BOUNCE, arrow_rest_position, calculate_ray_intersection,
+    can_be_hit_by_projectile, compute_margin, hit_candidates, many_entity_hit_results,
 };
 use crate::{
     entity::{Entity, EntityBase, living::LivingEntity, player::Player},
@@ -713,6 +715,7 @@ impl EntityBase for ArrowEntity {
                             face: get_hit_face(hit_pos, *pos),
                             hit_pos,
                             normal: velocity.normalize().multiply(-1.0, -1.0, -1.0),
+                            world_border: false,
                         });
                         break;
                     }
@@ -720,7 +723,17 @@ impl EntityBase for ArrowEntity {
             }
         }
 
-        let block_to = start_pos + velocity * closest_t;
+        let mut block_to = start_pos + velocity * closest_t;
+        if let Some((location, face)) = world.clip_world_border(start_pos, block_to) {
+            block_to = location;
+            hit = Some(ProjectileHit::Block {
+                pos: BlockPos::floored_v(location),
+                face,
+                hit_pos: location,
+                normal: velocity.normalize().multiply(-1.0, -1.0, -1.0),
+                world_border: true,
+            });
+        }
         self.step_move_and_hit(caller, &world, &search_box, hit, block_to);
 
         if !in_water {
@@ -1108,7 +1121,25 @@ impl ArrowEntity {
                 if let Some(block_hit) = block_hit
                     && !entity.is_removed()
                 {
-                    caller.on_hit(block_hit);
+                    if matches!(
+                        block_hit,
+                        ProjectileHit::Block {
+                            world_border: true,
+                            ..
+                        }
+                    ) {
+                        // Vanilla `AbstractArrow.shouldBounceOnWorldBorder`.
+                        deflect_projectile(
+                            caller,
+                            ProjectileDeflectionType::Simple,
+                            None,
+                            None,
+                            false,
+                            WORLD_BORDER_BOUNCE,
+                        );
+                    } else {
+                        caller.on_hit(block_hit);
+                    }
                     entity.velocity_dirty.store(true, Ordering::Relaxed);
                 }
                 return;
