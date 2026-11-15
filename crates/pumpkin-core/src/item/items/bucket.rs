@@ -210,6 +210,10 @@ fn apply_mob_bucket_components(
     player: Option<&Player>,
 ) {
     crate::item::items::spawn_egg::apply_entity_variant(bucket_stack, mob, player);
+    // `EntityType.createDefaultStackConfig` names the mob before `loadFromBucketTag`.
+    if let Some(custom_name) = bucket_stack.get_data_component::<CustomNameImpl>() {
+        mob.get_entity().set_custom_name(custom_name.name.clone());
+    }
     if let Some(bucketable) = mob.get_mob().and_then(|mob| mob.as_bucketable()) {
         if let Some(data) = bucket_stack.get_data_component::<BucketEntityDataImpl>()
             && let Some(nbt) = &data.nbt
@@ -235,9 +239,6 @@ fn apply_mob_bucket_components(
             mob.read_nbt_non_mut(&merged);
         }
     }
-    if let Some(custom_name) = bucket_stack.get_data_component::<CustomNameImpl>() {
-        mob.get_entity().set_custom_name(custom_name.name.clone());
-    }
     apply_sulfur_cube_content(bucket_stack, mob);
     if let Some(mob_trait) = mob.get_mob() {
         mob_trait
@@ -257,6 +258,12 @@ fn apply_sulfur_cube_content(bucket_stack: &ItemStack, mob: &dyn EntityBase) {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .put(&EquipmentSlot::BODY, sulfur_content.item.clone());
+        if let Some(sulfur_cube) = mob
+            .cast_any()
+            .downcast_ref::<crate::entity::mob::sulfur_cube::SulfurCubeEntity>()
+        {
+            sulfur_cube.detect_body_item_change();
+        }
     }
 }
 

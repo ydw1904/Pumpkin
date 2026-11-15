@@ -18,6 +18,8 @@ use crate::block::{
 use crate::entity::decoration::armor_stand::ArmorStandEntity;
 use crate::entity::item::ItemEntity;
 use crate::entity::living::LivingEntity;
+use crate::entity::mob::sulfur_cube::{SulfurCubeEntity, is_swallowable_item};
+use crate::entity::passive::abstract_horse::try_equip_dispenser_chest;
 use crate::entity::passive::armadillo::{self, ArmadilloEntity};
 use crate::entity::projectile::ThrownItemEntity;
 use crate::entity::projectile::arrow::{ArrowEntity, ArrowPickup};
@@ -36,6 +38,7 @@ use crate::entity::vehicle::minecart::MinecartEntity;
 use crate::entity::{Entity, EntityBase};
 use crate::item::ItemMetadata;
 use crate::item::items::boat::BoatItem;
+use crate::item::items::bone_meal::BoneMealItem;
 use crate::item::items::bucket::{
     FilledBucketItem, play_empty_effects, spawn_bucket_mob, try_pickup_fluid_at,
     try_place_filled_bucket,
@@ -55,7 +58,9 @@ use pumpkin_data::block_properties::{
     SkeletonSkullLikeProperties,
 };
 use pumpkin_data::data_component::DataComponent;
-use pumpkin_data::data_component_impl::{EquippableImpl, IDSet, PotionContentsImpl};
+use pumpkin_data::data_component_impl::{
+    CustomNameImpl, EquippableImpl, IDSet, PotionContentsImpl,
+};
 use pumpkin_data::entity::{EntityType, entity_from_egg};
 use pumpkin_data::fluid::Fluid;
 use pumpkin_data::game_event::GameEvent;
@@ -349,17 +354,12 @@ impl DispenserBlock {
 
         // Still missing some specific dispenser behavior that you can find here:
         // https://minecraft.wiki/w/Dispenser#Usage
-        let arrows = [
-            Item::ARROW.id,
-            Item::TIPPED_ARROW.id,
-            Item::SPECTRAL_ARROW.id,
-        ];
-        let boats = BoatItem::ids();
+        if Self::try_dispense_projectile(ctx, item) {
+            return;
+        }
 
-        if arrows.contains(&item.item.id) {
-            // Arrows
-            Self::fire_arrow(ctx, item);
-        } else if boats.contains(&item.item.id) {
+        let boats = BoatItem::ids();
+        if boats.contains(&item.item.id) {
             // Boats
             if !Self::dispense_boat(ctx, item) {
                 Self::drop_item(ctx, item);
@@ -377,31 +377,20 @@ impl DispenserBlock {
         } else if item.item.id == Item::TNT.id {
             // TNT
             Self::dispense_tnt(ctx, item);
-        } else if item.item.id == Item::SNOWBALL.id {
-            Self::dispense_snowball(ctx, item);
-        } else if item.item.id == Item::EGG.id {
-            Self::dispense_egg(ctx, item);
-        } else if item.item.id == Item::SPLASH_POTION.id {
-            Self::dispense_splash_potion(ctx, item);
-        } else if item.item.id == Item::LINGERING_POTION.id {
-            Self::dispense_lingering_potion(ctx, item);
-        } else if item.item.id == Item::FIRE_CHARGE.id {
-            Self::dispense_fire_charge(ctx, item);
-        } else if item.item.id == Item::WIND_CHARGE.id {
-            Self::dispense_wind_charge(ctx, item);
-        } else if item.item.id == Item::FIREWORK_ROCKET.id {
-            Self::dispense_firework_rocket(ctx, item);
         } else if item.item.id == Item::BUCKET.id {
             // Empty buckets pick up the fluid in front of the dispenser
             Self::dispense_empty_bucket(ctx, dispenser, item);
         } else if FilledBucketItem::ids().contains(&item.item.id) {
-            // Filled buckets place their fluid in front of the dispenser
+            // Filled buckets place their fluid and any stored mob in front of the dispenser
             Self::dispense_filled_bucket(ctx, item);
         } else if item.item.id == Item::FLINT_AND_STEEL.id {
-            // Flint and steel light fires and prime TNT
+            // Flint and steel prime explosive sulfur cubes, light fires, and prime TNT
             Self::dispense_flint_and_steel(ctx, item);
+        } else if item.item.id == Item::CHEST.id {
+            // Chests go onto tamed donkeys, mules and llamas
+            Self::dispense_chest(ctx, item);
         } else if item.item.id == Item::HONEYCOMB.id {
-            // Honeycombs wax copper blocks
+            // Honeycombs wax copper blocks or drop when facing non-waxable blocks
             Self::dispense_honeycomb(ctx, item);
         } else if item.item.id == Item::BONE_MEAL.id {
             Self::dispense_bone_meal(ctx, item);
@@ -421,7 +410,7 @@ impl DispenserBlock {
             }
         } else if is_water_bottle(item) {
             // Water bottles convert dirt-likes into mud
-            if !Self::dispense_water_bottle(ctx, item) {
+            if !Self::dispense_water_bottle(ctx, dispenser, item) {
                 Self::drop_item(ctx, item);
             }
         } else if item.item.id == Item::GLOWSTONE.id {
@@ -446,14 +435,42 @@ impl DispenserBlock {
         } else if Self::dispense_equipment(ctx, item) {
             // Armor, elytra, heads, saddles, horse/wolf armor and llama carpets
             Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserDispense);
-        } else if item.item.id == Item::EXPERIENCE_BOTTLE.id {
-            // Experience bottles (bottles o' enchanting) are thrown like splash potions
-            Self::dispense_experience_bottle(ctx, item);
+        } else if is_swallowable_item(item) {
+            if Self::dispense_sulfur_cube_block(ctx, item) {
+                Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserDispense);
+            } else {
+                Self::drop_item(ctx, item);
+            }
         } else {
-            // TODO: chests onto llamas
             // Default / Drop
             Self::drop_item(ctx, item);
         }
+    }
+
+    fn try_dispense_projectile(ctx: &DispenseContext<'_>, item: &mut ItemStack) -> bool {
+        let id = item.item.id;
+        if id == Item::ARROW.id || id == Item::TIPPED_ARROW.id || id == Item::SPECTRAL_ARROW.id {
+            Self::fire_arrow(ctx, item);
+        } else if id == Item::SNOWBALL.id {
+            Self::dispense_snowball(ctx, item);
+        } else if id == Item::EGG.id || id == Item::BLUE_EGG.id || id == Item::BROWN_EGG.id {
+            Self::dispense_egg(ctx, item);
+        } else if id == Item::SPLASH_POTION.id {
+            Self::dispense_splash_potion(ctx, item);
+        } else if id == Item::LINGERING_POTION.id {
+            Self::dispense_lingering_potion(ctx, item);
+        } else if id == Item::FIRE_CHARGE.id {
+            Self::dispense_fire_charge(ctx, item);
+        } else if id == Item::WIND_CHARGE.id {
+            Self::dispense_wind_charge(ctx, item);
+        } else if id == Item::FIREWORK_ROCKET.id {
+            Self::dispense_firework_rocket(ctx, item);
+        } else if id == Item::EXPERIENCE_BOTTLE.id {
+            Self::dispense_experience_bottle(ctx, item);
+        } else {
+            return false;
+        }
+        true
     }
 
     // Vanilla default `DispenseConfig` position: 0.7 blocks out, 0.1 up.
@@ -569,8 +586,12 @@ impl DispenserBlock {
             center.z + facing.z * offset,
         );
 
-        let _ = item.split(1);
+        let dispensed = item.split(1);
         let entity = Entity::new(ctx.world.clone(), spawn_pos, entity_type);
+        // `EntityType.createDefaultStackConfig`: the item's custom name goes on the boat.
+        if let Some(custom_name) = dispensed.get_data_component::<CustomNameImpl>() {
+            entity.set_custom_name(custom_name.name.clone());
+        }
         // Direction.toYRot
         let yaw = match ctx.facing {
             Facing::South => 0.0,
@@ -597,9 +618,12 @@ impl DispenserBlock {
             return false;
         }
 
-        let _ = item.split(1);
+        let dispensed = item.split(1);
         let facing = to_normal(ctx.facing);
         let entity = Entity::new(ctx.world.clone(), spawn_pos, &EntityType::ARMOR_STAND);
+        if let Some(custom_name) = dispensed.get_data_component::<CustomNameImpl>() {
+            entity.set_custom_name(custom_name.name.clone());
+        }
         entity.set_rotation(facing.x.atan2(facing.z) as f32 * 57.295_776, 0.0);
 
         ctx.world.play_sound(
@@ -615,10 +639,31 @@ impl DispenserBlock {
         true
     }
 
+    /// Vanilla `SulfurCubeBlockDispenseItemBehavior.dispenseBlock`: feeds the item to a sulfur
+    /// cube in front.
+    fn dispense_sulfur_cube_block(ctx: &DispenseContext<'_>, item: &mut ItemStack) -> bool {
+        let target_box = BoundingBox::from_block(&Self::target_position(ctx));
+        for entity in ctx.world.get_entities_at_box(&target_box) {
+            let Some(sulfur_cube) = entity.cast_any().downcast_ref::<SulfurCubeEntity>() else {
+                continue;
+            };
+            if sulfur_cube.equip_item(item) {
+                item.decrement(1);
+                return true;
+            }
+        }
+        false
+    }
+
     fn dispense_tnt(ctx: &DispenseContext<'_>, item: &mut ItemStack) {
         // Vanilla keeps the item and plays the fail click when TNT is disabled.
         if !ctx.world.level_info.load().game_rules.tnt_explodes {
             Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserFail);
+            return;
+        }
+
+        if Self::dispense_sulfur_cube_block(ctx, item) {
+            Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserDispense);
             return;
         }
 
@@ -899,11 +944,28 @@ impl DispenserBlock {
         Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserDispense);
     }
 
+    /// Vanilla `FlintAndSteelDispenseItemBehavior.tryIgniteExplosiveEntities`.
+    fn try_ignite_explosive_entities(world: &Arc<World>, pos: &BlockPos) -> bool {
+        let target_box = BoundingBox::from_block(pos);
+        for entity in world.get_entities_at_box(&target_box) {
+            let Some(sulfur_cube) = entity.cast_any().downcast_ref::<SulfurCubeEntity>() else {
+                continue;
+            };
+            if sulfur_cube.can_explode() {
+                sulfur_cube.prime_time(false);
+                return true;
+            }
+        }
+        false
+    }
+
     fn dispense_flint_and_steel(ctx: &DispenseContext<'_>, item: &mut ItemStack) {
         let front = Self::target_position(ctx);
         let front_block = ctx.world.get_block(&front);
 
-        let ignited = if front_block == &Block::TNT {
+        let ignited = if Self::try_ignite_explosive_entities(ctx.world, &front) {
+            true
+        } else if front_block == &Block::TNT {
             TNTBlock::prime(ctx.world, &front, None)
         } else {
             Ignition::ignite_block(
@@ -939,12 +1001,17 @@ impl DispenserBlock {
     fn dispense_bone_meal(ctx: &DispenseContext<'_>, item: &mut ItemStack) {
         let front = Self::target_position(ctx);
         let (block, state_id) = ctx.world.get_block_and_state_id(&front);
-        if ctx
+        let grown = if ctx
             .world
             .block_registry
             .bone_meal(block, ctx.world, &front, state_id)
         {
             item.decrement(1);
+            true
+        } else {
+            BoneMealItem::grow_water_plant(item, ctx.world, &front, None)
+        };
+        if grown {
             ctx.world
                 .sync_world_event(WorldEvent::ParticlesAndSoundPlantGrowth, front, 15);
             Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserDispense);
@@ -953,15 +1020,30 @@ impl DispenserBlock {
         }
     }
 
+    /// Vanilla's chest `OptionalDispenseItemBehavior`: equips a tamed chested horse in front.
+    fn dispense_chest(ctx: &DispenseContext<'_>, item: &mut ItemStack) {
+        let target_box = BoundingBox::from_block(&Self::target_position(ctx));
+        for entity in ctx.world.get_entities_at_box(&target_box) {
+            if try_equip_dispenser_chest(entity.as_ref()) {
+                item.decrement(1);
+                Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserDispense);
+                return;
+            }
+        }
+        Self::drop_item(ctx, item);
+    }
+
     fn dispense_honeycomb(ctx: &DispenseContext<'_>, item: &mut ItemStack) {
         let front = Self::target_position(ctx);
         let front_block = ctx.world.get_block(&front);
 
         if try_wax_block(ctx.world, front, front_block) {
             item.decrement(1);
+            ctx.world
+                .sync_world_event(WorldEvent::ParticlesWaxOn, front, 0);
             Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserDispense);
         } else {
-            Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserFail);
+            Self::drop_item(ctx, item);
         }
     }
 
@@ -998,7 +1080,7 @@ impl DispenserBlock {
         };
 
         let entity_type = MinecartItem::item_to_entity(item.item);
-        let _ = item.split(1);
+        let dispensed = item.split(1);
 
         let normal = to_normal(ctx.facing);
         let center = ctx.position.to_centered_f64();
@@ -1009,6 +1091,9 @@ impl DispenserBlock {
         );
 
         let entity = Entity::new(ctx.world.clone(), spawn_pos, entity_type);
+        if let Some(custom_name) = dispensed.get_data_component::<CustomNameImpl>() {
+            entity.set_custom_name(custom_name.name.clone());
+        }
         ctx.world
             .spawn_entity(Arc::new(MinecartEntity::new(entity)));
 
@@ -1162,7 +1247,11 @@ impl DispenserBlock {
         false
     }
 
-    fn dispense_water_bottle(ctx: &DispenseContext<'_>, item: &mut ItemStack) -> bool {
+    fn dispense_water_bottle(
+        ctx: &DispenseContext<'_>,
+        dispenser: &DispenserBlockEntity,
+        item: &mut ItemStack,
+    ) -> bool {
         let target = Self::target_position(ctx);
         if !ctx
             .world
@@ -1172,19 +1261,23 @@ impl DispenserBlock {
             return false;
         }
 
+        // Vanilla splashes on top of the dispenser itself.
+        let top = ctx.position.0.to_f64();
         ctx.world.spawn_particle(
-            target.to_centered_f64(),
-            Vector3::new(0.5, 0.5, 0.5),
+            Vector3::new(top.x + 0.5, top.y + 1.0, top.z + 0.5),
+            Vector3::new(0.5, 0.0, 0.5),
             1.0,
             5,
             Particle::Splash,
         );
         ctx.world
-            .play_block_sound(Sound::ItemBottleEmpty, SoundCategory::Blocks, target);
+            .play_block_sound(Sound::ItemBottleEmpty, SoundCategory::Blocks, *ctx.position);
+        ctx.world
+            .emit_game_event(GameEvent::FluidPlace.name(), ctx.position.to_centered_f64());
         ctx.world
             .set_block_state(&target, Block::MUD.default_state.id, BlockFlags::NOTIFY_ALL);
 
-        *item = ItemStack::new(1, &Item::GLASS_BOTTLE);
+        Self::consume_with_remainder(ctx, dispenser, item, ItemStack::new(1, &Item::GLASS_BOTTLE));
         Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserDispense);
         true
     }
@@ -1432,5 +1525,251 @@ impl DispenserBlock {
             .to_centered_f64()
             .add(&(to_normal(ctx.facing) * 0.7));
         spawn_item(ctx.world, stack, DEFAULT_ACCURACY, ctx.facing, position);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entity::ageable::AgeableMob;
+    use crate::entity::ai::test_support::world;
+    use crate::entity::mob::skeleton::bogged::BoggedSkeletonEntity;
+    use crate::entity::passive::abstract_horse::AbstractHorse;
+    use crate::entity::passive::copper_golem::CopperGolemEntity;
+    use crate::entity::passive::copper_golem::EQUIPMENT_SLOT_ANTENNA;
+    use crate::entity::passive::donkey::DonkeyEntity;
+    use crate::entity::passive::snow_golem::SnowGolemEntity;
+    use crate::entity::shearable::Shearable;
+    use pumpkin_data::data_component_impl::SulfurCubeContentImpl;
+
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+    fn fire_dispenser(
+        world: &Arc<World>,
+        pos: BlockPos,
+        facing: Facing,
+        stack: ItemStack,
+    ) -> ItemStack {
+        let dispenser = DispenserBlockEntity::new(pos);
+        dispenser.set_stack(0, stack);
+        let mut dispensed = dispenser.get_stack(0);
+        let ctx = DispenseContext {
+            world,
+            position: &pos,
+            facing,
+        };
+        DispenserBlock::dispense(&ctx, &dispenser, &mut dispensed);
+        dispenser.set_stack(0, dispensed);
+        dispenser.get_stack(0)
+    }
+
+    #[tokio::test]
+    async fn dispenser_sulfur_cube_swallows_tnt_primes_with_flint_and_shears() -> TestResult {
+        let folder = tempfile::tempdir()?;
+        let world = world(&folder);
+        let dispenser_pos = BlockPos::new(0, 64, 0);
+        let target_pos = BlockPos::new(0, 64, 1);
+
+        let cube = SulfurCubeEntity::new(Entity::new(
+            world.clone(),
+            target_pos.to_centered_f64(),
+            &EntityType::SULFUR_CUBE,
+        ));
+        cube.set_size(2, true);
+        world.spawn_entity(cube.clone());
+
+        // Dispensing TNT into an adult SulfurCube feeds TNT to the cube instead of spawning PrimedTnt
+        let remaining_tnt = fire_dispenser(
+            &world,
+            dispenser_pos,
+            Facing::South,
+            ItemStack::new(2, &Item::TNT),
+        );
+        assert_eq!(remaining_tnt.item_count, 1);
+        assert!(cube.has_body_item());
+        assert!(cube.can_explode());
+        let has_primed_tnt = world
+            .get_entities_at_box(&BoundingBox::from_block(&target_pos).expand_all(2.0))
+            .iter()
+            .any(|e| e.get_entity().entity_type == &EntityType::TNT);
+        assert!(!has_primed_tnt);
+
+        // Dispensing Shears ejects the body item from the SulfurCube and damages shears by 1
+        let remaining_shears = fire_dispenser(
+            &world,
+            dispenser_pos,
+            Facing::South,
+            ItemStack::new(1, &Item::SHEARS),
+        );
+        assert!(!cube.has_body_item());
+        assert_eq!(remaining_shears.get_damage(), 1);
+
+        // Dispensing TNT again and then Flint & Steel primes the SulfurCube
+        let _ = fire_dispenser(
+            &world,
+            dispenser_pos,
+            Facing::South,
+            ItemStack::new(1, &Item::TNT),
+        );
+        assert!(cube.can_explode());
+        let remaining_flint = fire_dispenser(
+            &world,
+            dispenser_pos,
+            Facing::South,
+            ItemStack::new(1, &Item::FLINT_AND_STEEL),
+        );
+        assert!(cube.is_primed());
+        assert_eq!(remaining_flint.get_damage(), 1);
+
+        world.level.shutdown().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn dispenser_shears_bogged_copper_golem_snow_golem_and_leash() -> TestResult {
+        let folder = tempfile::tempdir()?;
+        let world = world(&folder);
+        let dispenser_pos = BlockPos::new(10, 64, 0);
+        let target_pos = BlockPos::new(10, 64, 1);
+
+        let bogged = BoggedSkeletonEntity::new(Entity::new(
+            world.clone(),
+            target_pos.to_centered_f64(),
+            &EntityType::BOGGED,
+        ));
+        world.spawn_entity(bogged.clone());
+        assert!(!bogged.is_sheared());
+        let shears = fire_dispenser(
+            &world,
+            dispenser_pos,
+            Facing::South,
+            ItemStack::new(1, &Item::SHEARS),
+        );
+        assert!(bogged.is_sheared());
+        assert_eq!(shears.get_damage(), 1);
+        bogged.get_entity().remove();
+
+        let golem = CopperGolemEntity::new(Entity::new(
+            world.clone(),
+            target_pos.to_centered_f64(),
+            &EntityType::COPPER_GOLEM,
+        ));
+        golem
+            .mob_entity
+            .set_item_slot(&EQUIPMENT_SLOT_ANTENNA, ItemStack::new(1, &Item::POPPY));
+        world.spawn_entity(golem.clone());
+        assert!(golem.ready_for_shearing());
+        let shears = fire_dispenser(&world, dispenser_pos, Facing::South, shears);
+        assert!(!golem.ready_for_shearing());
+        assert_eq!(shears.get_damage(), 2);
+
+        // Leash golem to snow golem and verify shears snip the leash first before shearing pumpkin
+        let snow_golem = SnowGolemEntity::new(Entity::new(
+            world.clone(),
+            target_pos.to_centered_f64(),
+            &EntityType::SNOW_GOLEM,
+        ));
+        world.spawn_entity(snow_golem.clone());
+        snow_golem.get_entity().leash_to(golem.clone());
+        assert!(snow_golem.get_entity().is_leashed());
+
+        let shears = fire_dispenser(&world, dispenser_pos, Facing::South, shears);
+        assert!(!snow_golem.get_entity().is_leashed());
+        assert!(snow_golem.has_pumpkin());
+        assert_eq!(shears.get_damage(), 3);
+
+        let shears = fire_dispenser(&world, dispenser_pos, Facing::South, shears);
+        assert!(!snow_golem.has_pumpkin());
+        assert_eq!(shears.get_damage(), 4);
+
+        world.level.shutdown().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn dispenser_chest_brush_colored_eggs_and_sulfur_cube_bucket() -> TestResult {
+        let folder = tempfile::tempdir()?;
+        let world = world(&folder);
+        let dispenser_pos = BlockPos::new(20, 64, 0);
+        let target_pos = BlockPos::new(20, 64, 1);
+
+        // Tamed donkey receives chest from dispenser
+        let donkey = DonkeyEntity::new(Entity::new(
+            world.clone(),
+            target_pos.to_centered_f64(),
+            &EntityType::DONKEY,
+        ));
+        donkey.set_tamed(true);
+        world.spawn_entity(donkey.clone());
+        let remaining_chest = fire_dispenser(
+            &world,
+            dispenser_pos,
+            Facing::South,
+            ItemStack::new(2, &Item::CHEST),
+        );
+        assert!(donkey.has_chest());
+        assert_eq!(remaining_chest.item_count, 1);
+        donkey.get_entity().remove();
+
+        // Baby armadillo is skipped; adult armadillo is brushed and damages brush by 16
+        let baby_armadillo = ArmadilloEntity::new(Entity::new(
+            world.clone(),
+            target_pos.to_centered_f64(),
+            &EntityType::ARMADILLO,
+        ));
+        baby_armadillo.set_baby(true);
+        world.spawn_entity(baby_armadillo.clone());
+        let untouched_brush = fire_dispenser(
+            &world,
+            dispenser_pos,
+            Facing::South,
+            ItemStack::new(1, &Item::BRUSH),
+        );
+        assert_eq!(untouched_brush.get_damage(), 0);
+
+        let adult_armadillo = ArmadilloEntity::new(Entity::new(
+            world.clone(),
+            target_pos.to_centered_f64(),
+            &EntityType::ARMADILLO,
+        ));
+        world.spawn_entity(adult_armadillo.clone());
+        let used_brush = fire_dispenser(&world, dispenser_pos, Facing::South, untouched_brush);
+        assert_eq!(used_brush.get_damage(), 16);
+        baby_armadillo.get_entity().remove();
+        adult_armadillo.get_entity().remove();
+
+        // Blue egg launches EggEntity carrying Item::BLUE_EGG
+        let remaining_eggs = fire_dispenser(
+            &world,
+            dispenser_pos,
+            Facing::South,
+            ItemStack::new(2, &Item::BLUE_EGG),
+        );
+        assert_eq!(remaining_eggs.item_count, 1);
+        let launched_egg = world
+            .get_entities_at_box(&BoundingBox::from_block(&target_pos).expand_all(2.0))
+            .into_iter()
+            .find(|e| e.get_entity().entity_type == &EntityType::EGG);
+        assert!(launched_egg.is_some());
+
+        // Sulfur cube bucket spawns SulfurCube with stored body item and returns empty bucket
+        let mut bucket = ItemStack::new(1, &Item::SULFUR_CUBE_BUCKET);
+        bucket.set_data_component(SulfurCubeContentImpl {
+            item: ItemStack::new(1, &Item::TNT),
+        });
+        let result_bucket = fire_dispenser(&world, dispenser_pos, Facing::South, bucket);
+        assert_eq!(result_bucket.item.id, Item::BUCKET.id);
+        let spawned_cube = world
+            .get_entities_at_box(&BoundingBox::from_block(&target_pos).expand_all(2.0))
+            .into_iter()
+            .find_map(|e| {
+                e.cast_any()
+                    .downcast_ref::<SulfurCubeEntity>()
+                    .map(|c| (c.has_body_item(), c.can_explode()))
+            });
+        assert_eq!(spawned_cube, Some((true, true)));
+
+        world.level.shutdown().await;
+        Ok(())
     }
 }
