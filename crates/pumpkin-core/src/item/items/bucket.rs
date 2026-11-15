@@ -140,12 +140,17 @@ pub(crate) fn create_filled_result(
         if has_item {
             return;
         }
-        player.inventory.insert_stack_anywhere(&mut filled);
+        if player.inventory.insert_stack_anywhere(&mut filled) {
+            player.sync_inventory_to_client();
+        }
     } else if stack.item_count == 1 && player.gamemode.load() != GameMode::Creative {
         *stack = filled;
     } else {
         stack.decrement_unless_creative(player.gamemode.load(), 1);
         let was_added = player.inventory.insert_stack_anywhere(&mut filled);
+        if was_added {
+            player.sync_inventory_to_client();
+        }
         if !was_added && !filled.is_empty() {
             player
                 .world()

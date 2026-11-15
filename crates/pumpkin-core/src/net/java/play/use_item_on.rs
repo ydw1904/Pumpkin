@@ -286,11 +286,12 @@ impl JavaClient {
         );
 
         if result.consumes_action() {
-            // TODO: Trigger ITEM_USED_ON_BLOCK Criteria
             return result;
         }
 
-        if matches!(result, BlockActionResult::PassToDefaultBlockAction) {
+        if matches!(result, BlockActionResult::PassToDefaultBlockAction)
+            && equipment_slot == &EquipmentSlot::MAIN_HAND
+        {
             let result = server.block_registry.on_use(
                 block,
                 player,
@@ -304,7 +305,6 @@ impl JavaClient {
             );
 
             if result.consumes_action() {
-                // TODO: Trigger DEFAULT_BLOCK_USE Criteria
                 return result;
             }
         }

@@ -18,7 +18,7 @@ use crate::block::registry::BlockActionResult;
 use crate::block::{
     BlockBehaviour, GetComparatorOutputArgs, NormalUseArgs, PathComputationType, UseWithItemArgs,
 };
-use crate::entity::{EntityBase, dismount_helper};
+use crate::entity::dismount_helper;
 use crate::world::World;
 use crate::world::explosion::{Explosion, ExplosionDamageCalculator};
 
@@ -141,14 +141,16 @@ impl ExplosionDamageCalculator for RespawnAnchorDamageCalculator {
 
 impl BlockBehaviour for RespawnAnchorBlock {
     fn use_with_item(&self, args: UseWithItemArgs<'_>) -> BlockActionResult {
-        if args.item_stack.item.id != Item::GLOWSTONE.id {
-            return BlockActionResult::PassToDefaultBlockAction;
-        }
-
         let state_id = args.world.get_block_state_id(args.position);
         let mut props = RespawnAnchorLikeProperties::from_state_id(state_id);
 
-        if props.charges >= MAX_CHARGES {
+        if args.item_stack.item.id != Item::GLOWSTONE.id || props.charges >= MAX_CHARGES {
+            if *args.equipment_slot == pumpkin_data::data_component_impl::EquipmentSlot::MAIN_HAND
+                && args.player.inventory().off_hand_item().item.id == Item::GLOWSTONE.id
+                && props.charges < MAX_CHARGES
+            {
+                return BlockActionResult::Pass;
+            }
             return BlockActionResult::PassToDefaultBlockAction;
         }
 
@@ -195,13 +197,7 @@ impl BlockBehaviour for RespawnAnchorBlock {
         let player = args.player;
         let world = args.world;
         let pos = *args.position;
-        if player.set_respawn_point(
-            world.dimension.clone(),
-            pos,
-            player.get_entity().yaw.load(),
-            player.get_entity().pitch.load(),
-            false,
-        ) {
+        if player.set_respawn_point(world.dimension.clone(), pos, 0.0, 0.0, false) {
             world.play_sound(
                 Sound::BlockRespawnAnchorSetSpawn,
                 SoundCategory::Blocks,

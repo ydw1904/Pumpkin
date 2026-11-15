@@ -2,6 +2,7 @@ use crate::world::game_event::GameEventContext;
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tag::Taggable;
+use pumpkin_data::world::WorldEvent;
 use pumpkin_data::{
     Block, BlockDirection, BlockState, BlockStateId, Enchantment,
     block_properties::CampfireLikeProperties, damage::DamageType,
@@ -9,7 +10,7 @@ use pumpkin_data::{
     recipes::CookingRecipeKind,
 };
 use pumpkin_macros::pumpkin_block_from_tag;
-use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3};
 use pumpkin_world::tick::TickPriority;
 
 use crate::server::recipe::find_cooking_recipe;
@@ -18,9 +19,9 @@ use crate::world::World;
 use crate::block::entities::campfire::CampfireBlockEntity;
 use crate::{
     block::{
-        BlockBehaviour, BlockIsReplacing, GetStateForNeighborUpdateArgs, OnEntityCollisionArgs,
-        OnPlaceArgs, OnProjectileHitArgs, PathComputationType, PlacedArgs, UseWithItemArgs,
-        registry::BlockActionResult,
+        BlockBehaviour, BlockIsReplacing, GetInsideCollisionShapeArgs,
+        GetStateForNeighborUpdateArgs, OnEntityCollisionArgs, OnPlaceArgs, OnProjectileHitArgs,
+        PathComputationType, PlacedArgs, UseWithItemArgs, registry::BlockActionResult,
     },
     entity::EntityBase,
 };
@@ -114,63 +115,80 @@ impl BlockBehaviour for CampfireBlock {
         args.world.add_block_entity(Arc::new(entity));
     }
 
+    /// Vanilla `CampfireBlock.useItemOn`: cooking ingredients go on even when unlit, and items
+    /// tagged `douses_campfires` (shovels) put a lit campfire out.
     fn use_with_item(&self, args: UseWithItemArgs<'_>) -> BlockActionResult {
         let state = args.world.get_block_state(args.position);
-        if !CampfireLikeProperties::from_state_id(state.id).lit {
-            return BlockActionResult::PassToDefaultBlockAction;
+        if let Some(block_entity) = args.world.get_block_entity(args.position)
+            && let Some(campfire) = block_entity.as_any().downcast_ref::<CampfireBlockEntity>()
+            && let Some(recipe) =
+                find_cooking_recipe(args.item_stack.item, &CookingRecipeKind::CampfireCooking)
+        {
+            // Vanilla `CampfireBlockEntity.placeFood`.
+            for slot in 0..CampfireBlockEntity::SLOT_COUNT {
+                let mut stored = campfire.items[slot]
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if !stored.is_empty() {
+                    continue;
+                }
+
+                *stored = args
+                    .item_stack
+                    .split_unless_creative(args.player.gamemode.load(), 1);
+                *campfire.cooking_times[slot]
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = 0;
+                *campfire.cooking_total_times[slot]
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = recipe.cooking_time;
+                drop(stored);
+
+                args.world.emit_game_event_with_context(
+                    GameEvent::BlockChange.name(),
+                    args.position.to_centered_f64(),
+                    &crate::world::game_event::GameEventContext {
+                        source_entity: Some(args.player.as_ref()),
+                        affected_state: Some(state.id),
+                    },
+                );
+                args.player.increment_stat(
+                    pumpkin_data::statistic::StatisticCategory::Custom,
+                    pumpkin_data::statistic::CustomStatistic::InteractWithCampfire as i32,
+                    1,
+                );
+                args.world.update_block_entity(&block_entity);
+                return BlockActionResult::SuccessServer;
+            }
+            return BlockActionResult::Consume;
         }
 
-        let Some(recipe) =
-            find_cooking_recipe(args.item_stack.item, &CookingRecipeKind::CampfireCooking)
-        else {
-            return BlockActionResult::PassToDefaultBlockAction;
-        };
-
-        let Some(block_entity) = args.world.get_block_entity(args.position) else {
-            return BlockActionResult::PassToDefaultBlockAction;
-        };
-        let Some(campfire) = block_entity.as_any().downcast_ref::<CampfireBlockEntity>() else {
-            return BlockActionResult::PassToDefaultBlockAction;
-        };
-
-        for slot in 0..CampfireBlockEntity::SLOT_COUNT {
-            let mut stored = campfire.items[slot]
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if !stored.is_empty() {
-                continue;
-            }
-
-            *stored = args
-                .item_stack
-                .split_unless_creative(args.player.gamemode.load(), 1);
-            *campfire.cooking_times[slot]
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = 0;
-            *campfire.cooking_total_times[slot]
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = recipe.cooking_time;
-            drop(stored);
-
-            // Vanilla `CampfireBlockEntity.placeFood`.
-            args.world.emit_game_event_with_context(
-                pumpkin_data::game_event::GameEvent::BlockChange.name(),
-                args.position.to_centered_f64(),
-                &crate::world::game_event::GameEventContext {
-                    source_entity: Some(args.player.as_ref()),
-                    affected_state: Some(state.id),
-                },
+        let mut props = CampfireLikeProperties::from_state_id(state.id);
+        if args
+            .item_stack
+            .item
+            .has_tag(&pumpkin_data::tag::Item::MINECRAFT_DOUSES_CAMPFIRES)
+            && props.lit
+        {
+            args.world
+                .sync_world_event(WorldEvent::SoundExtinguishFire, *args.position, 0);
+            Self::douse(args.world, args.position, Some(args.player.as_ref()));
+            props.lit = false;
+            args.world.set_block_state(
+                args.position,
+                props.to_state_id(args.block),
+                BlockFlags::NOTIFY_ALL,
             );
-            args.player.increment_stat(
-                pumpkin_data::statistic::StatisticCategory::Custom,
-                pumpkin_data::statistic::CustomStatistic::InteractWithCampfire as i32,
-                1,
-            );
-            args.world.update_block_entity(&block_entity);
+            args.player.damage_item_in_slot(args.equipment_slot, 1);
             return BlockActionResult::Success;
         }
 
         BlockActionResult::PassToDefaultBlockAction
+    }
+
+    fn get_inside_collision_shape(&self, _args: GetInsideCollisionShapeArgs<'_>) -> BoundingBox {
+        // Vanilla `CampfireBlock.SHAPE`, `Block.column(16.0, 0.0, 7.0)`.
+        BoundingBox::new(Vector3::new(0.0, 0.0, 0.0), Vector3::new(1.0, 0.4375, 1.0))
     }
 
     fn on_entity_collision(&self, args: OnEntityCollisionArgs<'_>) {
