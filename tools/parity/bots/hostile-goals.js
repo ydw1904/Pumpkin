@@ -1,8 +1,9 @@
 // Hostile mob goals a client can see: the guardian beam (attack target data, charge time and
 // damage), the elder guardian's mining fatigue, the vex charge flag, its missing gravity and
 // limited life, the illusioner's spells and bow, the vindicator's Johnny targeting, zoglin
-// targets and hits, piglin crossbow spacing, piglin and brute zombification, and the zoglin,
-// piglin and brute stroll speeds and how often they stroll.
+// targets and hits, piglin crossbow spacing, piglins angered by an opened chest minecart,
+// piglin and brute zombification, and the zoglin, piglin and brute stroll speeds and how often
+// they stroll.
 const { make } = require('./survival-lib')
 const h = make('Hunted', 900000)
 const { bot } = h
@@ -251,6 +252,30 @@ h.start(async () => {
   const gap = Math.hypot(archer.position.x - bot.entity.position.x, archer.position.z - bot.entity.position.z)
   h.result('piglin.crossbow_gap_4_to_7', gap > 4 && gap < 7.5)
   h.cmd(`attribute ${bot.username} minecraft:knockback_resistance base set 0`)
+
+  // Opening a chest minecart angers a piglin that sees it, gold armor or not.
+  {
+    await reset()
+    h.cmd(`item replace entity ${bot.username} armor.head with golden_helmet`)
+    await summon('piglin', 0, 0, 4, 'IsImmuneToZombification:1b,equipment:{mainhand:{id:"minecraft:golden_sword",count:1}}')
+    const cart = await summon('chest_minecart', 1.5, 0, 0, '')
+    await h.ticks(40)
+    const calm = bot.health === 20
+    let opened = false
+    const onOpen = (window) => { opened = true; bot.closeWindow(window) }
+    bot.on('windowOpen', onOpen)
+    // The vanilla server sometimes ignores the first interaction with a fresh minecart.
+    for (let i = 0; i < 5 && cart && !opened; i++) {
+      await bot.lookAt(cart.position.offset(0, 0.3, 0), true)
+      await bot.activateEntityAt(cart, cart.position.offset(0, 0.3, 0)).catch(() => {})
+      await h.ticks(5)
+    }
+    bot.removeListener('windowOpen', onOpen)
+    const angered = await h.waitFor(() => bot.health < 20, 5000)
+    h.cmd('kill @e[type=piglin]')
+    h.result('piglin.chest_minecart_anger', `calm_before=${calm} opened=${opened} hurt_after=${angered}`)
+    h.cmd(`item replace entity ${bot.username} armor.head with air`)
+  }
 
   // Piglins and brutes zombify after 300 ticks in the overworld and keep their weapons.
   h.cmd(`gamemode creative ${bot.username}`)

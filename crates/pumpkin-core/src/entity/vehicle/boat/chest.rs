@@ -36,7 +36,7 @@ impl ChestBoat {
         if !player.is_spectator() {
             self.inventory.unpack_loot(entity, Some(player));
         }
-        player
+        let opened = player
             .open_handled_screen(
                 &BoatScreenFactory {
                     inventory: self.inventory.clone(),
@@ -44,7 +44,9 @@ impl ChestBoat {
                 },
                 None,
             )
-            .is_some()
+            .is_some();
+        crate::entity::vehicle::chest_vehicle_opened(entity, player);
+        opened
     }
 
     pub(super) fn write_nbt(&self, nbt: &mut NbtCompound) {

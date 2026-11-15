@@ -954,6 +954,7 @@ impl EntityBase for MinecartEntity {
                     container.unpack_loot(&self.vehicle.entity, None);
                     let inventory: Arc<dyn Inventory> = container.clone();
                     world.scatter_inventory(&position, &inventory);
+                    crate::entity::vehicle::chest_vehicle_destroyed(&self.vehicle.entity, source);
                 }
                 world.drop_stack(&position, ItemStack::new(1, self.drop_item()));
             }

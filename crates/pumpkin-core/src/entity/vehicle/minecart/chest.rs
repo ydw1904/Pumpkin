@@ -25,7 +25,7 @@ impl ChestMinecart {
     }
 
     pub(super) fn interact(&self, entity: &crate::entity::Entity, player: &Arc<Player>) -> bool {
-        container::open(
+        let opened = container::open(
             entity,
             player,
             &self.inventory,
@@ -35,7 +35,9 @@ impl ChestMinecart {
                 [],
             ),
             false,
-        )
+        );
+        crate::entity::vehicle::chest_vehicle_opened(entity, player);
+        opened
     }
 
     pub(super) fn write_nbt(&self, nbt: &mut NbtCompound) {

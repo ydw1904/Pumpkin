@@ -759,6 +759,9 @@ impl EntityBase for BoatEntity {
                     boat.inventory().unpack_loot(entity, None);
                     let inventory: Arc<dyn Inventory> = boat.inventory().clone();
                     world.scatter_inventory(&position, &inventory);
+                    if !is_creative {
+                        crate::entity::vehicle::chest_vehicle_destroyed(entity, source);
+                    }
                 }
                 // Vanilla `VehicleEntity.destroy`; a creative player's hit only discards it.
                 if !is_creative && let Some(item) = self.drop_item() {
