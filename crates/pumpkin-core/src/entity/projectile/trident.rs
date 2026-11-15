@@ -114,6 +114,20 @@ impl TridentEntity {
         }
     }
 
+    /// Vanilla `ThrownTrident(level, x, y, z, itemStack)` with the pickup rule its caller sets.
+    pub fn new_with_item(entity: Entity, item_stack: ItemStack, pickup: ArrowPickup) -> Self {
+        let trident = Self::new(entity, None);
+        trident
+            .loyalty
+            .store(Self::loyalty_from_item(&item_stack), Ordering::Relaxed);
+        *trident
+            .item_stack
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = item_stack;
+        trident.pickup.store(pickup);
+        trident
+    }
+
     pub fn new_shot(
         entity: Entity,
         shooter: &Entity,
