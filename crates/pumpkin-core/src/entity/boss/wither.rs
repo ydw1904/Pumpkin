@@ -612,7 +612,7 @@ impl WitherEntity {
             let (block, state) = world.get_block_and_state(&pos);
             if Self::can_destroy(block, state) {
                 destroyed |= world
-                    .break_block(&pos, None, BlockFlags::NOTIFY_ALL)
+                    .destroy_block(&pos, Some(self), BlockFlags::NOTIFY_ALL)
                     .is_some();
             }
         }

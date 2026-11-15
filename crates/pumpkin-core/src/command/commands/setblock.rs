@@ -153,7 +153,7 @@ impl CommandExecutor for SetBlockExecutor {
         }
         let place_needed = if matches!(mode, Mode::Destroy) {
             // Vanilla `level.destroyBlock(pos, true)`: the old block drops its items.
-            world.break_block(&pos, None, BlockFlags::NOTIFY_ALL);
+            world.destroy_block(&pos, None, BlockFlags::NOTIFY_ALL);
             !input.state.to_state().is_air() || !world.get_block_state(&pos).is_air()
         } else {
             true

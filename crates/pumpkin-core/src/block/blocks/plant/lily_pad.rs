@@ -17,7 +17,7 @@ impl BlockBehaviour for LilyPadBlock {
         // Vanilla `entity instanceof AbstractBoat`: chest boats too, which the boat tag leaves out.
         if args.entity.get_entity().entity_type.boat.is_some() {
             args.world
-                .break_block(args.position, None, BlockFlags::NOTIFY_ALL);
+                .destroy_block(args.position, Some(args.entity), BlockFlags::NOTIFY_ALL);
         }
     }
 

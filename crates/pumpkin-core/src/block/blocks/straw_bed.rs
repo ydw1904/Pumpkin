@@ -109,7 +109,7 @@ impl BlockBehaviour for StrawBedBlock {
         if other_block == args.block {
             let other_props = BedProperties::from_state_id(other_state.id);
             if other_props.part != bed_props.part {
-                args.world.break_block(
+                args.world.destroy_block(
                     &other_half_pos,
                     None,
                     BlockFlags::SKIP_DROPS | BlockFlags::NOTIFY_ALL,

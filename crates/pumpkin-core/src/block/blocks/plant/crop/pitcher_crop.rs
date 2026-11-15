@@ -160,7 +160,7 @@ impl BlockBehaviour for PitcherCropBlock {
         if other_block == args.block {
             let other_props = PitcherCropLikeProperties::from_state_id(other_state_id);
             if other_props.half != props.half {
-                args.world.break_block(
+                args.world.destroy_block(
                     &other_block_pos,
                     None,
                     BlockFlags::SKIP_DROPS
@@ -176,7 +176,7 @@ impl BlockBehaviour for PitcherCropBlock {
             && args.world.level_info.load().game_rules.mob_griefing
         {
             args.world
-                .break_block(args.position, None, BlockFlags::NOTIFY_ALL);
+                .destroy_block(args.position, Some(args.entity), BlockFlags::NOTIFY_ALL);
         }
     }
 

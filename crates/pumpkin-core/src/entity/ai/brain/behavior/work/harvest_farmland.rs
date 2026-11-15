@@ -134,21 +134,9 @@ impl Behavior for HarvestFarmland {
             let block_below = tick.world.get_block(&farmland_pos.down());
             let source: &dyn crate::entity::EntityBase = villager;
 
-            if is_crop_block(block)
-                && is_max_age(block, state.id)
-                && tick
-                    .world
-                    .break_block(&farmland_pos, None, BlockFlags::NOTIFY_ALL)
-                    .is_some()
-            {
-                tick.world.emit_game_event_with_context(
-                    GameEvent::BlockDestroy.name(),
-                    farmland_pos.to_centered_f64(),
-                    &GameEventContext {
-                        source_entity: Some(source),
-                        affected_state: None,
-                    },
-                );
+            if is_crop_block(block) && is_max_age(block, state.id) {
+                tick.world
+                    .destroy_block(&farmland_pos, Some(source), BlockFlags::NOTIFY_ALL);
             }
 
             if state.is_air() && block_below == &Block::FARMLAND && villager.has_farm_seeds() {

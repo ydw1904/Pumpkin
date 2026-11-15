@@ -378,7 +378,7 @@ impl BlockEntity for PistonBlockEntity {
                             | BlockFlags::MOVED
                             | BlockFlags::UPDATE_KNOWN_SHAPE,
                     );
-                    world.break_block(&pos, None, BlockFlags::NOTIFY_ALL);
+                    world.destroy_block(&pos, None, BlockFlags::NOTIFY_ALL);
                 } else {
                     let new_block = Block::from_state_id(new_state);
                     let new_state = new_block

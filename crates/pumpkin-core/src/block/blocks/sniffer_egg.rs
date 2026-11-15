@@ -94,7 +94,7 @@ impl BlockBehaviour for SnifferEggBlock {
         }
         Self::play_hatch_sound(world, Sound::BlockSnifferEggHatch, &pos);
         // Vanilla `destroyBlock(pos, false)`: no drops, but the usual neighbor and client updates.
-        world.break_block(&pos, None, BlockFlags::NOTIFY_ALL | BlockFlags::SKIP_DROPS);
+        world.destroy_block(&pos, None, BlockFlags::NOTIFY_ALL | BlockFlags::SKIP_DROPS);
         let sniffer = from_type(
             &EntityType::SNIFFER,
             pos.to_centered_f64(),

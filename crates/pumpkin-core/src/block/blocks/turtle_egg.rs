@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use pumpkin_data::block_properties::TurtleEggLikeProperties;
 use pumpkin_data::entity::{EntityPose, EntityType};
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tag::Taggable;
 use pumpkin_data::{Block, BlockStateId, tag};
@@ -19,6 +20,7 @@ use crate::block::{
 use crate::entity::EntityBase;
 use crate::entity::r#type::from_type;
 use crate::world::World;
+use crate::world::game_event::GameEventContext;
 
 type TurtleEggProperties = TurtleEggLikeProperties;
 
@@ -66,11 +68,19 @@ impl TurtleEggBlock {
         let props = TurtleEggProperties::from_state_id(state_id);
         if props.eggs <= 1 {
             // Vanilla destroys the last egg without drops.
-            world.break_block(pos, None, BlockFlags::NOTIFY_ALL | BlockFlags::SKIP_DROPS);
+            world.destroy_block(pos, None, BlockFlags::NOTIFY_ALL | BlockFlags::SKIP_DROPS);
         } else {
             let mut new_props = props;
             new_props.eggs -= 1;
             world.set_block_state(pos, new_props.to_state_id(block), BlockFlags::NOTIFY_ALL);
+            world.emit_game_event_with_context(
+                GameEvent::BlockDestroy.name(),
+                pos.to_centered_f64(),
+                &GameEventContext {
+                    source_entity: None,
+                    affected_state: Some(state_id),
+                },
+            );
         }
     }
 
@@ -182,9 +192,17 @@ impl BlockBehaviour for TurtleEggBlock {
                 SoundCategory::Blocks,
                 &args.position.to_f64(),
             );
+            args.world.emit_game_event_with_context(
+                GameEvent::BlockChange.name(),
+                args.position.to_centered_f64(),
+                &GameEventContext {
+                    source_entity: None,
+                    affected_state: Some(state_id),
+                },
+            );
         } else {
             args.world
-                .break_block(args.position, None, BlockFlags::SKIP_DROPS);
+                .destroy_block(args.position, None, BlockFlags::SKIP_DROPS);
 
             args.world.play_sound(
                 Sound::EntityTurtleEggHatch,

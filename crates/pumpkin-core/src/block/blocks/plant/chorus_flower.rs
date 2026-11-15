@@ -54,13 +54,13 @@ impl BlockBehaviour for ChorusFlowerBlock {
     fn on_scheduled_tick(&self, args: OnScheduledTickArgs<'_>) {
         if !can_survive(args.world.as_ref(), args.position) {
             args.world
-                .break_block(args.position, None, BlockFlags::NOTIFY_ALL);
+                .destroy_block(args.position, None, BlockFlags::NOTIFY_ALL);
         }
     }
 
     fn on_projectile_hit(&self, args: OnProjectileHitArgs<'_>) {
         args.world
-            .break_block(args.position, None, BlockFlags::NOTIFY_ALL);
+            .destroy_block(args.position, None, BlockFlags::NOTIFY_ALL);
     }
 
     fn random_tick(&self, args: RandomTickArgs<'_>) {

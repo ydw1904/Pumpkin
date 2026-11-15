@@ -46,7 +46,7 @@ impl BlockBehaviour for LayeredSnowBlock {
         // e.g. from a nearby torch.
         if args.world.get_block_light_level(args.position).unwrap_or(0) > 11 {
             args.world
-                .break_block(args.position, None, BlockFlags::NOTIFY_ALL);
+                .destroy_block(args.position, None, BlockFlags::NOTIFY_ALL);
         }
     }
 

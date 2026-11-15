@@ -414,7 +414,7 @@ impl BlockBehaviour for DoorBlock {
         if other_block.id == args.block.id {
             let other_props = DoorProperties::from_state_id(other_state.id);
             if other_props.half != door_props.half {
-                args.world.break_block(
+                args.world.destroy_block(
                     &other_half_pos,
                     None,
                     BlockFlags::SKIP_DROPS | BlockFlags::NOTIFY_ALL,

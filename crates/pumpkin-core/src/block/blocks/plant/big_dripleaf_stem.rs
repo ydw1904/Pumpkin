@@ -93,7 +93,7 @@ impl BlockBehaviour for BigDripleafStemBlock {
     fn on_scheduled_tick(&self, args: OnScheduledTickArgs<'_>) {
         if !Self::can_survive(args.world.as_ref(), args.position) {
             args.world
-                .break_block(args.position, None, BlockFlags::NOTIFY_ALL);
+                .destroy_block(args.position, None, BlockFlags::NOTIFY_ALL);
         }
     }
 

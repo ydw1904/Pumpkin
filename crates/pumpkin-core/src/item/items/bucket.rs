@@ -418,7 +418,7 @@ fn try_place_liquid(
     }
 
     if !target_state.is_air() && !target_state.is_liquid() {
-        world.break_block(&place_pos, None, BlockFlags::NOTIFY_ALL);
+        world.destroy_block(&place_pos, None, BlockFlags::NOTIFY_ALL);
     }
     world.set_block_state(
         &place_pos,

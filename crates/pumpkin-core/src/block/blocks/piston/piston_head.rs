@@ -48,7 +48,7 @@ impl BlockBehaviour for PistonHeadBlock {
             } else {
                 BlockFlags::NOTIFY_ALL
             };
-            args.world.break_block(&pos, None, flags);
+            args.world.destroy_block(&pos, None, flags);
         }
     }
 
@@ -63,7 +63,7 @@ impl BlockBehaviour for PistonHeadBlock {
         let (base_block, base_state) = args.world.get_block_and_state_id(&base_pos);
         if Self::is_fitting_base(props, base_block, base_state) {
             // A creative break removes the base without drops.
-            args.world.break_block(
+            args.world.destroy_block(
                 &base_pos,
                 None,
                 (args.flags & BlockFlags::SKIP_DROPS) | BlockFlags::NOTIFY_ALL,

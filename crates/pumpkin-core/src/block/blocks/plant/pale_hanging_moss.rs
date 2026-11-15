@@ -70,7 +70,7 @@ impl BlockBehaviour for PaleHangingMossBlock {
     fn on_scheduled_tick(&self, args: OnScheduledTickArgs<'_>) {
         if !Self::can_stay_at_position(args.world.as_ref(), args.position) {
             args.world
-                .break_block(args.position, None, BlockFlags::NOTIFY_ALL);
+                .destroy_block(args.position, None, BlockFlags::NOTIFY_ALL);
         }
     }
 

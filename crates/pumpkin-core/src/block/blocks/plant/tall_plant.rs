@@ -107,7 +107,7 @@ impl BlockBehaviour for TallPlantBlock {
             let other_props = TallSeagrassLikeProperties::from_state_id(other_state_id);
             if other_props.half != tall_plant_props.half {
                 // Break the other half, using SKIP_DROPS to prevent double drops
-                args.world.break_block(
+                args.world.destroy_block(
                     &other_block_pos,
                     None,
                     BlockFlags::SKIP_DROPS

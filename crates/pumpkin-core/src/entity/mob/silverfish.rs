@@ -203,7 +203,7 @@ impl Goal for SilverfishWakeUpFriendsGoal {
                     if mob_griefing {
                         // `destroyBlock` with drops, which spawns the hidden silverfish.
                         if world
-                            .break_block(&pos, None, BlockFlags::NOTIFY_ALL)
+                            .destroy_block(&pos, Some(mob), BlockFlags::NOTIFY_ALL)
                             .is_some()
                             && block_drops
                         {

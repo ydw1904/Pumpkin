@@ -177,7 +177,7 @@ impl BlockBehaviour for DripstoneBlock {
         });
         if may_interact && game_rules.projectiles_can_break_blocks {
             args.world
-                .break_block(args.position, None, BlockFlags::NOTIFY_ALL);
+                .destroy_block(args.position, None, BlockFlags::NOTIFY_ALL);
         }
     }
 

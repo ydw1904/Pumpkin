@@ -123,7 +123,7 @@ trait CropBlockBase: PlantBlockBase {
             && args.world.level_info.load().game_rules.mob_griefing
         {
             args.world
-                .break_block(args.position, None, BlockFlags::NOTIFY_ALL);
+                .destroy_block(args.position, Some(args.entity), BlockFlags::NOTIFY_ALL);
         }
     }
 

@@ -267,7 +267,7 @@ impl Mob for RavagerEntity {
             ) {
                 if world.get_block(&pos).has_tag(&tag::Block::MINECRAFT_LEAVES) {
                     destroyed_block |= world
-                        .break_block(&pos, None, BlockFlags::NOTIFY_ALL)
+                        .destroy_block(&pos, Some(self), BlockFlags::NOTIFY_ALL)
                         .is_some();
                 }
             }

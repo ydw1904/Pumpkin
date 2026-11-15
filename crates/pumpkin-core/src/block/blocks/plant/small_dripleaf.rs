@@ -145,7 +145,7 @@ impl BlockBehaviour for SmallDripleafBlock {
         if other_block == &Block::SMALL_DRIPLEAF {
             let other_props = SmallDripleafLikeProperties::from_state_id(other_state_id);
             if other_props.half != props.half {
-                args.world.break_block(
+                args.world.destroy_block(
                     &other_block_pos,
                     None,
                     BlockFlags::SKIP_DROPS

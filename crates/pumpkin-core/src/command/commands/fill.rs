@@ -110,7 +110,7 @@ fn fill_blocks(
 
                 let affected = mode == FillMode::Destroy
                     && world
-                        .break_block(&pos, None, BlockFlags::NOTIFY_ALL)
+                        .destroy_block(&pos, None, BlockFlags::NOTIFY_ALL)
                         .is_some();
                 let is_edge = x == min_x
                     || x == max_x

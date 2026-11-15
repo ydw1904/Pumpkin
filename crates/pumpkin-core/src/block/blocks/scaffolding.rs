@@ -139,7 +139,7 @@ impl BlockBehaviour for ScaffoldingBlock {
                 FallingEntity::replace_spawn(args.world, *args.position, new_state_id);
             } else {
                 args.world
-                    .break_block(args.position, None, BlockFlags::NOTIFY_ALL);
+                    .destroy_block(args.position, None, BlockFlags::NOTIFY_ALL);
             }
         } else if new_state_id != state_id {
             args.world

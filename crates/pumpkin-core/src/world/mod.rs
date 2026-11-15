@@ -7090,6 +7090,26 @@ impl World {
         Some(broken_state_id)
     }
 
+    /// Vanilla `Level.destroyBlock`: [`Self::break_block`] without a player, followed by a
+    /// `block_destroy` game event from `breaker`.
+    pub fn destroy_block(
+        self: &Arc<Self>,
+        position: &BlockPos,
+        breaker: Option<&dyn EntityBase>,
+        flags: BlockFlags,
+    ) -> Option<BlockStateId> {
+        let broken = self.break_block(position, None, flags)?;
+        self.emit_game_event_with_context(
+            pumpkin_data::game_event::GameEvent::BlockDestroy.name(),
+            position.to_centered_f64(),
+            &game_event::GameEventContext {
+                source_entity: breaker,
+                affected_state: Some(broken),
+            },
+        );
+        Some(broken)
+    }
+
     #[must_use]
     pub fn get_block_drops(
         self: &Arc<Self>,
@@ -8200,7 +8220,7 @@ impl World {
 
         if new_state_id != block_state_id {
             if is_air(new_state_id) {
-                self.break_block(block_pos, None, flags | BlockFlags::NOTIFY_ALL);
+                self.destroy_block(block_pos, None, flags | BlockFlags::NOTIFY_ALL);
             } else {
                 self.set_block_state(block_pos, new_state_id, flags);
             }
