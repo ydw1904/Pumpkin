@@ -1,4 +1,6 @@
+use pumpkin_data::entity::EntityType;
 use pumpkin_data::game_event::GameEvent;
+use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tag::Taggable;
@@ -13,6 +15,8 @@ use crate::block::entities::BlockEntity;
 use crate::block::entities::base_container::BaseContainer;
 use crate::block::entities::container_loot::ContainerLoot;
 use crate::block::viewer::{ViewerCountListener, ViewerCountTracker, ViewerCountTrackerExt};
+use crate::entity::Entity;
+use crate::entity::item::ItemEntity;
 use crate::world::World;
 use pumpkin_inventory::{Clearable, Inventory};
 
@@ -119,10 +123,6 @@ impl BlockEntity for ShulkerBoxBlockEntity {
         );
         self.loot.apply_item_components(stack);
         self.mark_dirty();
-    }
-
-    fn drops_for_creative_player(&self) -> bool {
-        !self.is_empty()
     }
 
     fn is_comparator_dirty(&self) -> bool {
@@ -332,21 +332,31 @@ pub fn build_shulker_box_actor(
         .finish()
 }
 
-/// Vanilla `ShulkerBoxBlock.playerWillDestroy`: unless a creative player keeps the box whole,
-/// the breaking player unpacks its loot table.
+/// Vanilla `ShulkerBoxBlock.playerWillDestroy`: a creative player breaking a box that isn't
+/// empty gets it as an item with all of its components, anyone else unpacks its loot table.
 pub fn player_will_destroy(
-    world: &World,
+    world: &Arc<World>,
     position: &BlockPos,
     player: &crate::entity::player::Player,
 ) {
-    if player.gamemode.load() == pumpkin_util::GameMode::Creative {
+    let Some(entity) = world.get_block_entity(position) else {
+        return;
+    };
+    let Some(shulker_box) = entity.as_any().downcast_ref::<ShulkerBoxBlockEntity>() else {
+        return;
+    };
+    // `isEmpty` unpacks a pending loot table without a player first.
+    if player.gamemode.load() != pumpkin_util::GameMode::Creative || shulker_box.is_empty() {
+        crate::block::entities::container_loot::unpack_for_player(&entity, world, player);
         return;
     }
-    if let Some(entity) = world.get_block_entity(position)
-        && entity.as_any().is::<ShulkerBoxBlockEntity>()
-    {
-        crate::block::entities::container_loot::unpack_for_player(&entity, world, player);
-    }
+    let Some(item) = Item::from_id(world.get_block(position).item_id) else {
+        return;
+    };
+    let mut stack = ItemStack::new(1, item);
+    world.collect_block_entity_components(entity.as_ref(), &mut stack);
+    let item_entity = Entity::new(world.clone(), position.to_centered_f64(), &EntityType::ITEM);
+    world.spawn_entity(Arc::new(ItemEntity::new(item_entity, stack)));
 }
 
 #[cfg(test)]

@@ -6980,7 +6980,6 @@ impl World {
         }
 
         if let Some(player) = cause {
-            crate::block::entities::shulker_box::player_will_destroy(self, position, player);
             // Vanilla `Block.playerWillDestroy`.
             if broken_block.has_tag(&pumpkin_data::tag::Block::MINECRAFT_GUARDED_BY_PIGLINS) {
                 crate::entity::mob::piglin_ai::PiglinAi::anger_nearby_piglins(self, player, false);
@@ -6991,15 +6990,6 @@ impl World {
             crate::block::blocks::beehive::BeehiveBlock::destroyed_hive(self, position, cause);
 
         let mut flags = flags;
-        if flags.contains(BlockFlags::SKIP_DROPS)
-            && cause.is_some_and(|p| p.gamemode.load() == pumpkin_util::GameMode::Creative)
-            && self
-                .get_block_entity(position)
-                .is_some_and(|entity| entity.drops_for_creative_player())
-        {
-            flags.remove(BlockFlags::SKIP_DROPS);
-        }
-
         let mut event = BlockBreakEvent::new(
             cause.cloned(),
             broken_block,
@@ -7020,6 +7010,9 @@ impl World {
             flags.insert(BlockFlags::SKIP_DROPS);
         }
 
+        if let Some(player) = cause {
+            crate::block::entities::shulker_box::player_will_destroy(self, position, player);
+        }
         if let Some(player) = cause
             && broken_block == &Block::CREAKING_HEART
         {
