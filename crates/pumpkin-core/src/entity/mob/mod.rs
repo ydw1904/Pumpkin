@@ -1884,7 +1884,8 @@ pub(crate) fn game_event_listeners(world: &World) -> Vec<(i32, BoundingBox)> {
 }
 
 /// Links the listener mobs that an entity's game events can reach from anywhere in `moved`:
-/// the splash of entering water, plus step, swim and flap when its movement emits events.
+/// the splash of entering water and the `hit_ground` of a landing, plus step, swim and flap when
+/// its movement emits events.
 pub(crate) fn game_event_listener_links(
     world: &World,
     emits_movement_events: bool,
@@ -1902,12 +1903,13 @@ pub(crate) fn game_event_listener_links(
     let emitted: &[GameEvent] = if emits_movement_events {
         &[
             GameEvent::Splash,
+            GameEvent::HitGround,
             GameEvent::Step,
             GameEvent::Swim,
             GameEvent::Flap,
         ]
     } else {
-        &[GameEvent::Splash]
+        &[GameEvent::Splash, GameEvent::HitGround]
     };
     let radius = emitted
         .iter()

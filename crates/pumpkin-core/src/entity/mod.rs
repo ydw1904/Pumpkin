@@ -4317,6 +4317,22 @@ impl Entity {
         self.emit_own_game_event(caller, GameEvent::Splash);
     }
 
+    /// The `hit_ground` of vanilla `Entity.checkFallDamage` for a landing on `supporting_state`.
+    pub(crate) fn emit_hit_ground(
+        &self,
+        caller: &dyn EntityBase,
+        supporting_state: pumpkin_data::BlockStateId,
+    ) {
+        self.world.load().emit_game_event_with_context(
+            GameEvent::HitGround.name(),
+            self.pos.load(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: Some(caller),
+                affected_state: Some(supporting_state),
+            },
+        );
+    }
+
     /// Vanilla `gameEvent(event)`: at the entity, with itself as the source.
     pub(crate) fn emit_own_game_event(&self, caller: &dyn EntityBase, event: GameEvent) {
         self.world.load().emit_game_event_with_context(

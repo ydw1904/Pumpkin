@@ -3096,7 +3096,8 @@ impl LivingEntity {
                 return;
             }
             let world = self.entity.world.load();
-            let block = world.get_block(&self.entity.get_pos_with_y_offset(0.2).0);
+            let (block, state) =
+                world.get_block_and_state_id(&self.entity.get_pos_with_y_offset(0.2).0);
             let pumpkin_block = world.block_registry.get_pumpkin_block(block.id);
             if let Some(pumpkin_block) = pumpkin_block {
                 pumpkin_block.on_landed_upon(OnLandedUponArgs {
@@ -3112,6 +3113,7 @@ impl LivingEntity {
                     1.0,
                 );
             }
+            self.entity.emit_hit_ground(caller, state);
         }
     }
 

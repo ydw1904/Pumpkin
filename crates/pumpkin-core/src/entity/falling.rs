@@ -99,6 +99,12 @@ impl FallingEntity {
             let fall_distance = self.fall_distance.swap(0.0);
             if fall_distance > 0.0 {
                 self.cause_fall_damage(fall_distance);
+                let supporting = self
+                    .entity
+                    .world
+                    .load()
+                    .get_block_state_id(&self.entity.get_pos_with_y_offset(0.2).0);
+                self.entity.emit_hit_ground(self, supporting);
             }
         }
     }
