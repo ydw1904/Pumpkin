@@ -126,7 +126,7 @@ impl BlockEntity for DropperBlockEntity {
         Some(crate::block::entities::bedrock::build_container_actor(
             "Dropper",
             self.position,
-            None,
+            self.base.bedrock_custom_name().as_deref(),
         ))
     }
 

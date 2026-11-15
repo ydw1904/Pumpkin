@@ -254,7 +254,7 @@ impl BlockEntity for HopperBlockEntity {
         Some(crate::block::entities::bedrock::build_container_actor(
             "Hopper",
             self.position,
-            None,
+            self.base.bedrock_custom_name().as_deref(),
         ))
     }
 

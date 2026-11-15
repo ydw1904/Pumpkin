@@ -749,7 +749,7 @@ macro_rules! impl_block_entity_for_cooking {
                     self.get_lit_time_remaining(),
                     self.get_lit_total_time(),
                     0,
-                    None,
+                    self.base.bedrock_custom_name().as_deref(),
                 ))
             }
 

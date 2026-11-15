@@ -210,6 +210,7 @@ impl BlockEntity for CrafterBlockEntity {
         }
         Some(
             super::bedrock::BedrockBlockActorBuilder::new("Crafter", self.position)
+                .custom_name(self.base.bedrock_custom_name().as_deref())
                 .put_short("disabled_slots", mask as i16)
                 .put_int(
                     "crafting_ticks_remaining",

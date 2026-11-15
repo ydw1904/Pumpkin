@@ -147,7 +147,7 @@ impl BlockEntity for BarrelBlockEntity {
         Some(crate::block::entities::bedrock::build_container_actor(
             "Barrel",
             self.position,
-            None,
+            self.base.bedrock_custom_name().as_deref(),
         ))
     }
 

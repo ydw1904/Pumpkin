@@ -93,7 +93,7 @@ macro_rules! impl_block_entity_for_chest {
                 $crate::block::entities::chest_like_block_entity::build_chest_actor(
                     self.position,
                     state_id,
-                    None,
+                    self.base.bedrock_custom_name().as_deref(),
                 )
             }
 

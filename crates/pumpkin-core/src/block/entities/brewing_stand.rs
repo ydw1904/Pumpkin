@@ -613,7 +613,7 @@ impl crate::block::entities::BlockEntity for BrewingStandBlockEntity {
             self.position,
             self.brew_time.load(Ordering::Relaxed),
             self.fuel.load(Ordering::Relaxed),
-            None,
+            self.base.bedrock_custom_name().as_deref(),
         ))
     }
 

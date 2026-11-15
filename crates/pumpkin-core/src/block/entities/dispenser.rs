@@ -126,7 +126,7 @@ impl BlockEntity for DispenserBlockEntity {
         Some(crate::block::entities::bedrock::build_container_actor(
             "Dispenser",
             self.position,
-            None,
+            self.base.bedrock_custom_name().as_deref(),
         ))
     }
 

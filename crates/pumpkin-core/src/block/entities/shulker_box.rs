@@ -156,7 +156,11 @@ impl BlockEntity for ShulkerBoxBlockEntity {
                 pumpkin_data::block_properties::Facing::West => 4,
                 pumpkin_data::block_properties::Facing::East => 5,
             };
-        Some(build_shulker_box_actor(self.position, facing, None))
+        Some(build_shulker_box_actor(
+            self.position,
+            facing,
+            self.base.bedrock_custom_name().as_deref(),
+        ))
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

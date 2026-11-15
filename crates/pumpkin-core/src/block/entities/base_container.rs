@@ -73,6 +73,12 @@ impl BaseContainer {
             .clone()
     }
 
+    /// The custom name as Bedrock block actors carry it, as plain text.
+    #[must_use]
+    pub fn bedrock_custom_name(&self) -> Option<String> {
+        self.custom_name().map(TextComponent::get_text)
+    }
+
     /// Vanilla `isLocked`.
     #[must_use]
     pub fn is_locked(&self) -> bool {
