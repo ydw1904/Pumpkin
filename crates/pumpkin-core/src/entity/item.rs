@@ -615,6 +615,12 @@ impl ItemEntity {
 }
 
 impl EntityBase for ItemEntity {
+    /// Vanilla `ItemEntity.shouldPlayLavaHurtSound`: only every 10 ticks until it burns up.
+    fn should_play_lava_hurt_sound(&self) -> bool {
+        self.health.load(Ordering::Relaxed) <= 0.0
+            || self.entity.tick_count.load(Ordering::Relaxed) % 10 == 0
+    }
+
     fn dampens_vibrations(&self) -> bool {
         self.item_stack
             .lock()

@@ -3669,7 +3669,7 @@ impl World {
         );
         let below = top.down();
         let weather = &self.get_biome(&top).weather;
-        if self.should_freeze(weather, &below) {
+        if self.should_freeze(weather, &below) && self.allow_block_form(below, &Block::ICE) {
             self.set_block_state(&below, Block::ICE.default_state.id, BlockFlags::NOTIFY_ALL);
         }
 
@@ -3681,23 +3681,20 @@ impl World {
                 .max_snow_accumulation_height;
             if max_height > 0 && self.should_snow(weather, &top) {
                 let (block, state_id) = self.get_block_and_state_id(&top);
-                if block == &Block::SNOW {
+                let next_state = if block == &Block::SNOW {
                     let mut props = SnowLikeProperties::from_state_id(state_id);
-                    if i64::from(props.layers) < max_height.min(8) {
+                    (i64::from(props.layers) < max_height.min(8)).then(|| {
                         props.layers += 1;
-                        // TODO: vanilla pushes entities up out of the new layer (`Block.pushEntitiesUp`).
-                        self.set_block_state(
-                            &top,
-                            props.to_state_id(&Block::SNOW),
-                            BlockFlags::NOTIFY_ALL,
-                        );
-                    }
+                        props.to_state_id(&Block::SNOW)
+                    })
                 } else {
-                    self.set_block_state(
-                        &top,
-                        Block::SNOW.default_state.id,
-                        BlockFlags::NOTIFY_ALL,
-                    );
+                    Some(Block::SNOW.default_state.id)
+                };
+                // TODO: vanilla pushes entities up out of a grown layer (`Block.pushEntitiesUp`).
+                if let Some(next_state) = next_state
+                    && self.allow_block_form(top, &Block::SNOW)
+                {
+                    self.set_block_state(&top, next_state, BlockFlags::NOTIFY_ALL);
                 }
             }
 
@@ -3716,6 +3713,17 @@ impl World {
                 }
             }
         }
+    }
+
+    /// Fires the plugin `BlockFormEvent` for weather forming `block` at `pos`; `false` if a plugin
+    /// cancelled it.
+    fn allow_block_form(&self, pos: BlockPos, block: &'static Block) -> bool {
+        self.server.upgrade().is_none_or(|server| {
+            let mut event =
+                crate::plugin::api::events::block::block_form::BlockFormEvent::new(pos, block);
+            server.plugin_manager.fire_blocking(&server, &mut event);
+            !event.cancelled
+        })
     }
 
     /// Vanilla `Biome.shouldFreeze` with the neighbour check: a still water source in the cold

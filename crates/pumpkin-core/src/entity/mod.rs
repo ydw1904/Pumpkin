@@ -955,6 +955,11 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         self.get_entity().entity_type.sound_source
     }
 
+    /// Vanilla `Entity.shouldPlayLavaHurtSound`.
+    fn should_play_lava_hurt_sound(&self) -> bool {
+        true
+    }
+
     /// Vanilla `Entity.playSound`: at the entity, in its sound source, unless it is silent.
     fn play_entity_sound(&self, sound: Sound, volume: f32, pitch: f32) {
         let entity = self.get_entity();
@@ -5661,10 +5666,17 @@ impl Entity {
         }
     }
 
-    /// Vanilla `Entity.lavaHurt`: deals 4 lava damage.
+    /// Vanilla `Entity.lavaHurt`: deals 4 lava damage and sizzles when it hurts.
     pub fn lava_hurt(&self, caller: &dyn EntityBase) {
-        if !self.is_fire_immune() {
-            self.damage(caller, 4.0, DamageType::LAVA);
+        if !self.is_fire_immune()
+            && self.damage(caller, 4.0, DamageType::LAVA)
+            && caller.should_play_lava_hurt_sound()
+        {
+            caller.play_entity_sound(
+                Sound::EntityGenericBurn,
+                0.4,
+                game_random().next_f32().mul_add(0.4, 2.0),
+            );
         }
     }
 

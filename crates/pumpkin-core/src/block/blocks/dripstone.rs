@@ -192,13 +192,24 @@ impl BlockBehaviour for DripstoneBlock {
 
     /// Vanilla `PointedDripstoneBlock.randomTick`. Stalactite growth isn't ported.
     fn random_tick(&self, args: RandomTickArgs<'_>) {
+        let state_id = args.world.get_block_state_id(args.position);
         if args.block == &Block::POINTED_DRIPSTONE {
-            let state_id = args.world.get_block_state_id(args.position);
             maybe_transfer_fluid(
                 args.world,
                 args.position,
                 state_id,
                 game_random().next_f32(),
+            );
+        }
+        // Vanilla `SpeleothemBlock.randomTick`.
+        if game_random().next_f32() < GROWTH_PROBABILITY_PER_RANDOM_TICK
+            && is_stalactite_start_pos(args.world, args.position, state_id)
+        {
+            grow_stalactite_or_stalagmite_if_possible(
+                args.world,
+                args.block,
+                args.position,
+                state_id,
             );
         }
     }
@@ -212,6 +223,166 @@ const LAVA_TRANSFER_PROBABILITY_PER_RANDOM_TICK: f32 = 0.058_593_75;
 const MAX_SEARCH_LENGTH_WHEN_CHECKING_DRIP_TYPE: i32 = 11;
 /// Vanilla `PointedDripstoneBlock.MAX_SEARCH_LENGTH_BETWEEN_STALACTITE_TIP_AND_CAULDRON`.
 const MAX_SEARCH_LENGTH_BETWEEN_STALACTITE_TIP_AND_CAULDRON: i32 = 11;
+
+/// Vanilla `SpeleothemBlock.GROWTH_PROBABILITY_PER_RANDOM_TICK`.
+const GROWTH_PROBABILITY_PER_RANDOM_TICK: f32 = 0.011_377_778;
+/// Vanilla `SpeleothemBlock.MAX_STALAGMITE_SEARCH_RANGE_WHEN_GROWING`.
+const MAX_STALAGMITE_SEARCH_RANGE_WHEN_GROWING: i32 = 10;
+
+/// Vanilla `SpeleothemBlock.growStalactiteOrStalagmiteIfPossible`.
+fn grow_stalactite_or_stalagmite_if_possible(
+    world: &Arc<World>,
+    speleothem: &Block,
+    start: &BlockPos,
+    start_state: BlockStateId,
+) {
+    if !can_grow(world, speleothem, start) {
+        return;
+    }
+    // `getMaxGrowthLength`: `SulfurSpikeBlock` overrides it.
+    let max_growth_length = if speleothem == &Block::SULFUR_SPIKE {
+        2
+    } else {
+        7
+    };
+    let Some(tip) = find_tip(world, start, start_state, max_growth_length, false) else {
+        return;
+    };
+    let tip_state = world.get_block_state_id(&tip);
+    if !is_free_hanging_stalactite(tip_state) || !can_tip_grow(world, speleothem, &tip, tip_state) {
+        return;
+    }
+    if game_random().random::<bool>() {
+        grow(world, speleothem, &tip, VerticalDirection::Down);
+    } else {
+        grow_stalagmite_below(world, speleothem, &tip);
+    }
+}
+
+/// Vanilla `SpeleothemBlock.canGrow`, with `PointedDripstoneBlock`'s water source two above.
+fn can_grow(world: &World, speleothem: &Block, pos: &BlockPos) -> bool {
+    let grows_on = if speleothem == &Block::SULFUR_SPIKE {
+        &Block::SULFUR
+    } else {
+        &Block::DRIPSTONE_BLOCK
+    };
+    world.get_block(&pos.up()) == grows_on
+        && (speleothem != &Block::POINTED_DRIPSTONE
+            || *World::get_fluid_type_from_state_id(world.get_block_state_id(&pos.up_height(2)))
+                == Fluid::WATER)
+}
+
+/// Vanilla `SpeleothemBlock.canTipGrow`.
+fn can_tip_grow(
+    world: &World,
+    speleothem: &Block,
+    tip: &BlockPos,
+    tip_state: BlockStateId,
+) -> bool {
+    let direction = PointedDripstoneLikeProperties::from_state_id(tip_state).vertical_direction;
+    let grow_state = world.get_block_state_id(&offset_pos_by_vertical_dir(tip, direction));
+    if *World::get_fluid_type_from_state_id(grow_state) != Fluid::EMPTY {
+        return false;
+    }
+    grow_state.to_state().is_air()
+        || is_unmerged_tip_with_direction(grow_state, speleothem, flip_dir(direction))
+}
+
+/// Vanilla `SpeleothemBlock.isUnmergedTipWithDirection`.
+fn is_unmerged_tip_with_direction(
+    state_id: BlockStateId,
+    speleothem: &Block,
+    direction: VerticalDirection,
+) -> bool {
+    is_tip(state_id, false) && same_speleothem(state_id, speleothem, direction)
+}
+
+/// Vanilla `SpeleothemBlock.grow`.
+fn grow(world: &Arc<World>, speleothem: &Block, from: &BlockPos, direction: VerticalDirection) {
+    let target = offset_pos_by_vertical_dir(from, direction);
+    let existing = world.get_block_state_id(&target);
+    if is_unmerged_tip_with_direction(existing, speleothem, flip_dir(direction)) {
+        // `createMergedTips`.
+        let (stalactite, stalagmite) = if direction == VerticalDirection::Down {
+            (target.up(), target)
+        } else {
+            (target, target.down())
+        };
+        create_speleothem(
+            world,
+            speleothem,
+            &stalactite,
+            VerticalDirection::Down,
+            SpeleothemThickness::TipMerge,
+        );
+        create_speleothem(
+            world,
+            speleothem,
+            &stalagmite,
+            VerticalDirection::Up,
+            SpeleothemThickness::TipMerge,
+        );
+    } else if existing.to_state().is_air() || existing.to_block() == &Block::WATER {
+        create_speleothem(
+            world,
+            speleothem,
+            &target,
+            direction,
+            SpeleothemThickness::Tip,
+        );
+    }
+}
+
+/// Vanilla `SpeleothemBlock.createSpeleothem`.
+fn create_speleothem(
+    world: &Arc<World>,
+    speleothem: &Block,
+    pos: &BlockPos,
+    direction: VerticalDirection,
+    thickness: SpeleothemThickness,
+) {
+    let mut props = PointedDripstoneLikeProperties::default(speleothem);
+    props.vertical_direction = direction;
+    props.thickness = thickness;
+    props.waterlogged =
+        *World::get_fluid_type_from_state_id(world.get_block_state_id(pos)) == Fluid::WATER;
+    world.set_block_state(pos, props.to_state_id(speleothem), BlockFlags::NOTIFY_ALL);
+}
+
+/// Vanilla `SpeleothemBlock.growStalagmiteBelow`.
+fn grow_stalagmite_below(world: &Arc<World>, speleothem: &Block, above: &BlockPos) {
+    let mut pos = *above;
+    for _ in 0..MAX_STALAGMITE_SEARCH_RANGE_WHEN_GROWING {
+        pos = pos.down();
+        let state_id = world.get_block_state_id(&pos);
+        if *World::get_fluid_type_from_state_id(state_id) != Fluid::EMPTY {
+            return;
+        }
+        if is_unmerged_tip_with_direction(state_id, speleothem, VerticalDirection::Up)
+            && can_tip_grow(world, speleothem, &pos, state_id)
+        {
+            grow(world, speleothem, &pos, VerticalDirection::Up);
+            return;
+        }
+        // `isValidSpeleothemPlacement(pos, UP)` and not `isWaterAt(pos.below())`.
+        if can_support_dripstone(
+            world.as_ref(),
+            speleothem,
+            &pos.down(),
+            VerticalDirection::Down,
+        ) && !world
+            .get_fluid(&pos.down())
+            .has_tag(&tag::Fluid::MINECRAFT_WATER)
+        {
+            grow(world, speleothem, &pos.down(), VerticalDirection::Up);
+            return;
+        }
+        // `blocksStalagmiteScan`: only pointed dripstone stops at what it can't drip through.
+        if speleothem == &Block::POINTED_DRIPSTONE && !can_drip_through(state_id) {
+            return;
+        }
+    }
+}
 
 /// Vanilla `PointedDripstoneBlock.FluidInfo`: the fluid a stalactite drips and where it comes from.
 struct FluidInfo {
