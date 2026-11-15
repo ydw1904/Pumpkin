@@ -268,4 +268,13 @@ h.start(async () => {
   h.result('peaceful.left', ['zombie', 'piglin', 'slime', 'shulker', 'ghast'].filter(t => named(t).length > 0).join(',') || 'none')
   h.cmd('difficulty normal')
   await clean()
+
+  // TNT blowing a hive up lets its bees out. Last, since the blast breaks the arena.
+  await h.tp(X + 6.5, Y + 1, Z + 6.5)
+  await place(X - 5, Y + 1, Z - 5, 'beehive[facing=west]{bees:[{entity_data:{id:"minecraft:bee"},ticks_in_hive:0,min_ticks_in_hive:600}]}')
+  await h.serverTicks(5)
+  h.cmd(`summon tnt ${X - 4.5} ${Y + 1} ${Z - 3.5} {fuse:0}`)
+  await h.serverTicks(10)
+  h.result('hive_tnt', `hive=${h.blockName(X - 5, Y + 1, Z - 5)} bees=${nearHive(X - 5, Z - 5).length}`)
+  await clean()
 })

@@ -1103,6 +1103,7 @@ impl BlockRegistry {
                 block,
                 position,
                 indirect_source: None,
+                source: None,
             });
         }
     }

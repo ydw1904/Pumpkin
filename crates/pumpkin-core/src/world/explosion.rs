@@ -766,6 +766,7 @@ impl<'a> Explosion<'a> {
                             block,
                             position: pos,
                             indirect_source: self.indirect_source_entity(),
+                            source: self.source,
                         });
                     }
                 }
@@ -815,6 +816,15 @@ impl<'a> Explosion<'a> {
                             is_thundering: Some(is_thundering),
                             ..Default::default()
                         };
+                        if let Some(pumpkin_block) = pumpkin_block {
+                            pumpkin_block.on_explosion_drops(ExplodeArgs {
+                                world,
+                                block,
+                                position: pos,
+                                indirect_source: self.indirect_source_entity(),
+                                source: self.source,
+                            });
+                        }
                         for stack in collect_loot(world, block, pos, &params) {
                             add_or_append_stack(&mut drops, stack, *pos);
                         }
@@ -829,6 +839,7 @@ impl<'a> Explosion<'a> {
                             block,
                             position: pos,
                             indirect_source: self.indirect_source_entity(),
+                            source: self.source,
                         });
                     }
                 }

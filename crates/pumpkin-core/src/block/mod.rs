@@ -154,6 +154,10 @@ pub trait BlockBehaviour: Send + Sync {
 
     fn explode(&self, _args: ExplodeArgs<'_>) {}
 
+    /// The side effects of vanilla `getDrops` for a block a destroying explosion drops, while
+    /// the block and its block entity are still there.
+    fn on_explosion_drops(&self, _args: ExplodeArgs<'_>) {}
+
     /// Vanilla `onExplosionHit` for an explosion that only triggers blocks
     /// (`explosion.canTriggerBlocks()`), like a wind charge's. Destroying explosions call
     /// [`Self::explode`] instead.
@@ -356,6 +360,8 @@ pub struct ExplodeArgs<'a> {
     pub position: &'a BlockPos,
     /// The explosion's `getIndirectSourceEntity`.
     pub indirect_source: Option<&'a dyn EntityBase>,
+    /// The explosion's `getDirectSourceEntity`.
+    pub source: Option<&'a dyn EntityBase>,
 }
 
 pub struct OnSyncedBlockEventArgs<'a> {

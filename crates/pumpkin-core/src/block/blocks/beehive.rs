@@ -18,6 +18,7 @@ use crate::world::World;
 use pumpkin_data::Block;
 use pumpkin_data::block_properties::BeeNestLikeProperties;
 use pumpkin_data::data_component_impl::EnchantmentsImpl;
+use pumpkin_data::entity::EntityType;
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -241,8 +242,42 @@ impl BlockBehaviour for BeehiveBlock {
         Self::anger_nearby_bees(args.world, args.position);
     }
 
+    /// Vanilla `BeehiveBlock.getDrops`: TNT, creepers and the wither blowing the hive up let its
+    /// bees out.
+    fn on_explosion_drops(&self, args: ExplodeArgs<'_>) {
+        let Some(source) = args.source else {
+            return;
+        };
+        let source_type = source.get_entity().entity_type;
+        if ![
+            &EntityType::TNT,
+            &EntityType::CREEPER,
+            &EntityType::WITHER_SKULL,
+            &EntityType::WITHER,
+            &EntityType::TNT_MINECART,
+        ]
+        .contains(&source_type)
+        {
+            return;
+        }
+        if let Some(block_entity) = args.world.get_block_entity(args.position)
+            && let Some(hive) = block_entity.as_any().downcast_ref::<BeehiveBlockEntity>()
+        {
+            let state_id = args.world.get_block_state_id(args.position);
+            hive.empty_all_living_from_hive(
+                args.world,
+                state_id,
+                None,
+                BeeReleaseStatus::Emergency,
+            );
+        }
+    }
+
     /// Vanilla `BeehiveBlock.updateShape`: fire next to the hive drives its bees out.
-    fn get_state_for_neighbor_update(&self, args: GetStateForNeighborUpdateArgs<'_>) -> BlockStateId {
+    fn get_state_for_neighbor_update(
+        &self,
+        args: GetStateForNeighborUpdateArgs<'_>,
+    ) -> BlockStateId {
         if args.world.get_block(args.neighbor_position) == &Block::FIRE
             && let Some(block_entity) = args.world.get_block_entity(args.position)
             && let Some(hive) = block_entity.as_any().downcast_ref::<BeehiveBlockEntity>()
@@ -253,7 +288,12 @@ impl BlockBehaviour for BeehiveBlock {
                 .iter()
                 .find(|world| std::ptr::eq(world.as_ref(), args.world))
         {
-            hive.empty_all_living_from_hive(world, args.state_id, None, BeeReleaseStatus::Emergency);
+            hive.empty_all_living_from_hive(
+                world,
+                args.state_id,
+                None,
+                BeeReleaseStatus::Emergency,
+            );
         }
         args.state_id
     }
