@@ -427,6 +427,11 @@ impl Animal for CamelEntity {
 impl Mob for CamelEntity {
     crate::abstract_horse_mob_hooks!(always_tamed);
 
+    /// Vanilla `CamelHusk.chargeSpeedModifier`.
+    fn charge_speed_modifier(&self) -> f32 {
+        if self.is_husk() { 4.0 } else { 1.0 }
+    }
+
     fn can_use_slot(&self, slot: &EquipmentSlot) -> bool {
         crate::entity::passive::abstract_horse::can_use_slot(self, slot)
     }
