@@ -330,6 +330,21 @@ impl ArrowEntity {
         }
     }
 
+    /// Vanilla `Projectile.shootFromRotation`: aims along `(pitch, yaw)` and keeps the
+    /// shooter's own movement.
+    pub fn shoot_from_rotation(
+        &self,
+        shooter: &Entity,
+        pitch: f32,
+        yaw: f32,
+        roll: f32,
+        speed: f32,
+        divergence: f32,
+    ) {
+        self.set_velocity_from_rotation(pitch, yaw, roll, speed, divergence);
+        super::add_shooter_movement(&self.entity, shooter);
+    }
+
     pub fn set_velocity_from_rotation(
         &self,
         pitch: f32,

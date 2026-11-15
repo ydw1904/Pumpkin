@@ -191,7 +191,7 @@ impl ItemBehaviour for TridentItem {
             stack_guard.copy_with_count(1),
             pickup,
         );
-        trident.set_velocity_from_rotation(pitch, yaw, 0.0, 2.5, 1.0);
+        trident.shoot_from_rotation(player.get_entity(), pitch, yaw, 0.0, 2.5, 1.0);
         trident.apply_on_projectile_spawned(&stack_guard);
         world.spawn_entity(Arc::new(trident));
 

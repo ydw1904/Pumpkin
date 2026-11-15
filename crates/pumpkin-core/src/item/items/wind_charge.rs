@@ -61,7 +61,7 @@ impl ItemBehaviour for WindChargeItem {
 
         let wind_charge = ThrownItemEntity::new(entity, player.get_entity(), WIND_CHARGE_GRAVITY);
         wind_charge.entity.pos.store(position);
-        wind_charge.set_velocity_from(pitch, yaw, 0.0, POWER, 1.0);
+        wind_charge.shoot_from_rotation(player.get_entity(), pitch, yaw, 0.0, POWER, 1.0);
 
         world.spawn_entity(Arc::new(WindChargeEntity::new_normal(wind_charge)));
 

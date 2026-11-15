@@ -49,7 +49,7 @@ impl ItemBehaviour for ExperienceBottleItem {
 
         bottle
             .thrown
-            .set_velocity_from(pitch, yaw, ROLL, POWER, DIVERGENCE);
+            .shoot_from_rotation(player.get_entity(), pitch, yaw, ROLL, POWER, DIVERGENCE);
         world.spawn_entity(Arc::new(bottle));
 
         stack.decrement_unless_creative(player.gamemode.load(), 1);

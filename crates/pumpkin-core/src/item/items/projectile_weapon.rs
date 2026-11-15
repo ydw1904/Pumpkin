@@ -131,6 +131,7 @@ impl ProjectileWeaponItem {
         uncertainty: f32,
         is_crit: bool,
         is_creative: bool,
+        keep_shooter_movement: bool,
     ) {
         if projectiles.is_empty() {
             return;
@@ -187,7 +188,13 @@ impl ProjectileWeaponItem {
                     is_crit,
                     is_creative,
                 );
-                arrow.set_velocity_from_rotation(pitch, yaw + angle, 0.0, power, uncertainty);
+                // Vanilla `BowItem.shootProjectile` uses `shootFromRotation`, which keeps the
+                // shooter's movement, `CrossbowItem.shootProjectile` plain `shoot`.
+                if keep_shooter_movement {
+                    arrow.shoot_from_rotation(shooter, pitch, yaw + angle, 0.0, power, uncertainty);
+                } else {
+                    arrow.set_velocity_from_rotation(pitch, yaw + angle, 0.0, power, uncertainty);
+                }
                 let arrow_arc: Arc<dyn EntityBase> = Arc::new(arrow);
                 world.spawn_entity(arrow_arc);
             }

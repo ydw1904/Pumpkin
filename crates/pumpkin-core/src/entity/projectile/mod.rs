@@ -189,6 +189,21 @@ impl ThrownItemEntity {
         }
     }
 
+    /// Vanilla `Projectile.shootFromRotation`: aims along `(pitch, yaw)` and keeps the
+    /// shooter's own movement.
+    pub fn shoot_from_rotation(
+        &self,
+        shooter: &Entity,
+        pitch: f32,
+        yaw: f32,
+        roll: f32,
+        speed: f32,
+        divergence: f32,
+    ) {
+        self.set_velocity_from(pitch, yaw, roll, speed, divergence);
+        add_shooter_movement(&self.entity, shooter);
+    }
+
     pub fn set_velocity_from(&self, pitch: f32, yaw: f32, roll: f32, speed: f32, divergence: f32) {
         let yaw_rad = yaw.to_radians();
         let pitch_rad = pitch.to_radians();
@@ -541,6 +556,20 @@ pub(crate) fn tick_fire(entity: &Entity, should_burn: bool) {
             .fire_ticks
             .fetch_max(HURTING_BURN_TICKS, Ordering::Relaxed);
     }
+}
+
+/// The end of vanilla `Projectile.shootFromRotation`: the projectile keeps the shooter's
+/// movement, without its vertical part while the shooter stands on the ground.
+pub(crate) fn add_shooter_movement(projectile: &Entity, shooter: &Entity) {
+    let movement = shooter.known_movement();
+    let y = if shooter.on_ground.load(Ordering::Relaxed) {
+        0.0
+    } else {
+        movement.y
+    };
+    projectile
+        .velocity
+        .store(projectile.velocity.load() + Vector3::new(movement.x, y, movement.z));
 }
 
 /// Vanilla `ProjectileUtil.rotateTowardsMovement`: turns `speed` of the way from the current

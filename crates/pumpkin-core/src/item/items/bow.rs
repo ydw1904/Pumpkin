@@ -202,6 +202,7 @@ impl BowItem {
             uncertainty,
             is_crit,
             is_creative,
+            true,
         );
 
         let sound_pitch = 1.0 / (game_random().random::<f32>() * 0.4 + 1.2) + power * 0.5;

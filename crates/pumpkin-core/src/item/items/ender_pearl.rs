@@ -61,7 +61,7 @@ impl ItemBehaviour for EnderPearlItem {
         let pearl = EnderPearlEntity::new_shot(entity, player.get_entity());
         pearl
             .thrown
-            .set_velocity_from(pitch, yaw, ROLL, POWER, DIVERGENCE);
+            .shoot_from_rotation(player.get_entity(), pitch, yaw, ROLL, POWER, DIVERGENCE);
         world.spawn_entity(Arc::new(pearl));
 
         let item_id = stack.item.id;

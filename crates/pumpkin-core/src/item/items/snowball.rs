@@ -57,7 +57,7 @@ impl ItemBehaviour for SnowBallItem {
         let snowball = SnowballEntity::new_shot(entity, player.get_entity());
         snowball
             .thrown
-            .set_velocity_from(pitch, yaw, 0.0, POWER, 1.0);
+            .shoot_from_rotation(player.get_entity(), pitch, yaw, 0.0, POWER, 1.0);
         world.spawn_entity(Arc::new(snowball));
 
         let item_id = stack.item.id;

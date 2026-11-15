@@ -256,6 +256,7 @@ impl CrossbowItem {
                     1.0,
                     true,
                     is_creative,
+                    false,
                 );
 
                 player.trigger_advancement(
