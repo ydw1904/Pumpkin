@@ -6,8 +6,8 @@ use pumpkin_data::HorizontalFacingExt;
 use pumpkin_data::block_properties::{
     BlockProperties, DoubleBlockHalf, EastWall, NorthWall, OakDoorLikeProperties,
     OakFenceGateLikeProperties, OakFenceLikeProperties, OakLeavesLikeProperties,
-    ResinBrickWallLikeProperties, SouthWall, StairsShape, VineLikeProperties, WestWall,
-    WhiteWoolStairsLikeProperties,
+    ResinBrickWallLikeProperties, SouthWall, StairsShape, TallSeagrassLikeProperties,
+    VineLikeProperties, WestWall, WhiteWoolStairsLikeProperties,
 };
 use pumpkin_data::fluid::Fluid;
 use pumpkin_data::tag::{self, Taggable};
@@ -340,6 +340,20 @@ pub fn update_shape<L: BlockPlacer + ?Sized>(
             return BlockStateId::AIR;
         }
     }
+    if is_double_plant(block) {
+        // `DoublePlantBlock.updateShape`: a half facing anything but its other half breaks,
+        // like the lower half of a tall flower whose top a tree's leaves replaced.
+        let half = TallSeagrassLikeProperties::from_state_id(state).half;
+        let toward_other_half = match half {
+            DoubleBlockHalf::Lower => dir_to_neighbor == BlockDirection::Up,
+            DoubleBlockHalf::Upper => dir_to_neighbor == BlockDirection::Down,
+        };
+        let other_half = neighbor_state.to_block_id() == block.id
+            && TallSeagrassLikeProperties::from_state_id(neighbor_state).half != half;
+        if toward_other_half && !other_half {
+            return BlockStateId::AIR;
+        }
+    }
     if block.has_tag(&tag::Block::MINECRAFT_WALLS) {
         let above_pos = pos + BlockDirection::Up.to_offset();
         let above_state = if dir_to_neighbor == BlockDirection::Up {
@@ -376,6 +390,20 @@ pub fn update_shape<L: BlockPlacer + ?Sized>(
         level.schedule_block_tick(&pos, block);
     }
     state
+}
+
+/// Blocks of vanilla's `DoublePlantBlock` class that don't override its `updateShape`.
+const fn is_double_plant(block: &Block) -> bool {
+    matches!(
+        block.id,
+        BlockId::TALL_GRASS
+            | BlockId::LARGE_FERN
+            | BlockId::PITCHER_PLANT
+            | BlockId::SUNFLOWER
+            | BlockId::LILAC
+            | BlockId::PEONY
+            | BlockId::ROSE_BUSH
+    )
 }
 
 /// Vanilla `Block.isExceptionForConnection`.
@@ -814,6 +842,62 @@ mod tests {
                 Some((*name, states))
             })
             .collect()
+    }
+
+    /// An empty level for shape updates that only look at the given neighbour.
+    struct EmptyLevel;
+
+    impl BlockPlacer for EmptyLevel {
+        fn get_block_state(&self, _pos: &Vector3<i32>) -> BlockStateId {
+            BlockStateId::AIR
+        }
+
+        fn get_height(&self, _heightmap: pumpkin_util::HeightMap, _x: i32, _z: i32) -> i32 {
+            0
+        }
+
+        fn set_block_state(&mut self, _pos: &Vector3<i32>, _state: &BlockState) {}
+
+        fn set_block_state_with_post_processing(
+            &mut self,
+            _pos: &Vector3<i32>,
+            _state: &BlockState,
+        ) {
+        }
+
+        fn add_block_entity(
+            &mut self,
+            _pos: &Vector3<i32>,
+            _nbt: pumpkin_nbt::compound::NbtCompound,
+        ) {
+        }
+
+        fn schedule_fluid_tick(&mut self, _pos: &Vector3<i32>, _fluid: &'static Fluid) {}
+
+        fn schedule_block_tick(&mut self, _pos: &Vector3<i32>, _block: &'static Block) {}
+    }
+
+    #[test]
+    fn tall_flower_breaks_without_its_other_half() {
+        let half = |half| {
+            let mut props = TallSeagrassLikeProperties::default(&Block::LILAC);
+            props.half = half;
+            props.to_state_id(&Block::LILAC)
+        };
+        let (lower, upper) = (half(DoubleBlockHalf::Lower), half(DoubleBlockHalf::Upper));
+        let pos = Vector3::new(0, 64, 0);
+        let above = pos + BlockDirection::Up.to_offset();
+        let update = |state, direction, neighbor| {
+            update_shape(&mut EmptyLevel, pos, state, direction, above, neighbor)
+        };
+        let leaves = Block::OAK_LEAVES.default_state.id;
+        assert_eq!(update(lower, BlockDirection::Up, leaves), BlockStateId::AIR);
+        assert_eq!(update(lower, BlockDirection::Up, upper), lower);
+        assert_eq!(
+            update(upper, BlockDirection::Down, leaves),
+            BlockStateId::AIR
+        );
+        assert_eq!(update(lower, BlockDirection::North, leaves), lower);
     }
 
     #[test]
