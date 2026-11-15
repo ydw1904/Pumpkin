@@ -228,6 +228,7 @@ def main():
     parser.add_argument("--java", help="java executable to run vanilla with")
     parser.add_argument("--no-build", action="store_true", help="skip cargo build of pumpkin")
     parser.add_argument("--worlds", type=Path, help="compare an earlier run's folder instead of generating")
+    parser.add_argument("--ports", type=int, nargs=2, default=[25565, 25566], metavar=("PUMPKIN", "VANILLA"))
     parser.add_argument("--dimension", default="overworld", choices=["overworld", "the_nether", "the_end"])
     args = parser.parse_args()
 
@@ -252,7 +253,7 @@ def main():
         )
 
         print("Generating on vanilla...")
-        generate("vanilla", lambda d: bot_parity.start_vanilla(java, jar, d, 25566, args.seed, args.cache),
+        generate("vanilla", lambda d: bot_parity.start_vanilla(java, jar, d, args.ports[1], args.seed, args.cache),
                  run_dir / "vanilla", area, args.wait, args.dimension)
 
         # The parity settings turn the Nether and End off.
@@ -260,10 +261,10 @@ def main():
 
         def start_pumpkin(d):
             # The first call writes the config; switch it to Anvil before the real start.
-            bot_parity.start_pumpkin(binary, d, 25565, args.seed, settings=settings).stop()
+            bot_parity.start_pumpkin(binary, d, args.ports[0], args.seed, settings=settings).stop()
             pumpkin_anvil_config(d)
             shutil.rmtree(d / "world", ignore_errors=True)
-            return bot_parity.start_pumpkin(binary, d, 25565, args.seed, settings=settings)
+            return bot_parity.start_pumpkin(binary, d, args.ports[0], args.seed, settings=settings)
 
         print("Generating on Pumpkin...")
         generate("pumpkin", start_pumpkin, run_dir / "pumpkin", area, args.wait, args.dimension)
