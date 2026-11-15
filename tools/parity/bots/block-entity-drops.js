@@ -123,6 +123,23 @@ h.start(async () => {
   h.cmd(`setblock ${BX} ${BY} ${BZ} red_banner{patterns:[{pattern:"minecraft:creeper",color:"black"}]}`)
   await h.waitFor(() => h.blockName(BX, BY, BZ) === 'red_banner', 3000)
   h.result('pick.banner', comps(await pick('red_banner', false)))
+
+  // A creative player breaking a filled shulker box gets it with every component, lore too; an
+  // empty one drops nothing.
+  h.result('shulker.creative_placed', await placeItem('shulker_box[custom_name="Treasure",lore=["x"],' +
+    'container=[{slot:0,item:{id:"diamond",count:3}}]]'))
+  h.cmd('kill @e[type=item]')
+  await h.clear()
+  await bot.dig(h.block(BX, BY, BZ), true).catch(() => {})
+  await h.waitFor(() => drop('shulker_box'), 3000)
+  const creativeBox = drop('shulker_box')
+  h.result('shulker.creative_drop', `${nameOf(creativeBox)} ${comps(creativeBox)}`)
+  h.result('shulker.creative_empty_placed', await placeItem('shulker_box[lore=["x"]]'))
+  h.cmd('kill @e[type=item]')
+  await h.clear()
+  await bot.dig(h.block(BX, BY, BZ), true).catch(() => {})
+  await h.serverTicks(20)
+  h.result('shulker.creative_empty_drop', comps(drop('shulker_box')))
   h.cmd(`setblock ${BX} ${BY} ${BZ} air`)
   h.cmd(`gamemode survival ${bot.username}`)
   await h.ticks(5)
