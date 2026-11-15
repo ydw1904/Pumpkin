@@ -477,27 +477,22 @@ impl BedrockClient {
                                     break;
                                 }
                                 let available = handler.get_available_recipes(&input_stack);
-                                let recipe_idx = crate::net::bedrock::recipe::static_recipes()
-                                    .iter()
-                                    .find_map(|r| match r {
-                                        pumpkin_protocol::bedrock::client::BedrockRecipe::Shapeless(s)
-                                            if s.block == "stonecutter"
-                                                && s.recipe_network_id == recipe_id =>
-                                        {
-                                            s.output.first().and_then(|out| {
-                                                let out_id = out.id.0;
-                                                available.iter().position(|r| {
-                                                    pumpkin_data::item::JavaToBedrockItemMapping::from_java_item_id(
-                                                        r.result.item.id,
-                                                    )
-                                                    .is_some_and(|m| {
-                                                        (m.bedrock_item.id as i32) == out_id
-                                                    })
+                                let server = player.world().server.upgrade();
+                                let recipe_idx =
+                                    crate::net::bedrock::recipe::stonecutter_output_for_recipe_id(
+                                        server.as_deref().map(|s| s.recipe_manager.as_ref()),
+                                        recipe_id.0,
+                                    )
+                                    .and_then(|(out_id, out_aux)| {
+                                        available.iter().position(|r| {
+                                            pumpkin_data::item::JavaToBedrockItemMapping::from_java_item_id(
+                                                r.result.item.id,
+                                            )
+                                                .is_some_and(|m| {
+                                                    m.bedrock_item.id == out_id
+                                                        && m.bedrock_data == out_aux
                                                 })
-                                            })
-                                        }
-                                        pumpkin_protocol::bedrock::client::BedrockRecipe::Shapeless(_)
-                                        | pumpkin_protocol::bedrock::client::BedrockRecipe::Shaped(_) => None,
+                                        })
                                     })
                                     .or_else(|| {
                                         ((recipe_id.0 as usize) < available.len())
