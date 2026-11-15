@@ -4,6 +4,7 @@ use pumpkin_data::{
     damage::DamageType,
     effect::StatusEffect,
     entity::EntityType,
+    potion::Effect,
     tag::{self, Taggable},
 };
 use pumpkin_macros::pumpkin_block;
@@ -12,6 +13,22 @@ use pumpkin_util::Difficulty;
 use crate::block::{BlockBehaviour, CanPlaceAtArgs, OnEntityCollisionArgs};
 #[pumpkin_block("minecraft:wither_rose")]
 pub struct WitherRoseBlock;
+
+impl WitherRoseBlock {
+    /// Vanilla `WitherRoseBlock.getBeeInteractionEffect`, also what touching the rose gives.
+    #[must_use]
+    pub const fn bee_interaction_effect() -> Effect {
+        Effect {
+            effect_type: &StatusEffect::WITHER,
+            duration: 40,
+            amplifier: 0,
+            ambient: false,
+            show_particles: true,
+            show_icon: true,
+            blend: true,
+        }
+    }
+}
 
 impl BlockBehaviour for WitherRoseBlock {
     fn on_entity_collision(&self, args: OnEntityCollisionArgs<'_>) {
@@ -26,16 +43,7 @@ impl BlockBehaviour for WitherRoseBlock {
                 && living_entity.entity.entity_type != &EntityType::WITHER_SKELETON
                 && args.entity.damage(args.entity, 1.0, DamageType::WITHER)
             {
-                let effect = pumpkin_data::potion::Effect {
-                    effect_type: &StatusEffect::WITHER,
-                    duration: 40,
-                    amplifier: 0,
-                    ambient: false,
-                    show_particles: true,
-                    show_icon: true,
-                    blend: true,
-                };
-                living_entity.add_effect(effect);
+                living_entity.add_effect(Self::bee_interaction_effect());
             }
         }
     }

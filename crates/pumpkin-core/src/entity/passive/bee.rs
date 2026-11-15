@@ -11,6 +11,7 @@ use pumpkin_data::block_properties::{DoubleBlockHalf, TallSeagrassLikeProperties
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::potion::Effect;
 use pumpkin_data::sound::Sound;
@@ -22,6 +23,8 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::random::gameplay::{GameRandom, game_random};
 
+use crate::block::blocks::plant::eyeblossom::EyeblossomBlock;
+use crate::block::blocks::plant::wither_rose::WitherRoseBlock;
 use crate::block::entities::beehive::BeehiveBlockEntity;
 use crate::enchantment::EnchantmentHelper;
 use crate::entity::ai::behavior::hunting::{self, Hunt};
@@ -448,8 +451,7 @@ impl AgeableMob for BeeEntity {
 
 impl Animal for BeeEntity {
     fn is_food(&self, item_stack: &ItemStack) -> bool {
-        item_stack.item.has_tag(&tag::Item::MINECRAFT_FLOWERS)
-            || item_stack.item.has_tag(&tag::Item::MINECRAFT_BEE_FOOD)
+        item_stack.item.has_tag(&tag::Item::MINECRAFT_BEE_FOOD)
     }
 }
 
@@ -737,7 +739,25 @@ impl Mob for BeeEntity {
         );
     }
 
+    /// Vanilla `Bee.mobInteract`: a flower with a bee interaction effect gives the bee that
+    /// effect instead of feeding it.
     fn mob_interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
+        if self.is_food(item_stack) {
+            let effect = if item_stack.item == &Item::WITHER_ROSE {
+                Some(WitherRoseBlock::bee_interaction_effect())
+            } else if item_stack.item == &Item::OPEN_EYEBLOSSOM
+                || item_stack.item == &Item::CLOSED_EYEBLOSSOM
+            {
+                Some(EyeblossomBlock::bee_interaction_effect())
+            } else {
+                None
+            };
+            if let Some(effect) = effect {
+                self.use_player_item(player, item_stack);
+                self.mob_entity.living_entity.add_effect(effect);
+                return true;
+            }
+        }
         self.animal_interact(player, item_stack)
     }
 }
