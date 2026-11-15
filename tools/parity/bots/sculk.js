@@ -1,7 +1,8 @@
 // Vibrations a player causes: sculk sensors activated by walking, a placed block and an opened
 // chest, nothing for sneaking or through wool, calibrated sensors filtering by frequency, the
-// comparator reading the frequency, shriekers answering a sensor and a catalyst spreading sculk
-// when a mob dies next to it.
+// comparator reading the frequency, shriekers answering a sensor, everyday actions (eating,
+// falling, splashing, throwing, equipping, riding) read through the comparator, and a catalyst
+// spreading sculk when a mob dies next to it.
 const { make } = require('./survival-lib')
 const h = make('Listener')
 const { bot, Vec3 } = h
@@ -170,6 +171,103 @@ h.start(async () => {
     h.result(`shrieker_summon_${summon}_darkness`, darkness > 0)
   }
 
+  // A chest a player opens next to a sensor with a shrieker: the shrieker only answers vibrations
+  // that a player caused, so the chest has to name its opener.
+  x = await scene(10, (sx) => sx - 5)
+  h.cmd(`setblock ${x} ${Y + 1} ${Z} sculk_sensor`)
+  h.cmd(`setblock ${x + 2} ${Y + 1} ${Z} sculk_shrieker`)
+  h.cmd(`setblock ${x - 3} ${Y + 1} ${Z} chest[facing=west]`)
+  await h.serverTicks(RESET_TICKS)
+  const chestShriek = watch(x + 2, Y + 1, Z, 'shrieking')
+  const shriekChest = await bot.openContainer(h.block(x - 3, Y + 1, Z))
+  await h.serverTicks(20)
+  shriekChest.close()
+  await h.serverTicks(120)
+  h.result('shrieker_chest', chestShriek.stop())
+
+  // Everyday things a player does near a sensor, each read through the comparator: the wire
+  // shows the frequency of every vibration the sensor took.
+  const vibrationScenes = [
+    ['trapdoor', async (x) => {
+      h.cmd(`setblock ${x - 2} ${Y + 1} ${Z} oak_trapdoor`)
+      await h.serverTicks(5)
+      await bot.activateBlock(h.block(x - 2, Y + 1, Z))
+    }],
+    ['eat', async () => {
+      await h.give('golden_apple', 1)
+      await bot.equip(bot.inventory.items().find(it => it.name === 'golden_apple'), 'hand')
+      await bot.consume().catch((e) => h.result('eat_error', e.message))
+    }],
+    ['drink', async () => {
+      await h.give('potion[potion_contents={potion:"minecraft:water"}]', 1)
+      await bot.equip(bot.inventory.items().find(it => it.name === 'potion'), 'hand')
+      await bot.consume().catch((e) => h.result('drink_error', e.message))
+    }],
+    ['equip', async () => {
+      await h.give('iron_helmet', 1)
+      await bot.equip(bot.inventory.items().find(it => it.name === 'iron_helmet'), 'hand')
+      bot.activateItem()
+      await h.ticks(2)
+      bot.deactivateItem()
+    }],
+    ['fall', async (x) => {
+      await h.tp(x - 3 + 0.5, Y + 4, Z + 0.5)
+    }],
+    ['splash', async (x) => {
+      h.cmd(`fill ${x - 4} ${Y + 1} ${Z - 1} ${x - 3} ${Y + 1} ${Z + 1} water`)
+      await h.serverTicks(5)
+      await h.tp(x - 4 + 0.5, Y + 5, Z + 0.5)
+    }],
+    ['toss', async () => {
+      await h.give('stone', 1)
+      await bot.equip(bot.inventory.items().find(it => it.name === 'stone'), 'hand')
+      await bot.tossStack(bot.heldItem)
+    }],
+    ['snowball', async (x) => {
+      await h.give('snowball', 1)
+      await bot.equip(bot.inventory.items().find(it => it.name === 'snowball'), 'hand')
+      await bot.lookAt(new Vec3(x - 2.5, Y + 1, Z + 0.5), true)
+      bot.activateItem()
+      await h.ticks(1)
+      bot.deactivateItem()
+    }],
+    ['item_frame', async (x) => {
+      h.cmd(`summon item_frame ${x - 3} ${Y + 1} ${Z} {Facing:1b}`)
+      // The frame's placement settles before the sensor listens again.
+      await h.serverTicks(RESET_TICKS)
+      await h.give('stone', 1)
+      await bot.equip(bot.inventory.items().find(it => it.name === 'stone'), 'hand')
+      const frame = Object.values(bot.entities).find(e => e.name === 'item_frame')
+      if (frame) await bot.activateEntity(frame)
+      else h.result('item_frame_missing', true)
+    }],
+    ['damage', async (x) => {
+      h.cmd(`summon pig ${x - 3 + 0.5} ${Y + 1} ${Z + 0.5} {NoAI:1b,Silent:1b}`)
+      await h.serverTicks(RESET_TICKS)
+      h.cmd('damage @e[type=pig,limit=1] 1')
+    }],
+    ['minecart', async (x) => {
+      h.cmd(`setblock ${x - 3} ${Y + 1} ${Z} rail`)
+      h.cmd(`summon minecart ${x - 3 + 0.5} ${Y + 1} ${Z + 0.5}`)
+      await h.serverTicks(RESET_TICKS)
+      const cart = Object.values(bot.entities).find(e => e.name === 'minecart')
+      if (cart) bot.mount(cart)
+      else h.result('minecart_missing', true)
+      await h.serverTicks(RESET_TICKS)
+      h.cmd(`ride ${bot.username} dismount`)
+    }]
+  ]
+  for (const [idx, [name, act]] of vibrationScenes.entries()) {
+    x = await scene(11 + idx, (sx) => sx - 5, Z - 3)
+    await h.clear()
+    sensorWithComparator(x)
+    await h.serverTicks(RESET_TICKS)
+    wire = watch(x + 2, Y + 1, Z, 'power')
+    await act(x)
+    await h.serverTicks(RESET_TICKS * 2)
+    h.result(`vibration_${name}`, wire.stop())
+  }
+
   // A mob the player kills next to a catalyst: the catalyst blooms, takes the experience and
   // spreads sculk from where the mob died.
   x = await scene(9, (sx) => sx - 5)
@@ -196,4 +294,13 @@ h.start(async () => {
     }
   }
   h.result('catalyst_spread', sculk > 0)
+
+  // A lightning strike seven blocks away, last since it leaves fire behind.
+  x = await scene(11 + vibrationScenes.length, (sx) => sx - 5, Z - 3)
+  sensorWithComparator(x)
+  await h.serverTicks(RESET_TICKS)
+  wire = watch(x + 2, Y + 1, Z, 'power')
+  h.cmd(`summon lightning_bolt ${x - 6} ${Y + 1} ${Z + 4}`)
+  await h.serverTicks(RESET_TICKS * 2)
+  h.result('vibration_lightning', wire.stop())
 })
