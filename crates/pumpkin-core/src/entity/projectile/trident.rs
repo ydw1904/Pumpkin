@@ -13,7 +13,9 @@ use crate::{
     entity::{Entity, EntityBase, living::LivingEntity, player::Player},
     server::Server,
 };
+use pumpkin_data::BlockStateId;
 use pumpkin_data::damage::DamageType;
+use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
@@ -49,6 +51,8 @@ pub struct TridentEntity {
     /// Vanilla `clientSideReturnTridentTickCount`, only used to play the return sound once.
     return_ticks: AtomicU32,
     pub last_block_pos: Arc<std::sync::RwLock<Option<BlockPos>>>,
+    /// Vanilla `AbstractArrow.lastState`: the block state the trident stuck into.
+    last_state: AtomicCell<Option<BlockStateId>>,
 }
 
 /// The power of the `ProjectileDeflection.REVERSE` vanilla `ThrownTrident.onHitEntity` bounces
@@ -61,6 +65,8 @@ impl TridentEntity {
     const WATER_INERTIA: f64 = 0.99;
     const GRAVITY: f64 = 0.05;
     const DESPAWN_TIME: u32 = 1200;
+    /// Vanilla `AbstractArrow.shouldFall`'s reach around the stuck trident.
+    const FALL_CHECK_DISTANCE: f64 = 0.06;
 
     pub fn new(entity: Entity, owner: Option<&Entity>) -> Self {
         // Vanilla `ThrownTrident.defineSynchedData`.
@@ -87,6 +93,7 @@ impl TridentEntity {
             loyalty: AtomicU8::new(0),
             return_ticks: AtomicU32::new(0),
             last_block_pos: Arc::new(std::sync::RwLock::new(None)),
+            last_state: AtomicCell::new(None),
         }
     }
 
@@ -118,6 +125,7 @@ impl TridentEntity {
             loyalty: AtomicU8::new(loyalty),
             return_ticks: AtomicU32::new(0),
             last_block_pos: Arc::new(std::sync::RwLock::new(None)),
+            last_state: AtomicCell::new(None),
         }
     }
 
@@ -279,6 +287,28 @@ impl TridentEntity {
         );
     }
 
+    /// Vanilla `AbstractArrow.shouldFall`: nothing to stick in around the trident any more.
+    fn should_fall(&self) -> bool {
+        let pos = self.entity.pos.load();
+        self.entity
+            .world
+            .load()
+            .is_space_empty(BoundingBox::new(pos, pos).expand_all(Self::FALL_CHECK_DISTANCE))
+    }
+
+    /// Vanilla `AbstractArrow.startFalling`.
+    fn start_falling(&self) {
+        self.in_ground.store(false, Ordering::Relaxed);
+        let random = game_random();
+        let velocity = self.entity.velocity.load();
+        self.entity.velocity.store(Vector3::new(
+            velocity.x * f64::from(random.random::<f32>() * 0.2),
+            velocity.y * f64::from(random.random::<f32>() * 0.2),
+            velocity.z * f64::from(random.random::<f32>() * 0.2),
+        ));
+        self.life.store(0, Ordering::Relaxed);
+    }
+
     /// Vanilla `super.tick()` at the end of a flying tick: the fluid and fire part of
     /// `Entity.baseTick`.
     fn base_tick(entity: &Entity, caller: &dyn EntityBase) {
@@ -348,16 +378,20 @@ impl EntityBase for TridentEntity {
 
         let no_physics = self.no_physics.load(Ordering::Relaxed);
         if self.in_ground.load(Ordering::Relaxed) && !no_physics {
-            self.in_ground_time.fetch_add(1, Ordering::Relaxed);
-            // Vanilla `ThrownTrident.tickDespawn`: a Loyalty trident its owner can pick up stays.
-            if self.pickup.load() != ArrowPickup::Allowed
+            let state = world.get_block_state_id(&entity.block_pos.load());
+            if self.last_state.load() != Some(state) && self.should_fall() {
+                self.start_falling();
+            } else if self.pickup.load() != ArrowPickup::Allowed
                 || self.loyalty.load(Ordering::Relaxed) == 0
             {
+                // Vanilla `ThrownTrident.tickDespawn`: a Loyalty trident its owner can pick
+                // up stays.
                 let life = self.life.fetch_add(1, Ordering::Relaxed);
                 if life + 1 >= Self::DESPAWN_TIME {
                     entity.remove();
                 }
             }
+            self.in_ground_time.fetch_add(1, Ordering::Relaxed);
             if !entity.is_removed() {
                 let pos = entity.pos.load();
                 entity.apply_effects_from_blocks(caller, pos, pos);
@@ -612,6 +646,7 @@ impl EntityBase for TridentEntity {
 
         match hit {
             ProjectileHit::Block { pos, hit_pos, .. } => {
+                self.last_state.store(Some(world.get_block_state_id(&pos)));
                 self.in_ground.store(true, Ordering::Relaxed);
                 self.shake_time.store(7, Ordering::Relaxed);
                 *self
@@ -640,13 +675,14 @@ impl EntityBase for TridentEntity {
                 entity.set_pos(arrow_rest_position(hit_pos, entity.velocity.load()));
                 entity.velocity.store(Vector3::new(0.0, 0.0, 0.0));
 
-                // Play sound
+                // Vanilla `AbstractArrow.onHitBlock`'s pitch.
+                let pitch = 1.2 / game_random().random::<f32>().mul_add(0.2, 0.9);
                 let sound_packet = CSoundEffect::new(
                     IdOr::Id(Sound::ItemTridentHitGround as u16),
                     SoundCategory::Neutral,
                     &hit_pos,
                     1.0,
-                    1.0,
+                    pitch,
                     0,
                 );
                 let chunk_pos = entity.chunk_pos.load();
@@ -657,25 +693,13 @@ impl EntityBase for TridentEntity {
                 hit_pos,
                 ..
             } => {
-                let mut damage = Self::BASE_DAMAGE;
-
-                // Apply Impaling enchantment extra damage
-                if let Some(enchantments) = self
-                    .item_stack
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .get_data_component::<pumpkin_data::data_component_impl::EnchantmentsImpl>()
-                {
-                    for (enchantment, level) in enchantments.enchantment.iter() {
-                        if **enchantment == pumpkin_data::Enchantment::IMPALING {
-                            let in_water =
-                                target.get_entity().touching_water.load(Ordering::Relaxed);
-                            if in_water {
-                                damage += 1.25 * f64::from(*level);
-                            }
-                        }
-                    }
-                }
+                // Vanilla `EnchantmentHelper.modifyDamage`: Impaling counts against
+                // `#sensitive_to_impaling` mobs.
+                let damage = EnchantmentHelper::modify_damage_against(
+                    &self.weapon_item(),
+                    target.get_entity().entity_type,
+                    Self::BASE_DAMAGE,
+                );
 
                 self.dealt_damage.store(true, Ordering::Relaxed);
                 let owner = self.owner.get(&world);
@@ -697,6 +721,13 @@ impl EntityBase for TridentEntity {
                         Some(self),
                         Some(&self.weapon_item()),
                     );
+                }
+
+                // Vanilla `Enderman.projectileReceivesSideEffectsOnHit` is false for a missed
+                // hit, so the trident flies on.
+                if !was_hurt && target.get_entity().entity_type == &EntityType::ENDERMAN {
+                    self.has_hit.store(false, Ordering::Relaxed);
+                    return;
                 }
 
                 // Play hit sound
