@@ -74,11 +74,10 @@ impl BlockBehaviour for BrewingStandBlock {
         args: GetScreenHandlerFactoryArgs<'_>,
     ) -> Option<Box<dyn ScreenHandlerFactory>> {
         let block_entity = args.world.get_block_entity(args.position)?;
-        let custom_name = block_entity.custom_name();
         let inventory = block_entity.clone().get_inventory()?;
-        let pd = block_entity.to_property_delegate()?;
-        Some(crate::block::entities::base_container::with_custom_name(
-            custom_name,
+        let pd = block_entity.clone().to_property_delegate()?;
+        Some(crate::block::entities::base_container::container_menu(
+            block_entity,
             Box::new(BrewingScreenFactory(inventory, pd)),
         ))
     }

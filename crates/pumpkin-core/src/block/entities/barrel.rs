@@ -90,6 +90,10 @@ impl BlockEntity for BarrelBlockEntity {
         self.base.custom_name()
     }
 
+    fn base_container(&self) -> Option<&crate::block::entities::base_container::BaseContainer> {
+        Some(&self.base)
+    }
+
     fn collect_item_components(&self, stack: &mut ItemStack) {
         self.base.collect_item_components(
             &*self

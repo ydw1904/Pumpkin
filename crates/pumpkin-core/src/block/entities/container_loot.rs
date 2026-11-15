@@ -165,7 +165,8 @@ pub fn has_pending_loot(entity: &dyn BlockEntity) -> bool {
 
 /// Vanilla `RandomizableContainer.unpackLootTable(player)` for a container block entity.
 ///
-/// Spectators never unpack; [`open_container`] also keeps them out of pending containers.
+/// Spectators never unpack; [`super::base_container::can_open`] also keeps them out of pending
+/// containers.
 pub fn unpack_for_player(entity: &Arc<dyn BlockEntity>, world: &World, player: &Player) {
     if player.is_spectator() {
         return;
@@ -180,14 +181,4 @@ pub fn unpack_for_player(entity: &Arc<dyn BlockEntity>, world: &World, player: &
         entity.get_position().to_centered_f64(),
         Some(player),
     );
-}
-
-/// Vanilla `RandomizableContainerBlockEntity.createMenu`: spectators can't open a container
-/// whose loot is still pending, anyone else unpacks it. Returns whether the menu may open.
-pub fn open_container(entity: &Arc<dyn BlockEntity>, world: &World, player: &Player) -> bool {
-    if player.is_spectator() && has_pending_loot(entity.as_ref()) {
-        return false;
-    }
-    unpack_for_player(entity, world, player);
-    true
 }

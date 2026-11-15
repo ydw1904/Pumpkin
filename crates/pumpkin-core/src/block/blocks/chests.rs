@@ -18,7 +18,6 @@ use pumpkin_inventory::screen_handler::{
     InventoryPlayer, ScreenHandlerFactory, SharedScreenHandler,
 };
 use pumpkin_macros::{pumpkin_block, pumpkin_block_from_tag};
-use pumpkin_util::GameMode;
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::text::TextComponent;
@@ -26,7 +25,6 @@ use pumpkin_world::tick::TickPriority;
 use pumpkin_world::world::BlockFlags;
 use std::sync::Mutex;
 
-use crate::block::entities::container_loot::has_pending_loot;
 use crate::block::{
     BlockBehaviour, BrokenArgs, EmitsRedstonePowerArgs, GetComparatorOutputArgs,
     GetRedstonePowerArgs, GetScreenHandlerFactoryArgs, GetStateForNeighborUpdateArgs,
@@ -42,7 +40,6 @@ use pumpkin_data::BlockState;
 
 struct ChestScreenFactory {
     inventory: Arc<dyn Inventory>,
-    loot_pending: bool,
 }
 
 impl ScreenHandlerFactory for ChestScreenFactory {
@@ -52,10 +49,6 @@ impl ScreenHandlerFactory for ChestScreenFactory {
         player_inventory: &Arc<PlayerInventory>,
         player: &dyn InventoryPlayer,
     ) -> Option<SharedScreenHandler> {
-        if self.loot_pending && player.is_spectator() {
-            return None;
-        }
-
         let concrete_handler = if self.inventory.size() > 27 {
             create_generic_9x6(sync_id, player_inventory, self.inventory.clone(), player)
         } else {
@@ -371,99 +364,72 @@ fn get_chest_comparator_output(args: &GetComparatorOutputArgs<'_>) -> u8 {
     })
 }
 
-/// Returns a screen handler factory for opening a chest or double chest inventory.
-///
-/// Unpacks deferred loot tables on first open (for non-spectator players) and combines
-/// connected inventories for double chests if neither chest half is obstructed.
+/// Vanilla `ChestBlock.getMenuProvider`: the chest's own menu, or for a double chest one over
+/// both halves that opens only when both let the player in. `None` while either half is blocked.
 fn get_chest_screen_handler_factory(
     args: GetScreenHandlerFactoryArgs<'_>,
 ) -> Option<Box<dyn ScreenHandlerFactory>> {
-    let state = args.world.get_block_state_id(args.position);
-    let first_chest = args.world.get_block_entity(args.position);
+    let chest = args.world.get_block_entity(args.position)?;
+    let inventory = chest.clone().get_inventory()?;
 
-    let player_is_spectator = args.player.gamemode.load() == GameMode::Spectator;
-
-    let chest_props = ChestLikeProperties::from_state_id(state);
+    let chest_props =
+        ChestLikeProperties::from_state_id(args.world.get_block_state_id(args.position));
     let connected_towards = match chest_props.r#type {
         ChestType::Single => None,
         ChestType::Left => Some(chest_props.facing.rotate_clockwise()),
         ChestType::Right => Some(chest_props.facing.rotate_counter_clockwise()),
     };
 
-    let unpack = |entity: &Arc<dyn BlockEntity>| {
-        crate::block::entities::container_loot::unpack_for_player(entity, args.world, args.player);
-    };
-
-    // Unpack deferred loot table on first open (non-spectator only).
-    if !player_is_spectator && let Some(ref entity) = first_chest {
-        unpack(entity);
-    }
-
-    let first_loot_pending = first_chest
-        .as_ref()
-        .is_some_and(|entity| has_pending_loot(entity.as_ref()));
-    let first_name = first_chest.as_ref().and_then(|entity| entity.custom_name());
-    let first_inventory = first_chest.and_then(BlockEntity::get_inventory)?;
-
     if is_chest_blocked(args.world, args.position) {
         return None;
     }
-
-    if let Some(direction) = connected_towards {
-        let neighbor_pos = args.position.offset(direction.to_offset());
-        if is_chest_blocked(args.world, &neighbor_pos) {
-            return None;
-        }
+    let neighbor_pos =
+        connected_towards.map(|direction| args.position.offset(direction.to_offset()));
+    if let Some(neighbor_pos) = neighbor_pos
+        && is_chest_blocked(args.world, &neighbor_pos)
+    {
+        return None;
     }
 
-    // Both halves of a double chest are unpacked at once, like vanilla's CompoundContainer.
-    if !player_is_spectator
-        && let Some(direction) = connected_towards
-        && let Some(second) = args
-            .world
-            .get_block_entity(&args.position.offset(direction.to_offset()))
-    {
-        unpack(&second);
-    }
-
-    let loot_pending = first_loot_pending
-        || connected_towards.is_some_and(|direction| {
-            args.world
-                .get_block_entity(&args.position.offset(direction.to_offset()))
-                .is_some_and(|second| has_pending_loot(second.as_ref()))
-        });
-
-    let (inventory, custom_name) = if let Some(direction) = connected_towards
-        && let Some(second_chest) = args
-            .world
-            .get_block_entity(&args.position.offset(direction.to_offset()))
-        && let Some(second_inventory) = second_chest.clone().get_inventory()
-    {
-        let second_name = second_chest.custom_name();
-        // Vanilla: chestType == ChestType.RIGHT ? DoubleBlockProperties.Type.FIRST : DoubleBlockProperties.Type.SECOND;
-        // The double chest takes the first half's custom name, else the second's.
-        if matches!(chest_props.r#type, ChestType::Right) {
-            (
-                DoubleInventory::new(first_inventory, second_inventory) as Arc<dyn Inventory>,
-                first_name.or(second_name),
-            )
-        } else {
-            (
-                DoubleInventory::new(second_inventory, first_inventory) as Arc<dyn Inventory>,
-                second_name.or(first_name),
-            )
-        }
-    } else {
-        (first_inventory, first_name)
+    let Some((neighbor, neighbor_inventory)) = neighbor_pos.and_then(|neighbor_pos| {
+        let neighbor = args.world.get_block_entity(&neighbor_pos)?;
+        let neighbor_inventory = neighbor.clone().get_inventory()?;
+        Some((neighbor, neighbor_inventory))
+    }) else {
+        return Some(crate::block::entities::base_container::container_menu(
+            chest,
+            Box::new(ChestScreenFactory { inventory }),
+        ));
     };
 
-    Some(crate::block::entities::base_container::with_custom_name(
+    // `ChestBlock.getBlockType`: the RIGHT half is `FIRST`.
+    let (first, first_inventory, second, second_inventory) =
+        if chest_props.r#type == ChestType::Right {
+            (chest, inventory, neighbor, neighbor_inventory)
+        } else {
+            (neighbor, neighbor_inventory, chest, inventory)
+        };
+    let custom_name = first.custom_name().or_else(|| second.custom_name());
+    // The locked notification plays between the halves; the RIGHT half connects counterclockwise.
+    let towards_second = chest_props.facing.rotate_counter_clockwise().to_offset();
+    let notification_position = first.get_position().to_centered_f64().add_raw(
+        f64::from(towards_second.x) / 2.0,
+        0.0,
+        f64::from(towards_second.z) / 2.0,
+    );
+    let factory = crate::block::entities::base_container::with_custom_name(
         custom_name,
         Box::new(ChestScreenFactory {
-            inventory,
-            loot_pending,
+            inventory: DoubleInventory::new(first_inventory, second_inventory),
         }),
-    ))
+    );
+    Some(
+        crate::block::entities::base_container::locked_container_menu(
+            vec![first, second],
+            notification_position,
+            factory,
+        ),
+    )
 }
 
 fn normal_use_chest_impl(args: &NormalUseArgs<'_>) -> BlockActionResult {

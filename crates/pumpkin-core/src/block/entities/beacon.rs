@@ -379,6 +379,10 @@ impl BlockEntity for BeaconBlockEntity {
         self.base.custom_name()
     }
 
+    fn base_container(&self) -> Option<&crate::block::entities::base_container::BaseContainer> {
+        Some(&self.base)
+    }
+
     /// A beacon has no contents, so only its name and lock go through.
     fn collect_item_components(&self, stack: &mut ItemStack) {
         self.base.collect_item_components(&[], stack);

@@ -150,6 +150,11 @@ pub trait BlockEntity: Any + Send + Sync {
         None
     }
 
+    /// The name and lock of a vanilla `BaseContainerBlockEntity` (or beacon).
+    fn base_container(&self) -> Option<&base_container::BaseContainer> {
+        None
+    }
+
     /// Copies the block entity's state on the item stack dropped for it.
     fn collect_item_components(&self, _stack: &mut ItemStack) {}
 

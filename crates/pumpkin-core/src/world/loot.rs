@@ -521,6 +521,16 @@ pub fn item_sub_predicate(
     predicates::item_matches(stack, &predicate)
 }
 
+/// Vanilla `ItemPredicate.test` for a predicate stored as NBT, such as a container lock.
+#[must_use]
+pub fn item_predicate_matches(
+    stack: &pumpkin_data::item_stack::ItemStack,
+    predicate: &pumpkin_nbt::compound::NbtCompound,
+) -> bool {
+    let predicate = nbt_to_json(&pumpkin_nbt::tag::NbtTag::Compound(predicate.clone()));
+    predicates::item_matches(stack, &predicate)
+}
+
 /// The JSON form of an SNBT value, for predicates written in commands.
 pub(crate) fn nbt_to_json(tag: &pumpkin_nbt::tag::NbtTag) -> serde_json::Value {
     use pumpkin_nbt::tag::NbtTag;
