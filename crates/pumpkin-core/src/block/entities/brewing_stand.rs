@@ -532,8 +532,11 @@ impl crate::block::entities::BlockEntity for BrewingStandBlockEntity {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         sync_read_items_from_nbt(nbt, items);
 
-        // If there's an ingredient in slot 3, remember its base item for matching
-        let ingredient_item = (!items[3].is_empty()).then(|| items[3].get_item());
+        // Vanilla `loadAdditional` only remembers the ingredient of a brew in progress, so a
+        // stand filled through `applyImplicitComponents` is in the same state as a loaded one.
+        let ingredient_item = (entity.brew_time.load(Ordering::Relaxed) > 0
+            && !items[3].is_empty())
+        .then(|| items[3].get_item());
 
         // Recompute last_potion_count so visuals are correct after load
         let mut current: [bool; 3] = [false; 3];
