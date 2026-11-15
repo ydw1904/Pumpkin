@@ -168,6 +168,28 @@ impl Inventory for EnderChestInventory {
         }
     }
 
+    fn on_open_by_user(&self, user: i32) {
+        if let Some(tracker) = self
+            .tracker
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            tracker.open_container_by(user);
+        }
+    }
+
+    fn on_close_by_user(&self, user: i32) {
+        let tracker = self
+            .tracker
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(tracker) = tracker {
+            tracker.close_container_by(user);
+        }
+    }
+
     fn mark_dirty(&self) {}
 
     fn as_any(&self) -> &dyn Any {

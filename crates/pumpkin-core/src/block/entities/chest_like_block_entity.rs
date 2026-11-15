@@ -213,6 +213,14 @@ macro_rules! impl_inventory_for_chest {
                 self.viewers.close_container();
             }
 
+            fn on_open_by_user(&self, user: i32) {
+                self.viewers.open_container_by(user);
+            }
+
+            fn on_close_by_user(&self, user: i32) {
+                self.viewers.close_container_by(user);
+            }
+
             fn mark_dirty(&self) {
                 self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
                 self.comparator_dirty
@@ -255,11 +263,14 @@ macro_rules! impl_viewer_count_listener_for_chest {
                 &self,
                 world: &Arc<$crate::world::World>,
                 position: &pumpkin_util::math::position::BlockPos,
+                user: Option<&dyn $crate::entity::EntityBase>,
             ) {
                 self.play_sound(world, true);
-                world.emit_game_event(
-                    pumpkin_data::game_event::GameEvent::ContainerOpen.name(),
-                    position.to_centered_f64(),
+                $crate::block::viewer::emit_container_event(
+                    world,
+                    pumpkin_data::game_event::GameEvent::ContainerOpen,
+                    position,
+                    user,
                 );
             }
 
@@ -267,11 +278,14 @@ macro_rules! impl_viewer_count_listener_for_chest {
                 &self,
                 world: &Arc<$crate::world::World>,
                 position: &pumpkin_util::math::position::BlockPos,
+                user: Option<&dyn $crate::entity::EntityBase>,
             ) {
                 self.play_sound(world, false);
-                world.emit_game_event(
-                    pumpkin_data::game_event::GameEvent::ContainerClose.name(),
-                    position.to_centered_f64(),
+                $crate::block::viewer::emit_container_event(
+                    world,
+                    pumpkin_data::game_event::GameEvent::ContainerClose,
+                    position,
+                    user,
                 );
             }
 

@@ -301,6 +301,9 @@ mod tests {
         fn as_any(&self) -> &dyn Any {
             self
         }
+        fn entity_id(&self) -> i32 {
+            0
+        }
         fn drop_item(&self, _item: ItemStack, _retain_ownership: bool) {}
         fn get_inventory(&self) -> Arc<PlayerInventory> {
             self.0.clone()

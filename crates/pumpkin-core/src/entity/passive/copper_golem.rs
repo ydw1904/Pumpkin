@@ -206,7 +206,7 @@ impl CopperGolemEntity {
             .unwrap_or_else(PoisonError::into_inner)
             .take()
         {
-            container.stop_open();
+            container.stop_open(self.get_entity().entity_id);
         }
     }
 
@@ -218,7 +218,7 @@ impl CopperGolemEntity {
     ) -> bool {
         if ticks == TICK_TO_START_ON_REACHED_INTERACTION {
             self.close_container();
-            if !container.try_start_open() {
+            if !container.try_start_open(self.get_entity().entity_id) {
                 return false;
             }
             *self

@@ -592,6 +592,10 @@ mod tests {
             self
         }
 
+        fn entity_id(&self) -> i32 {
+            0
+        }
+
         fn drop_item(&self, _item: ItemStack, _retain_ownership: bool) {}
 
         fn is_creative(&self) -> bool {

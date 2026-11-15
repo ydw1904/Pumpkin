@@ -9336,6 +9336,10 @@ impl InventoryPlayer for Player {
         self
     }
 
+    fn entity_id(&self) -> i32 {
+        self.entity_id()
+    }
+
     fn drop_item(&self, item: ItemStack, retain_ownership: bool) {
         self.drop_item(item, retain_ownership);
     }

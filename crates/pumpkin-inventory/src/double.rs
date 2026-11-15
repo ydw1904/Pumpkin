@@ -91,6 +91,16 @@ impl Inventory for DoubleInventory {
         self.second.on_close();
     }
 
+    fn on_open_by_user(&self, user: i32) {
+        self.first.on_open_by_user(user);
+        self.second.on_open_by_user(user);
+    }
+
+    fn on_close_by_user(&self, user: i32) {
+        self.first.on_close_by_user(user);
+        self.second.on_close_by_user(user);
+    }
+
     fn get_max_count_per_stack(&self) -> u8 {
         self.first.get_max_count_per_stack()
     }

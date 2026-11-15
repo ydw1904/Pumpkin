@@ -861,6 +861,10 @@ mod tests {
             self
         }
 
+        fn entity_id(&self) -> i32 {
+            0
+        }
+
         fn drop_item(&self, item: ItemStack, _retain_ownership: bool) {
             let mut dropped = self
                 .dropped

@@ -14,9 +14,11 @@ use std::{array::from_fn, sync::Arc};
 use crate::block::entities::BlockEntity;
 use crate::block::entities::base_container::BaseContainer;
 use crate::block::entities::container_loot::ContainerLoot;
-use crate::block::viewer::{ViewerCountListener, ViewerCountTracker, ViewerCountTrackerExt};
-use crate::entity::Entity;
+use crate::block::viewer::{
+    ViewerCountListener, ViewerCountTracker, ViewerCountTrackerExt, emit_container_event,
+};
 use crate::entity::item::ItemEntity;
+use crate::entity::{Entity, EntityBase};
 use crate::world::World;
 use pumpkin_inventory::{Clearable, Inventory};
 
@@ -169,14 +171,24 @@ impl BlockEntity for ShulkerBoxBlockEntity {
 }
 
 impl ViewerCountListener for ShulkerBoxBlockEntity {
-    fn on_container_open(&self, world: &Arc<World>, position: &BlockPos) {
+    fn on_container_open(
+        &self,
+        world: &Arc<World>,
+        position: &BlockPos,
+        user: Option<&dyn EntityBase>,
+    ) {
         Self::play_sound(world, position, 1);
-        world.emit_game_event(GameEvent::ContainerOpen.name(), position.to_centered_f64());
+        emit_container_event(world, GameEvent::ContainerOpen, position, user);
     }
 
-    fn on_container_close(&self, world: &Arc<World>, position: &BlockPos) {
+    fn on_container_close(
+        &self,
+        world: &Arc<World>,
+        position: &BlockPos,
+        user: Option<&dyn EntityBase>,
+    ) {
         Self::play_sound(world, position, 0);
-        world.emit_game_event(GameEvent::ContainerClose.name(), position.to_centered_f64());
+        emit_container_event(world, GameEvent::ContainerClose, position, user);
     }
 
     fn on_viewer_count_update(&self, world: &Arc<World>, position: &BlockPos, _old: u16, new: u16) {
@@ -289,6 +301,14 @@ impl Inventory for ShulkerBoxBlockEntity {
 
     fn on_close(&self) {
         self.viewers.close_container();
+    }
+
+    fn on_open_by_user(&self, user: i32) {
+        self.viewers.open_container_by(user);
+    }
+
+    fn on_close_by_user(&self, user: i32) {
+        self.viewers.close_container_by(user);
     }
 
     fn mark_dirty(&self) {

@@ -36,7 +36,7 @@ pub fn create_generic_9x3(
         inventory,
         3,
         9,
-        player.is_spectator(),
+        player,
     )
 }
 
@@ -56,7 +56,7 @@ pub fn create_generic_9x6(
         inventory,
         6,
         9,
-        player.is_spectator(),
+        player,
     )
 }
 
@@ -76,7 +76,7 @@ pub fn create_generic_3x3(
         inventory,
         3,
         3,
-        player.is_spectator(),
+        player,
     )
 }
 
@@ -94,7 +94,7 @@ pub fn create_shulker_box(
         inventory,
         3,
         9,
-        player.is_spectator(),
+        player,
     )
 }
 
@@ -114,7 +114,7 @@ pub fn create_hopper(
         inventory,
         1,
         5,
-        player.is_spectator(),
+        player,
     )
 }
 
@@ -145,7 +145,7 @@ impl GenericContainerScreenHandler {
     /// - `inventory` - The container's inventory
     /// - `rows` - Number of rows in the container
     /// - `columns` - Number of columns in the container
-    /// - `is_spectator` - Whether the opener is a spectator
+    /// - `player` - The player opening the container
     fn new(
         screen_type: WindowType,
         sync_id: u8,
@@ -153,18 +153,18 @@ impl GenericContainerScreenHandler {
         inventory: Arc<dyn Inventory>,
         rows: u8,
         columns: u8,
-        is_spectator: bool,
+        player: &dyn InventoryPlayer,
     ) -> Self {
         let mut handler = Self {
             inventory,
             rows,
             columns,
-            is_spectator,
+            is_spectator: player.is_spectator(),
             behaviour: ScreenHandlerBehaviour::new(sync_id, Some(screen_type)),
         };
 
-        if !is_spectator {
-            handler.inventory.on_open();
+        if !handler.is_spectator {
+            handler.inventory.on_open_by_user(player.entity_id());
         }
 
         handler.add_inventory_slots();

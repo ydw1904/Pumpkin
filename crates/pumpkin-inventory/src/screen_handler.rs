@@ -136,6 +136,8 @@ impl ScreenProperty {
 /// Implementors are typically player entities that can open containers.
 pub trait InventoryPlayer: Send + Sync {
     fn as_any(&self) -> &dyn std::any::Any;
+    /// The player's entity id.
+    fn entity_id(&self) -> i32;
     /// Drops an item into the world.
     ///
     /// # Arguments

@@ -23,9 +23,17 @@ pub trait Inventory: Send + Sync + Clearable {
 
     fn on_open(&self) {}
     fn on_close(&self) {}
-    /// Vanilla `Container.stopOpen` with the player who closed the menu.
-    fn on_close_by(&self, _player: &dyn crate::screen_handler::InventoryPlayer) {
+    /// Vanilla `Container.startOpen` with the entity id of the user who opened it.
+    fn on_open_by_user(&self, _user: i32) {
+        self.on_open();
+    }
+    /// Vanilla `Container.stopOpen` with the entity id of the user who closed it.
+    fn on_close_by_user(&self, _user: i32) {
         self.on_close();
+    }
+    /// Vanilla `Container.stopOpen` with the player who closed the menu.
+    fn on_close_by(&self, player: &dyn crate::screen_handler::InventoryPlayer) {
+        self.on_close_by_user(player.entity_id());
     }
 
     fn count(&self, item: &Item) -> u8 {

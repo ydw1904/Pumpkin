@@ -111,7 +111,7 @@ impl ChestContainer {
                 .all(|(left, right)| Arc::ptr_eq(left, right))
     }
 
-    pub fn try_start_open(&self) -> bool {
+    pub fn try_start_open(&self, user: i32) -> bool {
         use std::sync::atomic::Ordering;
         for (index, half) in self.halves.iter().enumerate() {
             let acquired = chest_reservation(half.as_ref()).is_some_and(|(reserved, viewers)| {
@@ -129,12 +129,12 @@ impl ChestContainer {
                 return false;
             }
         }
-        self.inventory.on_open();
+        self.inventory.on_open_by_user(user);
         true
     }
 
-    pub fn stop_open(&self) {
-        self.inventory.on_close();
+    pub fn stop_open(&self, user: i32) {
+        self.inventory.on_close_by_user(user);
         for half in &self.halves {
             if let Some((reserved, _)) = chest_reservation(half.as_ref()) {
                 reserved.store(false, std::sync::atomic::Ordering::Release);
@@ -998,16 +998,16 @@ mod tests {
             halves: vec![first.clone(), second.clone()],
         };
         second.on_open();
-        assert!(!container.try_start_open());
+        assert!(!container.try_start_open(0));
         assert_eq!(first.get_viewer_count(), 0);
         assert_eq!(second.get_viewer_count(), 1);
         second.on_close();
-        assert!(container.try_start_open());
-        assert!(!container.try_start_open());
-        container.stop_open();
+        assert!(container.try_start_open(0));
+        assert!(!container.try_start_open(0));
+        container.stop_open(0);
         assert_eq!(first.get_viewer_count(), 0);
         assert_eq!(second.get_viewer_count(), 0);
-        assert!(container.try_start_open());
-        container.stop_open();
+        assert!(container.try_start_open(0));
+        container.stop_open(0);
     }
 }

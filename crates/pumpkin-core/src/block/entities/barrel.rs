@@ -17,7 +17,10 @@ use std::{
 };
 
 use crate::block::entities::base_container::BaseContainer;
-use crate::block::viewer::{ViewerCountListener, ViewerCountTracker, ViewerCountTrackerExt};
+use crate::block::viewer::{
+    ViewerCountListener, ViewerCountTracker, ViewerCountTrackerExt, emit_container_event,
+};
+use crate::entity::EntityBase;
 use crate::world::{BlockFlags, World};
 use pumpkin_inventory::{Clearable, Inventory};
 
@@ -157,16 +160,26 @@ impl BlockEntity for BarrelBlockEntity {
 }
 
 impl ViewerCountListener for BarrelBlockEntity {
-    fn on_container_open(&self, world: &Arc<World>, position: &BlockPos) {
+    fn on_container_open(
+        &self,
+        world: &Arc<World>,
+        position: &BlockPos,
+        user: Option<&dyn EntityBase>,
+    ) {
         self.play_sound(world, Sound::BlockBarrelOpen);
         self.set_open(world, true);
-        world.emit_game_event(GameEvent::ContainerOpen.name(), position.to_centered_f64());
+        emit_container_event(world, GameEvent::ContainerOpen, position, user);
     }
 
-    fn on_container_close(&self, world: &Arc<World>, position: &BlockPos) {
+    fn on_container_close(
+        &self,
+        world: &Arc<World>,
+        position: &BlockPos,
+        user: Option<&dyn EntityBase>,
+    ) {
         self.play_sound(world, Sound::BlockBarrelClose);
         self.set_open(world, false);
-        world.emit_game_event(GameEvent::ContainerClose.name(), position.to_centered_f64());
+        emit_container_event(world, GameEvent::ContainerClose, position, user);
     }
 }
 
@@ -286,6 +299,14 @@ impl Inventory for BarrelBlockEntity {
 
     fn on_close(&self) {
         self.viewers.close_container();
+    }
+
+    fn on_open_by_user(&self, user: i32) {
+        self.viewers.open_container_by(user);
+    }
+
+    fn on_close_by_user(&self, user: i32) {
+        self.viewers.close_container_by(user);
     }
 
     fn mark_dirty(&self) {
