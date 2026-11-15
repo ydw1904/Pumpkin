@@ -5963,6 +5963,9 @@ impl Player {
     }
 
     pub async fn respawn(self: &Arc<Self>) {
+        // Vanilla respawns into a new `ServerPlayer` whose `ServerPlayerGameMode` isn't
+        // destroying anything.
+        self.stop_mining();
         self.world().respawn_player(self, false).await;
         // The client rebuilt its attribute state on respawn, so send the held
         // weapon modifiers again.
@@ -6131,6 +6134,8 @@ impl Player {
         // Vanilla `ServerPlayer.die`: parrots that sat down in the last second stay on the
         // shoulders and come back with the respawned player.
         self.release_shoulders();
+        // The vanilla client aborts its block breaking when the death screen opens.
+        self.stop_mining();
         crate::entity::mob::neutral::tell_neutral_mobs_player_died(self, &self.world());
         // Vanilla `ServerPlayer` records the containing (floored) block
         // position on death for the recovery compass.
