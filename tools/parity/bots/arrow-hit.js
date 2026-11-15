@@ -10,6 +10,12 @@ const command = (line) => fs.appendFileSync(CMDS, line + '\n')
 
 const bot = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: 'Archer', version: '26.3' })
 bot.on('error', (err) => console.log('ERROR', err.message))
+const achieved = new Set()
+bot._client.on('advancements', (packet) => {
+  for (const entry of packet.progressMapping || []) {
+    if ((entry.value || []).some((c) => c.criterionProgress !== undefined && c.criterionProgress !== null)) achieved.add(entry.key)
+  }
+})
 
 bot.once('spawn', async () => {
   // Creative until the platform is there: the chunk may not be loaded yet when /fill first runs.
@@ -84,6 +90,9 @@ bot.once('spawn', async () => {
   }
   result('punch_knockback', huskVelocities[0] || 'none')
   result('crossbow_hit_sounds', huskSounds.join(',') || 'none')
+  // An arrow its shooter hurt something with grants "Take Aim", not "A Throwaway Joke".
+  result('shoot_arrow_advancement', achieved.has('minecraft:adventure/shoot_arrow'))
+  result('throw_trident_advancement', achieved.has('minecraft:adventure/throw_trident'))
   bot.quit()
   setTimeout(() => process.exit(0), 1000)
 })
