@@ -36,6 +36,7 @@ pub struct FurnaceBlockEntity {
     /// Tracks recipes used for XP calculation (vanilla `RecipesUsed` NBT format)
     /// Maps result item ID -> craft count
     pub recipes_used: StdMutex<HashMap<String, u32>>,
+    pub base: crate::block::entities::base_container::BaseContainer,
 }
 
 impl FurnaceBlockEntity {
@@ -55,6 +56,7 @@ impl FurnaceBlockEntity {
             lit_time_remaining: AtomicU16::new(0),
             speed_multiplier: AtomicU32::new(1.0f32.to_bits()),
             recipes_used: StdMutex::new(HashMap::new()),
+            base: crate::block::entities::base_container::BaseContainer::new(),
         }
     }
 }

@@ -1,5 +1,6 @@
 use crate::block::blocks::chests::{chest_container, is_chest_block_entity};
 use crate::block::entities::BlockEntity;
+use crate::block::entities::base_container::BaseContainer;
 use crate::block::entities::container_loot::ContainerLoot;
 use crate::entity::item::ItemEntity;
 use crate::entity::vehicle::minecart::MinecartEntity;
@@ -32,6 +33,7 @@ pub struct HopperBlockEntity {
     pub dirty: AtomicBool,
     pub comparator_dirty: AtomicBool,
     pub loot: ContainerLoot,
+    pub base: BaseContainer,
     pub cooldown_time: AtomicI32,
     pub ticked_game_time: AtomicI64,
 }
@@ -126,6 +128,7 @@ impl BlockEntity for HopperBlockEntity {
             "TransferCooldown",
             NbtTag::Int(self.cooldown_time.load(Ordering::Relaxed)),
         );
+        self.base.write_nbt(nbt);
         if !self.loot.write_nbt(nbt) {
             self.write_inventory_nbt(nbt, true);
         }
@@ -141,9 +144,12 @@ impl BlockEntity for HopperBlockEntity {
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
             loot: ContainerLoot::default(),
+            base: BaseContainer::new(),
             cooldown_time: AtomicI32::from(nbt.get_int("TransferCooldown").unwrap_or(-1)),
             ticked_game_time: AtomicI64::new(0),
         };
+
+        hopper.base.read_nbt(nbt);
 
         if !hopper.loot.read_nbt(nbt) {
             pumpkin_inventory::sync_read_items_from_nbt(
@@ -187,7 +193,29 @@ impl BlockEntity for HopperBlockEntity {
         self.position
     }
 
+    fn custom_name(&self) -> Option<pumpkin_util::text::TextComponent> {
+        self.base.custom_name()
+    }
+
+    fn collect_item_components(&self, stack: &mut ItemStack) {
+        self.base.collect_item_components(
+            &*self
+                .items
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            stack,
+        );
+        self.loot.collect_item_components(stack);
+    }
+
     fn apply_item_components(&self, stack: &ItemStack) {
+        self.base.apply_item_components(
+            stack,
+            &mut *self
+                .items
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
         self.loot.apply_item_components(stack);
     }
 
@@ -243,6 +271,7 @@ impl HopperBlockEntity {
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
             loot: ContainerLoot::default(),
+            base: BaseContainer::new(),
             cooldown_time: AtomicI32::new(-1),
             ticked_game_time: AtomicI64::new(0),
         }

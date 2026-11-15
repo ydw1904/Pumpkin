@@ -84,6 +84,7 @@ impl BlockBehaviour for BarrelBlock {
         args: GetScreenHandlerFactoryArgs<'_>,
     ) -> Option<Box<dyn ScreenHandlerFactory>> {
         let block_entity = args.world.get_block_entity(args.position)?;
+        let custom_name = block_entity.custom_name();
         if !crate::block::entities::container_loot::open_container(
             &block_entity,
             args.world,
@@ -92,7 +93,10 @@ impl BlockBehaviour for BarrelBlock {
             return None;
         }
         let inventory = block_entity.get_inventory()?;
-        Some(Box::new(BarrelScreenFactory(inventory)))
+        Some(crate::block::entities::base_container::with_custom_name(
+            custom_name,
+            Box::new(BarrelScreenFactory(inventory)),
+        ))
     }
 
     fn placed(&self, args: PlacedArgs<'_>) {

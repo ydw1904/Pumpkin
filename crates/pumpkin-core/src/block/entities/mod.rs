@@ -12,6 +12,7 @@ use pumpkin_data::BlockStateId;
 use pumpkin_inventory::Inventory;
 
 pub mod barrel;
+pub mod base_container;
 pub mod beacon;
 pub mod bed;
 pub mod bedrock;
@@ -142,6 +143,11 @@ pub trait BlockEntity: Any + Send + Sync {
     /// and the `/item` and `/loot` commands reach.
     fn get_container(self: Arc<Self>) -> Option<Arc<dyn Inventory>> {
         self.get_inventory()
+    }
+
+    /// Vanilla `Nameable.getCustomName`, for block entities that can be named.
+    fn custom_name(&self) -> Option<pumpkin_util::text::TextComponent> {
+        None
     }
 
     /// Copies the block entity's state on the item stack dropped for it.

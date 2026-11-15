@@ -1,4 +1,5 @@
 use crate::block::entities::BlockEntity;
+use crate::block::entities::base_container::BaseContainer;
 use crate::block::entities::container_loot::ContainerLoot;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_inventory::{Clearable, Inventory};
@@ -17,10 +18,12 @@ pub struct DispenserBlockEntity {
     pub dirty: AtomicBool,
     pub comparator_dirty: AtomicBool,
     pub loot: ContainerLoot,
+    pub base: BaseContainer,
 }
 
 impl BlockEntity for DispenserBlockEntity {
     fn write_nbt(&self, nbt: &mut NbtCompound) {
+        self.base.write_nbt(nbt);
         if !self.loot.write_nbt(nbt) {
             self.write_inventory_nbt(nbt, true);
         }
@@ -36,7 +39,10 @@ impl BlockEntity for DispenserBlockEntity {
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
             loot: ContainerLoot::default(),
+            base: BaseContainer::new(),
         };
+
+        dispenser.base.read_nbt(nbt);
 
         if !dispenser.loot.read_nbt(nbt) {
             pumpkin_inventory::sync_read_items_from_nbt(
@@ -59,7 +65,29 @@ impl BlockEntity for DispenserBlockEntity {
         self.position
     }
 
+    fn custom_name(&self) -> Option<pumpkin_util::text::TextComponent> {
+        self.base.custom_name()
+    }
+
+    fn collect_item_components(&self, stack: &mut ItemStack) {
+        self.base.collect_item_components(
+            &*self
+                .items
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            stack,
+        );
+        self.loot.collect_item_components(stack);
+    }
+
     fn apply_item_components(&self, stack: &ItemStack) {
+        self.base.apply_item_components(
+            stack,
+            &mut *self
+                .items
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
         self.loot.apply_item_components(stack);
     }
 
@@ -115,6 +143,7 @@ impl DispenserBlockEntity {
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
             loot: ContainerLoot::default(),
+            base: BaseContainer::new(),
         }
     }
 

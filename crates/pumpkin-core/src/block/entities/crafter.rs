@@ -1,3 +1,4 @@
+use crate::block::entities::base_container::BaseContainer;
 use crate::block::entities::container_loot::ContainerLoot;
 use crate::block::entities::{BlockEntity, PropertyDelegate};
 use crate::world::World;
@@ -24,10 +25,12 @@ pub struct CrafterBlockEntity {
     pub dirty: AtomicBool,
     pub comparator_dirty: AtomicBool,
     pub loot: ContainerLoot,
+    pub base: BaseContainer,
 }
 
 impl BlockEntity for CrafterBlockEntity {
     fn write_nbt(&self, nbt: &mut NbtCompound) {
+        self.base.write_nbt(nbt);
         if !self.loot.write_nbt(nbt) {
             let items = self
                 .items
@@ -74,7 +77,10 @@ impl BlockEntity for CrafterBlockEntity {
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
             loot: ContainerLoot::default(),
+            base: BaseContainer::new(),
         };
+
+        crafter.base.read_nbt(nbt);
 
         if !crafter.loot.read_nbt(nbt) {
             sync_read_items_from_nbt(
@@ -137,7 +143,29 @@ impl BlockEntity for CrafterBlockEntity {
         Some(self as Arc<dyn RecipeInputInventory>)
     }
 
+    fn custom_name(&self) -> Option<pumpkin_util::text::TextComponent> {
+        self.base.custom_name()
+    }
+
+    fn collect_item_components(&self, stack: &mut ItemStack) {
+        self.base.collect_item_components(
+            &*self
+                .items
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            stack,
+        );
+        self.loot.collect_item_components(stack);
+    }
+
     fn apply_item_components(&self, stack: &ItemStack) {
+        self.base.apply_item_components(
+            stack,
+            &mut *self
+                .items
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
         self.loot.apply_item_components(stack);
     }
 
@@ -207,6 +235,7 @@ impl CrafterBlockEntity {
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
             loot: ContainerLoot::default(),
+            base: BaseContainer::new(),
         }
     }
 

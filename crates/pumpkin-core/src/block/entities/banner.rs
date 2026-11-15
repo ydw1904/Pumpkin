@@ -2,11 +2,12 @@ use super::BlockEntity;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::text::TextComponent;
 use std::sync::Mutex;
 
 pub struct BannerBlockEntity {
     pub position: BlockPos,
-    pub custom_name: Mutex<Option<String>>,
+    pub custom_name: Mutex<Option<TextComponent>>,
     pub patterns: Mutex<Option<Vec<NbtTag>>>,
 }
 
@@ -23,7 +24,7 @@ impl BlockEntity for BannerBlockEntity {
     where
         Self: Sized,
     {
-        let custom_name = nbt.get_string("CustomName").map(ToString::to_string);
+        let custom_name = nbt.get("CustomName").map(TextComponent::from_nbt);
         let patterns = nbt.get_list("patterns").map(<[_]>::to_vec);
         Self {
             position,
@@ -36,7 +37,7 @@ impl BlockEntity for BannerBlockEntity {
         if let Ok(name) = self.custom_name.lock()
             && let Some(name) = name.as_ref()
         {
-            nbt.put_string("CustomName", name.clone());
+            nbt.put("CustomName", name.0.to_nbt_tag());
         }
         if let Ok(pats) = self.patterns.lock()
             && let Some(pats) = pats.as_ref()
@@ -50,7 +51,7 @@ impl BlockEntity for BannerBlockEntity {
         if let Ok(name) = self.custom_name.try_lock()
             && let Some(ref name) = *name
         {
-            nbt.put_string("CustomName", name.clone());
+            nbt.put("CustomName", name.0.to_nbt_tag());
         }
         if let Ok(patterns) = self.patterns.try_lock()
             && let Some(ref pats) = *patterns
@@ -69,15 +70,21 @@ impl BlockEntity for BannerBlockEntity {
             .unwrap_or(pumpkin_data::dye_color::DyeColor::White);
         let patterns_guard = self.patterns.lock().ok();
         let patterns = patterns_guard.as_ref().and_then(|p| p.as_deref());
-        let name_guard = self.custom_name.lock().ok();
-        let name = name_guard.as_ref().and_then(|n| n.as_deref());
+        let name = BlockEntity::custom_name(self).map(TextComponent::get_text);
 
         Some(build_banner_actor(
             self.position,
             base_color,
             patterns,
-            name,
+            name.as_deref(),
         ))
+    }
+
+    fn custom_name(&self) -> Option<TextComponent> {
+        self.custom_name
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 
     fn collect_item_components(&self, stack: &mut pumpkin_data::item_stack::ItemStack) {
@@ -90,37 +97,30 @@ impl BlockEntity for BannerBlockEntity {
         {
             stack.set_data_component(patterns);
         }
-        if let Ok(name) = self.custom_name.lock()
-            && let Some(name) = name.as_ref()
-        {
-            stack.set_data_component(pumpkin_data::data_component_impl::CustomNameImpl {
-                name: pumpkin_util::text::TextComponent::text(name.clone()),
-            });
+        if let Some(name) = BlockEntity::custom_name(self) {
+            stack.set_data_component(pumpkin_data::data_component_impl::CustomNameImpl { name });
         }
     }
 
+    /// Vanilla `applyImplicitComponents`: an item without patterns or a name clears them.
     fn apply_item_components(&self, stack: &pumpkin_data::item_stack::ItemStack) {
-        if let Some(patterns) =
-            stack.get_data_component::<pumpkin_data::data_component_impl::BannerPatternsImpl>()
-            && !patterns.layers.is_empty()
-        {
-            use pumpkin_data::data_component_impl::DataComponentImpl;
-            if let NbtTag::List(pats) = patterns.write_data() {
-                *self
-                    .patterns
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(pats);
-            }
-        }
-        if let Some(custom_name) =
-            stack.get_data_component::<pumpkin_data::data_component_impl::CustomNameImpl>()
-        {
-            *self
-                .custom_name
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) =
-                Some(custom_name.name.clone().get_text());
-        }
+        use pumpkin_data::data_component_impl::DataComponentImpl;
+        *self
+            .patterns
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = stack
+            .get_data_component::<pumpkin_data::data_component_impl::BannerPatternsImpl>()
+            .filter(|patterns| !patterns.layers.is_empty())
+            .and_then(|patterns| match patterns.write_data() {
+                NbtTag::List(pats) => Some(pats),
+                _ => None,
+            });
+        *self
+            .custom_name
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = stack
+            .get_data_component::<pumpkin_data::data_component_impl::CustomNameImpl>()
+            .map(|custom_name| custom_name.name.clone());
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

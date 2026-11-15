@@ -211,6 +211,7 @@ impl BlockBehaviour for DispenserBlock {
         args: GetScreenHandlerFactoryArgs<'_>,
     ) -> Option<Box<dyn ScreenHandlerFactory>> {
         let block_entity = args.world.get_block_entity(args.position)?;
+        let custom_name = block_entity.custom_name();
         if !crate::block::entities::container_loot::open_container(
             &block_entity,
             args.world,
@@ -219,7 +220,10 @@ impl BlockBehaviour for DispenserBlock {
             return None;
         }
         let inventory = block_entity.get_inventory()?;
-        Some(Box::new(DispenserScreenFactory(inventory)))
+        Some(crate::block::entities::base_container::with_custom_name(
+            custom_name,
+            Box::new(DispenserScreenFactory(inventory)),
+        ))
     }
 
     fn on_place(&self, args: OnPlaceArgs<'_>) -> BlockStateId {

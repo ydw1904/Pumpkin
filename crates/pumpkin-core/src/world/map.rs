@@ -1401,12 +1401,7 @@ impl MapBanner {
         let entity = world.get_block_entity(pos)?;
         let banner = entity.as_any().downcast_ref::<BannerBlockEntity>()?;
         let color = banner_base_color_from_block_name(world.get_block(pos).name)?;
-        let name = banner
-            .custom_name
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
-            .map(TextComponent::text);
+        let name = crate::block::entities::BlockEntity::custom_name(banner);
         Some(Self {
             pos: *pos,
             color,

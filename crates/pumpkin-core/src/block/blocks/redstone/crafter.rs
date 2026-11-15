@@ -277,6 +277,7 @@ impl BlockBehaviour for CrafterBlock {
         args: GetScreenHandlerFactoryArgs<'_>,
     ) -> Option<Box<dyn ScreenHandlerFactory>> {
         let block_entity = args.world.get_block_entity(args.position)?;
+        let custom_name = block_entity.custom_name();
         if !crate::block::entities::container_loot::open_container(
             &block_entity,
             args.world,
@@ -286,7 +287,10 @@ impl BlockBehaviour for CrafterBlock {
         }
         let inventory = block_entity.clone().to_recipe_input_inventory()?;
         let data = block_entity.to_property_delegate()?;
-        Some(Box::new(CrafterScreenFactory(inventory, data)))
+        Some(crate::block::entities::base_container::with_custom_name(
+            custom_name,
+            Box::new(CrafterScreenFactory(inventory, data)),
+        ))
     }
 
     fn on_place(&self, args: OnPlaceArgs<'_>) -> BlockStateId {

@@ -15,6 +15,7 @@ use std::{
     },
 };
 
+use crate::block::entities::base_container::BaseContainer;
 use crate::block::viewer::{ViewerCountListener, ViewerCountTracker, ViewerCountTrackerExt};
 use crate::world::{BlockFlags, World};
 use pumpkin_inventory::{Clearable, Inventory};
@@ -28,6 +29,7 @@ pub struct BarrelBlockEntity {
     pub dirty: AtomicBool,
     pub comparator_dirty: AtomicBool,
     pub loot: ContainerLoot,
+    pub base: BaseContainer,
 
     // Viewer
     viewers: ViewerCountTracker,
@@ -52,8 +54,11 @@ impl BlockEntity for BarrelBlockEntity {
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
             loot: ContainerLoot::default(),
+            base: BaseContainer::new(),
             viewers: ViewerCountTracker::new(),
         };
+
+        barrel.base.read_nbt(nbt);
 
         if !barrel.loot.read_nbt(nbt) {
             pumpkin_inventory::sync_read_items_from_nbt(
@@ -69,6 +74,7 @@ impl BlockEntity for BarrelBlockEntity {
     }
 
     fn write_nbt(&self, nbt: &mut NbtCompound) {
+        self.base.write_nbt(nbt);
         if !self.loot.write_nbt(nbt) {
             self.write_inventory_nbt(nbt, true);
         }
@@ -79,7 +85,29 @@ impl BlockEntity for BarrelBlockEntity {
             .update_viewer_count::<Self>(self, world, &self.position);
     }
 
+    fn custom_name(&self) -> Option<pumpkin_util::text::TextComponent> {
+        self.base.custom_name()
+    }
+
+    fn collect_item_components(&self, stack: &mut ItemStack) {
+        self.base.collect_item_components(
+            &*self
+                .items
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            stack,
+        );
+        self.loot.collect_item_components(stack);
+    }
+
     fn apply_item_components(&self, stack: &ItemStack) {
+        self.base.apply_item_components(
+            stack,
+            &mut *self
+                .items
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
         self.loot.apply_item_components(stack);
     }
 
@@ -147,6 +175,7 @@ impl BarrelBlockEntity {
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
             loot: ContainerLoot::default(),
+            base: BaseContainer::new(),
             viewers: ViewerCountTracker::new(),
         }
     }

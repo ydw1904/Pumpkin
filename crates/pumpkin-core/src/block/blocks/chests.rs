@@ -402,6 +402,7 @@ fn get_chest_screen_handler_factory(
     let first_loot_pending = first_chest
         .as_ref()
         .is_some_and(|entity| has_pending_loot(entity.as_ref()));
+    let first_name = first_chest.as_ref().and_then(|entity| entity.custom_name());
     let first_inventory = first_chest.and_then(BlockEntity::get_inventory)?;
 
     if is_chest_blocked(args.world, args.position) {
@@ -432,26 +433,37 @@ fn get_chest_screen_handler_factory(
                 .is_some_and(|second| has_pending_loot(second.as_ref()))
         });
 
-    let inventory = if let Some(direction) = connected_towards
-        && let Some(second_inventory) = args
+    let (inventory, custom_name) = if let Some(direction) = connected_towards
+        && let Some(second_chest) = args
             .world
             .get_block_entity(&args.position.offset(direction.to_offset()))
-            .and_then(BlockEntity::get_inventory)
+        && let Some(second_inventory) = second_chest.clone().get_inventory()
     {
+        let second_name = second_chest.custom_name();
         // Vanilla: chestType == ChestType.RIGHT ? DoubleBlockProperties.Type.FIRST : DoubleBlockProperties.Type.SECOND;
+        // The double chest takes the first half's custom name, else the second's.
         if matches!(chest_props.r#type, ChestType::Right) {
-            DoubleInventory::new(first_inventory, second_inventory)
+            (
+                DoubleInventory::new(first_inventory, second_inventory) as Arc<dyn Inventory>,
+                first_name.or(second_name),
+            )
         } else {
-            DoubleInventory::new(second_inventory, first_inventory)
+            (
+                DoubleInventory::new(second_inventory, first_inventory) as Arc<dyn Inventory>,
+                second_name.or(first_name),
+            )
         }
     } else {
-        first_inventory
+        (first_inventory, first_name)
     };
 
-    Some(Box::new(ChestScreenFactory {
-        inventory,
-        loot_pending,
-    }))
+    Some(crate::block::entities::base_container::with_custom_name(
+        custom_name,
+        Box::new(ChestScreenFactory {
+            inventory,
+            loot_pending,
+        }),
+    ))
 }
 
 fn normal_use_chest_impl(args: &NormalUseArgs<'_>) -> BlockActionResult {

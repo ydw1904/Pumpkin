@@ -4,9 +4,9 @@ use pumpkin_data::item_stack::ItemStack;
 use pumpkin_util::math::position::BlockPos;
 
 use crate::{
-    block::entities::container_loot::ContainerLoot, block::viewer::ViewerCountTracker,
-    impl_block_entity_for_chest, impl_chest_helper_methods, impl_clearable_for_chest,
-    impl_inventory_for_chest, impl_viewer_count_listener_for_chest,
+    block::entities::base_container::BaseContainer, block::entities::container_loot::ContainerLoot,
+    block::viewer::ViewerCountTracker, impl_block_entity_for_chest, impl_chest_helper_methods,
+    impl_clearable_for_chest, impl_inventory_for_chest, impl_viewer_count_listener_for_chest,
 };
 
 pub struct ChestBlockEntity {
@@ -20,6 +20,7 @@ pub struct ChestBlockEntity {
     viewers: ViewerCountTracker,
 
     pub loot: ContainerLoot,
+    pub base: BaseContainer,
 }
 
 impl ChestBlockEntity {

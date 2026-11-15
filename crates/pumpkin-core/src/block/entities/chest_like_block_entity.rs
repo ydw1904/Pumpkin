@@ -28,8 +28,10 @@ macro_rules! impl_block_entity_for_chest {
                     golem_reserved: std::sync::atomic::AtomicBool::new(false),
                     viewers: $crate::block::viewer::ViewerCountTracker::new(),
                     loot: $crate::block::entities::container_loot::ContainerLoot::default(),
+                    base: $crate::block::entities::base_container::BaseContainer::new(),
                 };
 
+                chest.base.read_nbt(nbt);
                 if !chest.loot.read_nbt(nbt) {
                     pumpkin_inventory::sync_read_items_from_nbt(
                         nbt,
@@ -46,6 +48,7 @@ macro_rules! impl_block_entity_for_chest {
             fn write_nbt(&self, nbt: &mut pumpkin_nbt::compound::NbtCompound) {
                 use pumpkin_inventory::Inventory;
 
+                self.base.write_nbt(nbt);
                 if !self.loot.write_nbt(nbt) {
                     self.write_inventory_nbt(nbt, true);
                 }
@@ -104,21 +107,30 @@ macro_rules! impl_block_entity_for_chest {
                 Some(&self.loot)
             }
 
+            fn custom_name(&self) -> Option<pumpkin_util::text::TextComponent> {
+                self.base.custom_name()
+            }
+
+            fn collect_item_components(&self, stack: &mut ItemStack) {
+                self.base.collect_item_components(
+                    &*self
+                        .items
+                        .read()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner),
+                    stack,
+                );
+                self.loot.collect_item_components(stack);
+            }
+
             fn apply_item_components(&self, stack: &ItemStack) {
-                self.loot.apply_item_components(stack);
-                if let Some(container) =
-                    stack.get_data_component::<pumpkin_data::data_component_impl::ContainerImpl>()
-                {
-                    let mut items = self
+                self.base.apply_item_components(
+                    stack,
+                    &mut *self
                         .items
                         .write()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    for (slot, item) in &container.items {
-                        if let Some(target) = items.get_mut(*slot as usize) {
-                            *target = item.clone();
-                        }
-                    }
-                }
+                        .unwrap_or_else(std::sync::PoisonError::into_inner),
+                );
+                self.loot.apply_item_components(stack);
             }
         }
     };
@@ -302,6 +314,7 @@ macro_rules! impl_chest_helper_methods {
                     golem_reserved: AtomicBool::new(false),
                     viewers: $crate::block::viewer::ViewerCountTracker::new(),
                     loot: $crate::block::entities::container_loot::ContainerLoot::default(),
+                    base: $crate::block::entities::base_container::BaseContainer::new(),
                 }
             }
 

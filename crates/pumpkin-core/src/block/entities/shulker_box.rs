@@ -1,4 +1,3 @@
-use pumpkin_data::data_component_impl::{ContainerImpl, ContainerLootImpl};
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tag::Taggable;
@@ -10,6 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::{array::from_fn, sync::Arc};
 
 use crate::block::entities::BlockEntity;
+use crate::block::entities::base_container::BaseContainer;
 use crate::block::entities::container_loot::ContainerLoot;
 use crate::block::viewer::{ViewerCountListener, ViewerCountTracker, ViewerCountTrackerExt};
 use crate::world::World;
@@ -21,6 +21,7 @@ pub struct ShulkerBoxBlockEntity {
     pub dirty: AtomicBool,
     pub comparator_dirty: AtomicBool,
     pub loot: ContainerLoot,
+    pub base: BaseContainer,
 
     // Viewer
     pub viewers: ViewerCountTracker,
@@ -45,8 +46,11 @@ impl BlockEntity for ShulkerBoxBlockEntity {
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
             loot: ContainerLoot::default(),
+            base: BaseContainer::new(),
             viewers: ViewerCountTracker::new(),
         };
+
+        shulker_box.base.read_nbt(nbt);
 
         if !shulker_box.loot.read_nbt(nbt) {
             pumpkin_inventory::sync_read_items_from_nbt(
@@ -62,6 +66,7 @@ impl BlockEntity for ShulkerBoxBlockEntity {
     }
 
     fn write_nbt(&self, nbt: &mut NbtCompound) {
+        self.base.write_nbt(nbt);
         if !self.loot.write_nbt(nbt) {
             self.write_inventory_nbt(nbt, true);
         }
@@ -84,43 +89,30 @@ impl BlockEntity for ShulkerBoxBlockEntity {
         Some(self)
     }
 
-    fn collect_item_components(&self, stack: &mut ItemStack) {
-        let items = self
-            .items
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let contents: Vec<(u8, ItemStack)> = items
-            .iter()
-            .enumerate()
-            .filter(|(_, item)| !item.is_empty())
-            .map(|(slot, item)| (slot as u8, item.clone()))
-            .collect();
+    fn custom_name(&self) -> Option<pumpkin_util::text::TextComponent> {
+        self.base.custom_name()
+    }
 
-        if !contents.is_empty() {
-            stack.set_data_component(ContainerImpl { items: contents });
-        }
-        if let Some((loot_table, seed)) = self.loot.get() {
-            stack.set_data_component(ContainerLootImpl { loot_table, seed });
-        }
+    fn collect_item_components(&self, stack: &mut ItemStack) {
+        self.base.collect_item_components(
+            &*self
+                .items
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            stack,
+        );
+        self.loot.collect_item_components(stack);
     }
 
     fn apply_item_components(&self, stack: &ItemStack) {
+        self.base.apply_item_components(
+            stack,
+            &mut *self
+                .items
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
         self.loot.apply_item_components(stack);
-        let Some(container) = stack.get_data_component::<ContainerImpl>() else {
-            return;
-        };
-
-        let mut items = self
-            .items
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        for (slot, item) in &container.items {
-            if let Some(target) = items.get_mut(*slot as usize) {
-                *target = item.clone();
-            }
-        }
-
         self.mark_dirty();
     }
 
@@ -196,6 +188,7 @@ impl ShulkerBoxBlockEntity {
             dirty: AtomicBool::new(false),
             comparator_dirty: AtomicBool::new(false),
             loot: ContainerLoot::default(),
+            base: BaseContainer::new(),
             viewers: ViewerCountTracker::new(),
         }
     }

@@ -847,7 +847,8 @@ impl HostBannerBlockEntity for PluginHostState {
             .custom_name
             .try_lock()
             .ok()
-            .and_then(|g| g.clone()))
+            .and_then(|g| g.clone())
+            .map(pumpkin_util::text::TextComponent::get_text))
     }
 
     fn drop(&mut self, rep: Resource<BannerBlockEntity>) -> wasmtime::Result<()> {

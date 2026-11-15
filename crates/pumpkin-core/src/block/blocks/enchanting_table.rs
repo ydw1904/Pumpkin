@@ -87,10 +87,17 @@ impl BlockBehaviour for EnchantingTableBlock {
         let bookshelf_count = bookshelf_count.min(15);
 
         let seed = args.player.enchantment_seed();
-        Some(Box::new(EnchantingTableScreenFactory {
-            bookshelf_count,
-            seed,
-        }))
+        let custom_name = args
+            .world
+            .get_block_entity(args.position)
+            .and_then(|block_entity| block_entity.custom_name());
+        Some(crate::block::entities::base_container::with_custom_name(
+            custom_name,
+            Box::new(EnchantingTableScreenFactory {
+                bookshelf_count,
+                seed,
+            }),
+        ))
     }
 
     fn is_pathfindable(&self, _state: &BlockState, _computation_type: PathComputationType) -> bool {

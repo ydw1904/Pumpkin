@@ -645,13 +645,16 @@ macro_rules! impl_block_entity_for_cooking {
                     lit_total_time,
                     lit_time_remaining,
                     recipes_used: std::sync::Mutex::new(recipes_used_map),
+                    base: $crate::block::entities::base_container::BaseContainer::new(),
                 };
+                furnace.base.read_nbt(nbt);
                 pumpkin_inventory::sync_read_items_from_nbt(nbt, furnace.items.get_mut().unwrap_or_else(std::sync::PoisonError::into_inner));
 
                 furnace
             }
 
             fn write_nbt(&self, nbt: &mut pumpkin_nbt::compound::NbtCompound) {
+                self.base.write_nbt(nbt);
                 nbt.put_int("cooking_total_time", i32::from(self.get_cooking_total_time()));
                 nbt.put_int("cooking_time_spent", i32::from(self.get_cooking_time_spent()));
                 nbt.put_int("lit_total_time", i32::from(self.get_lit_total_time()));
@@ -689,6 +692,30 @@ macro_rules! impl_block_entity_for_cooking {
                 self: Arc<Self>,
             ) -> Option<Arc<dyn pumpkin_inventory::Inventory>> {
                 Some(self)
+            }
+
+            fn custom_name(&self) -> Option<pumpkin_util::text::TextComponent> {
+                self.base.custom_name()
+            }
+
+            fn collect_item_components(&self, stack: &mut ItemStack) {
+                self.base.collect_item_components(
+                    &*self
+                        .items
+                        .read()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner),
+                    stack,
+                );
+            }
+
+            fn apply_item_components(&self, stack: &ItemStack) {
+                self.base.apply_item_components(
+                    stack,
+                    &mut *self
+                        .items
+                        .write()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner),
+                );
             }
 
             fn is_comparator_dirty(&self) -> bool {

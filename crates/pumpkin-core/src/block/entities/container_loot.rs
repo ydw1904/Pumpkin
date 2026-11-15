@@ -93,6 +93,13 @@ impl ContainerLoot {
         }
     }
 
+    /// Vanilla `RandomizableContainerBlockEntity.collectImplicitComponents`.
+    pub fn collect_item_components(&self, stack: &mut ItemStack) {
+        if let Some((loot_table, seed)) = self.get() {
+            stack.set_data_component(ContainerLootImpl { loot_table, seed });
+        }
+    }
+
     /// Vanilla `RandomizableContainer.unpackLootTable(null)`, which every container accessor
     /// runs first. Does nothing before the block entity is in a world, like vanilla.
     pub fn unpack(&self, container: &dyn Inventory, position: &BlockPos) {

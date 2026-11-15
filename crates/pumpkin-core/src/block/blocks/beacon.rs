@@ -64,8 +64,10 @@ impl BlockBehaviour for BeaconBlock {
         args: GetScreenHandlerFactoryArgs<'_>,
     ) -> Option<Box<dyn ScreenHandlerFactory>> {
         let block_entity = args.world.get_block_entity(args.position)?;
-        Some(Box::new(BeaconScreenFactory(
-            block_entity.to_property_delegate()?,
-        )))
+        let custom_name = block_entity.custom_name();
+        Some(crate::block::entities::base_container::with_custom_name(
+            custom_name,
+            Box::new(BeaconScreenFactory(block_entity.to_property_delegate()?)),
+        ))
     }
 }

@@ -6,6 +6,7 @@ use std::sync::{
 };
 
 use crate::block::entities::PropertyDelegate;
+use crate::block::entities::base_container::BaseContainer;
 use pumpkin_data::data_component_impl::BrewingFuelImpl;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -28,6 +29,7 @@ pub struct BrewingStandBlockEntity {
     pub fuel: AtomicI32,
     pub last_potion_count: StdMutex<Option<[bool; 3]>>,
     pub ingredient_item: StdMutex<Option<&'static pumpkin_data::item::Item>>,
+    pub base: BaseContainer,
 }
 
 impl BrewingStandBlockEntity {
@@ -46,6 +48,7 @@ impl BrewingStandBlockEntity {
             fuel: AtomicI32::new(0),
             last_potion_count: StdMutex::new(None),
             ingredient_item: StdMutex::new(None),
+            base: BaseContainer::new(),
         }
     }
 
@@ -504,6 +507,7 @@ impl crate::block::entities::BlockEntity for BrewingStandBlockEntity {
         Self: Sized,
     {
         let mut entity = Self::new(position);
+        entity.base.read_nbt(nbt);
 
         // Load brew time / fuel if present in NBT
         if let Some(bt) = nbt
@@ -557,6 +561,7 @@ impl crate::block::entities::BlockEntity for BrewingStandBlockEntity {
     }
 
     fn write_nbt(&self, nbt: &mut NbtCompound) {
+        self.base.write_nbt(nbt);
         // Persist brew state
         nbt.put_int("BrewTime", self.brew_time.load(Ordering::Relaxed));
         nbt.put_int("Fuel", self.fuel.load(Ordering::Relaxed));
@@ -567,6 +572,30 @@ impl crate::block::entities::BlockEntity for BrewingStandBlockEntity {
 
     fn get_inventory(self: Arc<Self>) -> Option<Arc<dyn Inventory>> {
         Some(self)
+    }
+
+    fn custom_name(&self) -> Option<pumpkin_util::text::TextComponent> {
+        self.base.custom_name()
+    }
+
+    fn collect_item_components(&self, stack: &mut ItemStack) {
+        self.base.collect_item_components(
+            &*self
+                .items
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            stack,
+        );
+    }
+
+    fn apply_item_components(&self, stack: &ItemStack) {
+        self.base.apply_item_components(
+            stack,
+            &mut *self
+                .items
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
     }
 
     fn bedrock_block_actor_data(

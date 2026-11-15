@@ -5,11 +5,12 @@
 //! active beacon re-measures its pyramid and applies its effects to players in range.
 
 use std::any::Any;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
-use std::sync::{Arc, Mutex};
 
 use pumpkin_data::Block;
 use pumpkin_data::effect::StatusEffect;
+use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::potion::Effect;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tag::Taggable;
@@ -20,8 +21,10 @@ use pumpkin_inventory::beacon_screen_handler::{
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::text::TextComponent;
 use pumpkin_world::chunk::ChunkHeightmapType;
 
+use crate::block::entities::base_container::BaseContainer;
 use crate::block::entities::{BlockEntity, PropertyDelegate};
 use crate::entity::player::advancement::trigger::AdvancementTrigger;
 use crate::world::World;
@@ -44,8 +47,7 @@ pub struct BeaconBlockEntity {
     last_check_y: AtomicI32,
     /// Set when the primary effect changes while the beam is up; consumed by `tick`.
     play_select_sound: AtomicBool,
-    custom_name: Mutex<Option<String>>,
-    lock_key: Mutex<Option<String>>,
+    base: BaseContainer,
 }
 
 /// Blocks the beam passes through and takes its colour from (`BeaconBeamBlock` in vanilla).
@@ -70,8 +72,7 @@ impl BeaconBlockEntity {
             checking_beam_blocked: AtomicBool::new(false),
             last_check_y: AtomicI32::new(position.0.y - 1),
             play_select_sound: AtomicBool::new(false),
-            custom_name: Mutex::new(None),
-            lock_key: Mutex::new(None),
+            base: BaseContainer::new(),
         }
     }
 
@@ -256,16 +257,7 @@ impl BlockEntity for BeaconBlockEntity {
         );
         // `Levels` is saved but, as in vanilla, not loaded: a reloaded beacon starts at 0 and
         // replays its activation on the first pulse.
-        *entity
-            .custom_name
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) =
-            nbt.get_string("CustomName").map(str::to_string);
-        *entity
-            .lock_key
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) =
-            nbt.get_string("Lock").map(str::to_string);
+        entity.base.read_nbt(nbt);
         entity
     }
 
@@ -281,22 +273,7 @@ impl BlockEntity for BeaconBlockEntity {
             self.secondary_effect.load(Ordering::Relaxed),
         );
         nbt.put_int("Levels", self.levels.load(Ordering::Relaxed));
-        if let Some(name) = self
-            .custom_name
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .as_ref()
-        {
-            nbt.put_string("CustomName", name.clone());
-        }
-        if let Some(lock) = self
-            .lock_key
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .as_ref()
-        {
-            nbt.put_string("Lock", lock.clone());
-        }
+        self.base.write_nbt(nbt);
     }
 
     /// Mirrors `BeaconBlockEntity.tick`.
@@ -388,15 +365,27 @@ impl BlockEntity for BeaconBlockEntity {
         &self,
         _state_id: pumpkin_data::BlockStateId,
     ) -> Option<NbtCompound> {
-        let name_guard = self.custom_name.lock().ok();
-        let name = name_guard.as_ref().and_then(|n| n.as_deref());
+        let name = self.base.custom_name().map(TextComponent::get_text);
         Some(build_beacon_actor(
             self.position,
             self.primary_effect().map_or(0, StatusEffect::to_bedrock_id),
             self.secondary_effect()
                 .map_or(0, StatusEffect::to_bedrock_id),
-            name,
+            name.as_deref(),
         ))
+    }
+
+    fn custom_name(&self) -> Option<TextComponent> {
+        self.base.custom_name()
+    }
+
+    /// A beacon has no contents, so only its name and lock go through.
+    fn collect_item_components(&self, stack: &mut ItemStack) {
+        self.base.collect_item_components(&[], stack);
+    }
+
+    fn apply_item_components(&self, stack: &ItemStack) {
+        self.base.apply_item_components(stack, &mut []);
     }
 
     fn is_dirty(&self) -> bool {
