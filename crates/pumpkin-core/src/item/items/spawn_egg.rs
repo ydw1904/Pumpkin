@@ -419,6 +419,7 @@ impl ItemBehaviour for SpawnEggItem {
                     pos,
                     &crate::world::game_event::GameEventContext {
                         source_entity: Some(player),
+                        affected_state: None,
                     },
                 );
             }

@@ -50,6 +50,7 @@ pub fn create(spawn_block: &'static Block) -> OneShot {
                             spawn_pos.to_f64(),
                             &GameEventContext {
                                 source_entity: Some(source),
+                                affected_state: None,
                             },
                         );
                         tick.world.play_sound(

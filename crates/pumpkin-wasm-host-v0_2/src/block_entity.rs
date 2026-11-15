@@ -1295,7 +1295,10 @@ impl HostSculkShriekerBlockEntity for PluginHostState {
         &mut self,
         res: Resource<SculkShriekerBlockEntity>,
     ) -> wasmtime::Result<i32> {
-        Ok(self.get(&res)?.warning_level.try_lock().map_or(0, |g| *g))
+        Ok(self
+            .get(&res)?
+            .warning_level
+            .load(std::sync::atomic::Ordering::Relaxed))
     }
 
     fn drop(&mut self, rep: Resource<SculkShriekerBlockEntity>) -> wasmtime::Result<()> {

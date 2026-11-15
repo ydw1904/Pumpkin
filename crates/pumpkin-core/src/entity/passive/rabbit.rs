@@ -758,6 +758,7 @@ impl RaidGardenGoal {
                     crops_pos.to_centered_f64(),
                     &GameEventContext {
                         source_entity: Some(rabbit),
+                        affected_state: None,
                     },
                 );
                 world.sync_world_event(

@@ -3,20 +3,28 @@
 use std::sync::Arc;
 
 use pumpkin_data::{
-    BlockDirection,
+    Block, BlockDirection,
     game_event::{GameEvent, PositionSourceType},
     particle::Particle,
     tag::{self, Taggable},
 };
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_protocol::{codec::var_int::VarInt, java::client::play::CParticle, ser::WritingError};
-use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
+use pumpkin_util::math::{position::BlockPos, vector2::Vector2, vector3::Vector3};
 use uuid::Uuid;
 
 use crate::entity::EntityBase;
+use crate::entity::player::advancement::trigger::AdvancementTrigger;
 use crate::world::{World, game_event::GameEventContext};
 
 const PARTICLE_SEND_DISTANCE: f64 = 32.0;
+
+/// Vanilla `PositionSource` of a vibration listener, the target of its vibration particles.
+#[derive(Clone, Copy)]
+pub enum ListenerSource {
+    Entity { id: i32, eye_height: f32 },
+    Block(BlockPos),
+}
 
 /// Vanilla `VibrationSystem.getGameEventFrequency`, 0 for events without one.
 #[must_use]
@@ -65,6 +73,53 @@ pub const fn game_event_frequency(event: GameEvent) -> i32 {
         GameEvent::EntityDie | GameEvent::Explode | GameEvent::Resonate15 => 15,
         _ => 0,
     }
+}
+
+/// Vanilla `VibrationSystem.getResonanceEventByFrequency`, for frequencies 1 to 15.
+#[must_use]
+pub const fn resonance_event(frequency: i32) -> Option<GameEvent> {
+    Some(match frequency {
+        1 => GameEvent::Resonate1,
+        2 => GameEvent::Resonate2,
+        3 => GameEvent::Resonate3,
+        4 => GameEvent::Resonate4,
+        5 => GameEvent::Resonate5,
+        6 => GameEvent::Resonate6,
+        7 => GameEvent::Resonate7,
+        8 => GameEvent::Resonate8,
+        9 => GameEvent::Resonate9,
+        10 => GameEvent::Resonate10,
+        11 => GameEvent::Resonate11,
+        12 => GameEvent::Resonate12,
+        13 => GameEvent::Resonate13,
+        14 => GameEvent::Resonate14,
+        15 => GameEvent::Resonate15,
+        _ => return None,
+    })
+}
+
+/// Vanilla `VibrationSystem.getRedstoneStrengthForDistance`.
+#[must_use]
+pub fn redstone_strength_for_distance(distance: f32, listener_radius: i32) -> u8 {
+    let power_scale = 15.0 / f64::from(listener_radius);
+    (15 - (power_scale * f64::from(distance)).floor() as i32).clamp(1, 15) as u8
+}
+
+/// Vanilla `VibrationSystem.Ticker.areAdjacentChunksTicking`.
+#[must_use]
+pub fn adjacent_chunks_ticking(world: &World, listener: &BlockPos) -> bool {
+    let center = listener.chunk_position();
+    let active_chunks = world
+        .active_chunks
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    (-1..=1).all(|x| {
+        (-1..=1).all(|z| {
+            let chunk = Vector2::new(center.x + x, center.y + z);
+            active_chunks.block_ticking.contains(&chunk) && world.level.is_chunk_loaded(&chunk)
+        })
+    })
 }
 
 /// Vanilla `VibrationInfo`.
@@ -255,14 +310,15 @@ impl VibrationData {
         }
     }
 
-    /// Vanilla `VibrationSystem.Ticker.tick` for a listener at `destination` that moves with
-    /// the entity `entity_id`. Returns the vibration that arrived this tick.
+    /// Vanilla `VibrationSystem.Ticker.tick` for a listener at `destination`. Returns the
+    /// vibration that arrived this tick. `can_receive` is checked on arrival: while it fails the
+    /// vibration waits, like vanilla `requiresAdjacentChunksToBeTicking`.
     pub fn tick(
         &mut self,
         world: &World,
-        entity_id: i32,
-        eye_height: f32,
+        source: ListenerSource,
         destination: Vector3<f64>,
+        can_receive: impl FnOnce() -> bool,
     ) -> Option<VibrationInfo> {
         if self.current.is_none()
             && self
@@ -272,7 +328,7 @@ impl VibrationData {
             && let Some((event, _)) = self.candidate.take()
         {
             self.delay = event.distance.floor() as i32;
-            send_vibration_particle(world, event.pos, entity_id, eye_height, self.delay);
+            send_vibration_particle(world, event.pos, source, self.delay);
             self.current = Some(event);
         }
         let event = self.current.as_ref()?;
@@ -280,37 +336,52 @@ impl VibrationData {
             let initial = event.distance.floor() as i32;
             let alpha = 1.0 - f64::from(self.delay) / f64::from(initial);
             let pos = event.pos.lerp(&destination, alpha);
-            if send_vibration_particle(world, pos, entity_id, eye_height, self.delay) {
+            if send_vibration_particle(world, pos, source, self.delay) {
                 self.reload_particle = false;
             }
         }
         self.delay = (self.delay - 1).max(0);
-        if self.delay == 0 {
+        if self.delay == 0 && can_receive() {
             return self.current.take();
         }
         None
     }
 }
 
-/// Vanilla `VibrationSystem.User.isValidVibration` for a user listening to `listenable`.
+/// Vanilla `VibrationSystem.User.isValidVibration` for a user listening to `listenable`. A
+/// user that `can_trigger_avoid_vibration` grants `minecraft:avoid_vibration` to a player
+/// sneaking past it.
 #[must_use]
 pub fn is_valid_vibration(
     listenable: &tag::Tag,
     event: GameEvent,
     context: &GameEventContext<'_>,
+    can_trigger_avoid_vibration: bool,
 ) -> bool {
     if !listenable.0.contains(&event.name()) {
         return false;
     }
-    let Some(source) = context.source_entity else {
-        return true;
-    };
-    let ignored_while_sneaking = tag::GameEvent::MINECRAFT_IGNORE_VIBRATIONS_SNEAKING
-        .0
-        .contains(&event.name());
-    !source.is_spectator()
-        && (!source.is_stepping_carefully() || !ignored_while_sneaking)
-        && !source.dampens_vibrations()
+    if let Some(source) = context.source_entity {
+        if source.is_spectator() {
+            return false;
+        }
+        if source.is_stepping_carefully()
+            && tag::GameEvent::MINECRAFT_IGNORE_VIBRATIONS_SNEAKING
+                .0
+                .contains(&event.name())
+        {
+            if can_trigger_avoid_vibration && let Some(player) = source.get_player() {
+                player.trigger_advancement(AdvancementTrigger::AvoidVibration);
+            }
+            return false;
+        }
+        if source.dampens_vibrations() {
+            return false;
+        }
+    }
+    context.affected_state.is_none_or(|state| {
+        !Block::from_state_id(state).has_tag(&tag::Block::MINECRAFT_DAMPENS_VIBRATIONS)
+    })
 }
 
 /// Vanilla `VibrationSystem.Listener.isOccluded`.
@@ -333,11 +404,10 @@ pub fn is_occluded(world: &World, origin: Vector3<f64>, destination: Vector3<f64
 fn send_vibration_particle(
     world: &World,
     pos: Vector3<f64>,
-    entity_id: i32,
-    eye_height: f32,
+    source: ListenerSource,
     delay: i32,
 ) -> bool {
-    let Ok(payload) = vibration_payload(entity_id, eye_height, delay) else {
+    let Ok(payload) = vibration_payload(source, delay) else {
         return false;
     };
     let packet = CParticle::new(
@@ -362,11 +432,20 @@ fn send_vibration_particle(
     sent
 }
 
-fn vibration_payload(entity_id: i32, eye_offset: f32, delay: i32) -> Result<Vec<u8>, WritingError> {
+/// Vanilla `VibrationParticleOption.STREAM_CODEC`: the position source, then the arrival ticks.
+fn vibration_payload(source: ListenerSource, delay: i32) -> Result<Vec<u8>, WritingError> {
     let mut payload = Vec::new();
-    VarInt(PositionSourceType::Entity.to_id()).encode(&mut payload)?;
-    VarInt(entity_id).encode(&mut payload)?;
-    payload.extend_from_slice(&eye_offset.to_be_bytes());
+    match source {
+        ListenerSource::Entity { id, eye_height } => {
+            VarInt(PositionSourceType::Entity.to_id()).encode(&mut payload)?;
+            VarInt(id).encode(&mut payload)?;
+            payload.extend_from_slice(&eye_height.to_be_bytes());
+        }
+        ListenerSource::Block(pos) => {
+            VarInt(PositionSourceType::Block.to_id()).encode(&mut payload)?;
+            payload.extend_from_slice(&pos.as_long().to_be_bytes());
+        }
+    }
     VarInt(delay).encode(&mut payload)?;
     Ok(payload)
 }
@@ -378,7 +457,13 @@ mod tests {
     #[test]
     fn entity_destination_particle_matches_vanilla_stream_codec() -> Result<(), WritingError> {
         assert_eq!(
-            vibration_payload(300, 0.36, 12)?,
+            vibration_payload(
+                ListenerSource::Entity {
+                    id: 300,
+                    eye_height: 0.36
+                },
+                12
+            )?,
             vec![1, 172, 2, 62, 184, 81, 236, 12]
         );
         Ok(())

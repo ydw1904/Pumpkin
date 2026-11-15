@@ -347,6 +347,7 @@ impl WitchEntity {
             entity.pos.load(),
             &GameEventContext {
                 source_entity: Some(self),
+                affected_state: None,
             },
         );
         living.update_attribute(&Attributes::MOVEMENT_SPEED, |speed| {

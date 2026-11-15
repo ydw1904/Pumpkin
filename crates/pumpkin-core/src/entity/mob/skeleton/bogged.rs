@@ -133,6 +133,7 @@ impl Mob for BoggedSkeletonEntity {
                 entity.pos.load(),
                 &GameEventContext {
                     source_entity: Some(player.as_ref()),
+                    affected_state: None,
                 },
             );
             let _ = player.damage_item_stack(item_stack, 1);

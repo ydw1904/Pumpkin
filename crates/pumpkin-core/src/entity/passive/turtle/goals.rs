@@ -232,6 +232,7 @@ impl TurtleLayEggGoal {
             egg_pos.to_centered_f64(),
             &GameEventContext {
                 source_entity: Some(mob as &dyn EntityBase),
+                affected_state: None,
             },
         );
         turtle.set_has_egg(false);

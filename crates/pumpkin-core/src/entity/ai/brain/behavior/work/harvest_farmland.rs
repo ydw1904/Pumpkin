@@ -146,6 +146,7 @@ impl Behavior for HarvestFarmland {
                     farmland_pos.to_centered_f64(),
                     &GameEventContext {
                         source_entity: Some(source),
+                        affected_state: None,
                     },
                 );
             }
@@ -170,6 +171,7 @@ impl Behavior for HarvestFarmland {
                             farmland_pos.to_centered_f64(),
                             &GameEventContext {
                                 source_entity: Some(source),
+                                affected_state: None,
                             },
                         );
                         true

@@ -706,6 +706,7 @@ impl EntityBase for BoatEntity {
                 entity.pos.load(),
                 &GameEventContext {
                     source_entity: controller.as_deref(),
+                    affected_state: None,
                 },
             );
         }

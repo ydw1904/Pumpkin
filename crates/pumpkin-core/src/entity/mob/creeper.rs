@@ -302,6 +302,7 @@ impl Mob for CreeperEntity {
                 entity.pos.load(),
                 &GameEventContext {
                     source_entity: Some(caller),
+                    affected_state: None,
                 },
             );
         }

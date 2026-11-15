@@ -116,6 +116,8 @@ pub struct LivingEntity {
     pub death_time: AtomicU8,
     /// Indicates whether the entity is dead. (`on_death` called)
     pub dead: AtomicBool,
+    /// Vanilla `skipDropExperience`: a sculk catalyst took the experience this entity drops.
+    skip_drop_experience: AtomicBool,
     /// The distance the entity has been falling.
     pub fall_distance: AtomicCell<f64>,
     pub active_effects: std::sync::Mutex<FxHashMap<&'static StatusEffect, Effect>>,
@@ -373,6 +375,15 @@ impl LivingEntity {
         !self.is_baby()
     }
 
+    pub fn skip_drop_experience(&self) {
+        self.skip_drop_experience.store(true, Relaxed);
+    }
+
+    #[must_use]
+    pub fn was_experience_consumed(&self) -> bool {
+        self.skip_drop_experience.load(Relaxed)
+    }
+
     pub fn make_sound(&self, sound: Sound, category: SoundCategory, volume: f32, pitch: f32) {
         if self.entity.is_silent() {
             return;
@@ -442,6 +453,7 @@ impl LivingEntity {
             fall_distance: AtomicCell::new(0.0),
             death_time: AtomicU8::new(0),
             dead: AtomicBool::new(false),
+            skip_drop_experience: AtomicBool::new(false),
             item_use_time: AtomicI32::new(0),
             item_in_use: std::sync::Mutex::new(None),
             active_hand: std::sync::Mutex::new(None),
@@ -3440,6 +3452,10 @@ impl LivingEntity {
                 .as_deref()
                 .and_then(EntityBase::get_mob)
                 .is_none_or(|mob| mob.killed_entity(&*dyn_self));
+            if perished {
+                self.entity
+                    .emit_own_game_event(&*dyn_self, GameEvent::EntityDie);
+            }
             let should_drop_loot = perished && dyn_self.should_drop_loot();
             if perished && let Some(mob) = dyn_self.get_mob() {
                 mob.drop_before_death_loot();
@@ -3467,6 +3483,7 @@ impl LivingEntity {
             // Vanilla `dropAllDeathLoot` drops experience last, after the equipment, custom loot
             // and a player's inventory.
             if perished
+                && !self.was_experience_consumed()
                 && (dyn_self.is_always_experience_dropper()
                     || (params.killed_by_player.unwrap_or(false)
                         && world.level_info.load().game_rules.mob_drops
@@ -3804,10 +3821,6 @@ impl LivingEntity {
                         crate::entity::player::advancement::trigger::AdvancementTrigger::Arbalistic,
                     );
                 }
-
-                killer_player.trigger_advancement(
-                    crate::entity::player::advancement::trigger::AdvancementTrigger::KillMobNearSculkCatalyst,
-                );
             }
         }
     }
@@ -5720,6 +5733,7 @@ impl LivingEntity {
                 pos,
                 &GameEventContext {
                     source_entity: Some(caller),
+                    affected_state: None,
                 },
             );
             let (sound, category) = if self.entity.entity_type == &EntityType::FOX {

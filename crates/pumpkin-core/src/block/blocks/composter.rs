@@ -150,6 +150,7 @@ impl ComposterBlock {
             location.to_centered_f64(),
             &GameEventContext {
                 source_entity: source,
+                affected_state: None,
             },
         );
         if level == 7 {

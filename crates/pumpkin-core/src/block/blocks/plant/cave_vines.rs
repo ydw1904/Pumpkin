@@ -69,6 +69,7 @@ pub fn use_berries(world: &Arc<World>, pos: &BlockPos, source: &dyn EntityBase) 
         pos.to_centered_f64(),
         &GameEventContext {
             source_entity: Some(source),
+            affected_state: None,
         },
     );
     true

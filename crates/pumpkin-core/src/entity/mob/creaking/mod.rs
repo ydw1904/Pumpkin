@@ -208,6 +208,7 @@ impl CreakingEntity {
             entity.pos.load(),
             &GameEventContext {
                 source_entity: Some(self),
+                affected_state: None,
             },
         );
     }

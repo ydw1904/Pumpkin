@@ -171,11 +171,15 @@ impl SculkSpreader {
         self.cursors.clear();
     }
 
-    /// Returns a reference to the active cursors (for testing).
-    #[cfg(test)]
+    /// Returns the active cursors.
     #[must_use]
     pub fn cursors(&self) -> &[ChargeCursor] {
         &self.cursors
+    }
+
+    /// Adds a loaded cursor, respecting the [`MAX_CURSORS`] limit.
+    pub fn load_cursor(&mut self, cursor: ChargeCursor) {
+        self.add_cursor(cursor);
     }
 
     /// Main update loop over all active cursors.
@@ -207,6 +211,9 @@ impl SculkSpreader {
             cursor.update(level, origin_pos, random, config, spread_veins);
 
             if cursor.charge == 0 {
+                if !config.is_world_generation {
+                    level.sculk_charge(cursor.pos, 0);
+                }
                 continue;
             }
 
@@ -240,6 +247,27 @@ impl SculkSpreader {
             } else {
                 merge_index.insert(pos, processed.len());
                 processed.push(cursor);
+            }
+        }
+
+        if !config.is_world_generation {
+            // Vanilla's charge particles: one event per cursor position with the summed
+            // charge, sized by it and facing the merge target's faces.
+            let mut charges: Vec<(BlockPos, u32)> = Vec::new();
+            for cursor in &processed {
+                match charges.iter_mut().find(|(pos, _)| *pos == cursor.pos) {
+                    Some((_, charge)) => *charge += u32::from(cursor.charge),
+                    None => charges.push((cursor.pos, u32::from(cursor.charge))),
+                }
+            }
+            for (pos, charge) in charges {
+                let Some(faces) = merge_index.get(&pos).and_then(|&i| processed[i].faces) else {
+                    continue;
+                };
+                if charge > 0 {
+                    let particles = ((f64::from(charge)).ln_1p() / f64::from(2.3f32)) as i32 + 1;
+                    level.sculk_charge(pos, (particles << 6) + i32::from(faces));
+                }
             }
         }
 
@@ -315,6 +343,9 @@ impl ChargeCursor {
                 current_state = level.sculk_get(self.pos);
                 current_id = current_state.map_or(BlockId::AIR, BlockStateId::to_block_id);
             }
+            if spread && !config.is_world_generation {
+                level.sculk_spread_veins(self.pos);
+            }
         }
 
         // Apply charge decay / growth logic.
@@ -361,6 +392,12 @@ impl ChargeCursor {
                     self.faces = Some(Self::available_faces(state, id));
                 }
             }
+        } else if !config.is_world_generation
+            && let Some(state) = current_state
+            && is_sculk_behaviour(current_id)
+        {
+            // A level cursor that stays takes the faces of the block it's on.
+            self.faces = Some(Self::available_faces(state, current_id));
         }
 
         // Update delays.
@@ -456,6 +493,7 @@ impl ChargeCursor {
                     config.is_world_generation,
                 );
                 level.sculk_set(growth_pos, growth_state);
+                level.sculk_placed_growth(pos, growth_state);
             }
             // Consume charge (`Math.max(0, charge - xpPerGrowthSpawn)`).
             return charge.saturating_sub(xp_per_growth as u16);

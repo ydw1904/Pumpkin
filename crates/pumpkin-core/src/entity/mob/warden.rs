@@ -33,7 +33,7 @@ use crate::entity::{
         spawn::{EntitySpawnReason, SpawnGroupData},
         warden_anger::{AngerLevel, AngerManagement},
     },
-    vibration::VibrationData,
+    vibration::{ListenerSource, VibrationData},
 };
 use crate::plugin::api::events::entity::entity_target::TargetReason;
 use crate::world::World;
@@ -644,9 +644,12 @@ impl Mob for WardenEntity {
             .unwrap_or_else(PoisonError::into_inner)
             .tick(
                 &world,
-                entity.entity_id,
-                entity.get_eye_height() as f32,
+                ListenerSource::Entity {
+                    id: entity.entity_id,
+                    eye_height: entity.get_eye_height() as f32,
+                },
                 entity.get_eye_pos(),
+                || true,
             );
         if let Some(vibration) = received {
             let source = vibration.source_entity(&world);

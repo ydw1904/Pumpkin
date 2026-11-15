@@ -300,6 +300,7 @@ impl CreakingHeartBlockEntity {
             entity.pos.load(),
             &GameEventContext {
                 source_entity: Some(creaking.as_ref()),
+                affected_state: None,
             },
         );
         world.send_entity_status(entity, EntityStatus::Poof, ActorEventID::GroundDust);

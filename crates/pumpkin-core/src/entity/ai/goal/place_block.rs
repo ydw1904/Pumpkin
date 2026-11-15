@@ -95,6 +95,7 @@ impl Goal for PlaceBlockGoal {
             target_pos.to_centered_f64(),
             &GameEventContext {
                 source_entity: Some(source),
+                affected_state: None,
             },
         );
         enderman.set_carried_block(None);

@@ -981,6 +981,7 @@ impl EatBerriesGoal {
             pos.to_centered_f64(),
             &GameEventContext {
                 source_entity: Some(fox),
+                affected_state: None,
             },
         );
     }

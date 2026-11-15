@@ -187,6 +187,7 @@ impl BeehiveBlock {
             args.position.to_f64(),
             &crate::world::game_event::GameEventContext {
                 source_entity: Some(player.as_ref()),
+                affected_state: None,
             },
         );
         true
@@ -220,6 +221,7 @@ impl BeehiveBlock {
             args.position.to_f64(),
             &crate::world::game_event::GameEventContext {
                 source_entity: Some(player.as_ref()),
+                affected_state: None,
             },
         );
     }

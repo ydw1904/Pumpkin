@@ -19,6 +19,7 @@ pub mod bedrock;
 pub mod bell;
 pub mod blasting_furnace;
 pub mod brewing_stand;
+pub mod calibrated_sculk_sensor;
 pub mod chest;
 pub mod chest_like_block_entity;
 pub mod chiseled_bookshelf;
@@ -45,7 +46,6 @@ pub mod trapped_chest;
 pub mod banner;
 pub mod beehive;
 pub mod brushable_block;
-pub mod calibrated_sculk_sensor;
 pub mod campfire;
 pub mod conduit;
 pub mod container_loot;
@@ -191,6 +191,12 @@ pub trait BlockEntity: Any + Send + Sync {
     fn clear_comparator_dirty(&self) {}
 
     fn as_any(&self) -> &dyn Any;
+
+    /// The listener of a vanilla `GameEventListener.Provider` block entity.
+    fn game_event_listener(&self) -> Option<&dyn crate::world::game_event::GameEventListener> {
+        None
+    }
+
     fn to_property_delegate(self: Arc<Self>) -> Option<Arc<dyn PropertyDelegate>> {
         None
     }
@@ -290,6 +296,7 @@ pub fn vanilla_block_entity_fields(id: &str) -> Option<&'static [&'static str]> 
             &["last_vibration_frequency", "listener"]
         }
         "minecraft:sculk_shrieker" => &["listener", "warning_level"],
+        "minecraft:sculk_catalyst" => &["cursors"],
         "minecraft:jigsaw" => &[
             "final_state",
             "joint",

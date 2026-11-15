@@ -227,6 +227,7 @@ impl EndermanEntity {
             origin,
             &GameEventContext {
                 source_entity: Some(self),
+                affected_state: None,
             },
         );
         if !entity.is_silent() {

@@ -4227,7 +4227,14 @@ impl Entity {
             }
         }
         if should_vibrate {
-            self.emit_own_game_event(caller, GameEvent::Step);
+            self.world.load().emit_game_event_with_context(
+                GameEvent::Step.name(),
+                self.pos.load(),
+                &crate::world::game_event::GameEventContext {
+                    source_entity: Some(caller),
+                    affected_state: Some(state.id),
+                },
+            );
         }
         true
     }
@@ -4317,6 +4324,7 @@ impl Entity {
             self.pos.load(),
             &crate::world::game_event::GameEventContext {
                 source_entity: Some(caller),
+                affected_state: None,
             },
         );
     }
@@ -6083,6 +6091,7 @@ impl Entity {
                 self.pos.load(),
                 &crate::world::game_event::GameEventContext {
                     source_entity: player,
+                    affected_state: None,
                 },
             );
         }

@@ -370,6 +370,7 @@ impl ShulkerEntity {
             entity.pos.load(),
             &GameEventContext {
                 source_entity: Some(self),
+                affected_state: None,
             },
         );
         self.store_raw_peek(amount);
@@ -534,6 +535,7 @@ impl ShulkerEntity {
                 old_pos.to_centered_f64(),
                 &GameEventContext {
                     source_entity: Some(self),
+                    affected_state: None,
                 },
             );
             world.sync_world_event(

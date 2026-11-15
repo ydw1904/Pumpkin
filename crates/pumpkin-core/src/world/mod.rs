@@ -372,6 +372,8 @@ pub struct World {
     /// Block entities indexed by chunk, so ticking only visits the currently
     /// active chunks instead of scanning every loaded block entity each tick.
     pub block_entities: DashMap<Vector2<i32>, FxHashMap<BlockPos, Arc<dyn BlockEntity>>>,
+    /// The positions in `block_entities` whose block entity listens to game events.
+    pub(crate) block_listeners: game_event::BlockListenerRegistry,
     pending_block_entity_migrations: crossbeam::queue::SegQueue<Vector2<i32>>,
     /// Persistent custom data for the world (matching Bukkit's `PersistentDataHolder`)
     pub custom_data: std::sync::Mutex<NbtCompound>,
@@ -597,6 +599,7 @@ impl World {
             forced_chunks: std::sync::Mutex::new(forced_chunks),
             server,
             block_entities: DashMap::with_shard_amount(TICK_SCANNED_MAP_SHARDS),
+            block_listeners: game_event::BlockListenerRegistry::default(),
             pending_block_entity_migrations: crossbeam::queue::SegQueue::new(),
             custom_data: std::sync::Mutex::new(custom_data),
             custom_block_entity_data: DashMap::new(),
@@ -2023,6 +2026,7 @@ impl World {
                 ));
             }
         }
+        stand_ins.extend(self.block_listener_stand_ins(run.iter().map(|(_, chunk)| *chunk)));
         // Everything else is idle for this run, including entities that ticked or were spawned
         // earlier in the tick, so they are read where they are now.
         let mut idle_entities = Vec::new();
@@ -6548,6 +6552,7 @@ impl World {
                     self.unmodelled_block_entity_nbt.remove(position);
                 }
             }
+            self.block_listeners.remove_chunk(chunk_pos);
         }
     }
 
@@ -8286,6 +8291,7 @@ impl World {
             .entry(chunk_pos)
             .or_default()
             .insert(*block_pos, entity.clone());
+        self.block_listeners.update(entity.as_ref());
         Some(entity)
     }
 
@@ -8398,6 +8404,7 @@ impl World {
         }
 
         self.set_block_entity_world(block_entity.as_ref());
+        self.block_listeners.update(block_entity.as_ref());
         self.block_entities
             .entry(chunk_pos)
             .or_default()
@@ -8574,6 +8581,7 @@ impl World {
                 .is_some_and(|mut chunk_block_entities| {
                     chunk_block_entities.remove(block_pos).is_some()
                 });
+        self.block_listeners.remove(block_pos);
         self.custom_block_entity_data.remove(block_pos);
         self.unmodelled_block_entity_nbt.remove(block_pos);
         if removed || removed_pending {
@@ -9181,6 +9189,7 @@ impl World {
             position,
             &game_event::GameEventContext {
                 source_entity: None,
+                affected_state: None,
             },
         );
     }

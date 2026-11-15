@@ -81,6 +81,25 @@ pub trait SculkLevel {
     /// Whether the block at `pos` is a full cube (collision-shape full block,
     /// used by `canSpreadFrom`).
     fn sculk_is_full_cube(&self, pos: BlockPos) -> bool;
+
+    /// Sets a block placed by multiface vein spreading, which vanilla places
+    /// without neighbour updates.
+    fn sculk_set_spread(&mut self, pos: BlockPos, state: &'static BlockState) {
+        self.sculk_set(pos, state);
+    }
+
+    /// A cursor spread veins at `pos` in a level (vanilla plays
+    /// `SCULK_BLOCK_SPREAD`).
+    fn sculk_spread_veins(&mut self, _pos: BlockPos) {}
+
+    /// A vein turned `replaced` at `pos` into sculk in a level.
+    fn sculk_placed_sculk(&mut self, _pos: BlockPos, _replaced: BlockStateId) {}
+
+    /// Sculk at `charge_pos` grew `growth` above it in a level.
+    fn sculk_placed_growth(&mut self, _charge_pos: BlockPos, _growth: &'static BlockState) {}
+
+    /// Vanilla level event 3006 (sculk charge particles) in a level.
+    fn sculk_charge(&mut self, _pos: BlockPos, _data: i32) {}
 }
 
 /// Returns `true` if the block id behaves like sculk for spreading.

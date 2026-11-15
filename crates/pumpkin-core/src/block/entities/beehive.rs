@@ -332,6 +332,7 @@ impl BeehiveBlockEntity {
             self.position.to_centered_f64(),
             &GameEventContext {
                 source_entity: Some(bee),
+                affected_state: None,
             },
         );
         entity.remove();
@@ -538,6 +539,7 @@ impl BeehiveBlockEntity {
             pos.to_centered_f64(),
             &GameEventContext {
                 source_entity: Some(entity.as_ref()),
+                affected_state: None,
             },
         );
         world.spawn_entity(entity.clone()).then_some(entity)

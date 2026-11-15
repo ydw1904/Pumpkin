@@ -3,7 +3,7 @@ use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
 
 use super::{AllayEntity, ai};
 use crate::entity::EntityBase;
-use crate::entity::vibration::{VibrationInfo, is_occluded, is_valid_vibration};
+use crate::entity::vibration::{ListenerSource, VibrationInfo, is_occluded, is_valid_vibration};
 use crate::world::{
     World,
     game_event::{GameEventContext, GameEventListener},
@@ -64,7 +64,12 @@ impl GameEventListener for VibrationListener<'_> {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .has_current()
-            || !is_valid_vibration(&tag::GameEvent::MINECRAFT_ALLAY_CAN_LISTEN, event, context)
+            || !is_valid_vibration(
+                &tag::GameEvent::MINECRAFT_ALLAY_CAN_LISTEN,
+                event,
+                context,
+                false,
+            )
         {
             return false;
         }
@@ -116,9 +121,12 @@ impl AllayEntity {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .tick(
                 &world,
-                entity.entity_id,
-                entity.get_eye_height() as f32,
+                ListenerSource::Entity {
+                    id: entity.entity_id,
+                    eye_height: entity.get_eye_height() as f32,
+                },
                 self.get_eye_pos(),
+                || true,
             );
         if let Some(event) = received.filter(|event| event.event == GameEvent::NoteBlockPlay) {
             ai::hear_noteblock(self, BlockPos::floored_v(event.pos));
@@ -161,6 +169,7 @@ mod tests {
             GameEvent::NoteBlockPlay,
             &GameEventContext {
                 source_entity: None,
+                affected_state: None,
             },
             origin,
         );
@@ -182,6 +191,7 @@ mod tests {
             GameEvent::NoteBlockPlay,
             &GameEventContext {
                 source_entity: None,
+                affected_state: None,
             },
             origin,
         );
@@ -213,6 +223,7 @@ mod tests {
             GameEvent::NoteBlockPlay,
             &GameEventContext {
                 source_entity: None,
+                affected_state: None,
             },
             origin.to_centered_f64(),
         );

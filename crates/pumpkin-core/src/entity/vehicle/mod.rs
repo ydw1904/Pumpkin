@@ -22,6 +22,7 @@ pub(crate) fn chest_vehicle_opened(entity: &Entity, player: &Arc<Player>) {
         entity.pos.load(),
         &GameEventContext {
             source_entity: Some(player.as_ref()),
+            affected_state: None,
         },
     );
     PiglinAi::anger_nearby_piglins(&world, player, true);
@@ -42,6 +43,7 @@ pub(crate) fn chest_vehicle_closed(entity_id: i32, player: &dyn InventoryPlayer)
         vehicle.get_entity().pos.load(),
         &GameEventContext {
             source_entity: Some(player),
+            affected_state: None,
         },
     );
 }

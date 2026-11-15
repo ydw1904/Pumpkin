@@ -6331,6 +6331,17 @@ impl Player {
         if state.is_air() {
             return false;
         }
+        // Vanilla `Block.playerWillDestroy`, emitted once the break goes ahead.
+        let emit_destroy = || {
+            world.emit_game_event_with_context(
+                pumpkin_data::game_event::GameEvent::BlockDestroy.name(),
+                position.to_centered_f64(),
+                &crate::world::game_event::GameEventContext {
+                    source_entity: Some(self.as_ref()),
+                    affected_state: Some(state.id),
+                },
+            );
+        };
 
         let held = self.inventory().held_item();
         let gamemode = self.gamemode.load();
@@ -6360,6 +6371,7 @@ impl Player {
                     | pumpkin_world::world::BlockFlags::SKIP_DROPS,
             );
             if new_state.is_some() {
+                emit_destroy();
                 if let Some(server) = &server {
                     server
                         .block_registry
@@ -6380,6 +6392,7 @@ impl Player {
 
         let new_state = world.break_block(position, Some(self), flags);
         if new_state.is_some() {
+            emit_destroy();
             if let Some(server) = &server {
                 server
                     .block_registry

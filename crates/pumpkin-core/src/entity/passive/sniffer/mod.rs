@@ -338,6 +338,7 @@ impl SnifferEntity {
                 self.get_head_block().to_centered_f64(),
                 &crate::world::game_event::GameEventContext {
                     source_entity: Some(self),
+                    affected_state: None,
                 },
             );
         }

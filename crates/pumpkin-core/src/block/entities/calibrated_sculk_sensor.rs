@@ -1,12 +1,15 @@
-use super::BlockEntity;
+use std::sync::Arc;
+
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
-use std::sync::Mutex;
 
-pub struct CalibratedSculkSensorBlockEntity {
-    pub position: BlockPos,
-    pub last_vibration_frequency: Mutex<i32>,
-}
+use super::BlockEntity;
+use super::sculk_sensor::SculkSensorBlockEntity;
+use crate::world::World;
+use crate::world::game_event::GameEventListener;
+
+/// Vanilla `CalibratedSculkSensorBlockEntity`: a sculk sensor with the calibrated listener.
+pub struct CalibratedSculkSensorBlockEntity(pub SculkSensorBlockEntity);
 
 impl BlockEntity for CalibratedSculkSensorBlockEntity {
     fn resource_location(&self) -> &'static str {
@@ -14,38 +17,38 @@ impl BlockEntity for CalibratedSculkSensorBlockEntity {
     }
 
     fn get_position(&self) -> BlockPos {
-        self.position
+        self.0.position
     }
 
-    fn from_nbt(nbt: &pumpkin_nbt::compound::NbtCompound, position: BlockPos) -> Self
+    fn from_nbt(nbt: &NbtCompound, position: BlockPos) -> Self
     where
         Self: Sized,
     {
-        let last_vibration_frequency = nbt.get_int("last_vibration_frequency").unwrap_or(0);
-        Self {
-            position,
-            last_vibration_frequency: Mutex::new(last_vibration_frequency),
-        }
+        Self(SculkSensorBlockEntity::load(nbt, position, true))
     }
 
     fn write_nbt(&self, nbt: &mut NbtCompound) {
-        if let Ok(freq) = self.last_vibration_frequency.lock() {
-            nbt.put_int("last_vibration_frequency", *freq);
-        }
+        self.0.write_nbt(nbt);
+    }
+
+    fn tick(&self, world: &Arc<World>) {
+        self.0.tick(world);
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
+
+    fn game_event_listener(&self) -> Option<&dyn GameEventListener> {
+        Some(&self.0)
+    }
 }
 
 impl CalibratedSculkSensorBlockEntity {
     pub const ID: &'static str = "minecraft:calibrated_sculk_sensor";
+
     #[must_use]
-    pub const fn new(position: BlockPos) -> Self {
-        Self {
-            position,
-            last_vibration_frequency: Mutex::new(0),
-        }
+    pub fn new(position: BlockPos) -> Self {
+        Self(SculkSensorBlockEntity::new_calibrated(position))
     }
 }

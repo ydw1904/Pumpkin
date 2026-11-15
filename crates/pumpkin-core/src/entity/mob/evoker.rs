@@ -295,6 +295,7 @@ impl EvokerAttackSpell {
                 fangs_pos,
                 &GameEventContext {
                     source_entity: Some(mob),
+                    affected_state: None,
                 },
             );
         }
@@ -445,6 +446,7 @@ impl Spell for EvokerSummonSpell {
                 pos.to_centered_f64(),
                 &GameEventContext {
                     source_entity: Some(mob),
+                    affected_state: None,
                 },
             );
         }
