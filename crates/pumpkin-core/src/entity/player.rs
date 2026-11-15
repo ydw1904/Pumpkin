@@ -1837,10 +1837,6 @@ impl Player {
             return;
         }
 
-        if is_mace_smash && damage >= 100.0 {
-            self.trigger_advancement(crate::entity::player::advancement::trigger::AdvancementTrigger::DealtOverkillDamage);
-        }
-
         // Vanilla `causeExtraKnockback`: the Knockback enchantment plus 0.5 for a sprint attack.
         // `handle_knockback` halves `strength`, so these are twice the vanilla amount.
         if victim.get_living_entity().is_some() {

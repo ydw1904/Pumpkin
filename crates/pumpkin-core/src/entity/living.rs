@@ -5035,6 +5035,19 @@ impl LivingEntity {
             }
         }
 
+        if let Some(attacker) = cause.or(source).and_then(EntityBase::get_player) {
+            attacker.trigger_advancement(
+                crate::entity::player::advancement::trigger::AdvancementTrigger::PlayerHurtEntity {
+                    is_blocked: blocked,
+                    is_projectile: damage_type.has_tag(&tag::DamageType::MINECRAFT_IS_PROJECTILE),
+                    is_mace_smash: damage_type.has_tag(&tag::DamageType::MINECRAFT_MACE_SMASH),
+                    damage: f64::from(amount),
+                    direct_entity_type: source
+                        .map(|direct| direct.get_entity().entity_type.resource_name),
+                },
+            );
+        }
+
         success
     }
 

@@ -43,7 +43,13 @@ pub enum AdvancementTrigger {
     },
     LaunchedEyeOfEnder,
     GlowedSign,
-    DealtOverkillDamage,
+    PlayerHurtEntity {
+        is_blocked: bool,
+        is_projectile: bool,
+        is_mace_smash: bool,
+        damage: f64,
+        direct_entity_type: Option<&'static str>,
+    },
     Bullseye,
     CuredZombieVillager,
     TradedWithVillager,
@@ -433,11 +439,21 @@ impl Player {
                 self.trigger_criterion_event("minecraft:item_used_on_block", |_cond| true);
             }
 
-            AdvancementTrigger::DealtOverkillDamage => {
+            AdvancementTrigger::PlayerHurtEntity {
+                is_blocked,
+                is_projectile,
+                is_mace_smash,
+                damage,
+                direct_entity_type,
+            } => {
                 self.trigger_criterion_event("minecraft:player_hurt_entity", |cond| match cond {
-                    CriterionConditions::PlayerHurtEntity(pred) => {
-                        pred.matches(false, false, Some(100.0))
-                    }
+                    CriterionConditions::PlayerHurtEntity(pred) => pred.matches_with_context(
+                        is_blocked,
+                        is_projectile,
+                        is_mace_smash,
+                        Some(damage),
+                        direct_entity_type,
+                    ),
                     CriterionConditions::Custom { .. } => true,
                     _ => false,
                 });
