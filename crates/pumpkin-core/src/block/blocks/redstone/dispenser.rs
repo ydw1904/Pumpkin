@@ -1258,6 +1258,8 @@ impl DispenserBlock {
             .set_block_state(&target, props.to_state_id(block), BlockFlags::NOTIFY_ALL);
         if let Some(block_entity) = ctx.world.get_block_entity(&target) {
             block_entity.apply_item_components(&placed);
+            ctx.world
+                .keep_placed_item_components(block_entity.as_ref(), &placed);
         }
         Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserDispense);
 

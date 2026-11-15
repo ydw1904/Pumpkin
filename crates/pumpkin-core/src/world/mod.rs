@@ -94,6 +94,7 @@ use pumpkin_data::block_properties::{
     SnowLikeProperties, WaterLikeProperties, blocks_movement, is_air,
 };
 use pumpkin_data::block_rotation::{Mirror, Rotation};
+use pumpkin_data::data_component::DataComponent;
 use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::dimension::Dimension;
 use pumpkin_data::entity::MobCategory;
@@ -213,6 +214,8 @@ use uuid::Uuid;
 use weather::Weather;
 
 const MAX_LIGHT_LEVEL: u8 = 15;
+/// Vanilla `BlockEntity.components`, saved under this tag.
+const BLOCK_ENTITY_COMPONENTS_TAG: &str = "components";
 const LIGHTNING_ROD_SEARCH_RADIUS: i32 = 128;
 /// The fewest entities a rayon job takes in the per-entity scans of the tick. Each entity costs
 /// a few loads, so a smaller job costs less than waking a worker for it.
@@ -8425,6 +8428,75 @@ impl World {
         nbt
     }
 
+    /// The rest of vanilla `BlockEntity.applyComponents` after
+    /// [`BlockEntity::apply_item_components`]: the placed item's components that the block
+    /// entity doesn't read are kept in its `components` field. Vanilla collects exactly the
+    /// components it reads, so the ones [`BlockEntity::collect_item_components`] gives back
+    /// count as read.
+    pub fn keep_placed_item_components(&self, block_entity: &dyn BlockEntity, stack: &ItemStack) {
+        let mut implicit = ItemStack::new(1, stack.item);
+        block_entity.collect_item_components(&mut implicit);
+        let mut components = NbtCompound::new();
+        for (id, component) in &stack.patch {
+            let Some(component) = component else {
+                continue;
+            };
+            if !id.is_persistent()
+                || matches!(
+                    id,
+                    DataComponent::BlockEntityData | DataComponent::BlockState
+                )
+                || implicit.patch.iter().any(|(read, _)| read == id)
+            {
+                continue;
+            }
+            let tag = component.write_data();
+            if !matches!(tag, pumpkin_nbt::tag::NbtTag::End) {
+                components.put(id.to_name(), tag);
+            }
+        }
+        let position = block_entity.get_position();
+        let mut unmodelled = self
+            .unmodelled_block_entity_nbt
+            .entry(position)
+            .or_default();
+        if components.is_empty() {
+            unmodelled.child_tags.remove(BLOCK_ENTITY_COMPONENTS_TAG);
+        } else {
+            unmodelled.put_compound(BLOCK_ENTITY_COMPONENTS_TAG, components);
+        }
+        let empty = unmodelled.is_empty();
+        drop(unmodelled);
+        if empty {
+            self.unmodelled_block_entity_nbt
+                .remove_if(&position, |_, unmodelled| unmodelled.is_empty());
+        }
+    }
+
+    /// Vanilla `BlockEntity.collectComponents`: the components kept from the placed item, then
+    /// the ones the block entity collects itself.
+    pub fn collect_block_entity_components(
+        &self,
+        block_entity: &dyn BlockEntity,
+        stack: &mut ItemStack,
+    ) {
+        if let Some(unmodelled) = self
+            .unmodelled_block_entity_nbt
+            .get(&block_entity.get_position())
+            && let Some(components) = unmodelled.get_compound(BLOCK_ENTITY_COMPONENTS_TAG)
+        {
+            for (name, tag) in &components.child_tags {
+                if let Some(id) = DataComponent::try_from_name(name)
+                    && let Some(component) = pumpkin_data::data_component_impl::read_data(id, tag)
+                {
+                    stack.patch.retain(|(seen, _)| *seen != id);
+                    stack.patch.push((id, Some(component)));
+                }
+            }
+        }
+        block_entity.collect_item_components(stack);
+    }
+
     /// Loads `nbt` into the block entity at its position (vanilla `loadWithComponents`), keeping
     /// the fields Pumpkin doesn't model as they are in `nbt`. Returns whether the modelled data
     /// changed.
@@ -9723,7 +9795,7 @@ fn unmodelled_block_entity_fields(
     let vanilla_fields = vanilla_block_entity_fields(block_entity.resource_location());
     let mut unmodelled = NbtCompound::new();
     for (name, tag) in &nbt.child_tags {
-        let vanilla_reads = &**name == "components"
+        let vanilla_reads = &**name == BLOCK_ENTITY_COMPONENTS_TAG
             || vanilla_fields.is_none_or(|fields| fields.contains(&&**name));
         if vanilla_reads
             && !written.has(name)

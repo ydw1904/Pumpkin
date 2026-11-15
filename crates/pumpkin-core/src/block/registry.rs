@@ -906,8 +906,10 @@ impl BlockRegistry {
                     world.add_block_entity(reloaded);
                 }
             }
+            // Vanilla `BlockItem.updateBlockEntityComponents`
             if let Some(block_entity) = world.get_block_entity(&final_block_pos) {
                 block_entity.apply_item_components(stack);
+                world.keep_placed_item_components(block_entity.as_ref(), stack);
             }
         }
 

@@ -228,7 +228,11 @@ impl Generator<'_, '_> {
         let include = components("include");
         let exclude = components("exclude").unwrap_or_default();
         let mut collected = ItemStack::new(1, stack.stack.item);
-        block_entity.collect_item_components(&mut collected);
+        if let Some(world) = self.params.world {
+            world.collect_block_entity_components(block_entity, &mut collected);
+        } else {
+            block_entity.collect_item_components(&mut collected);
+        }
         for (id, component) in collected.patch {
             if exclude.contains(&id)
                 || include
