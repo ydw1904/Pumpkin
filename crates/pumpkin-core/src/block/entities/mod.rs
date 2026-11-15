@@ -592,6 +592,38 @@ pub fn has_block_block_entity(block: &Block) -> bool {
     BLOCK_ENTITY_TYPES.contains(&block.name)
 }
 
+/// [`create_block_entity`] with the fields vanilla's constructors take from the block state.
+#[must_use]
+pub fn create_block_entity_for_state(
+    state_id: BlockStateId,
+    position: BlockPos,
+) -> Option<Arc<dyn BlockEntity>> {
+    use pumpkin_data::BlockState;
+    use pumpkin_data::block_properties::StructureblockMode;
+
+    let state = BlockState::from_id(state_id);
+    if state.block_entity_type == u16::MAX {
+        return None;
+    }
+    let block = Block::from_state_id(state_id);
+    let name = BLOCK_ENTITY_TYPES.get(state.block_entity_type as usize)?;
+    match *name {
+        "structure_block" => {
+            let mode = structure_block::StructureBlockBlockEntity::mode_from_block_state(state_id)
+                .unwrap_or(StructureblockMode::Load);
+            Some(Arc::new(
+                structure_block::StructureBlockBlockEntity::new_with_mode(position, mode),
+            ))
+        }
+        "command_block" => Some(Arc::new(command_block::CommandBlockEntity::new(
+            position,
+            true,
+            block == &Block::CHAIN_COMMAND_BLOCK,
+        ))),
+        _ => create_block_entity(state.block_entity_type, position),
+    }
+}
+
 #[must_use]
 #[allow(clippy::too_many_lines)]
 pub fn create_block_entity(

@@ -6846,6 +6846,7 @@ impl World {
 
     /// Everything `set_block_state` does after the chunk write: callbacks, neighbour updates,
     /// client sync, POI and lighting (when `update_light` is set).
+    #[expect(clippy::too_many_lines, reason = "one step per part of vanilla `setBlock`")]
     fn on_block_state_set(
         self: &Arc<Self>,
         position: &BlockPos,
@@ -6908,6 +6909,14 @@ impl World {
                     block_moved,
                 );
             }
+        } else if is_new_block
+            && new_block.default_state.block_entity_type != u16::MAX
+            && self.get_block_entity(position).is_none()
+            && let Some(entity) =
+                crate::block::entities::create_block_entity_for_state(block_state_id, *position)
+        {
+            // `LevelChunk.setBlockState` creates the block entity even when `onPlace` is skipped.
+            self.add_block_entity(entity);
         }
 
         // Level.java setBlock
@@ -7004,7 +7013,6 @@ impl World {
         self.set_block_state(position, state_id, BlockFlags::NOTIFY_ALL);
     }
 
-    #[expect(clippy::too_many_lines)]
     pub fn break_block(
         self: &Arc<Self>,
         position: &BlockPos,
@@ -8221,8 +8229,8 @@ impl World {
         pos: &BlockPos,
     ) -> BlockStateId {
         let mut current_state_id = state_id;
-        let block = Block::from_state_id(state_id);
         for direction in BlockDirection::all() {
+            let block = Block::from_state_id(current_state_id);
             let neighbor_pos = pos.offset(direction.to_offset());
             let neighbor_state_id = self.get_block_state_id(&neighbor_pos);
             current_state_id = self.block_registry.get_state_for_neighbor_update(
