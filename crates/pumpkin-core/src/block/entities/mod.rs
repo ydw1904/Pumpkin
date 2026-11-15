@@ -330,6 +330,39 @@ pub fn vanilla_block_entity_fields(id: &str) -> Option<&'static [&'static str]> 
     })
 }
 
+/// The fields vanilla's `removeComponentsFromTag` drops for block entity type `id`: the
+/// ones its item components carry instead.
+#[must_use]
+pub fn block_entity_component_fields(id: &str) -> &'static [&'static str] {
+    const CONTAINER: &[&str] = &["CustomName", "lock", "Items"];
+    const RANDOMIZABLE_CONTAINER: &[&str] =
+        &["CustomName", "lock", "Items", "LootTable", "LootTableSeed"];
+    match id {
+        "minecraft:barrel"
+        | "minecraft:chest"
+        | "minecraft:trapped_chest"
+        | "minecraft:dispenser"
+        | "minecraft:dropper"
+        | "minecraft:shulker_box"
+        | "minecraft:hopper"
+        | "minecraft:crafter" => RANDOMIZABLE_CONTAINER,
+        "minecraft:furnace"
+        | "minecraft:blast_furnace"
+        | "minecraft:smoker"
+        | "minecraft:brewing_stand" => CONTAINER,
+        "minecraft:banner" => &["patterns", "CustomName"],
+        "minecraft:beacon" => &["CustomName", "lock"],
+        "minecraft:beehive" => &["bees"],
+        "minecraft:campfire" | "minecraft:chiseled_bookshelf" | "minecraft:shelf" => &["Items"],
+        "minecraft:command_block" => &["CustomName", "conditionMet", "powered"],
+        "minecraft:decorated_pot" => &["sherds", "item"],
+        "minecraft:enchanting_table" => &["CustomName"],
+        "minecraft:sign" | "minecraft:hanging_sign" => &["front_text", "back_text", "is_waxed"],
+        "minecraft:skull" => &["profile", "note_block_sound", "custom_name"],
+        _ => &[],
+    }
+}
+
 #[must_use]
 pub fn block_entity_from_generic<T: BlockEntity>(nbt: &NbtCompound) -> T {
     let x = nbt.get_int("x").unwrap_or(0);

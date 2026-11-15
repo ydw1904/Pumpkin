@@ -23,17 +23,63 @@ impl JavaClient {
         let Some(item) = Item::from_id(block.item_id) else {
             return;
         };
+        let include_data = player.is_creative() && pick_item.include_data;
+        let state_id = world.get_block_state_id(&pick_item.pos);
+        let block_entity = world.get_block_entity(&pick_item.pos);
         let mut stack = ItemStack::new(1, item);
-        if block.has_tag(&pumpkin_data::tag::Block::MINECRAFT_COPPER_GOLEM_STATUES)
-            && let Some(block_entity) = world.get_block_entity(&pick_item.pos)
-            && let Some(statue) = block_entity.as_any().downcast_ref::<
+        // The `getCloneItemStack` overrides that read the block entity.
+        if let Some(block_entity) = &block_entity {
+            if let Some(statue) = block_entity.as_any().downcast_ref::<
                 crate::block::entities::copper_golem_statue::CopperGolemStatueBlockEntity,
-            >()
+            >() {
+                let props =
+                    pumpkin_data::block_properties::CopperGolemStatueLikeProperties::from_state_id(
+                        state_id,
+                    );
+                statue.get_item(&mut stack, props.copper_golem_pose);
+            } else if block_entity
+                .as_any()
+                .is::<crate::block::entities::banner::BannerBlockEntity>()
+            {
+                // `BannerBlockEntity.getItem`
+                world.collect_block_entity_components(block_entity.as_ref(), &mut stack);
+            } else if block_entity
+                .as_any()
+                .is::<crate::block::entities::decorated_pot::DecoratedPotBlockEntity>()
+            {
+                // `DecoratedPotBlockEntity.createDecoratedPotInstance`
+                let mut collected = ItemStack::new(1, item);
+                block_entity.collect_item_components(&mut collected);
+                if let Some(decorations) = collected
+                    .get_data_component::<pumpkin_data::data_component_impl::PotDecorationsImpl>()
+                {
+                    stack.set_data_component(decorations.clone());
+                }
+            }
+        }
+        if include_data
+            && block.has_tag(&pumpkin_data::tag::Block::MINECRAFT_BEEHIVES)
+            && let Some(props) = block.properties(state_id)
         {
-            let props = pumpkin_data::block_properties::CopperGolemStatueLikeProperties::from_state_id(
-                world.get_block_state_id(&pick_item.pos),
-            );
-            statue.get_item(&mut stack, props.copper_golem_pose);
+            // `BeehiveBlock.getCloneItemStack`
+            stack.set_data_component(pumpkin_data::data_component_impl::BlockStateImpl {
+                properties: std::borrow::Cow::Owned(
+                    props
+                        .to_props()
+                        .into_iter()
+                        .filter(|property| property.key().to_str() == "honey_level")
+                        .map(|property| {
+                            (
+                                std::borrow::Cow::Borrowed("honey_level"),
+                                std::borrow::Cow::Owned(property.value_str().to_owned()),
+                            )
+                        })
+                        .collect(),
+                ),
+            });
+        }
+        if include_data && let Some(block_entity) = &block_entity {
+            Self::add_block_data_to_item(&world, block_entity.as_ref(), &mut stack);
         }
 
         let slot_with_stack = player.inventory().get_slot_with_stack(&stack);
@@ -58,6 +104,31 @@ impl JavaClient {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .send_content_updates();
+    }
+
+    /// Vanilla `addBlockDataToItem`: the block entity's data without the fields its components
+    /// carry, then its components.
+    fn add_block_data_to_item(
+        world: &crate::world::World,
+        block_entity: &dyn crate::block::entities::BlockEntity,
+        stack: &mut ItemStack,
+    ) {
+        let mut nbt = world.block_entity_data(block_entity);
+        let id = block_entity.resource_location();
+        for field in ["id", "x", "y", "z", "components"].into_iter().chain(
+            crate::block::entities::block_entity_component_fields(id)
+                .iter()
+                .copied(),
+        ) {
+            nbt.child_tags.remove(field);
+        }
+        // `BlockItem.setBlockEntityData` leaves the component out when nothing is left.
+        if !nbt.is_empty() {
+            nbt.put_string("id", id.to_string());
+            stack
+                .set_data_component(pumpkin_data::data_component_impl::BlockEntityDataImpl { nbt });
+        }
+        world.collect_block_entity_components(block_entity, stack);
     }
 
     pub fn handle_pick_item_from_entity(
