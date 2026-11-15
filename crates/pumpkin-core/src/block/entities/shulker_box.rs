@@ -6,6 +6,7 @@ use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tag::Taggable;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::random::gameplay::game_random;
 use std::any::Any;
 use std::sync::RwLock;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -226,7 +227,13 @@ impl ShulkerBoxBlockEntity {
             Sound::BlockShulkerBoxClose
         };
 
-        world.play_sound(sound, SoundCategory::Blocks, &position.to_f64());
+        world.play_sound_fine(
+            sound,
+            SoundCategory::Blocks,
+            &position.to_centered_f64(),
+            0.5,
+            game_random().next_f32() * 0.1 + 0.9,
+        );
     }
 }
 
