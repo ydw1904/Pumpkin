@@ -24,6 +24,8 @@ const place = async (x, y, z, block) => {
 }
 // Only the named drops: the terrain around the arena drops its own items.
 const drops = (names) => named('item').map(e => e.getDroppedItem()).filter(it => it && names.includes(it.name)).map(h.stackStr).sort().join(',') || 'none'
+// The component types a dropped or picked up hive carries.
+const hiveComponents = (it) => `${it.name}${JSON.stringify((it.componentMap && [...it.componentMap.keys()].sort()) || [])}`
 // Bees from nests in the terrain below can fly into view; only those near the hive count.
 const nearHive = (x, z) => named('bee').filter(b => b.position.distanceTo(new h.Vec3(x + 0.5, Y + 1.5, z + 0.5)) < 8)
 const clean = async () => {
@@ -269,6 +271,17 @@ h.start(async () => {
   h.cmd('difficulty normal')
   await clean()
 
+  // Mining a full hive with silk touch keeps its bees and honey level (`copy_components` and
+  // `copy_state` in its loot table).
+  await clean()
+  await place(X + 2, Y + 1, Z + 2, 'beehive[facing=west,honey_level=3]{bees:[{entity_data:{id:"minecraft:bee"},ticks_in_hive:0,min_ticks_in_hive:600}]}')
+  await h.fill({ 0: 'iron_axe[enchantments={silk_touch:1}]' })
+  bot.setQuickBarSlot(0)
+  await bot.dig(h.block(X + 2, Y + 1, Z + 2)).catch(e => h.result('hive_silk.error', e.message))
+  await h.waitFor(() => bot.inventory.items().some(it => it.name === 'beehive'), 5000)
+  h.result('hive_silk', bot.inventory.items().filter(it => it.name === 'beehive').map(hiveComponents).join(' ') || 'none')
+  await h.clear()
+
   // TNT blowing a hive up lets its bees out. Last, since the blast breaks the arena.
   await h.tp(X + 6.5, Y + 1, Z + 6.5)
   await place(X - 5, Y + 1, Z - 5, 'beehive[facing=west]{bees:[{entity_data:{id:"minecraft:bee"},ticks_in_hive:0,min_ticks_in_hive:600}]}')
@@ -276,5 +289,17 @@ h.start(async () => {
   h.cmd(`summon tnt ${X - 4.5} ${Y + 1} ${Z - 3.5} {fuse:0}`)
   await h.serverTicks(10)
   h.result('hive_tnt', `hive=${h.blockName(X - 5, Y + 1, Z - 5)} bees=${nearHive(X - 5, Z - 5).length}`)
+  await clean()
+
+  // An end crystal's blast drops the hive without its bees, which die with it.
+  h.cmd(`effect give ${bot.username} resistance infinite 255 true`)
+  await h.tp(X + 6.5, Y + 1, Z - 6.5)
+  await place(X + 5, Y + 1, Z + 5, 'beehive[facing=west]{bees:[{entity_data:{id:"minecraft:bee"},ticks_in_hive:0,min_ticks_in_hive:600}]}')
+  h.cmd(`summon end_crystal ${X + 3.5} ${Y + 1} ${Z + 5.5} {ShowBottom:0b}`)
+  await h.serverTicks(5)
+  h.cmd('damage @e[type=end_crystal,limit=1] 1')
+  await h.serverTicks(10)
+  const hives = named('item').map(e => e.getDroppedItem()).filter(it => it && it.name === 'beehive')
+  h.result('hive_crystal', `drops=${hives.map(hiveComponents).join(' ') || 'none'} bees=${nearHive(X + 5, Z + 5).length}`)
   await clean()
 })

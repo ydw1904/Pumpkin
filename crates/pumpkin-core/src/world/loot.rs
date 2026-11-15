@@ -1,4 +1,4 @@
-use crate::{entity::EntityBase, world::World};
+use crate::{block::entities::BlockEntity, entity::EntityBase, world::World};
 use pumpkin_data::BlockState;
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::data_component_impl::EnchantmentsImpl;
@@ -27,6 +27,8 @@ pub struct LootContextParameters<'a> {
     pub world: Option<&'a World>,
     pub explosion_radius: Option<f32>,
     pub block_state: Option<&'static BlockState>,
+    /// Vanilla's `BLOCK_ENTITY` parameter, read by `copy_components`.
+    pub block_entity: Option<&'a dyn BlockEntity>,
     pub killed_by_player: Option<bool>,
     pub luck: f32,
     pub this_entity: Option<&'a dyn EntityBase>,

@@ -7090,25 +7090,17 @@ impl World {
             return Vec::new();
         };
         let seed: i64 = rand::random();
+        let block_entity = self.get_block_entity(position);
         let params = crate::world::loot::LootContextParameters {
             world: Some(self),
             tool: Some(tool.unwrap_or_else(|| ItemStack::EMPTY.clone())),
             block_state: Some(state),
+            block_entity: block_entity.as_deref(),
             position: Some(position.to_f64()),
             this_entity: entity,
             ..Default::default()
         };
-        let mut items = crate::world::loot::generate_loot_from_handle(&loot_table, seed, &params);
-        if !items.is_empty()
-            && let Some(block_entity) = self.get_block_entity(position)
-        {
-            for stack in &mut items {
-                if Block::from_item_id(stack.item.id) == Some(block) {
-                    block_entity.collect_item_components(stack);
-                }
-            }
-        }
-        items
+        crate::world::loot::generate_loot_from_handle(&loot_table, seed, &params)
     }
 
     pub fn break_block_naturally(

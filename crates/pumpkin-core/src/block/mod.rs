@@ -560,6 +560,7 @@ pub fn collect_loot(
     let Some(loot_table) = block.loot_table.and_then(|key| world.get_loot_table(key)) else {
         return Vec::new();
     };
+    let block_entity = world.get_block_entity(pos);
     let params = LootContextParameters {
         world: Some(world),
         tool: Some(
@@ -568,6 +569,7 @@ pub fn collect_loot(
                 .clone()
                 .unwrap_or_else(|| ItemStack::EMPTY.clone()),
         ),
+        block_entity: params.block_entity.or(block_entity.as_deref()),
         ..params.clone()
     };
     let items = crate::world::loot::generate_loot_from_handle(&loot_table, 0, &params);
@@ -587,15 +589,7 @@ pub fn collect_loot(
     if event.cancelled {
         return Vec::new();
     }
-    let mut items = event.items;
-    if let Some(block_entity) = world.get_block_entity(pos) {
-        for stack in &mut items {
-            if Block::from_item_id(stack.item.id) == Some(block) {
-                block_entity.collect_item_components(stack);
-            }
-        }
-    }
-    items
+    event.items
 }
 
 pub fn drop_loot(

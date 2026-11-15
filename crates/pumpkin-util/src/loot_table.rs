@@ -165,6 +165,8 @@ pub enum LootFunctionKind {
 
 /// The loot functions that become [`LootFunctionKind::Json`].
 pub const JSON_LOOT_FUNCTIONS: &[&str] = &[
+    "copy_components",
+    "copy_state",
     "discard",
     "enchant_randomly",
     "enchant_with_levels",

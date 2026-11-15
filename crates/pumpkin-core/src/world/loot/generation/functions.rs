@@ -2,11 +2,11 @@
 
 use std::borrow::Cow;
 
-use pumpkin_data::Enchantment;
 use pumpkin_data::data_component::DataComponent;
 use pumpkin_data::data_component_impl::{
-    CustomDataImpl, DataComponentImpl, InstrumentImpl, LoreImpl, OminousBottleAmplifierImpl,
-    PotionContentsImpl, SuspiciousStewEffect, SuspiciousStewEffectsImpl, read_data,
+    BlockStateImpl, CustomDataImpl, DataComponentImpl, InstrumentImpl, LoreImpl,
+    OminousBottleAmplifierImpl, PotionContentsImpl, SuspiciousStewEffect,
+    SuspiciousStewEffectsImpl, read_data,
 };
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::item::Item;
@@ -14,6 +14,7 @@ use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::map_decoration::MapDecorationType;
 use pumpkin_data::potion::Potion;
 use pumpkin_data::tag::{RegistryKey, get_tag_values};
+use pumpkin_data::{Block, Enchantment};
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::loot_table::parser::{float_provider, int_provider, parse_functions};
 use pumpkin_util::math::position::BlockPos;
@@ -150,6 +151,8 @@ impl Generator<'_, '_> {
                 }
             }
             "set_components" => Self::set_components(json, stack),
+            "copy_components" => self.copy_components(json, stack),
+            "copy_state" => self.copy_state(json, stack),
             "set_name" => Self::set_name(json, stack),
             "set_lore" => Self::set_lore(json, stack),
             "set_custom_data" => Self::set_custom_data(json, stack),
@@ -202,6 +205,78 @@ impl Generator<'_, '_> {
             return None;
         }
         options.get(self.rng.next_bounded_i32(options.len() as i32) as usize)
+    }
+
+    /// `CopyComponentsFunction` with a `block_entity` source: the block entity's
+    /// `collectComponents`, filtered by `include` and `exclude`.
+    fn copy_components(&self, json: &Value, stack: &mut Stack) {
+        if json.get("source").and_then(Value::as_str) != Some("block_entity") {
+            return;
+        }
+        let Some(block_entity) = self.params.block_entity else {
+            return;
+        };
+        let components = |key: &str| {
+            json.get(key).and_then(Value::as_array).map(|names| {
+                names
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .filter_map(DataComponent::try_from_name)
+                    .collect::<Vec<_>>()
+            })
+        };
+        let include = components("include");
+        let exclude = components("exclude").unwrap_or_default();
+        let mut collected = ItemStack::new(1, stack.stack.item);
+        block_entity.collect_item_components(&mut collected);
+        for (id, component) in collected.patch {
+            if exclude.contains(&id)
+                || include
+                    .as_ref()
+                    .is_some_and(|include| !include.contains(&id))
+            {
+                continue;
+            }
+            if component.is_some() {
+                put_component(stack, id, component);
+            }
+        }
+    }
+
+    /// `CopyBlockState`: copies the listed properties of the broken block's state into the
+    /// item's `block_state` component.
+    fn copy_state(&self, json: &Value, stack: &mut Stack) {
+        let Some(state) = self.params.block_state else {
+            return;
+        };
+        let Some(props) = Block::from_state_id(state.id).properties(state.id) else {
+            return;
+        };
+        let names: Vec<&str> = json
+            .get("properties")
+            .and_then(Value::as_array)
+            .map(|names| names.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        let mut properties = stack
+            .stack
+            .get_data_component::<BlockStateImpl>()
+            .map(|component| component.properties.to_vec())
+            .unwrap_or_default();
+        for property in props.to_props() {
+            let key = property.key().to_str();
+            if !names.contains(&key) {
+                continue;
+            }
+            let value = Cow::Owned(property.value_str().to_owned());
+            if let Some(entry) = properties.iter_mut().find(|(name, _)| name == key) {
+                entry.1 = value;
+            } else {
+                properties.push((Cow::Owned(key.to_owned()), value));
+            }
+        }
+        stack.stack.set_data_component(BlockStateImpl {
+            properties: Cow::Owned(properties),
+        });
     }
 
     /// `SetComponentsFunction`: applies a component patch; `!name` removes a component.
