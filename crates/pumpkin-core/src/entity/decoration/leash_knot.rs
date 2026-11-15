@@ -1,8 +1,10 @@
 use crate::entity::player::Player;
 use crate::entity::{Entity, EntityBase, living::LivingEntity};
 use crate::world::World;
+use crate::world::game_event::GameEventContext;
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
@@ -108,6 +110,7 @@ impl EntityBase for LeashKnotEntity {
             let pos = self.entity.pos.load();
             world.play_sound(Sound::ItemLeadUntied, SoundCategory::Neutral, &pos);
             self.entity.remove();
+            self.entity.emit_own_game_event(self, GameEvent::EntityDie);
         } else if self.leashee_removed.swap(false, Ordering::Relaxed)
             && self.entity.leashed_to_this().is_empty()
         {
@@ -136,7 +139,16 @@ impl EntityBase for LeashKnotEntity {
             return false;
         }
         if !self.entity.is_removed() {
+            // Vanilla `BlockAttachedEntity.kill`.
             self.entity.remove();
+            world.emit_game_event_with_context(
+                GameEvent::EntityDie.name(),
+                self.entity.pos.load(),
+                &GameEventContext {
+                    source_entity: Some(cause.unwrap_or(self)),
+                    affected_state: None,
+                },
+            );
             world.play_sound(
                 Sound::ItemLeadUntied,
                 SoundCategory::Neutral,

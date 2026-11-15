@@ -1437,8 +1437,10 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         if self.get_living_entity().is_some() {
             caller.damage(caller, f32::MAX, DamageType::GENERIC_KILL);
         } else {
-            // TODO this should be removed once all entities are implemented
+            // Vanilla `Entity.kill`.
             self.get_entity().remove();
+            self.get_entity()
+                .emit_own_game_event(caller, GameEvent::EntityDie);
         }
     }
 

@@ -8,6 +8,8 @@ use pumpkin_protocol::java::client::play::Metadata;
 use pumpkin_util::math::vector3::Vector3;
 
 use crate::entity::EntityBase;
+use crate::world::game_event::GameEventContext;
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_util::GameMode;
 
@@ -217,6 +219,14 @@ impl VehicleEntity {
         }
 
         let new_strength = self.apply_damage_wobble(amount);
+        self.entity.world.load().emit_game_event_with_context(
+            GameEvent::EntityDamage.name(),
+            self.entity.pos.load(),
+            &GameEventContext {
+                source_entity: source,
+                affected_state: None,
+            },
+        );
 
         let is_creative = source
             .and_then(|s| s.get_player())

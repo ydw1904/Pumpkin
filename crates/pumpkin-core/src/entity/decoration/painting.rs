@@ -4,8 +4,10 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::entity::player::Player;
 use crate::entity::{Entity, EntityBase, living::LivingEntity};
+use crate::world::game_event::GameEventContext;
 use pumpkin_data::BlockDirection;
 use pumpkin_data::damage::DamageType;
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::painting_variant::PaintingVariant;
@@ -230,7 +232,16 @@ impl PaintingEntity {
             entity.spawn_at_location(ItemStack::new(1, &Item::PAINTING));
         }
 
+        // Vanilla `BlockAttachedEntity.kill`.
         entity.remove();
+        world.emit_game_event_with_context(
+            GameEvent::EntityDie.name(),
+            entity.pos.load(),
+            &GameEventContext {
+                source_entity: Some(caused_by.unwrap_or(self)),
+                affected_state: None,
+            },
+        );
     }
 }
 

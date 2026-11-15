@@ -4984,6 +4984,8 @@ impl LivingEntity {
                 self.last_hurt_by_player_memory_time
                     .store(LAST_HURT_BY_PLAYER_MEMORY_TIME, Relaxed);
             }
+            self.entity
+                .emit_own_game_event(caller, GameEvent::EntityDamage);
         }
 
         if dmg_to_health > 0.0 || absorbed_damage > 0.0 {

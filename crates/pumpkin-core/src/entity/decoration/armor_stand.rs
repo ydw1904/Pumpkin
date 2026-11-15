@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicI32, AtomicI64, AtomicU8, Ordering};
 
 use crate::entity::{Entity, EntityBase, living::LivingEntity};
+use crate::world::game_event::GameEventContext;
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::{
@@ -8,6 +9,7 @@ use pumpkin_data::{
     damage::DamageType,
     data_component_impl::{EquipmentSlot, EquipmentType},
     entity::{EntityStatus, EntityType},
+    game_event::GameEvent,
     item::Item,
     sound::{Sound, SoundCategory},
     tag::{self, Taggable},
@@ -222,6 +224,20 @@ impl ArmorStandEntity {
         Self::on_break(entity);
     }
 
+    /// Vanilla `ArmorStand.kill`: removed, with an `entity_die` from whoever it's attributed to.
+    fn kill_attributed(&self, attributed_to: Option<&dyn EntityBase>) {
+        let entity = self.get_entity();
+        entity.remove();
+        entity.world.load().emit_game_event_with_context(
+            GameEvent::EntityDie.name(),
+            entity.pos.load(),
+            &GameEventContext {
+                source_entity: Some(attributed_to.unwrap_or(self)),
+                affected_state: None,
+            },
+        );
+    }
+
     fn on_break(entity: &Entity) {
         let world = entity.world.load();
         world.play_sound(
@@ -330,8 +346,7 @@ impl EntityBase for ArmorStandEntity {
     }
 
     fn kill(&self, _caller: &dyn EntityBase) {
-        self.get_entity().remove();
-        // TODO: emit GameEvent::ENTITY_DIE
+        self.kill_attributed(None);
     }
 
     fn damage_with_context(
@@ -360,8 +375,9 @@ impl EntityBase for ArmorStandEntity {
             return false;
         }
 
+        let attacker = cause.or(source);
         if damage_type.has_tag(&tag::DamageType::MINECRAFT_BYPASSES_INVULNERABILITY) {
-            entity.remove();
+            self.kill_attributed(attacker);
             return false;
         }
 
@@ -372,7 +388,7 @@ impl EntityBase for ArmorStandEntity {
 
         if damage_type.has_tag(&tag::DamageType::MINECRAFT_IS_EXPLOSION) {
             Self::on_break(entity);
-            entity.remove();
+            self.kill_attributed(attacker);
             return false;
         }
 
@@ -387,7 +403,6 @@ impl EntityBase for ArmorStandEntity {
             return false;
         }
 
-        let attacker = cause.or(source);
         if let Some(attacker) = attacker
             && let Some(player) = attacker.get_player()
         {
@@ -399,7 +414,7 @@ impl EntityBase for ArmorStandEntity {
                 return false;
             } else if player.is_creative() {
                 Self::spawn_break_particles(entity);
-                entity.remove();
+                self.kill_attributed(Some(attacker));
                 return true;
             }
         }
@@ -417,6 +432,14 @@ impl EntityBase for ArmorStandEntity {
                 SoundCategory::Neutral,
                 &entity.block_pos.load().to_f64(),
             );
+            world.emit_game_event_with_context(
+                GameEvent::EntityDamage.name(),
+                entity.pos.load(),
+                &GameEventContext {
+                    source_entity: attacker,
+                    affected_state: None,
+                },
+            );
             self.last_hit_time.store(time, Ordering::Relaxed);
         } else {
             Self::spawn_break_particles(entity);
@@ -426,7 +449,7 @@ impl EntityBase for ArmorStandEntity {
                 &entity.block_pos.load().to_f64(),
             );
             self.break_and_drop_items();
-            entity.remove();
+            self.kill_attributed(attacker);
         }
 
         true
