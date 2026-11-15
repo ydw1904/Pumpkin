@@ -3,6 +3,7 @@ use crate::entity::ageable::AgeableMob;
 use crate::entity::mob::Mob;
 use pumpkin_data::Block;
 use pumpkin_data::entity::EntityStatus;
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::world::WorldEvent;
 use pumpkin_protocol::bedrock::server::ActorEventID;
@@ -35,9 +36,12 @@ impl EatGrassGoal {
 
 impl Goal for EatGrassGoal {
     fn tick_reach(&self, _mob: &dyn Mob, running: bool) -> Option<GoalReach> {
+        // `tick` eats at this timer value.
+        let eats = running && (self.timer - 1).max(0) == self.get_tick_count(4);
         Some(GoalReach {
-            // `tick` eats at this timer value.
-            changes_blocks: running && (self.timer - 1).max(0) == self.get_tick_count(4),
+            changes_blocks: eats,
+            // The `block_destroy` of the grass it stands in, at the block's centre.
+            game_events: if eats { 1.0 } else { 0.0 },
             ..GoalReach::default()
         })
     }
@@ -96,8 +100,9 @@ impl Goal for EatGrassGoal {
             if block_at_pos.has_tag(&tag::Block::MINECRAFT_EDIBLE_FOR_SHEEP) {
                 if mob_griefing {
                     // Break effects, no drops.
-                    world.break_block(&block_pos, None, BlockFlags::SKIP_DROPS);
+                    world.destroy_block(&block_pos, None, BlockFlags::SKIP_DROPS);
                 }
+                entity.emit_own_game_event(mob, GameEvent::Eat);
                 mob.on_eating_grass();
             } else {
                 let below_pos = block_pos.down();
@@ -115,6 +120,7 @@ impl Goal for EatGrassGoal {
                             BlockFlags::NOTIFY_LISTENERS,
                         );
                     }
+                    entity.emit_own_game_event(mob, GameEvent::Eat);
                     mob.on_eating_grass();
                 }
             }
