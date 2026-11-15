@@ -120,6 +120,39 @@ h.start(async () => {
   await place(X - 2, Y + 1, Z + 5, 'air')
   await place(X - 3, Y + 1, Z + 5, 'air')
 
+  // Fire next to a hive drives its bees out.
+  await clean()
+  await place(X - 3, Y + 1, Z + 5, 'beehive[facing=west]{bees:[{entity_data:{id:"minecraft:bee"},ticks_in_hive:0,min_ticks_in_hive:600}]}')
+  await h.serverTicks(5)
+  await place(X - 3, Y + 1, Z + 6, 'fire')
+  await h.serverTicks(10)
+  h.result('hive_fire.bees', nearHive(X - 3, Z + 5).length)
+  await place(X - 3, Y + 1, Z + 6, 'air')
+  await place(X - 3, Y + 1, Z + 5, 'air')
+
+  // A wither rose or an eyeblossom fed to a bee gives it the flower's effect instead of love.
+  for (const flower of ['wither_rose', 'open_eyeblossom', 'closed_eyeblossom']) {
+    await clean()
+    await h.clear()
+    await h.tp(X + 0.5, Y + 1, Z + 0.5)
+    // Only the new bee: a killed one can linger on the client for a moment.
+    const old = new Set(named('bee').map(b => b.id))
+    h.cmd(`summon bee ${X + 0.5} ${Y + 1} ${Z + 2.5} {NoAI:1b,Silent:1b,PersistenceRequired:1b}`)
+    await h.waitFor(() => named('bee').some(b => !old.has(b.id)), 3000)
+    await h.give(flower, 2)
+    await bot.equip(bot.inventory.items().find(it => it.name === flower), 'hand')
+    await h.ticks(5)
+    const bee = named('bee').find(b => !old.has(b.id))
+    if (bee) {
+      await bot.lookAt(bee.position.offset(0, 0.3, 0), true)
+      await bot.activateEntity(bee).catch(() => {})
+    }
+    await h.serverTicks(5)
+    const m = bee ? (meta.get(bee.id) || new Map()) : new Map()
+    const particles = m.get(10)
+    h.result(`bee_feed.${flower}`, `particles=${Array.isArray(particles) ? particles.length : show(particles)} left=${h.inv()[flower] || 0}`)
+  }
+
   // A spawn egg used on a mob of its kind makes a baby with the parent's variant.
   for (const [type, nbt] of [['cow', 'variant:"minecraft:cold"'], ['cat', 'variant:"minecraft:calico"']]) {
     await clean()
