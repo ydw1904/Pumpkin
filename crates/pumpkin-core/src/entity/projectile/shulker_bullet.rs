@@ -613,8 +613,12 @@ impl EntityBase for ShulkerBulletEntity {
 
         // Vanilla finds the hit first, then makes the whole move whatever it hit.
         let hit = self.hit_result_on_move_vector(&world);
-        entity.set_pos(entity.pos.load() + movement);
-        if let Some(hit) = hit {
+        let from = entity.pos.load();
+        entity.set_pos(from + movement);
+        entity.apply_effects_from_blocks(caller, from, entity.pos.load());
+        if let Some(hit) = hit
+            && !entity.is_removed()
+        {
             self.hit_target_or_deflect_self(caller, hit);
         }
         rotate_towards_movement(entity, ROTATION_SPEED);

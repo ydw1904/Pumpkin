@@ -277,6 +277,15 @@ impl TridentEntity {
         );
     }
 
+    /// Vanilla `super.tick()` at the end of a flying tick: the fluid and fire part of
+    /// `Entity.baseTick`.
+    fn base_tick(entity: &Entity, caller: &dyn EntityBase) {
+        if !entity.is_removed() {
+            entity.update_fluid_state(caller);
+            super::tick_fire(entity, false);
+        }
+    }
+
     fn should_skip_collision(&self, self_ent: &Entity, other: &Arc<dyn EntityBase>) -> bool {
         let other_ent = other.get_entity();
 
@@ -330,6 +339,11 @@ impl EntityBase for TridentEntity {
             self.shake_time.store(shake - 1, Ordering::Relaxed);
         }
 
+        // Vanilla `AbstractArrow.tick`: water and rain put the trident out.
+        if entity.is_in_water_or_rain() {
+            entity.extinguish();
+        }
+
         let no_physics = self.no_physics.load(Ordering::Relaxed);
         if self.in_ground.load(Ordering::Relaxed) && !no_physics {
             self.in_ground_time.fetch_add(1, Ordering::Relaxed);
@@ -342,6 +356,13 @@ impl EntityBase for TridentEntity {
                     entity.remove();
                 }
             }
+            if !entity.is_removed() {
+                let pos = entity.pos.load();
+                entity.apply_effects_from_blocks(caller, pos, pos);
+                // Vanilla's block effects include the fluids, like lava setting it alight.
+                entity.update_fluid_state(caller);
+            }
+            entity.set_on_fire(entity.fire_ticks.load(Ordering::Relaxed) > 0);
             return;
         }
         self.in_ground_time.store(0, Ordering::Relaxed);
@@ -383,9 +404,11 @@ impl EntityBase for TridentEntity {
             trident.entity.velocity.store(velocity);
         };
         if no_physics {
+            // Vanilla `isAffectedByBlocks` is false without physics, so no block effects.
             entity.set_pos(new_pos);
             entity.velocity.store(velocity);
             after_move(self);
+            Self::base_tick(entity, caller);
             return;
         }
         entity.velocity.store(velocity);
@@ -454,9 +477,10 @@ impl EntityBase for TridentEntity {
         } else {
             entity.set_pos(block_to);
         }
+        entity.apply_effects_from_blocks(caller, start_pos, entity.pos.load());
 
         // Handle hit
-        if let Some(h) = hit
+        if let Some(h) = hit.filter(|_| !entity.is_removed())
             && !matches!(&h, ProjectileHit::Entity { entity: target, .. }
                 if self.last_deflected_by.hit_target_or_deflect_self(caller, target.as_ref()))
             && !self.has_hit.swap(true, Ordering::SeqCst)
@@ -469,6 +493,7 @@ impl EntityBase for TridentEntity {
             entity.velocity_dirty.store(true, Ordering::Relaxed);
         }
         after_move(self);
+        Self::base_tick(entity, caller);
     }
 
     fn write_custom_nbt(&self, nbt: &mut pumpkin_nbt::compound::NbtCompound) {

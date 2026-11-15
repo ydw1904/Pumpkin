@@ -484,6 +484,10 @@ impl FishingBobberEntity {
         // block surfaces instead of hovering above them.
         entity.velocity.store(velocity);
         entity.move_entity(caller, velocity);
+        entity.apply_effects_from_blocks(caller, start_pos, entity.pos.load());
+        if entity.is_removed() {
+            return;
+        }
 
         // Vanilla zeroes the hook's momentum when it comes to rest while flying.
         if matches!(state, HookState::Flying)

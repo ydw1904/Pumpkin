@@ -4,8 +4,8 @@ use super::{
     projectile_deflection::{LastDeflectedBy, redirect_projectile},
 };
 use crate::world::World;
-use pumpkin_data::BlockDirection;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::{Block, BlockDirection};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::math::boundingbox::BoundingBox;
@@ -234,6 +234,7 @@ impl ThrownItemEntity {
         let entity = self.get_entity();
         self.owner.check_left_owner(entity);
         entity.update_last_pos();
+        Self::handle_first_tick_bubble_column(caller);
 
         // Apply gravity and inertia
         let mut velocity = entity.velocity.load();
@@ -251,7 +252,33 @@ impl ThrownItemEntity {
 
         // Vanilla turns the projectile before the hit, which may deflect it.
         update_rotation(entity);
-        self.move_and_hit(caller);
+        self.move_and_hit(caller, false);
+    }
+
+    /// Vanilla `ThrowableProjectile.handleFirstTickBubbleColumn`: a projectile thrown inside a
+    /// bubble column is pushed by it before its first move.
+    fn handle_first_tick_bubble_column(caller: &dyn EntityBase) {
+        let entity = caller.get_entity();
+        // Llama spit and firework rockets aren't `ThrowableProjectile`s.
+        if entity.tick_count.load(Ordering::Relaxed) != 1
+            || entity.entity_type == &EntityType::LLAMA_SPIT
+            || entity.entity_type == &EntityType::FIREWORK_ROCKET
+        {
+            return;
+        }
+        let world = entity.world.load();
+        let Some(server) = world.server.upgrade() else {
+            return;
+        };
+        let bounding_box = entity.bounding_box.load();
+        for pos in BlockPos::iterate(bounding_box.min_block_pos(), bounding_box.max_block_pos()) {
+            let (block, state) = world.get_block_and_state(&pos);
+            if block == &Block::BUBBLE_COLUMN {
+                world
+                    .block_registry
+                    .on_entity_collision(block, &world, caller, &pos, state, &server);
+            }
+        }
     }
 
     /// Vanilla `AbstractHurtingProjectile.tick`: no gravity or drag, but `acceleration_power`
@@ -289,32 +316,13 @@ impl ThrownItemEntity {
         self.owner.check_left_owner(entity);
         entity.update_last_pos();
         rotate_towards_movement(entity, HURTING_ROTATION_SPEED);
-        Self::tick_hurting_fire(entity, should_burn);
-        self.move_and_hit(caller);
-    }
-
-    /// The fire part of vanilla `Entity.baseTick` (a projectile takes no fire damage), then
-    /// `igniteForSeconds(1.0F)` when the projectile burns. Paper doesn't fire a combust event
-    /// for this, so neither does Pumpkin.
-    fn tick_hurting_fire(entity: &Entity, should_burn: bool) {
-        let fire_ticks = entity.fire_ticks.load(Ordering::Relaxed);
-        if fire_ticks > 0 {
-            if entity.is_fire_immune() {
-                entity.extinguish();
-            } else {
-                entity.fire_ticks.store(fire_ticks - 1, Ordering::Relaxed);
-            }
-        }
-        entity.set_on_fire(entity.fire_ticks.load(Ordering::Relaxed) > 0);
-        if should_burn && !entity.is_fire_immune() {
-            entity
-                .fire_ticks
-                .fetch_max(HURTING_BURN_TICKS, Ordering::Relaxed);
-        }
+        self.move_and_hit(caller, should_burn);
     }
 
     /// Moves the projectile by its velocity, then hits the first block or entity on the way.
-    fn move_and_hit(&self, caller: &dyn EntityBase) {
+    /// The block effects, fluid state and fire tick come between the move and the hit, like
+    /// vanilla's `applyEffectsFromBlocks` and `super.tick()`.
+    fn move_and_hit(&self, caller: &dyn EntityBase, should_burn: bool) {
         let entity = self.get_entity();
         let world = entity.world.load();
         let velocity = entity.velocity.load();
@@ -369,8 +377,9 @@ impl ThrownItemEntity {
             }
         }
 
-        // Entities only count up to the block hit, like vanilla `ProjectileUtil.getHitResult`.
         let to = start_pos + delta * closest_t;
+
+        // Entities only count up to the block hit, like vanilla `ProjectileUtil.getHitResult`.
         let candidates = hit_candidates(&world, &search_box)
             .into_iter()
             .filter(|cand| !self.should_skip_collision(&world, entity, cand));
@@ -387,8 +396,16 @@ impl ThrownItemEntity {
         // Vanilla moves the projectile to where it hits, so the hit (an explosion, a knockback
         // source) happens there.
         entity.set_pos(hit.as_ref().map_or(new_pos, ProjectileHit::hit_pos));
+        // Vanilla `LlamaSpit.tick` is the one projectile tick without `applyEffectsFromBlocks`.
+        if entity.entity_type != &EntityType::LLAMA_SPIT {
+            entity.apply_effects_from_blocks(caller, start_pos, entity.pos.load());
+        }
         // Vanilla `baseTick` after the move: the water state the next tick's inertia reads.
         entity.update_fluid_state(caller);
+        tick_fire(entity, should_burn);
+        if entity.is_removed() {
+            return;
+        }
 
         // Handle hit or continue
         if let Some(h) = hit {
@@ -485,6 +502,26 @@ pub const HURTING_LIQUID_INERTIA: f32 = 0.8;
 const HURTING_ROTATION_SPEED: f32 = 0.2;
 /// Vanilla `igniteForSeconds(1.0F)` in `AbstractHurtingProjectile.tick`.
 const HURTING_BURN_TICKS: i32 = 20;
+
+/// The fire part of vanilla `Entity.baseTick` (a projectile takes no fire damage), then
+/// `igniteForSeconds(1.0F)` when a hurting projectile burns. Paper doesn't fire a combust
+/// event for this, so neither does Pumpkin.
+pub(crate) fn tick_fire(entity: &Entity, should_burn: bool) {
+    let fire_ticks = entity.fire_ticks.load(Ordering::Relaxed);
+    if fire_ticks > 0 {
+        if entity.is_fire_immune() {
+            entity.extinguish();
+        } else {
+            entity.fire_ticks.store(fire_ticks - 1, Ordering::Relaxed);
+        }
+    }
+    entity.set_on_fire(entity.fire_ticks.load(Ordering::Relaxed) > 0);
+    if should_burn && !entity.is_fire_immune() {
+        entity
+            .fire_ticks
+            .fetch_max(HURTING_BURN_TICKS, Ordering::Relaxed);
+    }
+}
 
 /// Vanilla `ProjectileUtil.rotateTowardsMovement`: turns `speed` of the way from the current
 /// rotation towards the flight direction.

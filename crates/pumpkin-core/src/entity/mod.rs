@@ -3431,6 +3431,102 @@ impl Entity {
         suffocating
     }
 
+    /// Vanilla `Entity.applyEffectsFromBlocks(from, to)` for projectiles, which move without
+    /// `move`: the `entityInside` effects of every block the bounding box sweeps through on the
+    /// way, then the rain and fire bookkeeping. Fluids are handled by the fluid state update.
+    pub fn apply_effects_from_blocks(
+        &self,
+        caller: &dyn EntityBase,
+        from: Vector3<f64>,
+        to: Vector3<f64>,
+    ) {
+        /// Vanilla `Entity.checkInsideBlocks`'s threshold for a step that skips whole blocks.
+        const MOVED_FAR_DISTANCE: f64 = 0.999_990_000_000_252_6;
+        if !self.is_affected_by_blocks() {
+            return;
+        }
+        let previous_fire_ticks = self.fire_ticks.load(Ordering::Relaxed);
+        let was_on_fire = previous_fire_ticks > 0 && !self.is_fire_immune();
+
+        let dimensions = self.entity_dimension.load();
+        let box_at_from = BoundingBox::new_from_pos(from.x, from.y, from.z, &dimensions);
+        let deflation = -f64::from(1.0e-5f32);
+        let box_at_target = BoundingBox::new_from_pos(to.x, to.y, to.z, &dimensions)
+            .expand(deflation, deflation, deflation);
+        let moved_far = from.squared_distance_to_vec(&to) > MOVED_FAR_DISTANCE * MOVED_FAR_DISTANCE;
+        let travel = to - from;
+        let swept = box_at_from
+            .expand(deflation, deflation, deflation)
+            .union(&box_at_target);
+
+        let world = self.world.load();
+        let Some(server) = world.server.upgrade() else {
+            return;
+        };
+        for pos in BlockPos::iterate(swept.min_block_pos(), swept.max_block_pos()) {
+            if self.is_removed() {
+                break;
+            }
+            let (block, state) = world.get_block_and_state(&pos);
+            if state.is_air() {
+                continue;
+            }
+            let shape = if block == &Block::POWDER_SNOW {
+                crate::block::blocks::powder_snow::inside_collision_shape_for_entity(caller, &pos)
+            } else {
+                world
+                    .block_registry
+                    .get_inside_collision_shape(block, &world, state, &pos)
+            };
+            let full_block = BoundingBox::full_block();
+            let inside = (shape.min == full_block.min && shape.max == full_block.max)
+                || box_at_from.collided_along_vector(travel, &shape.at_pos(pos));
+            if !inside {
+                continue;
+            }
+            // Vanilla passes `isPrecise`, which only bubble columns look at.
+            let precise = moved_far || box_at_target.intersects(&BoundingBox::from_block(&pos));
+            if block == &Block::BUBBLE_COLUMN && !precise {
+                continue;
+            }
+            if block == &Block::POWDER_SNOW {
+                self.is_in_powder_snow.store(true, Relaxed);
+            }
+            world
+                .block_registry
+                .on_entity_collision(block, &world, caller, &pos, state, &server);
+        }
+
+        if self.is_in_rain() {
+            self.extinguish();
+        }
+        let fire_ticks = self.fire_ticks.load(Ordering::Relaxed);
+        if was_on_fire && fire_ticks <= 0 {
+            let random = game_random();
+            caller.play_entity_sound(
+                Sound::EntityGenericExtinguishFire,
+                0.7,
+                (random.random::<f32>() - random.random::<f32>()).mul_add(0.4, 1.6),
+            );
+        }
+        if fire_ticks <= 0 && fire_ticks <= previous_fire_ticks {
+            // Vanilla `setRemainingFireTicks(-getFireImmuneTicks())`.
+            self.fire_ticks.store(-1, Ordering::Relaxed);
+        }
+    }
+
+    /// Vanilla `Entity.isInRain`: rain at the feet or at the top of the bounding box.
+    fn is_in_rain(&self) -> bool {
+        let world = self.world.load();
+        let pos = self.block_pos.load();
+        world.is_raining_at(&pos)
+            || world.is_raining_at(&BlockPos::new(
+                pos.0.x,
+                self.bounding_box.load().max.y.floor() as i32,
+                pos.0.z,
+            ))
+    }
+
     pub fn update_last_pos(&self) -> Vector3<f64> {
         let pos = self.pos.load();
         let old = self.last_pos.load();
@@ -4762,15 +4858,7 @@ impl Entity {
     }
 
     pub fn is_in_water_or_rain(&self) -> bool {
-        let world = self.world.load();
-        let pos = self.block_pos.load();
-        self.is_in_water()
-            || world.is_raining_at(&pos)
-            || world.is_raining_at(&BlockPos::new(
-                pos.0.x,
-                self.bounding_box.load().max.y.floor() as i32,
-                pos.0.z,
-            ))
+        self.is_in_water() || self.is_in_rain()
     }
 
     #[must_use]

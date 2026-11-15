@@ -84,7 +84,6 @@ pub struct ArrowEntity {
     pub is_critical: AtomicBool,
     pub no_physics: AtomicBool,
     pub pierce_level: AtomicU8,
-    pub is_flame: AtomicBool,
     pub in_ground: AtomicBool,
     pub in_ground_time: AtomicU32,
     pub life: AtomicU32,
@@ -141,7 +140,6 @@ impl ArrowEntity {
             is_critical: AtomicBool::new(false),
             no_physics: AtomicBool::new(false),
             pierce_level: AtomicU8::new(0),
-            is_flame: AtomicBool::new(false),
             in_ground: AtomicBool::new(false),
             in_ground_time: AtomicU32::new(0),
             life: AtomicU32::new(0),
@@ -183,7 +181,6 @@ impl ArrowEntity {
             is_critical: AtomicBool::new(false),
             no_physics: AtomicBool::new(false),
             pierce_level: AtomicU8::new(0),
-            is_flame: AtomicBool::new(false),
             in_ground: AtomicBool::new(false),
             in_ground_time: AtomicU32::new(0),
             life: AtomicU32::new(0),
@@ -441,7 +438,6 @@ impl ArrowEntity {
     }
 
     pub fn set_flame(&self, flame: bool) {
-        self.is_flame.store(flame, Ordering::Relaxed);
         if flame {
             self.entity.set_on_fire_for(100.0);
             self.entity.set_on_fire(true);
@@ -450,9 +446,10 @@ impl ArrowEntity {
         }
     }
 
+    /// Vanilla `Entity.isOnFire` on the server: fire ticks left.
     #[must_use]
     pub fn is_on_fire(&self) -> bool {
-        self.entity.is_on_fire() || self.is_flame.load(Ordering::Relaxed)
+        self.entity.fire_ticks.load(Ordering::Relaxed) > 0
     }
 
     fn apply_inertia(&self, inertia: f64) {
@@ -610,41 +607,10 @@ impl EntityBase for ArrowEntity {
         let world = entity.world.load();
         self.owner.check_left_owner(entity);
 
-        // Fire & Extinguish logic
-        let mut fire_ticks = entity.fire_ticks.load(Ordering::Relaxed);
-        let touching_water = entity.touching_water.load(Ordering::Relaxed);
-        let in_water = touching_water || entity.is_in_water();
-        let block_pos = entity.block_pos.load();
-        let in_rain = world.is_raining_at(&block_pos);
-
-        if in_water || in_rain {
-            if entity.is_on_fire() || self.is_flame.load(Ordering::Relaxed) {
-                entity.extinguish();
-                self.is_flame.store(false, Ordering::Relaxed);
-            }
-        } else if fire_ticks > 0 {
-            fire_ticks -= 1;
-            entity.fire_ticks.store(fire_ticks, Ordering::Relaxed);
-            if fire_ticks <= 0 && self.is_flame.load(Ordering::Relaxed) {
-                self.is_flame.store(false, Ordering::Relaxed);
-                entity.set_on_fire(false);
-            }
+        // Vanilla `AbstractArrow.tick`: water and rain put the arrow out.
+        if entity.is_in_water_or_rain() {
+            entity.extinguish();
         }
-
-        // Check if arrow enters lava or fire block
-        let current_block = world.get_block(&block_pos);
-        if current_block == &pumpkin_data::Block::LAVA {
-            entity.set_on_fire_for(15.0);
-            self.is_flame.store(true, Ordering::Relaxed);
-        } else if current_block == &pumpkin_data::Block::FIRE
-            || current_block == &pumpkin_data::Block::SOUL_FIRE
-        {
-            entity.set_on_fire_for(8.0);
-            self.is_flame.store(true, Ordering::Relaxed);
-        }
-
-        let is_on_fire = entity.is_on_fire() || self.is_flame.load(Ordering::Relaxed);
-        entity.set_on_fire(is_on_fire);
 
         // Handle shake time
         let shake = self.shake_time.load(Ordering::Relaxed);
@@ -683,12 +649,20 @@ impl EntityBase for ArrowEntity {
             if !started_falling && self.life.fetch_add(1, Ordering::Relaxed) >= Self::DESPAWN_TIME {
                 entity.remove();
             }
+            if !entity.is_removed() {
+                let pos = entity.pos.load();
+                entity.apply_effects_from_blocks(caller, pos, pos);
+                // Vanilla's block effects include the fluids, like lava setting it alight.
+                entity.update_fluid_state(caller);
+            }
+            entity.set_on_fire(self.is_on_fire());
             return;
         }
 
         // Vanilla `AbstractArrow.tick`: water slows the arrow before it moves, air after, and
         // gravity comes last.
         let start_pos = entity.pos.load();
+        let in_water = entity.is_in_water();
         if in_water {
             self.apply_inertia(Self::WATER_INERTIA);
         }
@@ -754,6 +728,12 @@ impl EntityBase for ArrowEntity {
         }
         if !self.in_ground.load(Ordering::Relaxed) {
             self.apply_gravity();
+        }
+
+        // Vanilla `super.tick()`, the fluid and fire part of `Entity.baseTick`.
+        if !entity.is_removed() {
+            entity.update_fluid_state(caller);
+            super::tick_fire(entity, false);
         }
     }
 
@@ -874,8 +854,7 @@ impl EntityBase for ArrowEntity {
                 let is_enderman =
                     target.get_entity().entity_type == &pumpkin_data::entity::EntityType::ENDERMAN;
                 let remaining_fire_ticks = target.get_entity().fire_ticks.load(Ordering::Relaxed);
-                let is_on_fire = entity.is_on_fire() || self.is_flame.load(Ordering::Relaxed);
-                if is_on_fire && !is_enderman {
+                if self.is_on_fire() && !is_enderman {
                     target.get_entity().set_on_fire_for(5.0);
                 }
 
@@ -1121,10 +1100,14 @@ impl ArrowEntity {
                     .squared_distance_to_vec(&a.get_entity().pos.load())
                     .total_cmp(&initial.squared_distance_to_vec(&b.get_entity().pos.load()))
             });
-            entity.set_pos(hits.first().map_or(block_to, |(_, location)| *location));
+            let next = hits.first().map_or(block_to, |(_, location)| *location);
+            entity.set_pos(next);
+            entity.apply_effects_from_blocks(caller, initial, next);
 
             if hits.is_empty() {
-                if let Some(block_hit) = block_hit {
+                if let Some(block_hit) = block_hit
+                    && !entity.is_removed()
+                {
                     caller.on_hit(block_hit);
                     entity.velocity_dirty.store(true, Ordering::Relaxed);
                 }

@@ -622,6 +622,32 @@ impl BoundingBox {
         }
         hit.then(|| from + delta * scale)
     }
+
+    /// Vanilla `AABB.contains`: the min faces count as inside, the max faces don't.
+    #[must_use]
+    pub fn contains(&self, point: Vector3<f64>) -> bool {
+        point.x >= self.min.x
+            && point.x < self.max.x
+            && point.y >= self.min.y
+            && point.y < self.max.y
+            && point.z >= self.min.z
+            && point.z < self.max.z
+    }
+
+    /// Vanilla `AABB.collidedAlongVector`: whether this box, moved by `vector`, touches `shape`
+    /// anywhere on the way.
+    #[must_use]
+    pub fn collided_along_vector(&self, vector: Vector3<f64>, shape: &Self) -> bool {
+        const EPSILON: f64 = 1.0E-7;
+        let from = self.get_center();
+        let to = from + vector;
+        let inflated = shape.expand(
+            (self.max.x - self.min.x) * 0.5 - EPSILON,
+            (self.max.y - self.min.y) * 0.5 - EPSILON,
+            (self.max.z - self.min.z) * 0.5 - EPSILON,
+        );
+        inflated.contains(to) || inflated.contains(from) || inflated.clip(from, to).is_some()
+    }
 }
 
 /// Represents the dimensions of an entity.
