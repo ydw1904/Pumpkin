@@ -33,4 +33,31 @@ h.start(async () => {
   const names = new Set(near.map(e => e.getDroppedItem().name).concat(Object.keys(h.inv())))
   h.result('dropped_items', [...names].sort().join(','))
   h.result('xp_level_recovered', bot.experience.level)
+
+  // Mob equipment drops only on a player kill, unless the item was picked up (chance above 1).
+  await h.clear()
+  const zx = X + 3.5; const zz = Z + 0.5
+  const zombie = (helmet, chance) => h.cmd(`summon zombie ${zx} ${Y + 1} ${zz} {NoAI:1b,Silent:1b,Health:0.1f,equipment:{head:{id:"minecraft:${helmet}",count:1}},drop_chances:{head:${chance}f}}`)
+  zombie('diamond_helmet', 1.0)
+  zombie('golden_helmet', 2.0)
+  await h.ticks(10)
+  h.cmd(`kill @e[type=zombie,x=${zx},y=${Y + 1},z=${zz},distance=..3]`)
+  await h.ticks(10)
+  // Killed zombies linger for their death animation; only the new one is the target.
+  const dead = new Set(Object.values(bot.entities).filter(e => e.name === 'zombie').map(e => e.id))
+  const fresh = () => Object.values(bot.entities).find(e => e.name === 'zombie' && !dead.has(e.id))
+  zombie('chainmail_helmet', 1.0)
+  await h.tp(X + 1.5, Y + 1, zz, -90, 0)
+  await h.waitFor(() => fresh(), 3000)
+  const target = fresh()
+  // Armor softens the punch, so the zombie has next to no health.
+  await h.ticks(30)
+  if (target) {
+    await bot.lookAt(target.position.offset(0, 1, 0), true)
+    bot.attack(target)
+  }
+  await h.ticks(40)
+  const helmets = ['diamond_helmet', 'golden_helmet', 'chainmail_helmet']
+  const seen = Object.values(bot.entities).filter(e => e.name === 'item' && e.getDroppedItem()).map(e => e.getDroppedItem().name).concat(Object.keys(h.inv()))
+  h.result('mob_equipment_drops', helmets.filter(n => seen.includes(n)).join(',') || 'none')
 })

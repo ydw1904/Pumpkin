@@ -3452,7 +3452,7 @@ impl LivingEntity {
 
             // Players drop their whole inventory instead (`Player::handle_killed`).
             if should_drop_loot && dyn_self.get_player().is_none() {
-                self.drop_equipment(looting_level);
+                self.drop_equipment(looting_level, has_player_kill);
                 if let Some(mob) = dyn_self.get_mob() {
                     mob.drop_custom_death_loot();
                 }
@@ -3538,7 +3538,9 @@ impl LivingEntity {
         world.spawn_entity(Arc::new(item_entity));
     }
 
-    fn drop_equipment(&self, looting_level: u32) {
+    /// Vanilla `Mob.dropCustomDeathLoot`: only preserved (picked up) items drop without a player
+    /// kill.
+    fn drop_equipment(&self, looting_level: u32, killed_by_player: bool) {
         let world = self.entity.world.load();
         let block_pos = self.entity.block_pos.load();
 
@@ -3562,8 +3564,14 @@ impl LivingEntity {
                 .get(slot)
                 .copied()
                 .unwrap_or(DEFAULT_EQUIPMENT_DROP_CHANCE);
+            if chance == 0.0 {
+                continue;
+            }
             // A chance above 1.0 marks a guaranteed, undamaged drop.
             let preserved = chance > 1.0;
+            if !killed_by_player && !preserved {
+                continue;
+            }
             // Vanilla approximation: EnchantmentHelper.processEquipmentDropChance
             // adds lootingLevel * 0.01 to the per-slot equipment drop chance.
             chance += looting_level as f32 * 0.01;
