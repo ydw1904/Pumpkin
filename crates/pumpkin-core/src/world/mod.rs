@@ -146,9 +146,9 @@ use pumpkin_protocol::{
     java::{
         self,
         client::play::{
-            CBlockEntityData, CDamageEvent, CEntityStatus, CGameEvent, CLogin, CMultiBlockUpdate,
-            CPlayerInfoUpdate, CRemovePlayerInfo, CSetSelectedSlot, CSoundEffect, GameEvent,
-            InitChat, PlayerAction, PlayerInfoFlags,
+            CBlockEntityData, CDamageEvent, CEntitySoundEffect, CEntityStatus, CGameEvent, CLogin,
+            CMultiBlockUpdate, CPlayerInfoUpdate, CRemovePlayerInfo, CSetSelectedSlot,
+            CSoundEffect, GameEvent, InitChat, PlayerAction, PlayerInfoFlags,
         },
         server::play::SChatMessage,
     },
@@ -1905,6 +1905,27 @@ impl World {
             audible_chunks(volume),
             Some(player.gameprofile.id),
         );
+    }
+
+    /// Vanilla `Level.playSound(null, entity, ...)`: a sound that follows `entity` on clients.
+    pub fn play_sound_from_entity(
+        &self,
+        sound: Sound,
+        category: SoundCategory,
+        entity: &Entity,
+        volume: f32,
+        pitch: f32,
+    ) {
+        let seed = game_random().random::<i64>();
+        let packet = CEntitySoundEffect::new(
+            IdOr::Id(sound as u16),
+            category,
+            VarInt(entity.entity_id),
+            volume,
+            pitch,
+            seed,
+        );
+        self.broadcast_sound_in_range(&packet, &entity.pos.load(), audible_chunks(volume), None);
     }
 
     pub fn play_block_sound(&self, sound: Sound, category: SoundCategory, position: BlockPos) {

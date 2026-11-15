@@ -28,11 +28,20 @@ h.start(async () => {
     await bot.equip(trident, 'hand')
     await bot.lookAt(husk.position.offset(0, 1.0, 0), true)
     await h.ticks(5)
+    // The throw sound follows the thrown trident.
+    const entitySounds = []
+    const onEntitySound = (p) => entitySounds.push(p)
+    bot._client.on('entity_sound_effect', onEntitySound)
     bot.activateItem()
     await h.sleep(1000)
     bot.deactivateItem()
     await h.waitFor(() => !bot.inventory.items().some((i) => i.name === 'trident'), 3000)
     h.result('thrown', !bot.inventory.items().some((i) => i.name === 'trident'))
+    await h.ticks(2)
+    bot._client.removeListener('entity_sound_effect', onEntitySound)
+    const thrownTrident = Object.values(bot.entities).find((e) => e.name === 'trident')
+    h.result('throw_sound', entitySounds.filter((p) => thrownTrident && p.entityId === thrownTrident.id)
+      .map((p) => `${JSON.stringify(p.sound)}/${p.volume}/${p.pitch}`).join(',') || 'none')
     const returned = await h.waitFor(() => bot.inventory.items().some((i) => i.name === 'trident'), 10000)
     h.result('loyalty_returned', returned)
     await h.ticks(10)
@@ -72,4 +81,18 @@ h.start(async () => {
   h.result('riptide_trident_kept', !!used)
   watcher.quit()
   h.cmd(`fill ${X - 2} ${Y + 1} ${Z - 2} ${X + 2} ${Y + 1} ${Z + 2} air`)
+
+  // A trident summoned with arrow NBT shows its crit flag and pierce level.
+  const summonedMeta = new Map()
+  bot._client.on('entity_metadata', (packet) => {
+    const e = bot.entities[packet.entityId]
+    if (!e || e.name !== 'trident') return
+    for (const item of packet.metadata || []) summonedMeta.set(item.key, item.value)
+  })
+  h.cmd('kill @e[type=trident]')
+  await h.ticks(5)
+  h.cmd(`summon trident ${X + 0.5} ${Y + 3} ${Z + 3.5} {NoGravity:1b,crit:1b,PierceLevel:3b}`)
+  await h.waitFor(() => summonedMeta.size > 0, 3000)
+  await h.ticks(5)
+  h.result('summoned_nbt_meta', [...summonedMeta.keys()].sort((a, b) => a - b).map((k) => `${k}=${JSON.stringify(summonedMeta.get(k))}`).join(' ') || 'none')
 })

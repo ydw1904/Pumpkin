@@ -7,7 +7,9 @@ use crate::entity::projectile::arrow::ArrowPickup;
 use crate::entity::projectile::trident::TridentEntity;
 use crate::entity::{Entity, EntityBase};
 use crate::item::{ItemBehaviour, ItemMetadata};
-use pumpkin_data::data_component_impl::{EnchantmentsImpl, EquipmentSlot};
+use pumpkin_data::data_component_impl::{
+    EnchantmentsImpl, EquipmentSlot, IntangibleProjectileImpl,
+};
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -180,25 +182,32 @@ impl ItemBehaviour for TridentItem {
         // Normal throw - spawn thrown trident
         let (yaw, pitch) = player.rotation();
         let entity = Entity::new(world.clone(), player.position(), &EntityType::TRIDENT);
-        let pickup = if is_creative {
+        // Vanilla `AbstractArrow`'s constructor: an `intangible_projectile` item can only be
+        // picked up in creative. It strips the component from the thrown copy only after taking
+        // its own copy, so the trident's item keeps it.
+        let thrown = stack_guard.copy_with_count(1);
+        let pickup = if is_creative
+            || thrown
+                .get_data_component::<IntangibleProjectileImpl>()
+                .is_some()
+        {
             ArrowPickup::CreativeOnly
         } else {
             ArrowPickup::Allowed
         };
-        let trident = TridentEntity::new_shot(
-            entity,
-            player.get_entity(),
-            stack_guard.copy_with_count(1),
-            pickup,
-        );
+        let trident = TridentEntity::new_shot(entity, player.get_entity(), thrown, pickup);
         trident.shoot_from_rotation(player.get_entity(), pitch, yaw, 0.0, 2.5, 1.0);
         trident.apply_on_projectile_spawned(&stack_guard);
-        world.spawn_entity(Arc::new(trident));
+        let trident = Arc::new(trident);
+        world.spawn_entity(trident.clone());
 
-        world.play_sound(
+        // Vanilla plays it from the trident.
+        world.play_sound_from_entity(
             Sound::ItemTridentThrow,
             SoundCategory::Players,
-            &player.position(),
+            trident.get_entity(),
+            1.0,
+            1.0,
         );
 
         if !is_creative {

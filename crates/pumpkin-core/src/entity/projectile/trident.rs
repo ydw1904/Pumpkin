@@ -24,6 +24,7 @@ use pumpkin_protocol::java::client::play::CSoundEffect;
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_world::generation::structure::template::PaletteEntry;
 
 use super::arrow::ArrowPickup;
 use super::{
@@ -53,6 +54,14 @@ pub struct TridentEntity {
     pub last_block_pos: Arc<std::sync::RwLock<Option<BlockPos>>>,
     /// Vanilla `AbstractArrow.lastState`: the block state the trident stuck into.
     last_state: AtomicCell<Option<BlockStateId>>,
+    /// Vanilla `AbstractArrow.baseDamage`; a trident's hit always deals 8, but it is saved.
+    base_damage: AtomicCell<f64>,
+    /// Vanilla `AbstractArrow.FLAG_CRIT`.
+    crit: AtomicBool,
+    /// Vanilla `AbstractArrow.PIERCE_LEVEL`.
+    pierce_level: AtomicU8,
+    /// Vanilla `AbstractArrow.soundEvent`, played when it sticks into a block.
+    sound_event: AtomicCell<Sound>,
 }
 
 /// The power of the `ProjectileDeflection.REVERSE` vanilla `ThrownTrident.onHitEntity` bounces
@@ -61,6 +70,10 @@ const TRIDENT_HIT_BOUNCE: Vector3<f64> = Vector3::new(0.02, 0.2, 0.02);
 
 impl TridentEntity {
     const BASE_DAMAGE: f64 = 8.0;
+    /// Vanilla `AbstractArrow.BASE_DAMAGE`, the saved `damage` a trident never uses.
+    const DEFAULT_BASE_DAMAGE: f64 = 2.0;
+    /// Vanilla `ThrownTrident.getDefaultHitGroundSoundEvent`.
+    const DEFAULT_HIT_GROUND_SOUND: Sound = Sound::ItemTridentHitGround;
     const AIR_INERTIA: f64 = 0.99;
     const WATER_INERTIA: f64 = 0.99;
     const GRAVITY: f64 = 0.05;
@@ -94,6 +107,10 @@ impl TridentEntity {
             return_ticks: AtomicU32::new(0),
             last_block_pos: Arc::new(std::sync::RwLock::new(None)),
             last_state: AtomicCell::new(None),
+            base_damage: AtomicCell::new(Self::DEFAULT_BASE_DAMAGE),
+            crit: AtomicBool::new(false),
+            pierce_level: AtomicU8::new(0),
+            sound_event: AtomicCell::new(Self::DEFAULT_HIT_GROUND_SOUND),
         }
     }
 
@@ -126,6 +143,10 @@ impl TridentEntity {
             return_ticks: AtomicU32::new(0),
             last_block_pos: Arc::new(std::sync::RwLock::new(None)),
             last_state: AtomicCell::new(None),
+            base_damage: AtomicCell::new(Self::DEFAULT_BASE_DAMAGE),
+            crit: AtomicBool::new(false),
+            pierce_level: AtomicU8::new(0),
+            sound_event: AtomicCell::new(Self::DEFAULT_HIT_GROUND_SOUND),
         }
     }
 
@@ -225,11 +246,31 @@ impl TridentEntity {
         if no_physics {
             self.in_ground.store(false, Ordering::Relaxed);
         }
-        // Vanilla `AbstractArrow.FLAG_NOPHYSICS`.
+        self.sync_flags();
+    }
+
+    fn set_crit(&self, crit: bool) {
+        self.crit.store(crit, Ordering::Relaxed);
+        self.sync_flags();
+    }
+
+    fn set_pierce_level(&self, level: u8) {
+        self.pierce_level.store(level, Ordering::Relaxed);
         self.entity.set_synced_data(
-            pumpkin_data::tracked_data::trident::ID_FLAGS,
-            if no_physics { 2i8 } else { 0i8 },
+            pumpkin_data::tracked_data::trident::PIERCE_LEVEL,
+            level as i8,
         );
+    }
+
+    /// Vanilla `AbstractArrow.ID_FLAGS`: `FLAG_CRIT` and `FLAG_NOPHYSICS`.
+    fn flags(&self) -> i8 {
+        i8::from(self.crit.load(Ordering::Relaxed))
+            | i8::from(self.no_physics.load(Ordering::Relaxed)) << 1
+    }
+
+    fn sync_flags(&self) {
+        self.entity
+            .set_synced_data(pumpkin_data::tracked_data::trident::ID_FLAGS, self.flags());
     }
 
     /// Applies projectile-spawned enchantment effects matching vanilla `Projectile::applyOnProjectileSpawned`.
@@ -586,7 +627,20 @@ impl EntityBase for TridentEntity {
         nbt.put_bool("inGround", self.in_ground.load(Ordering::Relaxed));
         nbt.put_int("life", self.life.load(Ordering::Relaxed) as i32);
         nbt.put_byte("shake", self.shake_time.load(Ordering::Relaxed) as i8);
+        if let Some(state) = self.last_state.load() {
+            nbt.put("inBlockState", PaletteEntry::state_to_nbt(state));
+        }
         nbt.put_byte("pickup", self.pickup.load().to_byte() as i8);
+        nbt.put_double("damage", self.base_damage.load());
+        nbt.put_bool("crit", self.crit.load(Ordering::Relaxed));
+        nbt.put_byte(
+            "PierceLevel",
+            self.pierce_level.load(Ordering::Relaxed) as i8,
+        );
+        nbt.put_string(
+            "SoundEvent",
+            format!("minecraft:{}", self.sound_event.load().to_name()),
+        );
         nbt.put_bool("DealtDamage", self.dealt_damage.load(Ordering::Relaxed));
     }
 
@@ -611,10 +665,25 @@ impl EntityBase for TridentEntity {
         if let Some(shake) = nbt.get_byte("shake") {
             self.shake_time.store(shake.max(0) as u8, Ordering::Relaxed);
         }
+        self.last_state.store(
+            nbt.get("inBlockState")
+                .and_then(PaletteEntry::state_from_nbt),
+        );
         // Vanilla falls back to `DISALLOWED` when the tag is missing.
         self.pickup.store(ArrowPickup::from_byte(
             nbt.get_byte("pickup").unwrap_or(0) as u8
         ));
+        self.base_damage.store(
+            nbt.get_double("damage")
+                .unwrap_or(Self::DEFAULT_BASE_DAMAGE),
+        );
+        self.set_crit(nbt.get_bool("crit").unwrap_or(false));
+        self.set_pierce_level(nbt.get_byte("PierceLevel").unwrap_or(0) as u8);
+        self.sound_event.store(
+            nbt.get_string("SoundEvent")
+                .and_then(|name| Sound::from_name(name.strip_prefix("minecraft:").unwrap_or(name)))
+                .unwrap_or(Self::DEFAULT_HIT_GROUND_SOUND),
+        );
         self.dealt_damage.store(
             nbt.get_bool("DealtDamage").unwrap_or(false),
             Ordering::Relaxed,
@@ -642,6 +711,11 @@ impl EntityBase for TridentEntity {
         );
         self.entity
             .set_synced_data(pumpkin_data::tracked_data::trident::ID_FOIL, foil);
+        self.sync_flags();
+        self.entity.set_synced_data(
+            pumpkin_data::tracked_data::trident::PIERCE_LEVEL,
+            self.pierce_level.load(Ordering::Relaxed) as i8,
+        );
     }
 
     fn get_entity(&self) -> &Entity {
@@ -693,7 +767,7 @@ impl EntityBase for TridentEntity {
                 // Vanilla `AbstractArrow.onHitBlock`'s pitch.
                 let pitch = 1.2 / game_random().random::<f32>().mul_add(0.2, 0.9);
                 let sound_packet = CSoundEffect::new(
-                    IdOr::Id(Sound::ItemTridentHitGround as u16),
+                    IdOr::Id(self.sound_event.load() as u16),
                     SoundCategory::Neutral,
                     &hit_pos,
                     1.0,
@@ -702,6 +776,12 @@ impl EntityBase for TridentEntity {
                 );
                 let chunk_pos = entity.chunk_pos.load();
                 world.broadcast_to_chunk(chunk_pos, &sound_packet);
+
+                self.set_crit(false);
+                self.set_pierce_level(0);
+                // Vanilla `AbstractArrow.onHitBlock` switches to the arrow's sound, so a trident
+                // that falls and sticks again sounds like an arrow.
+                self.sound_event.store(Sound::EntityArrowHit);
             }
             ProjectileHit::Entity {
                 entity: target,
