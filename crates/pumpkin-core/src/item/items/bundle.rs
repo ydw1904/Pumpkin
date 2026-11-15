@@ -87,7 +87,7 @@ impl BundleItem {
         let Some(contents) = bundle.get_data_component_mut::<BundleContentsImpl>() else {
             return;
         };
-        let Some(item) = contents.remove_one() else {
+        let Some(item) = contents.try_extract() else {
             return;
         };
 

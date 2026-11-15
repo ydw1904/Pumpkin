@@ -791,6 +791,31 @@ pub trait ScreenHandler: Send + Sync {
         success
     }
 
+    /// Toggles the selected item index on a bundle in `slot_index` (`AbstractContainerMenu.setSelectedBundleItemIndex`).
+    fn set_selected_bundle_item_index(&mut self, slot_index: i32, selected_item_index: i32) {
+        let Ok(slot_index) = usize::try_from(slot_index) else {
+            return;
+        };
+        let slots = &self.get_behaviour().slots;
+        if slot_index >= slots.len() {
+            return;
+        }
+        let slot = slots[slot_index].clone();
+        let mut stack = slot.get_stack();
+        if stack
+            .get_data_component::<pumpkin_data::data_component_impl::BundleContentsImpl>()
+            .is_none()
+        {
+            return;
+        }
+        if let Some(bundle) =
+            stack.get_data_component_mut::<pumpkin_data::data_component_impl::BundleContentsImpl>()
+        {
+            bundle.toggle_selected_item(selected_item_index);
+            slot.get_inventory().set_stack(slot.get_index(), stack);
+        }
+    }
+
     /// Handles a slot click event.
     ///
     /// Override for custom click handling. Return true to prevent default handling.

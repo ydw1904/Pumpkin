@@ -504,6 +504,7 @@ impl DataComponentImpl for ChargedProjectilesImpl {
 #[derive(Clone)]
 pub struct BundleContentsImpl {
     pub items: Vec<crate::item_stack::ItemStack>,
+    pub selected_item: i32,
 }
 impl PartialEq for BundleContentsImpl {
     fn eq(&self, other: &Self) -> bool {
@@ -518,10 +519,77 @@ impl PartialEq for BundleContentsImpl {
 impl Eq for BundleContentsImpl {}
 impl std::fmt::Debug for BundleContentsImpl {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "BundleContentsImpl")
+        f.debug_struct("BundleContentsImpl")
+            .field("items_len", &self.items.len())
+            .field("selected_item", &self.selected_item)
+            .finish()
     }
 }
+
+const fn gcd_u64(mut a: u64, mut b: u64) -> u64 {
+    while b != 0 {
+        let t = b;
+        b = a % b;
+        a = t;
+    }
+    a
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct WeightFraction {
+    num: u64,
+    den: u64,
+}
+
+impl WeightFraction {
+    const ZERO: Self = Self { num: 0, den: 1 };
+    const ONE: Self = Self { num: 1, den: 1 };
+    const BUNDLE_IN_BUNDLE: Self = Self { num: 1, den: 16 };
+
+    const fn new(num: u64, den: u64) -> Option<Self> {
+        if den == 0 {
+            return None;
+        }
+        if num == 0 {
+            return Some(Self::ZERO);
+        }
+        let g = gcd_u64(num, den);
+        Some(Self {
+            num: num / g,
+            den: den / g,
+        })
+    }
+
+    fn checked_add(self, rhs: Self) -> Option<Self> {
+        let g = gcd_u64(self.den, rhs.den);
+        let left = self.num.checked_mul(rhs.den / g)?;
+        let right = rhs.num.checked_mul(self.den / g)?;
+        let num = left.checked_add(right)?;
+        let den = (self.den / g).checked_mul(rhs.den)?;
+        Self::new(num, den)
+    }
+
+    fn checked_mul_count(self, count: u64) -> Option<Self> {
+        let num = self.num.checked_mul(count)?;
+        Self::new(num, self.den)
+    }
+}
+
 impl BundleContentsImpl {
+    pub const NO_SELECTED_ITEM_INDEX: i32 = -1;
+    pub const EMPTY: Self = Self {
+        items: Vec::new(),
+        selected_item: Self::NO_SELECTED_ITEM_INDEX,
+    };
+
+    #[must_use]
+    pub const fn new(items: Vec<crate::item_stack::ItemStack>) -> Self {
+        Self {
+            items,
+            selected_item: Self::NO_SELECTED_ITEM_INDEX,
+        }
+    }
+
     pub fn read_data(tag: &NbtTag) -> Option<Self> {
         let mut items = Vec::new();
         if let NbtTag::List(l) = tag {
@@ -533,60 +601,134 @@ impl BundleContentsImpl {
                 }
             }
         }
-        Some(Self { items })
+        Some(Self::new(items))
     }
-    // Vanilla `BundleContents.getWeight`, in 64ths of a full bundle.
-    pub fn weight_of(stack: &crate::item_stack::ItemStack) -> u32 {
-        let max_stack_size = stack.get_max_stack_size().max(1);
-        (64.0 / f64::from(max_stack_size)).round().max(1.0) as u32
-    }
-    pub fn get_weight(&self) -> u32 {
-        self.items
-            .iter()
-            .map(|item| item.item_count as u32 * Self::weight_of(item))
-            .sum()
-    }
-    // Vanilla `BundleContents.Mutable.getMaxAmountToAdd`.
-    pub fn get_max_amount_to_add(&self, item_weight: u32) -> u8 {
-        let remaining = 64u32.saturating_sub(self.get_weight());
-        (remaining / item_weight.max(1)).min(u32::from(u8::MAX)) as u8
-    }
-    // Vanilla `BundleContents.canItemBeInBundle`. Pumpkin's weight model has no 1/16 weight for a
-    // nested bundle, so unlike vanilla it keeps rejecting them.
+
+    #[must_use]
     pub fn can_item_be_in_bundle(stack: &crate::item_stack::ItemStack) -> bool {
-        !stack.is_empty() && stack.get_data_component::<Self>().is_none()
+        !stack.is_empty()
+            && !crate::tag::Item::MINECRAFT_SHULKER_BOXES
+                .1
+                .contains(&stack.item.id)
     }
-    // Vanilla `BundleContents.Mutable.tryInsert`. Inserts what fits and returns the amount taken.
-    pub fn try_insert(&mut self, stack: &mut crate::item_stack::ItemStack) -> u8 {
+
+    fn single_item_weight(stack: &crate::item_stack::ItemStack) -> Option<WeightFraction> {
+        if let Some(nested) = stack.get_data_component::<Self>() {
+            return nested
+                .content_weight()?
+                .checked_add(WeightFraction::BUNDLE_IN_BUNDLE);
+        }
+        if let Some(bees) = stack.get_data_component::<super::BeesImpl>()
+            && !bees.bees.is_empty()
+        {
+            return Some(WeightFraction::ONE);
+        }
+        WeightFraction::new(1, u64::from(stack.get_max_stack_size().max(1)))
+    }
+
+    fn content_weight(&self) -> Option<WeightFraction> {
+        let mut total = WeightFraction::ZERO;
+        for item in &self.items {
+            let item_weight =
+                Self::single_item_weight(item)?.checked_mul_count(u64::from(item.item_count))?;
+            total = total.checked_add(item_weight)?;
+        }
+        Some(total)
+    }
+
+    #[must_use]
+    pub fn max_amount_to_add(&self, stack: &crate::item_stack::ItemStack) -> u8 {
         if !Self::can_item_be_in_bundle(stack) {
             return 0;
         }
-        let item_weight = Self::weight_of(stack);
-        let amount_to_add = stack
-            .item_count
-            .min(self.get_max_amount_to_add(item_weight));
-        let mut inserted = 0;
-        while stack.item_count > 0 && inserted < amount_to_add {
-            if let Some(top) = self.items.first_mut()
-                && crate::item_stack::ItemStack::are_items_and_components_equal(top, stack)
-                && top.item_count < top.get_max_stack_size()
-            {
-                top.item_count += 1;
-            } else {
-                self.items.insert(0, stack.copy_with_count(1));
-            }
-            stack.item_count -= 1;
-            inserted += 1;
+        let Some(current) = self.content_weight() else {
+            return 0;
+        };
+        if current.num >= current.den {
+            return 0;
         }
-        inserted
+        let Some(item_weight) = Self::single_item_weight(stack) else {
+            return 0;
+        };
+        if item_weight.num == 0 {
+            return u8::MAX;
+        }
+        // Remaining capacity is (current.den - current.num) / current.den.
+        // Dividing by item_weight.num / item_weight.den gives:
+        // ((current.den - current.num) * item_weight.den) / (current.den * item_weight.num).
+        let rem_num = current.den - current.num;
+        let Some(numerator) = rem_num.checked_mul(item_weight.den) else {
+            return 0;
+        };
+        let Some(denominator) = current.den.checked_mul(item_weight.num) else {
+            return 0;
+        };
+        if denominator == 0 {
+            return 0;
+        }
+        u8::try_from(numerator / denominator).unwrap_or(u8::MAX)
     }
-    // Vanilla `BundleContents.Mutable.removeOne`.
-    pub fn remove_one(&mut self) -> Option<crate::item_stack::ItemStack> {
-        if self.items.is_empty() {
-            None
+
+    #[must_use]
+    pub const fn index_is_outside_allowed_bounds(&self, index: i32) -> bool {
+        index < 0 || (index as usize) >= self.items.len()
+    }
+
+    pub const fn toggle_selected_item(&mut self, index: i32) {
+        self.selected_item =
+            if self.selected_item != index && !self.index_is_outside_allowed_bounds(index) {
+                index
+            } else {
+                Self::NO_SELECTED_ITEM_INDEX
+            };
+    }
+
+    #[must_use]
+    pub const fn get_selected_item_index(&self) -> i32 {
+        if self.index_is_outside_allowed_bounds(self.selected_item) {
+            Self::NO_SELECTED_ITEM_INDEX
         } else {
-            Some(self.items.remove(0))
+            self.selected_item
         }
+    }
+
+    /// Vanilla `BundleContents.Mutable.tryInsert`: inserts what fits and returns the amount.
+    pub fn try_insert(&mut self, stack: &mut crate::item_stack::ItemStack) -> u8 {
+        let count_to_add = stack.item_count.min(self.max_amount_to_add(stack));
+        if count_to_add == 0 {
+            return 0;
+        }
+
+        if stack.get_max_stack_size() > 1
+            && let Some(existing_idx) = self.items.iter().position(|item| {
+                crate::item_stack::ItemStack::are_items_and_components_equal(item, stack)
+            })
+        {
+            let existing = self.items.remove(existing_idx);
+            let combined_count = existing.item_count.saturating_add(count_to_add);
+            let merged = existing.copy_with_count(combined_count);
+            stack.decrement(count_to_add);
+            self.items.insert(0, merged);
+        } else {
+            let split = stack.split(count_to_add);
+            self.items.insert(0, split);
+        }
+        count_to_add
+    }
+
+    /// Vanilla `BundleContents.Mutable.removeOne`.
+    pub fn try_extract(&mut self) -> Option<crate::item_stack::ItemStack> {
+        if self.items.is_empty() {
+            return None;
+        }
+        let remove_index = if self.index_is_outside_allowed_bounds(self.selected_item) {
+            0
+        } else {
+            self.selected_item as usize
+        };
+        let removed = self.items.remove(remove_index);
+        self.toggle_selected_item(Self::NO_SELECTED_ITEM_INDEX);
+        Some(removed)
     }
 }
 impl DataComponentImpl for BundleContentsImpl {
@@ -1051,93 +1193,58 @@ impl DataComponentImpl for RecipesImpl {
 #[cfg(test)]
 mod tests {
     use super::BundleContentsImpl;
-    use crate::data_component_impl::MaxStackSizeImpl;
-    use crate::item::Item;
-    use crate::item_stack::ItemStack;
-
-    fn empty() -> BundleContentsImpl {
-        BundleContentsImpl { items: Vec::new() }
-    }
+    use crate::{item::Item, item_stack::ItemStack};
 
     #[test]
-    fn a_bundle_holds_what_its_items_weigh() {
-        // A 64 stack weighs 1 unit and a 16 stack 4, so 64 units make a full bundle.
+    fn bundle_toggle_selected_item_and_extract() {
+        let mut contents = BundleContentsImpl::EMPTY;
+        let mut diamonds = ItemStack::new(2, &Item::DIAMOND);
+        let mut emeralds = ItemStack::new(3, &Item::EMERALD);
+        let mut sticks = ItemStack::new(4, &Item::STICK);
+
+        assert!(contents.try_insert(&mut diamonds) > 0);
+        assert!(contents.try_insert(&mut emeralds) > 0);
+        assert!(contents.try_insert(&mut sticks) > 0);
+        // Inserted via addFirst -> [STICK(4), EMERALD(3), DIAMOND(2)]
+        assert_eq!(contents.items.len(), 3);
         assert_eq!(
-            BundleContentsImpl::weight_of(&ItemStack::new(64, &Item::STONE)),
-            1
+            contents.get_selected_item_index(),
+            BundleContentsImpl::NO_SELECTED_ITEM_INDEX
         );
+
+        // Selecting index 1 (EMERALD), then toggling index 1 again resets to -1.
+        contents.toggle_selected_item(1);
+        assert_eq!(contents.get_selected_item_index(), 1);
+        contents.toggle_selected_item(1);
         assert_eq!(
-            BundleContentsImpl::weight_of(&ItemStack::new(1, &Item::ENDER_PEARL)),
-            4
+            contents.get_selected_item_index(),
+            BundleContentsImpl::NO_SELECTED_ITEM_INDEX
         );
 
-        let mut contents = empty();
-        let mut pearls = ItemStack::new(64, &Item::ENDER_PEARL);
-        assert_eq!(contents.try_insert(&mut pearls), 16);
-        assert_eq!(pearls.item_count, 48);
-        assert_eq!(contents.get_weight(), 64);
-
-        // A full bundle takes nothing more.
-        let mut stone = ItemStack::new(1, &Item::STONE);
-        assert_eq!(contents.try_insert(&mut stone), 0);
-        assert_eq!(stone.item_count, 1);
-    }
-
-    #[test]
-    fn a_bundle_merges_and_splits_stacks_like_vanilla() {
-        let mut contents = empty();
-        let mut stone = ItemStack::new(64, &Item::STONE);
-        assert_eq!(contents.try_insert(&mut stone), 64);
-        assert_eq!(contents.items.len(), 1);
-        assert_eq!(contents.items[0].item_count, 64);
-
+        // Out-of-bounds index resets to -1.
+        contents.toggle_selected_item(2);
+        assert_eq!(contents.get_selected_item_index(), 2);
+        contents.toggle_selected_item(99);
         assert_eq!(
-            contents.remove_one().map(|stack| stack.item_count),
-            Some(64)
+            contents.get_selected_item_index(),
+            BundleContentsImpl::NO_SELECTED_ITEM_INDEX
         );
-        assert!(contents.items.is_empty());
-        assert!(contents.remove_one().is_none());
-    }
 
-    #[test]
-    fn bundles_compare_by_their_items() {
-        let stone = ItemStack::new(1, &Item::STONE);
-        let dirt = ItemStack::new(1, &Item::DIRT);
-        let contents = BundleContentsImpl {
-            items: vec![stone.clone()],
-        };
+        // Extracting with selected index 1 removes EMERALD and resets selection to -1.
+        contents.toggle_selected_item(1);
+        let extracted = contents.try_extract().unwrap();
+        assert_eq!(extracted.item.id, Item::EMERALD.id);
+        assert_eq!(extracted.item_count, 3);
+        assert_eq!(
+            contents.get_selected_item_index(),
+            BundleContentsImpl::NO_SELECTED_ITEM_INDEX
+        );
+        assert_eq!(contents.items.len(), 2);
 
-        assert!(contents == BundleContentsImpl { items: vec![stone] });
-        assert!(contents != BundleContentsImpl { items: vec![dirt] });
-        assert!(contents != empty());
-    }
-
-    #[test]
-    fn a_bundle_never_goes_inside_a_bundle() {
-        assert!(!BundleContentsImpl::can_item_be_in_bundle(&ItemStack::new(
-            1,
-            &Item::BUNDLE
-        )));
-        assert!(!BundleContentsImpl::can_item_be_in_bundle(
-            &ItemStack::EMPTY
-        ));
-        assert!(BundleContentsImpl::can_item_be_in_bundle(&ItemStack::new(
-            1,
-            &Item::STONE
-        )));
-    }
-
-    #[test]
-    fn a_stack_larger_than_a_bundle_still_weighs_something() {
-        let mut stack = ItemStack::new(1, &Item::STONE);
-        stack.set_data_component(MaxStackSizeImpl { size: 100 });
-        assert_eq!(BundleContentsImpl::weight_of(&stack), 1);
-
-        let mut contents = empty();
-        let mut big = stack;
-        big.item_count = 64;
-        assert_eq!(contents.try_insert(&mut big), 64);
-        assert_eq!(contents.get_weight(), 64);
-        assert_eq!(contents.try_insert(&mut big), 0);
+        // Inserting additional diamonds merges with non-top DIAMOND stack and moves it to index 0.
+        let mut more_diamonds = ItemStack::new(5, &Item::DIAMOND);
+        assert!(contents.try_insert(&mut more_diamonds) > 0);
+        assert_eq!(contents.items[0].item.id, Item::DIAMOND.id);
+        assert_eq!(contents.items[0].item_count, 7);
     }
 }

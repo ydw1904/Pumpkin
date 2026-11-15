@@ -38,7 +38,7 @@ fn try_transfer(
     if !BundleContentsImpl::can_item_be_in_bundle(&other) {
         return 0;
     }
-    let max_amount = contents.get_max_amount_to_add(BundleContentsImpl::weight_of(&other));
+    let max_amount = contents.max_amount_to_add(&other);
     let mut taken = slot.safe_take(other.item_count, max_amount, player);
     let inserted = contents.try_insert(&mut taken);
     if taken.item_count > 0 {
@@ -67,7 +67,7 @@ fn override_stacked_on_other(
             player.play_item_sound(Sound::ItemBundleInsertFail, 1.0, 1.0);
         }
     } else if *click_type == MouseClick::Right && other.is_empty() {
-        if let Some(item) = contents.remove_one() {
+        if let Some(item) = contents.try_extract() {
             let mut leftover = slot.insert_stack(item);
             if leftover.item_count > 0 {
                 contents.try_insert(&mut leftover);
@@ -91,8 +91,7 @@ fn override_other_stacked_on_me(
     other: &mut ItemStack,
 ) -> bool {
     if *click_type == MouseClick::Left && other.is_empty() {
-        // Vanilla `toggleSelectedItem(self, -1)`, which needs the bundle selection Pumpkin has no
-        // state for yet, and leaves the click to the default behaviour.
+        deselect_bundle_item(slot);
         return false;
     }
 
@@ -113,16 +112,26 @@ fn override_other_stacked_on_me(
         }
     } else if *click_type == MouseClick::Right && other.is_empty() {
         if slot.allow_modification(player)
-            && let Some(item) = contents.remove_one()
+            && let Some(item) = contents.try_extract()
         {
             player.play_item_sound(Sound::ItemBundleRemoveOne, 0.8, pitch);
             *other = item;
         }
     } else {
+        deselect_bundle_item(slot);
         return false;
     }
 
     bundle_stack.set_data_component(contents);
     slot.set_stack(bundle_stack);
     true
+}
+
+// Vanilla `BundleItem.toggleSelectedItem(self, -1)` on the bundle in `slot`.
+fn deselect_bundle_item(slot: &Arc<dyn Slot>) {
+    let mut bundle_stack = slot.get_cloned_stack();
+    if let Some(contents) = bundle_stack.get_data_component_mut::<BundleContentsImpl>() {
+        contents.toggle_selected_item(BundleContentsImpl::NO_SELECTED_ITEM_INDEX);
+        slot.set_stack(bundle_stack);
+    }
 }
