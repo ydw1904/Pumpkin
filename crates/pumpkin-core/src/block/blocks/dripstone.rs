@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     block::{
         BlockBehaviour, BrokenArgs, CanPlaceAtArgs, GetStateForNeighborUpdateArgs,
-        OnLandedUponArgs, OnPlaceArgs, PathComputationType, PlacedArgs,
+        OnLandedUponArgs, OnPlaceArgs, OnProjectileHitArgs, PathComputationType, PlacedArgs,
     },
     entity::player::Player,
     world::World,
@@ -11,6 +11,7 @@ use crate::{
 use pumpkin_data::{
     Block, BlockDirection, BlockState, BlockStateId,
     block_properties::{PointedDripstoneLikeProperties, SpeleothemThickness, VerticalDirection},
+    entity::EntityType,
     fluid::Fluid,
 };
 use pumpkin_macros::pumpkin_block_from_tag;
@@ -146,6 +147,37 @@ impl BlockBehaviour for DripstoneBlock {
         }
         if let Some(living) = args.entity.get_living_entity() {
             living.handle_fall_damage(args.entity, args.fall_distance, 1.0);
+        }
+    }
+
+    /// Vanilla `PointedDripstoneBlock.onProjectileHit`: a fast trident breaks it.
+    fn on_projectile_hit(&self, args: OnProjectileHitArgs<'_>) {
+        const TRIDENT_BREAK_MIN_SPEED: f64 = 0.6;
+
+        let projectile = args.projectile.get_entity();
+        if args.block != &Block::POINTED_DRIPSTONE
+            || projectile.entity_type != &EntityType::TRIDENT
+            || projectile.velocity.load().length() <= TRIDENT_BREAK_MIN_SPEED
+        {
+            return;
+        }
+        let game_rules = &args.world.level_info.load().game_rules;
+        // `Projectile.mayInteract`: a player owner must be allowed to build here, an owning mob
+        // needs mob griefing. `mayBreak`: tridents are impact projectiles.
+        let owner = args
+            .projectile
+            .get_projectile_owner()
+            .and_then(|owner| owner.owner().get(args.world));
+        let may_interact = owner.as_ref().is_none_or(|owner| {
+            owner
+                .get_player()
+                .map_or(game_rules.mob_griefing, |player| {
+                    !args.world.is_in_spawn_protection(player, args.position)
+                })
+        });
+        if may_interact && game_rules.projectiles_can_break_blocks {
+            args.world
+                .break_block(args.position, None, BlockFlags::NOTIFY_ALL);
         }
     }
 
