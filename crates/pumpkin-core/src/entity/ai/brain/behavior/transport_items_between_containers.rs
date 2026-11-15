@@ -13,7 +13,7 @@ use pumpkin_world::clip::{ClipBlock, ClipContext, ClipFluid};
 use crate::{
     block::{
         blocks::chests::{ChestContainer, get_chest_container},
-        entities::BlockEntity,
+        entities::{BlockEntity, base_container::BaseContainer},
     },
     entity::{
         mob::Mob,
@@ -233,7 +233,8 @@ impl TransportItemsBetweenContainers {
                             visited.is_some_and(|set| set.contains(&pos))
                                 || unreachable.is_some_and(|set| set.contains(&pos))
                         })
-                    }) {
+                    }) || Self::is_container_locked(block_entity.as_ref())
+                    {
                         continue;
                     }
                     target = Some(TransportItemTarget {
@@ -247,6 +248,12 @@ impl TransportItemsBetweenContainers {
             }
         }
         target
+    }
+
+    fn is_container_locked(block_entity: &dyn BlockEntity) -> bool {
+        block_entity
+            .base_container()
+            .is_some_and(BaseContainer::is_locked)
     }
 
     fn middle_position(mob: &dyn Mob, bottom: Vector3<f64>) -> Vector3<f64> {
