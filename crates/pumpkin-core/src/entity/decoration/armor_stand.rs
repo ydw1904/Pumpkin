@@ -268,6 +268,12 @@ impl ArmorStandEntity {
 }
 
 impl EntityBase for ArmorStandEntity {
+    /// Marker or no-gravity armor stands (`ArmorStand.hasPhysics`) don't travel, so they neither
+    /// move nor fall.
+    fn is_effective_ai(&self) -> bool {
+        self.has_physics()
+    }
+
     fn is_ignored_by_pistons(&self) -> bool {
         self.is_marker()
     }

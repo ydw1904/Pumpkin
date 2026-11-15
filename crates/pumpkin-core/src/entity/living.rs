@@ -22,7 +22,6 @@ use std::sync::atomic::{
 use tracing::warn;
 use uuid::Uuid;
 
-use super::decoration::armor_stand::ArmorStandEntity;
 use super::experience_orb::ExperienceOrbEntity;
 use super::{Entity, EntityBase, GearDamage, NBTStorageInit};
 use crate::block::OnLandedUponArgs;
@@ -2377,18 +2376,6 @@ impl LivingEntity {
         world.broadcast_editioned(&je_packet, &be_packet);
     }
 
-    /// Vanilla `isEffectiveAi`: `NoAI` mobs and marker or no-gravity armor stands
-    /// (`ArmorStand.hasPhysics`) don't travel, so they neither move nor fall.
-    fn is_effective_ai(caller: &dyn EntityBase) -> bool {
-        caller
-            .get_mob()
-            .is_none_or(|mob| !mob.get_mob_entity().is_no_ai())
-            && caller
-                .cast_any()
-                .downcast_ref::<ArmorStandEntity>()
-                .is_none_or(ArmorStandEntity::has_physics)
-    }
-
     /// The part of vanilla `LivingEntity.aiStep` before travel, which also runs for players.
     fn reset_fall_distance_from_effects(&self) {
         if self.has_effect(&StatusEffect::SLOW_FALLING)
@@ -2472,7 +2459,7 @@ impl LivingEntity {
 
         self.reset_fall_distance_from_effects();
 
-        let effective_ai = Self::is_effective_ai(caller) && !client_controlled;
+        let effective_ai = caller.is_effective_ai() && !client_controlled;
 
         if client_controlled {
             self.entity.velocity.store(Vector3::default());
@@ -2483,7 +2470,7 @@ impl LivingEntity {
 
         let suffocating = self.entity.tick_block_collisions(caller);
 
-        if suffocating {
+        if suffocating && self.entity.pose.load() != EntityPose::Sleeping {
             caller.damage(caller, 1.0, DamageType::IN_WALL);
         }
 
