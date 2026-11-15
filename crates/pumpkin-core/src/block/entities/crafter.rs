@@ -227,6 +227,8 @@ impl BlockEntity for CrafterBlockEntity {
 
 impl CrafterBlockEntity {
     pub const INVENTORY_SIZE: usize = 9;
+    pub const SLOT_DISABLED: i32 = 1;
+    pub const SLOT_ENABLED: i32 = 0;
     pub const ID: &'static str = "minecraft:crafter";
 
     #[must_use]
@@ -383,7 +385,36 @@ impl Inventory for CrafterBlockEntity {
     }
 
     fn is_valid_slot_for(&self, slot: usize, _stack: &ItemStack) -> bool {
-        !self.is_slot_disabled(slot)
+        if slot >= Self::INVENTORY_SIZE || self.is_slot_disabled(slot) {
+            return false;
+        }
+        let items = self
+            .items
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let existing = &items[slot];
+        let count = existing.item_count;
+        if count >= existing.get_max_stack_size() {
+            return false;
+        }
+        if existing.is_empty() {
+            return true;
+        }
+        let disabled = self
+            .disabled_slots
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for other_slot in (slot + 1)..Self::INVENTORY_SIZE {
+            if !disabled[other_slot] {
+                let other = &items[other_slot];
+                if other.is_empty()
+                    || (other.item_count < count && other.are_items_and_components_equal(existing))
+                {
+                    return false;
+                }
+            }
+        }
+        true
     }
 
     fn mark_dirty(&self) {
@@ -432,5 +463,29 @@ impl PropertyDelegate for CrafterBlockEntity {
 
     fn get_properties_size(&self) -> i32 {
         Self::INVENTORY_SIZE as i32 + 1
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pumpkin_data::item::Item;
+
+    #[test]
+    fn crafter_property_delegate_and_slot_distribution() {
+        let crafter = CrafterBlockEntity::new(BlockPos::new(0, 64, 0));
+        assert_eq!(crafter.get_properties_size(), 10);
+        assert_eq!(crafter.get_property(0), CrafterBlockEntity::SLOT_ENABLED);
+
+        crafter.set_slot_state(1, false);
+        assert_eq!(crafter.get_property(1), CrafterBlockEntity::SLOT_DISABLED);
+        assert!(!crafter.is_valid_slot_for(1, &ItemStack::new(1, &Item::OAK_LOG)));
+
+        // Once slot 0 has 1 log and slot 2 is empty and enabled, hopper placement
+        // skips slot 0 so items spread across enabled slots like vanilla CrafterBlockEntity.canPlaceItem.
+        let log = ItemStack::new(1, &Item::OAK_LOG);
+        crafter.set_stack(0, log.clone());
+        assert!(!crafter.is_valid_slot_for(0, &log));
+        assert!(crafter.is_valid_slot_for(2, &log));
     }
 }

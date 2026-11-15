@@ -8,6 +8,7 @@ use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::screen::WindowType;
 
 use crate::crafting::crafting_screen_handler::match_crafting_recipe;
+use crate::crafting::recipe_provider::RecipeProvider;
 use crate::crafting::recipes::RecipeInputInventory;
 use crate::inventory::{Inventory, SimpleInventory};
 use crate::player::player_inventory::PlayerInventory;
@@ -37,6 +38,7 @@ impl CrafterScreenHandler {
         player_inventory: &Arc<PlayerInventory>,
         inventory: Arc<dyn RecipeInputInventory>,
         data: &Arc<dyn PropertyDelegate>,
+        recipe_provider: Option<Arc<dyn RecipeProvider>>,
     ) -> Self {
         let mut handler = Self {
             behaviour: ScreenHandlerBehaviour::new(sync_id, Some(WindowType::Crafter3x3)),
@@ -61,7 +63,11 @@ impl CrafterScreenHandler {
         for index in 0..DATA_COUNT {
             handler.add_property(ScreenProperty::new(data.clone(), index));
         }
-        let listener = Arc::new(CrafterListener { inventory, result });
+        let listener = Arc::new(CrafterListener {
+            inventory,
+            result,
+            recipe_provider,
+        });
         listener.refresh();
         handler.add_listener(listener);
         handler
@@ -101,7 +107,7 @@ impl ScreenHandler for CrafterScreenHandler {
     }
 
     /// Mojang name: `CrafterMenu.quickMoveStack`
-    fn quick_move(&mut self, _player: &dyn InventoryPlayer, slot_index: i32) -> ItemStack {
+    fn quick_move(&mut self, player: &dyn InventoryPlayer, slot_index: i32) -> ItemStack {
         let Some(slot) = self.get_behaviour().slots.get(slot_index as usize).cloned() else {
             return ItemStack::EMPTY.clone();
         };
@@ -126,6 +132,7 @@ impl ScreenHandler for CrafterScreenHandler {
         if stack.item_count == clicked.item_count {
             return ItemStack::EMPTY.clone();
         }
+        slot.on_take_item(player, &stack);
         clicked
     }
 }
@@ -195,14 +202,16 @@ impl Slot for NonInteractiveResultSlot {
 struct CrafterListener {
     inventory: Arc<dyn RecipeInputInventory>,
     result: Arc<SimpleInventory>,
+    recipe_provider: Option<Arc<dyn RecipeProvider>>,
 }
 
 impl CrafterListener {
     fn refresh(&self) -> ItemStack {
-        let result = match_crafting_recipe(&*self.inventory, None).map_or_else(
-            || ItemStack::EMPTY.clone(),
-            |matched| matched.to_item_stack(),
-        );
+        let result = match_crafting_recipe(&*self.inventory, self.recipe_provider.as_deref())
+            .map_or_else(
+                || ItemStack::EMPTY.clone(),
+                |matched| matched.to_item_stack(),
+            );
         self.result.set_stack(0, result.clone());
         result
     }

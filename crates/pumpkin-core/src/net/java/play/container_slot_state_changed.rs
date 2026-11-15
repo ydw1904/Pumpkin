@@ -1,6 +1,7 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 use pumpkin_protocol::java::server::play::SContainerSlotStateChanged;
+use pumpkin_util::GameMode;
 
 impl JavaClient {
     pub fn handle_container_slot_state_changed(
