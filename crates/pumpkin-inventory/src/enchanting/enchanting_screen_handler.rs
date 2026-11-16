@@ -57,6 +57,31 @@ impl Slot for LapisSlot {
 /// `getEnchantmentCost` counts at most this many bookshelves.
 const MAX_BOOKSHELVES: i32 = 15;
 
+/// The item slot, which holds a single item (`EnchantmentMenu`'s slot 0).
+struct ItemSlot(NormalSlot);
+
+impl Slot for ItemSlot {
+    fn get_inventory(&self) -> Arc<dyn Inventory> {
+        self.0.get_inventory()
+    }
+
+    fn get_index(&self) -> usize {
+        self.0.get_index()
+    }
+
+    fn set_id(&self, id: usize) {
+        self.0.set_id(id);
+    }
+
+    fn get_max_item_count(&self) -> u8 {
+        1
+    }
+
+    fn mark_dirty(&self) {
+        self.0.mark_dirty();
+    }
+}
+
 pub struct EnchantingTableScreenHandler {
     pub inventory: Arc<dyn Inventory>,
     behaviour: ScreenHandlerBehaviour,
@@ -85,7 +110,7 @@ impl EnchantingTableScreenHandler {
         };
 
         // Enchanting slots: 0 is item, 1 is lapis
-        handler.add_slot(Arc::new(NormalSlot::new(inventory.clone(), 0)));
+        handler.add_slot(Arc::new(ItemSlot(NormalSlot::new(inventory.clone(), 0))));
         handler.add_slot(Arc::new(LapisSlot::new(inventory.clone())));
 
         let player_inventory: Arc<dyn Inventory> = player_inventory.clone();
