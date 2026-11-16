@@ -6885,14 +6885,28 @@ impl World {
             );
         }
 
-        if !flags.contains(BlockFlags::SKIP_BLOCK_ADDED_CALLBACK) && is_new_block {
-            self.on_block_placed(
-                position,
-                new_block,
-                block_state_id,
-                replaced_block_state_id,
-                block_moved,
-            );
+        if !flags.contains(BlockFlags::SKIP_BLOCK_ADDED_CALLBACK) {
+            if is_new_block {
+                self.on_block_placed(
+                    position,
+                    new_block,
+                    block_state_id,
+                    replaced_block_state_id,
+                    block_moved,
+                );
+            } else if new_block == &Block::WATER || new_block == &Block::LAVA {
+                // Vanilla runs `onPlace` on every state change. `LiquidBlock.onPlace` schedules
+                // the fluid tick there, before the neighbour updates schedule theirs, and fluid
+                // that changes level relies on that order.
+                self.block_registry.on_placed_fluid(
+                    self,
+                    self.get_fluid(position),
+                    block_state_id,
+                    position,
+                    replaced_block_state_id,
+                    block_moved,
+                );
+            }
         }
 
         // Level.java setBlock
