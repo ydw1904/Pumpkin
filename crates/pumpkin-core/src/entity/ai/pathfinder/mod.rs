@@ -1145,63 +1145,51 @@ impl PathNavigation {
         self.tick_count += 1;
         self.update_path(entity);
 
-        if self.path.is_none() {
+        let Some(path) = &self.path else {
             self.stop();
+            return None;
+        };
+        if path.is_done() {
+            self.finish();
             return None;
         }
 
-        let surface_y = self.get_surface_y(entity);
-        let mob_pos = Vector3::new(
-            entity.entity.pos.load().x,
-            surface_y,
-            entity.entity.pos.load().z,
-        );
+        let current_pos = entity.entity.pos.load();
+        let mob_pos = Vector3::new(current_pos.x, self.get_surface_y(entity), current_pos.z);
+        let width = entity.entity.width();
 
-        self.do_stuck_detection(mob_pos, entity);
-
-        if let Some(path) = &mut self.path {
-            if path.is_done() {
-                self.finish();
-                return None;
-            }
-
-            let on_ground = entity.entity.on_ground.load(Ordering::Relaxed);
-
-            if let Some(next_block) = path.get_next_node_pos() {
-                let current_pos = entity.entity.pos.load();
-                // Vanilla followThePath compares |dx| and |dz| separately
+        if self.can_update_path(entity) {
+            // Vanilla `followThePath`.
+            self.max_distance_to_waypoint = Self::waypoint_margin(width);
+            let reach = f64::from(self.max_distance_to_waypoint);
+            let cuts_water_border = self.cuts_water_border_corners;
+            if let Some(path) = &mut self.path
+                && let Some(next_block) = path.get_next_node_pos()
+            {
                 let x_distance = (current_pos.x - (f64::from(next_block.0.x) + 0.5)).abs();
                 let y_distance = (current_pos.y - f64::from(next_block.0.y)).abs();
                 let z_distance = (current_pos.z - (f64::from(next_block.0.z) + 0.5)).abs();
-                let dy = f64::from(next_block.0.y) - current_pos.y;
-
-                let width = entity.entity.width();
-                self.max_distance_to_waypoint = Self::waypoint_margin(width);
-                let reach = f64::from(self.max_distance_to_waypoint);
-
-                if !on_ground && x_distance < reach && z_distance < reach && dy < -0.5 {
-                    path.advance();
-                    return self.ground_target(entity);
-                }
-
                 let close_enough =
                     x_distance < reach && z_distance < reach && y_distance < NODE_REACH_Y;
-
-                let cuts_water_border = self.cuts_water_border_corners;
                 let corner_cut =
                     path.get_next_node().is_some_and(|n| {
                         Self::can_cut_corner(n.path_type)
                             && (cuts_water_border || n.path_type != PathType::WaterBorder)
                     }) && Self::should_target_next_node_in_direction(mob_pos, path, || false);
-
                 if close_enough || corner_cut {
                     path.advance();
-                    return self.ground_target(entity);
                 }
-            } else {
-                self.finish();
-                return None;
             }
+            self.do_stuck_detection(mob_pos, entity);
+        } else if let Some(path) = &mut self.path
+            && let Some(next) = path.get_next_entity_pos(width)
+            && mob_pos.y > next.y
+            && !entity.entity.on_ground.load(Ordering::Relaxed)
+            && mob_pos.x.floor() == next.x.floor()
+            && mob_pos.z.floor() == next.z.floor()
+        {
+            // Airborne above the next node: count it as reached.
+            path.advance();
         }
 
         self.ground_target(entity)
