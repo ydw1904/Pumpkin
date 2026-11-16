@@ -1,23 +1,40 @@
 use std::sync::Arc;
 
+use crate::block::blocks::dripstone::{
+    find_stalactite_tip_above_cauldron, get_cauldron_fill_fluid_type,
+};
 use crate::block::registry::BlockActionResult;
 use crate::block::{
     BlockBehaviour, BlockMetadata, GetComparatorOutputArgs, HandlePrecipitationArgs,
-    PathComputationType, UseWithItemArgs,
+    OnScheduledTickArgs, PathComputationType, UseWithItemArgs,
 };
+use crate::world::game_event::GameEventContext;
 use pumpkin_data::block_properties::WaterCauldronLikeProperties;
+use pumpkin_data::fluid::Fluid;
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::statistic::{CustomStatistic, StatisticCategory};
 use pumpkin_data::tag::Taggable;
+use pumpkin_data::world::WorldEvent;
 use pumpkin_data::{Block, BlockId, BlockState};
 use pumpkin_util::biome::Precipitation;
 use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::world::BlockFlags;
 
 const RAIN_FILL_CHANCE: f32 = 0.05;
+
+/// Vanilla `AbstractCauldronBlock.canReceiveStalactiteDrip`: an empty cauldron takes water or
+/// lava, a water cauldron only water.
+#[must_use]
+pub fn can_receive_stalactite_drip(block: &Block, fluid: &Fluid) -> bool {
+    match block.id {
+        BlockId::CAULDRON => true,
+        BlockId::WATER_CAULDRON => *fluid == Fluid::WATER,
+        _ => false,
+    }
+}
 const POWDER_SNOW_FILL_CHANCE: f32 = 0.1;
 
 pub struct CauldronBlock;
@@ -451,6 +468,72 @@ impl BlockBehaviour for CauldronBlock {
             GameEvent::BlockChange.name(),
             args.position.to_centered_f64(),
         );
+    }
+
+    /// Vanilla `AbstractCauldronBlock.tick`: a drip scheduled by a stalactite lands.
+    fn on_scheduled_tick(&self, args: OnScheduledTickArgs<'_>) {
+        let Some(stalactite) = find_stalactite_tip_above_cauldron(args.world, args.position) else {
+            return;
+        };
+        let Some(fluid) = get_cauldron_fill_fluid_type(args.world, &stalactite) else {
+            return;
+        };
+        if !can_receive_stalactite_drip(args.block, fluid) {
+            return;
+        }
+        // Vanilla `CauldronBlock` and `LayeredCauldronBlock.receiveStalactiteDrip`.
+        let state_id = args.world.get_block_state_id(args.position);
+        let (new_state_id, old_level, new_level, sound) = if args.block.id == BlockId::CAULDRON {
+            if *fluid == Fluid::WATER {
+                (
+                    Block::WATER_CAULDRON.default_state.id,
+                    0,
+                    1,
+                    WorldEvent::SoundDripWaterIntoCauldron,
+                )
+            } else {
+                (
+                    Block::LAVA_CAULDRON.default_state.id,
+                    0,
+                    3,
+                    WorldEvent::SoundDripLavaIntoCauldron,
+                )
+            }
+        } else {
+            let mut props = WaterCauldronLikeProperties::from_state_id(state_id);
+            if props.level == 3 {
+                return;
+            }
+            let old_level = props.level;
+            props.level += 1;
+            (
+                props.to_state_id(args.block),
+                old_level,
+                props.level,
+                WorldEvent::SoundDripWaterIntoCauldron,
+            )
+        };
+        if !fire_cauldron_change(
+            args.world,
+            *args.position,
+            i32::from(old_level),
+            i32::from(new_level),
+            crate::plugin::block::cauldron_level_change::CauldronChangeReason::NaturalFill,
+            None,
+        ) {
+            return;
+        }
+        args.world
+            .set_block_state(args.position, new_state_id, BlockFlags::NOTIFY_ALL);
+        args.world.emit_game_event_with_context(
+            GameEvent::BlockChange.name(),
+            args.position.to_centered_f64(),
+            &GameEventContext {
+                source_entity: None,
+                affected_state: Some(new_state_id),
+            },
+        );
+        args.world.sync_world_event(sound, *args.position, 0);
     }
 
     fn get_comparator_output(&self, args: GetComparatorOutputArgs<'_>) -> Option<u8> {

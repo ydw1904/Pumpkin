@@ -4,18 +4,23 @@ use crate::{
     block::{
         BlockBehaviour, BrokenArgs, CanPlaceAtArgs, GetStateForNeighborUpdateArgs,
         OnLandedUponArgs, OnPlaceArgs, OnProjectileHitArgs, PathComputationType, PlacedArgs,
+        RandomTickArgs, blocks::cauldron::can_receive_stalactite_drip, push_entities_up,
     },
     entity::player::Player,
-    world::World,
+    world::{World, game_event::GameEventContext},
 };
 use pumpkin_data::{
     Block, BlockDirection, BlockState, BlockStateId,
     block_properties::{PointedDripstoneLikeProperties, SpeleothemThickness, VerticalDirection},
     entity::EntityType,
     fluid::Fluid,
+    game_event::GameEvent,
+    tag::{self, Taggable},
+    world::WorldEvent,
 };
 use pumpkin_macros::pumpkin_block_from_tag;
 use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::{
     tick::TickPriority,
     world::{BlockAccessor, BlockFlags},
@@ -184,6 +189,294 @@ impl BlockBehaviour for DripstoneBlock {
     fn is_pathfindable(&self, _state: &BlockState, _computation_type: PathComputationType) -> bool {
         false
     }
+
+    /// Vanilla `PointedDripstoneBlock.randomTick`. Stalactite growth isn't ported.
+    fn random_tick(&self, args: RandomTickArgs<'_>) {
+        if args.block == &Block::POINTED_DRIPSTONE {
+            let state_id = args.world.get_block_state_id(args.position);
+            maybe_transfer_fluid(
+                args.world,
+                args.position,
+                state_id,
+                game_random().next_f32(),
+            );
+        }
+    }
+}
+
+/// Vanilla `PointedDripstoneBlock.WATER_TRANSFER_PROBABILITY_PER_RANDOM_TICK`.
+const WATER_TRANSFER_PROBABILITY_PER_RANDOM_TICK: f32 = 0.175_781_25;
+/// Vanilla `PointedDripstoneBlock.LAVA_TRANSFER_PROBABILITY_PER_RANDOM_TICK`.
+const LAVA_TRANSFER_PROBABILITY_PER_RANDOM_TICK: f32 = 0.058_593_75;
+/// Vanilla `PointedDripstoneBlock.MAX_SEARCH_LENGTH_WHEN_CHECKING_DRIP_TYPE`.
+const MAX_SEARCH_LENGTH_WHEN_CHECKING_DRIP_TYPE: i32 = 11;
+/// Vanilla `PointedDripstoneBlock.MAX_SEARCH_LENGTH_BETWEEN_STALACTITE_TIP_AND_CAULDRON`.
+const MAX_SEARCH_LENGTH_BETWEEN_STALACTITE_TIP_AND_CAULDRON: i32 = 11;
+
+/// Vanilla `PointedDripstoneBlock.FluidInfo`: the fluid a stalactite drips and where it comes from.
+struct FluidInfo {
+    pos: BlockPos,
+    fluid: &'static Fluid,
+    source_state: BlockStateId,
+}
+
+/// Vanilla `PointedDripstoneBlock.maybeTransferFluid`: a stalactite turns mud above it into clay,
+/// or drips into the cauldron below its tip.
+fn maybe_transfer_fluid(world: &Arc<World>, pos: &BlockPos, state_id: BlockStateId, random: f32) {
+    // Vanilla also tests the lava chance here, which is the smaller one.
+    if random > WATER_TRANSFER_PROBABILITY_PER_RANDOM_TICK {
+        return;
+    }
+    if !is_stalactite_start_pos(world, pos, state_id) {
+        return;
+    }
+    let Some(info) = get_fluid_above_stalactite(world, pos, state_id) else {
+        return;
+    };
+    let transfer_probability = if *info.fluid == Fluid::WATER {
+        WATER_TRANSFER_PROBABILITY_PER_RANDOM_TICK
+    } else if *info.fluid == Fluid::LAVA {
+        LAVA_TRANSFER_PROBABILITY_PER_RANDOM_TICK
+    } else {
+        return;
+    };
+    if random >= transfer_probability {
+        return;
+    }
+    let Some(tip) = find_tip(
+        world,
+        pos,
+        state_id,
+        MAX_SEARCH_LENGTH_WHEN_CHECKING_DRIP_TYPE,
+        false,
+    ) else {
+        return;
+    };
+    if info.source_state.to_block() == &Block::MUD && *info.fluid == Fluid::WATER {
+        let clay = Block::CLAY.default_state.id;
+        push_entities_up(world, info.source_state.to_state(), clay, &info.pos);
+        world.set_block_state(&info.pos, clay, BlockFlags::NOTIFY_ALL);
+        world.emit_game_event_with_context(
+            GameEvent::BlockChange.name(),
+            info.pos.to_centered_f64(),
+            &GameEventContext {
+                source_entity: None,
+                affected_state: Some(clay),
+            },
+        );
+        world.sync_world_event(WorldEvent::DripstoneDrip, tip, 0);
+    } else if let Some(cauldron_pos) =
+        find_fillable_cauldron_below_stalactite_tip(world, &tip, info.fluid)
+    {
+        world.sync_world_event(WorldEvent::DripstoneDrip, tip, 0);
+        let fall_distance = tip.0.y - cauldron_pos.0.y;
+        world.schedule_block_tick(
+            world.get_block(&cauldron_pos),
+            cauldron_pos,
+            (50 + fall_distance) as u32,
+            TickPriority::Normal,
+        );
+    }
+}
+
+/// Vanilla `SpeleothemBlock.isStalactite`.
+fn is_stalactite(state_id: BlockStateId) -> bool {
+    state_id
+        .to_block()
+        .has_tag(&tag::Block::MINECRAFT_SPELEOTHEMS)
+        && PointedDripstoneLikeProperties::from_state_id(state_id).vertical_direction
+            == VerticalDirection::Down
+}
+
+/// Vanilla `SpeleothemBlock.isStalactiteStartPos`: the top of a stalactite.
+fn is_stalactite_start_pos(world: &World, pos: &BlockPos, state_id: BlockStateId) -> bool {
+    is_stalactite(state_id) && world.get_block(&pos.up()) != state_id.to_block()
+}
+
+/// Vanilla `SpeleothemBlock.isFreeHangingStalactite`.
+fn is_free_hanging_stalactite(state_id: BlockStateId) -> bool {
+    if !is_stalactite(state_id) {
+        return false;
+    }
+    let props = PointedDripstoneLikeProperties::from_state_id(state_id);
+    props.thickness == SpeleothemThickness::Tip && !props.waterlogged
+}
+
+/// Vanilla `SpeleothemBlock.isTip`.
+fn is_tip(state_id: BlockStateId, include_merged_tip: bool) -> bool {
+    if !state_id
+        .to_block()
+        .has_tag(&tag::Block::MINECRAFT_SPELEOTHEMS)
+    {
+        return false;
+    }
+    let thickness = PointedDripstoneLikeProperties::from_state_id(state_id).thickness;
+    thickness == SpeleothemThickness::Tip
+        || include_merged_tip && thickness == SpeleothemThickness::TipMerge
+}
+
+/// Vanilla `SpeleothemBlock.findBlockVertical`: the first block matching `target` within
+/// `max_steps - 1` blocks up or down, through blocks matching `path`.
+fn find_block_vertical(
+    world: &World,
+    pos: &BlockPos,
+    up: bool,
+    path: impl Fn(BlockStateId) -> bool,
+    target: impl Fn(BlockStateId) -> bool,
+    max_steps: i32,
+) -> Option<BlockPos> {
+    let mut cursor = *pos;
+    for _ in 1..max_steps {
+        cursor = if up { cursor.up() } else { cursor.down() };
+        let state_id = world.get_block_state_id(&cursor);
+        if target(state_id) {
+            return Some(cursor);
+        }
+        let y = cursor.0.y;
+        let outside_build_height =
+            y < world.dimension.min_y || y >= world.dimension.min_y + world.dimension.height;
+        if outside_build_height || !path(state_id) {
+            return None;
+        }
+    }
+    None
+}
+
+/// A speleothem of the same block pointing the same way.
+fn same_speleothem(state_id: BlockStateId, block: &Block, direction: VerticalDirection) -> bool {
+    state_id.to_block() == block
+        && PointedDripstoneLikeProperties::from_state_id(state_id).vertical_direction == direction
+}
+
+/// Vanilla `SpeleothemBlock.findTip`.
+fn find_tip(
+    world: &World,
+    pos: &BlockPos,
+    state_id: BlockStateId,
+    max_search_length: i32,
+    include_merged_tip: bool,
+) -> Option<BlockPos> {
+    if is_tip(state_id, include_merged_tip) {
+        return Some(*pos);
+    }
+    let block = state_id.to_block();
+    let direction = PointedDripstoneLikeProperties::from_state_id(state_id).vertical_direction;
+    find_block_vertical(
+        world,
+        pos,
+        direction == VerticalDirection::Up,
+        |state| same_speleothem(state, block, direction),
+        |state| is_tip(state, include_merged_tip),
+        max_search_length,
+    )
+}
+
+/// Vanilla `PointedDripstoneBlock.findRootBlock`: the block the speleothem grows from.
+fn find_root_block(
+    world: &World,
+    pos: &BlockPos,
+    state_id: BlockStateId,
+    max_search_length: i32,
+) -> Option<BlockPos> {
+    let block = state_id.to_block();
+    let direction = PointedDripstoneLikeProperties::from_state_id(state_id).vertical_direction;
+    find_block_vertical(
+        world,
+        pos,
+        direction == VerticalDirection::Down,
+        |state| same_speleothem(state, block, direction),
+        |state| state.to_block() != block,
+        max_search_length,
+    )
+}
+
+/// Vanilla `PointedDripstoneBlock.getFluidAboveStalactite`: mud counts as water unless water
+/// evaporates in the dimension.
+fn get_fluid_above_stalactite(
+    world: &World,
+    pos: &BlockPos,
+    state_id: BlockStateId,
+) -> Option<FluidInfo> {
+    if !is_stalactite(state_id) {
+        return None;
+    }
+    let root = find_root_block(
+        world,
+        pos,
+        state_id,
+        MAX_SEARCH_LENGTH_WHEN_CHECKING_DRIP_TYPE,
+    )?;
+    let above = root.up();
+    let source_state = world.get_block_state_id(&above);
+    let fluid = if source_state.to_block() == &Block::MUD && !world.dimension.water_evaporates {
+        &Fluid::WATER
+    } else {
+        World::get_fluid_type_from_state_id(source_state)
+    };
+    Some(FluidInfo {
+        pos: above,
+        fluid,
+        source_state,
+    })
+}
+
+/// Vanilla `PointedDripstoneBlock.canDripThrough`.
+fn can_drip_through(state_id: BlockStateId) -> bool {
+    let state = state_id.to_state();
+    if state.is_air() {
+        return true;
+    }
+    if state.is_solid_render() || *World::get_fluid_type_from_state_id(state_id) != Fluid::EMPTY {
+        return false;
+    }
+    // `REQUIRED_SPACE_TO_DRIP_THROUGH_NON_SOLID_BLOCK`, `Block.column(4.0, 0.0, 16.0)`.
+    !state.get_block_collision_shapes().any(|shape| {
+        shape.min.x < 0.625
+            && shape.max.x > 0.375
+            && shape.min.z < 0.625
+            && shape.max.z > 0.375
+            && shape.min.y < 1.0
+            && shape.max.y > 0.0
+    })
+}
+
+/// Vanilla `PointedDripstoneBlock.findFillableCauldronBelowStalactiteTip`.
+fn find_fillable_cauldron_below_stalactite_tip(
+    world: &World,
+    tip: &BlockPos,
+    fluid: &Fluid,
+) -> Option<BlockPos> {
+    find_block_vertical(
+        world,
+        tip,
+        false,
+        can_drip_through,
+        |state| can_receive_stalactite_drip(state.to_block(), fluid),
+        MAX_SEARCH_LENGTH_BETWEEN_STALACTITE_TIP_AND_CAULDRON,
+    )
+}
+
+/// Vanilla `PointedDripstoneBlock.findStalactiteTipAboveCauldron`.
+pub fn find_stalactite_tip_above_cauldron(world: &World, cauldron: &BlockPos) -> Option<BlockPos> {
+    find_block_vertical(
+        world,
+        cauldron,
+        true,
+        can_drip_through,
+        is_free_hanging_stalactite,
+        MAX_SEARCH_LENGTH_BETWEEN_STALACTITE_TIP_AND_CAULDRON,
+    )
+}
+
+/// Vanilla `PointedDripstoneBlock.getCauldronFillFluidType`: water or lava, if the stalactite
+/// drips either.
+pub fn get_cauldron_fill_fluid_type(
+    world: &World,
+    stalactite: &BlockPos,
+) -> Option<&'static Fluid> {
+    get_fluid_above_stalactite(world, stalactite, world.get_block_state_id(stalactite))
+        .map(|info| info.fluid)
+        .filter(|fluid| **fluid == Fluid::WATER || **fluid == Fluid::LAVA)
 }
 
 fn update_stalagmite(
