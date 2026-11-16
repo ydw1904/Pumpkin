@@ -224,6 +224,30 @@ impl EntityBase for SplashPotionEntity {
         );
     }
 
+    /// Vanilla `ThrowableItemProjectile.addAdditionalSaveData`.
+    fn write_custom_nbt(&self, nbt: &mut pumpkin_nbt::compound::NbtCompound) {
+        let mut item = pumpkin_nbt::compound::NbtCompound::new();
+        self.item_stack
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .write_item_stack(&mut item);
+        nbt.put_compound("Item", item);
+    }
+
+    /// Vanilla `ThrowableItemProjectile.readAdditionalSaveData`: a missing `Item` is the default
+    /// potion item.
+    fn read_custom_nbt(&self, nbt: &pumpkin_nbt::compound::NbtCompound) {
+        let stack = nbt
+            .get_compound("Item")
+            .and_then(ItemStack::read_item_stack)
+            .unwrap_or_else(|| ItemStack::new(1, &pumpkin_data::item::Item::SPLASH_POTION));
+        self.get_entity().set_synced_data(
+            pumpkin_data::tracked_data::splash_potion::ITEM_STACK,
+            pumpkin_protocol::codec::item_stack_seralizer::ItemStackSerializer::from(stack.clone()),
+        );
+        self.set_item_stack(stack);
+    }
+
     fn tick(&self, caller: &dyn EntityBase, _server: &Server) {
         self.thrown.process_tick(caller);
     }
