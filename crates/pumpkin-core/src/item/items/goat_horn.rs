@@ -51,7 +51,7 @@ impl ItemBehaviour for GoatHornItem {
             return;
         };
 
-        let duration = instrument.use_duration_ticks() as i32;
+        let duration = i32::try_from(instrument.use_duration_ticks()).unwrap_or(i32::MAX);
         let volume = instrument.range() / 16.0;
         let world = player.world();
         let pos = player.position();

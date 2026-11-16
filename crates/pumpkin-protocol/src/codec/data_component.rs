@@ -2231,33 +2231,6 @@ impl DataComponentCodec<Self> for DeathProtectionImpl {
     }
 }
 
-fn serialize_optional_sound(
-    sound: Option<&IdOr<SoundEvent>>,
-    seq: &mut impl NetworkWriteExt,
-) -> Result<(), WritingError> {
-    seq.write_option(&sound, |seq, sound| {
-        crate::IdOr::<crate::SoundEvent>::write(&data_to_proto_sound(sound), seq, |w, e| {
-            w.write_string(&e.sound_name)?;
-            w.write_option(&e.range, |w2, r| w2.write_f32(*r))
-        })
-    })
-}
-
-fn deserialize_optional_sound(
-    seq: &mut impl NetworkReadExt,
-) -> Result<Option<IdOr<SoundEvent>>, ReadingError> {
-    if !seq.get_bool()? {
-        return Ok(None);
-    }
-    let proto = crate::IdOr::<crate::SoundEvent>::read(seq, |r| {
-        let sound_name = r.get_str()?.to_string();
-        let range = r.get_option(NetworkReadExt::get_f32)?;
-        Ok(crate::SoundEvent { sound_name, range })
-    })
-    .map_err(|e| ReadingError::Message(format!("No sound: {e}")))?;
-    Ok(proto_to_data_sound(&proto))
-}
-
 /// Vanilla `BlocksAttacks.STREAM_CODEC`.
 impl DataComponentCodec<Self> for BlocksAttacksImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
@@ -2679,10 +2652,10 @@ impl DataComponentCodec<Self> for WrittenBookContentImpl {
         seq.write_var_int(&VarInt(self.generation))?;
         seq.write_var_int(&VarInt::from(self.pages.len() as i32))?;
         for page in &self.pages {
-            seq.write_slice(&page.encode_for_version(&JavaMinecraftVersion::V_26_2))?;
+            seq.write_slice(&page.encode_for_version(&JavaMinecraftVersion::V_26_3))?;
             seq.write_bool(false)?;
         }
-        seq.write_bool(true)
+        seq.write_bool(self.resolved)
     }
 
     fn deserialize(seq: &mut impl NetworkReadExt) -> Result<Self, ReadingError> {
@@ -2695,13 +2668,13 @@ impl DataComponentCodec<Self> for WrittenBookContentImpl {
         let pages_len = read_count(seq, usize::MAX)?;
         let mut pages = Vec::with_capacity(pages_len.min(MAX_INITIAL_COLLECTION_SIZE));
         for _ in 0..pages_len {
-            let tag = seq.get_nbt_with_version(&JavaMinecraftVersion::V_26_2)?;
+            let tag = seq.get_nbt_with_version(&JavaMinecraftVersion::V_26_3)?;
             let comp = tag.as_ref().map_or_else(
                 pumpkin_util::text::TextComponent::empty,
                 pumpkin_util::text::TextComponent::from_nbt,
             );
             if seq.get_bool()? {
-                let _ = seq.get_nbt_with_version(&JavaMinecraftVersion::V_26_2)?;
+                let _ = seq.get_nbt_with_version(&JavaMinecraftVersion::V_26_3)?;
             }
             pages.push(comp);
         }
@@ -2709,8 +2682,8 @@ impl DataComponentCodec<Self> for WrittenBookContentImpl {
         Ok(Self {
             title,
             author,
-            pages,
             generation,
+            pages,
             resolved,
         })
     }
@@ -2930,13 +2903,35 @@ impl DataComponentCodec<Self> for OminousBottleAmplifierImpl {
 
 impl DataComponentCodec<Self> for JukeboxPlayableImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
-        let song_id = Sound::from_name(self.song).map_or(0, |s| s as i32);
+        let name = self.song.strip_prefix("minecraft:").unwrap_or(self.song);
+        let song_id = pumpkin_data::jukebox_song::JukeboxSong::from_name(name)
+            .map_or(1, |s| i32::try_from(s.get_id()).unwrap_or(0) + 1);
         seq.write_var_int(&VarInt::from(song_id))
     }
 
     fn deserialize(seq: &mut impl NetworkReadExt) -> Result<Self, ReadingError> {
-        let _ = seq.get_var_int()?;
-        Ok(Self { song: "" })
+        let raw = seq.get_var_int()?.0;
+        if raw < 0 {
+            return Err(ReadingError::Message(
+                "negative JukeboxSong holder id".to_string(),
+            ));
+        }
+        if raw == 0 {
+            let sound_raw = seq.get_var_int()?.0;
+            if sound_raw == 0 {
+                let _ = seq.get_str()?;
+                if seq.get_bool()? {
+                    let _ = seq.get_f32()?;
+                }
+            }
+            let _ =
+                seq.get_nbt_with_version(&pumpkin_util::version::JavaMinecraftVersion::V_26_2)?;
+            let _ = seq.get_f32()?;
+            let _ = seq.get_var_int()?;
+            return Ok(Self { song: "" });
+        }
+        let song = Self::song_from_id((raw - 1) as u32).map_or("", Self::song_registry_key);
+        Ok(Self { song })
     }
 }
 
@@ -4165,5 +4160,19 @@ mod tests {
         be_nbt.put_string("id", "minecraft:chest".to_string());
         be_nbt.put_string("Lock", "key".to_string());
         roundtrip(&BlockEntityDataImpl { nbt: be_nbt });
+
+        let disc = pumpkin_data::item_stack::ItemStack::new(
+            1,
+            &pumpkin_data::item::Item::MUSIC_DISC_PRECIPICE,
+        );
+        roundtrip(disc.get_data_component::<JukeboxPlayableImpl>().unwrap());
+
+        roundtrip(&WrittenBookContentImpl {
+            title: "Chronicle".to_string(),
+            author: "Alex".to_string(),
+            generation: 2,
+            pages: vec![pumpkin_util::text::TextComponent::text("Page 1")],
+            resolved: true,
+        });
     }
 }
