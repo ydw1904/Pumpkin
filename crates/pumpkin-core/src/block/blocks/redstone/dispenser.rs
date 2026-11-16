@@ -46,6 +46,7 @@ use crate::item::items::minecart::MinecartItem;
 use crate::item::items::spawn_egg::prepare_egg_mob;
 use crate::plugin::api::events::entity::creature_spawn::CreatureSpawnReason;
 use crate::world::World;
+use crate::world::game_event::GameEventContext;
 
 use crate::block::entities::dispenser::DispenserBlockEntity;
 use pumpkin_data::block_properties::{
@@ -908,6 +909,14 @@ impl DispenserBlock {
             Ignition::ignite_block(
                 |world: Arc<World>, pos: BlockPos, new_state_id: BlockStateId| {
                     world.set_block_state(&pos, new_state_id, BlockFlags::NOTIFY_ALL);
+                    // Vanilla `FlintAndSteelDispenseItemBehavior`: placing fire is a
+                    // `block_place`, lighting a campfire or candle a `block_change`.
+                    let event = if new_state_id.to_block().has_tag(&tag::Block::MINECRAFT_FIRE) {
+                        GameEvent::BlockPlace
+                    } else {
+                        GameEvent::BlockChange
+                    };
+                    world.emit_game_event(event.name(), pos.to_centered_f64());
                 },
                 ctx.world,
                 front,
@@ -1251,6 +1260,8 @@ impl DispenserBlock {
             let _ = item.split(1);
             ctx.world
                 .set_block_state(&target, state_id, BlockFlags::NOTIFY_ALL);
+            ctx.world
+                .emit_game_event(GameEvent::BlockPlace.name(), target.to_centered_f64());
             Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserDispense);
         } else if Self::dispense_equipment(ctx, item) {
             Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserDispense);
@@ -1277,13 +1288,31 @@ impl DispenserBlock {
         };
 
         let placed = item.split(1);
+        let state_id = props.to_state_id(block);
         ctx.world
-            .set_block_state(&target, props.to_state_id(block), BlockFlags::NOTIFY_ALL);
+            .set_block_state(&target, state_id, BlockFlags::NOTIFY_ALL);
         if let Some(block_entity) = ctx.world.get_block_entity(&target) {
             block_entity.apply_item_components(&placed);
             ctx.world
                 .keep_placed_item_components(block_entity.as_ref(), &placed);
         }
+        // Vanilla `BlockItem.place` without a player: the place sound and `block_place`.
+        let sound_type = state_id.to_state().get_sound_type();
+        ctx.world.play_sound_raw(
+            sound_type.place_sound as u16,
+            SoundCategory::Blocks,
+            &target.to_centered_f64(),
+            f32::midpoint(sound_type.volume, 1.0),
+            sound_type.pitch * 0.8,
+        );
+        ctx.world.emit_game_event_with_context(
+            GameEvent::BlockPlace.name(),
+            target.to_centered_f64(),
+            &GameEventContext {
+                source_entity: None,
+                affected_state: Some(state_id),
+            },
+        );
         Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserDispense);
 
         true
