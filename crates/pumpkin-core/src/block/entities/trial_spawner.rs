@@ -2,12 +2,10 @@ use pumpkin_util::random::gameplay::game_random;
 use rustc_hash::FxHashSet;
 use std::sync::{Arc, Mutex};
 
-use pumpkin_data::block_properties::{TrialSpawnerLikeProperties, TrialSpawnerState};
+use pumpkin_data::block_properties::{Facing, TrialSpawnerLikeProperties, TrialSpawnerState};
 use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
-use pumpkin_data::item::Item;
-use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::potion::Effect;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::trial_spawner::TrialSpawnerKey;
@@ -21,6 +19,7 @@ use pumpkin_util::math::vector3::Vector3;
 use uuid::Uuid;
 
 use super::BlockEntity;
+use crate::block::blocks::redstone::dispenser::spawn_item;
 use crate::entity::EntityBase;
 use crate::world::World;
 
@@ -28,6 +27,11 @@ use crate::world::World;
 const DELAY_BEFORE_EJECT_AFTER_KILLING_LAST_MOB: f32 = 40.0;
 /// Vanilla `TrialSpawnerState.TIME_BETWEEN_EACH_EJECTION`.
 const TIME_BETWEEN_EACH_EJECTION: i64 = 30;
+/// Rewards leave from this far above the bottom of the spawner or vault, vanilla
+/// `Vec3.atBottomCenterOf(pos).relative(Direction.UP, 1.2)`.
+pub const EJECT_HEIGHT: f64 = 1.2;
+/// The `accuracy` rewards are thrown with, vanilla `DefaultDispenseItemBehavior.spawnItem(..., 2, ...)`.
+pub const EJECT_ACCURACY: i32 = 2;
 
 /// Flame particle type used by trial spawners for world events.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1247,39 +1251,30 @@ impl TrialSpawner {
         hit.is_miss || hit.block_pos == origin_block
     }
 
-    pub fn eject_reward(
-        &self,
-        world: &Arc<World>,
-        spawner_pos: BlockPos,
-        ejecting_loot_table: Option<&str>,
-    ) {
-        let mut dropped_any = false;
-        if let Some(key) = ejecting_loot_table
-            && let Some(loot_table) = world.get_loot_table(key)
-        {
-            let seed = game_random().random::<i64>();
-            let items = loot_table.generate_loot_with_context(
-                seed,
-                &crate::world::loot::LootContextParameters {
-                    world: Some(world),
-                    ..Default::default()
-                },
-            );
-            for stack in items {
-                world.drop_stack(&spawner_pos, stack);
-                dropped_any = true;
-            }
+    /// Vanilla `TrialSpawner.ejectReward`: the loot shoots up from 1.2 blocks above the
+    /// spawner's bottom centre; an empty roll ejects nothing.
+    pub fn eject_reward(world: &Arc<World>, spawner_pos: BlockPos, ejecting_loot_table: &str) {
+        let Some(loot_table) = world.get_loot_table(ejecting_loot_table) else {
+            return;
+        };
+        let items = loot_table.generate_loot_with_context(
+            game_random().random::<i64>(),
+            &crate::world::loot::LootContextParameters {
+                world: Some(world),
+                ..Default::default()
+            },
+        );
+        if items.is_empty() {
+            return;
         }
-
-        if !dropped_any {
-            let key_item = if self.is_ominous {
-                &Item::OMINOUS_TRIAL_KEY
-            } else {
-                &Item::TRIAL_KEY
-            };
-            world.drop_stack(&spawner_pos, ItemStack::new(1, key_item));
+        let origin = Vector3::new(
+            f64::from(spawner_pos.0.x) + 0.5,
+            f64::from(spawner_pos.0.y) + EJECT_HEIGHT,
+            f64::from(spawner_pos.0.z) + 0.5,
+        );
+        for stack in items {
+            spawn_item(world, stack, EJECT_ACCURACY, Facing::Up, origin);
         }
-
         world.sync_world_event(WorldEvent::AnimationTrialSpawnerEjectItem, spawner_pos, 0);
     }
 
@@ -1453,7 +1448,7 @@ impl TrialSpawner {
                     self.data.ejecting_loot_table = self.active_config().pick_loot_table();
                 }
                 if let Some(loot_table) = self.data.ejecting_loot_table.clone() {
-                    self.eject_reward(world, spawner_pos, Some(&loot_table));
+                    Self::eject_reward(world, spawner_pos, &loot_table);
                 }
                 self.data.registered_players.remove(&player_id);
                 TrialSpawnerState::EjectingReward

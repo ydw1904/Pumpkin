@@ -120,6 +120,34 @@ fn triangle(rng: GameRandom, min: f64, max: f64) -> f64 {
     (rng.random::<f64>() - rng.random::<f64>()).mul_add(max, min)
 }
 
+/// Vanilla `DefaultDispenseItemBehavior.spawnItem`: an item thrown out of `position` towards
+/// `facing`, spread by `accuracy`, that can be picked up at once.
+pub fn spawn_item(
+    world: &Arc<World>,
+    stack: ItemStack,
+    accuracy: i32,
+    facing: Facing,
+    mut position: Vector3<f64>,
+) {
+    position.y -= match facing {
+        Facing::Up | Facing::Down => 0.125,
+        _ => 0.15625,
+    };
+    let direction = to_normal(facing);
+    let rng = game_random();
+    let pow = rng.random::<f64>().mul_add(0.1, 0.2);
+    let spread = 0.017_227_5 * f64::from(accuracy);
+    let velocity = Vector3::new(
+        triangle(rng, direction.x * pow, spread),
+        triangle(rng, 0.2, spread),
+        triangle(rng, direction.z * pow, spread),
+    );
+    let entity = Entity::new(world.clone(), position, &EntityType::ITEM);
+    world.spawn_entity(Arc::new(ItemEntity::new_with_velocity(
+        entity, stack, velocity, 0,
+    )));
+}
+
 const fn to_normal(facing: Facing) -> Vector3<f64> {
     match facing {
         Facing::North => Vector3::new(0., 0., -1.),
