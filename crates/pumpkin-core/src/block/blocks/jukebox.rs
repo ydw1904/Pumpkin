@@ -10,8 +10,10 @@ use crate::block::{
 use crate::entity::Entity;
 use crate::entity::item::ItemEntity;
 use crate::world::World;
+use crate::world::game_event::GameEventContext;
 use pumpkin_data::data_component_impl::JukeboxPlayableImpl;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::jukebox_song::JukeboxSong;
 use pumpkin_data::world::WorldEvent;
 use pumpkin_data::{Block, BlockStateId, block_properties::JukeboxLikeProperties};
@@ -30,12 +32,18 @@ impl JukeboxBlock {
         JukeboxLikeProperties::from_state_id(state_id).has_record
     }
 
+    /// Vanilla `JukeboxBlockEntity.notifyItemChangedInJukebox`: the new state and its
+    /// `block_change`.
     fn set_record_state(has_record: bool, block: &Block, position: &BlockPos, world: &Arc<World>) {
-        let new_state = JukeboxLikeProperties { has_record };
-        world.set_block_state(
-            position,
-            new_state.to_state_id(block),
-            BlockFlags::NOTIFY_ALL,
+        let new_state = JukeboxLikeProperties { has_record }.to_state_id(block);
+        world.set_block_state(position, new_state, BlockFlags::NOTIFY_ALL);
+        world.emit_game_event_with_context(
+            GameEvent::BlockChange.name(),
+            position.to_centered_f64(),
+            &GameEventContext {
+                source_entity: None,
+                affected_state: Some(new_state),
+            },
         );
     }
 
@@ -149,13 +157,20 @@ impl BlockBehaviour for JukeboxBlock {
         // Start playing the music (client-side audio)
         Self::start_playing(args.position, world, jukebox_song.get_id());
 
+        // Vanilla `JukeboxPlayable.tryInsertIntoJukebox`, with the state before the insert.
+        world.emit_game_event_with_context(
+            GameEvent::BlockChange.name(),
+            args.position.to_centered_f64(),
+            &GameEventContext {
+                source_entity: Some(args.player.as_ref()),
+                affected_state: Some(state_id),
+            },
+        );
         args.player.increment_stat(
             pumpkin_data::statistic::StatisticCategory::Custom,
             pumpkin_data::statistic::CustomStatistic::PlayRecord as i32,
             1,
         );
-
-        // TODO: world.emitGameEvent(GameEvent.BLOCK_CHANGE, pos, ...)
 
         BlockActionResult::Success
     }
