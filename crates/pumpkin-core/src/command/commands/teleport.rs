@@ -44,6 +44,51 @@ fn yaw_pitch_facing_position(
     (yaw_degrees as f32, pitch_degrees as f32)
 }
 
+/// Vanilla `TeleportCommand.performTeleport`: a teleport that isn't as a passenger takes the
+/// target off its vehicle first (`Entity.teleport`), while its own passengers come along.
+fn perform_teleport(
+    target: &dyn EntityBase,
+    pos: Vector3<f64>,
+    yaw: f32,
+    pitch: f32,
+    world: &Arc<World>,
+) {
+    target.get_entity().stop_riding_for_teleport();
+    teleport_with_passengers(target, pos, yaw, pitch, world);
+}
+
+/// Vanilla `Entity.teleportSameDimension`: each passenger is teleported first, keeping its offset
+/// and rotation relative to the vehicle (`calculatePassengerTransition`).
+fn teleport_with_passengers(
+    target: &dyn EntityBase,
+    pos: Vector3<f64>,
+    yaw: f32,
+    pitch: f32,
+    world: &Arc<World>,
+) {
+    let entity = target.get_entity();
+    if Arc::ptr_eq(&entity.world.load_full(), world) {
+        let passengers = entity
+            .passengers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        let (old_pos, old_yaw, old_pitch) =
+            (entity.pos.load(), entity.yaw.load(), entity.pitch.load());
+        for passenger in passengers {
+            let passenger_entity = passenger.get_entity();
+            teleport_with_passengers(
+                passenger.as_ref(),
+                pos + (passenger_entity.pos.load() - old_pos),
+                yaw + (passenger_entity.yaw.load() - old_yaw),
+                pitch + (passenger_entity.pitch.load() - old_pitch),
+                world,
+            );
+        }
+    }
+    target.teleport(pos, Some(yaw), Some(pitch), world.clone());
+}
+
 fn success_key_and_arg(
     targets: &[Arc<dyn EntityBase>],
     single_key: &'static str,
@@ -70,7 +115,7 @@ impl CommandExecutor for SelfToPosExecutor {
         let yaw = entity.get_entity().yaw.load();
         let pitch = entity.get_entity().pitch.load();
         let world = context.source.world();
-        entity.teleport(pos, Some(yaw), Some(pitch), world.clone());
+        perform_teleport(entity.as_ref(), pos, yaw, pitch, world);
 
         context.source.send_feedback_with(
             || {
@@ -109,7 +154,7 @@ impl CommandExecutor for SelfToEntityExecutor {
             return Err(ERROR_INVALID_POSITION.create_without_context());
         }
 
-        entity.teleport(pos, Some(yaw), Some(pitch), world);
+        perform_teleport(entity.as_ref(), pos, yaw, pitch, &world);
 
         context.source.send_feedback_with(
             || {
@@ -146,7 +191,7 @@ impl CommandExecutor for EntitiesToEntityExecutor {
         }
 
         for target in &targets {
-            target.teleport(pos, Some(yaw), Some(pitch), world.clone());
+            perform_teleport(target.as_ref(), pos, yaw, pitch, &world);
         }
 
         let (key, target_arg) = success_key_and_arg(
@@ -184,7 +229,7 @@ impl CommandExecutor for EntitiesToPosExecutor {
         for target in &targets {
             let yaw = target.get_entity().yaw.load();
             let pitch = target.get_entity().pitch.load();
-            target.teleport(pos, Some(yaw), Some(pitch), world.clone());
+            perform_teleport(target.as_ref(), pos, yaw, pitch, world);
         }
 
         let (key, target_arg) = success_key_and_arg(
@@ -229,7 +274,7 @@ impl CommandExecutor for EntitiesToPosWithRotationExecutor {
         let world = context.source.world();
 
         for target in &targets {
-            target.teleport(pos, Some(yaw), Some(pitch), world.clone());
+            perform_teleport(target.as_ref(), pos, yaw, pitch, world);
         }
 
         let (key, target_arg) = success_key_and_arg(
@@ -279,7 +324,7 @@ impl CommandExecutor for EntitiesToPosFacingPosExecutor {
             };
             let looking_from = Vector3::new(pos.x, pos.y + eye_offset, pos.z);
             let (yaw, pitch) = yaw_pitch_facing_position(&looking_from, &facing_pos);
-            target.teleport(pos, Some(yaw), Some(pitch), world.clone());
+            perform_teleport(target.as_ref(), pos, yaw, pitch, world);
         }
 
         let (key, target_arg) = success_key_and_arg(
@@ -337,7 +382,7 @@ impl CommandExecutor for EntitiesToPosFacingEntityExecutor {
             };
             let looking_from = Vector3::new(pos.x, pos.y + eye_offset, pos.z);
             let (yaw, pitch) = yaw_pitch_facing_position(&looking_from, &facing_pos);
-            target.teleport(pos, Some(yaw), Some(pitch), world.clone());
+            perform_teleport(target.as_ref(), pos, yaw, pitch, world);
         }
 
         let (key, target_arg) = success_key_and_arg(

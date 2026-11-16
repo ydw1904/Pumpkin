@@ -6504,6 +6504,16 @@ impl Entity {
         self.remove_passenger_internal(passenger_id, false);
     }
 
+    /// The `stopRiding` at the start of vanilla `Entity.teleport` (`removeVehicle` for a player):
+    /// the entity leaves its vehicle without a dismount spot, since the teleport places it.
+    pub fn stop_riding_for_teleport(&self) {
+        if let Some(vehicle) = self.get_vehicle() {
+            vehicle
+                .get_entity()
+                .remove_passenger_before_teleport(self.entity_id);
+        }
+    }
+
     #[allow(clippy::too_many_lines)]
     fn remove_passenger_internal(&self, passenger_id: i32, reposition: bool) {
         let mut dismount_event =
