@@ -54,39 +54,7 @@ fn perform_teleport(
     world: &Arc<World>,
 ) {
     target.get_entity().stop_riding_for_teleport();
-    teleport_with_passengers(target, pos, yaw, pitch, world);
-}
-
-/// Vanilla `Entity.teleportSameDimension`: each passenger is teleported first, keeping its offset
-/// and rotation relative to the vehicle (`calculatePassengerTransition`).
-fn teleport_with_passengers(
-    target: &dyn EntityBase,
-    pos: Vector3<f64>,
-    yaw: f32,
-    pitch: f32,
-    world: &Arc<World>,
-) {
-    let entity = target.get_entity();
-    if Arc::ptr_eq(&entity.world.load_full(), world) {
-        let passengers = entity
-            .passengers
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
-        let (old_pos, old_yaw, old_pitch) =
-            (entity.pos.load(), entity.yaw.load(), entity.pitch.load());
-        for passenger in passengers {
-            let passenger_entity = passenger.get_entity();
-            teleport_with_passengers(
-                passenger.as_ref(),
-                pos + (passenger_entity.pos.load() - old_pos),
-                yaw + (passenger_entity.yaw.load() - old_yaw),
-                pitch + (passenger_entity.pitch.load() - old_pitch),
-                world,
-            );
-        }
-    }
-    target.teleport(pos, Some(yaw), Some(pitch), world.clone());
+    crate::entity::teleport_with_passengers(target, pos, yaw, pitch, world);
 }
 
 fn success_key_and_arg(

@@ -132,27 +132,43 @@ pub const MAX_SCOREBOARD_TAGS: usize = 1024;
 /// Vanilla `Entity.teleportCrossDimension` for anything but a player, in two halves because
 /// Pumpkin finds the destination asynchronously: the originals, non-player passengers
 /// included, leave their world at once, and a copy loaded from their saved data arrives once
-/// the destination is known. Riding players travel on their own.
+/// the destination is known. Riding players get off, travel on their own and mount the copy
+/// of their vehicle again.
 struct DimensionDeparture {
     entity_type: &'static EntityType,
     nbt: NbtCompound,
     yaw: f32,
     pitch: f32,
-    players: Vec<Arc<dyn EntityBase>>,
+    /// Each riding player, its offset from the vehicle that leaves and its own vehicle.
+    players: Vec<(Arc<Player>, Vector3<f64>, Uuid)>,
 }
 
 impl DimensionDeparture {
     fn leave(entity: &Arc<dyn EntityBase>, from: &World) -> Self {
         let base = entity.get_entity();
-        let mut nbt = NbtCompound::new();
-        entity.write_nbt(&mut nbt);
+        let origin = base.pos.load();
         let mut players = Vec::new();
         for traveller in self_and_passengers(entity).iter().rev() {
-            if traveller.get_player().is_some() {
-                players.push(traveller.clone());
-            } else {
-                from.remove_entity_with_reason(traveller.as_ref(), RemovalReason::ChangedDimension);
+            if let Some(player) = traveller.get_player() {
+                let traveller_entity = traveller.get_entity();
+                if let (Some(vehicle), Some(player)) = (
+                    traveller_entity.get_vehicle(),
+                    from.get_player_by_uuid(player.gameprofile.id),
+                ) {
+                    players.push((
+                        player,
+                        traveller_entity.pos.load() - origin,
+                        vehicle.get_entity().entity_uuid,
+                    ));
+                }
+                traveller_entity.stop_riding_for_teleport();
             }
+        }
+        // Written once the players are off, so the copy carries only the others.
+        let mut nbt = NbtCompound::new();
+        entity.write_nbt(&mut nbt);
+        for traveller in self_and_passengers(entity).iter().rev() {
+            from.remove_entity_with_reason(traveller.as_ref(), RemovalReason::ChangedDimension);
         }
         Self {
             entity_type: base.entity_type,
@@ -168,13 +184,72 @@ impl DimensionDeparture {
         copy.get_entity().set_pos(position);
         copy.get_entity()
             .set_rotation(yaw.unwrap_or(self.yaw), pitch.unwrap_or(self.pitch));
-        for entity in self_and_passengers(&copy) {
-            to.spawn_entity(entity);
+        let arrived = self_and_passengers(&copy);
+        for entity in &arrived {
+            to.spawn_entity(entity.clone());
         }
-        for player in self.players {
-            player.teleport(position, None, None, to.clone());
+        for (player, offset, vehicle_uuid) in self.players {
+            let Some(vehicle) = arrived
+                .iter()
+                .find(|entity| entity.get_entity().entity_uuid == vehicle_uuid)
+                .cloned()
+            else {
+                player.teleport(position + offset, None, None, to.clone());
+                continue;
+            };
+            let to = to.clone();
+            let (player_yaw, player_pitch) = (
+                player.get_entity().yaw.load(),
+                player.get_entity().pitch.load(),
+            );
+            player.clone().spawn_task(async move {
+                player
+                    .teleport_world(to, position + offset, Some(player_yaw), Some(player_pitch))
+                    .await;
+                // Vanilla `startRiding(newEntity, true, false)`.
+                if !vehicle.get_entity().is_removed() {
+                    vehicle
+                        .get_entity()
+                        .add_passenger(vehicle.clone(), player.clone());
+                }
+            });
         }
     }
+}
+
+/// Vanilla `Entity.teleport` with the entity's passengers.
+///
+/// In the same world each passenger is teleported first, keeping its offset and rotation
+/// relative to the vehicle (`calculatePassengerTransition`). Into another world,
+/// [`EntityBase::teleport`] takes the passengers along itself.
+pub fn teleport_with_passengers(
+    target: &dyn EntityBase,
+    pos: Vector3<f64>,
+    yaw: f32,
+    pitch: f32,
+    world: &Arc<World>,
+) {
+    let entity = target.get_entity();
+    if Arc::ptr_eq(&entity.world.load_full(), world) {
+        let passengers = entity
+            .passengers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        let (old_pos, old_yaw, old_pitch) =
+            (entity.pos.load(), entity.yaw.load(), entity.pitch.load());
+        for passenger in passengers {
+            let passenger_entity = passenger.get_entity();
+            teleport_with_passengers(
+                passenger.as_ref(),
+                pos + (passenger_entity.pos.load() - old_pos),
+                yaw + (passenger_entity.yaw.load() - old_yaw),
+                pitch + (passenger_entity.pitch.load() - old_pitch),
+                world,
+            );
+        }
+    }
+    target.teleport(pos, Some(yaw), Some(pitch), world.clone());
 }
 
 /// Vanilla `Entity.getAirDrag`: a float, even though velocity is a double.
@@ -539,7 +614,16 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         pitch: Option<f32>,
         world: Arc<World>,
     ) {
-        self.get_entity().teleport(position, yaw, pitch, &world);
+        let entity = self.get_entity();
+        let current = entity.world.load_full();
+        if !Arc::ptr_eq(&current, &world)
+            && let Some(entity_arc) = current.get_entity_by_id(entity.entity_id)
+        {
+            // Vanilla `teleportCrossDimension`: the entity and its passengers move over.
+            DimensionDeparture::leave(&entity_arc, &current).arrive(&world, position, yaw, pitch);
+            return;
+        }
+        entity.teleport(position, yaw, pitch, &world);
     }
 
     fn is_pushed_by_fluids(&self) -> bool {
