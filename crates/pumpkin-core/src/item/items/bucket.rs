@@ -588,7 +588,12 @@ impl ItemBehaviour for EmptyBucketItem {
         give_player_bucket_item(player, hand, filled_item);
     }
 
-    fn use_on_entity(&self, item: &mut ItemStack, player: &Player, entity: Arc<dyn EntityBase>) {
+    fn use_on_entity(
+        &self,
+        item: &mut ItemStack,
+        player: &Player,
+        entity: Arc<dyn EntityBase>,
+    ) -> bool {
         let ent = entity.get_entity();
         let entity_type = ent.entity_type;
         if entity_type == &EntityType::SULFUR_CUBE && ent.age.load(Ordering::Relaxed) >= 0 {
@@ -600,6 +605,7 @@ impl ItemBehaviour for EmptyBucketItem {
             );
             fill_mob_bucket_stack(item, player, &Item::SULFUR_CUBE_BUCKET, entity.as_ref());
             ent.remove();
+            true
         } else if entity_type == &EntityType::GOAT && ent.age.load(Ordering::Relaxed) >= 0 {
             let world = ent.world.load();
             let sound = if let Some(goat) = entity
@@ -613,6 +619,9 @@ impl ItemBehaviour for EmptyBucketItem {
             };
             world.play_sound(sound, SoundCategory::Neutral, &ent.pos.load());
             fill_bucket_stack(item, player, &Item::MILK_BUCKET);
+            true
+        } else {
+            false
         }
     }
 

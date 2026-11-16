@@ -5,8 +5,10 @@ use crate::entity::mob::equipment::equip_on_target;
 use crate::entity::player::Player;
 use crate::server::Server;
 use crate::world::World;
+use crate::world::game_event::GameEventContext;
 use pumpkin_data::Block;
 use pumpkin_data::BlockDirection;
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_util::Hand;
@@ -135,22 +137,32 @@ impl ItemRegistry {
         result
     }
 
+    /// Vanilla `ItemStack.interactLivingEntity` as `Player.interactOn` runs it: a use that
+    /// consumes the action is heard as `entity_interact` at the entity.
     pub fn use_on_entity(
         &self,
         stack: &mut ItemStack,
         player: &Player,
-        entity: Arc<dyn EntityBase>,
-    ) {
-        if let Some(mob) = entity.get_mob()
-            && equip_on_target(mob, player, stack)
-        {
-            return;
+        entity: &Arc<dyn EntityBase>,
+    ) -> bool {
+        let consumed = entity
+            .get_mob()
+            .is_some_and(|mob| equip_on_target(mob, player, stack))
+            || self
+                .get_pumpkin_item(stack.item.id)
+                .is_some_and(|item| item.use_on_entity(stack, player, entity.clone()));
+        if consumed && entity.get_living_entity().is_some() {
+            let target = entity.get_entity();
+            target.world.load().emit_game_event_with_context(
+                GameEvent::EntityInteract.name(),
+                target.pos.load(),
+                &GameEventContext {
+                    source_entity: Some(player),
+                    affected_state: None,
+                },
+            );
         }
-
-        let pumpkin_item = self.get_pumpkin_item(stack.item.id);
-        if let Some(pumpkin_item) = pumpkin_item {
-            pumpkin_item.use_on_entity(stack, player, entity);
-        }
+        consumed
     }
 
     pub fn can_mine(&self, item: &Item, player: &Player) -> bool {

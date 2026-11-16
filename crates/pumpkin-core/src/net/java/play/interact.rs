@@ -119,12 +119,13 @@ impl JavaClient {
                                 event.target.interact(player, &mut stack)
                             };
                             let item_id = before.item.id;
-                            if !interacted {
-                                server
-                                    .item_registry
-                                    .use_on_entity(&mut stack, player, event.target.clone());
-                            }
-                            if interacted || !stack.are_equal(&before) {
+                            let used = !interacted
+                                && server.item_registry.use_on_entity(
+                                    &mut stack,
+                                    player,
+                                    &event.target,
+                                );
+                            if interacted || used || !stack.are_equal(&before) {
                                 let is_baby =
                                     event.target.get_entity().age.load(Ordering::Relaxed) < 0;
                                 let player_wearing_safe_armor =

@@ -75,7 +75,15 @@ pub trait ItemBehaviour: Send + Sync {
         BlockActionResult::Pass
     }
 
-    fn use_on_entity(&self, _item: &mut ItemStack, _player: &Player, _entity: Arc<dyn EntityBase>) {
+    /// Vanilla `Item.interactLivingEntity` and the item interactions of `Mob.interact`: returns
+    /// whether the use consumed the action.
+    fn use_on_entity(
+        &self,
+        _item: &mut ItemStack,
+        _player: &Player,
+        _entity: Arc<dyn EntityBase>,
+    ) -> bool {
+        false
     }
 
     /// Updates the hand stack after the item was placed as a block.

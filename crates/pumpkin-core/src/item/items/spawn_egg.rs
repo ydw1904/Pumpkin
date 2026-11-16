@@ -405,13 +405,18 @@ impl ItemBehaviour for SpawnEggItem {
         }
     }
 
-    fn use_on_entity(&self, item: &mut ItemStack, player: &Player, entity: Arc<dyn EntityBase>) {
+    fn use_on_entity(
+        &self,
+        item: &mut ItemStack,
+        player: &Player,
+        entity: Arc<dyn EntityBase>,
+    ) -> bool {
         if let Some(entity_type) = entity_from_egg(item.item.id)
             && entity.get_entity().entity_type.id == entity_type.id
         {
             let world = player.world();
             if is_disallowed_in_peaceful(entity_type, &world) {
-                return;
+                return false;
             }
             // Vanilla `SpawnEggItem.spawnOffspringFromSpawnEgg`: an ageable parent breeds with
             // itself, so the baby takes its variant.
@@ -421,14 +426,14 @@ impl ItemBehaviour for SpawnEggItem {
             } else if let Some(villager) = entity.cast_any().downcast_ref::<VillagerEntity>() {
                 match villager.get_breed_offspring(&world, villager) {
                     Some(baby) => baby,
-                    None => return,
+                    None => return false,
                 }
             } else {
                 from_type(entity_type, pos, &world, Uuid::new_v4())
             };
             // no baby form, no offspring.
             if !mob.get_mob().is_some_and(Mob::spawn_as_baby) {
-                return;
+                return false;
             }
             mob.get_entity().set_rotation(0.0, 0.0);
             apply_entity_variant(item, mob.as_ref(), Some(player));
@@ -441,17 +446,10 @@ impl ItemBehaviour for SpawnEggItem {
                     parent.on_offspring_spawned_from_egg(player, mob.as_ref());
                 }
                 item.decrement_unless_creative(player.gamemode.load(), 1);
-                // `Mob.interact` records the interaction on the parent.
-                world.emit_game_event_with_context(
-                    GameEvent::EntityInteract.name(),
-                    pos,
-                    &crate::world::game_event::GameEventContext {
-                        source_entity: Some(player),
-                        affected_state: None,
-                    },
-                );
+                return true;
             }
         }
+        false
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

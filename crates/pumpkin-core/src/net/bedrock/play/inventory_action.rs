@@ -461,7 +461,7 @@ impl BedrockClient {
                         {
                             server
                                 .item_registry
-                                .use_on_entity(&mut stack, player, event.target);
+                                .use_on_entity(&mut stack, player, &event.target);
                         }
                         if native_interaction.is_none() && !stack.are_equal(&before) {
                             if before.is_damageable() && stack.is_empty() {
