@@ -3855,10 +3855,25 @@ impl<T: Mob + Send + 'static> EntityBase for T {
         {
             return true;
         }
-        self.mob_interact(player, item_stack)
+        let entity = &self.get_mob_entity().living_entity.entity;
+        let was_leashed = entity.is_leashed();
+        let consumed = self.mob_interact(player, item_stack)
             || self
                 .as_ageable()
-                .is_some_and(|ageable| ageable.ageable_interact(player, item_stack))
+                .is_some_and(|ageable| ageable.ageable_interact(player, item_stack));
+        // Vanilla `Mob.interact` emits for a consumed `mobInteract` and `Entity.interact` for
+        // an unleash, but tying a lead (handled in `mob_interact` here) emits nothing.
+        if consumed && (was_leashed || !entity.is_leashed()) {
+            entity.world.load().emit_game_event_with_context(
+                GameEvent::EntityInteract.name(),
+                entity.pos.load(),
+                &crate::world::game_event::GameEventContext {
+                    source_entity: Some(player.as_ref()),
+                    affected_state: None,
+                },
+            );
+        }
+        consumed
     }
 
     fn interact_with_hand(
