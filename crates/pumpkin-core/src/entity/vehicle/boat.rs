@@ -216,9 +216,7 @@ impl BoatEntity {
     /// Vanilla `Entity.startRiding` onto this boat without force.
     fn start_riding(&self, passenger: Arc<dyn EntityBase>) -> bool {
         let rider = passenger.get_entity();
-        // Players never keep a boarding cooldown.
-        let can_ride = passenger.get_player().is_some() || passenger.can_ride();
-        if !can_ride || !self.can_add_passenger() {
+        if !passenger.can_ride() || !self.can_add_passenger() {
             return false;
         }
         let entity = &self.vehicle.entity;

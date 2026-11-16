@@ -6728,8 +6728,14 @@ impl Entity {
                 None
             };
 
-            // Vanilla: ridingCooldown = 60 (prevents immediate re-mount)
-            passenger_entity.riding_cooldown.store(60, Relaxed);
+            // Vanilla `removePassenger` sets a 60 tick boarding cooldown, which
+            // `Player.removeVehicle` clears again for players.
+            let cooldown = if passenger.get_player().is_some() {
+                0
+            } else {
+                60
+            };
+            passenger_entity.riding_cooldown.store(cooldown, Relaxed);
             // TODO: world.emitGameEvent(passenger, GameEvent.ENTITY_DISMOUNT, vehicle.pos)
 
             passenger_entity
