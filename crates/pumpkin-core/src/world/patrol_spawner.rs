@@ -120,7 +120,6 @@ impl PatrolSpawner {
             crate::entity::mob::spawn::EntitySpawnReason::Patrol,
             None,
         );
-        patroller.finalize_patrol_spawn(true);
         world.spawn_entity(pillager as Arc<dyn EntityBase>);
         true
     }

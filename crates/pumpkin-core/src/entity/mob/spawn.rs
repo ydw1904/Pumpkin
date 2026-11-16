@@ -6,6 +6,7 @@ use std::sync::Arc;
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::effect::StatusEffect;
+use pumpkin_data::entity::EntityType;
 use pumpkin_data::entity_variant::{HorseVariant, RabbitVariant};
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -13,8 +14,8 @@ use time::{Month, OffsetDateTime};
 
 use crate::entity::EntityBase;
 use crate::entity::attributes::{Modifier, ModifierOperation};
-use crate::entity::mob::MobEntity;
 use crate::entity::mob::equipment::{EQUIPMENT_REGISTRY, RegionalDifficulty, equip_mob_on_spawn};
+use crate::entity::mob::{Mob, MobEntity};
 use crate::entity::passive::fox::FoxVariant;
 use crate::world::World;
 
@@ -238,9 +239,30 @@ pub fn finalize_spawn(
     group_data: Option<SpawnGroupData>,
 ) -> Option<SpawnGroupData> {
     match entity.get_mob() {
-        Some(mob) => mob.finalize_spawn(world, reason, group_data),
+        Some(mob) => finalize_mob_spawn(mob, world, reason, group_data),
         None => group_data,
     }
+}
+
+/// [`Mob::finalize_spawn`] plus the parts every raider shares: vanilla `Raider.finalizeSpawn`
+/// (only naturally spawned witches stay out of raids) and `PatrollingMonster.finalizeSpawn`.
+pub fn finalize_mob_spawn(
+    mob: &dyn Mob,
+    world: &Arc<World>,
+    reason: EntitySpawnReason,
+    group_data: Option<SpawnGroupData>,
+) -> Option<SpawnGroupData> {
+    let group_data = mob.finalize_spawn(world, reason, group_data);
+    if let Some(raider) = mob.as_raider() {
+        raider.set_can_join_raid(
+            mob.get_entity().entity_type != &EntityType::WITCH
+                || reason != EntitySpawnReason::Natural,
+        );
+    }
+    if let Some(patroller) = mob.as_patrolling_monster() {
+        patroller.finalize_patrol_spawn(reason);
+    }
+    group_data
 }
 
 impl MobEntity {

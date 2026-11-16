@@ -1957,7 +1957,12 @@ impl Mob for VillagerEntity {
                     &pumpkin_data::entity::EntityType::WITCH,
                     ConversionParams::single(false, false),
                     |witch| {
-                        witch.finalize_spawn(&world, EntitySpawnReason::Conversion, None);
+                        crate::entity::mob::spawn::finalize_mob_spawn(
+                            witch,
+                            &world,
+                            EntitySpawnReason::Conversion,
+                            None,
+                        );
                         witch
                             .get_mob_entity()
                             .persistence_required
