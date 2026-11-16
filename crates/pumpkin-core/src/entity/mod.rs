@@ -3475,6 +3475,8 @@ impl Entity {
         eye_level_box.max.y = eye_level_box.min.y;
 
         let previous_fire_ticks = self.fire_ticks.load(Ordering::Relaxed);
+        let was_on_fire = previous_fire_ticks > 0 && !self.is_fire_immune();
+        let was_freezing = self.frozen_ticks.load(Ordering::Relaxed) > 0;
         let mut suffocating = false;
         let world = self.world.load();
         // Read up front until a collision callback runs, as it may change the blocks after it.
@@ -3531,6 +3533,14 @@ impl Entity {
             }
         }
 
+        if self.is_in_rain() {
+            self.extinguish();
+        }
+        if (was_on_fire && self.fire_ticks.load(Ordering::Relaxed) <= 0)
+            || (was_freezing && self.frozen_ticks.load(Ordering::Relaxed) <= 0)
+        {
+            self.play_entity_on_fire_extinguished_sound(caller);
+        }
         self.reset_fire_grace(previous_fire_ticks);
         suffocating
     }
@@ -3604,16 +3614,22 @@ impl Entity {
         if self.is_in_rain() {
             self.extinguish();
         }
-        let fire_ticks = self.fire_ticks.load(Ordering::Relaxed);
-        if was_on_fire && fire_ticks <= 0 {
-            let random = game_random();
-            caller.play_entity_sound(
-                Sound::EntityGenericExtinguishFire,
-                0.7,
-                (random.random::<f32>() - random.random::<f32>()).mul_add(0.4, 1.6),
-            );
+        if was_on_fire && self.fire_ticks.load(Ordering::Relaxed) <= 0 {
+            self.play_entity_on_fire_extinguished_sound(caller);
         }
         self.reset_fire_grace(previous_fire_ticks);
+    }
+
+    /// Vanilla `playEntityOnFireExtinguishedSound`, which plays for silent entities too.
+    fn play_entity_on_fire_extinguished_sound(&self, caller: &dyn EntityBase) {
+        let random = game_random();
+        self.world.load().play_sound_fine(
+            Sound::EntityGenericExtinguishFire,
+            caller.sound_source(),
+            &self.pos.load(),
+            0.7,
+            (random.random::<f32>() - random.random::<f32>()).mul_add(0.4, 1.6),
+        );
     }
 
     /// The end of vanilla `Entity.applyEffectsFromBlocks`: unless the entity burns or was just

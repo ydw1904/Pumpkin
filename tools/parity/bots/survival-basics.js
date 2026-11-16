@@ -346,6 +346,26 @@ async function hazardScenes () {
   h.cmd(`setblock ${X} ${Y + 1} ${Z} air`)
   await h.ticks(20)
 
+  // Rain puts a burning mob out, with the extinguish sound (raw sound ids, as in ambient.js).
+  h.cmd(`fillbiome ${X - 6} ${Y - 4} ${Z - 6} ${X + 6} ${Y + 8} ${Z + 6} minecraft:plains`)
+  h.cmd(`summon pig ${X + 3.5} ${Y + 1} ${Z + 3.5} {NoAI:1b,Silent:1b,PersistenceRequired:1b,Fire:600s}`)
+  await h.waitFor(() => Object.values(bot.entities).some((e) => e.name === 'pig'), 3000)
+  await h.ticks(10)
+  const rainPig = Object.values(bot.entities).find((e) => e.name === 'pig')
+  const rainSounds = new Set()
+  const onRainSound = (p) => { const s = p.sound; rainSounds.add(s && s.data ? s.data.soundName : String(s ? s.soundId : p.soundId)) }
+  bot._client.on('sound_effect', onRainSound)
+  const burningBefore = rainPig && rainPig.metadata ? (rainPig.metadata[0] & 1) !== 0 : 'missing'
+  // The rain level needs about 20 ticks to count as raining.
+  h.cmd('weather rain')
+  await h.serverTicks(60)
+  bot._client.removeListener('sound_effect', onRainSound)
+  const burningAfter = rainPig && rainPig.metadata ? (rainPig.metadata[0] & 1) !== 0 : 'missing'
+  h.result('rain.pig', `before=${burningBefore} after=${burningAfter} sounds=${[...rainSounds].sort().join(',') || 'none'}`)
+  h.cmd('weather clear')
+  h.cmd('kill @e[type=pig]')
+  await h.ticks(20)
+
   // Lava, with and without fire resistance.
   for (const resist of [true, false]) {
     await setHealth(20)
