@@ -33,8 +33,10 @@ fn set_block(world: &Arc<World>, pos: &BlockPos, block: &Block) {
     world.set_block_state(pos, block.default_state.id, BlockFlags::NOTIFY_LISTENERS);
 }
 
+/// Vanilla `EndPodiumFeature.dropPreviousAndSetBlock`: whatever else is there drops.
 fn drop_previous_and_set_block(world: &Arc<World>, pos: &BlockPos, block: &Block) {
     if world.get_block(pos) != block {
+        world.destroy_block(pos, None, BlockFlags::NOTIFY_ALL);
         set_block(world, pos, block);
     }
 }
