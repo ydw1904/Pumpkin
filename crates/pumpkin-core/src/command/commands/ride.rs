@@ -100,7 +100,14 @@ impl CommandExecutor for RideDismountExecutor {
             || Err(ERROR_NOT_RIDING.create_without_context(target.get_display_name())),
             |vehicle| {
                 let target_id = target.get_entity().entity_id;
-                vehicle.get_entity().remove_passenger_sync(target_id);
+                // Vanilla `stopRiding`: only a `LivingEntity` moves to a dismount spot.
+                if target.get_living_entity().is_some() {
+                    vehicle.get_entity().remove_passenger(target_id);
+                } else {
+                    vehicle
+                        .get_entity()
+                        .remove_passenger_before_teleport(target_id);
+                }
 
                 let msg = TextComponent::translate_cross(
                     translation::java::COMMANDS_RIDE_DISMOUNT_SUCCESS,
