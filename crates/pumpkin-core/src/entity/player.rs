@@ -9742,11 +9742,25 @@ impl InventoryPlayer for Player {
         self.living_entity
             .send_equipment_changes(&[(slot.clone(), stack.clone())]);
 
-        if let Some(equippable) = stack.get_data_component::<EquippableImpl>() {
+        let equippable = stack.get_data_component::<EquippableImpl>();
+        if let Some(equippable) = equippable {
             self.world().play_sound_event(
                 &equippable.equip_sound,
                 SoundCategory::Players,
                 &self.position(),
+            );
+        }
+        // Vanilla `LivingEntity.onEquipItem`, which a player emits for armor slots only.
+        if slot.slot_type() == pumpkin_data::data_component_impl::EquipmentType::HumanoidArmor
+            && !self.is_spectator()
+        {
+            self.living_entity.entity.emit_own_game_event(
+                self,
+                if equippable.is_some() {
+                    pumpkin_data::game_event::GameEvent::Equip
+                } else {
+                    pumpkin_data::game_event::GameEvent::Unequip
+                },
             );
         }
     }
