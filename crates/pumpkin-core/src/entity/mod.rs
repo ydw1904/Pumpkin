@@ -5755,6 +5755,21 @@ impl Entity {
         self.pos.load().y + f64::from(self.entity_dimension.load().eye_height)
     }
 
+    /// Vanilla `Entity.getLightLevelDependentMagicValue`: the light at the eyes, 0 in an unloaded
+    /// column.
+    pub fn get_light_level_dependent_magic_value(&self) -> f32 {
+        let world = self.world.load();
+        let eye = BlockPos::containing_vec(self.get_eye_pos());
+        if world
+            .level
+            .read_chunk_sync(&eye.chunk_position(), |_| ())
+            .is_none()
+        {
+            return 0.0;
+        }
+        world.get_light_level_dependent_magic_value(&eye)
+    }
+
     pub fn is_removed(&self) -> bool {
         self.removal_reason.load().is_some()
     }

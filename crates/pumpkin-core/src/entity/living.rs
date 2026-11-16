@@ -2402,6 +2402,11 @@ impl LivingEntity {
         if let Some(mob) = caller.get_mob() {
             if let Some(raider) = mob.as_raider() {
                 crate::world::raid::raider_ai_step(raider);
+            } else if crate::entity::mob::is_monster(self.entity.entity_type)
+                && self.entity.get_light_level_dependent_magic_value() > 0.5
+            {
+                // Vanilla `Monster.updateNoActionTime`: bright light ages monsters faster.
+                self.no_action_time.fetch_add(2, Relaxed);
             }
             mob.before_mob_ai_step();
         }

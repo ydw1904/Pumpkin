@@ -44,6 +44,21 @@ h.start(async () => {
   h.cmd('weather clear')
   h.cmd('difficulty normal')
 
+  // Monsters in bright light age their no-action time three times as fast, so far from players
+  // they may start despawning after 200 ticks instead of 600. A barrier pen 45 blocks away holds
+  // 20 creepers, one per block so they don't cram, for 480 ticks.
+  const PX = X + 46
+  h.cmd(`fill ${PX - 3} ${Y} ${Z - 3} ${PX + 3} ${Y + 3} ${Z + 3} barrier`)
+  h.cmd(`fill ${PX - 2} ${Y + 1} ${Z - 2} ${PX + 2} ${Y + 3} ${Z + 2} air`)
+  await h.ticks(5)
+  for (let i = 0; i < 20; i++) h.cmd(`summon creeper ${PX - 2 + (i % 5) + 0.5} ${Y + 1} ${Z - 2 + Math.floor(i / 5) + 0.5}`)
+  await h.waitFor(() => named('creeper').length >= 20, 5000)
+  const penned = named('creeper').length
+  await h.serverTicks(480)
+  h.result('bright_despawn', `summoned=${penned} despawned_any=${named('creeper').length < penned}`)
+  h.cmd(`kill @e[type=creeper]`)
+  h.cmd(`fill ${PX - 3} ${Y} ${Z - 3} ${PX + 3} ${Y + 3} ${Z + 3} air`)
+
   // Health a summon reads from its NBT reaches the client.
   for (const [type, nbt] of [['slime', 'Size:3'], ['hoglin', ''], ['pig', 'Health:5f']]) {
     await clean()

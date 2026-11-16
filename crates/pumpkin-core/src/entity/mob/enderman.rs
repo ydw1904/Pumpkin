@@ -571,7 +571,7 @@ impl Mob for EndermanEntity {
         {
             return;
         }
-        let brightness = light_level_dependent_magic_value(entity);
+        let brightness = entity.get_light_level_dependent_magic_value();
         if brightness > DAYLIGHT_BRIGHTNESS
             && world.can_see_sky(&entity.block_pos.load())
             && self.get_random().random::<f32>() * 30.0 < (brightness - 0.4) * 2.0
@@ -676,7 +676,7 @@ impl EndermanEntity {
             return false;
         }
         moved_before
-            || (light_level_dependent_magic_value(entity) > DAYLIGHT_BRIGHTNESS
+            || (entity.get_light_level_dependent_magic_value() > DAYLIGHT_BRIGHTNESS
                 && world.can_see_sky(&entity.block_pos.load()))
     }
 
@@ -742,19 +742,4 @@ fn may_be_wet(world: &World, moved: &BoundingBox) -> bool {
     }
     BlockPos::iterate(moved.min_block_pos(), moved.max_block_pos())
         .any(|pos| world.get_fluid(&pos).has_tag(&tag::Fluid::MINECRAFT_WATER))
-}
-
-/// Vanilla `Entity.getLightLevelDependentMagicValue`: the light at the eyes, 0 in an unloaded
-/// column.
-fn light_level_dependent_magic_value(entity: &Entity) -> f32 {
-    let world = entity.world.load();
-    let eye = BlockPos::containing_vec(entity.get_eye_pos());
-    if world
-        .level
-        .read_chunk_sync(&eye.chunk_position(), |_| ())
-        .is_none()
-    {
-        return 0.0;
-    }
-    world.get_light_level_dependent_magic_value(&eye)
 }
