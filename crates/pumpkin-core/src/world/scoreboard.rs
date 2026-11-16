@@ -58,18 +58,16 @@ impl ScoreboardTarget for World {
         if let Some(server) = self.server.upgrade() {
             let worlds = server.worlds.load();
             let players: Vec<_> = worlds.iter().map(|world| world.players.load()).collect();
-            let recipients = Self::collect_java_recipients_by_version(
+            Self::broadcast_java_players(
+                je_packet,
                 players
                     .iter()
                     .flat_map(|players| players.iter())
                     .filter(initialized),
             );
-            Self::broadcast_java_grouped(je_packet, recipients);
         } else {
             let players = self.players.load();
-            let recipients =
-                Self::collect_java_recipients_by_version(players.iter().filter(initialized));
-            Self::broadcast_java_grouped(je_packet, recipients);
+            Self::broadcast_java_players(je_packet, players.iter().filter(initialized));
         }
     }
 

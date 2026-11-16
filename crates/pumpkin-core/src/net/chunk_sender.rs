@@ -465,22 +465,22 @@ impl ChunkSender {
         })
     }
 
+    /// Encodes the batch, sharing encodings through `cache` (the world's, cleared every tick).
+    #[must_use]
     pub fn encode_batch(
         batch: &PreparedBatch,
-        cache: &mut FxHashMap<Vector2<i32>, EncodedChunk>,
+        cache: &dashmap::DashMap<Vector2<i32>, EncodedChunk>,
         level: &Level,
     ) -> Vec<EncodedChunk> {
-        let cached_map = &*cache;
-
-        let encoded_results: Vec<Option<EncodedChunk>> = batch
+        batch
             .chunks
             .par_iter()
-            .map(|candidate| {
+            .filter_map(|candidate| {
                 let pos = candidate.position;
-                if let Some(cached) = cached_map.get(&pos)
+                if let Some(cached) = cache.get(&pos)
                     && cached.is_fresh_for(candidate)
                 {
-                    return Some(cached.clone());
+                    return Some(cached.value().clone());
                 }
 
                 let chunk = &candidate.chunk;
@@ -500,21 +500,15 @@ impl ChunkSender {
                     return None;
                 }
 
-                Some(EncodedChunk {
+                let encoded = EncodedChunk {
                     position: pos,
                     payload: Bytes::from(chunk_buf),
                     chunk_ref: Arc::downgrade(chunk),
-                })
+                };
+                cache.insert(pos, encoded.clone());
+                Some(encoded)
             })
-            .collect();
-
-        let mut output = Vec::with_capacity(encoded_results.len());
-        for encoded in encoded_results.into_iter().flatten() {
-            cache.insert(encoded.position, encoded.clone());
-            output.push(encoded);
-        }
-
-        output
+            .collect()
     }
 
     /// Chunks `encode_batch` dropped stay pending, retried a bounded number of times.

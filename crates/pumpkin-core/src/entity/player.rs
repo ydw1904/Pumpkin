@@ -3281,6 +3281,10 @@ impl Player {
     ) {
         const MAX_PACKETS_PER_TICK: usize = 64;
 
+        if first.is_none() && self.inbound_packets.is_empty() {
+            return;
+        }
+
         let Some(player_arc) = self.world().get_player_by_uuid(self.gameprofile.id) else {
             return;
         };
@@ -3490,10 +3494,9 @@ impl Player {
                         }
                         _ => Vec::new(),
                     };
-                    let mut per_player_cache = rustc_hash::FxHashMap::default();
                     let encoded = crate::net::ChunkSender::encode_batch(
                         &batch,
-                        &mut per_player_cache,
+                        &world.encoded_chunk_cache,
                         &world.level,
                     );
                     let current_epoch = self.chunk_send_epoch.load(Ordering::Relaxed);
@@ -4334,9 +4337,11 @@ impl Player {
     }
 
     pub fn increment_stat(&self, category: statistics::StatisticCategory, stat: i32, amount: i32) {
-        let final_amount = if let Some(player_arc) =
-            self.world().get_player_by_uuid(self.gameprofile.id)
-            && let Some(server) = self.world().server.upgrade()
+        let final_amount = if let Some(server) = self.world().server.upgrade()
+            && server
+                .plugin_manager
+                .has_handlers::<crate::plugin::api::events::player::player_statistic_increment::PlayerStatisticIncrementEvent>()
+            && let Some(player_arc) = self.world().get_player_by_uuid(self.gameprofile.id)
         {
             let mut event = crate::plugin::api::events::player::player_statistic_increment::PlayerStatisticIncrementEvent {
                 player: player_arc,
@@ -4917,10 +4922,12 @@ impl Player {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(CustomScoreboard::Java(sb)) = guard.as_ref()
+            && !sb.get_teams().is_empty()
             && let Some(team) = sb.get_entity_team(&self.gameprofile.name)
         {
             return Some(f(team));
         }
+        drop(guard);
         let world = self.world();
         let sb = world
             .scoreboard

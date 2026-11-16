@@ -1744,6 +1744,7 @@ impl Server {
                 player.tick(self);
                 player.send_tick_stats();
             });
+            world.encoded_chunk_cache.clear();
         }
         self.process_deferred_commands();
     }

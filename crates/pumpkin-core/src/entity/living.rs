@@ -2507,20 +2507,21 @@ impl LivingEntity {
 
         let world = self.entity.world.load();
         let entity_bb = self.entity.bounding_box.load();
-        let own_team = dyn_self.get_team_collision();
+        let mut own_team: Option<Option<crate::world::scoreboard::TeamCollision>> = None;
 
         let pushable: Vec<Arc<dyn EntityBase>> = world
             .get_all_at_box(&entity_bb)
             .into_iter()
             .filter(|entity| {
                 let entity_ref = entity.get_entity();
-                entity_ref.entity_id != self.entity.entity_id
-                    && !entity.is_spectator()
-                    && entity.is_pushable()
-                    && is_allowed_by_team_rules(
-                        own_team.as_ref(),
-                        entity.get_team_collision().as_ref(),
-                    )
+                if entity_ref.entity_id == self.entity.entity_id
+                    || entity.is_spectator()
+                    || !entity.is_pushable()
+                {
+                    return false;
+                }
+                let own = own_team.get_or_insert_with(|| dyn_self.get_team_collision());
+                is_allowed_by_team_rules(own.as_ref(), entity.get_team_collision().as_ref())
             })
             .collect();
 
