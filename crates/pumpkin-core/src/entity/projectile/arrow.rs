@@ -17,6 +17,7 @@ use crate::{
     server::Server,
     world::World,
 };
+use pumpkin_data::BlockStateId;
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::data_component_impl::{
@@ -33,6 +34,7 @@ use pumpkin_protocol::java::client::play::{CSoundEffect, GameEvent};
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_world::generation::structure::template::PaletteEntry;
 
 /// The `ProjectileDeflection.REVERSE` power vanilla `AbstractArrow.onHitEntity` bounces an
 /// arrow back with when its damage fails.
@@ -91,7 +93,8 @@ pub struct ArrowEntity {
     pub life: AtomicU32,
     pub shake_time: AtomicU8,
     pub last_deflected_by: LastDeflectedBy,
-    pub last_block_pos: Arc<std::sync::RwLock<Option<BlockPos>>>,
+    /// Vanilla `AbstractArrow.lastState`: the block state the arrow stuck into.
+    last_state: AtomicCell<Option<BlockStateId>>,
     pub pierced_entities: Arc<RwLock<Vec<i32>>>,
     pub weapon: RwLock<Option<ItemStack>>,
     /// Vanilla `AbstractArrow.soundEvent`, played when the arrow hits.
@@ -106,8 +109,34 @@ impl ArrowEntity {
     const AIR_INERTIA: f64 = 0.99f32 as f64;
     const GRAVITY: f64 = 0.05;
     const DESPAWN_TIME: u32 = 1200;
+    /// Vanilla `AbstractArrow.shouldFall`'s margin around the arrow.
+    const FALL_CHECK_DISTANCE: f64 = 0.06;
     /// Vanilla `AbstractArrow.getDefaultHitGroundSoundEvent`.
     const DEFAULT_HIT_SOUND: Sound = Sound::EntityArrowHit;
+
+    /// Vanilla `AbstractArrow.shouldFall`: nothing to stick in around the arrow any more.
+    fn should_fall(&self) -> bool {
+        let pos = self.entity.pos.load();
+        self.entity
+            .world
+            .load()
+            .is_space_empty(BoundingBox::new(pos, pos).expand_all(Self::FALL_CHECK_DISTANCE))
+    }
+
+    /// Vanilla `AbstractArrow.startFalling`.
+    fn start_falling(&self) {
+        self.in_ground.store(false, Ordering::Relaxed);
+        self.entity
+            .set_synced_data(pumpkin_data::tracked_data::abstract_arrow::IN_GROUND, false);
+        let random = game_random();
+        let velocity = self.entity.velocity.load();
+        self.entity.velocity.store(Vector3::new(
+            velocity.x * f64::from(random.random::<f32>() * 0.2),
+            velocity.y * f64::from(random.random::<f32>() * 0.2),
+            velocity.z * f64::from(random.random::<f32>() * 0.2),
+        ));
+        self.life.store(0, Ordering::Relaxed);
+    }
 
     /// Vanilla `AbstractArrow.setSoundEvent`.
     pub fn set_sound_event(&self, sound: Sound) {
@@ -147,7 +176,7 @@ impl ArrowEntity {
             life: AtomicU32::new(0),
             shake_time: AtomicU8::new(0),
             last_deflected_by: LastDeflectedBy::new(),
-            last_block_pos: Arc::new(std::sync::RwLock::new(None)),
+            last_state: AtomicCell::new(None),
             pierced_entities: Arc::new(RwLock::new(Vec::new())),
             weapon: RwLock::new(None),
             sound_event: AtomicCell::new(Self::DEFAULT_HIT_SOUND),
@@ -188,7 +217,7 @@ impl ArrowEntity {
             life: AtomicU32::new(0),
             shake_time: AtomicU8::new(0),
             last_deflected_by: LastDeflectedBy::new(),
-            last_block_pos: Arc::new(std::sync::RwLock::new(None)),
+            last_state: AtomicCell::new(None),
             pierced_entities: Arc::new(RwLock::new(Vec::new())),
             weapon: RwLock::new(None),
             sound_event: AtomicCell::new(Self::DEFAULT_HIT_SOUND),
@@ -525,6 +554,9 @@ impl EntityBase for ArrowEntity {
         nbt.put_bool("inGround", self.in_ground.load(Ordering::Relaxed));
         nbt.put_int("life", self.life.load(Ordering::Relaxed) as i32);
         nbt.put_byte("shake", self.shake_time.load(Ordering::Relaxed) as i8);
+        if let Some(state) = self.last_state.load() {
+            nbt.put("inBlockState", PaletteEntry::state_to_nbt(state));
+        }
         nbt.put_byte(
             "PierceLevel",
             self.pierce_level.load(Ordering::Relaxed) as i8,
@@ -570,6 +602,10 @@ impl EntityBase for ArrowEntity {
         if let Some(shake) = nbt.get_byte("shake") {
             self.shake_time.store(shake.max(0) as u8, Ordering::Relaxed);
         }
+        self.last_state.store(
+            nbt.get("inBlockState")
+                .and_then(PaletteEntry::state_from_nbt),
+        );
         // Vanilla falls back to `DISALLOWED` when the tag is missing.
         self.pickup.store(ArrowPickup::from_byte(
             nbt.get_byte("pickup").unwrap_or(0) as u8
@@ -637,36 +673,15 @@ impl EntityBase for ArrowEntity {
         }
 
         if self.in_ground.load(Ordering::Relaxed) {
-            // Check if the block we are stuck into was broken / turned to air
-            let last_pos = *self
-                .last_block_pos
-                .read()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let mut started_falling = false;
-            if let Some(pos) = last_pos {
-                let block = world.get_block(&pos);
-                if block.is_air() {
-                    self.in_ground.store(false, Ordering::Relaxed);
-                    entity.set_synced_data(
-                        pumpkin_data::tracked_data::abstract_arrow::IN_GROUND,
-                        false,
-                    );
-                    let mut vel = entity.velocity.load();
-                    vel.x *= game_random().random::<f64>() * 0.2;
-                    vel.y *= game_random().random::<f64>() * 0.2;
-                    vel.z *= game_random().random::<f64>() * 0.2;
-                    entity.velocity.store(vel);
-                    // Vanilla `startFalling`: restart the despawn timer.
-                    self.life.store(0, Ordering::Relaxed);
-                    started_falling = true;
-                }
-            }
-
-            let _in_ground_time = self.in_ground_time.fetch_add(1, Ordering::Relaxed);
-            // Vanilla either starts falling or ticks the despawn timer, never both.
-            if !started_falling && self.life.fetch_add(1, Ordering::Relaxed) >= Self::DESPAWN_TIME {
+            // Vanilla falls once the block it is in changed and nothing holds it any more, and
+            // otherwise ticks the despawn timer.
+            let state = world.get_block_state_id(&entity.block_pos.load());
+            if self.last_state.load() != Some(state) && self.should_fall() {
+                self.start_falling();
+            } else if self.life.fetch_add(1, Ordering::Relaxed) + 1 >= Self::DESPAWN_TIME {
                 entity.remove();
             }
+            self.in_ground_time.fetch_add(1, Ordering::Relaxed);
             if !entity.is_removed() {
                 let pos = entity.pos.load();
                 entity.apply_effects_from_blocks(caller, pos, pos);
@@ -797,12 +812,9 @@ impl EntityBase for ArrowEntity {
                 ..
             } => {
                 // Arrow hit a block - stick into it
+                self.last_state.store(Some(world.get_block_state_id(&pos)));
                 self.in_ground.store(true, Ordering::Relaxed);
                 self.shake_time.store(7, Ordering::Relaxed);
-                *self
-                    .last_block_pos
-                    .write()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(pos);
 
                 let block = world.get_block(&pos);
                 let state = world.get_block_state(&pos);
