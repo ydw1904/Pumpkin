@@ -6,6 +6,7 @@ use std::sync::{
 };
 
 use pumpkin_data::BlockId;
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::world::WorldEvent;
 use pumpkin_util::Difficulty;
@@ -187,7 +188,7 @@ impl LightningBoltEntity {
 }
 
 impl EntityBase for LightningBoltEntity {
-    fn tick(&self, _caller: &dyn EntityBase, _server: &Server) {
+    fn tick(&self, caller: &dyn EntityBase, _server: &Server) {
         let entity = &self.entity;
         let life = self.life.load(Ordering::Relaxed);
 
@@ -219,6 +220,9 @@ impl EntityBase for LightningBoltEntity {
 
             self.power_lightning_rod(&world);
             self.clear_copper_on_lightning_strike(&world);
+            if !self.is_visual_only() {
+                entity.emit_own_game_event(caller, GameEvent::LightningStrike);
+            }
         }
 
         let new_life = life - 1;

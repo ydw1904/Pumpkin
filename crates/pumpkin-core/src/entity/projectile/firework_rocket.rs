@@ -149,6 +149,15 @@ impl FireworkRocketEntity {
             EntityStatus::FireworksExplode,
             ActorEventID::FireworksExplode,
         );
+        let owner = self.entity.owner.get(world);
+        world.emit_game_event_with_context(
+            pumpkin_data::game_event::GameEvent::Explode.name(),
+            entity.pos.load(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: owner.as_deref(),
+                affected_state: None,
+            },
+        );
         self.deal_explosion_damage(world);
 
         entity.remove();

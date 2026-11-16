@@ -736,6 +736,14 @@ impl<'a> Explosion<'a> {
     /// Returns the removed block count
     /// Returns the removed block count and the knockback of each hit Java player.
     pub fn explode(&self, world: &Arc<World>) -> (u32, FxHashMap<i32, Vector3<f64>>) {
+        world.emit_game_event_with_context(
+            pumpkin_data::game_event::GameEvent::Explode.name(),
+            self.pos,
+            &super::game_event::GameEventContext {
+                source_entity: self.source,
+                affected_state: None,
+            },
+        );
         let hit_players = self.damage_entities(world);
         (self.interact_with_blocks(world), hit_players)
     }
