@@ -6351,7 +6351,21 @@ impl Entity {
             &passengers_packet,
             &be_link,
         );
+        self.emit_riding_event(added.1.as_ref(), GameEvent::EntityMount);
         added.0.on_passenger_added(added.1.as_ref());
+    }
+
+    /// The `entity_mount` and `entity_dismount` of vanilla `Entity.startRiding` and
+    /// `removeVehicle`: at this vehicle, from the passenger.
+    fn emit_riding_event(&self, passenger: &dyn EntityBase, event: GameEvent) {
+        self.world.load().emit_game_event_with_context(
+            event.name(),
+            self.pos.load(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: Some(passenger),
+                affected_state: None,
+            },
+        );
     }
 
     /// Sends a passenger change of this vehicle. Like vanilla `ServerPlayer.startRiding` and
@@ -6457,10 +6471,11 @@ impl Entity {
             &CSetPassengers::new(VarInt(self.entity_id), &passenger_ids),
             &be_unlink,
         );
-        if let Some(passenger) = &removed
-            && let Some(vehicle) = self.world.load().get_entity_by_id(self.entity_id)
-        {
-            vehicle.on_passenger_removed(passenger.as_ref());
+        if let Some(passenger) = &removed {
+            self.emit_riding_event(passenger.as_ref(), GameEvent::EntityDismount);
+            if let Some(vehicle) = self.world.load().get_entity_by_id(self.entity_id) {
+                vehicle.on_passenger_removed(passenger.as_ref());
+            }
         }
     }
 
@@ -6541,6 +6556,7 @@ impl Entity {
         let chunk_pos = self.chunk_pos.load();
 
         if let Some(passenger) = removed_passenger {
+            self.emit_riding_event(passenger.as_ref(), GameEvent::EntityDismount);
             let vehicle_box = self.bounding_box.load();
             let passenger_entity = passenger.get_entity();
 
