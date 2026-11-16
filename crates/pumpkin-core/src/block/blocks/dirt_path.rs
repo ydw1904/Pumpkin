@@ -2,6 +2,8 @@ use crate::block::{
     BlockBehaviour, CanPlaceAtArgs, GetStateForNeighborUpdateArgs, OnPlaceArgs,
     OnScheduledTickArgs, PathComputationType, push_entities_up,
 };
+use crate::world::game_event::GameEventContext;
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::{
     Block, BlockDirection, BlockState, BlockStateId,
     tag::{self, Taggable},
@@ -27,6 +29,14 @@ impl BlockBehaviour for DirtPathBlock {
         );
         args.world
             .set_block_state(args.position, new_state, BlockFlags::NOTIFY_ALL);
+        args.world.emit_game_event_with_context(
+            GameEvent::BlockChange.name(),
+            args.position.to_centered_f64(),
+            &GameEventContext {
+                source_entity: None,
+                affected_state: Some(new_state),
+            },
+        );
     }
 
     fn on_place(&self, args: OnPlaceArgs<'_>) -> BlockStateId {

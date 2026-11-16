@@ -172,6 +172,10 @@ impl BlockEntity for CampfireBlockEntity {
             *self.items[slot]
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = ItemStack::EMPTY.clone();
+            world.emit_game_event(
+                pumpkin_data::game_event::GameEvent::BlockChange.name(),
+                self.position.to_centered_f64(),
+            );
             *self.cooking_times[slot]
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = 0;

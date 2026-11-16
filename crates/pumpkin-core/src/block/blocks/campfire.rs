@@ -113,6 +113,15 @@ impl BlockBehaviour for CampfireBlock {
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = recipe.cooking_time;
             drop(stored);
 
+            // Vanilla `CampfireBlockEntity.placeFood`.
+            args.world.emit_game_event_with_context(
+                pumpkin_data::game_event::GameEvent::BlockChange.name(),
+                args.position.to_centered_f64(),
+                &crate::world::game_event::GameEventContext {
+                    source_entity: Some(args.player.as_ref()),
+                    affected_state: Some(state.id),
+                },
+            );
             args.player.increment_stat(
                 pumpkin_data::statistic::StatisticCategory::Custom,
                 pumpkin_data::statistic::CustomStatistic::InteractWithCampfire as i32,

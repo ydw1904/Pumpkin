@@ -111,6 +111,10 @@ impl BlockBehaviour for CauldronBlock {
                     SoundCategory::Blocks,
                     &args.position.to_f64(),
                 );
+                args.world.emit_game_event(
+                    GameEvent::FluidPlace.name(),
+                    args.position.to_centered_f64(),
+                );
                 args.item_stack.decrement_unless_creative(gamemode, 1);
                 give_item_or_drop(args.player, args.world, &Item::BUCKET);
                 award_cauldron_use(args.player, CustomStatistic::FillCauldron, item_id);
@@ -125,6 +129,10 @@ impl BlockBehaviour for CauldronBlock {
                     Sound::ItemBucketEmptyLava,
                     SoundCategory::Blocks,
                     &args.position.to_f64(),
+                );
+                args.world.emit_game_event(
+                    GameEvent::FluidPlace.name(),
+                    args.position.to_centered_f64(),
                 );
                 args.item_stack.decrement_unless_creative(gamemode, 1);
                 give_item_or_drop(args.player, args.world, &Item::BUCKET);
@@ -141,6 +149,10 @@ impl BlockBehaviour for CauldronBlock {
                     SoundCategory::Blocks,
                     &args.position.to_f64(),
                 );
+                args.world.emit_game_event(
+                    GameEvent::FluidPlace.name(),
+                    args.position.to_centered_f64(),
+                );
                 args.item_stack.decrement_unless_creative(gamemode, 1);
                 give_item_or_drop(args.player, args.world, &Item::BUCKET);
                 award_cauldron_use(args.player, CustomStatistic::FillCauldron, item_id);
@@ -155,6 +167,10 @@ impl BlockBehaviour for CauldronBlock {
                     Sound::ItemBottleEmpty,
                     SoundCategory::Blocks,
                     &args.position.to_f64(),
+                );
+                args.world.emit_game_event(
+                    GameEvent::FluidPlace.name(),
+                    args.position.to_centered_f64(),
                 );
                 args.item_stack.decrement_unless_creative(gamemode, 1);
                 give_item_or_drop(args.player, args.world, &Item::GLASS_BOTTLE);
@@ -196,6 +212,10 @@ impl BlockBehaviour for CauldronBlock {
                 );
                 args.world
                     .play_sound(sound, SoundCategory::Blocks, &args.position.to_f64());
+                args.world.emit_game_event(
+                    GameEvent::FluidPickup.name(),
+                    args.position.to_centered_f64(),
+                );
                 args.item_stack.decrement_unless_creative(gamemode, 1);
                 give_item_or_drop(args.player, args.world, result_item);
                 award_cauldron_use(args.player, CustomStatistic::UseCauldron, item_id);
@@ -218,6 +238,10 @@ impl BlockBehaviour for CauldronBlock {
                         Sound::ItemBottleEmpty,
                         SoundCategory::Blocks,
                         &args.position.to_f64(),
+                    );
+                    args.world.emit_game_event(
+                        GameEvent::FluidPlace.name(),
+                        args.position.to_centered_f64(),
                     );
                     args.item_stack.decrement_unless_creative(gamemode, 1);
                     give_item_or_drop(args.player, args.world, &Item::GLASS_BOTTLE);
@@ -247,6 +271,10 @@ impl BlockBehaviour for CauldronBlock {
                         Sound::ItemBottleFill,
                         SoundCategory::Blocks,
                         &args.position.to_f64(),
+                    );
+                    args.world.emit_game_event(
+                        GameEvent::FluidPickup.name(),
+                        args.position.to_centered_f64(),
                     );
                     args.item_stack.decrement_unless_creative(gamemode, 1);
                     give_stack_or_drop(
@@ -281,6 +309,10 @@ impl BlockBehaviour for CauldronBlock {
                             BlockFlags::NOTIFY_ALL,
                         );
                     }
+                    args.world.emit_game_event(
+                        GameEvent::BlockChange.name(),
+                        args.position.to_centered_f64(),
+                    );
                     args.item_stack.item = &Item::SHULKER_BOX;
                     args.player.increment_stat(
                         pumpkin_data::statistic::StatisticCategory::Custom,
@@ -312,6 +344,10 @@ impl BlockBehaviour for CauldronBlock {
                             BlockFlags::NOTIFY_ALL,
                         );
                     }
+                    args.world.emit_game_event(
+                        GameEvent::BlockChange.name(),
+                        args.position.to_centered_f64(),
+                    );
                     args.item_stack.remove_data_component(
                         pumpkin_data::data_component::DataComponent::BannerPatterns,
                     );
@@ -345,6 +381,10 @@ impl BlockBehaviour for CauldronBlock {
                             BlockFlags::NOTIFY_ALL,
                         );
                     }
+                    args.world.emit_game_event(
+                        GameEvent::BlockChange.name(),
+                        args.position.to_centered_f64(),
+                    );
                     args.item_stack.remove_data_component(
                         pumpkin_data::data_component::DataComponent::DyedColor,
                     );

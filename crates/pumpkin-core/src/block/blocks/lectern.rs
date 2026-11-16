@@ -65,7 +65,7 @@ impl LecternController for LecternPageController {
         if let Some(entity) = self.entity() {
             entity.page.store(0, Ordering::Relaxed);
         }
-        LecternBlock::set_has_book(&self.world, &self.position, false);
+        LecternBlock::set_has_book(&self.world, &self.position, false, None);
     }
 }
 
@@ -126,8 +126,14 @@ impl LecternBlock {
         world.sync_world_event(WorldEvent::SoundPageTurn, *position, 0);
     }
 
-    /// Sets `has_book`, dropping any pending pulse like vanilla `setHasBook`.
-    pub(crate) fn set_has_book(world: &Arc<World>, position: &BlockPos, has_book: bool) {
+    /// Vanilla `resetBookState`: sets `has_book`, dropping any pending pulse like vanilla
+    /// `setHasBook`.
+    pub(crate) fn set_has_book(
+        world: &Arc<World>,
+        position: &BlockPos,
+        has_book: bool,
+        source: Option<&dyn crate::entity::EntityBase>,
+    ) {
         let (block, state_id) = world.get_block_and_state_id(position);
         if block != &Block::LECTERN {
             return;
@@ -135,8 +141,17 @@ impl LecternBlock {
         let mut props = LecternLikeProperties::from_state_id(state_id);
         props.powered = false;
         props.has_book = has_book;
-        world.set_block_state(position, props.to_state_id(block), BlockFlags::NOTIFY_ALL);
+        let new_state = props.to_state_id(block);
+        world.set_block_state(position, new_state, BlockFlags::NOTIFY_ALL);
         Self::update_neighbors_below(world, position);
+        world.emit_game_event_with_context(
+            pumpkin_data::game_event::GameEvent::BlockChange.name(),
+            position.to_centered_f64(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: source,
+                affected_state: Some(new_state),
+            },
+        );
     }
 }
 
@@ -228,7 +243,7 @@ impl BlockBehaviour for LecternBlock {
         lectern.set_stack(0, book);
         lectern.resolve_book(args.world);
 
-        Self::set_has_book(args.world, args.position, true);
+        Self::set_has_book(args.world, args.position, true, Some(args.player.as_ref()));
         args.world
             .play_block_sound(Sound::ItemBookPut, SoundCategory::Blocks, *args.position);
 

@@ -5,8 +5,11 @@ use crate::block::{
     BlockBehaviour, CanPlaceAtArgs, GetStateForNeighborUpdateArgs, OnLandedUponArgs, OnPlaceArgs,
     OnScheduledTickArgs, PathComputationType, RandomTickArgs, push_entities_up,
 };
+use crate::entity::EntityBase;
 use crate::world::World;
+use crate::world::game_event::GameEventContext;
 use pumpkin_data::block_properties::FarmlandLikeProperties;
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::tag;
 use pumpkin_data::tag::Taggable;
 use pumpkin_data::{Block, BlockDirection, BlockState, BlockStateId};
@@ -20,10 +23,18 @@ use pumpkin_world::world::BlockFlags;
 type FarmlandProperties = FarmlandLikeProperties;
 
 /// Vanilla `FarmlandBlock.turnToBaseBlock`.
-fn turn_to_base_block(world: &Arc<World>, pos: &BlockPos) {
+fn turn_to_base_block(world: &Arc<World>, pos: &BlockPos, source: Option<&dyn EntityBase>) {
     let state = world.get_block_state(pos);
     let new_state = push_entities_up(world, state, Block::DIRT.default_state.id, pos);
     world.set_block_state(pos, new_state, BlockFlags::NOTIFY_ALL);
+    world.emit_game_event_with_context(
+        GameEvent::BlockChange.name(),
+        pos.to_centered_f64(),
+        &GameEventContext {
+            source_entity: source,
+            affected_state: Some(new_state),
+        },
+    );
 }
 
 #[pumpkin_block("minecraft:farmland")]
@@ -32,7 +43,7 @@ pub struct FarmlandBlock;
 impl BlockBehaviour for FarmlandBlock {
     fn on_scheduled_tick(&self, args: OnScheduledTickArgs<'_>) {
         if !can_place_at(args.world.as_ref(), args.position) {
-            turn_to_base_block(args.world, args.position);
+            turn_to_base_block(args.world, args.position, None);
         }
     }
 
@@ -78,7 +89,7 @@ impl BlockBehaviour for FarmlandBlock {
                 );
                 let dim = entity.entity_dimension.load();
                 if can_trample && dim.width * dim.width * dim.height > 0.512 {
-                    turn_to_base_block(args.world, &pos);
+                    turn_to_base_block(args.world, &pos, Some(args.entity));
                 }
             }
             living.handle_fall_damage(args.entity, args.fall_distance, 1.0);
@@ -119,7 +130,7 @@ impl BlockBehaviour for FarmlandBlock {
                 .get_block(&args.position.up())
                 .has_tag(&tag::Block::MINECRAFT_MAINTAINS_FARMLAND)
             {
-                turn_to_base_block(args.world, args.position);
+                turn_to_base_block(args.world, args.position, None);
             }
         } else {
             let mut new_moisture = (props.moisture as i32 - 1).clamp(0, 7);

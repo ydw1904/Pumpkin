@@ -268,12 +268,20 @@ fn reset_tilt(state_id: BlockStateId, world: &Arc<World>, pos: &BlockPos) {
 
 fn set_tilt(state_id: BlockStateId, world: &Arc<World>, pos: &BlockPos, new_tilt: Tilt) {
     let mut props = BigDripleafLikeProperties::from_state_id(state_id);
+    let previous_tilt = props.tilt;
     props.tilt = new_tilt;
     world.set_block_state(
         pos,
         props.to_state_id(&Block::BIG_DRIPLEAF),
         BlockFlags::NOTIFY_ALL,
     );
+    // Vanilla `Tilt.causesVibration`: every tilt but `unstable`.
+    if new_tilt != Tilt::Unstable && new_tilt != previous_tilt {
+        world.emit_game_event(
+            pumpkin_data::game_event::GameEvent::BlockChange.name(),
+            pos.to_centered_f64(),
+        );
+    }
 }
 
 fn play_tilt_sound(world: &Arc<World>, pos: &BlockPos, tilt_sound: Sound) {

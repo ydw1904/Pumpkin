@@ -74,10 +74,16 @@ impl BlockBehaviour for SweetBerryBushBlock {
                     1.0,
                     pitch,
                 );
-                args.world.set_block_state(
-                    args.position,
-                    props.to_state_id(&Block::SWEET_BERRY_BUSH),
-                    BlockFlags::NOTIFY_LISTENERS,
+                let new_state = props.to_state_id(&Block::SWEET_BERRY_BUSH);
+                args.world
+                    .set_block_state(args.position, new_state, BlockFlags::NOTIFY_LISTENERS);
+                args.world.emit_game_event_with_context(
+                    pumpkin_data::game_event::GameEvent::BlockChange.name(),
+                    args.position.to_centered_f64(),
+                    &crate::world::game_event::GameEventContext {
+                        source_entity: Some(args.player.as_ref()),
+                        affected_state: Some(new_state),
+                    },
                 );
                 BlockActionResult::SuccessServer
             }
@@ -191,10 +197,15 @@ impl CropBlockBase for SweetBerryBushBlock {
         let (block, state) = world.get_block_and_state_id(pos);
         let age = self.get_age(state, block);
         if age < self.max_age() && world.get_raw_brightness(&pos.up(), 0) >= MIN_GROWTH_LIGHT {
-            world.set_block_state(
-                pos,
-                self.state_with_age(block, state, age + 1),
-                BlockFlags::NOTIFY_LISTENERS,
+            let new_state = self.state_with_age(block, state, age + 1);
+            world.set_block_state(pos, new_state, BlockFlags::NOTIFY_LISTENERS);
+            world.emit_game_event_with_context(
+                pumpkin_data::game_event::GameEvent::BlockChange.name(),
+                pos.to_centered_f64(),
+                &crate::world::game_event::GameEventContext {
+                    source_entity: None,
+                    affected_state: Some(new_state),
+                },
             );
         }
     }

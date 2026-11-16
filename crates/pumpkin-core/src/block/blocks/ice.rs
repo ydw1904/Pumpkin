@@ -20,10 +20,18 @@ pub fn melt(world: &Arc<World>, position: &BlockPos) {
     if world.dimension.water_evaporates {
         world.set_block_state(position, BlockStateId::AIR, BlockFlags::NOTIFY_ALL);
     } else {
-        world.set_block_state(
+        let melted = world.set_block_state(
             position,
             Block::WATER.default_state.id,
             BlockFlags::NOTIFY_ALL,
+        );
+        world.emit_game_event_with_context(
+            pumpkin_data::game_event::GameEvent::BlockDestroy.name(),
+            position.to_centered_f64(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: None,
+                affected_state: Some(melted),
+            },
         );
     }
 }

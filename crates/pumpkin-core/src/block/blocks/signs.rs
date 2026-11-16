@@ -658,6 +658,14 @@ impl BlockBehaviour for SignBlock {
             }
 
             if result == BlockActionResult::Success {
+                args.world.emit_game_event_with_context(
+                    pumpkin_data::game_event::GameEvent::BlockChange.name(),
+                    args.position.to_centered_f64(),
+                    &crate::world::game_event::GameEventContext {
+                        source_entity: Some(args.player.as_ref()),
+                        affected_state: Some(args.world.get_block_state_id(args.position)),
+                    },
+                );
                 execute_click_commands_if_present(
                     args.world,
                     args.player,

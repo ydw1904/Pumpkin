@@ -131,7 +131,16 @@ pub fn try_changing_state(world: &Arc<World>, current_block: &Block, pos: &Block
         &Block::OPEN_EYEBLOSSOM
     };
 
+    let old_state = world.get_block_state_id(pos);
     world.set_block_state(pos, new_block.default_state.id, BlockFlags::NOTIFY_ALL);
+    world.emit_game_event_with_context(
+        pumpkin_data::game_event::GameEvent::BlockChange.name(),
+        pos.to_centered_f64(),
+        &crate::world::game_event::GameEventContext {
+            source_entity: None,
+            affected_state: Some(old_state),
+        },
+    );
 
     world.spawn_particle(
         pos.to_centered_f64(),
