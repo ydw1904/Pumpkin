@@ -54,7 +54,6 @@ use pumpkin_protocol::{
     },
 };
 use pumpkin_util::text::TextComponent;
-use std::cmp::max;
 
 /// Offhand slot of the player screen handler
 pub const OFF_HAND_SCREEN_SLOT: i32 = 45;
@@ -925,7 +924,7 @@ pub trait ScreenHandler: Send + Sync {
                     && !cursor_stack.is_empty()
                     && slot.can_insert(&cursor_stack)
                     && (stack.are_items_and_components_equal(&cursor_stack) || stack.is_empty())
-                    && slot.get_max_item_count_for_stack(&stack) > stack.item_count
+                    && slot.get_max_item_count_for_stack(&cursor_stack) > stack.item_count
                 {
                     behaviour.drag_slots.push(slot_index as u32);
                 }
@@ -970,10 +969,10 @@ pub trait ScreenHandler: Send + Sync {
                             _ => 0,
                         };
                         inserting_count = inserting_count
-                            .min(max(
-                                0,
-                                slot.get_max_item_count_for_stack(&stack) - stack.item_count,
-                            ))
+                            .min(
+                                slot.get_max_item_count_for_stack(&cursor_stack)
+                                    .saturating_sub(stack.item_count),
+                            )
                             .min(cursor_stack.item_count);
                         if inserting_count > 0 {
                             let mut new_stack = stack;
@@ -1020,6 +1019,7 @@ pub trait ScreenHandler: Send + Sync {
                 } else {
                     slot.get_cloned_stack().item_count
                 };
+                let prev_stack = slot.get_cloned_stack();
                 let mut item_stack = slot.safe_take(amount, u8::MAX, player);
                 throw(&item_stack);
                 if button == 1 {
@@ -1029,6 +1029,25 @@ pub trait ScreenHandler: Send + Sync {
                     {
                         item_stack = slot.safe_take(amount, u8::MAX, player);
                         throw(&item_stack);
+                    }
+                }
+                // Thrown worn armor or offhand items update what others see.
+                if self.window_type().is_none() {
+                    let remaining = slot.get_cloned_stack();
+                    if (5..9).contains(&slot_index) && remaining.is_empty() {
+                        let eq_slot = prev_stack
+                            .get_data_component::<EquippableImpl>()
+                            .map_or(&EquipmentSlot::MAIN_HAND, |e| e.slot);
+                        player.enqueue_equipment_change(eq_slot, ItemStack::EMPTY);
+                    } else if slot_index == OFF_HAND_SCREEN_SLOT {
+                        player.enqueue_equipment_change(
+                            &EquipmentSlot::OFF_HAND,
+                            if remaining.is_empty() {
+                                ItemStack::EMPTY
+                            } else {
+                                &remaining
+                            },
+                        );
                     }
                 }
             }
@@ -1142,14 +1161,22 @@ pub trait ScreenHandler: Send + Sync {
 
                 if slot_stack.is_empty() {
                     if can_put && !cursor_stack.is_empty() {
-                        if equipment_slot.slot_type() == EquipmentType::HumanoidArmor
+                        if self.window_type().is_none()
+                            && equipment_slot.slot_type() == EquipmentType::HumanoidArmor
                             && (5..9).contains(&slot_index)
+                            && slot.can_insert(&cursor_stack)
                         {
-                            player.enqueue_equipment_change(equipment_slot, &cursor_stack);
+                            let equipped = cursor_stack.copy_with_count(1);
+                            player.enqueue_equipment_change(equipment_slot, &equipped);
                         } else if self.window_type().is_none() && slot_index == OFF_HAND_SCREEN_SLOT
                         {
-                            player
-                                .enqueue_equipment_change(&EquipmentSlot::OFF_HAND, &cursor_stack);
+                            let transfer_count = if click_type == MouseClick::Left {
+                                cursor_stack.item_count
+                            } else {
+                                1
+                            };
+                            let equipped = cursor_stack.copy_with_count(transfer_count);
+                            player.enqueue_equipment_change(&EquipmentSlot::OFF_HAND, &equipped);
                         }
 
                         let transfer_count = if click_type == MouseClick::Left {
@@ -1173,7 +1200,7 @@ pub trait ScreenHandler: Send + Sync {
                             *cursor_stack = taken.clone();
                             slot.on_take_item(player, &taken);
 
-                            if (5..9).contains(&slot_index) {
+                            if self.window_type().is_none() && (5..9).contains(&slot_index) {
                                 let equipment_slot = cursor_stack
                                     .get_data_component::<EquippableImpl>()
                                     .map_or(&EquipmentSlot::MAIN_HAND, |equippable| {
@@ -1201,7 +1228,8 @@ pub trait ScreenHandler: Send + Sync {
                         if !matching_stack && !can_grab {
                             return;
                         }
-                        if equipment_slot.slot_type() == EquipmentType::HumanoidArmor
+                        if self.window_type().is_none()
+                            && equipment_slot.slot_type() == EquipmentType::HumanoidArmor
                             && (5..9).contains(&slot_index)
                         {
                             player.enqueue_equipment_change(equipment_slot, &cursor_stack);
