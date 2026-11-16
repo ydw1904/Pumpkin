@@ -1,3 +1,4 @@
+use crate::block::blocks::campfire::CampfireBlock;
 use crate::block::registry::BlockActionResult;
 use crate::entity::player::Player;
 use crate::item::{ItemBehaviour, ItemMetadata};
@@ -72,20 +73,12 @@ impl ItemBehaviour for ShovelItem {
                 CampfireLikeProperties::from_state_id(world.get_block_state(&location).id);
             if campfire_props.lit {
                 world.sync_world_event(WorldEvent::SoundExtinguishFire, location, 0);
-
+                CampfireBlock::douse(&world, &location, Some(player));
                 campfire_props.lit = false;
                 world.set_block_state(
                     &location,
                     campfire_props.to_state_id(block),
                     BlockFlags::NOTIFY_ALL,
-                );
-                world.emit_game_event_with_context(
-                    GameEvent::BlockChange.name(),
-                    location.to_centered_f64(),
-                    &crate::world::game_event::GameEventContext {
-                        source_entity: Some(player),
-                        affected_state: None,
-                    },
                 );
                 changed = true;
             }

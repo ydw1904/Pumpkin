@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use crate::{
+    block::blocks::campfire::CampfireBlock,
     entity::{EntityBase, player::Player, r#type::from_type},
     item::{ItemBehaviour, ItemMetadata},
 };
@@ -18,6 +19,7 @@ use pumpkin_data::{
     item_stack::ItemStack,
     sound::{Sound, SoundCategory},
     statistic::StatisticCategory,
+    tag::{self, Taggable},
 };
 use pumpkin_inventory::screen_handler::InventoryPlayer;
 use pumpkin_nbt::compound::NbtCompound;
@@ -417,6 +419,10 @@ fn try_place_liquid(
         return Some(place_pos);
     }
 
+    if can_waterlog_target && target_block.has_tag(&tag::Block::MINECRAFT_CAMPFIRES) {
+        CampfireBlock::place_liquid(world, &place_pos, target_state.id);
+        return Some(place_pos);
+    }
     if can_waterlog_target {
         let state_id = target_block
             .set_waterlogged(target_state.id, true)

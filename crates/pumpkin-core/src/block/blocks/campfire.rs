@@ -1,3 +1,6 @@
+use crate::world::game_event::GameEventContext;
+use pumpkin_data::game_event::GameEvent;
+use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::tag::Taggable;
 use pumpkin_data::{
     Block, BlockDirection, BlockState, BlockStateId, Enchantment,
@@ -56,6 +59,42 @@ impl CampfireBlock {
             }
         }
         false
+    }
+
+    /// Vanilla `CampfireBlock.douse`: the `block_change` of a campfire being put out. The caller
+    /// clears `lit` afterwards.
+    pub fn douse(world: &World, pos: &BlockPos, source: Option<&dyn EntityBase>) {
+        world.emit_game_event_with_context(
+            GameEvent::BlockChange.name(),
+            pos.to_centered_f64(),
+            &GameEventContext {
+                source_entity: source,
+                affected_state: None,
+            },
+        );
+    }
+
+    /// Vanilla `CampfireBlock.placeLiquid` for water: puts the campfire out and waterlogs it.
+    pub fn place_liquid(world: &Arc<World>, pos: &BlockPos, state_id: BlockStateId) {
+        let block = state_id.to_block();
+        let mut props = CampfireLikeProperties::from_state_id(state_id);
+        if props.lit {
+            world.play_sound(
+                Sound::EntityGenericExtinguishFire,
+                SoundCategory::Blocks,
+                &pos.to_centered_f64(),
+            );
+            Self::douse(world, pos, None);
+        }
+        props.waterlogged = true;
+        props.lit = false;
+        world.set_block_state(pos, props.to_state_id(block), BlockFlags::NOTIFY_ALL);
+        world.schedule_fluid_tick(
+            &Fluid::WATER,
+            *pos,
+            Fluid::WATER.flow_speed,
+            TickPriority::Normal,
+        );
     }
 
     /// Vanilla `CampfireBlock.isLitCampfire`.

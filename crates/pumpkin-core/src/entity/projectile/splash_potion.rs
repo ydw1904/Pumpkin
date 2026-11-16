@@ -12,7 +12,6 @@ use pumpkin_data::BlockDirection;
 use pumpkin_data::block_properties::{
     CampfireLikeProperties, CandleCakeProperties, CandleLikeProperties,
 };
-use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::world::WorldEvent;
@@ -130,16 +129,8 @@ fn douse_fire(world: &Arc<crate::world::World>, projectile: &dyn EntityBase, pos
         }
     } else if CampfireBlock::is_lit_campfire(state) {
         world.sync_world_event(WorldEvent::SoundExtinguishFire, pos, 0);
-        // `CampfireBlock.douse` sends the block change game event from the potion's owner.
         let owner = projectile.get_owner_entity();
-        world.emit_game_event_with_context(
-            GameEvent::BlockChange.name(),
-            pos.to_centered_f64(),
-            &crate::world::game_event::GameEventContext {
-                source_entity: owner.as_deref(),
-                affected_state: None,
-            },
-        );
+        CampfireBlock::douse(world, &pos, owner.as_deref());
         let mut properties = CampfireLikeProperties::from_state_id(state.id);
         properties.lit = false;
         world.set_block_state(&pos, properties.to_state_id(block), BlockFlags::NOTIFY_ALL);
