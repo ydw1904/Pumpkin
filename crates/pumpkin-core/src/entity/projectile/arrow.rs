@@ -622,6 +622,7 @@ impl EntityBase for ArrowEntity {
     fn tick(&self, caller: &dyn EntityBase, _server: &Server) {
         let entity = self.get_entity();
         let world = entity.world.load();
+        self.owner.emit_shoot(caller);
         self.owner.check_left_owner(entity);
 
         // Vanilla `AbstractArrow.tick`: water and rain put the arrow out.
@@ -1153,7 +1154,7 @@ impl ArrowEntity {
                             WORLD_BORDER_BOUNCE,
                         );
                     } else {
-                        caller.on_hit(block_hit);
+                        super::on_hit_and_land(caller, block_hit);
                     }
                     entity.velocity_dirty.store(true, Ordering::Relaxed);
                 }
@@ -1169,11 +1170,14 @@ impl ArrowEntity {
                     return;
                 }
                 redirect_projectile(caller, target.as_ref());
-                caller.on_hit(ProjectileHit::Entity {
-                    entity: target,
-                    hit_pos,
-                    normal,
-                });
+                super::on_hit_and_land(
+                    caller,
+                    ProjectileHit::Entity {
+                        entity: target,
+                        hit_pos,
+                        normal,
+                    },
+                );
                 if entity.is_removed() {
                     return;
                 }

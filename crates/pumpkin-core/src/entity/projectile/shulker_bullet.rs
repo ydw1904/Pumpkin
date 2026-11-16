@@ -358,7 +358,7 @@ impl ShulkerBulletEntity {
                 }
             }
         }
-        caller.on_hit(hit);
+        super::on_hit_and_land(caller, hit);
     }
 
     /// Vanilla `ShulkerBullet.onHitEntity`: any target can be hurt, only living ones levitate.
@@ -595,6 +595,7 @@ impl EntityBase for ShulkerBulletEntity {
             entity.remove();
             return;
         }
+        self.owner.emit_shoot(caller);
         self.owner.check_left_owner(entity);
         // `Entity.baseTick` `computeSpeed`, the known speed a momentum deflection reads.
         entity.update_last_pos();

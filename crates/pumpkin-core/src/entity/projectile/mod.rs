@@ -251,6 +251,7 @@ impl ThrownItemEntity {
     /// Process a tick for projectile movement and collisions
     pub fn process_tick(&self, caller: &dyn EntityBase) {
         let entity = self.get_entity();
+        self.owner.emit_shoot(caller);
         self.owner.check_left_owner(entity);
         entity.update_last_pos();
         Self::handle_first_tick_bubble_column(caller);
@@ -332,6 +333,7 @@ impl ThrownItemEntity {
             entity.remove();
             return;
         }
+        self.owner.emit_shoot(caller);
         self.owner.check_left_owner(entity);
         entity.update_last_pos();
         rotate_towards_movement(entity, HURTING_ROTATION_SPEED);
@@ -470,7 +472,7 @@ impl ThrownItemEntity {
                 redirect_projectile(caller, target.as_ref());
             }
             // Just trigger hit effects and remove
-            caller.on_hit(h);
+            on_hit_and_land(caller, h);
             entity.remove();
         }
     }
@@ -755,6 +757,26 @@ fn get_hit_face(hit_pos: Vector3<f64>, block_pos: BlockPos) -> BlockDirection {
     } else {
         BlockDirection::South
     }
+}
+
+/// Vanilla `Projectile.onHit`: the projectile's own hit handling, then `projectile_land` where
+/// it hit, with the hit block's state.
+pub(crate) fn on_hit_and_land(caller: &dyn EntityBase, hit: ProjectileHit) {
+    let landed_on = match &hit {
+        ProjectileHit::Block { pos, .. } => Some(*pos),
+        ProjectileHit::Entity { .. } => None,
+    };
+    let hit_pos = hit.hit_pos();
+    caller.on_hit(hit);
+    let world = caller.get_entity().world.load();
+    world.emit_game_event_with_context(
+        pumpkin_data::game_event::GameEvent::ProjectileLand.name(),
+        landed_on.map_or(hit_pos, |pos| pos.to_centered_f64()),
+        &crate::world::game_event::GameEventContext {
+            source_entity: Some(caller),
+            affected_state: landed_on.map(|pos| world.get_block_state_id(&pos)),
+        },
+    );
 }
 
 pub enum ProjectileHit {

@@ -113,6 +113,14 @@ impl ItemBehaviour for EnderEyeItem {
         );
         eye.signal_to(target_vec);
 
+        world.emit_game_event_with_context(
+            pumpkin_data::game_event::GameEvent::ProjectileShoot.name(),
+            eye.get_entity().pos.load(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: Some(player),
+                affected_state: None,
+            },
+        );
         world.spawn_entity(eye);
 
         let sound_pitch = 0.33f32 + game_random().random::<f32>() * (0.5 - 0.33);

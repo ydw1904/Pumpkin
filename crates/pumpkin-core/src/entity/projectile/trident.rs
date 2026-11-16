@@ -419,6 +419,7 @@ impl EntityBase for TridentEntity {
         if !self.tick_loyalty(&world) {
             return;
         }
+        self.owner.emit_shoot(caller);
         self.owner.check_left_owner(entity);
 
         // Handle shake time
@@ -608,7 +609,7 @@ impl EntityBase for TridentEntity {
                 if let ProjectileHit::Entity { entity: target, .. } = &h {
                     redirect_projectile(caller, target.as_ref());
                 }
-                caller.on_hit(h);
+                super::on_hit_and_land(caller, h);
                 // Vanilla `AbstractArrow.stepMoveAndHit` sets `needsSync` after a hit.
                 entity.velocity_dirty.store(true, Ordering::Relaxed);
             }
