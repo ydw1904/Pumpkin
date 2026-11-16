@@ -1,21 +1,45 @@
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
+use pumpkin_data::entity::EntityType;
 use pumpkin_macros::pumpkin_block;
+use pumpkin_util::math::vector3::Vector3;
 
 use crate::block::entities::end_gateway::EndGatewayBlockEntity;
 use crate::block::{BlockBehaviour, OnEntityCollisionArgs, OnSyncedBlockEventArgs, PlacedArgs};
+use crate::entity::{EntityBase, teleport_with_passengers};
+use crate::world::World;
 
 #[pumpkin_block("minecraft:end_gateway")]
 pub struct EndGatewayBlock;
 
+/// The teleport of vanilla `EndGatewayBlock.getPortalDestination`: ender pearls stop and face
+/// south, everything else keeps its motion and rotation, and a vehicle takes its passengers.
+fn teleport_through(
+    gateway: &EndGatewayBlockEntity,
+    traveller: &dyn EntityBase,
+    world: &Arc<World>,
+) {
+    let Some(destination) = gateway.get_portal_position(world) else {
+        return;
+    };
+    let entity = traveller.get_entity();
+    let (yaw, pitch) = if entity.entity_type == &EntityType::ENDER_PEARL {
+        entity.set_velocity(Vector3::new(0.0, 0.0, 0.0));
+        (0.0, 0.0)
+    } else {
+        (entity.yaw.load(), entity.pitch.load())
+    };
+    teleport_with_passengers(traveller, destination, yaw, pitch, world);
+}
+
 impl BlockBehaviour for EndGatewayBlock {
+    /// Vanilla `EndGatewayBlock.entityInside` followed by the portal teleport: passengers can't
+    /// use it, an entity on portal cooldown only renews its cooldown, and a vehicle takes its
+    /// passengers along.
     fn on_entity_collision(&self, args: OnEntityCollisionArgs<'_>) {
         let entity = args.entity.get_entity();
-        if entity
-            .portal_cooldown
-            .load(std::sync::atomic::Ordering::Relaxed)
-            > 0
-        {
+        if !args.entity.can_use_portal() || entity.has_vehicle() || !entity.is_alive() {
             return;
         }
 
@@ -33,14 +57,44 @@ impl BlockBehaviour for EndGatewayBlock {
             return;
         }
 
+        let on_cooldown = entity.portal_cooldown.load(Ordering::Relaxed) > 0;
         end_gateway.trigger_cooldown(args.world, *args.position);
-
-        if let Some(destination) = end_gateway.get_portal_position(args.world, *args.position) {
-            let yaw = entity.yaw.load();
-            let pitch = entity.pitch.load();
-            args.entity
-                .teleport(destination, Some(yaw), Some(pitch), args.world.clone());
+        entity
+            .portal_cooldown
+            .store(entity.default_portal_cooldown(), Ordering::Relaxed);
+        if on_cooldown {
+            return;
         }
+
+        if !end_gateway.needs_exit(args.world) {
+            teleport_through(end_gateway, args.entity, args.world);
+            return;
+        }
+        // The exit search reads chunks that may not be loaded yet, so it runs off the tick and
+        // the entity travels once the exit exists.
+        let (Some(server), Some(traveller)) = (
+            args.world.server.upgrade(),
+            args.world.get_entity_by_id(entity.entity_id),
+        ) else {
+            return;
+        };
+        let world = args.world.clone();
+        let position = *args.position;
+        server.spawn_task(async move {
+            let Some(block_entity) = world.get_block_entity(&position) else {
+                return;
+            };
+            let Some(end_gateway) = block_entity
+                .as_any()
+                .downcast_ref::<EndGatewayBlockEntity>()
+            else {
+                return;
+            };
+            end_gateway.create_exit(&world, position).await;
+            if traveller.get_entity().is_alive() {
+                teleport_through(end_gateway, traveller.as_ref(), &world);
+            }
+        });
     }
 
     fn on_synced_block_event(&self, args: OnSyncedBlockEventArgs<'_>) -> bool {

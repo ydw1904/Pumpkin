@@ -4,7 +4,7 @@ use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector2::Vector2;
 use pumpkin_util::math::vector3::Vector3;
-use pumpkin_util::random::xoroshiro128::Xoroshiro;
+use pumpkin_util::random::legacy_rand::LegacyRand;
 use pumpkin_util::random::{RandomGenerator, RandomImpl};
 use pumpkin_world::world::BlockFlags;
 use std::sync::{Arc, Mutex};
@@ -221,29 +221,50 @@ impl EndGatewayBlockEntity {
         }
     }
 
+    /// Whether the exit has to be found and built before [`Self::get_portal_position`] has
+    /// one, which vanilla does for a gateway in the End without an exit.
     #[must_use]
-    pub fn get_portal_position(
-        &self,
-        current_level: &Arc<World>,
-        portal_entry_pos: BlockPos,
-    ) -> Option<Vector3<f64>> {
-        let exit_portal_opt = self.exit_portal.lock().ok().and_then(|opt| *opt);
-        if exit_portal_opt.is_none()
-            && current_level.dimension == pumpkin_data::dimension::Dimension::THE_END
-        {
-            let exit_portal_pos =
-                Self::find_or_create_valid_teleport_pos(current_level, portal_entry_pos);
-            let exit_portal_pos = BlockPos::new(
-                exit_portal_pos.0.x,
-                exit_portal_pos.0.y + Self::GATEWAY_HEIGHT_ABOVE_SURFACE,
-                exit_portal_pos.0.z,
-            );
-            tracing::debug!("Creating portal at {:?}", exit_portal_pos);
-            Self::spawn_gateway_portal(current_level, exit_portal_pos, portal_entry_pos);
-            let exact = self.exact_teleport.lock().is_ok_and(|g| *g);
-            self.set_exit_position(exit_portal_pos, exact);
-        }
+    pub fn needs_exit(&self, current_level: &World) -> bool {
+        current_level.dimension == pumpkin_data::dimension::Dimension::THE_END
+            && self.exit_portal.lock().ok().and_then(|opt| *opt).is_none()
+    }
 
+    /// The exit search of vanilla `getPortalPosition`: find land in the direction away from
+    /// the centre, raise a gateway ten blocks above it and link this one to it. Vanilla
+    /// loads and generates the chunks it reads on the spot; here they load first.
+    pub async fn create_exit(&self, current_level: &Arc<World>, portal_entry_pos: BlockPos) {
+        let exit_portal_xz =
+            Self::find_exit_portal_xz_pos_tentative(current_level, portal_entry_pos).await;
+        let chunk_x = (exit_portal_xz.x / 16.0).floor() as i32;
+        let chunk_z = (exit_portal_xz.z / 16.0).floor() as i32;
+        // `findTallestBlock` looks up to 16 blocks around the spot it picks.
+        for dx in -1..=1 {
+            for dz in -1..=1 {
+                current_level
+                    .level
+                    .get_or_fetch_chunk(Vector2::new(chunk_x + dx, chunk_z + dz), |_| ())
+                    .await;
+            }
+        }
+        if !self.needs_exit(current_level) {
+            return;
+        }
+        let exit_portal_pos =
+            Self::find_or_create_valid_teleport_pos(current_level, exit_portal_xz);
+        let exit_portal_pos = BlockPos::new(
+            exit_portal_pos.0.x,
+            exit_portal_pos.0.y + Self::GATEWAY_HEIGHT_ABOVE_SURFACE,
+            exit_portal_pos.0.z,
+        );
+        tracing::debug!("Creating portal at {:?}", exit_portal_pos);
+        Self::spawn_gateway_portal(current_level, exit_portal_pos, portal_entry_pos);
+        let exact = self.exact_teleport.lock().is_ok_and(|g| *g);
+        self.set_exit_position(exit_portal_pos, exact);
+    }
+
+    /// Vanilla `getPortalPosition` once the gateway has an exit.
+    #[must_use]
+    pub fn get_portal_position(&self, current_level: &Arc<World>) -> Option<Vector3<f64>> {
         let exit_portal = self.exit_portal.lock().ok().and_then(|opt| *opt)?;
         let exact = self.exact_teleport.lock().is_ok_and(|g| *g);
         let pos = if exact {
@@ -271,9 +292,8 @@ impl EndGatewayBlockEntity {
 
     fn find_or_create_valid_teleport_pos(
         level: &Arc<World>,
-        end_gateway_pos: BlockPos,
+        exit_portal_xz: Vector3<f64>,
     ) -> BlockPos {
-        let exit_portal_xz = Self::find_exit_portal_xz_pos_tentative(level, end_gateway_pos);
         let chunk_x = (exit_portal_xz.x / 16.0).floor() as i32;
         let chunk_z = (exit_portal_xz.z / 16.0).floor() as i32;
 
@@ -301,7 +321,10 @@ impl EndGatewayBlockEntity {
         Self::find_tallest_block(level, exit_portal_pos, 16, true)
     }
 
-    fn find_exit_portal_xz_pos_tentative(level: &World, end_gateway_pos: BlockPos) -> Vector3<f64> {
+    async fn find_exit_portal_xz_pos_tentative(
+        level: &Arc<World>,
+        end_gateway_pos: BlockPos,
+    ) -> Vector3<f64> {
         let mut dir = Vector3::new(end_gateway_pos.0.x as f64, 0.0, end_gateway_pos.0.z as f64);
         let len = dir.x.hypot(dir.z);
         if len > 0.0 {
@@ -314,14 +337,14 @@ impl EndGatewayBlockEntity {
         let mut exit_portal_xz = Vector3::new(dir.x * 1024.0, 0.0, dir.z * 1024.0);
 
         let mut chunk_limit = 16;
-        while !Self::is_chunk_empty(level, exit_portal_xz) && chunk_limit > 0 {
+        while !Self::is_chunk_empty(level, exit_portal_xz).await && chunk_limit > 0 {
             chunk_limit -= 1;
             exit_portal_xz.x -= dir.x * 16.0;
             exit_portal_xz.z -= dir.z * 16.0;
         }
 
         let mut forward_limit = 16;
-        while Self::is_chunk_empty(level, exit_portal_xz) && forward_limit > 0 {
+        while Self::is_chunk_empty(level, exit_portal_xz).await && forward_limit > 0 {
             forward_limit -= 1;
             exit_portal_xz.x += dir.x * 16.0;
             exit_portal_xz.z += dir.z * 16.0;
@@ -330,10 +353,12 @@ impl EndGatewayBlockEntity {
         exit_portal_xz
     }
 
-    fn is_chunk_empty(level: &World, xz_pos: Vector3<f64>) -> bool {
+    /// Vanilla `isChunkEmpty`, loading the chunk like its `getChunk`.
+    async fn is_chunk_empty(level: &Arc<World>, xz_pos: Vector3<f64>) -> bool {
         let chunk_x = (xz_pos.x / 16.0).floor() as i32;
         let chunk_z = (xz_pos.z / 16.0).floor() as i32;
         let chunk_pos = Vector2::new(chunk_x, chunk_z);
+        level.level.get_or_fetch_chunk(chunk_pos, |_| ()).await;
         level
             .level
             .read_chunk_sync(&chunk_pos, |chunk| {
@@ -396,9 +421,10 @@ impl EndGatewayBlockEntity {
         let mut closest: Option<BlockPos> = None;
         let mut closest_dist = 0.0f64;
 
-        for x in min_x..=max_x {
-            for z in min_z..=max_z {
-                for y in min_y..=max_y {
+        // `BlockPos.betweenClosed` order, which decides ties.
+        for z in min_z..=max_z {
+            for y in min_y..=max_y {
+                for x in min_x..=max_x {
                     let pos = BlockPos::new(x, y, z);
                     let (block, _state) = level.get_block_and_state(&pos);
                     if block == &Block::END_STONE {
@@ -407,7 +433,10 @@ impl EndGatewayBlockEntity {
                         let above_state = level.get_block_state(&above);
                         let above2_state = level.get_block_state(&above2);
                         if !above_state.is_full_cube() && !above2_state.is_full_cube() {
-                            let dist = (x * x + z * z) as f64;
+                            // Vanilla `distToCenterSqr(0, 0, 0)`.
+                            let dist = (f64::from(x) + 0.5).powi(2)
+                                + (f64::from(y) + 0.5).powi(2)
+                                + (f64::from(z) + 0.5).powi(2);
                             if closest.is_none() || dist < closest_dist {
                                 closest = Some(pos);
                                 closest_dist = dist;
@@ -422,8 +451,8 @@ impl EndGatewayBlockEntity {
     }
 
     fn spawn_end_island(world: &Arc<World>, pos: BlockPos) {
-        let seed = (pos.0.x as u64) ^ ((pos.0.z as u64) << 32) ^ (pos.0.y as u64);
-        let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(seed));
+        // Vanilla `RandomSource.create(pos.asLong())`.
+        let mut random = RandomGenerator::Legacy(LegacyRand::from_seed(pos.as_long() as u64));
         let mut size = random.next_bounded_i32(3) as f32 + 4.0;
         let mut dy = 0i32;
         while size > 0.5 {
