@@ -106,7 +106,10 @@ pub(crate) fn try_wax_block(world: &Arc<World>, location: BlockPos, block: &Bloc
                     neighbor_new_state,
                     BlockFlags::NOTIFY_LISTENERS,
                 );
-                world.emit_game_event(GameEvent::BlockChange.name(), neighbor_pos.to_f64());
+                world.emit_game_event(
+                    GameEvent::BlockChange.name(),
+                    neighbor_pos.to_centered_f64(),
+                );
                 world.sync_world_event(WorldEvent::ParticlesWaxOn, neighbor_pos, 0);
                 world.play_sound(
                     Sound::ItemHoneycombWaxOn,
@@ -118,7 +121,7 @@ pub(crate) fn try_wax_block(world: &Arc<World>, location: BlockPos, block: &Bloc
     }
 
     world.set_block_state(&location, new_state_id, BlockFlags::NOTIFY_ALL);
-    world.emit_game_event(GameEvent::BlockChange.name(), location.to_f64());
+    world.emit_game_event(GameEvent::BlockChange.name(), location.to_centered_f64());
     world.sync_world_event(WorldEvent::ParticlesWaxOn, location, 0);
     world.play_sound(
         Sound::ItemHoneycombWaxOn,

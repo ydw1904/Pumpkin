@@ -47,7 +47,7 @@ pub fn create(spawn_block: &'static Block) -> OneShot {
                         let source: &dyn EntityBase = tick.mob;
                         tick.world.emit_game_event_with_context(
                             pumpkin_data::game_event::GameEvent::BlockPlace.name(),
-                            spawn_pos.to_f64(),
+                            spawn_pos.to_centered_f64(),
                             &GameEventContext {
                                 source_entity: Some(source),
                                 affected_state: None,

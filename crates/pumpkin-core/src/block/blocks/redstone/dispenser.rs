@@ -861,7 +861,7 @@ impl DispenserBlock {
             Self::drop_item(ctx, item);
             return;
         };
-        play_empty_effects(ctx.world, item.item, place_pos);
+        play_empty_effects(ctx.world, item.item, place_pos, None);
         spawn_bucket_mob(ctx.world, item, place_pos, None);
         *item = ItemStack::new(1, &Item::BUCKET);
         Self::play_dispense_effects(ctx, WorldEvent::SoundDispenserDispense);

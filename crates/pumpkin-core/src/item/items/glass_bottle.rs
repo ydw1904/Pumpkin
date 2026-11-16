@@ -116,7 +116,14 @@ impl ItemBehaviour for GlassBottleItem {
                     SoundCategory::Neutral,
                     &player.position(),
                 );
-                world.emit_game_event(GameEvent::FluidPickup.name(), player.position());
+                world.emit_game_event_with_context(
+                    GameEvent::FluidPickup.name(),
+                    player.position(),
+                    &crate::world::game_event::GameEventContext {
+                        source_entity: Some(player),
+                        affected_state: None,
+                    },
+                );
                 Self::turn_bottle_into_item(
                     player,
                     hand,
@@ -151,7 +158,14 @@ impl ItemBehaviour for GlassBottleItem {
                     SoundCategory::Neutral,
                     &player.position(),
                 );
-                world.emit_game_event(GameEvent::FluidPickup.name(), hit_pos.to_f64());
+                world.emit_game_event_with_context(
+                    GameEvent::FluidPickup.name(),
+                    hit_pos.to_centered_f64(),
+                    &crate::world::game_event::GameEventContext {
+                        source_entity: Some(player),
+                        affected_state: None,
+                    },
+                );
                 Self::turn_bottle_into_item(player, hand, held, water_bottle());
             }
         }

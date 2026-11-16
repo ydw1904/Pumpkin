@@ -97,7 +97,14 @@ impl ItemBehaviour for PlaceOnWaterBlockItem {
             BlockFlags::NOTIFY_ALL,
         );
         world.play_sound(sound, SoundCategory::Blocks, &above_pos.to_f64());
-        world.emit_game_event(GameEvent::BlockPlace.name(), above_pos.to_f64());
+        world.emit_game_event_with_context(
+            GameEvent::BlockPlace.name(),
+            above_pos.to_centered_f64(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: Some(player),
+                affected_state: None,
+            },
+        );
 
         let mut stack = player.inventory.get_stack_in_hand(hand);
         if !stack.is_empty() && stack.item.id == item.id {

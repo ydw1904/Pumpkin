@@ -174,7 +174,14 @@ impl ItemBehaviour for BoatItem {
 
         let boat_entity = Arc::new(BoatEntity::new(entity));
         world.spawn_entity(boat_entity);
-        world.emit_game_event(GameEvent::EntityPlace.name(), hit_vec);
+        world.emit_game_event_with_context(
+            GameEvent::EntityPlace.name(),
+            hit_vec,
+            &crate::world::game_event::GameEventContext {
+                source_entity: Some(player),
+                affected_state: None,
+            },
+        );
 
         let mut stack = player.inventory.get_stack_in_hand(hand);
         if !stack.is_empty() && stack.item.id == item.id {

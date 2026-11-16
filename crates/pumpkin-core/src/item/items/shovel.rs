@@ -57,7 +57,14 @@ impl ItemBehaviour for ShovelItem {
             }
 
             world.set_block_state(&location, result.new_state_id, BlockFlags::NOTIFY_ALL);
-            world.emit_game_event(GameEvent::BlockChange.name(), location.to_f64());
+            world.emit_game_event_with_context(
+                GameEvent::BlockChange.name(),
+                location.to_centered_f64(),
+                &crate::world::game_event::GameEventContext {
+                    source_entity: Some(player),
+                    affected_state: None,
+                },
+            );
             damage = result.entry.item_damage_per_use;
             changed = true;
         } else if block == &Block::CAMPFIRE || block == &Block::SOUL_CAMPFIRE {
@@ -72,7 +79,14 @@ impl ItemBehaviour for ShovelItem {
                     campfire_props.to_state_id(block),
                     BlockFlags::NOTIFY_ALL,
                 );
-                world.emit_game_event(GameEvent::BlockChange.name(), location.to_f64());
+                world.emit_game_event_with_context(
+                    GameEvent::BlockChange.name(),
+                    location.to_centered_f64(),
+                    &crate::world::game_event::GameEventContext {
+                        source_entity: Some(player),
+                        affected_state: None,
+                    },
+                );
                 changed = true;
             }
         }

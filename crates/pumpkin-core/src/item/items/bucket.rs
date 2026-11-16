@@ -338,6 +338,7 @@ fn try_place_powder_snow(
     world: &Arc<World>,
     pos: BlockPos,
     direction: BlockDirection,
+    user: Option<&dyn EntityBase>,
 ) -> Option<BlockPos> {
     let state = world.get_block_state(&pos);
     let target_pos = if state.replaceable() {
@@ -362,7 +363,14 @@ fn try_place_powder_snow(
         SoundCategory::Blocks,
         &target_pos.to_f64(),
     );
-    world.emit_game_event(GameEvent::FluidPlace.name(), target_pos.to_f64());
+    world.emit_game_event_with_context(
+        GameEvent::FluidPlace.name(),
+        target_pos.to_centered_f64(),
+        &crate::world::game_event::GameEventContext {
+            source_entity: user,
+            affected_state: None,
+        },
+    );
     Some(target_pos)
 }
 
@@ -372,12 +380,13 @@ fn try_place_liquid(
     pos: BlockPos,
     direction: BlockDirection,
     is_sneaking: bool,
+    user: Option<&dyn EntityBase>,
 ) -> Option<BlockPos> {
     if item.id == Item::SULFUR_CUBE_BUCKET.id {
         return Some(pos.offset(direction.to_offset()));
     }
     if item.id == Item::POWDER_SNOW_BUCKET.id {
-        return try_place_powder_snow(world, pos, direction);
+        return try_place_powder_snow(world, pos, direction, user);
     }
 
     let (block, state) = world.get_block_and_state(&pos);
@@ -433,7 +442,12 @@ fn try_place_liquid(
 }
 
 /// Vanilla `BucketItem.playEmptySound` and the place game event, for a bucket emptied at `pos`.
-pub(crate) fn play_empty_effects(world: &Arc<World>, item: &Item, pos: BlockPos) {
+pub(crate) fn play_empty_effects(
+    world: &Arc<World>,
+    item: &Item,
+    pos: BlockPos,
+    user: Option<&dyn EntityBase>,
+) {
     let evaporates = should_evaporate_in_nether(item, world);
     if item.id != Item::POWDER_SNOW_BUCKET.id && !evaporates {
         let sound_category = if get_mob_for_bucket(item).is_some() {
@@ -442,10 +456,24 @@ pub(crate) fn play_empty_effects(world: &Arc<World>, item: &Item, pos: BlockPos)
             SoundCategory::Blocks
         };
         world.play_sound(get_empty_sound(item), sound_category, &pos.to_f64());
-        world.emit_game_event(GameEvent::FluidPlace.name(), pos.to_f64());
+        world.emit_game_event_with_context(
+            GameEvent::FluidPlace.name(),
+            pos.to_centered_f64(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: user,
+                affected_state: None,
+            },
+        );
     } else if get_mob_for_bucket(item).is_some() && evaporates {
         world.play_sound(get_empty_sound(item), SoundCategory::Neutral, &pos.to_f64());
-        world.emit_game_event(GameEvent::EntityPlace.name(), pos.to_f64());
+        world.emit_game_event_with_context(
+            GameEvent::EntityPlace.name(),
+            pos.to_centered_f64(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: user,
+                affected_state: None,
+            },
+        );
     }
 }
 
@@ -494,7 +522,7 @@ pub(crate) fn try_place_filled_bucket(
     pos: BlockPos,
     direction: BlockDirection,
 ) -> Option<BlockPos> {
-    try_place_liquid(world, item, pos, direction, false)
+    try_place_liquid(world, item, pos, direction, false, None)
 }
 
 impl ItemBehaviour for EmptyBucketItem {
@@ -547,7 +575,14 @@ impl ItemBehaviour for EmptyBucketItem {
             SoundCategory::Blocks,
             &block_pos.to_f64(),
         );
-        world.emit_game_event(GameEvent::FluidPickup.name(), block_pos.to_f64());
+        world.emit_game_event_with_context(
+            GameEvent::FluidPickup.name(),
+            block_pos.to_centered_f64(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: Some(player),
+                affected_state: None,
+            },
+        );
         player.increment_stat(StatisticCategory::Used, i32::from(item.id), 1);
 
         give_player_bucket_item(player, hand, filled_item);
@@ -613,7 +648,9 @@ impl ItemBehaviour for FilledBucketItem {
         let direction = hit.direction;
         let is_sneaking = player.get_entity().is_sneaking();
 
-        let Some(place_pos) = try_place_liquid(&world, item, pos, direction, is_sneaking) else {
+        let Some(place_pos) =
+            try_place_liquid(&world, item, pos, direction, is_sneaking, Some(player))
+        else {
             return;
         };
 
@@ -629,7 +666,7 @@ impl ItemBehaviour for FilledBucketItem {
             server.plugin_manager.fire_blocking(&server, &mut event);
         }
 
-        play_empty_effects(&world, item, place_pos);
+        play_empty_effects(&world, item, place_pos, Some(player));
 
         let bucket_stack = player.inventory.get_stack_in_hand(hand);
         spawn_bucket_mob(&world, &bucket_stack, place_pos, Some(player));

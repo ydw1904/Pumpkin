@@ -92,7 +92,14 @@ impl ItemBehaviour for ArmorStandItem {
             let armor_stand = ArmorStandEntity::new(entity);
 
             world.spawn_entity(Arc::new(armor_stand));
-            world.emit_game_event(GameEvent::EntityPlace.name(), pos);
+            world.emit_game_event_with_context(
+                GameEvent::EntityPlace.name(),
+                pos,
+                &crate::world::game_event::GameEventContext {
+                    source_entity: Some(player),
+                    affected_state: None,
+                },
+            );
             item.decrement_unless_creative(player.gamemode.load(), 1);
             BlockActionResult::Success
         } else {

@@ -77,7 +77,14 @@ impl ItemBehaviour for FireChargeItem {
                 } else {
                     GameEvent::BlockPlace
                 };
-                world.emit_game_event(event.name(), pos.to_f64());
+                world.emit_game_event_with_context(
+                    event.name(),
+                    pos.to_centered_f64(),
+                    &crate::world::game_event::GameEventContext {
+                        source_entity: Some(player),
+                        affected_state: None,
+                    },
+                );
             },
             &world,
             location,

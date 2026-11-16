@@ -59,7 +59,14 @@ impl ItemBehaviour for BoneMealItem {
             if let Some(original) = original {
                 *item = original;
             }
-            world.emit_game_event(GameEvent::ItemInteractFinish.name(), player.position());
+            world.emit_game_event_with_context(
+                GameEvent::ItemInteractFinish.name(),
+                player.position(),
+                &crate::world::game_event::GameEventContext {
+                    source_entity: Some(player),
+                    affected_state: None,
+                },
+            );
             world.sync_world_event(WorldEvent::ParticlesAndSoundPlantGrowth, location, 15);
             BlockActionResult::SuccessServer
         } else {

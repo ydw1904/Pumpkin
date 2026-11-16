@@ -184,7 +184,7 @@ impl BeehiveBlock {
         let _ = player.damage_item_stack(args.item_stack, 1);
         args.world.emit_game_event_with_context(
             GameEvent::Shear.name(),
-            args.position.to_f64(),
+            args.position.to_centered_f64(),
             &crate::world::game_event::GameEventContext {
                 source_entity: Some(player.as_ref()),
                 affected_state: None,
@@ -218,7 +218,7 @@ impl BeehiveBlock {
         }
         args.world.emit_game_event_with_context(
             GameEvent::FluidPickup.name(),
-            args.position.to_f64(),
+            args.position.to_centered_f64(),
             &crate::world::game_event::GameEventContext {
                 source_entity: Some(player.as_ref()),
                 affected_state: None,

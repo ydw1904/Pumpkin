@@ -83,7 +83,7 @@ fn try_convert_to_mud(
         SoundCategory::Blocks,
         &location.to_f64(),
     );
-    world.emit_game_event(GameEvent::FluidPlace.name(), location.to_f64());
+    world.emit_game_event(GameEvent::FluidPlace.name(), location.to_centered_f64());
     world.set_block_state(
         &location,
         Block::MUD.default_state.id,

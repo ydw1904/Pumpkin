@@ -56,7 +56,9 @@ impl ItemBehaviour for GoatHornItem {
         let world = player.world();
         let pos = player.position();
 
-        player.living_entity.set_active_hand(player, hand, stack, duration);
+        player
+            .living_entity
+            .set_active_hand(player, hand, stack, duration);
         world.play_sound_raw(
             instrument.sound() as u16,
             SoundCategory::Records,
@@ -64,7 +66,14 @@ impl ItemBehaviour for GoatHornItem {
             volume,
             1.0,
         );
-        world.emit_game_event(GameEvent::InstrumentPlay.name(), pos);
+        world.emit_game_event_with_context(
+            GameEvent::InstrumentPlay.name(),
+            pos,
+            &crate::world::game_event::GameEventContext {
+                source_entity: Some(player),
+                affected_state: None,
+            },
+        );
         player.increment_stat(StatisticCategory::Used, i32::from(item.id), 1);
     }
 

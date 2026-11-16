@@ -86,7 +86,14 @@ fn handle_growing_plant(
 
     let world = player.world();
     world.set_block_state(location, new_state_id, BlockFlags::NOTIFY_ALL);
-    world.emit_game_event(GameEvent::BlockChange.name(), location.to_f64());
+    world.emit_game_event_with_context(
+        GameEvent::BlockChange.name(),
+        location.to_centered_f64(),
+        &crate::world::game_event::GameEventContext {
+            source_entity: Some(player),
+            affected_state: None,
+        },
+    );
     world.play_sound(
         Sound::BlockGrowingPlantCrop,
         SoundCategory::Blocks,

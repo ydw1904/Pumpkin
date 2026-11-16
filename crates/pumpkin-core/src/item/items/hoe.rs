@@ -58,7 +58,14 @@ impl ItemBehaviour for HoeItem {
             }
 
             world.set_block_state(&location, result.new_state_id, BlockFlags::NOTIFY_ALL);
-            world.emit_game_event(GameEvent::BlockChange.name(), location.to_f64());
+            world.emit_game_event_with_context(
+                GameEvent::BlockChange.name(),
+                location.to_centered_f64(),
+                &crate::world::game_event::GameEventContext {
+                    source_entity: Some(player),
+                    affected_state: None,
+                },
+            );
 
             if let Some(loot_key) = result.entry.loot
                 && let Some(loot_table) = world.get_loot_table(loot_key)
