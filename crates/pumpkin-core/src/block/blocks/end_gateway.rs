@@ -5,7 +5,7 @@ use pumpkin_data::entity::EntityType;
 use pumpkin_macros::pumpkin_block;
 use pumpkin_util::math::vector3::Vector3;
 
-use crate::block::entities::end_gateway::EndGatewayBlockEntity;
+use crate::block::entities::end_gateway::{EndGatewayBlockEntity, ExitChunkTickets};
 use crate::block::{BlockBehaviour, OnEntityCollisionArgs, OnSyncedBlockEventArgs, PlacedArgs};
 use crate::entity::{EntityBase, teleport_with_passengers};
 use crate::world::World;
@@ -66,12 +66,12 @@ impl BlockBehaviour for EndGatewayBlock {
             return;
         }
 
-        if !end_gateway.needs_exit(args.world) {
+        if !end_gateway.needs_exit(args.world) && end_gateway.exit_position_loaded(args.world) {
             teleport_through(end_gateway, args.entity, args.world);
             return;
         }
         // The exit search reads chunks that may not be loaded yet, so it runs off the tick and
-        // the entity travels once the exit exists.
+        // the entity travels once the exit exists and its surroundings are loaded.
         let (Some(server), Some(traveller)) = (
             args.world.server.upgrade(),
             args.world.get_entity_by_id(entity.entity_id),
@@ -90,7 +90,13 @@ impl BlockBehaviour for EndGatewayBlock {
             else {
                 return;
             };
-            end_gateway.create_exit(&world, position).await;
+            let mut tickets = ExitChunkTickets::new(world.level.clone());
+            if end_gateway.needs_exit(&world) {
+                end_gateway
+                    .create_exit(&world, position, &mut tickets)
+                    .await;
+            }
+            end_gateway.load_exit_position_chunks(&mut tickets).await;
             if traveller.get_entity().is_alive() {
                 teleport_through(end_gateway, traveller.as_ref(), &world);
             }

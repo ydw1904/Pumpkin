@@ -6,6 +6,8 @@ use pumpkin_util::math::vector2::Vector2;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::random::legacy_rand::LegacyRand;
 use pumpkin_util::random::{RandomGenerator, RandomImpl};
+use pumpkin_world::chunk_system::ChunkLoading;
+use pumpkin_world::level::{Level, SyncChunk};
 use pumpkin_world::world::BlockFlags;
 use std::sync::{Arc, Mutex};
 
@@ -149,6 +151,8 @@ impl EndGatewayBlockEntity {
     pub const ATTENTION_INTERVAL: i64 = 2400;
     pub const EVENT_COOLDOWN: u8 = 1;
     pub const GATEWAY_HEIGHT_ABOVE_SURFACE: i32 = 10;
+    /// How far `findExitPosition` looks around the exit for the tallest block.
+    const EXIT_SEARCH_DISTANCE: i32 = 5;
 
     #[must_use]
     pub const fn new(position: BlockPos) -> Self {
@@ -231,21 +235,26 @@ impl EndGatewayBlockEntity {
 
     /// The exit search of vanilla `getPortalPosition`: find land in the direction away from
     /// the centre, raise a gateway ten blocks above it and link this one to it. Vanilla
-    /// loads and generates the chunks it reads on the spot; here they load first.
-    pub async fn create_exit(&self, current_level: &Arc<World>, portal_entry_pos: BlockPos) {
+    /// loads and generates the chunks it reads on the spot; here they load first and `tickets`
+    /// keeps them loaded until the gateway stands.
+    pub async fn create_exit(
+        &self,
+        current_level: &Arc<World>,
+        portal_entry_pos: BlockPos,
+        tickets: &mut ExitChunkTickets,
+    ) {
         let exit_portal_xz =
             Self::find_exit_portal_xz_pos_tentative(current_level, portal_entry_pos).await;
         let chunk_x = (exit_portal_xz.x / 16.0).floor() as i32;
         let chunk_z = (exit_portal_xz.z / 16.0).floor() as i32;
         // `findTallestBlock` looks up to 16 blocks around the spot it picks.
-        for dx in -1..=1 {
-            for dz in -1..=1 {
-                current_level
-                    .level
-                    .get_or_fetch_chunk(Vector2::new(chunk_x + dx, chunk_z + dz), |_| ())
-                    .await;
-            }
-        }
+        tickets
+            .load(
+                (-1..=1).flat_map(|dx| {
+                    (-1..=1).map(move |dz| Vector2::new(chunk_x + dx, chunk_z + dz))
+                }),
+            )
+            .await;
         if !self.needs_exit(current_level) {
             return;
         }
@@ -260,6 +269,43 @@ impl EndGatewayBlockEntity {
         Self::spawn_gateway_portal(current_level, exit_portal_pos, portal_entry_pos);
         let exact = self.exact_teleport.lock().is_ok_and(|g| *g);
         self.set_exit_position(exit_portal_pos, exact);
+    }
+
+    /// The chunks `findExitPosition` reads around the exit, or none when the exit is exact or
+    /// not known.
+    fn exit_position_chunks(&self) -> Vec<Vector2<i32>> {
+        let exact = self.exact_teleport.lock().is_ok_and(|g| *g);
+        let Some(exit) = self.exit_portal.lock().ok().and_then(|opt| *opt) else {
+            return Vec::new();
+        };
+        if exact {
+            return Vec::new();
+        }
+        let chunk = |block: i32| block.div_euclid(16);
+        let (min_x, max_x) = (
+            chunk(exit.0.x - Self::EXIT_SEARCH_DISTANCE),
+            chunk(exit.0.x + Self::EXIT_SEARCH_DISTANCE),
+        );
+        let (min_z, max_z) = (
+            chunk(exit.0.z - Self::EXIT_SEARCH_DISTANCE),
+            chunk(exit.0.z + Self::EXIT_SEARCH_DISTANCE),
+        );
+        (min_x..=max_x)
+            .flat_map(|x| (min_z..=max_z).map(move |z| Vector2::new(x, z)))
+            .collect()
+    }
+
+    /// Whether [`Self::get_portal_position`] can run now: every chunk it reads is loaded.
+    #[must_use]
+    pub fn exit_position_loaded(&self, current_level: &World) -> bool {
+        self.exit_position_chunks()
+            .iter()
+            .all(|chunk| current_level.level.is_chunk_loaded(chunk))
+    }
+
+    /// Loads the chunks [`Self::get_portal_position`] reads and holds them with `tickets`.
+    pub async fn load_exit_position_chunks(&self, tickets: &mut ExitChunkTickets) {
+        tickets.load(self.exit_position_chunks()).await;
     }
 
     /// Vanilla `getPortalPosition` once the gateway has an exit.
@@ -281,7 +327,8 @@ impl EndGatewayBlockEntity {
 
     fn find_exit_position(level: &World, exit_portal: BlockPos) -> BlockPos {
         let search_center = BlockPos::new(exit_portal.0.x, exit_portal.0.y + 2, exit_portal.0.z);
-        let tallest = Self::find_tallest_block(level, search_center, 5, false);
+        let tallest =
+            Self::find_tallest_block(level, search_center, Self::EXIT_SEARCH_DISTANCE, false);
         tracing::debug!(
             "Best exit position for portal at {:?} is {:?}",
             exit_portal,
@@ -353,32 +400,33 @@ impl EndGatewayBlockEntity {
         exit_portal_xz
     }
 
-    /// Vanilla `isChunkEmpty`, loading the chunk like its `getChunk`.
+    /// Vanilla `isChunkEmpty`, loading the chunk like its `getChunk`. It is read as it arrives,
+    /// since nothing holds it afterwards.
     async fn is_chunk_empty(level: &Arc<World>, xz_pos: Vector3<f64>) -> bool {
         let chunk_x = (xz_pos.x / 16.0).floor() as i32;
         let chunk_z = (xz_pos.z / 16.0).floor() as i32;
-        let chunk_pos = Vector2::new(chunk_x, chunk_z);
-        level.level.get_or_fetch_chunk(chunk_pos, |_| ()).await;
-        Self::highest_section_position(level, chunk_x, chunk_z).is_none()
+        level
+            .level
+            .get_or_fetch_chunk(
+                Vector2::new(chunk_x, chunk_z),
+                Self::highest_section_position,
+            )
+            .await
+            .is_none()
     }
 
     /// Vanilla `ChunkAccess.getHighestSectionPosition`: the bottom of the highest section with a
     /// block other than air, `None` when there is none (vanilla then returns the minimum y).
-    fn highest_section_position(level: &World, chunk_x: i32, chunk_z: i32) -> Option<i32> {
-        level
-            .level
-            .read_chunk_sync(&Vector2::new(chunk_x, chunk_z), |chunk| {
-                let sections = chunk
-                    .section
-                    .block_sections
-                    .read()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                sections
-                    .iter()
-                    .rposition(|section| section.non_air_block_count() != 0)
-                    .map(|index| chunk.section.min_y + index as i32 * 16)
-            })
-            .flatten()
+    fn highest_section_position(chunk: &SyncChunk) -> Option<i32> {
+        let sections = chunk
+            .section
+            .block_sections
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        sections
+            .iter()
+            .rposition(|section| section.non_air_block_count() != 0)
+            .map(|index| chunk.section.min_y + index as i32 * 16)
     }
 
     fn find_tallest_block(
@@ -422,7 +470,13 @@ impl EndGatewayBlockEntity {
         let max_x = min_x + 15;
         let min_z = chunk_z * 16;
         let max_z = min_z + 15;
-        let highest_section = Self::highest_section_position(level, chunk_x, chunk_z)
+        let highest_section = level
+            .level
+            .read_chunk_sync(
+                &Vector2::new(chunk_x, chunk_z),
+                Self::highest_section_position,
+            )
+            .flatten()
             .unwrap_or(level.dimension.min_y);
         let top = highest_section + 16 - 1;
         // `betweenClosed` orders the corners, so a chunk lower than y 30 is scanned upwards.
@@ -519,5 +573,75 @@ impl EndGatewayBlockEntity {
                 }
             }
         }
+    }
+}
+
+/// Full chunk tickets that keep the chunks of a gateway's exit search loaded.
+///
+/// They are held from the moment the chunks are fetched until the traveller has gone through.
+/// Vanilla reads them with `getChunk` within one tick, where nothing can unload them in between;
+/// here the search runs off the tick, and a chunk loaded only for the fetch unloads within a
+/// second.
+pub struct ExitChunkTickets {
+    level: Arc<Level>,
+    chunks: Vec<Vector2<i32>>,
+}
+
+impl ExitChunkTickets {
+    #[must_use]
+    pub const fn new(level: Arc<Level>) -> Self {
+        Self {
+            level,
+            chunks: Vec::new(),
+        }
+    }
+
+    /// Holds `chunks` and waits until every held chunk is loaded.
+    pub async fn load(&mut self, chunks: impl IntoIterator<Item = Vector2<i32>>) {
+        let new: Vec<_> = chunks
+            .into_iter()
+            .filter(|chunk| !self.chunks.contains(chunk))
+            .collect();
+        if new.is_empty() {
+            return;
+        }
+        {
+            let mut loading = self
+                .level
+                .chunk_loading
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            for &chunk in &new {
+                loading.add_ticket(chunk, ChunkLoading::FULL_CHUNK_LEVEL);
+            }
+            loading.send_change();
+        };
+        self.chunks.extend(new);
+        // A chunk the scheduler had already queued for unloading can still go before it sees
+        // the ticket, so fetch until all of them are in memory.
+        while let Some(&chunk) = self
+            .chunks
+            .iter()
+            .find(|chunk| !self.level.is_chunk_loaded(chunk))
+        {
+            self.level.get_or_fetch_chunk(chunk, |_| ()).await;
+        }
+    }
+}
+
+impl Drop for ExitChunkTickets {
+    fn drop(&mut self) {
+        if self.chunks.is_empty() {
+            return;
+        }
+        let mut loading = self
+            .level
+            .chunk_loading
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for &chunk in &self.chunks {
+            loading.remove_ticket(chunk, ChunkLoading::FULL_CHUNK_LEVEL);
+        }
+        loading.send_change();
     }
 }
