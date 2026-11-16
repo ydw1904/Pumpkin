@@ -12,10 +12,20 @@ async function hold (name, n = 1) {
   if ((h.inv()[name] || 0) < n) await h.give(name, n)
   await bot.equip(bot.inventory.items().find(i => i.name === name), 'hand')
 }
+// The server handles a player's packets in order, so once a block set by the bot's own command
+// shows up, the use before it has been handled and its updates have arrived. A fixed wait isn't
+// enough while the server runs behind, as it does in this freshly generated area.
+let marks = 0
+async function sync () {
+  const block = marks++ % 2 ? 'gold_block' : 'iron_block'
+  bot.chat(`/setblock ${X + 10} ${Y + 8} ${Z - 6} ${block}`)
+  await h.waitFor(() => h.blockName(X + 10, Y + 8, Z - 6) === block, 10000)
+}
 async function useOn (x, y, z) {
   await bot.lookAt(new Vec3(x + 0.5, y + 0.5, z + 0.5), true)
   await bot.activateBlock(h.block(x, y, z), new Vec3(0, 1, 0)).catch(e => h.result('use_error', e.message))
-  await h.ticks(6)
+  await sync()
+  await h.ticks(2)
 }
 const height = (x, y, z, name) => { let n = 0; while (h.blockName(x, y + n, z) === name) n++; return n }
 const mobs = (name, r = 10) => Object.values(bot.entities).filter(e => e.name === name && e.position.distanceTo(bot.entity.position) < r)
