@@ -134,13 +134,8 @@ impl JavaClient {
                                 );
                                 player.mine_block(broken_state);
                                 if can_harvest {
-                                    player.add_exhaustion(MINE_BLOCK_EXHAUSTION);
+                                    player.player_destroy(block);
                                 }
-                                player.increment_stat(
-                                    StatisticCategory::Mined,
-                                    block.id.as_u16() as i32,
-                                    1,
-                                );
                             }
                             self.sync_block_state_to_client(&world, position);
                         } else {
@@ -278,13 +273,8 @@ impl JavaClient {
 
                         player.mine_block(state);
                         if block_drop {
-                            player.add_exhaustion(MINE_BLOCK_EXHAUSTION);
+                            player.player_destroy(block);
                         }
-                        player.increment_stat(
-                            StatisticCategory::Mined,
-                            block.id.as_u16() as i32,
-                            1,
-                        );
                     }
 
                     self.sync_block_state_to_client(&world, location);

@@ -87,13 +87,8 @@ impl BedrockClient {
                             );
                             player.mine_block(broken_state);
                             if can_harvest {
-                                player.add_exhaustion(MINE_BLOCK_EXHAUSTION);
+                                player.player_destroy(block);
                             }
-                            player.increment_stat(
-                                pumpkin_data::statistic::StatisticCategory::Mined,
-                                block.id.as_u16() as i32,
-                                1,
-                            );
                         }
                     } else {
                         let mut mining_pos = player
@@ -178,13 +173,8 @@ impl BedrockClient {
                                 .broken(&world, block, player, &location, server, state);
                             player.mine_block(state);
                             if can_harvest {
-                                player.add_exhaustion(MINE_BLOCK_EXHAUSTION);
+                                player.player_destroy(block);
                             }
-                            player.increment_stat(
-                                pumpkin_data::statistic::StatisticCategory::Mined,
-                                block.id.as_u16() as i32,
-                                1,
-                            );
                         }
                     } else {
                         let runtime_id = pumpkin_data::BlockState::to_be_network_id(state.id);

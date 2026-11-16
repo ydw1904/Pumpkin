@@ -409,13 +409,8 @@ fn read_last_death_location(nbt: &NbtCompound) -> Option<(ResourceLocation, Bloc
 
 pub const DATA_VERSION: i32 = 5023; // 26.3
 
-/// Food exhaustion applied for every block a player mines.
-///
-/// Vanilla: `Block#playerDestroy` calls `player.causeFoodExhaustion(0.005F)`.
-/// `ServerPlayerGameMode#destroyBlock` only reaches `playerDestroy` for
-/// non-creative players holding a tool that can harvest the block, so callers
-/// must apply the same gating.
-pub const MINE_BLOCK_EXHAUSTION: f32 = 0.005; // Vanilla: 0.005F
+/// Food exhaustion applied for every block a player mines, vanilla `Block.playerDestroy`.
+const MINE_BLOCK_EXHAUSTION: f32 = 0.005;
 /// Vanilla `ServerPlayer.lastSentHealth` start value, so the first tick always sends health.
 pub const LAST_SENT_HEALTH_UNSENT: f32 = -1.0E8;
 /// Vanilla `Player.stopSleepInBed` sets the sleep counter to 100 unless woken by force.
@@ -3621,9 +3616,8 @@ impl Player {
                         }
                         p.mine_block(state);
                         if can_harvest {
-                            p.add_exhaustion(MINE_BLOCK_EXHAUSTION);
+                            p.player_destroy(block);
                         }
-                        p.increment_stat(StatisticCategory::Mined, block.id.as_u16() as i32, 1);
                     }
                 }
             }
@@ -5645,6 +5639,14 @@ impl Player {
         health > 0.0 && health < max_health
     }
 
+    /// The player part of vanilla `Block.playerDestroy`: the mined stat and food exhaustion.
+    /// `ServerPlayerGameMode.destroyBlock` only gets here for non-creative players whose tool
+    /// harvests the block, so callers apply the same gating.
+    pub fn player_destroy(&self, block: &Block) {
+        self.increment_stat(StatisticCategory::Mined, i32::from(block.id.as_u16()), 1);
+        self.add_exhaustion(MINE_BLOCK_EXHAUSTION);
+    }
+
     pub fn add_exhaustion(&self, exhaustion: f32) {
         if self
             .abilities
@@ -6451,13 +6453,8 @@ impl Player {
             // Wears the tool and counts it as used.
             self.mine_block(state);
             if block_drop {
-                self.add_exhaustion(MINE_BLOCK_EXHAUSTION);
+                self.player_destroy(block);
             }
-            self.increment_stat(
-                statistics::StatisticCategory::Mined,
-                block.id.as_u16() as i32,
-                1,
-            );
             return true;
         }
         false

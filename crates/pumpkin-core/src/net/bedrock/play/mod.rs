@@ -60,10 +60,7 @@ use pumpkin_world::world::BlockFlags;
 
 use crate::{
     block::{BlockHitResult, registry::BlockActionResult},
-    entity::{
-        EntityBase,
-        player::{MINE_BLOCK_EXHAUSTION, Player},
-    },
+    entity::{EntityBase, player::Player},
     net::{DisconnectReason, bedrock::BedrockClient},
     plugin::player::{
         item_held::PlayerItemHeldEvent,
