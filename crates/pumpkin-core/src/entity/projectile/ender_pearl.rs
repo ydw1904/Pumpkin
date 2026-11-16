@@ -168,6 +168,7 @@ impl EntityBase for EnderPearlEntity {
             }
 
             // In vanilla, teleport handles everything including sound
+            owner.get_entity().stop_riding_for_teleport();
             owner.teleport(
                 teleport_pos,
                 Some(owner.get_entity().yaw.load()),

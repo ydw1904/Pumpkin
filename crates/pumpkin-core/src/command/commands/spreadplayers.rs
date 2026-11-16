@@ -291,6 +291,7 @@ impl CommandExecutor for SpreadPlayersExecutor {
         for (index, target) in targets.iter().enumerate() {
             let pile = piles[index % pile_count];
             let y = surface_ys[index % pile_count];
+            target.get_entity().stop_riding_for_teleport();
             target.teleport(
                 Vector3::new(pile.x.floor() + 0.5, f64::from(y), pile.z.floor() + 0.5),
                 None,
