@@ -821,3 +821,40 @@ impl ProjectileHit {
         }
     }
 }
+
+/// Vanilla `Projectile.mayInteract`: a player owner must be allowed to build at `pos`, any other
+/// owner needs mob griefing.
+#[must_use]
+pub fn may_interact(projectile: &dyn EntityBase, world: &World, pos: &BlockPos) -> bool {
+    let Some(owner) = projectile
+        .get_projectile_owner()
+        .and_then(|owner| owner.owner().get(world))
+    else {
+        return true;
+    };
+    owner.get_player().map_or_else(
+        || world.level_info.load().game_rules.mob_griefing,
+        |player| world.may_interact(player, pos),
+    )
+}
+
+/// Vanilla `Projectile.mayBreak`: impact projectiles break blocks unless the game rule is off or
+/// an adventure mode owner threw them.
+#[must_use]
+pub fn may_break(projectile: &dyn EntityBase, world: &World) -> bool {
+    use pumpkin_data::tag::Taggable;
+    projectile
+        .get_entity()
+        .entity_type
+        .has_tag(&pumpkin_data::tag::EntityType::MINECRAFT_IMPACT_PROJECTILES)
+        && world
+            .level_info
+            .load()
+            .game_rules
+            .projectiles_can_break_blocks
+        && projectile
+            .get_projectile_owner()
+            .and_then(|owner| owner.owner().get(world))
+            .and_then(|owner| owner.get_player().map(|player| player.gamemode.load()))
+            != Some(pumpkin_util::GameMode::Adventure)
+}

@@ -17,7 +17,7 @@ use pumpkin_data::{
     tag::{self, Taggable},
 };
 use pumpkin_macros::pumpkin_block;
-use pumpkin_util::{GameMode, math::position::BlockPos};
+use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::world::{BlockAccessor, BlockFlags};
 
 /// Vanilla `CakeBlock.getOutputSignal`. Saturates -> an out-of-range bite count reads 0.
@@ -97,9 +97,9 @@ impl BlockBehaviour for CakeBlock {
         if item.has_tag(&tag::Item::MINECRAFT_CANDLES) && properties.bites == 0 {
             let candle_cake = cake_from_candle(item);
             if candle_cake != &Block::CAKE {
-                if args.player.gamemode.load() != GameMode::Creative {
-                    args.item_stack.decrement(1);
-                }
+                let item_id = i32::from(item.id);
+                args.item_stack
+                    .decrement_unless_creative(args.player.gamemode.load(), 1);
                 args.world.play_sound(
                     Sound::BlockCakeAddCandle,
                     SoundCategory::Blocks,
@@ -121,6 +121,11 @@ impl BlockBehaviour for CakeBlock {
                 args.player.increment_stat(
                     pumpkin_data::statistic::StatisticCategory::Used,
                     i32::from(item.id),
+                    1,
+                );
+                args.player.increment_stat(
+                    pumpkin_data::statistic::StatisticCategory::Used,
+                    item_id,
                     1,
                 );
                 return BlockActionResult::Success;

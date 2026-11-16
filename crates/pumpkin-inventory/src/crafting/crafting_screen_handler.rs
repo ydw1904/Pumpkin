@@ -56,7 +56,7 @@ pub struct ResultSlot {
 pub struct RecipeResult {
     pub item_id: String,
     pub count: u8,
-    pub pot_decorations: Option<[u16; 4]>,
+    pub pot_decorations: Option<[ItemStack; 4]>,
     /// The finished result of recipes that build it from their inputs' components.
     pub stack: Option<ItemStack>,
     /// What the recipe leaves in the grid besides crafting remainders.
@@ -95,21 +95,12 @@ impl RecipeResult {
             stack.patch.push((*component, Some(value.clone_dyn())));
         }
         stack.patch.extend(self.patch.iter().cloned());
-        if let Some(sherds) = self.pot_decorations {
-            let sherd_names = sherds
-                .into_iter()
-                .map(|id| {
-                    let reg_key =
-                        pumpkin_data::item::Item::from_id(id).map_or("brick", |it| it.registry_key);
-                    if reg_key.starts_with("minecraft:") {
-                        std::borrow::Cow::Borrowed(reg_key)
-                    } else {
-                        std::borrow::Cow::Owned(format!("minecraft:{reg_key}"))
-                    }
-                })
-                .collect();
+        if let Some([back, left, right, front]) = &self.pot_decorations {
             stack.set_data_component(PotDecorationsImpl {
-                sherds: sherd_names,
+                back: Some(back.clone()),
+                left: Some(left.clone()),
+                right: Some(right.clone()),
+                front: Some(front.clone()),
             });
         }
         stack
@@ -298,9 +289,9 @@ fn recipe_matches(
             if count != 4 || inventory.get_width() != 3 || inventory.get_height() != 3 {
                 return None;
             }
-            let mut sherds = [0u16; 4];
+            let mut sherds = std::array::from_fn(|_| ItemStack::EMPTY.clone());
             for (idx, position) in (1..=7).step_by(2).enumerate() {
-                let slot = inventory.get_stack(position);
+                let mut slot = inventory.get_stack(position);
                 if slot.is_empty()
                     || (!slot
                         .item
@@ -311,7 +302,8 @@ fn recipe_matches(
                 {
                     return None;
                 }
-                sherds[idx] = slot.item.id;
+                slot.item_count = 1;
+                sherds[idx] = slot;
             }
             Some(RecipeResult {
                 item_id: "minecraft:decorated_pot".to_string(),

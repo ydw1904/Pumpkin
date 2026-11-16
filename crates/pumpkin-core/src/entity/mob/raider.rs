@@ -109,7 +109,7 @@ pub fn create_ominous_banner() -> ItemStack {
             Some(
                 TooltipDisplayImpl {
                     hide_tooltip: false,
-                    hidden_components: vec![DataComponent::BannerPatterns],
+                    hidden_components: std::borrow::Cow::Borrowed(&[DataComponent::BannerPatterns]),
                 }
                 .to_dyn(),
             ),

@@ -1,11 +1,12 @@
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
+use crate::block::entities::BlockEntity;
 use crate::block::entities::jukebox::JukeboxBlockEntity;
 use crate::block::registry::BlockActionResult;
 use crate::block::{
-    BlockBehaviour, BrokenArgs, EmitsRedstonePowerArgs, GetComparatorOutputArgs,
-    GetRedstonePowerArgs, NormalUseArgs, OnStateReplacedArgs, PlacedArgs, UseWithItemArgs,
+    BlockBehaviour, EmitsRedstonePowerArgs, GetComparatorOutputArgs, GetRedstonePowerArgs,
+    NormalUseArgs, OnStateReplacedArgs, PlacedArgs, PlayerPlacedArgs, UseWithItemArgs,
 };
 use crate::entity::Entity;
 use crate::entity::item::ItemEntity;
@@ -74,7 +75,9 @@ impl JukeboxBlock {
     /// Stops the music and updates block state
     fn stop_playing(block: &Block, position: &BlockPos, world: &Arc<World>) {
         Self::set_record_state(false, block, position, world);
+        world.emit_game_event(GameEvent::BlockChange.name(), position.to_centered_f64());
         world.sync_world_event(WorldEvent::SoundStopJukeboxSong, *position, 0);
+        world.update_neighbors(position, None);
     }
 
     /// Starts playing music
@@ -87,7 +90,17 @@ impl BlockBehaviour for JukeboxBlock {
     /// Called when the jukebox is placed - creates the block entity
     fn placed(&self, args: PlacedArgs<'_>) {
         let block_entity = JukeboxBlockEntity::new(*args.position);
+        block_entity.set_world(Arc::downgrade(args.world));
         args.world.add_block_entity(Arc::new(block_entity));
+    }
+
+    fn player_placed(&self, args: PlayerPlacedArgs<'_>) {
+        if let Some(block_entity) = args.world.get_block_entity(args.position)
+            && let Some(jukebox_entity) = block_entity.as_any().downcast_ref::<JukeboxBlockEntity>()
+            && !jukebox_entity.get_record().is_empty()
+        {
+            Self::set_record_state(true, args.block, args.position, args.world);
+        }
     }
 
     /// Called when player right-clicks with empty hand or non-disc item
@@ -130,7 +143,7 @@ impl BlockBehaviour for JukeboxBlock {
             return BlockActionResult::PassToDefaultBlockAction;
         };
 
-        let Some(song_name) = jukebox_playable.split(':').nth(1) else {
+        let Some(song_name) = jukebox_playable.rsplit(':').next() else {
             return BlockActionResult::PassToDefaultBlockAction;
         };
 
@@ -146,16 +159,23 @@ impl BlockBehaviour for JukeboxBlock {
         if let Some(block_entity) = world.get_block_entity(args.position)
             && let Some(jukebox_entity) = block_entity.as_any().downcast_ref::<JukeboxBlockEntity>()
         {
+            jukebox_entity.set_world(Arc::downgrade(world));
             jukebox_entity.set_record(record);
-            // Start tracking playback with song duration
-            jukebox_entity.start_playing(jukebox_song.length_in_ticks());
+            jukebox_entity.start_playing(
+                jukebox_song.length_in_ticks() + JukeboxBlockEntity::SONG_END_PADDING_TICKS,
+            );
         }
 
         // Update block state to has_record = true
         Self::set_record_state(true, args.block, args.position, world);
+        world.emit_game_event(
+            GameEvent::BlockChange.name(),
+            args.position.to_centered_f64(),
+        );
 
-        // Start playing the music (client-side audio)
+        // Start playing the music (client-side audio) and notify redstone neighbors
         Self::start_playing(args.position, world, jukebox_song.get_id());
+        world.update_neighbors(args.position, None);
 
         // Vanilla `JukeboxPlayable.tryInsertIntoJukebox`, with the state before the insert.
         world.emit_game_event_with_context(
@@ -175,21 +195,8 @@ impl BlockBehaviour for JukeboxBlock {
         BlockActionResult::Success
     }
 
-    /// Called when the jukebox is broken
-    fn broken(&self, args: BrokenArgs<'_>) {
-        // Drop the record if there is one
-        Self::drop_record(args.position, args.world);
-        // Stop the music
-        args.world
-            .sync_world_event(WorldEvent::SoundStopJukeboxSong, *args.position, 0);
-    }
-
-    /// Vanilla: `JukeboxBlock.onStateReplaced()` -> `ItemScatterer.onStateReplaced()`
+    /// Vanilla: `JukeboxBlock.affectNeighborsAfterRemoval()` -> `Containers.updateNeighboursAfterDestroy()`
     fn on_state_replaced(&self, args: OnStateReplacedArgs<'_>) {
-        args.world.emit_game_event(
-            pumpkin_data::game_event::GameEvent::JukeboxStopPlay.name(),
-            args.position.to_centered_f64(),
-        );
         args.world
             .update_neighbour_for_output_signal(args.position, args.block);
     }

@@ -846,9 +846,21 @@ mod tests {
     #[test]
     fn entity_data_round_trip() {
         let mut nbt = NbtCompound::new();
-        nbt.put_string("id", "minecraft:iron_golem".to_string());
         nbt.put_bool("PlayerCreated", true);
-        assert_round_trip(EntityDataImpl { nbt: Some(nbt) }, EntityDataImpl::read_data);
+        assert_round_trip(
+            EntityDataImpl {
+                entity_type: Some(&EntityType::IRON_GOLEM),
+                nbt: Some(nbt),
+            },
+            EntityDataImpl::read_data,
+        );
+        assert_round_trip(
+            EntityDataImpl {
+                entity_type: Some(&EntityType::CHICKEN),
+                nbt: None,
+            },
+            EntityDataImpl::read_data,
+        );
     }
 
     #[test]
@@ -964,7 +976,28 @@ mod tests {
             IntangibleProjectileImpl,
             IntangibleProjectileImpl::read_data,
         );
-        assert_round_trip(BrewingFuelImpl, BrewingFuelImpl::read_data);
+        assert_round_trip(BrewingFuelImpl::DEFAULT, BrewingFuelImpl::read_data);
+        assert_round_trip(
+            BrewingFuelImpl {
+                uses: IntProvider::Inline(10),
+                speed_multiplier: FloatProvider::Inline(2.0),
+            },
+            BrewingFuelImpl::read_data,
+        );
+        assert_round_trip(BlocksAttacksImpl::DEFAULT, BlocksAttacksImpl::read_data);
+        assert_round_trip(
+            DeathProtectionImpl {
+                death_effects: Cow::Owned(vec![ConsumeEffect::ClearAllEffects]),
+            },
+            DeathProtectionImpl::read_data,
+        );
+        assert_round_trip(
+            TooltipDisplayImpl {
+                hide_tooltip: true,
+                hidden_components: Cow::Owned(vec![DataComponent::Enchantments]),
+            },
+            TooltipDisplayImpl::read_data,
+        );
         assert_round_trip(WaxedImpl, WaxedImpl::read_data);
         assert_round_trip(
             CookingFuelImpl {
@@ -1126,5 +1159,72 @@ mod tests {
         assert_eq!(mods[1].r#type, &crate::attributes::Attributes::MAX_HEALTH);
         assert_eq!(mods[1].slot, crate::AttributeModifierSlot::Any);
         assert_eq!(mods[1].id, "example:bonus");
+    }
+
+    #[test]
+    fn generated_item_components_complete_for_26_3() {
+        use crate::item::Item;
+        use crate::item_stack::ItemStack;
+
+        let cushion = ItemStack::new(1, &Item::ORANGE_CUSHION);
+        assert_eq!(
+            cushion
+                .get_data_component::<CushionColorImpl>()
+                .map(|c| c.color),
+            Some(crate::dye_color::DyeColor::Orange)
+        );
+
+        let shield = ItemStack::new(1, &Item::SHIELD);
+        let blocks = shield.get_data_component::<BlocksAttacksImpl>().unwrap();
+        assert_eq!(blocks.block_delay_ticks(), 5);
+        assert_eq!(blocks.item_damage.threshold, 3.0);
+        assert_eq!(blocks.item_damage.apply(2.5), 0);
+        assert_eq!(blocks.item_damage.apply(3.0), 4);
+        assert!(
+            blocks
+                .bypassed_by
+                .as_ref()
+                .is_some_and(|set| set.contains(&crate::damage::DamageType::GENERIC_KILL))
+        );
+
+        let totem = ItemStack::new(1, &Item::TOTEM_OF_UNDYING);
+        let dp = totem.get_data_component::<DeathProtectionImpl>().unwrap();
+        assert_eq!(dp.death_effects.len(), 2);
+
+        let blaze = ItemStack::new(1, &Item::BLAZE_POWDER);
+        let fuel = blaze.get_data_component::<BrewingFuelImpl>().unwrap();
+        assert_eq!(fuel.get_uses(), 20);
+        assert_eq!(fuel.get_speed_multiplier(), 1.0);
+
+        let egg = ItemStack::new(1, &Item::COW_SPAWN_EGG);
+        assert_eq!(
+            egg.get_data_component::<EntityDataImpl>()
+                .and_then(EntityDataImpl::get_entity_type)
+                .map(|e| e.id),
+            Some(crate::entity_type::EntityType::COW.id)
+        );
+
+        let pumpkin = ItemStack::new(1, &Item::CARVED_PUMPKIN);
+        let attrs = pumpkin
+            .get_data_component::<AttributeModifiersImpl>()
+            .unwrap();
+        assert_eq!(attrs.attribute_modifiers.len(), 1);
+        assert_eq!(
+            attrs.attribute_modifiers[0].display,
+            ModifierDisplay::Hidden
+        );
+        assert_round_trip(attrs.clone(), AttributeModifiersImpl::read_data);
+
+        let stew = ItemStack::new(1, &Item::MUSHROOM_STEW);
+        assert_eq!(
+            stew.get_data_component::<UseRemainderImpl>()
+                .and_then(|u| u.remainder.as_ref())
+                .map(|s| s.item),
+            Some(&Item::BOWL)
+        );
+
+        let sword = ItemStack::new(1, &Item::NETHERITE_SWORD);
+        assert!(!sword.can_be_hurt_by(crate::damage::DamageType::LAVA));
+        assert!(sword.can_be_hurt_by(crate::damage::DamageType::CACTUS));
     }
 }

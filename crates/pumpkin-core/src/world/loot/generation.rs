@@ -509,8 +509,39 @@ impl Generator<'_, '_> {
                     self.emit(Stack::new(item), functions, output);
                 }
             }
-            // Dynamic drops emit nothing without a block-registered callback.
-            Kind::Dynamic(_name) => {}
+            Kind::Dynamic(name) => {
+                if matches!(name, "minecraft:sherds" | "sherds")
+                    && let Some(world) = self.params.world
+                    && let Some(pos) = self.params.position
+                    && let Some(entity) =
+                        world.get_block_entity(&pumpkin_util::math::position::BlockPos::floored_v(
+                            pos,
+                        ))
+                    && let Some(pot) = entity
+                        .as_any()
+                        .downcast_ref::<crate::block::entities::decorated_pot::DecoratedPotBlockEntity>()
+                {
+                    let decorations = pot.get_decorations();
+                    for side in [
+                        decorations.left,
+                        decorations.back,
+                        decorations.front,
+                        decorations.right,
+                    ]
+                    .into_iter()
+                    .flatten()
+                    {
+                        self.emit(
+                            Stack {
+                                count: i32::from(side.item_count),
+                                stack: side,
+                            },
+                            functions,
+                            output,
+                        );
+                    }
+                }
+            }
             Kind::Tag(name, _) => {
                 for name in Item::get_tag_values(name).unwrap_or_default() {
                     if let Some(item) =

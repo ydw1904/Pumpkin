@@ -1310,7 +1310,11 @@ impl LivingEntity {
         else {
             return (0.0, None);
         };
-        if blocks_attacks.is_bypassed_by(&damage_type) {
+        if blocks_attacks
+            .bypassed_by
+            .as_ref()
+            .is_some_and(|bypassed| bypassed.contains(&damage_type))
+        {
             return (0.0, None);
         }
         if source
@@ -1442,7 +1446,7 @@ impl LivingEntity {
         }
         player.start_cooldown(blocking_with.cooldown_group(), cooldown_ticks);
         self.clear_active_hand(caller);
-        if let Some(sound) = &blocks_attacks.disable_sound {
+        if let Some(sound) = &blocks_attacks.disabled_sound {
             let pos = self.entity.pos.load();
             let world = self.entity.world.load();
             let pitch = 0.8 + game_random().random::<f32>() * 0.4;

@@ -7084,6 +7084,14 @@ impl World {
                 self, position, player,
             );
         }
+        let broken_block_state =
+            crate::block::blocks::decorated_pot::DecoratedPotBlock::player_will_destroy(
+                self,
+                position,
+                broken_block,
+                broken_block_state,
+                cause,
+            );
 
         if !flags.contains(BlockFlags::SKIP_DROPS) {
             let tool = cause.as_ref().and_then(|p| {
@@ -7108,7 +7116,6 @@ impl World {
         };
 
         let broken_state_id = self.set_block_state(position, new_state_id, flags);
-        let broken_block = Block::from_state_id(broken_state_id);
         if let (Some(player), Some(hive)) = (cause, destroyed_hive) {
             crate::block::blocks::beehive::BeehiveBlock::player_destroy(
                 self,
@@ -7118,6 +7125,19 @@ impl World {
                 &hive,
             );
         }
+        self.broadcast_destroy_block_particles(position, broken_state_id, new_state_id, cause);
+
+        Some(broken_state_id)
+    }
+
+    fn broadcast_destroy_block_particles(
+        &self,
+        position: &BlockPos,
+        broken_state_id: BlockStateId,
+        new_state_id: BlockStateId,
+        cause: Option<&Arc<Player>>,
+    ) {
+        let broken_block = Block::from_state_id(broken_state_id);
         if !broken_block.is_air()
             && broken_state_id != new_state_id
             && broken_block != &Block::FIRE
@@ -7150,8 +7170,6 @@ impl World {
                 self.broadcast_to_chunk_editioned(chunk_pos, &je_packet, &be_packet);
             }
         }
-
-        Some(broken_state_id)
     }
 
     /// Vanilla `Level.destroyBlock`: [`Self::break_block`] without a player, followed by a

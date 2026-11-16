@@ -7,6 +7,7 @@ use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::jukebox_song::JukeboxSong;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::position::BlockPos;
+use rand::RngExt;
 
 use crate::block::entities::BlockEntity;
 use crate::world::World;
@@ -87,23 +88,33 @@ impl BlockEntity for JukeboxBlockEntity {
     }
 
     fn tick(&self, world: &Arc<World>) {
-        // Increment ticks if we're playing
         self.world.get_or_init(|| Arc::downgrade(world));
         let song_length = self.song_length_ticks.load(Ordering::Relaxed);
         if song_length > 0 {
-            let ticks = self
-                .ticks_since_song_started
-                .fetch_add(1, Ordering::Relaxed);
-            // Check if song has finished
+            let ticks = self.ticks_since_song_started.load(Ordering::Relaxed);
             if ticks >= song_length {
                 self.stop_playing();
-                // TODO: Update block state to has_record = false? Or just stop redstone?
-                // In vanilla, the disc stays but music stops and redstone turns off
-            } else if ticks.is_multiple_of(20) {
-                world.emit_game_event(
-                    pumpkin_data::game_event::GameEvent::JukeboxPlay.name(),
-                    self.position.to_centered_f64(),
-                );
+            } else {
+                if ticks.is_multiple_of(20) {
+                    world.emit_game_event(
+                        pumpkin_data::game_event::GameEvent::JukeboxPlay.name(),
+                        self.position.to_centered_f64(),
+                    );
+                    let random_color = rand::rng().random_range(0..4) as f32 / 24.0;
+                    world.spawn_particle(
+                        pumpkin_util::math::vector3::Vector3::new(
+                            f64::from(self.position.0.x) + 0.5,
+                            f64::from(self.position.0.y) + 1.2,
+                            f64::from(self.position.0.z) + 0.5,
+                        ),
+                        pumpkin_util::math::vector3::Vector3::new(random_color, 0.0, 0.0),
+                        1.0,
+                        0,
+                        pumpkin_data::particle::Particle::Note,
+                    );
+                }
+                self.ticks_since_song_started
+                    .fetch_add(1, Ordering::Relaxed);
             }
         }
     }
@@ -144,10 +155,39 @@ impl BlockEntity for JukeboxBlockEntity {
     fn get_inventory(self: Arc<Self>) -> Option<Arc<dyn Inventory>> {
         Some(self)
     }
+
+    fn on_block_replaced(self: Arc<Self>, world: &Arc<World>, position: &BlockPos) {
+        self.world.get_or_init(|| Arc::downgrade(world));
+        let record = self.clear_record();
+        if !record.is_empty() {
+            let spawn_pos = pumpkin_util::math::vector3::Vector3::new(
+                f64::from(position.0.x) + 0.5 + rand::rng().random_range(-0.35..0.35),
+                f64::from(position.0.y) + 1.01,
+                f64::from(position.0.z) + 0.5 + rand::rng().random_range(-0.35..0.35),
+            );
+            let entity = crate::entity::Entity::new(
+                world.clone(),
+                spawn_pos,
+                &pumpkin_data::entity::EntityType::ITEM,
+            );
+            let item_entity = Arc::new(crate::entity::item::ItemEntity::new(entity, record));
+            world.spawn_entity(item_entity);
+        }
+        world.emit_game_event(
+            pumpkin_data::game_event::GameEvent::JukeboxStopPlay.name(),
+            position.to_centered_f64(),
+        );
+        world.sync_world_event(
+            pumpkin_data::world::WorldEvent::SoundStopJukeboxSong,
+            *position,
+            0,
+        );
+    }
 }
 
 impl JukeboxBlockEntity {
     pub const ID: &'static str = "minecraft:jukebox";
+    pub const SONG_END_PADDING_TICKS: u64 = 20;
 
     #[must_use]
     pub fn new(position: BlockPos) -> Self {
@@ -216,6 +256,12 @@ impl JukeboxBlockEntity {
                 pumpkin_data::game_event::GameEvent::JukeboxStopPlay.name(),
                 self.position.to_centered_f64(),
             );
+            world.sync_world_event(
+                pumpkin_data::world::WorldEvent::SoundStopJukeboxSong,
+                self.position,
+                0,
+            );
+            world.update_neighbors(&self.position, None);
         }
         self.mark_dirty();
     }
@@ -327,12 +373,13 @@ impl Inventory for JukeboxBlockEntity {
                     self.position.to_centered_f64(),
                 );
                 if inserted && let Some(song) = playable_song {
-                    self.start_playing(song.length_in_ticks());
+                    self.start_playing(song.length_in_ticks() + Self::SONG_END_PADDING_TICKS);
                     world.sync_world_event(
                         pumpkin_data::world::WorldEvent::SoundPlayJukeboxSong,
                         self.position,
                         song.get_id() as i32,
                     );
+                    world.update_neighbors(&self.position, None);
                 } else {
                     self.stop_playing();
                     world.sync_world_event(
@@ -343,7 +390,7 @@ impl Inventory for JukeboxBlockEntity {
                 }
             }
         } else if inserted && let Some(song) = playable_song {
-            self.start_playing(song.length_in_ticks());
+            self.start_playing(song.length_in_ticks() + Self::SONG_END_PADDING_TICKS);
         } else {
             self.stop_playing();
         }

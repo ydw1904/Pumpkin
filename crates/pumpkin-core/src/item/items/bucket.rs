@@ -436,9 +436,26 @@ fn try_place_liquid(
         return Some(place_pos);
     }
     if can_waterlog_target {
-        let state_id = target_block
-            .set_waterlogged(target_state.id, true)
-            .unwrap_or(target_state.id);
+        let state_id = if target_block.has_tag(&tag::Block::MINECRAFT_CANDLES) {
+            let mut props = pumpkin_data::block_properties::CandleLikeProperties::from_state_id(
+                target_state.id,
+            );
+            if props.lit {
+                world.play_sound(
+                    Sound::BlockCandleExtinguish,
+                    SoundCategory::Blocks,
+                    &place_pos.to_centered_f64(),
+                );
+                world.emit_game_event(GameEvent::BlockChange.name(), place_pos.to_centered_f64());
+                props.lit = false;
+            }
+            props.waterlogged = true;
+            props.to_state_id(target_block)
+        } else {
+            target_block
+                .set_waterlogged(target_state.id, true)
+                .unwrap_or(target_state.id)
+        };
         world.set_block_state(&place_pos, state_id, BlockFlags::NOTIFY_ALL);
         world.schedule_fluid_tick(&Fluid::WATER, place_pos, 5, TickPriority::Normal);
         return Some(place_pos);
