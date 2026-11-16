@@ -275,11 +275,12 @@ impl Player {
         entity.set_pos(pos);
 
         let delta = Vector3::new(pos.x - last_pos.x, pos.y - last_pos.y, pos.z - last_pos.z);
-        let distance = last_pos.squared_distance_to_vec(&pos).sqrt();
-        let cm = (distance * 100.0) as i32;
-        if cm > 0 {
-            let stat = self.get_movement_statistic();
-            self.increment_stat(StatisticCategory::Custom, stat as i32, cm);
+        if entity.has_vehicle() {
+            let cm = (delta.length() * 100.0) as i32;
+            if cm > 0 {
+                let stat = self.get_movement_statistic();
+                self.increment_stat(StatisticCategory::Custom, stat as i32, cm);
+            }
         }
 
         // Vanilla `onGround && !isOnGround && movedUpwards` -> `jumpFromGround`
@@ -293,6 +294,13 @@ impl Player {
         entity
             .horizontal_collision
             .store(requested.horizontal_collision, Ordering::Relaxed);
+        // Vanilla awards the move stat with the new ground state, before the glide ends in the
+        // tick.
+        if !entity.has_vehicle()
+            && let Some((stat, cm)) = self.movement_statistic(delta)
+        {
+            self.increment_stat(StatisticCategory::Custom, stat as i32, cm);
+        }
         if requested.on_ground && entity.is_fall_flying() && self.glide_stop_allowed() {
             entity.set_fall_flying(false);
         }

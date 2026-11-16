@@ -4411,6 +4411,51 @@ impl Player {
         self.increment_stat(statistics::StatisticCategory::Custom, stat as i32, amount);
     }
 
+    /// Vanilla `ServerPlayer.checkMovementStatistics` for a player not riding anything: the
+    /// movement stat and its distance in cm for one accepted move.
+    #[must_use]
+    pub fn movement_statistic(
+        &self,
+        delta: Vector3<f64>,
+    ) -> Option<(statistics::CustomStatistic, i32)> {
+        use statistics::CustomStatistic as Stat;
+        let entity = self.get_entity();
+        if delta.x == 0.0 && delta.y == 0.0 && delta.z == 0.0 {
+            return None;
+        }
+        let cm = |distance_sq: f64| (distance_sq.sqrt() as f32 * 100.0).round() as i32;
+        let full = cm(delta.length_squared());
+        let horizontal = cm(delta.x * delta.x + delta.z * delta.z);
+        let (stat, distance) = if self.is_swimming() {
+            (Stat::SwimOneCm, full)
+        } else if entity.is_submerged_in_water() {
+            (Stat::WalkUnderWaterOneCm, full)
+        } else if entity.is_in_water() {
+            (Stat::WalkOnWaterOneCm, horizontal)
+        } else if self.on_climbable() {
+            if delta.y <= 0.0 {
+                return None;
+            }
+            (Stat::ClimbOneCm, (delta.y * 100.0).round() as i32)
+        } else if entity.on_ground.load(Ordering::Relaxed) {
+            let stat = if entity.is_sprinting() {
+                Stat::SprintOneCm
+            } else if entity.pose.load() == EntityPose::Crouching {
+                Stat::CrouchOneCm
+            } else {
+                Stat::WalkOneCm
+            };
+            (stat, horizontal)
+        } else if entity.is_fall_flying() {
+            // Awarded even when it rounds to 0, like vanilla.
+            return Some((Stat::AviateOneCm, full));
+        } else {
+            // Vanilla ignores air moves of 25 cm or less, so jumps and falls don't count.
+            return (horizontal > 25).then_some((Stat::FlyOneCm, horizontal));
+        };
+        (distance > 0).then_some((stat, distance))
+    }
+
     #[must_use]
     #[allow(clippy::too_many_lines)]
     pub fn get_movement_statistic(&self) -> statistics::CustomStatistic {
