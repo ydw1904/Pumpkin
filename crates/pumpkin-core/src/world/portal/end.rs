@@ -90,8 +90,11 @@ impl EndPortal {
     fn create_portal(world: &Arc<World>, pos: BlockPos) {
         for x in -1..=1 {
             for z in -1..=1 {
+                // Vanilla `destroyBlock(pos, true, null)`: whatever is in the opening drops.
+                let portal_pos = pos.offset(Vector3::new(x, 0, z));
+                world.destroy_block(&portal_pos, None, BlockFlags::NOTIFY_ALL);
                 world.set_block_state(
-                    &pos.offset(Vector3::new(x, 0, z)),
+                    &portal_pos,
                     Block::END_PORTAL.default_state.id,
                     BlockFlags::NOTIFY_LISTENERS,
                 );
