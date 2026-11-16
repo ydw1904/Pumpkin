@@ -274,6 +274,25 @@ impl ItemFrameEntity {
         }
     }
 
+    /// Vanilla `BlockAttachedEntity.hurtServer`: `kill`, then `ItemFrame.dropItem`.
+    fn break_frame(&self, caused_by: Option<&dyn EntityBase>) {
+        self.entity.remove();
+        self.emit_game_event(GameEvent::EntityDie, Some(caused_by.unwrap_or(self)));
+        self.drop_item(caused_by, true);
+        self.emit_game_event(GameEvent::BlockChange, caused_by);
+    }
+
+    fn emit_game_event(&self, event: GameEvent, source: Option<&dyn EntityBase>) {
+        self.entity.world.load().emit_game_event_with_context(
+            event.name(),
+            self.entity.pos.load(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: source,
+                affected_state: None,
+            },
+        );
+    }
+
     pub fn drop_item(&self, caused_by: Option<&dyn EntityBase>, with_frame: bool) {
         if self.is_fixed() {
             return;
@@ -428,11 +447,13 @@ impl EntityBase for ItemFrameEntity {
             let new_rot = self.get_rotation() + 1;
             self.set_rotation(new_rot, true);
             self.entity.play_sound(self.get_rotate_item_sound());
+            self.emit_game_event(GameEvent::BlockChange, Some(player.as_ref()));
             true
         } else if has_held_item && !self.entity.removed.load(Ordering::Relaxed) {
             let mut new_stack = item_stack.clone();
             new_stack.item_count = 1;
             self.set_item(new_stack, true);
+            self.emit_game_event(GameEvent::BlockChange, Some(player.as_ref()));
 
             if !player.is_creative() {
                 item_stack.decrement(1);
@@ -465,8 +486,7 @@ impl EntityBase for ItemFrameEntity {
             if !bypasses_invuln && !is_creative_player {
                 return false;
             }
-            self.drop_item(cause, true);
-            self.entity.remove();
+            self.break_frame(cause);
             return true;
         }
         if self.entity.is_invulnerable_to(&damage_type, cause) {
@@ -479,11 +499,11 @@ impl EntityBase for ItemFrameEntity {
 
         if !is_explosion && has_item {
             self.drop_item(cause, false);
+            self.emit_game_event(GameEvent::BlockChange, cause);
             self.entity.play_sound(self.get_remove_item_sound());
         } else {
-            self.drop_item(cause, true);
             self.entity.play_sound(self.get_break_sound());
-            self.entity.remove();
+            self.break_frame(cause);
         }
         true
     }

@@ -219,6 +219,14 @@ impl EntityBase for LeashKnotEntity {
         }
 
         if attached_mob || any_dropped {
+            world.emit_game_event_with_context(
+                GameEvent::BlockAttach.name(),
+                pos,
+                &GameEventContext {
+                    source_entity: Some(player.as_ref()),
+                    affected_state: None,
+                },
+            );
             self.play_placement_sound(&world);
             true
         } else {
