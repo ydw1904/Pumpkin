@@ -249,6 +249,9 @@ pub trait InventoryPlayer: Send + Sync {
     /// Performs grindstone experience drop and plays grindstone sound events.
     fn use_grindstone(&self, _xp_amount: i32) {}
 
+    /// Plays the smithing table's use event at the open container position.
+    fn use_smithing_table(&self) {}
+
     /// The bookshelves around the open enchanting table.
     fn enchanting_power(&self) -> i32 {
         0

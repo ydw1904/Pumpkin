@@ -9867,6 +9867,13 @@ impl InventoryPlayer for Player {
         self.close_handled_screen();
     }
 
+    fn use_smithing_table(&self) {
+        if let Some(pos) = self.open_container_pos.load() {
+            self.world()
+                .sync_world_event(pumpkin_data::world::WorldEvent::SoundSmithingTableUsed, pos, 0);
+        }
+    }
+
     fn enchanting_power(&self) -> i32 {
         self.open_container_pos.load().map_or(0, |pos| {
             crate::block::blocks::enchanting_table::EnchantingTableBlock::count_bookshelves(

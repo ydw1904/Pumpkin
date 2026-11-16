@@ -418,6 +418,7 @@ impl Slot for SmithingOutputSlot {
         self.input_inventory.remove_stack_specific(0, 1);
         self.input_inventory.remove_stack_specific(1, 1);
         self.input_inventory.remove_stack_specific(2, 1);
+        player.use_smithing_table();
         self.mark_dirty();
     }
 
