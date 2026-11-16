@@ -2389,6 +2389,15 @@ impl LivingEntity {
                 .is_none_or(ArmorStandEntity::has_physics)
     }
 
+    /// The part of vanilla `LivingEntity.aiStep` before travel, which also runs for players.
+    fn reset_fall_distance_from_effects(&self) {
+        if self.has_effect(&StatusEffect::SLOW_FALLING)
+            || self.has_effect(&StatusEffect::LEVITATION)
+        {
+            self.fall_distance.store(0.0);
+        }
+    }
+
     fn tick_movement(&self, caller: &dyn EntityBase) {
         if let Some(mob) = caller.get_mob() {
             mob.before_mob_ai_step();
@@ -2453,11 +2462,7 @@ impl LivingEntity {
             self.jumping_cooldown.store(0, SeqCst);
         }
 
-        if self.has_effect(&StatusEffect::SLOW_FALLING)
-            || self.has_effect(&StatusEffect::LEVITATION)
-        {
-            self.fall_distance.store(0.0);
-        }
+        self.reset_fall_distance_from_effects();
 
         let effective_ai = Self::is_effective_ai(caller) && !client_controlled;
 
@@ -5253,6 +5258,9 @@ impl EntityBase for LivingEntity {
             // Vanilla-like order: freeze logic runs after movement/collisions.
             self.entity.tick_frozen(caller);
         } else if is_alive {
+            // Players move on their client, but slow falling and levitation still cancel the
+            // fall distance their moves build up.
+            self.reset_fall_distance_from_effects();
             if let Some(player) = caller.get_player()
                 && !player.travelled_for_hurt.load(Ordering::SeqCst)
             {
