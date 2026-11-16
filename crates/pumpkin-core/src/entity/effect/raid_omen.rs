@@ -10,7 +10,7 @@ impl MobEffect for RaidOmenMobEffect {
 
     /// Vanilla `RaidOmenMobEffect.applyEffectTick`: the raid starts where the Bad Omen turned
     /// into Raid Omen.
-    fn apply_effect_tick(&self, living: &LivingEntity, _amplifier: u8) {
+    fn apply_effect_tick(&self, living: &LivingEntity, _amplifier: u8) -> bool {
         let world = living.entity.world.load();
         if let Some(entity) = world.get_entity_by_id(living.entity.entity_id)
             && let Some(player) = entity.get_player()
@@ -24,5 +24,6 @@ impl MobEffect for RaidOmenMobEffect {
                 .create_or_extend_raid(player, raid_pos, &world);
             player.clear_raid_omen_position();
         }
+        true
     }
 }

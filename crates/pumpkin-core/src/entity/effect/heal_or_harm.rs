@@ -12,7 +12,8 @@ impl MobEffect for HealOrHarmMobEffect {
         duration >= 1
     }
 
-    fn apply_effect_tick(&self, living: &LivingEntity, amplifier: u8) {
+    fn apply_effect_tick(&self, living: &LivingEntity, amplifier: u8) -> bool {
         living.apply_instant_effect(self.0, amplifier, None, None);
+        true
     }
 }

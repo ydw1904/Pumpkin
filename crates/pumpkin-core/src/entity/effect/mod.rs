@@ -1,3 +1,4 @@
+pub mod absorption;
 pub mod heal_or_harm;
 pub mod hunger;
 pub mod infested;
@@ -25,8 +26,11 @@ pub trait MobEffect: Send + Sync {
         false
     }
 
-    /// Applies periodic/tick-based effect logic on a living entity.
-    fn apply_effect_tick(&self, _living: &LivingEntity, _amplifier: u8) {}
+    /// Applies periodic/tick-based effect logic on a living entity. Returning false ends the
+    /// effect, like vanilla `MobEffect.applyEffectTick`.
+    fn apply_effect_tick(&self, _living: &LivingEntity, _amplifier: u8) -> bool {
+        true
+    }
 
     /// Called when an entity carrying this effect is hurt.
     fn on_mob_hurt(
@@ -42,6 +46,7 @@ pub trait MobEffect: Send + Sync {
     fn on_mob_death(&self, _living: &LivingEntity, _amplifier: u8, _damage_type: &DamageType) {}
 }
 
+pub static ABSORPTION: absorption::AbsorptionMobEffect = absorption::AbsorptionMobEffect;
 pub static REGENERATION: regeneration::RegenerationMobEffect = regeneration::RegenerationMobEffect;
 pub static POISON: poison::PoisonMobEffect = poison::PoisonMobEffect;
 pub static WITHER: wither::WitherMobEffect = wither::WitherMobEffect;
@@ -59,7 +64,9 @@ pub static WIND_CHARGED: wind_charged::WindChargedMobEffect = wind_charged::Wind
 
 #[must_use]
 pub fn get_mob_effect(effect: &'static StatusEffect) -> Option<&'static dyn MobEffect> {
-    if effect == &StatusEffect::REGENERATION {
+    if effect == &StatusEffect::ABSORPTION {
+        Some(&ABSORPTION)
+    } else if effect == &StatusEffect::REGENERATION {
         Some(&REGENERATION)
     } else if effect == &StatusEffect::POISON {
         Some(&POISON)

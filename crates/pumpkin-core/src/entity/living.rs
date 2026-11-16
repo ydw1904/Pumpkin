@@ -3915,7 +3915,7 @@ impl LivingEntity {
                 if let Some(mob_effect) = crate::entity::effect::get_mob_effect(effect.effect_type)
                     && mob_effect.should_apply_effect_tick(tick_duration, effect.amplifier)
                 {
-                    effects_to_apply.push((mob_effect, effect.amplifier));
+                    effects_to_apply.push((mob_effect, effect.effect_type, effect.amplifier));
                 }
 
                 let hidden = hidden_effects.get_mut(effect.effect_type);
@@ -3935,8 +3935,11 @@ impl LivingEntity {
             }
         }
 
-        for (mob_effect, amplifier) in effects_to_apply {
-            mob_effect.apply_effect_tick(self, amplifier);
+        for (mob_effect, effect_type, amplifier) in effects_to_apply {
+            if !mob_effect.apply_effect_tick(self, amplifier) {
+                effects_to_remove.push(effect_type);
+                downgraded.retain(|effect| effect.effect_type != effect_type);
+            }
         }
 
         // Call the central removal function for each expired effect

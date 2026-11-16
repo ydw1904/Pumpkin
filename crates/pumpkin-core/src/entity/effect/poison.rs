@@ -19,7 +19,7 @@ impl MobEffect for PoisonMobEffect {
         }
     }
 
-    fn apply_effect_tick(&self, living: &LivingEntity, _amplifier: u8) {
+    fn apply_effect_tick(&self, living: &LivingEntity, _amplifier: u8) -> bool {
         let current_health = living.health.load();
         if current_health > 1.0
             && let Some(dyn_self) = living
@@ -33,5 +33,6 @@ impl MobEffect for PoisonMobEffect {
                 dyn_self.damage(&*dyn_self, damage_amount, DamageType::MAGIC);
             }
         }
+        true
     }
 }

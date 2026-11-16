@@ -8,7 +8,7 @@ impl MobEffect for SaturationMobEffect {
         true
     }
 
-    fn apply_effect_tick(&self, living: &LivingEntity, amplifier: u8) {
+    fn apply_effect_tick(&self, living: &LivingEntity, amplifier: u8) -> bool {
         let world = living.entity.world.load();
         if let Some(entity) = world.get_entity_by_id(living.entity.entity_id)
             && let Some(player) = entity.get_player()
@@ -18,5 +18,6 @@ impl MobEffect for SaturationMobEffect {
             let hunger = amplifier.saturating_add(1);
             player.hunger_manager.eat(hunger, f32::from(hunger) * 2.0);
         }
+        true
     }
 }

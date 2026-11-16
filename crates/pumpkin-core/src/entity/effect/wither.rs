@@ -19,7 +19,7 @@ impl MobEffect for WitherMobEffect {
         }
     }
 
-    fn apply_effect_tick(&self, living: &LivingEntity, _amplifier: u8) {
+    fn apply_effect_tick(&self, living: &LivingEntity, _amplifier: u8) -> bool {
         let dyn_self = living
             .entity
             .world
@@ -28,5 +28,6 @@ impl MobEffect for WitherMobEffect {
         if let Some(dyn_self) = dyn_self {
             dyn_self.damage(&*dyn_self, 1.0, DamageType::WITHER);
         }
+        true
     }
 }

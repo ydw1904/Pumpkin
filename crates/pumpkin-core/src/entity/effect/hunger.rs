@@ -9,12 +9,13 @@ impl MobEffect for HungerMobEffect {
         true
     }
 
-    fn apply_effect_tick(&self, living: &LivingEntity, amplifier: u8) {
+    fn apply_effect_tick(&self, living: &LivingEntity, amplifier: u8) -> bool {
         let world = living.entity.world.load();
         if let Some(entity) = world.get_entity_by_id(living.entity.entity_id)
             && let Some(player) = entity.get_player()
         {
             player.add_exhaustion(0.005 * (f32::from(amplifier) + 1.0));
         }
+        true
     }
 }
