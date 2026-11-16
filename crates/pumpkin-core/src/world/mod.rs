@@ -7710,8 +7710,35 @@ impl World {
         );
     }
 
+    /// Vanilla `ServerLevel.globalLevelEvent`: every player on the server hears it, from at most
+    /// 32 blocks away in this level and at their own position in the others.
     pub fn sync_global_world_event(&self, world_event: WorldEvent, position: BlockPos, data: i32) {
-        self.broadcast_packet_all(&CWorldEvent::new(world_event as i32, position, data, true));
+        if !self.level_info.load().game_rules.global_sound_events {
+            self.sync_world_event(world_event, position, data);
+            return;
+        }
+        let Some(server) = self.server.upgrade() else {
+            return;
+        };
+        let center = position.to_centered_f64();
+        for player in server.get_all_players() {
+            let player_pos = player.position();
+            let sound_pos = if std::ptr::eq(player.world().as_ref(), self) {
+                if player_pos.squared_distance_to_vec(&center) < 32.0 * 32.0 {
+                    center
+                } else {
+                    player_pos + (center - player_pos).normalize() * 32.0
+                }
+            } else {
+                player_pos
+            };
+            player.try_send_client_packet(&CWorldEvent::new(
+                world_event as i32,
+                BlockPos::floored_v(sound_pos),
+                data,
+                true,
+            ));
+        }
     }
 
     pub fn set_block_destroy_stage(&self, entity_id: i32, location: BlockPos, stage: i8) {
