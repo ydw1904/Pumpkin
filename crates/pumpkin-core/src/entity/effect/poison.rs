@@ -20,18 +20,15 @@ impl MobEffect for PoisonMobEffect {
     }
 
     fn apply_effect_tick(&self, living: &LivingEntity, _amplifier: u8) -> bool {
-        let current_health = living.health.load();
-        if current_health > 1.0
+        // Vanilla always deals a full point above one health, so 1.5 health drops to 0.5.
+        if living.health.load() > 1.0
             && let Some(dyn_self) = living
                 .entity
                 .world
                 .load()
                 .get_entity_by_id(living.entity.entity_id)
         {
-            let damage_amount = (current_health - 1.0).min(1.0);
-            if damage_amount > 0.0 {
-                dyn_self.damage(&*dyn_self, damage_amount, DamageType::MAGIC);
-            }
+            dyn_self.damage(&*dyn_self, 1.0, DamageType::MAGIC);
         }
         true
     }
