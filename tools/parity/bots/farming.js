@@ -30,6 +30,9 @@ async function useOn (x, y, z) {
 const height = (x, y, z, name) => { let n = 0; while (h.blockName(x, y + n, z) === name) n++; return n }
 const mobs = (name, r = 10) => Object.values(bot.entities).filter(e => e.name === name && e.position.distanceTo(bot.entity.position) < r)
 const isBaby = (e) => e.metadata && e.metadata[16] === true
+// Items of one kind on the ground nearby plus those the bot picked up.
+const dropped = (name) => Object.values(bot.entities).filter(e => e.name === 'item' && e.getDroppedItem() && e.getDroppedItem().name === name)
+  .reduce((n, e) => n + e.getDroppedItem().count, h.inv()[name] || 0)
 
 // [name, support, block to place, bone meal always changes it]
 const MEAL = [
@@ -179,22 +182,26 @@ h.start(async () => {
   h.result('mooshroom_bowl', h.invStr())
   await h.clear()
   await hold('shears')
-  if (moo) { await bot.lookAt(moo.position.offset(0, 1, 0), true); await bot.activateEntity(moo).catch(() => {}); await h.ticks(10) }
-  const drops = Object.values(bot.entities).filter(e => e.name === 'item' && e.getDroppedItem()).map(e => `${e.getDroppedItem().name}x${e.getDroppedItem().count}`)
-  h.result('mooshroom_shear', `mooshrooms=${mobs('mooshroom').length} cows=${mobs('cow').length} drops=${drops.sort().join(',')}`)
+  if (moo) { await bot.lookAt(moo.position.offset(0, 1, 0), true); await bot.activateEntity(moo).catch(() => {}); await h.ticks(20) }
+  // Each mushroom is its own item entity with no pickup delay; which ones merge and which
+  // ones the bot picks up depends on their random motion, so count the total.
+  h.result('mooshroom_shear', `mooshrooms=${mobs('mooshroom').length} cows=${mobs('cow').length} red_mushroom=${dropped('red_mushroom')}`)
   h.cmd('kill @e[type=item]')
   await h.ticks(5)
   const sheep = mobs('sheep')[0]
-  if (sheep) { await bot.lookAt(sheep.position.offset(0, 1, 0), true); await bot.activateEntity(sheep).catch(() => {}); await h.ticks(10) }
-  const wool = Object.values(bot.entities).filter(e => e.name === 'item' && e.getDroppedItem()).map(e => e.getDroppedItem())
-  h.result('shear_sheep', `${[...new Set(wool.map(w => w.name))].join(',')} 1to3=${wool.reduce((a, w) => a + w.count, 0) >= 1 && wool.reduce((a, w) => a + w.count, 0) <= 3} shears_damage=${bot.heldItem ? (bot.heldItem.durabilityUsed ?? 'n/a') : 'none'}`)
+  if (sheep) { await bot.lookAt(sheep.position.offset(0, 1, 0), true); await bot.activateEntity(sheep).catch(() => {}); await h.ticks(20) }
+  const wool = dropped('red_wool')
+  h.result('shear_sheep', `1to3=${wool >= 1 && wool <= 3} shears_damage=${bot.heldItem ? (bot.heldItem.durabilityUsed ?? 'n/a') : 'none'}`)
 
-  // Chickens lay the egg of their variant.
-  h.cmd('kill @e[type=item]')
+  // Chickens lay the egg of their variant. The pen's cows and sheep drop their loot when
+  // killed, so clear the items again once they're dead.
   h.cmd('kill @e[type=!player]')
   await h.ticks(5)
-  for (const [v, dx] of [['temperate', -2], ['warm', 0], ['cold', 2]]) h.cmd(`summon chicken ${X + dx + 0.5} ${Y + 1} ${P + 0.5} {NoAI:1b,EggLayTime:20,variant:"minecraft:${v}"}`)
+  h.cmd('kill @e[type=item]')
+  await h.ticks(5)
+  await h.clear()
+  for (const [v, dx] of [['temperate', -2], ['warm', 0], ['cold', 2]]) h.cmd(`summon chicken ${X + dx + 0.5} ${Y + 1} ${P - 1.5} {NoAI:1b,EggLayTime:20,variant:"minecraft:${v}"}`)
   await h.ticks(80)
-  const eggs = Object.values(bot.entities).filter(e => e.name === 'item' && e.getDroppedItem()).map(e => e.getDroppedItem().name)
+  const eggs = Object.values(bot.entities).filter(e => e.name === 'item' && e.getDroppedItem()).map(e => e.getDroppedItem().name).concat(Object.keys(h.inv()))
   h.result('chicken_eggs', [...new Set(eggs)].sort().join(','))
 })
