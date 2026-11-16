@@ -3874,6 +3874,11 @@ impl Player {
                 entity.pos.load(),
             );
         }
+        // Vanilla `travelFallFlying`, after the wear above: a climbable block ends the glide.
+        if self.on_climbable() && self.glide_stop_allowed() {
+            entity.stop_fall_flying();
+            self.fall_fly_ticks.store(0, Ordering::Relaxed);
+        }
     }
 
     /// Vanilla `handleFallFlyingCollisions`: the speed lost into a wall is taken as damage
