@@ -54,6 +54,9 @@ impl Slot for LapisSlot {
     }
 }
 
+/// `getEnchantmentCost` counts at most this many bookshelves.
+const MAX_BOOKSHELVES: i32 = 15;
+
 pub struct EnchantingTableScreenHandler {
     pub inventory: Arc<dyn Inventory>,
     behaviour: ScreenHandlerBehaviour,
@@ -70,7 +73,6 @@ impl EnchantingTableScreenHandler {
         player_inventory: &Arc<PlayerInventory>,
         inventory: &Arc<dyn Inventory>,
         enchantment_seed: i32,
-        bookshelf_count: i32,
     ) -> Self {
         let mut handler = Self {
             inventory: inventory.clone(),
@@ -79,7 +81,7 @@ impl EnchantingTableScreenHandler {
             enchantment_id: [-1; 3],
             enchantment_level: [-1; 3],
             enchantment_seed,
-            bookshelf_count,
+            bookshelf_count: 0,
         };
 
         // Enchanting slots: 0 is item, 1 is lapis
@@ -113,6 +115,8 @@ impl EnchantingTableScreenHandler {
                     self.enchantment_level[i] = -1;
                 }
             } else {
+                // `EnchantmentMenu.slotsChanged` counts the bookshelves on every change.
+                self.bookshelf_count = player.enchanting_power().min(MAX_BOOKSHELVES);
                 let mut random = LegacyRand::from_seed(self.enchantment_seed as u64);
 
                 for i in 0..3 {

@@ -9867,6 +9867,15 @@ impl InventoryPlayer for Player {
         self.close_handled_screen();
     }
 
+    fn enchanting_power(&self) -> i32 {
+        self.open_container_pos.load().map_or(0, |pos| {
+            crate::block::blocks::enchanting_table::EnchantingTableBlock::count_bookshelves(
+                &self.world(),
+                &pos,
+            )
+        })
+    }
+
     fn use_anvil(&self) {
         if let Some(pos) = self.open_container_pos.load() {
             let world = self.world();

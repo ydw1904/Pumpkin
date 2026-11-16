@@ -48,44 +48,6 @@ impl BlockBehaviour for EnchantingTableBlock {
         &self,
         args: GetScreenHandlerFactoryArgs<'_>,
     ) -> Option<Box<dyn ScreenHandlerFactory>> {
-        let mut bookshelf_count = 0;
-
-        for off_z in -1..=1 {
-            for off_x in -1..=1 {
-                if off_z != 0 || off_x != 0 {
-                    for off_y in 0..=1 {
-                        if !Self::is_power_transmitter(
-                            args.world,
-                            &args.position.add(off_x, off_y, off_z),
-                        ) {
-                            continue;
-                        }
-                        if Self::is_bookshelf(
-                            args.world,
-                            &args.position.add(off_x * 2, off_y, off_z * 2),
-                        ) {
-                            bookshelf_count += 1;
-                        }
-                        if off_x != 0 && off_z != 0 {
-                            if Self::is_bookshelf(
-                                args.world,
-                                &args.position.add(off_x * 2, off_y, off_z),
-                            ) {
-                                bookshelf_count += 1;
-                            }
-                            if Self::is_bookshelf(
-                                args.world,
-                                &args.position.add(off_x, off_y, off_z * 2),
-                            ) {
-                                bookshelf_count += 1;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        let bookshelf_count = bookshelf_count.min(15);
-
         let seed = args.player.enchantment_seed();
         let custom_name = args
             .world
@@ -93,10 +55,7 @@ impl BlockBehaviour for EnchantingTableBlock {
             .and_then(|block_entity| block_entity.custom_name());
         Some(crate::block::entities::base_container::with_custom_name(
             custom_name,
-            Box::new(EnchantingTableScreenFactory {
-                bookshelf_count,
-                seed,
-            }),
+            Box::new(EnchantingTableScreenFactory { seed }),
         ))
     }
 
@@ -106,21 +65,33 @@ impl BlockBehaviour for EnchantingTableBlock {
 }
 
 impl EnchantingTableBlock {
-    fn is_bookshelf(world: &Arc<crate::world::World>, pos: &BlockPos) -> bool {
-        world
-            .get_block(pos)
-            .has_tag(&tag::Block::MINECRAFT_ENCHANTMENT_POWER_PROVIDER)
-    }
-
-    fn is_power_transmitter(world: &Arc<crate::world::World>, pos: &BlockPos) -> bool {
-        let (block, state) = world.get_block_and_state(pos);
-        block.has_tag(&tag::Block::MINECRAFT_ENCHANTMENT_POWER_TRANSMITTER)
-            && state.get_block_collision_shapes().next().is_none()
+    /// Vanilla `EnchantingTableBlock.BOOKSHELF_OFFSETS` filtered by `isValidBookShelf`: the
+    /// power providers two blocks out whose halfway block is a power transmitter.
+    pub fn count_bookshelves(world: &crate::world::World, pos: &BlockPos) -> i32 {
+        let mut count = 0;
+        for dy in 0..=1 {
+            for dx in -2..=2i32 {
+                for dz in -2..=2i32 {
+                    if dx.abs() != 2 && dz.abs() != 2 {
+                        continue;
+                    }
+                    if world
+                        .get_block(&pos.add(dx, dy, dz))
+                        .has_tag(&tag::Block::MINECRAFT_ENCHANTMENT_POWER_PROVIDER)
+                        && world
+                            .get_block(&pos.add(dx / 2, dy, dz / 2))
+                            .has_tag(&tag::Block::MINECRAFT_ENCHANTMENT_POWER_TRANSMITTER)
+                    {
+                        count += 1;
+                    }
+                }
+            }
+        }
+        count
     }
 }
 
 struct EnchantingTableScreenFactory {
-    bookshelf_count: i32,
     seed: i32,
 }
 
@@ -137,7 +108,6 @@ impl ScreenHandlerFactory for EnchantingTableScreenFactory {
             player_inventory,
             &inventory,
             self.seed,
-            self.bookshelf_count,
         );
         let screen_handler_arc = Arc::new(Mutex::new(handler));
         Some(screen_handler_arc as SharedScreenHandler)
