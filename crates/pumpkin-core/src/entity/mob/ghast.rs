@@ -1,5 +1,4 @@
 use pumpkin_util::random::gameplay::game_random;
-use rustc_hash::FxHashSet;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Weak};
 
@@ -26,6 +25,7 @@ use crate::entity::{
     mob::{Mob, MobEntity},
 };
 use crate::world::World;
+use crate::world::block_getter::for_each_block_intersected_between;
 
 /// Vanilla `Ghast.leashElasticDistance`, shared with the happy ghast.
 pub const LEASH_ELASTIC_DISTANCE: f64 = 10.0;
@@ -459,7 +459,7 @@ impl GhastMoveControl {
         let in_lava = entity.touching_lava.load(Ordering::Relaxed);
         let start = entity.pos.load();
         let end = start + travel;
-        for_each_block_intersected_between(start, end, &aabb_at_destination, |pos| {
+        for_each_block_intersected_between(start, end, &aabb_at_destination, |pos, _| {
             aabb.intersects(&BoundingBox::from_block(&pos))
                 || self.block_traversal_possible(
                     entity,
@@ -618,156 +618,6 @@ fn contains(aabb: &BoundingBox, point: Vector3<f64>) -> bool {
         && point.y < aabb.max.y
         && point.z >= aabb.min.z
         && point.z < aabb.max.z
-}
-
-/// Vanilla `BlockPos.betweenClosed(AABB)`.
-fn between_closed(aabb: &BoundingBox) -> impl Iterator<Item = BlockPos> {
-    BlockPos::iterate(BlockPos::floored_v(aabb.min), BlockPos::floored_v(aabb.max))
-}
-
-/// Vanilla `BlockGetter.forEachBlockIntersectedBetween`: visits each block the box touches on
-/// its way from `from` to `to` (where it is `aabb_at_target`) until `visitor` returns false.
-fn for_each_block_intersected_between(
-    from: Vector3<f64>,
-    to: Vector3<f64>,
-    aabb_at_target: &BoundingBox,
-    mut visitor: impl FnMut(BlockPos) -> bool,
-) -> bool {
-    let travel = to - from;
-    if travel.length_squared() < f64::from(1.0E-5f32 * 1.0E-5f32) {
-        return between_closed(aabb_at_target).all(&mut visitor);
-    }
-
-    let mut visited = FxHashSet::default();
-    for pos in between_closed(&aabb_at_target.shift(travel * -1.0)) {
-        if !visitor(pos) {
-            return false;
-        }
-        visited.insert(pos);
-    }
-
-    if !add_collisions_along_travel(&mut visited, travel, aabb_at_target, &mut visitor) {
-        return false;
-    }
-
-    between_closed(aabb_at_target).all(|pos| !visited.insert(pos) || visitor(pos))
-}
-
-const fn sign(value: f64) -> i32 {
-    if value > 0.0 {
-        1
-    } else if value < 0.0 {
-        -1
-    } else {
-        0
-    }
-}
-
-/// Vanilla `BlockGetter.addCollisionsAlongTravel`: steps the box's leading corner through the
-/// blocks between the start and the target box.
-fn add_collisions_along_travel(
-    visited: &mut FxHashSet<BlockPos>,
-    delta: Vector3<f64>,
-    aabb_at_target: &BoundingBox,
-    visitor: &mut impl FnMut(BlockPos) -> bool,
-) -> bool {
-    let size = aabb_at_target.max - aabb_at_target.min;
-    let corner = furthest_corner(delta);
-    let center = aabb_at_target.get_center();
-    let to_corner = Vector3::new(
-        center.x + size.x * 0.5 * f64::from(corner.x),
-        center.y + size.y * 0.5 * f64::from(corner.y),
-        center.z + size.z * 0.5 * f64::from(corner.z),
-    );
-    let from_corner = to_corner - delta;
-    let mut block = BlockPos::floored_v(from_corner).0;
-    let (sign_x, sign_y, sign_z) = (sign(delta.x), sign(delta.y), sign(delta.z));
-    let t_delta = |sign: i32, delta: f64| {
-        if sign == 0 {
-            f64::MAX
-        } else {
-            f64::from(sign) / delta
-        }
-    };
-    let (t_delta_x, t_delta_y, t_delta_z) = (
-        t_delta(sign_x, delta.x),
-        t_delta(sign_y, delta.y),
-        t_delta(sign_z, delta.z),
-    );
-    let t_start = |sign: i32, t_delta: f64, coord: f64| {
-        let frac = coord - coord.floor();
-        t_delta * if sign > 0 { 1.0 - frac } else { frac }
-    };
-    let mut t_x = t_start(sign_x, t_delta_x, from_corner.x);
-    let mut t_y = t_start(sign_y, t_delta_y, from_corner.y);
-    let mut t_z = t_start(sign_z, t_delta_z, from_corner.z);
-    let corner_travel = to_corner - from_corner;
-    let epsilon = f64::from(1.0E-5f32);
-
-    while t_x <= 1.0 || t_y <= 1.0 || t_z <= 1.0 {
-        if t_x < t_y {
-            if t_x < t_z {
-                block.x += sign_x;
-                t_x += t_delta_x;
-            } else {
-                block.z += sign_z;
-                t_z += t_delta_z;
-            }
-        } else if t_y < t_z {
-            block.y += sign_y;
-            t_y += t_delta_y;
-        } else {
-            block.z += sign_z;
-            t_z += t_delta_z;
-        }
-
-        let block_pos = BlockPos(block);
-        let Some(t) =
-            BoundingBox::from_block(&block_pos).ray_intersection(from_corner, corner_travel)
-        else {
-            continue;
-        };
-        let hit = from_corner + corner_travel * t;
-        let (bx, by, bz) = (f64::from(block.x), f64::from(block.y), f64::from(block.z));
-        let opposite = BlockPos::floored_v(Vector3::new(
-            hit.x.clamp(bx + epsilon, bx + 1.0 - epsilon) - size.x * f64::from(corner.x),
-            hit.y.clamp(by + epsilon, by + 1.0 - epsilon) - size.y * f64::from(corner.y),
-            hit.z.clamp(bz + epsilon, bz + 1.0 - epsilon) - size.z * f64::from(corner.z),
-        ));
-        let min = BlockPos::new(
-            block.x.min(opposite.0.x),
-            block.y.min(opposite.0.y),
-            block.z.min(opposite.0.z),
-        );
-        let max = BlockPos::new(
-            block.x.max(opposite.0.x),
-            block.y.max(opposite.0.y),
-            block.z.max(opposite.0.z),
-        );
-        for pos in BlockPos::iterate(min, max) {
-            if visited.insert(pos) && !visitor(pos) {
-                return false;
-            }
-        }
-    }
-    true
-}
-
-/// Vanilla `BlockGetter.getFurthestCorner`.
-fn furthest_corner(direction: Vector3<f64>) -> Vector3<i32> {
-    let x_dot = direction.x.abs();
-    let y_dot = direction.y.abs();
-    let z_dot = direction.z.abs();
-    let x_sign = if direction.x >= 0.0 { 1 } else { -1 };
-    let y_sign = if direction.y >= 0.0 { 1 } else { -1 };
-    let z_sign = if direction.z >= 0.0 { 1 } else { -1 };
-    if x_dot <= y_dot && x_dot <= z_dot {
-        Vector3::new(-x_sign, -z_sign, y_sign)
-    } else if y_dot <= z_dot {
-        Vector3::new(z_sign, -y_sign, -x_sign)
-    } else {
-        Vector3::new(-y_sign, x_sign, -z_sign)
-    }
 }
 
 /// Vanilla `Ghast.RandomFloatAroundGoal`: picks a new spot once the old one is reached or far.

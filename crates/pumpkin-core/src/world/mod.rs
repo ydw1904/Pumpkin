@@ -27,6 +27,7 @@ use std::{
 use tracing::{debug, error, info, trace, warn};
 
 mod active_chunks;
+pub mod block_getter;
 pub mod brightness;
 pub mod chunker;
 mod entity_collision;

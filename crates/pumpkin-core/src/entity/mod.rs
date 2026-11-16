@@ -1,3 +1,4 @@
+use crate::world::block_getter::for_each_block_intersected_between;
 use crate::{
     entity::{
         ai::brain::memory::codec::{block_pos_from_tag, block_pos_to_tag},
@@ -65,6 +66,7 @@ use pumpkin_util::random::gameplay::game_random;
 use pumpkin_util::text::TextComponent;
 use pumpkin_util::text::hover::HoverEvent;
 use pumpkin_util::version::JavaMinecraftVersion;
+use rustc_hash::FxHashSet;
 use std::collections::{BTreeMap, HashSet};
 use std::sync::{
     Arc, Weak,
@@ -3546,69 +3548,40 @@ impl Entity {
     }
 
     /// Vanilla `Entity.applyEffectsFromBlocks(from, to)` for projectiles, which move without
-    /// `move`: the `entityInside` effects of every block the bounding box sweeps through on the
-    /// way, then the rain and fire bookkeeping. Fluids are handled by the fluid state update.
+    /// `move`: the `entityInside` effects of the blocks the bounding box passes on the way, at
+    /// most `MAX_BLOCK_ITERATIONS_ALONG_TRAVEL_PER_TICK` steps of them and then the blocks at the
+    /// end, then the rain and fire bookkeeping. Fluids are handled by the fluid state update.
     pub fn apply_effects_from_blocks(
         &self,
         caller: &dyn EntityBase,
         from: Vector3<f64>,
         to: Vector3<f64>,
     ) {
-        /// Vanilla `Entity.checkInsideBlocks`'s threshold for a step that skips whole blocks.
-        const MOVED_FAR_DISTANCE: f64 = 0.999_990_000_000_252_6;
+        /// Vanilla `Entity.MAX_BLOCK_ITERATIONS_ALONG_TRAVEL_PER_TICK`.
+        const MAX_BLOCK_ITERATIONS_ALONG_TRAVEL_PER_TICK: i32 = 16;
         if !self.is_affected_by_blocks() {
             return;
         }
         let previous_fire_ticks = self.fire_ticks.load(Ordering::Relaxed);
         let was_on_fire = previous_fire_ticks > 0 && !self.is_fire_immune();
 
-        let dimensions = self.entity_dimension.load();
-        let box_at_from = BoundingBox::new_from_pos(from.x, from.y, from.z, &dimensions);
-        let deflation = -f64::from(1.0e-5f32);
-        let box_at_target = BoundingBox::new_from_pos(to.x, to.y, to.z, &dimensions)
-            .expand(deflation, deflation, deflation);
-        let moved_far = from.squared_distance_to_vec(&to) > MOVED_FAR_DISTANCE * MOVED_FAR_DISTANCE;
-        let travel = to - from;
-        let swept = box_at_from
-            .expand(deflation, deflation, deflation)
-            .union(&box_at_target);
-
         let world = self.world.load();
         let Some(server) = world.server.upgrade() else {
             return;
         };
-        for pos in BlockPos::iterate(swept.min_block_pos(), swept.max_block_pos()) {
-            if self.is_removed() {
-                break;
-            }
-            let (block, state) = world.get_block_and_state(&pos);
-            if state.is_air() {
-                continue;
-            }
-            let shape = if block == &Block::POWDER_SNOW {
-                crate::block::blocks::powder_snow::inside_collision_shape_for_entity(caller, &pos)
-            } else {
-                world
-                    .block_registry
-                    .get_inside_collision_shape(block, &world, state, &pos)
-            };
-            let full_block = BoundingBox::full_block();
-            let inside = (shape.min == full_block.min && shape.max == full_block.max)
-                || box_at_from.collided_along_vector(travel, &shape.at_pos(pos));
-            if !inside {
-                continue;
-            }
-            // Vanilla passes `isPrecise`, which only bubble columns look at.
-            let precise = moved_far || box_at_target.intersects(&BoundingBox::from_block(&pos));
-            if block == &Block::BUBBLE_COLUMN && !precise {
-                continue;
-            }
-            if block == &Block::POWDER_SNOW {
-                self.is_in_powder_snow.store(true, Relaxed);
-            }
-            world
-                .block_registry
-                .on_entity_collision(block, &world, caller, &pos, state, &server);
+        // Vanilla `Entity.checkInsideBlocks(List<Movement>, ...)` for a single movement.
+        let mut visited = FxHashSet::default();
+        let used = self.check_inside_blocks(
+            caller,
+            &world,
+            &server,
+            from,
+            to,
+            &mut visited,
+            MAX_BLOCK_ITERATIONS_ALONG_TRAVEL_PER_TICK,
+        );
+        if MAX_BLOCK_ITERATIONS_ALONG_TRAVEL_PER_TICK - used <= 0 {
+            self.check_inside_blocks(caller, &world, &server, to, to, &mut visited, 1);
         }
 
         if self.is_in_rain() {
@@ -3641,6 +3614,68 @@ impl Entity {
             self.fire_ticks
                 .store(-self.fire_immune_ticks(), Ordering::Relaxed);
         }
+    }
+
+    /// Vanilla `Entity.checkInsideBlocks(from, to, ...)`: runs `entityInside` for the blocks the
+    /// box enters between `from` and `to` that weren't visited yet, stopping at travel step
+    /// `max_iterations`. Returns the last step reached.
+    #[expect(clippy::too_many_arguments)]
+    fn check_inside_blocks(
+        &self,
+        caller: &dyn EntityBase,
+        world: &Arc<World>,
+        server: &Arc<Server>,
+        from: Vector3<f64>,
+        to: Vector3<f64>,
+        visited: &mut FxHashSet<BlockPos>,
+        max_iterations: i32,
+    ) -> i32 {
+        /// Vanilla `Entity.checkInsideBlocks`'s threshold for a step that skips whole blocks.
+        const MOVED_FAR_DISTANCE: f64 = 0.999_990_000_000_252_6;
+        let dimensions = self.entity_dimension.load();
+        let box_at_from = BoundingBox::new_from_pos(from.x, from.y, from.z, &dimensions);
+        let deflation = -f64::from(1.0e-5f32);
+        let box_at_target = BoundingBox::new_from_pos(to.x, to.y, to.z, &dimensions)
+            .expand(deflation, deflation, deflation);
+        let moved_far = from.squared_distance_to_vec(&to) > MOVED_FAR_DISTANCE * MOVED_FAR_DISTANCE;
+        let travel = to - from;
+        let mut iterations = 0;
+        for_each_block_intersected_between(from, to, &box_at_target, |pos, iteration| {
+            if self.is_removed() || iteration >= max_iterations {
+                return false;
+            }
+            iterations = iteration;
+            let (block, state) = world.get_block_and_state(&pos);
+            if state.is_air() {
+                return true;
+            }
+            let shape = if block == &Block::POWDER_SNOW {
+                crate::block::blocks::powder_snow::inside_collision_shape_for_entity(caller, &pos)
+            } else {
+                world
+                    .block_registry
+                    .get_inside_collision_shape(block, world, state, &pos)
+            };
+            let full_block = BoundingBox::full_block();
+            let inside = (shape.min == full_block.min && shape.max == full_block.max)
+                || box_at_from.collided_along_vector(travel, &shape.at_pos(pos));
+            if !inside || !visited.insert(pos) {
+                return true;
+            }
+            // Vanilla passes `isPrecise`, which only bubble columns look at.
+            let precise = moved_far || box_at_target.intersects(&BoundingBox::from_block(&pos));
+            if block == &Block::BUBBLE_COLUMN && !precise {
+                return true;
+            }
+            if block == &Block::POWDER_SNOW {
+                self.is_in_powder_snow.store(true, Relaxed);
+            }
+            world
+                .block_registry
+                .on_entity_collision(block, world, caller, &pos, state, server);
+            true
+        });
+        iterations
     }
 
     /// Vanilla `Entity.isInRain`: rain at the feet or at the top of the bounding box.
