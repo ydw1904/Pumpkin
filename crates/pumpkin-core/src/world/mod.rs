@@ -8740,6 +8740,15 @@ impl World {
         }
     }
 
+    /// Vanilla `BlockEntity.setChanged` without a client update: the chunk keeps the changed
+    /// block entity's data for saving.
+    pub fn mark_block_entity_changed(&self, block_entity: &Arc<dyn BlockEntity>) {
+        self.add_block_entity_nbt(
+            block_entity.get_position(),
+            &self.saved_block_entity_nbt(block_entity.as_ref()),
+        );
+    }
+
     pub fn update_block_entity(&self, block_entity: &Arc<dyn BlockEntity>) {
         let block_pos = block_entity.get_position();
         let chunk_pos = block_pos.chunk_position();

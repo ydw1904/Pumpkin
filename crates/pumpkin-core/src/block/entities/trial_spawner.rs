@@ -56,11 +56,12 @@ impl TrialSpawnerFlameParticle {
     }
 }
 
-/// Player detector strategies for the trial spawner.
+/// Vanilla `PlayerDetector`: who trial spawners and vaults count as nearby.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum PlayerDetector {
     #[default]
     NoCreativePlayers,
+    IncludingCreativePlayers,
     Sheep,
 }
 
@@ -71,7 +72,7 @@ impl PlayerDetector {
         &self,
         world: &World,
         spawner_pos: BlockPos,
-        range: i32,
+        range: f64,
         require_line_of_sight: bool,
     ) -> Vec<Uuid> {
         let center = spawner_pos.to_centered_f64();
@@ -80,16 +81,17 @@ impl PlayerDetector {
         };
 
         match self {
-            Self::NoCreativePlayers => {
+            Self::NoCreativePlayers | Self::IncludingCreativePlayers => {
                 // `p.blockPosition().closerThan(pos, range)`
-                let max_dist_sq = f64::from(range).powi(2);
+                let max_dist_sq = range * range;
                 let players = world.players.load();
                 players
                     .iter()
                     .filter_map(|player| {
                         let mode = player.gamemode.load();
-                        if mode == pumpkin_util::GameMode::Creative
-                            || mode == pumpkin_util::GameMode::Spectator
+                        if mode == pumpkin_util::GameMode::Spectator
+                            || (*self == Self::NoCreativePlayers
+                                && mode == pumpkin_util::GameMode::Creative)
                         {
                             return None;
                         }
@@ -101,7 +103,7 @@ impl PlayerDetector {
                     .collect()
             }
             Self::Sheep => {
-                let area = BoundingBox::from_block(&spawner_pos).expand_all(f64::from(range));
+                let area = BoundingBox::from_block(&spawner_pos).expand_all(range);
                 world
                     .get_entities_at_box(&area)
                     .into_iter()
@@ -916,7 +918,7 @@ impl TrialSpawner {
         if (spawner_pos.as_long() + game_time) % 20 != 0 || (in_cooldown && self.is_ominous) {
             return false;
         }
-        let range = self.config.required_player_range;
+        let range = f64::from(self.config.required_player_range);
         let in_line_of_sight_players = self.player_detector.detect(world, spawner_pos, range, true);
 
         let mut became_ominous = false;
