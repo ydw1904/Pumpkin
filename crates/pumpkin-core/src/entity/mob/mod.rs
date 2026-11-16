@@ -1063,6 +1063,23 @@ impl MobEntity {
         )
     }
 
+    /// Vanilla `getBrain().setMemory` from outside the mob, which does nothing for mobs without
+    /// a brain or without that memory.
+    pub fn set_existing_brain_memory<T: crate::entity::ai::brain::memory::MemoryValue>(
+        &self,
+        key: crate::entity::ai::brain::memory::MemoryModuleType<T>,
+        value: T,
+    ) {
+        if let Some(brain) = self
+            .brain
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_mut()
+        {
+            brain.set(key, value);
+        }
+    }
+
     pub fn with_brain<R>(&self, mob: &dyn Mob, callback: impl FnOnce(&mut Brain) -> R) -> R {
         let result = {
             let mut slot = self

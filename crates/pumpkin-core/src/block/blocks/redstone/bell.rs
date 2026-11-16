@@ -6,7 +6,7 @@ use crate::block::registry::BlockActionResult;
 use crate::block::{
     BlockBehaviour, BlockHitResult, BrokenArgs, CanPlaceAtArgs, ExplodeArgs,
     GetStateForNeighborUpdateArgs, NormalUseArgs, OnNeighborUpdateArgs, OnPlaceArgs,
-    OnProjectileHitArgs, PathComputationType, PlacedArgs,
+    OnProjectileHitArgs, OnSyncedBlockEventArgs, PathComputationType, PlacedArgs,
 };
 use crate::entity::EntityBase;
 use crate::world::World;
@@ -49,6 +49,11 @@ pub(crate) fn ring_bell(
         && let Some(be) = block_entity.as_any().downcast_ref::<BellBlockEntity>()
     {
         be.activate(direction);
+        world.add_synced_block_event(
+            position,
+            BellBlockEntity::RING_EVENT,
+            direction.to_block_direction().to_index(),
+        );
     }
 
     world.play_sound_fine(
@@ -125,6 +130,23 @@ impl WallMountedBlock for BellBlock {
 }
 
 impl BlockBehaviour for BellBlock {
+    /// Vanilla `BellBlockEntity.triggerEvent`: the server finds who heard the ring and the
+    /// clients swing the bell.
+    fn on_synced_block_event(&self, args: OnSyncedBlockEventArgs<'_>) -> bool {
+        if args.r#type != BellBlockEntity::RING_EVENT {
+            return false;
+        }
+        if let Some(block_entity) = args.world.get_block_entity(args.position)
+            && let Some(bell) = block_entity.as_any().downcast_ref::<BellBlockEntity>()
+        {
+            let direction = BlockDirection::from_index(args.data)
+                .and_then(|direction| direction.to_horizontal_facing());
+            bell.trigger_ring(args.world, direction);
+            return true;
+        }
+        false
+    }
+
     fn on_explosion_hit(&self, args: ExplodeArgs<'_>) {
         ring_bell(*args.position, args.world, None, None);
     }
