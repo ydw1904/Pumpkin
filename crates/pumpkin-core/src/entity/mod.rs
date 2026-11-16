@@ -5886,8 +5886,59 @@ impl Entity {
         clippy::needless_pass_by_value,
         reason = "callers pass owned or cast Arc<dyn EntityBase>"
     )]
-    pub fn leash_to(&self, holder: Arc<dyn EntityBase>) {
-        let holder_entity_id = holder.get_entity().entity_id;
+    /// Returns false if a plugin cancelled the leash event.
+    pub fn leash_to(&self, holder: Arc<dyn EntityBase>) -> bool {
+        let allowed = self.fire_leash_event(&holder);
+        if allowed {
+            self.attach_leash(&holder);
+        }
+        allowed
+    }
+
+    /// Moves the leash to `holder` only while `expected_holder_id` still holds it. The check and
+    /// the swap happen under one lock, so concurrent transfers (players' packets are handled in
+    /// parallel) cannot both win. Returns whether the leash moved.
+    pub fn leash_to_if_held_by(
+        &self,
+        expected_holder_id: i32,
+        holder: &Arc<dyn EntityBase>,
+    ) -> bool {
+        let held_by = |leashed_to: &Option<Weak<dyn EntityBase>>| {
+            leashed_to
+                .as_ref()
+                .and_then(Weak::upgrade)
+                .is_some_and(|current| current.get_entity().entity_id == expected_holder_id)
+        };
+        // Cheap check first so the plugin event only fires for entities that will move. Each lock
+        // is released before the next call: the event and `attach_leash` may lock it again.
+        let held = held_by(
+            &self
+                .leashed_to
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
+        if !held || !self.fire_leash_event(holder) {
+            return false;
+        }
+        let mut leashed_to = self
+            .leashed_to
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !held_by(&leashed_to) {
+            return false;
+        }
+        let old_holder = leashed_to.replace(Arc::downgrade(holder));
+        drop(leashed_to);
+        if let Some(old_holder) = old_holder.as_ref().and_then(Weak::upgrade) {
+            notify_leashee_removed(old_holder.as_ref());
+        }
+        self.send_leash_attached(holder);
+        true
+    }
+
+    /// Fires `PlayerLeashEntityEvent` when a player becomes the holder. Returns false if a plugin
+    /// cancelled it.
+    fn fire_leash_event(&self, holder: &Arc<dyn EntityBase>) -> bool {
         let world = self.world.load();
         if let Some(server) = world.server.upgrade()
             && let Some(player) = holder.get_player()
@@ -5897,35 +5948,38 @@ impl Entity {
                 crate::plugin::api::events::player::player_leash_entity::PlayerLeashEntityEvent {
                     player: player_arc,
                     entity_id: self.entity_id,
-                    holder_id: holder_entity_id,
+                    holder_id: holder.get_entity().entity_id,
                     cancelled: false,
                 };
             server.plugin_manager.fire_blocking(&server, &mut event);
-            if event.cancelled {
-                return;
-            }
+            return !event.cancelled;
         }
-
-        self.attach_leash(&holder);
+        true
     }
 
     pub fn attach_leash(&self, holder: &Arc<dyn EntityBase>) {
-        let holder_entity_id = holder.get_entity().entity_id;
-        self.leash_angular_momentum.store(0.0);
-        *self
-            .delayed_leash
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
         let old_holder = self
             .leashed_to
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .replace(Arc::downgrade(holder));
         if let Some(old_holder) = old_holder.as_ref().and_then(Weak::upgrade)
-            && old_holder.get_entity().entity_id != holder_entity_id
+            && old_holder.get_entity().entity_id != holder.get_entity().entity_id
         {
             notify_leashee_removed(old_holder.as_ref());
         }
+        self.send_leash_attached(holder);
+    }
+
+    /// Resets the leash motion and tells clients about the new holder. Call it without holding
+    /// `leashed_to`: sending the packet runs plugin handlers that may lock it again.
+    fn send_leash_attached(&self, holder: &Arc<dyn EntityBase>) {
+        let holder_entity_id = holder.get_entity().entity_id;
+        self.leash_angular_momentum.store(0.0);
+        *self
+            .delayed_leash
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
 
         let je_packet = pumpkin_protocol::java::client::play::CSetEntityLink::new(
             self.entity_id,
@@ -5976,11 +6030,12 @@ impl Entity {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
-        if old_holder.is_none() {
+        let Some(old_holder) = old_holder else {
             return;
-        }
+        };
+        self.send_leash_removed();
 
-        if let Some(holder) = old_holder.as_ref().and_then(Weak::upgrade)
+        if let Some(holder) = old_holder.upgrade()
             && let Some(server) = world.server.upgrade()
             && let Some(player) = holder.get_player()
             && let Some(player_arc) = world.get_player_by_uuid(player.gameprofile.id)
@@ -5992,9 +6047,7 @@ impl Entity {
             };
             server.plugin_manager.fire_blocking(&server, &mut event);
         }
-
-        self.send_leash_removed();
-        if let Some(holder) = old_holder.as_ref().and_then(Weak::upgrade) {
+        if let Some(holder) = old_holder.upgrade() {
             notify_leashee_removed(holder.as_ref());
         }
     }
