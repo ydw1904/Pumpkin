@@ -158,9 +158,13 @@ impl BlockBehaviour for RespawnAnchorBlock {
             props.to_state_id(args.block),
             BlockFlags::NOTIFY_ALL,
         );
-        args.world.emit_game_event(
+        args.world.emit_game_event_with_context(
             pumpkin_data::game_event::GameEvent::BlockChange.name(),
             args.position.to_centered_f64(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: Some(args.player.as_ref()),
+                affected_state: None,
+            },
         );
 
         args.item_stack

@@ -64,7 +64,7 @@ pub fn create() -> OneShot {
             let from_block = tick.world.get_block_and_state_id(&from_pos).0;
             if is_mob_interactable_door(from_block) {
                 if !DoorBlock::is_open(tick.world, &from_pos) {
-                    DoorBlock::set_open(tick.world, &from_pos, true);
+                    DoorBlock::set_open(tick.world, &from_pos, true, Some(tick.mob));
                 }
                 doors = Some(remember_door_to_close(
                     tick.state, doors, dimension, from_pos,
@@ -74,7 +74,7 @@ pub fn create() -> OneShot {
             let to_pos = next_pos;
             let to_block = tick.world.get_block_and_state_id(&to_pos).0;
             if is_mob_interactable_door(to_block) && !DoorBlock::is_open(tick.world, &to_pos) {
-                DoorBlock::set_open(tick.world, &to_pos, true);
+                DoorBlock::set_open(tick.world, &to_pos, true, Some(tick.mob));
                 doors = Some(remember_door_to_close(tick.state, doors, dimension, to_pos));
             }
 
@@ -150,7 +150,7 @@ pub fn close_doors_that_i_have_opened_or_passed_through(
         if are_other_mobs_coming_through_door(body, door_pos, nearest_entities) {
             return false;
         }
-        DoorBlock::set_open(world, &door_pos, false);
+        DoorBlock::set_open(world, &door_pos, false, Some(body));
         false
     });
 }

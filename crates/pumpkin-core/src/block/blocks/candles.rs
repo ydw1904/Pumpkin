@@ -41,6 +41,7 @@ impl BlockBehaviour for CandleBlock {
                 args.world,
                 args.position,
                 properties.to_state_id(args.block),
+                None,
             );
         }
     }
@@ -69,6 +70,7 @@ impl BlockBehaviour for CandleBlock {
                 args.world,
                 args.position,
                 properties.to_state_id(args.block),
+                Some(args.player.as_ref()),
             );
             return BlockActionResult::Success;
         }
@@ -106,14 +108,26 @@ impl BlockBehaviour for CandleBlock {
 
 /// Vanilla `AbstractCandleBlock.extinguish`, for candles and candle cakes: `unlit` is the
 /// block's state with `lit` cleared.
-pub fn extinguish(world: &Arc<World>, position: &BlockPos, unlit: BlockStateId) {
+pub fn extinguish(
+    world: &Arc<World>,
+    position: &BlockPos,
+    unlit: BlockStateId,
+    source: Option<&dyn crate::entity::EntityBase>,
+) {
     world.set_block_state(position, unlit, BlockFlags::NOTIFY_ALL);
     world.play_sound(
         Sound::BlockCandleExtinguish,
         SoundCategory::Blocks,
         &position.to_centered_f64(),
     );
-    world.emit_game_event(GameEvent::BlockChange.name(), position.to_centered_f64());
+    world.emit_game_event_with_context(
+        GameEvent::BlockChange.name(),
+        position.to_centered_f64(),
+        &crate::world::game_event::GameEventContext {
+            source_entity: source,
+            affected_state: None,
+        },
+    );
 }
 
 fn can_place_at(block_accessor: &dyn BlockAccessor, position: &BlockPos) -> bool {

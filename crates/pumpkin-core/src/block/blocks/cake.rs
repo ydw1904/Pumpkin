@@ -49,7 +49,14 @@ impl CakeBlock {
             1,
         );
         player.hunger_manager.eat(2, 0.4);
-        world.emit_game_event(GameEvent::Eat.name(), location.to_centered_f64());
+        world.emit_game_event_with_context(
+            GameEvent::Eat.name(),
+            location.to_centered_f64(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: Some(player),
+                affected_state: None,
+            },
+        );
 
         let mut properties = CakeLikeProperties::from_state_id(state_id);
         if properties.bites < 6 {
@@ -65,7 +72,14 @@ impl CakeBlock {
                 Block::AIR.default_state.id,
                 BlockFlags::NOTIFY_ALL,
             );
-            world.emit_game_event(GameEvent::BlockDestroy.name(), location.to_centered_f64());
+            world.emit_game_event_with_context(
+                GameEvent::BlockDestroy.name(),
+                location.to_centered_f64(),
+                &crate::world::game_event::GameEventContext {
+                    source_entity: Some(player),
+                    affected_state: None,
+                },
+            );
         }
         BlockActionResult::Success
     }
@@ -96,9 +110,13 @@ impl BlockBehaviour for CakeBlock {
                     candle_cake.default_state.id,
                     BlockFlags::NOTIFY_ALL,
                 );
-                args.world.emit_game_event(
+                args.world.emit_game_event_with_context(
                     GameEvent::BlockChange.name(),
                     args.position.to_centered_f64(),
+                    &crate::world::game_event::GameEventContext {
+                        source_entity: Some(args.player.as_ref()),
+                        affected_state: None,
+                    },
                 );
                 args.player.increment_stat(
                     pumpkin_data::statistic::StatisticCategory::Used,

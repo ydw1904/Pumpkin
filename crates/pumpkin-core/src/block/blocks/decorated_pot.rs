@@ -107,9 +107,13 @@ impl BlockBehaviour for DecoratedPotBlock {
             // Vanilla `BlockEntity.setChanged` notifies comparators.
             args.world
                 .update_neighbour_for_output_signal(args.position, args.block);
-            args.world.emit_game_event(
+            args.world.emit_game_event_with_context(
                 GameEvent::BlockChange.name(),
                 args.position.to_centered_f64(),
+                &crate::world::game_event::GameEventContext {
+                    source_entity: Some(args.player.as_ref()),
+                    affected_state: None,
+                },
             );
             return BlockActionResult::Success;
         }
@@ -125,9 +129,13 @@ impl BlockBehaviour for DecoratedPotBlock {
         );
         args.world
             .add_synced_block_event(*args.position, WOBBLE_EVENT, WOBBLE_NEGATIVE);
-        args.world.emit_game_event(
+        args.world.emit_game_event_with_context(
             GameEvent::BlockChange.name(),
             args.position.to_centered_f64(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: Some(args.player.as_ref()),
+                affected_state: None,
+            },
         );
         BlockActionResult::Success
     }

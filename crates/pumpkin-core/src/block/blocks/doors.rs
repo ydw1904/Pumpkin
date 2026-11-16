@@ -62,7 +62,14 @@ fn toggle_door(player: &Player, world: &Arc<World>, block_pos: &BlockPos) {
     } else {
         pumpkin_data::game_event::GameEvent::BlockClose
     };
-    world.emit_game_event(game_event.name(), block_pos.to_centered_f64());
+    world.emit_game_event_with_context(
+        game_event.name(),
+        block_pos.to_centered_f64(),
+        &crate::world::game_event::GameEventContext {
+            source_entity: Some(player),
+            affected_state: None,
+        },
+    );
 
     world.set_block_state(
         block_pos,
@@ -178,7 +185,13 @@ impl DoorBlock {
         door_props.open
     }
 
-    pub fn set_open(world: &Arc<World>, block_pos: &BlockPos, open: bool) {
+    /// Vanilla `DoorBlock.setOpen`, from `source`.
+    pub fn set_open(
+        world: &Arc<World>,
+        block_pos: &BlockPos,
+        open: bool,
+        source: Option<&dyn crate::entity::EntityBase>,
+    ) {
         let (block, block_state) = world.get_block_and_state_id(block_pos);
         if !block.has_tag(&tag::Block::MINECRAFT_DOORS) {
             return;
@@ -204,7 +217,14 @@ impl DoorBlock {
         } else {
             pumpkin_data::game_event::GameEvent::BlockClose
         };
-        world.emit_game_event(game_event.name(), block_pos.to_centered_f64());
+        world.emit_game_event_with_context(
+            game_event.name(),
+            block_pos.to_centered_f64(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: source,
+                affected_state: None,
+            },
+        );
 
         world.set_block_state(
             block_pos,
@@ -232,7 +252,7 @@ impl BlockBehaviour for DoorBlock {
             && Self::can_open_by_hand(args.block)
             && !props.powered
         {
-            Self::set_open(args.world, args.position, !props.open);
+            Self::set_open(args.world, args.position, !props.open, None);
         }
     }
 

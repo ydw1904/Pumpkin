@@ -60,9 +60,13 @@ impl crate::block::BlockBehaviour for PumpkinBlock {
             args.world.spawn_entity(item_entity);
         }
         args.player.damage_item_in_slot(args.equipment_slot, 1);
-        args.world.emit_game_event(
+        args.world.emit_game_event_with_context(
             pumpkin_data::game_event::GameEvent::Shear.name(),
             args.position.to_centered_f64(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: Some(args.player.as_ref()),
+                affected_state: None,
+            },
         );
         args.player.increment_stat(
             pumpkin_data::statistic::StatisticCategory::Used,

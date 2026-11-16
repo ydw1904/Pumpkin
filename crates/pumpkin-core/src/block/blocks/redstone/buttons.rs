@@ -198,7 +198,14 @@ impl ButtonBlock {
         } else {
             world.play_block_sound(sound, SoundCategory::Blocks, *block_pos);
         }
-        world.emit_game_event(GameEvent::BlockActivate.name(), block_pos.to_centered_f64());
+        world.emit_game_event_with_context(
+            GameEvent::BlockActivate.name(),
+            block_pos.to_centered_f64(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: player.map(|player| player as &dyn crate::entity::EntityBase),
+                affected_state: None,
+            },
+        );
 
         true
     }

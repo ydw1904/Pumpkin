@@ -89,6 +89,7 @@ impl BlockBehaviour for CandleCakeBlock {
                 args.world,
                 args.position,
                 properties.to_state_id(args.block),
+                None,
             );
         }
     }
@@ -106,6 +107,7 @@ impl BlockBehaviour for CandleCakeBlock {
                 args.world,
                 args.position,
                 properties.to_state_id(args.block),
+                Some(args.player.as_ref()),
             );
             return BlockActionResult::Success;
         }

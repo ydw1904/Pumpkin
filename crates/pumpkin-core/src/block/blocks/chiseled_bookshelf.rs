@@ -146,7 +146,14 @@ impl ChiseledBookshelfBlock {
         entity.update_state(properties, world, slot as usize);
 
         world.play_sound(sound, SoundCategory::Blocks, &position.to_centered_f64());
-        world.emit_game_event(GameEvent::BlockChange.name(), position.to_centered_f64());
+        world.emit_game_event_with_context(
+            GameEvent::BlockChange.name(),
+            position.to_centered_f64(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: Some(player),
+                affected_state: None,
+            },
+        );
     }
 
     fn try_remove_book(
@@ -172,7 +179,14 @@ impl ChiseledBookshelfBlock {
         entity.update_state(properties, world, slot as usize);
 
         world.play_sound(sound, SoundCategory::Blocks, &position.to_centered_f64());
-        world.emit_game_event(GameEvent::BlockChange.name(), position.to_centered_f64());
+        world.emit_game_event_with_context(
+            GameEvent::BlockChange.name(),
+            position.to_centered_f64(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: Some(player.as_ref()),
+                affected_state: None,
+            },
+        );
     }
 
     fn get_slot_for_hit(hit: &BlockHitResult<'_>, facing: HorizontalFacing) -> Option<i8> {

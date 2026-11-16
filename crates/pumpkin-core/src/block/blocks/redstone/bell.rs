@@ -58,7 +58,14 @@ pub(crate) fn ring_bell(
         2.0,
         1.0,
     );
-    world.emit_game_event(GameEvent::BlockChange.name(), position.to_centered_f64());
+    world.emit_game_event_with_context(
+        GameEvent::BlockChange.name(),
+        position.to_centered_f64(),
+        &crate::world::game_event::GameEventContext {
+            source_entity: event.entity.as_deref(),
+            affected_state: None,
+        },
+    );
 
     true
 }

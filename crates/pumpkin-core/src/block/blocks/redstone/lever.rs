@@ -38,11 +38,11 @@ pub struct LeverBlock;
 
 impl BlockBehaviour for LeverBlock {
     fn on_explosion_hit(&self, args: ExplodeArgs<'_>) {
-        Self::pull(args.world, args.position);
+        Self::pull(args.world, args.position, None);
     }
 
     fn normal_use(&self, args: NormalUseArgs<'_>) -> BlockActionResult {
-        Self::pull(args.world, args.position);
+        Self::pull(args.world, args.position, Some(args.player.as_ref()));
         BlockActionResult::Success
     }
 
@@ -105,7 +105,11 @@ impl WallMountedBlock for LeverBlock {
 }
 
 impl LeverBlock {
-    pub(crate) fn pull(world: &Arc<World>, block_pos: &BlockPos) {
+    pub(crate) fn pull(
+        world: &Arc<World>,
+        block_pos: &BlockPos,
+        source: Option<&dyn crate::entity::EntityBase>,
+    ) {
         let (block, state) = world.get_block_and_state_id(block_pos);
 
         let mut lever_props = LeverLikeProperties::from_state_id(state);
@@ -125,7 +129,14 @@ impl LeverBlock {
         } else {
             GameEvent::BlockDeactivate
         };
-        world.emit_game_event(game_event.name(), block_pos.to_centered_f64());
+        world.emit_game_event_with_context(
+            game_event.name(),
+            block_pos.to_centered_f64(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: source,
+                affected_state: None,
+            },
+        );
     }
 
     fn update_neighbors(

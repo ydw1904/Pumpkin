@@ -72,7 +72,14 @@ pub fn toggle_fence_gate(
     } else {
         pumpkin_data::game_event::GameEvent::BlockClose
     };
-    world.emit_game_event(game_event.name(), block_pos.to_centered_f64());
+    world.emit_game_event_with_context(
+        game_event.name(),
+        block_pos.to_centered_f64(),
+        &crate::world::game_event::GameEventContext {
+            source_entity: Some(player),
+            affected_state: None,
+        },
+    );
 
     world.set_block_state(
         block_pos,
