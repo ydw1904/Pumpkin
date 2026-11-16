@@ -356,11 +356,24 @@ fn get_raider_is_captain(entity: &dyn EntityBase) -> Option<bool> {
         .map(crate::entity::mob::raider::Raider::is_captain)
 }
 
+/// Vanilla `Raider.hasRaid`: in a raid, or standing where one is going on.
 fn get_raider_has_raid(entity: &dyn EntityBase) -> Option<bool> {
-    entity
+    let raider = entity
         .get_mob()
-        .and_then(crate::entity::mob::Mob::as_raider)
-        .map(crate::entity::mob::raider::Raider::has_active_raid)
+        .and_then(crate::entity::mob::Mob::as_raider)?;
+    if raider.get_raider_data().raid_id.load().is_some() {
+        return Some(true);
+    }
+    let base = entity.get_entity();
+    Some(
+        base.world
+            .load()
+            .raids
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_raid_at(&base.block_pos.load())
+            .is_some(),
+    )
 }
 
 fn get_fishing_hook_in_open_water(entity: &dyn EntityBase, world: Option<&World>) -> Option<bool> {
