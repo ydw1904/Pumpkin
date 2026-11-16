@@ -5760,11 +5760,14 @@ impl LivingEntity {
                 let z = random_teleport_coordinate(pos.z, diameter, rng.random());
                 (x, y, z)
             };
+            // Vanilla `LivingEntity.stopRiding`: dismount events, the boarding cooldown and the
+            // dismount spot, which is where the teleport starts from.
             if let Some(vehicle) = caller.get_entity().get_vehicle() {
                 vehicle
                     .get_entity()
-                    .remove_passenger_sync(caller.get_entity().entity_id);
+                    .remove_passenger(caller.get_entity().entity_id);
             }
+            let pos = self.entity.pos.load();
 
             let Some(target) = self.random_teleport_target(
                 x,
