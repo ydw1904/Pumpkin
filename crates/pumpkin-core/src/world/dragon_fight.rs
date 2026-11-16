@@ -5,11 +5,13 @@
 //! and `DragonRespawnStage`.
 
 use pumpkin_util::random::gameplay::game_random;
+use pumpkin_util::random::{RandomImpl, legacy_rand::LegacyRand};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info};
 use uuid::Uuid;
 
-use pumpkin_data::{Block, entity::EntityType, world::WorldEvent};
+use pumpkin_data::{Block, BlockStateId, entity::EntityType, world::WorldEvent};
+use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_util::{
     math::{position::BlockPos, vector2::Vector2, vector3::Vector3},
     text::TextComponent,
@@ -54,6 +56,53 @@ pub enum DragonRespawnStage {
     End,
 }
 
+impl DragonRespawnStage {
+    const ALL: [Self; 5] = [
+        Self::Start,
+        Self::PreparingToSummonPillars,
+        Self::SummoningPillars,
+        Self::SummoningDragon,
+        Self::End,
+    ];
+
+    /// The vanilla serialized name.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::PreparingToSummonPillars => "preparing_to_summon_pillars",
+            Self::SummoningPillars => "summoning_pillars",
+            Self::SummoningDragon => "summoning_dragon",
+            Self::End => "end",
+        }
+    }
+
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|stage| stage.name() == name)
+    }
+}
+
+thread_local! {
+    static FIGHT_TICKING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Clears [`FIGHT_TICKING`] however the fight's tick returns.
+struct TickingGuard;
+
+impl Drop for TickingGuard {
+    fn drop(&mut self) {
+        FIGHT_TICKING.set(false);
+    }
+}
+
+/// Whether this thread is inside [`DragonFight::tick`] and holds the fight's lock, as when the
+/// respawn sequence's explosions destroy crystals.
+#[must_use]
+pub fn is_fight_ticking() -> bool {
+    FIGHT_TICKING.get()
+}
+
 // ── DragonFight ───────────────────────────────────────────────────────────────
 
 pub struct DragonFight {
@@ -93,21 +142,9 @@ impl DragonFight {
         Self::new_with_seed(0, BlockPos::new(0, 0, 0))
     }
 
+    /// Vanilla `EnderDragonFight.init`: the gateway order comes from the world seed.
     #[must_use]
     pub fn new_with_seed(seed: u64, origin: BlockPos) -> Self {
-        let mut gateways: Vec<i32> = (0..(GATEWAY_COUNT as i32)).collect();
-        // Shuffle gateways with seed or thread-local rng
-        if seed != 0 {
-            use rand::SeedableRng;
-            use rand::seq::SliceRandom;
-            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-            gateways.shuffle(&mut rng);
-        } else {
-            use rand::seq::SliceRandom;
-            let mut rng = game_random();
-            gateways.shuffle(&mut rng);
-        }
-
         Self {
             needs_state_scanning: true,
             dragon_killed: false,
@@ -117,7 +154,7 @@ impl DragonFight {
             dragon_uuid: None,
             exit_portal_location: None,
             origin,
-            gateways,
+            gateways: Self::shuffled_gateways(seed),
             respawn_crystals: Vec::new(),
             skip_arena_loaded_check: false,
             alive_crystals: 0,
@@ -130,17 +167,87 @@ impl DragonFight {
         }
     }
 
-    pub fn init(&mut self, seed: u64, origin: BlockPos) {
-        use rand::SeedableRng;
-        use rand::seq::SliceRandom;
-
-        self.origin = origin;
-        if self.gateways.is_empty() {
-            let mut new_gateways: Vec<i32> = (0..(GATEWAY_COUNT as i32)).collect();
-            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-            new_gateways.shuffle(&mut rng);
-            self.gateways = new_gateways;
+    /// `Util.shuffle` of the 20 gateways with `RandomSource.createThreadLocalInstance(seed)`.
+    fn shuffled_gateways(seed: u64) -> Vec<i32> {
+        let mut gateways: Vec<i32> = (0..(GATEWAY_COUNT as i32)).collect();
+        let mut random = LegacyRand::from_seed(seed);
+        for i in (2..=gateways.len()).rev() {
+            let swap_to = random.next_bounded_i32(i as i32) as usize;
+            gateways.swap(i - 1, swap_to);
         }
+        gateways
+    }
+
+    /// Vanilla `EnderDragonFight.CODEC` followed by `init`, which shuffles a new gateway order
+    /// when the saved one has run out.
+    #[must_use]
+    pub fn load(seed: u64, origin: BlockPos, saved: &NbtCompound) -> Self {
+        let mut fight = Self::new_with_seed(seed, origin);
+        fight.needs_state_scanning = saved.get_bool("needs_state_scanning").unwrap_or(true);
+        fight.dragon_killed = saved.get_bool("dragon_killed").unwrap_or(false);
+        fight.previously_killed = saved.get_bool("previously_killed").unwrap_or(false);
+        fight.respawn_stage = saved
+            .get_string("respawn_stage")
+            .and_then(DragonRespawnStage::from_name);
+        fight.respawn_time = saved.get_int("respawn_time").unwrap_or(0);
+        fight.dragon_uuid = saved.get_uuid("dragon_uuid");
+        fight.exit_portal_location = saved
+            .get_int_array("exit_portal_location")
+            .and_then(|pos| (pos.len() == 3).then(|| BlockPos::new(pos[0], pos[1], pos[2])));
+        let gateways: Vec<i32> = saved.get_int_array("gateways").map_or_else(
+            || {
+                saved
+                    .get_list("gateways")
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(NbtTag::extract_int)
+                    .collect()
+            },
+            <[i32]>::to_vec,
+        );
+        if !gateways.is_empty() {
+            fight.gateways = gateways;
+        }
+        fight.respawn_crystals = saved
+            .get_list("respawn_crystals")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(NbtTag::extract_uuid)
+            .collect();
+        fight
+    }
+
+    /// The saved fight, in the layout of vanilla `EnderDragonFight.CODEC`.
+    #[must_use]
+    pub fn to_nbt(&self) -> NbtCompound {
+        let mut nbt = NbtCompound::new();
+        nbt.put_bool("needs_state_scanning", self.needs_state_scanning);
+        nbt.put_bool("dragon_killed", self.dragon_killed);
+        nbt.put_bool("previously_killed", self.previously_killed);
+        if let Some(stage) = self.respawn_stage {
+            nbt.put_string("respawn_stage", stage.name().to_string());
+        }
+        nbt.put_int("respawn_time", self.respawn_time);
+        if let Some(uuid) = self.dragon_uuid {
+            nbt.put_uuid("dragon_uuid", uuid);
+        }
+        if let Some(pos) = self.exit_portal_location {
+            nbt.put(
+                "exit_portal_location",
+                NbtTag::IntArray(vec![pos.0.x, pos.0.y, pos.0.z]),
+            );
+        }
+        nbt.put("gateways", NbtTag::IntArray(self.gateways.clone()));
+        if !self.respawn_crystals.is_empty() {
+            nbt.put_list(
+                "respawn_crystals",
+                self.respawn_crystals
+                    .iter()
+                    .map(|uuid| NbtTag::uuid(*uuid))
+                    .collect(),
+            );
+        }
+        nbt
     }
 
     pub const fn skip_arena_loaded_check(&mut self) {
@@ -160,6 +267,8 @@ impl DragonFight {
         let mut fight = fight_mutex
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        FIGHT_TICKING.set(true);
+        let _ticking = TickingGuard;
 
         // 1. Update boss-bar recipients every 20 ticks
         fight.ticks_since_last_player_scan += 1;
@@ -184,10 +293,11 @@ impl DragonFight {
         }
 
         // 3. Respawn sequence
+        // Vanilla passes `respawnTime++`, so a stage change inside resets the next tick to 0.
         if let Some(stage) = fight.respawn_stage {
-            fight.tick_respawn_stage(world, stage);
+            let time = fight.respawn_time;
             fight.respawn_time += 1;
-            return;
+            fight.tick_respawn_stage(world, stage, time);
         }
 
         // 4. Normal fight ticking
@@ -482,8 +592,9 @@ impl DragonFight {
         }
     }
 
+    /// Vanilla `setDragonKilled`: only the fight's own dragon ends the fight.
     pub fn set_dragon_killed(&mut self, world: &Arc<World>, killed_uuid: Uuid) {
-        if self.dragon_uuid.is_some() && Some(killed_uuid) != self.dragon_uuid {
+        if Some(killed_uuid) != self.dragon_uuid {
             return;
         }
 
@@ -514,7 +625,6 @@ impl DragonFight {
 
         self.previously_killed = true;
         self.dragon_killed = true;
-        self.dragon_uuid = None;
     }
 
     pub fn update_crystal_count(&mut self, world: &Arc<World>) {
@@ -672,8 +782,7 @@ impl DragonFight {
     }
 
     #[expect(clippy::too_many_lines)]
-    fn tick_respawn_stage(&mut self, world: &Arc<World>, stage: DragonRespawnStage) {
-        let time = self.respawn_time;
+    fn tick_respawn_stage(&mut self, world: &Arc<World>, stage: DragonRespawnStage, time: i32) {
         let origin_y = self.origin.0.y + DRAGON_SPAWN_Y;
         let origin_target = BlockPos::new(self.origin.0.x, origin_y, self.origin.0.z);
 
@@ -729,34 +838,34 @@ impl DragonFight {
                                 crystal.set_beam_target(Some(spike_target));
                             }
                         } else {
-                            for dx in -10i32..=10 {
-                                for dy in -10i32..=10 {
-                                    for dz in -10i32..=10 {
-                                        let pos = BlockPos::new(
-                                            spike.center_x + dx,
-                                            spike.height + dy,
-                                            spike.center_z + dz,
-                                        );
-                                        let block = world.get_block(&pos);
-                                        if block != &Block::BEDROCK
-                                            && block != &Block::OBSIDIAN
-                                            && block != &Block::AIR
-                                        {
-                                            world.set_block_state(
-                                                &pos,
-                                                Block::AIR.default_state.id,
-                                                BlockFlags::NOTIFY_ALL,
-                                            );
-                                        }
-                                    }
+                            // Vanilla clears everything around the top, then places the spike
+                            // feature again.
+                            for pos in BlockPos::iterate(
+                                BlockPos::new(
+                                    spike.center_x - 10,
+                                    spike.height - 10,
+                                    spike.center_z - 10,
+                                ),
+                                BlockPos::new(
+                                    spike.center_x + 10,
+                                    spike.height + 10,
+                                    spike.center_z + 10,
+                                ),
+                            ) {
+                                if !world.get_block_state(&pos).is_air() {
+                                    world.set_block_state(
+                                        &pos,
+                                        Block::AIR.default_state.id,
+                                        BlockFlags::NOTIFY_ALL,
+                                    );
                                 }
                             }
                             world.explode(
                                 None,
                                 Vector3::new(
-                                    spike.center_x as f64 + 0.5,
-                                    spike.height as f64,
-                                    spike.center_z as f64 + 0.5,
+                                    f64::from(spike.center_x) + 0.5,
+                                    f64::from(spike.height),
+                                    f64::from(spike.center_z) + 0.5,
                                 ),
                                 5.0,
                                 crate::world::ExplosionInteraction::Block,
@@ -787,25 +896,8 @@ impl DragonFight {
                 } else if time >= 80 {
                     world.sync_world_event(WorldEvent::AnimationDragonSummonRoar, origin_target, 0);
                 } else if time == 0 {
-                    let spikes = Self::get_spikes(world);
-                    for spike in &spikes {
-                        let (min_x, min_y, min_z, max_x, max_y, max_z) = spike.top_bounding_box();
-                        for entity in entities.iter() {
-                            if entity.get_entity().entity_type == &EntityType::END_CRYSTAL {
-                                let p = entity.get_entity().pos.load();
-                                if p.x >= min_x
-                                    && p.x <= max_x
-                                    && p.y >= min_y
-                                    && p.y <= max_y
-                                    && p.z >= min_z
-                                    && p.z <= max_z
-                                    && let Some(crystal) =
-                                        entity.cast_any().downcast_ref::<EndCrystalEntity>()
-                                {
-                                    crystal.set_beam_target(Some(origin_target));
-                                }
-                            }
-                        }
+                    for crystal in &live_crystals {
+                        crystal.set_beam_target(Some(origin_target));
                     }
                 } else if time < 5 {
                     world.sync_world_event(WorldEvent::AnimationDragonSummonRoar, origin_target, 0);
@@ -815,52 +907,67 @@ impl DragonFight {
         }
     }
 
+    /// Vanilla `EndSpikeFeature.placeSpike` as the respawn sequence uses it: the crystal is
+    /// invulnerable and beams at the dragon's spawn point until the sequence ends.
     fn regenerate_spike(world: &Arc<World>, spike: &EndSpike) {
-        let bedrock_pos = BlockPos::new(spike.center_x, spike.height, spike.center_z);
-        world.set_block_state(
-            &bedrock_pos,
-            Block::BEDROCK.default_state.id,
-            BlockFlags::NOTIFY_ALL,
-        );
-
-        let fire_pos = BlockPos::new(spike.center_x, spike.height + 1, spike.center_z);
-        world.set_block_state(
-            &fire_pos,
-            Block::FIRE.default_state.id,
-            BlockFlags::NOTIFY_ALL,
-        );
+        let set = |pos: &BlockPos, state: BlockStateId| {
+            if world.get_block_state_id(pos) != state {
+                world.set_block_state(pos, state, BlockFlags::NOTIFY_ALL);
+            }
+        };
+        let radius = spike.radius;
+        for pos in BlockPos::iterate(
+            BlockPos::new(
+                spike.center_x - radius,
+                world.min_y,
+                spike.center_z - radius,
+            ),
+            BlockPos::new(
+                spike.center_x + radius,
+                spike.height + 10,
+                spike.center_z + radius,
+            ),
+        ) {
+            if pos
+                .0
+                .squared_distance_to(spike.center_x, pos.0.y, spike.center_z)
+                <= radius * radius + 1
+                && pos.0.y < spike.height
+            {
+                set(&pos, Block::OBSIDIAN.default_state.id);
+            } else if pos.0.y > 65 {
+                set(&pos, Block::AIR.default_state.id);
+            }
+        }
 
         if spike.guarded {
-            for dy in 0i32..=3 {
-                for dx in -2i32..=2 {
-                    for dz in -2i32..=2 {
-                        let x_wall = dx.abs() == 2;
-                        let z_wall = dz.abs() == 2;
-                        let on_top = dy == 3;
-                        if !x_wall && !z_wall && !on_top {
+            for dx in -2i32..=2 {
+                for dz in -2i32..=2 {
+                    for dy in 0i32..=3 {
+                        let x_side = dx.abs() == 2;
+                        let z_side = dz.abs() == 2;
+                        let top = dy == 3;
+                        if !x_side && !z_side && !top {
                             continue;
                         }
-                        let x_edge = x_wall || on_top;
-                        let z_edge = z_wall || on_top;
+                        let x_edge = x_side || top;
+                        let z_edge = z_side || top;
 
                         let mut props =
                             pumpkin_data::block_properties::OakFenceLikeProperties::default(
                                 &Block::IRON_BARS,
                             );
-                        props.north = x_edge && dz != 2;
-                        props.south = x_edge && dz != -2;
-                        props.west = z_edge && dx != 2;
-                        props.east = z_edge && dx != -2;
-
-                        let bar_state = props.to_state_id(&Block::IRON_BARS);
-                        world.set_block_state(
+                        props.north = x_edge && dz != -2;
+                        props.south = x_edge && dz != 2;
+                        props.west = z_edge && dx != -2;
+                        props.east = z_edge && dx != 2;
+                        set(
                             &BlockPos::new(
                                 spike.center_x + dx,
                                 spike.height + dy,
                                 spike.center_z + dz,
                             ),
-                            bar_state,
-                            BlockFlags::NOTIFY_ALL,
+                            props.to_state_id(&Block::IRON_BARS),
                         );
                     }
                 }
@@ -870,16 +977,25 @@ impl DragonFight {
         let entity = Entity::new(
             world.clone(),
             Vector3::new(
-                spike.center_x as f64 + 0.5,
-                (spike.height + 1) as f64,
-                spike.center_z as f64 + 0.5,
+                f64::from(spike.center_x) + 0.5,
+                f64::from(spike.height + 1),
+                f64::from(spike.center_z) + 0.5,
             ),
             &EntityType::END_CRYSTAL,
         );
+        entity.set_rotation(game_random().random::<f32>() * 360.0, 0.0);
         let crystal = Arc::new(EndCrystalEntity::new(entity));
-        crystal.set_show_bottom(true);
-        crystal.set_invulnerable(false);
-        world.spawn_entity_non_save(crystal);
+        crystal.set_beam_target(Some(BlockPos::new(0, DRAGON_SPAWN_Y, 0)));
+        crystal.set_invulnerable(true);
+        world.spawn_entity(crystal);
+        set(
+            &BlockPos::new(spike.center_x, spike.height, spike.center_z),
+            Block::BEDROCK.default_state.id,
+        );
+        set(
+            &BlockPos::new(spike.center_x, spike.height + 1, spike.center_z),
+            Block::FIRE.default_state.id,
+        );
     }
 
     pub fn reset_spike_crystals(&self, world: &Arc<World>) {
@@ -913,16 +1029,8 @@ impl DragonFight {
         self.gateways.clear();
     }
 
+    /// Vanilla `spawnNewGateway`: once all 20 gateways exist, kills add no more.
     pub fn spawn_new_gateway(&mut self, world: &Arc<World>) {
-        use rand::seq::SliceRandom;
-
-        if self.gateways.is_empty() {
-            let mut new_gateways: Vec<i32> = (0..(GATEWAY_COUNT as i32)).collect();
-            let mut rng = game_random();
-            new_gateways.shuffle(&mut rng);
-            self.gateways = new_gateways;
-        }
-
         if let Some(gateway) = self.gateways.pop() {
             let angle =
                 2.0 * (-std::f64::consts::PI + (std::f64::consts::PI / 20.0) * gateway as f64);
@@ -1011,7 +1119,6 @@ impl DragonFight {
                 &EntityType::END_CRYSTAL,
             );
             let crystal = Arc::new(EndCrystalEntity::new(crystal_entity));
-            crystal.set_show_bottom(spike.guarded);
             crystal.set_invulnerable(false);
             world.spawn_entity(crystal);
         }
@@ -1146,5 +1253,41 @@ impl DragonFight {
     #[must_use]
     pub const fn dragon_uuid(&self) -> Option<Uuid> {
         self.dragon_uuid
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A vanilla 26.3 server on this seed spawned its first gateway at index 3.
+    #[test]
+    fn first_gateway_follows_the_world_seed() {
+        let fight = DragonFight::new_with_seed(1_792_386_707_805_314_503, BlockPos::new(0, 0, 0));
+        assert_eq!(fight.gateways.last(), Some(&3));
+    }
+
+    #[test]
+    fn saved_fight_loads_back() {
+        let mut fight = DragonFight::new_with_seed(7, BlockPos::new(0, 0, 0));
+        fight.needs_state_scanning = false;
+        fight.dragon_killed = true;
+        fight.previously_killed = true;
+        fight.respawn_stage = Some(DragonRespawnStage::SummoningPillars);
+        fight.respawn_time = 42;
+        fight.dragon_uuid = Some(Uuid::from_u128(5));
+        fight.exit_portal_location = Some(BlockPos::new(0, 61, 0));
+        fight.gateways.truncate(3);
+        fight.respawn_crystals = vec![Uuid::from_u128(9)];
+
+        let loaded = DragonFight::load(7, BlockPos::new(0, 0, 0), &fight.to_nbt());
+        assert!(!loaded.needs_state_scanning);
+        assert!(loaded.dragon_killed && loaded.previously_killed);
+        assert_eq!(loaded.respawn_stage, fight.respawn_stage);
+        assert_eq!(loaded.respawn_time, 42);
+        assert_eq!(loaded.dragon_uuid, fight.dragon_uuid);
+        assert_eq!(loaded.exit_portal_location, fight.exit_portal_location);
+        assert_eq!(loaded.gateways, fight.gateways);
+        assert_eq!(loaded.respawn_crystals, fight.respawn_crystals);
     }
 }

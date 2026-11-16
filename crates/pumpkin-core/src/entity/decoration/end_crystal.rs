@@ -37,7 +37,7 @@ impl EndCrystalEntity {
         Self {
             entity,
             beam_target: Mutex::new(None),
-            show_bottom: AtomicBool::new(false),
+            show_bottom: AtomicBool::new(true),
         }
     }
 
@@ -85,6 +85,11 @@ impl EndCrystalEntity {
         let Some(fight) = &world.dragon_fight else {
             return;
         };
+        // The fight's own explosions destroy crystals while it holds its lock. Vanilla's
+        // `onCrystalDestroyed` then only recounts the crystals, which the fight does anyway.
+        if crate::world::dragon_fight::is_fight_ticking() {
+            return;
+        }
         let dragon_uuid = fight
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

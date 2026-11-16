@@ -497,8 +497,20 @@ impl World {
 
         // Load portal POI from disk (PoiStorage::new automatically loads from disk if files exist)
         let portal_poi = portal::PortalPoiStorage::new(level.level_folder.poi_folder.clone());
-        let dragon_fight = (dimension.minecraft_name == Dimension::THE_END.minecraft_name)
-            .then(|| std::sync::Mutex::new(dragon_fight::DragonFight::new()));
+        let dragon_fight =
+            (dimension.minecraft_name == Dimension::THE_END.minecraft_name).then(|| {
+                let origin = BlockPos::new(0, 0, 0);
+                let fight = pumpkin_world::world_info::data_files::read_saved_data(
+                    &level.level_folder.dim_folder,
+                    "minecraft",
+                    "ender_dragon_fight",
+                )
+                .map_or_else(
+                    || dragon_fight::DragonFight::new_with_seed(level.seed.0, origin),
+                    |saved| dragon_fight::DragonFight::load(level.seed.0, origin, &saved),
+                );
+                std::sync::Mutex::new(fight)
+            });
 
         let custom_data_path = level
             .level_folder
@@ -867,6 +879,7 @@ impl World {
         self.save_world_border();
         self.save_forced_chunks();
         self.save_raids();
+        self.save_dragon_fight();
 
         // Save portal POI to disk
         let save_result = self
@@ -967,6 +980,26 @@ impl World {
             pumpkin_world::world_info::MAXIMUM_SUPPORTED_WORLD_DATA_VERSION,
         ) {
             error!("Failed to save the forced chunks: {e}");
+        }
+    }
+
+    /// Vanilla saves the End's dragon fight in `ender_dragon_fight.dat`.
+    fn save_dragon_fight(&self) {
+        let Some(fight) = &self.dragon_fight else {
+            return;
+        };
+        let data = fight
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .to_nbt();
+        if let Err(e) = pumpkin_world::world_info::data_files::write_saved_data(
+            &self.level.level_folder.dim_folder,
+            "minecraft",
+            "ender_dragon_fight",
+            data,
+            pumpkin_world::world_info::MAXIMUM_SUPPORTED_WORLD_DATA_VERSION,
+        ) {
+            error!("Failed to save the dragon fight: {e}");
         }
     }
 
@@ -9307,6 +9340,7 @@ impl World {
         self.save_world_border();
         self.save_forced_chunks();
         self.save_raids();
+        self.save_dragon_fight();
 
         self.save_poi();
 
