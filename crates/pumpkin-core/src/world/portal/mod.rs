@@ -92,42 +92,58 @@ impl PortalType {
 
                         let platform_pos = BlockPos::new(100, 49, 0);
 
-                        // Ensure chunks covering the platform are loaded/generated
-                        let center_chunk =
-                            Vector2::new(platform_pos.0.x >> 4, platform_pos.0.z >> 4);
-                        dest_world
-                            .level
-                            .get_or_fetch_chunk(center_chunk, |_| ())
-                            .await;
+                        // Load the chunks the platform spans.
+                        for chunk_x in (platform_pos.0.x - 2) >> 4..=(platform_pos.0.x + 2) >> 4 {
+                            for chunk_z in (platform_pos.0.z - 2) >> 4..=(platform_pos.0.z + 2) >> 4
+                            {
+                                dest_world
+                                    .level
+                                    .get_or_fetch_chunk(Vector2::new(chunk_x, chunk_z), |_| ())
+                                    .await;
+                            }
+                        }
 
-                        // Generate/regenerate the obsidian platform (5x5 obsidian at Y=48, and 5x5x3 air above it)
-                        for dx in -2..=2 {
-                            for dz in -2..=2 {
+                        // Vanilla `EndPlatformFeature.createEndPlatform(level, origin, true)`:
+                        // anything else in the way is destroyed and drops. Entities arriving
+                        // together take turns, so each block drops once.
+                        let platform_lock = dest_world.portal_forcer.lock().await;
+                        for dz in -2..=2 {
+                            for dx in -2..=2 {
                                 for dy in -1..3 {
                                     let block = if dy == -1 {
-                                        Block::OBSIDIAN
+                                        &Block::OBSIDIAN
                                     } else {
-                                        Block::AIR
+                                        &Block::AIR
                                     };
                                     let target_pos = BlockPos::new(
                                         platform_pos.0.x + dx,
                                         platform_pos.0.y + dy,
                                         platform_pos.0.z + dz,
                                     );
-                                    dest_world.set_block_state(
-                                        &target_pos,
-                                        block.default_state.id,
-                                        BlockFlags::NOTIFY_ALL,
-                                    );
+                                    if dest_world.get_block(&target_pos) != block {
+                                        dest_world.destroy_block(
+                                            &target_pos,
+                                            None,
+                                            BlockFlags::NOTIFY_ALL,
+                                        );
+                                        dest_world.set_block_state(
+                                            &target_pos,
+                                            block.default_state.id,
+                                            BlockFlags::NOTIFY_ALL,
+                                        );
+                                    }
                                 }
                             }
                         }
 
+                        drop(platform_lock);
+
+                        // Vanilla faces west and keeps the pitch (`Relative.X_ROT`).
                         Some(TeleportTransition {
                             new_world: dest_world,
                             position: Vector3::new(100.5f64, y, 0.5f64),
                             yaw: Some(90.0f32),
-                            pitch: None,
+                            pitch: Some(caller.get_entity().pitch.load()),
                         })
                     } else {
                         // Leaving the End through the exit portal. Vanilla `EndPortalBlock`
