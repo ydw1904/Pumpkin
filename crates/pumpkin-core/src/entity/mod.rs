@@ -123,6 +123,8 @@ pub enum DelayedLeash {
 }
 
 const LEASH_RESTORE_TIMEOUT: i32 = 100;
+/// Vanilla `Player.getFireImmuneTicks`.
+const PLAYER_FIRE_IMMUNE_TICKS: i32 = 20;
 
 /// The maximum number of scoreboard tags an entity can carry, matching Vanilla.
 pub const MAX_SCOREBOARD_TAGS: usize = 1024;
@@ -2133,7 +2135,7 @@ impl Entity {
             bedrock_flags: std::sync::atomic::AtomicI64::new(0),
             bedrock_flags_two: std::sync::atomic::AtomicI64::new(0),
             fire_immune: AtomicBool::new(false),
-            fire_ticks: AtomicI32::new(-1),
+            fire_ticks: AtomicI32::new(0),
             has_visual_fire: AtomicBool::new(false),
             frozen_ticks: AtomicI32::new(0),
             is_in_powder_snow: AtomicBool::new(false),
@@ -3388,6 +3390,7 @@ impl Entity {
         eye_level_box.min.y += eye_height;
         eye_level_box.max.y = eye_level_box.min.y;
 
+        let previous_fire_ticks = self.fire_ticks.load(Ordering::Relaxed);
         let mut suffocating = false;
         let world = self.world.load();
         // Read up front until a collision callback runs, as it may change the blocks after it.
@@ -3444,6 +3447,7 @@ impl Entity {
             }
         }
 
+        self.reset_fire_grace(previous_fire_ticks);
         suffocating
     }
 
@@ -3525,9 +3529,17 @@ impl Entity {
                 (random.random::<f32>() - random.random::<f32>()).mul_add(0.4, 1.6),
             );
         }
+        self.reset_fire_grace(previous_fire_ticks);
+    }
+
+    /// The end of vanilla `Entity.applyEffectsFromBlocks`: unless the entity burns or was just
+    /// set alight, `setRemainingFireTicks(-getFireImmuneTicks())`, so a player has to stand in
+    /// fire for a second before catching fire.
+    fn reset_fire_grace(&self, previous_fire_ticks: i32) {
+        let fire_ticks = self.fire_ticks.load(Ordering::Relaxed);
         if fire_ticks <= 0 && fire_ticks <= previous_fire_ticks {
-            // Vanilla `setRemainingFireTicks(-getFireImmuneTicks())`.
-            self.fire_ticks.store(-1, Ordering::Relaxed);
+            self.fire_ticks
+                .store(-self.fire_immune_ticks(), Ordering::Relaxed);
         }
     }
 
@@ -4659,9 +4671,18 @@ impl Entity {
         }
     }
 
-    /// Extinguishes this entity.
+    /// Extinguishes this entity, vanilla `clearFire`: a fire grace period below zero stays.
     pub fn extinguish(&self) {
-        self.fire_ticks.store(0, Ordering::Relaxed);
+        self.fire_ticks.fetch_min(0, Ordering::Relaxed);
+    }
+
+    /// Vanilla `getFireImmuneTicks`: only players override it.
+    fn fire_immune_ticks(&self) -> i32 {
+        if self.entity_type == &EntityType::PLAYER {
+            PLAYER_FIRE_IMMUNE_TICKS
+        } else {
+            0
+        }
     }
 
     /// Maximum freeze ticks (7 seconds at 20 tps)
