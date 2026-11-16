@@ -2400,6 +2400,9 @@ impl LivingEntity {
 
     fn tick_movement(&self, caller: &dyn EntityBase) {
         if let Some(mob) = caller.get_mob() {
+            if let Some(raider) = mob.as_raider() {
+                crate::world::raid::raider_ai_step(raider);
+            }
             mob.before_mob_ai_step();
         }
         let client_controlled = caller.get_mob().is_some()

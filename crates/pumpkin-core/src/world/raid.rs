@@ -521,8 +521,23 @@ impl Raid {
         world.spawn_entity(raider_base.clone());
     }
 
+    /// Vanilla `Raid.joinRaid(level, wave, raider, null, true)`: a raider already in the world
+    /// joins `wave`, and its health counts towards the raid bar.
+    pub fn recruit(&mut self, world: &World, wave: i32, raider: &dyn Raider) {
+        let uuid = raider.get_entity().entity_uuid;
+        self.group_raider_map.entry(wave).or_default().insert(uuid);
+        self.total_health += raider.get_mob_entity().living_entity.health.load();
+        self.update_bossbar(world);
+        let data = raider.get_raider_data();
+        data.raid_id.store(Some(self.id));
+        raider.set_wave(wave);
+        raider.set_can_join_raid(true);
+        data.ticks_outside_raid
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// Vanilla `Raid.setLeader`: the leader wears the ominous banner and always drops it.
-    fn set_leader(&mut self, wave: i32, raider_base: &dyn EntityBase) {
+    pub(crate) fn set_leader(&mut self, wave: i32, raider_base: &dyn EntityBase) {
         let Some(mob) = raider_base.get_mob() else {
             return;
         };
@@ -1037,6 +1052,76 @@ fn nearest_raid(raid_centers: &[(i32, BlockPos)], pos: &BlockPos) -> Option<i32>
         }
     }
     closest
+}
+
+/// Vanilla `Raids.canJoinRaid`: living raiders that may join raids and haven't idled too long.
+pub fn can_join_raid(raider: &dyn Raider) -> bool {
+    let living = &raider.get_mob_entity().living_entity;
+    living.is_alive()
+        && raider.can_join_raid()
+        && living
+            .no_action_time
+            .load(std::sync::atomic::Ordering::Relaxed)
+            <= MAX_NO_ACTION_TIME
+}
+
+/// The raider part of vanilla `Raider.aiStep` and `Monster.aiStep`.
+///
+/// A raider that may join raids joins the one around it every second, and one fighting a
+/// player or iron golem in its raid stays active. Then `Raider.updateNoActionTime`, which ages
+/// twice as fast as other mobs.
+pub fn raider_ai_step(raider: &dyn Raider) {
+    let living = &raider.get_mob_entity().living_entity;
+    if living.is_alive() && raider.can_join_raid() {
+        let world = living.entity.world.load_full();
+        if raider.get_raider_data().raid_id.load().is_none() {
+            let game_time = world
+                .level_time
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .query_gametime();
+            if game_time % 20 == 0 {
+                let mut raids = world
+                    .raids
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if let Some(raid) = raids.get_raid_at_mut(&living.entity.block_pos.load())
+                    && can_join_raid(raider)
+                {
+                    let wave = raid.get_groups_spawned();
+                    raid.recruit(&world, wave, raider);
+                }
+            }
+        } else if raider.get_mob_entity().get_target().is_some_and(|target| {
+            let target_type = target.get_entity().entity_type;
+            target_type == &EntityType::PLAYER || target_type == &EntityType::IRON_GOLEM
+        }) {
+            living
+                .no_action_time
+                .store(0, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+    living
+        .no_action_time
+        .fetch_add(2, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The raid part of vanilla `Raider.hurtServer`: the raid bar shows the raiders' health from
+/// before the hit.
+pub fn on_raider_hurt(raider: &dyn Raider) {
+    let Some(raid_id) = raider.get_raider_data().raid_id.load() else {
+        return;
+    };
+    let world = raider.get_entity().world.load();
+    if let Some(raid) = world
+        .raids
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get_mut(raid_id)
+        .filter(|raid| raid.is_active())
+    {
+        raid.update_bossbar(&world);
+    }
 }
 
 /// The raid part of vanilla `Raider.die`, run when a raider dies.

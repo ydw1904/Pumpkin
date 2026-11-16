@@ -3819,6 +3819,9 @@ impl<T: Mob + Send + 'static> EntityBase for T {
         {
             return damaged;
         }
+        if let Some(raider) = self.as_raider() {
+            crate::world::raid::on_raider_hurt(raider);
+        }
         // pre_damage hook: allows mobs to dodge/cancel damage (e.g. enderman projectile dodge)
         if !self.pre_damage_with_context(damage_type, source, cause) {
             return false;

@@ -79,7 +79,7 @@ impl PillagerEntity {
 
             // `PatrollingMonster` and `Raider.registerGoals` run first.
             goal_selector.add_goal(4, Box::new(LongDistancePatrolGoal::new(0.7, 0.595)));
-            goal_selector.add_goal(1, Box::new(ObtainRaidLeaderBannerGoal));
+            goal_selector.add_goal(1, Box::new(ObtainRaidLeaderBannerGoal::default()));
             goal_selector.add_goal(3, Box::new(PathfindToRaidGoal::default()));
             goal_selector.add_goal(4, Box::new(RaiderMoveThroughVillageGoal::new(1.05)));
             goal_selector.add_goal(5, Box::new(RaiderCelebrationGoal));
@@ -173,7 +173,8 @@ impl Mob for PillagerEntity {
         0.0
     }
 
-    // Raid banners going into the inventory are not handled yet.
+    /// Vanilla `Pillager.pickUpItem`: banners go through `Raider.pickUpItem`. Its inventory
+    /// branch only takes white banners, which the banner branch already caught.
     fn pick_up_item(&self, item: &crate::entity::item::ItemEntity) {
         let is_banner = item
             .get_item_stack()
@@ -182,7 +183,7 @@ impl Mob for PillagerEntity {
             .item
             .has_tag(&pumpkin_data::tag::Item::MINECRAFT_BANNERS);
         if is_banner {
-            crate::entity::mob::equipment::pick_up_item_as_equipment(self, item);
+            raider::pick_up_item(self, item);
         }
     }
 

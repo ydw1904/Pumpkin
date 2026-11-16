@@ -1145,7 +1145,7 @@ pub fn equip_in_slot<M: Mob + ?Sized>(mob: &M, slot: &EquipmentSlot, to_equip: I
         .store(true, std::sync::atomic::Ordering::Relaxed);
 }
 
-fn item_in(mob_entity: &MobEntity, slot: &EquipmentSlot) -> ItemStack {
+pub(crate) fn item_in(mob_entity: &MobEntity, slot: &EquipmentSlot) -> ItemStack {
     mob_entity
         .living_entity
         .entity_equipment

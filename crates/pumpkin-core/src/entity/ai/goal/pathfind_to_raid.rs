@@ -1,75 +1,87 @@
-use std::sync::atomic::AtomicI32;
-
 use pumpkin_util::math::vector3::Vector3;
 
 use crate::entity::ai::goal::{Controls, Goal};
-use crate::entity::ai::pathfinder::NavigatorGoal;
 use crate::entity::ai::util::default_random_pos;
 use crate::entity::mob::Mob;
+use crate::entity::mob::raider::is_raider;
+use crate::world::raid::can_join_raid;
 
+/// Vanilla `PathfindToRaidGoal`: a raider outside the village walks towards its raid's centre
+/// and brings the raiders it passes into the raid.
+#[derive(Default)]
 pub struct PathfindToRaidGoal {
-    recruitment_tick: AtomicI32,
-    speed_modifier: f64,
-}
-
-impl Default for PathfindToRaidGoal {
-    fn default() -> Self {
-        Self::new(1.0)
-    }
+    recruitment_tick: i32,
 }
 
 impl PathfindToRaidGoal {
-    #[must_use]
-    pub const fn new(speed_modifier: f64) -> Self {
-        Self {
-            recruitment_tick: AtomicI32::new(0),
-            speed_modifier,
-        }
-    }
-}
+    const RECRUITMENT_SEARCH_TICK_DELAY: i32 = 20;
+    const RECRUITMENT_RANGE: f64 = 16.0;
+    const SPEED_MODIFIER: f64 = 1.0;
 
-impl PathfindToRaidGoal {
-    /// An active raid that is still running, with the raider outside a village.
-    fn raid_is_calling(mob: &dyn Mob) -> bool {
-        let Some(raider) = mob.as_raider() else {
-            return false;
-        };
-        if !raider.has_active_raid() {
-            return false;
-        }
-        let Some(raid_id) = raider.get_raider_data().raid_id.load() else {
-            return false;
-        };
-
-        let pos = mob.get_entity().block_pos.load();
+    /// The raid's centre while the raider is in an unfinished raid and outside a village.
+    fn raid_center_calling(mob: &dyn Mob) -> Option<(i32, Vector3<f64>)> {
+        let raid_id = mob.as_raider()?.get_raider_data().raid_id.load()?;
         let world = mob.get_entity().world.load();
-        {
+        let center = {
             let raids = world
                 .raids
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let Some(raid) = raids.get(raid_id) else {
-                return false;
-            };
+            let raid = raids.get(raid_id).filter(|raid| raid.is_active())?;
             if raid.is_over() {
-                return false;
+                return None;
+            }
+            raid.center
+        };
+        (!world.is_village(&mob.get_entity().block_pos.load())).then(|| {
+            (
+                raid_id,
+                Vector3::new(
+                    f64::from(center.0.x) + 0.5,
+                    f64::from(center.0.y),
+                    f64::from(center.0.z) + 0.5,
+                ),
+            )
+        })
+    }
+
+    /// Vanilla `recruitNearby`: raiders within 16 blocks that may join raids join this one.
+    fn recruit_nearby(mob: &dyn Mob, raid_id: i32) {
+        let entity = mob.get_entity();
+        let world = entity.world.load_full();
+        let area = entity.bounding_box.load().expand(
+            Self::RECRUITMENT_RANGE,
+            Self::RECRUITMENT_RANGE,
+            Self::RECRUITMENT_RANGE,
+        );
+        let candidates = world.get_entities_of_types_at_box(&area, is_raider);
+        let mut raids = world
+            .raids
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(raid) = raids.get_mut(raid_id).filter(|raid| raid.is_active()) else {
+            return;
+        };
+        for candidate in candidates {
+            if let Some(raider) = candidate.get_mob().and_then(|mob| mob.as_raider())
+                && !raider.has_active_raid()
+                && can_join_raid(raider)
+            {
+                raid.recruit(&world, raid.get_groups_spawned(), raider);
             }
         }
-
-        !world.is_village(&pos)
     }
 }
 
 impl Goal for PathfindToRaidGoal {
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         mob.get_mob_entity().get_target().is_none()
-            && !mob.get_entity().has_passengers()
-            && Self::raid_is_calling(mob)
+            && mob.get_controlling_passenger().is_none()
+            && Self::raid_center_calling(mob).is_some()
     }
 
     fn should_continue(&mut self, mob: &dyn Mob) -> bool {
-        // Keep pathing to the raid even once a target appears.
-        Self::raid_is_calling(mob)
+        Self::raid_center_calling(mob).is_some()
     }
 
     fn controls(&self) -> Controls {
@@ -77,80 +89,31 @@ impl Goal for PathfindToRaidGoal {
     }
 
     fn tick(&mut self, mob: &dyn Mob) {
-        let Some(raider) = mob.as_raider() else {
+        let Some((raid_id, center)) = Self::raid_center_calling(mob) else {
             return;
         };
-
-        let Some(raid_id) = raider.get_raider_data().raid_id.load() else {
-            return;
-        };
-
-        let entity = mob.get_entity();
-        let world = entity.world.load();
-        let current_age = entity.tick_count.load(std::sync::atomic::Ordering::Relaxed);
-
-        let raid_center = {
-            let raids = world
-                .raids
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let Some(raid) = raids.get(raid_id) else {
-                return;
-            };
-            if raid.is_over() {
-                return;
-            }
-            raid.center
-        };
-
-        // Periodic recruitment of nearby raiders
-        let next_recruit = self
-            .recruitment_tick
+        let tick_count = mob
+            .get_entity()
+            .tick_count
             .load(std::sync::atomic::Ordering::Relaxed);
-        if current_age >= next_recruit {
-            self.recruitment_tick
-                .store(current_age + 20, std::sync::atomic::Ordering::Relaxed);
-
-            let bb = entity.bounding_box.load().expand(16.0, 16.0, 16.0);
-            let nearby = world.get_entities_at_box(&bb);
-
-            for cand in nearby {
-                if cand.get_entity().entity_id != entity.entity_id
-                    && let Some(cand_mob) = cand.get_mob()
-                    && let Some(cand_raider) = cand_mob.as_raider()
-                    && !cand_raider.has_active_raid()
-                    && cand_raider.can_join_raid()
-                {
-                    cand_raider.get_raider_data().raid_id.store(Some(raid_id));
-                }
-            }
+        if tick_count > self.recruitment_tick {
+            self.recruitment_tick = tick_count + Self::RECRUITMENT_SEARCH_TICK_DELAY;
+            Self::recruit_nearby(mob, raid_id);
         }
 
-        // Pathfind towards raid center if idle
-        let is_idle = mob.is_navigator_idle();
-
-        if is_idle {
-            let raid_center = Vector3::new(
-                f64::from(raid_center.0.x) + 0.5,
-                f64::from(raid_center.0.y),
-                f64::from(raid_center.0.z) + 0.5,
+        let steered = mob.get_mob_entity().steered();
+        let path_finding = !steered.navigator().is_done();
+        if !path_finding
+            && let Some(dest) =
+                default_random_pos::get_pos_towards(mob, 15, 4, center, std::f64::consts::FRAC_PI_2)
+        {
+            steered.navigator().move_to_coords(
+                dest.x,
+                dest.y,
+                dest.z,
+                Self::SPEED_MODIFIER,
+                &steered.mob_entity().living_entity,
             );
-            if let Some(dest) = default_random_pos::get_pos_towards(
-                mob,
-                15,
-                4,
-                raid_center,
-                std::f64::consts::FRAC_PI_2,
-            ) {
-                mob.get_mob_entity()
-                    .steered()
-                    .navigator()
-                    .set_progress(NavigatorGoal::new(
-                        mob.get_entity().pos.load(),
-                        dest,
-                        self.speed_modifier,
-                    ));
-            }
         }
     }
 }
