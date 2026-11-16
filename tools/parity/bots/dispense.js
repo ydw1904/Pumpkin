@@ -32,12 +32,12 @@ const near = (x, y, z) => Object.values(bot.entities).filter(e => e !== bot.enti
 let lane = 0
 const fire = async (key, items, opts = {}) => {
   const block = opts.dropper ? 'dropper' : 'dispenser'
-  // Lanes on a 5 x 7 grid, four blocks apart in x and three in z.
+  // Lanes on a grid five wide, four blocks apart in x and three in z, eight rows deep.
   const x = X - 9 + 4 * (lane % 5); const y = Y + 1; const z = Z - 9 + 3 * Math.floor(lane / 5)
   lane++
   h.cmd(`kill @e[type=!player,distance=..40,x=${X},y=${Y},z=${Z}]`)
   if (opts.below) await place(x + 1, y - 1, z, opts.below)
-  if (opts.front) await place(x + 1, y, z, opts.front)
+  if (opts.front && !opts.frontLast) await place(x + 1, y, z, opts.front)
   if (opts.target) await place(x + 2, y, z, opts.target)
   // A mob in front, for shears; NoAI keeps it on its block.
   if (opts.mob) {
@@ -50,6 +50,9 @@ const fire = async (key, items, opts = {}) => {
   await place(x, y, z, `${block}[facing=${opts.facing || 'east'}]`)
   items.forEach((it, i) => h.cmd(`item replace block ${x} ${y} ${z} container.${i} with ${it[0]}${it[2] ? `[${it[2]}]` : ''} ${it[1]}`))
   await h.ticks(2)
+  // Water placed long before the pulse spreads two rings, and those refill the taken source on
+  // both servers; placed just before, it can only drain.
+  if (opts.frontLast) await place(x + 1, y, z, opts.front)
   await place(x - 1, y, z, 'redstone_block')
   await h.ticks(opts.wait || 10)
   const front = h.block(x + 1, y, z)
@@ -58,19 +61,23 @@ const fire = async (key, items, opts = {}) => {
   // entity kind once and the drops as one `item`.
   const entities = opts.kinds ? [...new Set(near(x + 1, y, z).split(',').map(n => (n.startsWith('item:') ? 'item' : n)))].join(',') : near(x + 1, y, z)
   const seen = `front=${front ? front.name : 'unloaded'}` + (opts.projectile ? '' : ` entities=${entities}`)
-  // Clear placed fluids and fire before they reach other lanes.
+  // Clear placed fluids and fire before they reach other lanes. A projectile can land anywhere
+  // down its row (a fire charge can set fire a dozen blocks out), so it goes first and the whole
+  // row ahead is cleared.
+  if (opts.projectile) h.cmd(`kill @e[type=!player,distance=..40,x=${X},y=${Y},z=${Z}]`)
+  const clearTo = opts.projectile ? X + 15 : x + 3
   if (!opts.keepFront) {
-    h.cmd(`fill ${x + 1} ${y} ${z - 1} ${x + 3} ${y + 1} ${z + 1} air`)
-    h.cmd(`fill ${x + 1} ${Y} ${z - 1} ${x + 3} ${Y} ${z + 1} stone`)
+    h.cmd(`fill ${x + 1} ${y} ${z - 1} ${clearTo} ${y + 1} ${z + 1} air`)
+    h.cmd(`fill ${x + 1} ${Y} ${z - 1} ${clearTo} ${Y} ${z + 1} stone`)
   }
   h.result(key, `left=${await contents(x, y, z)} ${seen}`)
   return { x, y, z }
 }
 
 // What a dispenser, dropper or crafter throws out can be picked up at once. Runs before the lanes,
-// on the arena's last row, which they leave free.
+// on a row behind the lanes.
 async function ejectPickup () {
-  const y = Y + 1; const z = Z + 11
+  const y = Y + 1; const z = Z + 14
   for (const [i, block, item, gives] of [[0, 'dispenser[facing=east]', 'cobblestone', 'cobblestone'],
     [1, 'dropper[facing=east]', 'cobblestone', 'cobblestone'], [2, 'crafter[orientation=east_up]', 'oak_log', 'oak_planks']]) {
     await h.clear()
@@ -94,7 +101,7 @@ async function ejectPickup () {
 }
 
 h.start(async () => {
-  await h.arena(X, Y, Z, 12)
+  await h.arena(X, Y, Z, 15)
   h.cmd(`effect give ${bot.username} resistance infinite 255 true`)
   await ejectPickup()
   h.cmd(`tp ${bot.username} ${X + 11} ${Y + 1} ${Z + 11}`)
@@ -107,7 +114,7 @@ h.start(async () => {
   h.result('dropper_into_chest.chest', await contents(d.x + 1, d.y, d.z))
   await fire('water_bucket', [['water_bucket', 1]])
   await fire('lava_bucket', [['lava_bucket', 1]])
-  await fire('empty_bucket_water', [['bucket', 2]], { front: 'water' })
+  await fire('empty_bucket_water', [['bucket', 2]], { front: 'water', frontLast: true })
   await fire('empty_bucket_air', [['bucket', 2]])
   await fire('powder_snow_bucket', [['powder_snow_bucket', 1]])
   await fire('shulker_box', [['shulker_box', 1]])
@@ -141,7 +148,7 @@ h.start(async () => {
 
   // Armor goes onto a player standing in front.
   await h.clear()
-  const x = X - 11; const y = Y + 1; const z = Z + 11
+  const x = X - 11; const y = Y + 1; const z = Z + 14
   h.cmd(`tp ${bot.username} ${x + 1.5} ${y} ${z + 0.5}`)
   await h.waitFor(() => bot.entity.position.distanceTo(new h.Vec3(x + 1.5, y, z + 0.5)) < 0.5, 5000)
   await h.ticks(10)
