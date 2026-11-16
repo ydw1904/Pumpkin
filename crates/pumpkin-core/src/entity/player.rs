@@ -3558,6 +3558,15 @@ impl Player {
             if sleeping_since < 101 {
                 self.sleeping_since.store(Some(sleeping_since + 1));
             }
+            // Vanilla `Player.tick`: a sleeper is woken once the bed rule no longer allows
+            // sleeping, such as at daybreak when too few players slept to skip the night.
+            let world = self.world();
+            let in_block = world.get_block(&self.living_entity.entity.block_pos.load());
+            if (in_block.has_tag(&tag::Block::MINECRAFT_BEDS) || in_block == &Block::STRAW_BED)
+                && !world.dimension.bed_rule.can_sleep(world.is_dark_outside())
+            {
+                self.wake_up();
+            }
         } else {
             let timer = self.wake_sleep_timer.load(Ordering::Relaxed);
             if timer > 0 {
