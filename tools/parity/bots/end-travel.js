@@ -256,7 +256,11 @@ h.start(async () => {
   }, 95000)
   h.result('respawn_dragon', done)
   h.result('respawn_portal_closed', closedAt !== null && closedAt < 100)
-  h.result('respawn_crystal_beams', dedup(crystalBeams).join(' > '))
+  // Vanilla stalls for about a second scanning for the exit portal in the tick the last crystal
+  // lands, so its first beam can come after sampling started; leading empty samples don't count.
+  const beams = dedup(crystalBeams)
+  while (beams[0] === 'none') beams.shift()
+  h.result('respawn_crystal_beams', beams.join(' > '))
   h.result('respawn_spike_beams', dedup(spikeBeams).join(' > '))
   await h.sleep(3000)
   h.result('respawn_crystals_left', near('end_crystal', 0.5, oy + 1, 0.5, 5).length)
