@@ -1,11 +1,14 @@
 use std::any::Any;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicU8, Ordering};
 
 use crate::crafting::recipe_provider::{RecipeProvider, recipe_property_set};
 use crate::player::player_inventory::PlayerInventory;
-use crate::screen_handler::{InventoryPlayer, ScreenHandler, ScreenHandlerBehaviour};
+use crate::screen_handler::{
+    InventoryPlayer, ScreenHandler, ScreenHandlerBehaviour, ScreenProperty,
+};
 use crate::slot::{NormalSlot, Slot};
+use crate::window_property::PropertyDelegate;
 
 use crate::inventory::Inventory;
 use crate::inventory::SimpleInventory;
@@ -99,11 +102,35 @@ impl Slot for SmithingInputSlot {
     }
 }
 
+/// `SmithingMenu.hasRecipeError`, the menu's only data slot.
+struct RecipeErrorDelegate(Arc<AtomicI32>);
+
+impl PropertyDelegate for RecipeErrorDelegate {
+    fn get_property(&self, index: i32) -> i32 {
+        if index == 0 {
+            self.0.load(Ordering::Relaxed)
+        } else {
+            0
+        }
+    }
+
+    fn set_property(&self, index: i32, value: i32) {
+        if index == 0 {
+            self.0.store(value, Ordering::Relaxed);
+        }
+    }
+
+    fn get_properties_size(&self) -> i32 {
+        1
+    }
+}
+
 pub struct SmithingTableScreenHandler {
     behaviour: ScreenHandlerBehaviour,
     pub input_inventory: Arc<SimpleInventory>,
     pub output_inventory: Arc<SimpleInventory>,
     pub recipe_provider: Option<Arc<dyn RecipeProvider>>,
+    has_recipe_error: Arc<AtomicI32>,
 }
 
 impl SmithingTableScreenHandler {
@@ -115,12 +142,14 @@ impl SmithingTableScreenHandler {
         let behaviour = ScreenHandlerBehaviour::new(sync_id, Some(WindowType::Smithing));
         let input_inventory = Arc::new(SimpleInventory::new(3));
         let output_inventory = Arc::new(SimpleInventory::new(1));
+        let has_recipe_error = Arc::new(AtomicI32::new(0));
 
         let mut handler = Self {
             behaviour,
             input_inventory,
             output_inventory,
             recipe_provider,
+            has_recipe_error: has_recipe_error.clone(),
         };
 
         for role in [
@@ -142,6 +171,10 @@ impl SmithingTableScreenHandler {
 
         let player_inventory: Arc<dyn Inventory> = player_inventory.clone();
         handler.add_player_slots(&player_inventory);
+        handler.add_property(ScreenProperty::new(
+            Arc::new(RecipeErrorDelegate(has_recipe_error)),
+            0,
+        ));
 
         handler
     }
@@ -236,21 +269,30 @@ impl SmithingTableScreenHandler {
         })
     }
 
+    /// `SmithingMenu.createResult`, then `slotsChanged`'s recipe error flag: all three inputs
+    /// filled without a result.
     pub fn update_output(&self) {
+        let result = self.compute_output();
+        let error =
+            (0..3).all(|i| !self.input_inventory.get_stack(i).is_empty()) && result.is_empty();
+        self.has_recipe_error
+            .store(i32::from(error), Ordering::Relaxed);
+        self.output_inventory.set_stack(0, result);
+    }
+
+    fn compute_output(&self) -> ItemStack {
         let template_stack = self.input_inventory.get_stack(0);
         let base_stack = self.input_inventory.get_stack(1);
         let addition_stack = self.input_inventory.get_stack(2);
 
         if template_stack.is_empty() || base_stack.is_empty() || addition_stack.is_empty() {
-            self.output_inventory.set_stack(0, ItemStack::EMPTY.clone());
-            return;
+            return ItemStack::EMPTY.clone();
         }
 
         if let Some(result) =
             self.find_transform_result(&template_stack, &base_stack, &addition_stack)
         {
-            self.output_inventory.set_stack(0, result);
-            return;
+            return result;
         }
 
         if let Some(pattern) = self.find_trim_pattern(&template_stack, &base_stack, &addition_stack)
@@ -267,8 +309,7 @@ impl SmithingTableScreenHandler {
                     _ => "",
                 };
                 if curr_mat == material && curr_pat == pattern {
-                    self.output_inventory.set_stack(0, ItemStack::EMPTY.clone());
-                    return;
+                    return ItemStack::EMPTY.clone();
                 }
             }
 
@@ -278,12 +319,10 @@ impl SmithingTableScreenHandler {
                 material: NbtTag::String(material.to_string().into()),
                 pattern: NbtTag::String(pattern.into()),
             });
-
-            self.output_inventory.set_stack(0, result);
-            return;
+            return result;
         }
 
-        self.output_inventory.set_stack(0, ItemStack::EMPTY.clone());
+        ItemStack::EMPTY.clone()
     }
 }
 
