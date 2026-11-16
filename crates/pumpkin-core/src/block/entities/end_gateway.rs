@@ -359,22 +359,26 @@ impl EndGatewayBlockEntity {
         let chunk_z = (xz_pos.z / 16.0).floor() as i32;
         let chunk_pos = Vector2::new(chunk_x, chunk_z);
         level.level.get_or_fetch_chunk(chunk_pos, |_| ()).await;
+        Self::highest_section_position(level, chunk_x, chunk_z).is_none()
+    }
+
+    /// Vanilla `ChunkAccess.getHighestSectionPosition`: the bottom of the highest section with a
+    /// block other than air, `None` when there is none (vanilla then returns the minimum y).
+    fn highest_section_position(level: &World, chunk_x: i32, chunk_z: i32) -> Option<i32> {
         level
             .level
-            .read_chunk_sync(&chunk_pos, |chunk| {
+            .read_chunk_sync(&Vector2::new(chunk_x, chunk_z), |chunk| {
                 let sections = chunk
                     .section
                     .block_sections
                     .read()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                sections.iter().all(|s| match s {
-                    pumpkin_world::chunk::palette::BlockPalette::Homogeneous(id) => {
-                        pumpkin_data::block_properties::is_air(*id)
-                    }
-                    pumpkin_world::chunk::palette::BlockPalette::Heterogeneous(_) => false,
-                })
+                sections
+                    .iter()
+                    .rposition(|section| section.non_air_block_count() != 0)
+                    .map(|index| chunk.section.min_y + index as i32 * 16)
             })
-            .unwrap_or(true)
+            .flatten()
     }
 
     fn find_tallest_block(
@@ -410,44 +414,34 @@ impl EndGatewayBlockEntity {
         tallest.unwrap_or(around)
     }
 
+    /// Vanilla `findValidSpawnInChunk`. Vanilla keeps the position `BlockPos.betweenClosed` hands
+    /// out, a cursor it moves on afterwards, so any valid spot comes back as the last position
+    /// the scan visits: the chunk's maximum x and z corner at the top of the scanned range.
     fn find_valid_spawn_in_chunk(level: &World, chunk_x: i32, chunk_z: i32) -> Option<BlockPos> {
         let min_x = chunk_x * 16;
         let max_x = min_x + 15;
         let min_z = chunk_z * 16;
         let max_z = min_z + 15;
-        let min_y = 30;
-        let max_y = level.dimension.min_y + level.dimension.height - 1;
+        let highest_section = Self::highest_section_position(level, chunk_x, chunk_z)
+            .unwrap_or(level.dimension.min_y);
+        let top = highest_section + 16 - 1;
+        // `betweenClosed` orders the corners, so a chunk lower than y 30 is scanned upwards.
+        let (min_y, max_y) = (top.min(30), top.max(30));
 
-        let mut closest: Option<BlockPos> = None;
-        let mut closest_dist = 0.0f64;
-
-        // `BlockPos.betweenClosed` order, which decides ties.
-        for z in min_z..=max_z {
-            for y in min_y..=max_y {
-                for x in min_x..=max_x {
-                    let pos = BlockPos::new(x, y, z);
-                    let (block, _state) = level.get_block_and_state(&pos);
-                    if block == &Block::END_STONE {
-                        let above = BlockPos::new(x, y + 1, z);
-                        let above2 = BlockPos::new(x, y + 2, z);
-                        let above_state = level.get_block_state(&above);
-                        let above2_state = level.get_block_state(&above2);
-                        if !above_state.is_full_cube() && !above2_state.is_full_cube() {
-                            // Vanilla `distToCenterSqr(0, 0, 0)`.
-                            let dist = (f64::from(x) + 0.5).powi(2)
-                                + (f64::from(y) + 0.5).powi(2)
-                                + (f64::from(z) + 0.5).powi(2);
-                            if closest.is_none() || dist < closest_dist {
-                                closest = Some(pos);
-                                closest_dist = dist;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        closest
+        let found = (min_z..=max_z).any(|z| {
+            (min_y..=max_y).any(|y| {
+                (min_x..=max_x).any(|x| {
+                    level.get_block(&BlockPos::new(x, y, z)) == &Block::END_STONE
+                        && !level
+                            .get_block_state(&BlockPos::new(x, y + 1, z))
+                            .is_full_cube()
+                        && !level
+                            .get_block_state(&BlockPos::new(x, y + 2, z))
+                            .is_full_cube()
+                })
+            })
+        });
+        found.then(|| BlockPos::new(max_x, max_y, max_z))
     }
 
     fn spawn_end_island(world: &Arc<World>, pos: BlockPos) {
