@@ -369,6 +369,8 @@ impl FishingBobberEntity {
     pub fn process_tick(&self, caller: &dyn EntityBase) {
         let entity = self.get_entity();
         let world = entity.world.load();
+        // Vanilla `FishingHook.tick` runs `Projectile.tick` first.
+        self.owner.emit_shoot(caller);
 
         // Vanilla `FishingBobberEntity.tick`: drop the hook once the owner stops fishing.
         let Some(owner) = world.get_entity_by_id(self.owner_id) else {
