@@ -1,8 +1,8 @@
-use pumpkin_util::random::gameplay::{GameRandom, game_random};
 use std::sync::Arc;
 use std::sync::Mutex;
 
 use crate::block::blocks::redstone::block_receives_redstone_power;
+use crate::block::blocks::redstone::dispenser::{DEFAULT_ACCURACY, spawn_item};
 use crate::block::entities::crafter::CrafterBlockEntity;
 use crate::block::entities::hopper::{HopperBlockEntity, container_at};
 use crate::block::registry::BlockActionResult;
@@ -10,11 +10,8 @@ use crate::block::{
     BlockBehaviour, GetComparatorOutputArgs, GetScreenHandlerFactoryArgs, NormalUseArgs,
     OnNeighborUpdateArgs, OnPlaceArgs, OnScheduledTickArgs, PlacedArgs,
 };
-use crate::entity::Entity;
-use crate::entity::item::ItemEntity;
 use crate::world::World;
 use pumpkin_data::block_properties::{CrafterLikeProperties, HorizontalFacing, Orientation};
-use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::{ItemStack, crafting_remainder};
 use pumpkin_data::translation;
@@ -56,10 +53,6 @@ impl ScreenHandlerFactory for CrafterScreenFactory {
             translation::bedrock::CONTAINER_CRAFTER
         )
     }
-}
-
-fn triangle(rng: GameRandom, min: f64, max: f64) -> f64 {
-    (rng.random::<f64>() - rng.random::<f64>()).mul_add(max, min)
 }
 
 const fn orientation_to_front(orientation: Orientation) -> BlockDirection {
@@ -227,25 +220,16 @@ impl CrafterBlock {
 
         if !stack.is_empty() {
             let drop_stack = stack.split(stack.item_count);
-            let facing_normal = to_normal_direction(direction);
-            let mut spawn_pos = pos.to_centered_f64().add(&(facing_normal * 0.7));
-            spawn_pos.y -= match direction {
-                BlockDirection::Up | BlockDirection::Down => 0.125,
-                _ => 0.15625,
-            };
-
-            let entity = Entity::new(world.clone(), spawn_pos, &EntityType::ITEM);
-            let rd = game_random().random::<f64>().mul_add(0.1, 0.2);
-            let velocity = Vector3::new(
-                triangle(game_random(), facing_normal.x * rd, 0.017_227_5 * 6.),
-                triangle(game_random(), 0.2, 0.017_227_5 * 6.),
-                triangle(game_random(), facing_normal.z * rd, 0.017_227_5 * 6.),
+            let spawn_pos = pos
+                .to_centered_f64()
+                .add(&(to_normal_direction(direction) * 0.7));
+            spawn_item(
+                world,
+                drop_stack,
+                DEFAULT_ACCURACY,
+                direction.to_facing(),
+                spawn_pos,
             );
-
-            let item_entity = Arc::new(ItemEntity::new_with_velocity(
-                entity, drop_stack, velocity, 40,
-            ));
-            world.spawn_entity(item_entity);
 
             world.sync_world_event(WorldEvent::SoundCrafterCraft, *pos, 0);
             world.sync_world_event(

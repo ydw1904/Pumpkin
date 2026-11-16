@@ -1,21 +1,19 @@
-use pumpkin_util::random::gameplay::{GameRandom, game_random};
 use std::sync::Arc;
 use std::sync::Mutex;
 
 use crate::block::blocks::redstone::block_receives_redstone_power;
+use crate::block::blocks::redstone::dispenser::{DEFAULT_ACCURACY, spawn_item};
 use crate::block::registry::BlockActionResult;
 use crate::block::{
     BlockBehaviour, GetComparatorOutputArgs, GetScreenHandlerFactoryArgs, NormalUseArgs,
     OnNeighborUpdateArgs, OnPlaceArgs, OnScheduledTickArgs, PlacedArgs,
 };
-use crate::entity::item::ItemEntity;
-use crate::entity::{Entity, EntityBase};
 
 use crate::block::entities::dropper::DropperBlockEntity;
 use crate::block::entities::hopper::{HopperBlockEntity, container_at};
+use crate::entity::EntityBase;
 use pumpkin_data::BlockStateId;
 use pumpkin_data::block_properties::Facing;
-use pumpkin_data::entity::EntityType;
 use pumpkin_data::world::WorldEvent;
 use pumpkin_data::{FacingExt, translation};
 use pumpkin_inventory::Inventory;
@@ -57,10 +55,6 @@ impl ScreenHandlerFactory for DropperScreenFactory {
 pub struct DropperBlock;
 
 type DispenserLikeProperties = pumpkin_data::block_properties::DispenserLikeProperties;
-
-fn triangle(rng: GameRandom, min: f64, max: f64) -> f64 {
-    (rng.random::<f64>() - rng.random::<f64>()).mul_add(max, min)
-}
 
 const fn to_normal(facing: Facing) -> Vector3<f64> {
     match facing {
@@ -188,27 +182,11 @@ impl BlockBehaviour for DropperBlock {
                 // No container found, dispense item into the world
                 let drop_item = item.split(1);
                 dropper.set_stack(slot_index, item);
-                let facing = to_normal(props.facing);
-                let mut pos = args.position.to_centered_f64().add(&(facing * 0.7));
-
-                pos.y -= match props.facing {
-                    Facing::Up | Facing::Down => 0.125,
-                    _ => 0.15625,
-                };
-
-                let entity = Entity::new(args.world.clone(), pos, &EntityType::ITEM);
-                let rd = game_random().random::<f64>().mul_add(0.1, 0.2);
-
-                let velocity = Vector3::new(
-                    triangle(game_random(), facing.x * rd, 0.017_227_5 * 6.),
-                    triangle(game_random(), 0.2, 0.017_227_5 * 6.),
-                    triangle(game_random(), facing.z * rd, 0.017_227_5 * 6.),
-                );
-
-                let item_entity = Arc::new(ItemEntity::new_with_velocity(
-                    entity, drop_item, velocity, 40,
-                ));
-                args.world.spawn_entity(item_entity);
+                let pos = args
+                    .position
+                    .to_centered_f64()
+                    .add(&(to_normal(props.facing) * 0.7));
+                spawn_item(args.world, drop_item, DEFAULT_ACCURACY, props.facing, pos);
 
                 args.world
                     .sync_world_event(WorldEvent::SoundDispenserDispense, *args.position, 0);

@@ -67,9 +67,36 @@ const fire = async (key, items, opts = {}) => {
   return { x, y, z }
 }
 
+// What a dispenser, dropper or crafter throws out can be picked up at once. Runs before the lanes,
+// on the arena's last row, which they leave free.
+async function ejectPickup () {
+  const y = Y + 1; const z = Z + 11
+  for (const [i, block, item, gives] of [[0, 'dispenser[facing=east]', 'cobblestone', 'cobblestone'],
+    [1, 'dropper[facing=east]', 'cobblestone', 'cobblestone'], [2, 'crafter[orientation=east_up]', 'oak_log', 'oak_planks']]) {
+    await h.clear()
+    const px = X - 7 + 4 * i
+    h.cmd(`tp ${bot.username} ${px + 1.5} ${y} ${z + 0.5}`)
+    await h.waitFor(() => bot.entity.position.distanceTo(new h.Vec3(px + 1.5, y, z + 0.5)) < 0.5, 5000)
+    await h.ticks(10)
+    await place(px, y, z, block)
+    h.cmd(`item replace block ${px} ${y} ${z} container.0 with ${item}`)
+    await h.ticks(2)
+    await place(px - 1, y, z, 'redstone_block')
+    // Both fire 4 ticks after the pulse; 40 ticks of pickup delay would still be running.
+    await h.ticks(15)
+    h.result(`eject_pickup.${block.split('[')[0]}`, h.inv()[gives] || 0)
+    // An item still lying there would be picked up during the next lane.
+    h.cmd(`kill @e[type=item,distance=..40,x=${X},y=${Y},z=${Z}]`)
+    await place(px - 1, y, z, 'air')
+    await place(px, y, z, 'air')
+  }
+  await h.clear()
+}
+
 h.start(async () => {
   await h.arena(X, Y, Z, 12)
   h.cmd(`effect give ${bot.username} resistance infinite 255 true`)
+  await ejectPickup()
   h.cmd(`tp ${bot.username} ${X + 11} ${Y + 1} ${Z + 11}`)
   await h.ticks(10)
 

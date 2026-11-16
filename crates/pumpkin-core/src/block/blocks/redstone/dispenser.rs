@@ -116,6 +116,9 @@ struct DispenseContext<'a> {
     facing: Facing,
 }
 
+/// Vanilla `DefaultDispenseItemBehavior.DEFAULT_ACCURACY`.
+pub const DEFAULT_ACCURACY: i32 = 6;
+
 fn triangle(rng: GameRandom, min: f64, max: f64) -> f64 {
     (rng.random::<f64>() - rng.random::<f64>()).mul_add(max, min)
 }
@@ -1395,24 +1398,10 @@ impl DispenserBlock {
     }
 
     fn eject_item(ctx: &DispenseContext<'_>, stack: ItemStack) {
-        let facing = to_normal(ctx.facing);
-        let mut position = ctx.position.to_centered_f64().add(&(facing * 0.7));
-
-        position.y -= match ctx.facing {
-            Facing::Up | Facing::Down => 0.125,
-            _ => 0.15625,
-        };
-
-        let entity = Entity::new(ctx.world.clone(), position, &EntityType::ITEM);
-        let rd = game_random().random::<f64>().mul_add(0.1, 0.2);
-
-        let velocity = Vector3::new(
-            triangle(game_random(), facing.x * rd, 0.017_227_5 * 6.),
-            triangle(game_random(), 0.2, 0.017_227_5 * 6.),
-            triangle(game_random(), facing.z * rd, 0.017_227_5 * 6.),
-        );
-
-        let item_entity = Arc::new(ItemEntity::new_with_velocity(entity, stack, velocity, 40));
-        ctx.world.spawn_entity(item_entity);
+        let position = ctx
+            .position
+            .to_centered_f64()
+            .add(&(to_normal(ctx.facing) * 0.7));
+        spawn_item(ctx.world, stack, DEFAULT_ACCURACY, ctx.facing, position);
     }
 }
