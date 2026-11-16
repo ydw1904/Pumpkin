@@ -230,8 +230,17 @@ impl BlockEntity for MobSpawnerBlockEntity {
                     crate::entity::mob::spawn::EntitySpawnReason::Spawner,
                     None,
                 );
-                world.spawn_entity(entity);
+                let spawned_at = BlockPos::floored_v(entity.get_entity().pos.load());
+                world.spawn_entity(entity.clone());
                 world.sync_world_event(WorldEvent::ParticlesMobblockSpawn, self.position, 0);
+                world.emit_game_event_with_context(
+                    pumpkin_data::game_event::GameEvent::EntityPlace.name(),
+                    spawned_at.to_centered_f64(),
+                    &crate::world::game_event::GameEventContext {
+                        source_entity: Some(entity.as_ref()),
+                        affected_state: None,
+                    },
+                );
                 spawned_any = true;
             }
             if spawned_any || cancelled_any {

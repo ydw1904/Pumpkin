@@ -1210,7 +1210,7 @@ impl TrialSpawner {
                 None,
             );
         }
-        world.spawn_entity(entity);
+        world.spawn_entity(entity.clone());
 
         let flame_data = i32::from(self.is_ominous);
         world.sync_world_event(
@@ -1223,6 +1223,14 @@ impl TrialSpawner {
             WorldEvent::ParticlesTrialSpawnerSpawnMobAt,
             spawn_block_pos,
             flame_data,
+        );
+        world.emit_game_event_with_context(
+            pumpkin_data::game_event::GameEvent::EntityPlace.name(),
+            spawn_block_pos.to_centered_f64(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: Some(entity.as_ref()),
+                affected_state: None,
+            },
         );
 
         Some(entity_uuid)
