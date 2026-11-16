@@ -7,6 +7,7 @@ use pumpkin_data::dimension::Dimension;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector2::Vector2;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_world::chunk::ChunkHeightmapType;
 use pumpkin_world::world::BlockFlags;
 
 use super::World;
@@ -217,15 +218,50 @@ impl PortalType {
                                     )
                                     .await;
                             }
+
+                            // Vanilla `TeleportTransition.createDefault`: a safe spot around the
+                            // world spawn, facing the spawn angle.
+                            let (spawn_x, spawn_y, spawn_z, yaw, pitch) = {
+                                let info = dest_world.level_info.load();
+                                (
+                                    info.spawn_x,
+                                    info.spawn_y,
+                                    info.spawn_z,
+                                    info.spawn_yaw,
+                                    info.spawn_pitch,
+                                )
+                            };
+                            let position = dest_world
+                                .get_safe_player_spawn_position(spawn_x, spawn_z, spawn_y)
+                                .await;
+                            return Some(TeleportTransition {
+                                new_world: dest_world,
+                                position,
+                                yaw: Some(yaw),
+                                pitch: Some(pitch),
+                            });
                         }
 
-                        let info = dest_world.level_info.load();
+                        // Vanilla `Entity.adjustSpawnLocation`: on top of the world spawn column.
+                        let (spawn_x, spawn_z) = {
+                            let info = dest_world.level_info.load();
+                            (info.spawn_x, info.spawn_z)
+                        };
+                        dest_world
+                            .level
+                            .get_or_fetch_chunk(Vector2::new(spawn_x >> 4, spawn_z >> 4), |_| ())
+                            .await;
+                        let spawn_y = dest_world.get_heightmap_height(
+                            ChunkHeightmapType::MotionBlockingNoLeaves,
+                            spawn_x,
+                            spawn_z,
+                        ) + 1;
                         Some(TeleportTransition {
                             new_world: dest_world,
                             position: Vector3::new(
-                                f64::from(info.spawn_x) + 0.5,
-                                f64::from(info.spawn_y),
-                                f64::from(info.spawn_z) + 0.5,
+                                f64::from(spawn_x) + 0.5,
+                                f64::from(spawn_y),
+                                f64::from(spawn_z) + 0.5,
                             ),
                             yaw: None,
                             pitch: None,
