@@ -3649,6 +3649,12 @@ impl Player {
             }
         }
 
+        if !self.living_entity.entity.is_submerged_in_water()
+            && self.is_equipped(&pumpkin_data::item::Item::TURTLE_HELMET)
+        {
+            self.turtle_helmet_tick();
+        }
+
         self.hunger_manager.tick(self);
 
         self.tick_fall_flying();
@@ -3772,6 +3778,37 @@ impl Player {
         } else {
             self.add_exhaustion(0.05);
         }
+    }
+
+    /// Vanilla `Player.isEquipped`: the item sits in a slot its `equippable` component names.
+    fn is_equipped(&self, item: &pumpkin_data::item::Item) -> bool {
+        std::iter::once(EquipmentSlot::MAIN_HAND)
+            .chain(self.inventory.equipment_slots.values().cloned())
+            .any(|slot| {
+                self.inventory
+                    .equipment_slot_index(&slot)
+                    .is_some_and(|index| {
+                        let stack = self.inventory.get_slot(index);
+                        stack.item == item
+                            && stack
+                                .get_data_component::<EquippableImpl>()
+                                .is_some_and(|equippable| equippable.slot == &slot)
+                    })
+            })
+    }
+
+    /// Vanilla `Player.turtleHelmetTick`: ten seconds of water breathing, renewed every tick
+    /// out of the water.
+    fn turtle_helmet_tick(&self) {
+        self.living_entity.add_effect(Effect {
+            effect_type: &StatusEffect::WATER_BREATHING,
+            duration: 200,
+            amplifier: 0,
+            ambient: false,
+            show_particles: false,
+            show_icon: true,
+            blend: false,
+        });
     }
 
     /// Equipment slots with a glider that can still take damage, vanilla `canGlideUsing`
