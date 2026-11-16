@@ -336,16 +336,23 @@ impl EntityBase for ExperienceOrbEntity {
         {
             links.push(player.entity_id());
         }
+        let motion = (
+            velocity.x.hypot(velocity.z) + fluid_push + steer,
+            velocity.y.abs()
+                + self.get_gravity()
+                + SURFACE_UPWARD_ACCELERATION
+                + fluid_push
+                + steer,
+        );
+        // The hit_ground of a landing, wherever the orb ends up.
+        let moved = entity
+            .bounding_box
+            .load()
+            .expand(motion.0, motion.1, motion.0);
+        super::mob::game_event_listener_links(&world, false, &moved, &mut links);
         let mut reach = AuditedReach {
             bounding_box: entity.bounding_box.load(),
-            motion: (
-                velocity.x.hypot(velocity.z) + fluid_push + steer,
-                velocity.y.abs()
-                    + self.get_gravity()
-                    + SURFACE_UPWARD_ACCELERATION
-                    + fluid_push
-                    + steer,
-            ),
+            motion,
             entities: Self::ORB_MERGE_DISTANCE,
             players: Self::MAX_FOLLOW_DIST,
             typed_entities: Vec::new(),

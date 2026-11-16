@@ -1772,6 +1772,8 @@ pub struct Entity {
     pub vertical_collision: AtomicBool,
     /// Indicates whether the entity is on the ground (may not always be accurate).
     pub on_ground: AtomicBool,
+    /// Vanilla `fallDistance` for entities without a `LivingEntity`, which keeps its own.
+    pub fall_distance: AtomicCell<f64>,
     /// Indicates whether the entity is touching water
     pub touching_water: AtomicBool,
     /// Indicates the fluid height
@@ -2087,6 +2089,7 @@ impl Entity {
             entity_uuid,
             entity_type,
             on_ground: AtomicBool::new(false),
+            fall_distance: AtomicCell::new(0.0),
             touching_water: AtomicBool::new(false),
             water_height: AtomicCell::new(0.0),
             touching_lava: AtomicBool::new(false),
@@ -3948,6 +3951,10 @@ impl Entity {
         if let Some(living) = caller.get_living_entity() {
             let on_ground = self.on_ground.load(Ordering::SeqCst);
             living.fall(caller, movement.y, on_ground);
+        } else if self.entity_type != &EntityType::FALLING_BLOCK && self.entity_type.boat.is_none()
+        {
+            // Falling blocks check their own landing and boats override it without the event.
+            self.check_fall_damage(caller, movement.y);
         }
 
         let (effect_pos, effect_block, effect_state) = self.get_block_with_y_offset(0.2);
@@ -4317,6 +4324,25 @@ impl Entity {
             caller.play_entity_sound(sound, speed, pitch);
         }
         self.emit_own_game_event(caller, GameEvent::Splash);
+    }
+
+    /// Vanilla `Entity.checkFallDamage` for entities without a `LivingEntity`, whose base
+    /// `causeFallDamage` does nothing.
+    fn check_fall_damage(&self, caller: &dyn EntityBase, moved_y: f64) {
+        if self.touching_water.load(Ordering::Relaxed) {
+            // Vanilla `updateInWaterStateAndDoFluidPushing` resets it in water.
+            self.fall_distance.store(0.0);
+        } else if moved_y < 0.0 {
+            self.fall_distance
+                .store(self.fall_distance.load() - moved_y);
+        }
+        if self.on_ground.load(Ordering::Relaxed) && self.fall_distance.swap(0.0) > 0.0 {
+            let supporting = self
+                .world
+                .load()
+                .get_block_state_id(&self.get_pos_with_y_offset(0.2).0);
+            self.emit_hit_ground(caller, supporting);
+        }
     }
 
     /// The `hit_ground` of vanilla `Entity.checkFallDamage` for a landing on `supporting_state`.

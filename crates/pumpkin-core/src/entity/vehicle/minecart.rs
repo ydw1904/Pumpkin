@@ -291,6 +291,7 @@ impl MinecartEntity {
         state_id: BlockStateId,
     ) {
         let entity = &self.vehicle.entity;
+        entity.fall_distance.store(0.0);
         let start = entity.pos.load();
         let old_pos = Self::rail_pos(world, start);
         let mut y = f64::from(pos.0.y);
