@@ -4,7 +4,7 @@
 // falling, splashing, throwing, equipping, riding) read through the comparator, and a catalyst
 // spreading sculk when a mob dies next to it.
 const { make } = require('./survival-lib')
-const h = make('Listener')
+const h = make('Listener', 1200000)
 const { bot, Vec3 } = h
 const X = 7000; const Y = 200; const Z = 0
 // Scenes sit further apart than a calibrated sensor (16 blocks) can hear.
@@ -246,6 +246,70 @@ h.start(async () => {
       await h.serverTicks(RESET_TICKS)
       h.cmd('damage @e[type=pig,limit=1] 1')
     }],
+    ['name_tag', async (x) => {
+      h.cmd(`summon pig ${x - 3 + 0.5} ${Y + 1} ${Z + 0.5} {NoAI:1b,Silent:1b}`)
+      await h.serverTicks(RESET_TICKS)
+      await h.give('name_tag[custom_name="Bob"]', 1)
+      await bot.equip(bot.inventory.items().find(it => it.name === 'name_tag'), 'hand')
+      const pig = Object.values(bot.entities).find(e => e.name === 'pig' && e.position.distanceTo(new Vec3(x - 2.5, Y + 1, Z + 0.5)) < 2)
+      if (pig) await bot.activateEntity(pig)
+      else h.result('name_tag_missing', true)
+    }],
+    ['dye', async (x) => {
+      h.cmd(`summon sheep ${x - 3 + 0.5} ${Y + 1} ${Z + 0.5} {NoAI:1b,Silent:1b}`)
+      await h.serverTicks(RESET_TICKS)
+      await h.give('red_dye', 1)
+      await bot.equip(bot.inventory.items().find(it => it.name === 'red_dye'), 'hand')
+      const sheep = Object.values(bot.entities).find(e => e.name === 'sheep' && e.position.distanceTo(new Vec3(x - 2.5, Y + 1, Z + 0.5)) < 2)
+      if (sheep) await bot.activateEntity(sheep)
+      else h.result('dye_missing', true)
+    }],
+    ['fishing', async (x) => {
+      await h.give('fishing_rod', 1)
+      await bot.equip(bot.inventory.items().find(it => it.name === 'fishing_rod'), 'hand')
+      await bot.lookAt(new Vec3(x - 2.5, Y + 1, Z + 0.5), true)
+      bot.activateItem()
+      await h.ticks(1)
+      bot.deactivateItem()
+    }],
+    ['jukebox', async (x) => {
+      h.cmd(`setblock ${x - 2} ${Y + 1} ${Z} jukebox`)
+      await h.serverTicks(RESET_TICKS)
+      await h.give('music_disc_13', 1)
+      await bot.equip(bot.inventory.items().find(it => it.name === 'music_disc_13'), 'hand')
+      await bot.activateBlock(h.block(x - 2, Y + 1, Z))
+    }],
+    ['campfire_bucket', async (x) => {
+      h.cmd(`setblock ${x - 2} ${Y + 1} ${Z} campfire`)
+      await h.serverTicks(RESET_TICKS)
+      await h.give('water_bucket', 1)
+      await bot.equip(bot.inventory.items().find(it => it.name === 'water_bucket'), 'hand')
+      await bot.lookAt(new Vec3(x - 1.5, Y + 1.4, Z + 0.5), true)
+      bot.activateItem()
+      await h.serverTicks(5)
+      h.result('campfire_bucket_state', JSON.stringify(props(x - 2, Y + 1, Z)))
+    }],
+    ['campfire_potion', async (x) => {
+      h.cmd(`setblock ${x - 2} ${Y + 1} ${Z} campfire`)
+      await h.serverTicks(RESET_TICKS)
+      h.cmd(`summon splash_potion ${x - 1.5} ${Y + 3} ${Z + 0.5} {Item:{id:"minecraft:splash_potion",count:1,components:{"minecraft:potion_contents":{potion:"minecraft:water"}}},Motion:[0.0,-0.5,0.0]}`)
+      await h.serverTicks(10)
+      h.result('campfire_potion_lit', props(x - 2, Y + 1, Z).lit)
+    }],
+    ['dispense_fire', async (x) => {
+      h.cmd(`setblock ${x - 3} ${Y + 1} ${Z} dispenser[facing=east]{Items:[{Slot:0b,id:"minecraft:flint_and_steel",count:1}]}`)
+      await h.serverTicks(RESET_TICKS)
+      h.cmd(`setblock ${x - 4} ${Y + 1} ${Z} redstone_block`)
+      await h.serverTicks(10)
+      h.result('dispense_fire_block', h.blockName(x - 2, Y + 1, Z))
+    }],
+    ['dispense_shulker', async (x) => {
+      h.cmd(`setblock ${x - 3} ${Y + 1} ${Z} dispenser[facing=east]{Items:[{Slot:0b,id:"minecraft:shulker_box",count:1}]}`)
+      await h.serverTicks(RESET_TICKS)
+      h.cmd(`setblock ${x - 4} ${Y + 1} ${Z} redstone_block`)
+      await h.serverTicks(10)
+      h.result('dispense_shulker_block', h.blockName(x - 2, Y + 1, Z))
+    }],
     ['minecart', async (x) => {
       h.cmd(`setblock ${x - 3} ${Y + 1} ${Z} rail`)
       h.cmd(`summon minecart ${x - 3 + 0.5} ${Y + 1} ${Z + 0.5}`)
@@ -294,6 +358,30 @@ h.start(async () => {
     }
   }
   h.result('catalyst_spread', sculk > 0)
+
+  // Stalactites hanging under a waterlogged slab drip into the cauldron below them, and one under
+  // mud dries it to clay. Random ticks run faster so the drip comes within the scene.
+  const firstSignal = (seen) => seen.split('>').find(v => v !== '0' && v !== 'none') || 'none'
+  for (const [i, source] of [[12, 'oak_slab[waterlogged=true]'], [13, 'mud']]) {
+    x = await scene(i + vibrationScenes.length, (sx) => sx - 5, Z - 3)
+    sensorWithComparator(x)
+    h.cmd(`setblock ${x - 3} ${Y + 1} ${Z} cauldron`)
+    h.cmd(`setblock ${x - 3} ${Y + 6} ${Z} ${source}`)
+    h.cmd(`setblock ${x - 3} ${Y + 5} ${Z} stone`)
+    h.cmd(`setblock ${x - 3} ${Y + 4} ${Z} pointed_dripstone[vertical_direction=down,thickness=tip]`)
+    await h.serverTicks(RESET_TICKS)
+    wire = watch(x + 2, Y + 1, Z, 'power')
+    h.cmd('gamerule random_tick_speed 300')
+    const name = source === 'mud' ? 'drip_mud' : 'drip_cauldron'
+    const changed = source === 'mud'
+      ? () => h.blockName(x - 3, Y + 6, Z) === 'clay'
+      : () => h.blockName(x - 3, Y + 1, Z) !== 'cauldron'
+    await h.waitFor(changed, 60000)
+    h.cmd('gamerule random_tick_speed 3')
+    await h.serverTicks(RESET_TICKS)
+    h.result(name, source === 'mud' ? h.blockName(x - 3, Y + 6, Z) : h.blockName(x - 3, Y + 1, Z))
+    h.result(`${name}_vibration`, firstSignal(wire.stop()))
+  }
 
   // A lightning strike seven blocks away, last since it leaves fire behind.
   x = await scene(11 + vibrationScenes.length, (sx) => sx - 5, Z - 3)

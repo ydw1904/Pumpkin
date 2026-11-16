@@ -93,6 +93,38 @@ bot.once('spawn', async () => {
   // An arrow its shooter hurt something with grants "Take Aim", not "A Throwaway Joke".
   result('shoot_arrow_advancement', achieved.has('minecraft:adventure/shoot_arrow'))
   result('throw_trident_advancement', achieved.has('minecraft:adventure/throw_trident'))
+  // A fast arrow passes fire 17 travel steps into its flight: vanilla applies block effects for
+  // only 16 steps a tick, so it flies on unlit.
+  command('weather clear')
+  command('setblock 12 200 12 minecraft:netherrack')
+  command('setblock 12 201 12 minecraft:fire')
+  await sleep(1000)
+  let fastArrowLit = false
+  bot._client.on('entity_metadata', (p) => {
+    const e = bot.entities[p.entityId]
+    if (!e || e.name !== 'arrow' || e.position.z < 2) return
+    for (const m of p.metadata) if (m.key === 0 && (m.value & 1)) fastArrowLit = true
+  })
+  command('summon minecraft:arrow 3.5 201.2 3.5 {Motion:[9.9,0.0,9.9]}')
+  await sleep(2000)
+  result('fast_arrow_lit', fastArrowLit)
+  // An arrow stuck on top of a block falls once the block becomes one without collision, and
+  // stays while the block only changes to another solid one.
+  const arrowAt = (x) => Object.values(bot.entities).find((e) => e.name === 'arrow' && Math.abs(e.position.x - x) < 0.6 && Math.abs(e.position.z + 3.5) < 0.6)
+  const arrowY = (x) => { const e = arrowAt(x); return e ? e.position.y.toFixed(1) : 'none' }
+  for (const x of [8, 10]) {
+    command(`fill ${x - 1} 199 -5 ${x + 1} 199 -3 minecraft:stone`)
+    command(`setblock ${x} 201 -4 minecraft:stone`)
+  }
+  await sleep(1000)
+  for (const x of [8, 10]) command(`summon minecraft:arrow ${x + 0.5} 205 -3.5 {Motion:[0.0,-1.0,0.0]}`)
+  await sleep(2000)
+  result('stuck_arrow_y', arrowY(8.5))
+  command('setblock 8 201 -4 minecraft:dirt')
+  command('setblock 10 201 -4 minecraft:light')
+  await sleep(2000)
+  result('arrow_on_new_block_y', arrowY(8.5))
+  result('arrow_on_light_y', arrowY(10.5))
   bot.quit()
   setTimeout(() => process.exit(0), 1000)
 })
