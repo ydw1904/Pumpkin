@@ -46,7 +46,7 @@ impl ItemBehaviour for BowItem {
         // Start the bow drawing animation
         player
             .living_entity
-            .set_active_hand(hand, stack, Self::USE_DURATION);
+            .set_active_hand(player, hand, stack, Self::USE_DURATION);
     }
 
     fn on_stopped_using(&self, stack: &ItemStack, player: &Player) {

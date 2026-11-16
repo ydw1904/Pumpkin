@@ -56,7 +56,7 @@ impl ItemBehaviour for GoatHornItem {
         let world = player.world();
         let pos = player.position();
 
-        player.living_entity.set_active_hand(hand, stack, duration);
+        player.living_entity.set_active_hand(player, hand, stack, duration);
         world.play_sound_raw(
             instrument.sound() as u16,
             SoundCategory::Records,

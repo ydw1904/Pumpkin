@@ -44,6 +44,7 @@ impl Goal for UseItemGoal {
         let mob_entity = mob.get_mob_entity();
         mob_entity.set_item_slot(&EquipmentSlot::MAIN_HAND, self.item.clone());
         mob_entity.living_entity.set_active_hand(
+            mob,
             Hand::Right,
             self.item.clone(),
             self.item.get_max_use_time(),
@@ -53,7 +54,7 @@ impl Goal for UseItemGoal {
     fn stop(&mut self, mob: &dyn Mob) {
         let mob_entity = mob.get_mob_entity();
         mob_entity.set_item_slot(&EquipmentSlot::MAIN_HAND, ItemStack::EMPTY.clone());
-        mob_entity.living_entity.clear_active_hand();
+        mob_entity.living_entity.clear_active_hand(mob);
         if let Some(sound) = self.finish_sound {
             let pitch = mob.get_random().random::<f32>().mul_add(0.2, 0.9);
             mob.play_entity_sound(sound, 1.0, pitch);

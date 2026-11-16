@@ -25,7 +25,7 @@ impl ItemBehaviour for ShieldItem {
         let stack = player.inventory.get_stack_in_hand(hand);
         player
             .living_entity
-            .set_active_hand(hand, stack, self.get_use_duration());
+            .set_active_hand(player, hand, stack, self.get_use_duration());
     }
 
     fn get_use_duration(&self) -> i32 {

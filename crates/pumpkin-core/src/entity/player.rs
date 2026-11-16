@@ -5435,7 +5435,7 @@ impl Player {
         }
         if !self.get_entity().is_sneaking() {
             if self.living_entity.is_blocking() {
-                self.living_entity.clear_active_hand();
+                self.living_entity.clear_active_hand(self);
             }
             return;
         }
@@ -5458,14 +5458,14 @@ impl Player {
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
                 if current_hand != Some(hand) {
-                    self.living_entity.set_active_hand(hand, stack, 72000);
+                    self.living_entity.set_active_hand(self, hand, stack, 72000);
                 }
             }
             (true, None) => {
-                self.living_entity.clear_active_hand();
+                self.living_entity.clear_active_hand(self);
             }
             (false, Some((hand, stack))) => {
-                self.living_entity.set_active_hand(hand, stack, 72000);
+                self.living_entity.set_active_hand(self, hand, stack, 72000);
             }
             (false, None) => {}
         }
@@ -7909,7 +7909,7 @@ impl Player {
     pub fn stop_using_item(&self) {
         self.using_item.store(false, Ordering::Relaxed);
         self.using_hand.store(None);
-        self.living_entity.clear_active_hand();
+        self.living_entity.clear_active_hand(self);
     }
 
     /// Get the number of ticks the item has been in use

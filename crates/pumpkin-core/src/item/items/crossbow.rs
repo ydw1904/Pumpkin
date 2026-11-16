@@ -48,7 +48,7 @@ impl ItemBehaviour for CrossbowItem {
 
         player
             .living_entity
-            .set_active_hand(hand, stack, Self::USE_DURATION);
+            .set_active_hand(player, hand, stack, Self::USE_DURATION);
     }
 
     fn on_use_tick(&self, _stack: &ItemStack, player: &Player, remaining_use_ticks: i32) {
@@ -134,7 +134,7 @@ impl ItemBehaviour for CrossbowItem {
                 &player.position(),
             );
         }
-        player.living_entity.clear_active_hand();
+        player.living_entity.clear_active_hand(player);
     }
 
     fn get_use_duration(&self) -> i32 {

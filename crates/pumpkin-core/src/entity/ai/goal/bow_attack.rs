@@ -88,7 +88,7 @@ impl BowAttackGoal {
 
     fn stop_drawing(&mut self, mob: &dyn Mob) {
         if self.drawing {
-            mob.get_mob_entity().living_entity.clear_active_hand();
+            mob.get_mob_entity().living_entity.clear_active_hand(mob);
             self.drawing = false;
             self.draw_ticks = 0;
         }
@@ -272,9 +272,12 @@ impl Goal for BowAttackGoal {
             self.attack_time -= 1;
             if self.attack_time <= 0 && self.see_time >= -60 {
                 let stack = Self::main_hand_item(mob);
-                mob.get_mob_entity()
-                    .living_entity
-                    .set_active_hand(Hand::Right, stack, i32::MAX);
+                mob.get_mob_entity().living_entity.set_active_hand(
+                    mob,
+                    Hand::Right,
+                    stack,
+                    i32::MAX,
+                );
                 self.drawing = true;
                 self.draw_ticks = 0;
             }

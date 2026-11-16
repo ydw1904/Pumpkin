@@ -44,7 +44,7 @@ impl ItemBehaviour for BundleItem {
         let stack = player.inventory.get_stack_in_hand(hand);
         player
             .living_entity
-            .set_active_hand(hand, stack, TICKS_MAX_THROW_DURATION);
+            .set_active_hand(player, hand, stack, TICKS_MAX_THROW_DURATION);
     }
 
     // Vanilla `BundleItem.onUseTick`.

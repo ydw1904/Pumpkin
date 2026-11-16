@@ -308,7 +308,7 @@ impl JavaClient {
                         server.item_registry.on_stopped_using(&stack, player);
                     }
 
-                    player.living_entity.clear_active_hand();
+                    player.living_entity.clear_active_hand(player.as_ref());
                 }
                 Status::SwapItem => {
                     player.swap_item();

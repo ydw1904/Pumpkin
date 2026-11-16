@@ -133,6 +133,7 @@ impl ItemBehaviour for BrushItem {
                 &block_center,
             );
             player.living_entity.set_active_hand(
+                player,
                 pumpkin_util::Hand::Right,
                 item.clone(),
                 Self::USE_DURATION,
@@ -216,6 +217,7 @@ impl ItemBehaviour for BrushItem {
         }
 
         player.living_entity.set_active_hand(
+            player,
             pumpkin_util::Hand::Right,
             item.clone(),
             Self::USE_DURATION,

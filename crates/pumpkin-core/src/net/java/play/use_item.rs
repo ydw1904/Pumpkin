@@ -94,15 +94,19 @@ impl JavaClient {
             if let Some(food) = held.get_data_component::<FoodImpl>() {
                 if player.can_eat(food.can_always_eat) {
                     player.living_entity.set_active_hand(
+                        player.as_ref(),
                         hand,
                         held.clone(),
                         held.get_max_use_time(),
                     );
                 }
             } else {
-                player
-                    .living_entity
-                    .set_active_hand(hand, held.clone(), held.get_max_use_time());
+                player.living_entity.set_active_hand(
+                    player.as_ref(),
+                    hand,
+                    held.clone(),
+                    held.get_max_use_time(),
+                );
             }
         }
         let equipment_slot = held

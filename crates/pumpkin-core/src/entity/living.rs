@@ -50,7 +50,8 @@ use pumpkin_data::data_component_impl::Operation;
 use pumpkin_data::data_component_impl::food::{ConsumableImpl, ConsumeAnimation, ConsumeEffect};
 use pumpkin_data::data_component_impl::{
     AttributeModifiersImpl, BlocksAttacksImpl, DeathProtectionImpl, EnchantmentsImpl,
-    EquipmentSlot, EquippableImpl, FoodImpl, KineticWeaponImpl, UseRemainderImpl, WeaponImpl,
+    EquipmentSlot, EquippableImpl, FoodImpl, KineticWeaponImpl, UseEffectsImpl, UseRemainderImpl,
+    WeaponImpl,
 };
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::{EntityPose, EntityStatus, EntityType};
@@ -995,9 +996,20 @@ impl LivingEntity {
         true
     }
 
-    /// Sends the Hand animation to all others, used when Eating for example
-    pub fn set_active_hand(&self, hand: Hand, stack: ItemStack, duration: i32) {
+    /// Vanilla `startUsingItem`: sends the hand animation to all others, used when eating for
+    /// example.
+    pub fn set_active_hand(
+        &self,
+        caller: &dyn EntityBase,
+        hand: Hand,
+        stack: ItemStack,
+        duration: i32,
+    ) {
         let is_blocking = stack.get_data_component::<BlocksAttacksImpl>().is_some();
+        let was_using = self.livings_flags.load(Ordering::Relaxed) & Self::USING_ITEM_FLAG != 0;
+        if !was_using {
+            Self::cause_use_vibration(caller, &stack, GameEvent::ItemInteractStart);
+        }
         self.item_use_time.store(duration, Ordering::Relaxed);
         *self
             .item_in_use
@@ -1015,6 +1027,16 @@ impl LivingEntity {
         self.set_living_flag(Self::OFF_HAND_ACTIVE_FLAG, hand == Hand::Left);
         if is_blocking {
             self.set_bedrock_blocking(true);
+        }
+    }
+
+    /// Vanilla `ItemStack.causeUseVibration`.
+    pub fn cause_use_vibration(caller: &dyn EntityBase, stack: &ItemStack, event: GameEvent) {
+        if stack
+            .get_data_component::<UseEffectsImpl>()
+            .is_some_and(|effects| effects.interact_vibrations)
+        {
+            caller.get_entity().emit_own_game_event(caller, event);
         }
     }
 
@@ -1083,11 +1105,18 @@ impl LivingEntity {
         self.entity.send_bedrock_actor_data(&meta);
     }
 
-    pub fn clear_active_hand(&self) {
-        *self
+    /// Vanilla `stopUsingItem`.
+    pub fn clear_active_hand(&self, caller: &dyn EntityBase) {
+        let used = self
             .item_in_use
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(used) = used
+            && self.livings_flags.load(Ordering::Relaxed) & Self::USING_ITEM_FLAG != 0
+        {
+            Self::cause_use_vibration(caller, &used, GameEvent::ItemInteractFinish);
+        }
         *self
             .active_hand
             .lock()
@@ -1133,7 +1162,7 @@ impl LivingEntity {
         if held.item.id == item.item.id {
             SpearItem::mob_kinetic_attack(caller, &held, remaining_use_ticks);
         } else {
-            self.clear_active_hand();
+            self.clear_active_hand(caller);
         }
     }
 
@@ -1361,7 +1390,7 @@ impl LivingEntity {
             && player.damage_item_in_slot(&EquipmentSlot::from_hand(hand), item_damage)
             && player.inventory.get_stack_in_hand(hand).is_empty()
         {
-            self.clear_active_hand();
+            self.clear_active_hand(caller);
         }
     }
 
@@ -1413,7 +1442,7 @@ impl LivingEntity {
             return;
         }
         player.start_cooldown(blocking_with.cooldown_group(), cooldown_ticks);
-        self.clear_active_hand();
+        self.clear_active_hand(caller);
         if let Some(sound) = &blocks_attacks.disable_sound {
             let pos = self.entity.pos.load();
             let world = self.entity.world.load();
@@ -3978,6 +4007,7 @@ impl LivingEntity {
                     item_id: format!("minecraft:{}", protection_item.item.registry_key),
                 },
             );
+            Self::cause_use_vibration(caller, &protection_item, GameEvent::ItemInteractFinish);
         } else {
             let slot = match hand {
                 Hand::Right => EquipmentSlot::MAIN_HAND,
@@ -5398,6 +5428,16 @@ impl EntityBase for LivingEntity {
                     }
 
                     self.apply_suspicious_stew_effects(item);
+                    if let Some(consumable) = item.get_data_component::<ConsumableImpl>() {
+                        self.entity.emit_own_game_event(
+                            caller,
+                            if consumable.animation == ConsumeAnimation::Drink {
+                                GameEvent::Drink
+                            } else {
+                                GameEvent::Eat
+                            },
+                        );
+                    }
 
                     if let Some(player) = caller.get_player() {
                         // Vanilla `Consumable.onConsume`.
@@ -5477,7 +5517,7 @@ impl EntityBase for LivingEntity {
                     player.start_cooldown(item.cooldown_group(), (cooldown.seconds * 20.0) as i32);
                 }
 
-                self.clear_active_hand();
+                self.clear_active_hand(caller);
             }
         }
 

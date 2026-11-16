@@ -57,7 +57,7 @@ impl TridentItem {
     /// starts its own spin, so the push is only sent to the players watching.
     fn perform_riptide(player: &Player, hand: Hand, riptide_level: u32, strength: f32) {
         if !player.get_entity().is_in_water_or_rain() || player.get_entity().has_vehicle() {
-            player.living_entity.clear_active_hand();
+            player.living_entity.clear_active_hand(player);
             return;
         }
 
@@ -73,7 +73,7 @@ impl TridentItem {
                 };
             server.plugin_manager.fire_blocking(&server, &mut event);
             if event.cancelled {
-                player.living_entity.clear_active_hand();
+                player.living_entity.clear_active_hand(player);
                 return;
             }
         }
@@ -114,7 +114,7 @@ impl TridentItem {
             _ => Sound::ItemTridentRiptide3,
         };
         world.play_sound(sound, SoundCategory::Players, &player.position());
-        player.living_entity.clear_active_hand();
+        player.living_entity.clear_active_hand(player);
     }
 }
 
@@ -139,7 +139,9 @@ impl ItemBehaviour for TridentItem {
             return;
         }
 
-        player.living_entity.set_active_hand(hand, stack, 72000);
+        player
+            .living_entity
+            .set_active_hand(player, hand, stack, 72000);
     }
 
     fn on_stopped_using(&self, _stack: &ItemStack, player: &Player) {
@@ -163,7 +165,7 @@ impl ItemBehaviour for TridentItem {
         let mut stack_guard = player.inventory().get_stack_in_hand(hand);
 
         if Self::next_damage_will_break(&stack_guard) {
-            player.living_entity.clear_active_hand();
+            player.living_entity.clear_active_hand(player);
             return;
         }
 
@@ -221,7 +223,7 @@ impl ItemBehaviour for TridentItem {
             player.sync_hand_slot(slot_index, ItemStack::EMPTY.clone());
         }
 
-        player.living_entity.clear_active_hand();
+        player.living_entity.clear_active_hand(player);
     }
 
     fn can_mine(&self, player: &Player) -> bool {

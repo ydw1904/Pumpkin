@@ -192,7 +192,7 @@ impl RangedCrossbowAttackGoal {
     }
 
     fn stop_charging(mob: &dyn Mob) {
-        mob.get_mob_entity().living_entity.clear_active_hand();
+        mob.get_mob_entity().living_entity.clear_active_hand(mob);
         if let Some(crossbow_mob) = mob.as_crossbow_attack_mob() {
             crossbow_mob.set_charging_crossbow(false);
         }
@@ -311,6 +311,7 @@ impl RangedCrossbowAttackGoal {
                             |eq| eq.get(&EquipmentSlot::MAIN_HAND),
                         );
                     mob.get_mob_entity().living_entity.set_active_hand(
+                        mob,
                         Hand::Right,
                         stack,
                         i32::MAX,

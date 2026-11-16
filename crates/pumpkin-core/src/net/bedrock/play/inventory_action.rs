@@ -24,7 +24,7 @@ impl BedrockClient {
         if player.has_client_loaded() {
             self.last_food_rejection_tick.store(Some(tick));
         }
-        player.living_entity.clear_active_hand();
+        player.living_entity.clear_active_hand(player);
         player.send_health();
     }
 
@@ -347,6 +347,7 @@ impl BedrockClient {
                                     .is_none_or(|food| player.can_eat(food.can_always_eat))
                                 {
                                     player.living_entity.set_active_hand(
+                                        player.as_ref(),
                                         hand,
                                         held.clone(),
                                         held.get_max_use_time(),
@@ -496,7 +497,7 @@ impl BedrockClient {
                     };
                     server.item_registry.on_stopped_using(&stack, player);
                 }
-                player.living_entity.clear_active_hand();
+                player.living_entity.clear_active_hand(player.as_ref());
             }
         }
 

@@ -62,7 +62,7 @@ impl ItemBehaviour for SpearItem {
             .and_then(|weapon| weapon.sound.clone());
         player
             .living_entity
-            .set_active_hand(hand, stack, Self::USE_DURATION);
+            .set_active_hand(player, hand, stack, Self::USE_DURATION);
         if let Some(sound) = sound {
             player.world().play_sound_event_expect(
                 player,
@@ -139,7 +139,7 @@ impl ItemBehaviour for SpearItem {
         };
         let held = player.inventory().get_stack_in_hand(hand);
         if held.item.id != stack.item.id {
-            player.living_entity.clear_active_hand();
+            player.living_entity.clear_active_hand(player);
             return;
         }
         Self::kinetic_attack(&held, player, hand, remaining_use_ticks);

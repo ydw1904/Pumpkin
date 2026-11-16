@@ -693,13 +693,13 @@ impl Goal for DrownedTridentAttackGoal {
         mob_entity.set_attacking(true);
         mob_entity
             .living_entity
-            .set_active_hand(Hand::Right, main_hand_item(mob), i32::MAX);
+            .set_active_hand(mob, Hand::Right, main_hand_item(mob), i32::MAX);
     }
 
     fn stop(&mut self, mob: &dyn Mob) {
         self.ranged_attack.stop(mob);
         let mob_entity = mob.get_mob_entity();
-        mob_entity.living_entity.clear_active_hand();
+        mob_entity.living_entity.clear_active_hand(mob);
         mob_entity.set_attacking(false);
     }
 

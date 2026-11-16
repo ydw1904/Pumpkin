@@ -190,7 +190,7 @@ impl Goal for SpearUseGoal {
         mob_entity.steered().navigator().stop();
         mob_entity.set_attacking(false);
         self.state = None;
-        mob_entity.living_entity.clear_active_hand();
+        mob_entity.living_entity.clear_active_hand(mob);
     }
 
     fn tick(&mut self, mob: &dyn Mob) {
@@ -234,6 +234,7 @@ impl Goal for SpearUseGoal {
             let stack = Self::main_hand_item(mob);
             if !stack.is_empty() && !Self::is_using_item(mob) {
                 mob_entity.living_entity.set_active_hand(
+                    mob,
                     Hand::Right,
                     stack,
                     SpearItem::USE_DURATION,
@@ -242,7 +243,7 @@ impl Goal for SpearUseGoal {
         }
 
         if state.tick_and_check_engagement() {
-            mob_entity.living_entity.clear_active_hand();
+            mob_entity.living_entity.clear_active_hand(mob);
             let distance = target_dist_sq.sqrt();
             state.away_pos = land_random_pos::get_pos_away_between(
                 mob,
