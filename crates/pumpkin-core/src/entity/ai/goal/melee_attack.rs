@@ -229,13 +229,15 @@ impl MeleeAttackGoal {
             } else if dist_sq > 256.0 {
                 self.update_countdown_ticks += 5;
             }
-            // Vanilla `moveTo(target, 0, speed)`: the path ends in the target's own block.
+            // Vanilla `moveTo(target, 0, speed)`: the path ends in the target's own block. When no
+            // path can be made, for example while airborne, the current one is kept.
             let moved = {
                 let steered = mob.get_mob_entity().steered();
                 let living = &steered.mob_entity().living_entity;
                 let mut navigator = steered.navigator();
-                let path = navigator.create_path(living, current_target_pos, 0);
-                navigator.move_to_path(path, self.speed, living)
+                navigator
+                    .create_path(living, current_target_pos, 0)
+                    .is_some_and(|path| navigator.move_to_path(Some(path), self.speed, living))
             };
             if !moved {
                 self.update_countdown_ticks += 15;
