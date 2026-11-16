@@ -291,7 +291,16 @@ impl EntityBase for FireworkRocketEntity {
                         let new_shooter_vel =
                             shooter_vel + (rotation * 0.1 + (rotation * 1.5 - shooter_vel) * 0.5);
 
-                        shooter.set_velocity(new_shooter_vel);
+                        // A Java player's own client boosts itself from its copy of the
+                        // rocket; vanilla's `setDeltaMovement` sends it no motion.
+                        if world
+                            .get_player_by_id(shooter_id)
+                            .is_some_and(|player| player.client.bedrock().is_none())
+                        {
+                            shooter.velocity.store(new_shooter_vel);
+                        } else {
+                            shooter.set_velocity(new_shooter_vel);
+                        }
 
                         entity.set_pos(shooter.pos.load());
                         entity.set_velocity(new_shooter_vel);
