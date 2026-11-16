@@ -337,8 +337,9 @@ impl ScreenHandler for EnchantingTableScreenHandler {
             return false;
         }
 
+        // `Player.onEnchantmentPerformed` takes the levels even in creative.
+        player.add_experience_levels(-(id + 1));
         if !player.is_creative() {
-            player.add_experience_levels(-(id + 1));
             lapis_stack.decrement(lapis_cost);
             self.inventory.set_stack(1, lapis_stack);
         }
