@@ -3,8 +3,7 @@ use std::sync::RwLock;
 use std::sync::atomic::AtomicBool;
 
 use crate::entity::projectile::splash_potion::{
-    extinguish_fire_if_water_potion, hurt_water_sensitive_entities, is_water_potion,
-    rehydrate_axolotls,
+    douse_fire_on_block_hit, hurt_water_sensitive_entities, is_water_potion, rehydrate_axolotls,
 };
 use crate::{
     entity::{Entity, EntityBase, projectile::ThrownItemEntity},
@@ -112,6 +111,7 @@ impl EntityBase for LingeringPotionEntity {
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone();
+        douse_fire_on_block_hit(&world, self, &hit, &stack);
 
         // Play impact particles
         world.send_entity_status(self.get_entity(), EntityStatus::Death, ActorEventID::Death);
@@ -183,7 +183,6 @@ impl EntityBase for LingeringPotionEntity {
         );
 
         // Spawn and configure an `AreaEffectCloud` entity
-        extinguish_fire_if_water_potion(&world, hit_pos, &stack);
 
         if let Some(server) = world.server.upgrade() {
             let mut event = crate::plugin::api::events::entity::lingering_potion_splash::LingeringPotionSplashEvent::new(

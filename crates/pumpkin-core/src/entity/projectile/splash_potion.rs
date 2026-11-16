@@ -2,12 +2,20 @@ use crate::entity::projectile::owner::ProjectileOwner;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock};
 
+use crate::block::blocks::{campfire::CampfireBlock, candles};
+use crate::entity::projectile::ProjectileHit;
 use crate::{
     entity::{Entity, EntityBase, mob::Mob, projectile::ThrownItemEntity},
     server::Server,
 };
+use pumpkin_data::BlockDirection;
+use pumpkin_data::block_properties::{
+    CampfireLikeProperties, CandleCakeProperties, CandleLikeProperties,
+};
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item_stack::ItemStack;
-use pumpkin_data::{Block, BlockId};
+use pumpkin_data::tag::{self, Taggable};
+use pumpkin_data::world::WorldEvent;
 use pumpkin_protocol::java::client::play::CWorldEvent;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::math::{boundingbox::BoundingBox, vector2::Vector2};
@@ -63,39 +71,78 @@ pub(crate) fn is_water_potion(stack: &ItemStack) -> bool {
         == Some(pumpkin_data::potion::Potion::WATER.id as i32)
 }
 
-/// Extinguishes fire (including soul fire) at the hit position and its four horizontal neighbors.
-fn extinguish_fire(world: &Arc<crate::world::World>, hit_pos: Vector3<f64>) {
-    let air_state_id = Block::AIR.default_state.id;
-
-    let neighbors = [
-        hit_pos,
-        Vector3::new(hit_pos.x + 1.0, hit_pos.y, hit_pos.z),
-        Vector3::new(hit_pos.x - 1.0, hit_pos.y, hit_pos.z),
-        Vector3::new(hit_pos.x, hit_pos.y, hit_pos.z + 1.0),
-        Vector3::new(hit_pos.x, hit_pos.y, hit_pos.z - 1.0),
-    ];
-
-    for p in neighbors {
-        let pos = BlockPos(Vector3::new(
-            p.x.floor() as i32,
-            p.y.floor() as i32,
-            p.z.floor() as i32,
-        ));
-        let state_id = world.get_block_state_id(&pos);
-        let raw_block_id = state_id.to_block_id();
-        if raw_block_id == BlockId::FIRE || raw_block_id == BlockId::SOUL_FIRE {
-            world.set_block_state(&pos, air_state_id, BlockFlags::NOTIFY_ALL);
-        }
+/// Vanilla `AbstractThrownPotion.onHitBlock`: a potion in `douses_fire` that hits a block puts
+/// out the block in front of the hit face, the hit block and the four blocks beside the first.
+pub(crate) fn douse_fire_on_block_hit(
+    world: &Arc<crate::world::World>,
+    projectile: &dyn EntityBase,
+    hit: &ProjectileHit,
+    stack: &ItemStack,
+) {
+    let ProjectileHit::Block { pos, face, .. } = hit else {
+        return;
+    };
+    let douses_fire = stack
+        .get_data_component::<pumpkin_data::data_component_impl::PotionContentsImpl>()
+        .and_then(|pc| pc.potion_id)
+        .and_then(|id| u16::try_from(id).ok())
+        .is_some_and(|id| {
+            pumpkin_data::datapack_tags::resolve(&pumpkin_data::tag::Potion::MINECRAFT_DOUSES_FIRE)
+                .1
+                .contains(&id)
+        });
+    if !douses_fire {
+        return;
+    }
+    let effect_pos = pos.offset(face.to_offset());
+    douse_fire(world, projectile, effect_pos);
+    douse_fire(world, projectile, *pos);
+    for direction in [
+        BlockDirection::North,
+        BlockDirection::East,
+        BlockDirection::South,
+        BlockDirection::West,
+    ] {
+        douse_fire(world, projectile, effect_pos.offset(direction.to_offset()));
     }
 }
 
-pub(crate) fn extinguish_fire_if_water_potion(
-    world: &Arc<crate::world::World>,
-    hit_pos: Vector3<f64>,
-    stack: &ItemStack,
-) {
-    if is_water_potion(stack) {
-        extinguish_fire(world, hit_pos);
+/// Vanilla `AbstractThrownPotion.douseFire`: fire is destroyed, lit candles and campfires go out.
+fn douse_fire(world: &Arc<crate::world::World>, projectile: &dyn EntityBase, pos: BlockPos) {
+    let (block, state) = world.get_block_and_state(&pos);
+    if block.has_tag(&tag::Block::MINECRAFT_FIRE) {
+        world.destroy_block(
+            &pos,
+            Some(projectile),
+            BlockFlags::NOTIFY_ALL | BlockFlags::SKIP_DROPS,
+        );
+    } else if block.has_tag(&tag::Block::MINECRAFT_CANDLES) {
+        let mut properties = CandleLikeProperties::from_state_id(state.id);
+        if properties.lit {
+            properties.lit = false;
+            candles::extinguish(world, &pos, properties.to_state_id(block), None);
+        }
+    } else if block.has_tag(&tag::Block::MINECRAFT_CANDLE_CAKES) {
+        let mut properties = CandleCakeProperties::from_state_id(state.id);
+        if properties.lit {
+            properties.lit = false;
+            candles::extinguish(world, &pos, properties.to_state_id(block), None);
+        }
+    } else if CampfireBlock::is_lit_campfire(state) {
+        world.sync_world_event(WorldEvent::SoundExtinguishFire, pos, 0);
+        // `CampfireBlock.douse` sends the block change game event from the potion's owner.
+        let owner = projectile.get_owner_entity();
+        world.emit_game_event_with_context(
+            GameEvent::BlockChange.name(),
+            pos.to_centered_f64(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: owner.as_deref(),
+                affected_state: None,
+            },
+        );
+        let mut properties = CampfireLikeProperties::from_state_id(state.id);
+        properties.lit = false;
+        world.set_block_state(&pos, properties.to_state_id(block), BlockFlags::NOTIFY_ALL);
     }
 }
 
@@ -206,13 +253,12 @@ impl EntityBase for SplashPotionEntity {
         let world = self.get_entity().world.load();
         let hit_pos = hit.hit_pos();
 
-        // Extinguish fire if it's a water potion
         let stack = self
             .item_stack
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone();
-        extinguish_fire_if_water_potion(&world, hit_pos, &stack);
+        douse_fire_on_block_hit(&world, self, &hit, &stack);
 
         // Send impact entity status (plays break particles)
         world.send_entity_status(
