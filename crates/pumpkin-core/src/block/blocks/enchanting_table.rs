@@ -103,12 +103,8 @@ impl ScreenHandlerFactory for EnchantingTableScreenFactory {
         _player: &dyn InventoryPlayer,
     ) -> Option<SharedScreenHandler> {
         let inventory: Arc<dyn Inventory> = Arc::new(SimpleInventory::new(2));
-        let handler = EnchantingTableScreenHandler::new(
-            sync_id,
-            player_inventory,
-            &inventory,
-            self.seed,
-        );
+        let handler =
+            EnchantingTableScreenHandler::new(sync_id, player_inventory, &inventory, self.seed);
         let screen_handler_arc = Arc::new(Mutex::new(handler));
         Some(screen_handler_arc as SharedScreenHandler)
     }

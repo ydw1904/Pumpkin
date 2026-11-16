@@ -9919,8 +9919,11 @@ impl InventoryPlayer for Player {
 
     fn use_smithing_table(&self) {
         if let Some(pos) = self.open_container_pos.load() {
-            self.world()
-                .sync_world_event(pumpkin_data::world::WorldEvent::SoundSmithingTableUsed, pos, 0);
+            self.world().sync_world_event(
+                pumpkin_data::world::WorldEvent::SoundSmithingTableUsed,
+                pos,
+                0,
+            );
         }
     }
 
