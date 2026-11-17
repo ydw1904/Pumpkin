@@ -1,5 +1,7 @@
 // A fishing hook cast at an area effect cloud flies through it (clouds aren't pickable); cast
 // at a ghast fireball it hooks it and sends it where the angler looks (`onRedirectProjectile`).
+// A hook removed by `/kill` clears the angler's `fishing` (`FishingHook.remove`), so the next
+// use of the rod casts a new one instead of reeling in nothing.
 const { make } = require('./survival-lib')
 const h = make('Angler')
 const { bot } = h
@@ -31,6 +33,24 @@ async function cast (type, nbt) {
   await h.ticks(5)
 }
 
+async function recastAfterKill () {
+  h.cmd('kill @e[type=!player]')
+  await h.ticks(10)
+  await bot.look(0, 0, true)
+  bot.activateItem()
+  await h.waitFor(() => named('fishing_bobber').length > 0, 3000)
+  const first = named('fishing_bobber')[0]
+  h.cmd('kill @e[type=fishing_bobber]')
+  await h.waitFor(() => named('fishing_bobber').length === 0, 3000)
+  await h.ticks(2)
+  bot.activateItem()
+  await h.waitFor(() => named('fishing_bobber').length > 0, 3000)
+  const second = named('fishing_bobber')[0]
+  h.result('kill.recast', first ? (second ? second.id !== first.id : 'no_recast') : 'no_bobber')
+  bot.activateItem()
+  await h.ticks(5)
+}
+
 h.start(async () => {
   await h.arena(X, Y, Z, 6)
   h.cmd(`gamemode creative ${bot.username}`)
@@ -38,5 +58,6 @@ h.start(async () => {
   await h.ticks(5)
   await cast('area_effect_cloud', '{Radius:0.5f,Duration:600,WaitTime:0}')
   await cast('fireball', '{Motion:[0d,0d,0d],acceleration_power:0d}')
+  await recastAfterKill()
   h.cmd('kill @e[type=!player]')
 })

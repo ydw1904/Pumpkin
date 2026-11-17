@@ -17,7 +17,7 @@ use crate::entity::util::RandomExt;
 use crate::world::World;
 use crate::world::loot::{LootContextParameters, LootTableHandle, generate_loot_from_handle};
 use crate::{
-    entity::{Entity, EntityBase, living::LivingEntity, player::Player},
+    entity::{Entity, EntityBase, RemovalReason, living::LivingEntity, player::Player},
     server::Server,
 };
 use pumpkin_data::Block;
@@ -383,7 +383,7 @@ impl FishingBobberEntity {
             return;
         };
         if self.should_stop_fishing(player) {
-            self.discard(player);
+            entity.remove();
             return;
         }
 
@@ -393,7 +393,7 @@ impl FishingBobberEntity {
         if entity.on_ground.load(Ordering::Relaxed) {
             let life = self.life.fetch_add(1, Ordering::Relaxed) + 1;
             if life >= 1200 {
-                self.discard(player);
+                entity.remove();
                 return;
             }
         } else {
@@ -620,12 +620,6 @@ impl FishingBobberEntity {
             }
         }
         true
-    }
-
-    /// Vanilla `FishingBobberEntity.remove`: clears `owner.fishing` and drops the hook.
-    fn discard(&self, player: &Player) {
-        player.fishing_bobber.store(-1, Ordering::Relaxed);
-        self.entity.remove();
     }
 
     /// Matches vanilla `FishingBobberEntity.catchingFish(BlockPos)`.
@@ -873,6 +867,22 @@ impl EntityBase for FishingBobberEntity {
 
     fn tick(&self, caller: &dyn EntityBase, _server: &Server) {
         self.process_tick(caller);
+    }
+
+    /// Vanilla `FishingHook.remove`: `updateOwnerInfo(null)` clears the owner's `fishing`, so
+    /// the rod casts again however the hook went away (`/kill`, a dimension change).
+    fn on_remove(&self, _reason: RemovalReason) {
+        let Some(server) = self.entity.world.load().server.upgrade() else {
+            return;
+        };
+        if let Some(owner) = server.get_player_by_uuid(self.owner_uuid) {
+            let _ = owner.fishing_bobber.compare_exchange(
+                self.entity.entity_id,
+                -1,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            );
+        }
     }
 }
 

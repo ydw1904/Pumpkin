@@ -823,6 +823,10 @@ pub trait EntityBase: Send + Sync + std::any::Any {
     /// Vanilla `removePassenger` overrides, after `passenger` got off.
     fn on_passenger_removed(&self, _passenger: &dyn EntityBase) {}
 
+    /// Vanilla `Entity.remove(RemovalReason)` overrides. Runs once, when the world removes the
+    /// entity; unloading with its chunk only marks it removed, as vanilla `setRemoved` does.
+    fn on_remove(&self, _reason: RemovalReason) {}
+
     fn is_spectator(&self) -> bool {
         false
     }

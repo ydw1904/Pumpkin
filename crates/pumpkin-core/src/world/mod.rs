@@ -6476,6 +6476,7 @@ impl World {
         {
             return;
         }
+        entity.on_remove(reason);
         base_entity.removed.store(true, Ordering::Release);
 
         // Vanilla `Entity.setRemoved`: a destroyed entity leaves its vehicle and drops its passengers.
