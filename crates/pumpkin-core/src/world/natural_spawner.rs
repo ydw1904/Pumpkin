@@ -30,6 +30,7 @@ use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::chunk::{ChunkData, ChunkHeightmapType};
 use pumpkin_world::generation::proto_chunk::GenerationCache;
+use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use std::cell::Cell;
 use std::fmt;
@@ -448,43 +449,59 @@ impl SpawnState {
         entities: &ArcSwap<Vec<Arc<dyn EntityBase>>>,
         world: &World,
     ) -> Self {
+        // Reading the entities is the slow part, so it runs in parallel; the counts are added up
+        // in list order afterwards.
+        let candidates: Vec<_> = entities
+            .load()
+            .par_iter()
+            .with_min_len(super::ENTITY_SCAN_BATCH)
+            .filter_map(|entity| {
+                let base_entity = entity.get_entity();
+                let entity_type = base_entity.entity_type;
+                if entity_type.category == &MobCategory::MISC {
+                    return None;
+                }
+                let mob = entity.get_mob();
+                if let Some(mob) = mob
+                    && (mob.get_mob_entity().persistence_required.load(Relaxed)
+                        || mob.requires_custom_persistence())
+                {
+                    return None;
+                }
+                let charge = base_entity
+                    .current_biome
+                    .load()
+                    .spawn_costs
+                    .get(entity_type.resource_name)
+                    .filter(|cost| cost.charge != 0.0)
+                    .map(|cost| PointCharge(base_entity.block_pos.load(), cost.charge));
+                Some((
+                    base_entity.chunk_pos.load(),
+                    entity_type.category.id,
+                    mob.is_some() || entity_type.mob,
+                    charge,
+                ))
+            })
+            .collect();
         let mut charges = Vec::new();
         let mut category_counts = [0; MOB_CATEGORY_COUNT];
         // Mobs are counted per chunk first, so each chunk's nearby players are looked up once.
         let mut chunk_mob_counts: FxHashMap<Vector2<i32>, [i32; MOB_CATEGORY_COUNT]> =
             FxHashMap::default();
         let mut loaded_chunks: FxHashMap<Vector2<i32>, bool> = FxHashMap::default();
-        for entity in entities.load().iter() {
-            let base_entity = entity.get_entity();
-            let entity_type = base_entity.entity_type;
-            if entity_type.category == &MobCategory::MISC {
-                continue;
-            }
-            let mob = entity.get_mob();
-            if let Some(mob) = mob
-                && (mob.get_mob_entity().persistence_required.load(Relaxed)
-                    || mob.requires_custom_persistence())
-            {
-                continue;
-            }
+        for (chunk_pos, category, counts_for_chunk, charge) in candidates {
             // Vanilla `NaturalSpawner.createState` counts mobs in every loaded full chunk.
-            let chunk_pos = base_entity.chunk_pos.load();
             if !*loaded_chunks
                 .entry(chunk_pos)
                 .or_insert_with(|| world.level.is_chunk_loaded(&chunk_pos))
             {
                 continue;
             }
-            let biome = base_entity.current_biome.load();
-            if let Some(cost) = biome.spawn_costs.get(entity_type.resource_name)
-                && cost.charge != 0.0
-            {
-                charges.push(PointCharge(base_entity.block_pos.load(), cost.charge));
+            charges.extend(charge);
+            if counts_for_chunk {
+                chunk_mob_counts.entry(chunk_pos).or_default()[category] += 1;
             }
-            if mob.is_some() || entity_type.mob {
-                chunk_mob_counts.entry(chunk_pos).or_default()[entity_type.category.id] += 1;
-            }
-            category_counts[entity_type.category.id] += 1;
+            category_counts[category] += 1;
         }
         let local_mob_cap = LocalMobCapCalculator::for_world(world);
         for (chunk_pos, counts) in chunk_mob_counts {
