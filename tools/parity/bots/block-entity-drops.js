@@ -123,6 +123,13 @@ h.start(async () => {
   h.cmd(`setblock ${BX} ${BY} ${BZ} red_banner{patterns:[{pattern:"minecraft:creeper",color:"black"}]}`)
   await h.waitFor(() => h.blockName(BX, BY, BZ) === 'red_banner', 3000)
   h.result('pick.banner', comps(await pick('red_banner', false)))
+  // Campfires, chiseled bookshelves and shelves put their items in a container component.
+  for (const [block, item] of [['campfire[lit=false]', 'campfire'], ['chiseled_bookshelf', 'chiseled_bookshelf'], ['oak_shelf', 'oak_shelf']]) {
+    h.cmd(`setblock ${BX} ${BY} ${BZ} ${block}{Items:[{Slot:1b,id:"minecraft:book",count:1}]}`)
+    await h.waitFor(() => h.blockName(BX, BY, BZ) === item, 3000)
+    await h.ticks(2)
+    h.result(`pick.${item}`, comps(await pick(item, true)))
+  }
 
   // A creative player breaking a filled shulker box gets it with every component, lore too; an
   // empty one drops nothing.

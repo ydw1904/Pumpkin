@@ -119,6 +119,27 @@ impl BlockEntity for ChiseledBookshelfBlockEntity {
         )
     }
 
+    fn collect_item_components(&self, stack: &mut ItemStack) {
+        super::base_container::collect_container(
+            &*self
+                .items
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            stack,
+        );
+    }
+
+    /// Vanilla leaves the block state alone, so the books only show once a slot changes.
+    fn apply_item_components(&self, stack: &ItemStack) {
+        super::base_container::apply_container(
+            stack,
+            &mut *self
+                .items
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
+    }
+
     fn set_world(&self, world: std::sync::Weak<World>) {
         let _ = self.world.set(world);
     }

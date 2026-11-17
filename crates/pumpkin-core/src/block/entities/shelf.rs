@@ -26,9 +26,10 @@ impl BlockEntity for ShelfBlockEntity {
 
     fn write_nbt(&self, nbt: &mut NbtCompound) {
         self.write_inventory_nbt(nbt, true);
-        if self.align_items_to_bottom.load(Ordering::Relaxed) {
-            nbt.put_bool("align_items_to_bottom", true);
-        }
+        nbt.put_bool(
+            "align_items_to_bottom",
+            self.align_items_to_bottom.load(Ordering::Relaxed),
+        );
     }
 
     fn from_nbt(nbt: &pumpkin_nbt::compound::NbtCompound, position: BlockPos) -> Self
@@ -89,9 +90,10 @@ impl BlockEntity for ShelfBlockEntity {
         if let Ok(items) = self.items.try_read() {
             sync_write_items_to_nbt(items.as_slice(), &mut nbt);
         }
-        if self.align_items_to_bottom.load(Ordering::Relaxed) {
-            nbt.put_bool("align_items_to_bottom", true);
-        }
+        nbt.put_bool(
+            "align_items_to_bottom",
+            self.align_items_to_bottom.load(Ordering::Relaxed),
+        );
         Some(nbt)
     }
 
@@ -114,23 +116,24 @@ impl BlockEntity for ShelfBlockEntity {
         )
     }
 
+    fn collect_item_components(&self, stack: &mut ItemStack) {
+        super::base_container::collect_container(
+            &*self
+                .items
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            stack,
+        );
+    }
+
     fn apply_item_components(&self, stack: &ItemStack) {
-        let Some(container) =
-            stack.get_data_component::<pumpkin_data::data_component_impl::ContainerImpl>()
-        else {
-            return;
-        };
-        let mut items = self
-            .items
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        items.fill_with(|| ItemStack::EMPTY.clone());
-        for (slot, item) in &container.items {
-            let idx = usize::from(*slot);
-            if idx < Self::INVENTORY_SIZE {
-                items[idx] = item.clone();
-            }
-        }
+        super::base_container::apply_container(
+            stack,
+            &mut *self
+                .items
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

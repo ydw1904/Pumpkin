@@ -110,16 +110,7 @@ impl BaseContainer {
             .get_data_component::<LockImpl>()
             .map(|lock| lock.predicate.clone())
             .filter(|predicate| !predicate.is_empty());
-        for item in items.iter_mut() {
-            *item = ItemStack::EMPTY.clone();
-        }
-        if let Some(container) = stack.get_data_component::<ContainerImpl>() {
-            for (slot, item) in &container.items {
-                if let Some(target) = items.get_mut(*slot as usize) {
-                    *target = item.clone();
-                }
-            }
-        }
+        apply_container(stack, items);
     }
 
     /// Vanilla `collectImplicitComponents`: the name, the lock when there is one, and the
@@ -131,14 +122,35 @@ impl BaseContainer {
         if let Some(predicate) = self.lock() {
             stack.set_data_component(LockImpl { predicate });
         }
-        let contents: Vec<(u8, ItemStack)> = items
-            .iter()
-            .enumerate()
-            .filter(|(_, item)| !item.is_empty())
-            .map(|(slot, item)| (slot as u8, item.clone()))
-            .collect();
-        if !contents.is_empty() {
-            stack.set_data_component(ContainerImpl { items: contents });
+        collect_container(items, stack);
+    }
+}
+
+/// Vanilla `components.set(CONTAINER, ItemContainerContents.fromItems(items))`. An empty
+/// container is the item's default, so it adds nothing.
+pub fn collect_container(items: &[ItemStack], stack: &mut ItemStack) {
+    let contents: Vec<(u8, ItemStack)> = items
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| !item.is_empty())
+        .map(|(slot, item)| (slot as u8, item.clone()))
+        .collect();
+    if !contents.is_empty() {
+        stack.set_data_component(ContainerImpl { items: contents });
+    }
+}
+
+/// Vanilla `getOrDefault(CONTAINER, EMPTY).copyInto(items)`: empties every slot the item
+/// doesn't fill.
+pub fn apply_container(stack: &ItemStack, items: &mut [ItemStack]) {
+    for item in items.iter_mut() {
+        *item = ItemStack::EMPTY.clone();
+    }
+    if let Some(container) = stack.get_data_component::<ContainerImpl>() {
+        for (slot, item) in &container.items {
+            if let Some(target) = items.get_mut(*slot as usize) {
+                *target = item.clone();
+            }
         }
     }
 }

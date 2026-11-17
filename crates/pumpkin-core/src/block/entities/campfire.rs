@@ -194,6 +194,26 @@ impl BlockEntity for CampfireBlockEntity {
         }
     }
 
+    fn collect_item_components(&self, stack: &mut ItemStack) {
+        let items = self.items.each_ref().map(|item| {
+            item.lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone()
+        });
+        super::base_container::collect_container(&items, stack);
+    }
+
+    fn apply_item_components(&self, stack: &ItemStack) {
+        let mut items: [ItemStack; Self::SLOT_COUNT] =
+            std::array::from_fn(|_| ItemStack::EMPTY.clone());
+        super::base_container::apply_container(stack, &mut items);
+        for (slot, item) in self.items.iter().zip(items) {
+            *slot
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = item;
+        }
+    }
+
     fn chunk_data_nbt(&self) -> Option<NbtCompound> {
         let mut nbt = NbtCompound::new();
         self.write_cooking_nbt(&mut nbt);
