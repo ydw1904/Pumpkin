@@ -1,5 +1,6 @@
 use crate::entity::projectile::owner::ProjectileOwner;
 use pumpkin_util::random::gameplay::game_random;
+use std::sync::RwLock;
 use std::sync::atomic::AtomicBool;
 
 use crate::entity::projectile::ProjectileHit;
@@ -12,6 +13,8 @@ use crate::{
 };
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::entity::{EntityPose, EntityStatus};
+use pumpkin_data::item::Item;
+use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::particle::Particle;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_protocol::bedrock::server::actor_event::ActorEventID;
@@ -24,6 +27,7 @@ const ENDERMITE_SPAWN_CHANCE: f32 = 0.05;
 
 pub struct EnderPearlEntity {
     pub thrown: ThrownItemEntity,
+    pub item_stack: RwLock<ItemStack>,
 }
 
 impl EnderPearlEntity {
@@ -38,13 +42,26 @@ impl EnderPearlEntity {
             gravity: GRAVITY,
         };
 
-        Self { thrown }
+        Self {
+            thrown,
+            item_stack: RwLock::new(ItemStack::new(1, &Item::ENDER_PEARL)),
+        }
     }
 
     pub fn new_shot(entity: Entity, shooter: &Entity) -> Self {
         let thrown = ThrownItemEntity::new(entity, shooter, GRAVITY);
         thrown.entity.set_velocity(Vector3::new(0.0, 0.1, 0.0));
-        Self { thrown }
+        Self {
+            thrown,
+            item_stack: RwLock::new(ItemStack::new(1, &Item::ENDER_PEARL)),
+        }
+    }
+
+    pub fn set_item_stack(&self, item_stack: ItemStack) {
+        *self
+            .item_stack
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = item_stack;
     }
 }
 
@@ -70,13 +87,29 @@ impl EntityBase for EnderPearlEntity {
         self.get_entity().set_synced_data(
             pumpkin_data::tracked_data::ender_pearl::DATA_ITEM_STACK,
             pumpkin_protocol::codec::item_stack_seralizer::ItemStackSerializer::from(
-                pumpkin_data::item_stack::ItemStack::new(1, &pumpkin_data::item::Item::ENDER_PEARL),
+                self.item_stack
+                    .read()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clone(),
             ),
         );
     }
 
     fn get_projectile_owner(&self) -> Option<&ProjectileOwner> {
         Some(&self.thrown.owner)
+    }
+
+    fn write_custom_nbt(&self, nbt: &mut pumpkin_nbt::compound::NbtCompound) {
+        super::write_thrown_item(&self.item_stack, nbt);
+    }
+
+    fn read_custom_nbt(&self, nbt: &pumpkin_nbt::compound::NbtCompound) {
+        self.set_item_stack(super::read_thrown_item(
+            self.get_entity(),
+            nbt,
+            &Item::ENDER_PEARL,
+            pumpkin_data::tracked_data::ender_pearl::DATA_ITEM_STACK,
+        ));
     }
 
     fn tick(&self, caller: &dyn EntityBase, _server: &Server) {

@@ -84,6 +84,19 @@ impl EntityBase for EggEntity {
         );
     }
 
+    fn write_custom_nbt(&self, nbt: &mut pumpkin_nbt::compound::NbtCompound) {
+        super::write_thrown_item(&self.item_stack, nbt);
+    }
+
+    fn read_custom_nbt(&self, nbt: &pumpkin_nbt::compound::NbtCompound) {
+        self.set_item_stack(super::read_thrown_item(
+            self.get_entity(),
+            nbt,
+            &pumpkin_data::item::Item::EGG,
+            pumpkin_data::tracked_data::egg::ITEM_STACK,
+        ));
+    }
+
     fn tick(&self, caller: &dyn EntityBase, _server: &Server) {
         self.thrown.process_tick(caller);
     }

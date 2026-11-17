@@ -200,6 +200,7 @@ impl OminousItemSpawnerEntity {
                 DispenserBlock::DEFAULT_PROJECTILE_POWER,
                 DispenserBlock::DEFAULT_PROJECTILE_UNCERTAINTY,
             );
+            snowball.set_item_stack(item.copy_with_count(1));
             Arc::new(snowball)
         } else if id == Item::EGG.id || id == Item::BLUE_EGG.id || id == Item::BROWN_EGG.id {
             let mut egg = EggEntity::new(new_entity(&EntityType::EGG));

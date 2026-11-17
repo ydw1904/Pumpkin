@@ -55,6 +55,7 @@ impl ItemBehaviour for SnowBallItem {
         );
         let entity = Entity::new(world.clone(), position, &EntityType::SNOWBALL);
         let snowball = SnowballEntity::new_shot(entity, player.get_entity());
+        snowball.set_item_stack(stack.copy_with_count(1));
         snowball
             .thrown
             .shoot_from_rotation(player.get_entity(), pitch, yaw, 0.0, POWER, 1.0);

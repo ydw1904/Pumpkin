@@ -167,6 +167,35 @@ impl AccelerationPower {
     }
 }
 
+/// Vanilla `ThrowableItemProjectile.addAdditionalSaveData`.
+pub(crate) fn write_thrown_item(stack: &std::sync::RwLock<ItemStack>, nbt: &mut NbtCompound) {
+    let mut item = NbtCompound::new();
+    stack
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .write_item_stack(&mut item);
+    nbt.put_compound("Item", item);
+}
+
+/// Vanilla `ThrowableItemProjectile.readAdditionalSaveData`: a missing `Item` is the default
+/// item. Also syncs the stack to the entity's `tracked` item data.
+pub(crate) fn read_thrown_item(
+    entity: &Entity,
+    nbt: &NbtCompound,
+    default: &'static pumpkin_data::item::Item,
+    tracked: pumpkin_data::tracked_data::TrackedData,
+) -> ItemStack {
+    let stack = nbt
+        .get_compound("Item")
+        .and_then(ItemStack::read_item_stack)
+        .unwrap_or_else(|| ItemStack::new(1, default));
+    entity.set_synced_data(
+        tracked,
+        pumpkin_protocol::codec::item_stack_seralizer::ItemStackSerializer::from(stack.clone()),
+    );
+    stack
+}
+
 pub struct ThrownItemEntity {
     pub entity: Entity,
     pub owner: owner::ProjectileOwner,
