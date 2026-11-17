@@ -12,7 +12,6 @@ use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::world::WorldEvent;
 use pumpkin_nbt::compound::NbtCompound;
-use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -115,7 +114,8 @@ impl EntityBase for DragonFireballEntity {
 
         let fireball = self.get_entity();
         let world = fireball.world.load();
-        let pos = hit.hit_pos();
+        // Vanilla centres the search and the cloud on the fireball, not the hit point.
+        let pos = fireball.pos.load();
         let splash_box = fireball
             .bounding_box
             .load()
@@ -141,7 +141,7 @@ impl EntityBase for DragonFireballEntity {
 
         world.sync_world_event(
             WorldEvent::ParticlesDragonFireballSplash,
-            BlockPos::floored_v(pos),
+            fireball.block_pos.load(),
             if fireball.is_silent() { -1 } else { 1 },
         );
         let cloud = AreaEffectCloudEntity::new(Entity::new(
