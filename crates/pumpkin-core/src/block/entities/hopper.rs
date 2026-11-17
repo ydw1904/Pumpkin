@@ -519,7 +519,7 @@ impl HopperBlockEntity {
 
     /// Vanilla `addItem(Container, ItemEntity)`: moves as much of the entity's stack as fits, and
     /// only counts as a transfer once all of it is in.
-    fn add_item_entity(to: &dyn Inventory, item_entity: &ItemEntity) -> bool {
+    pub(crate) fn add_item_entity(to: &dyn Inventory, item_entity: &ItemEntity) -> bool {
         // Held across the insert so a player or another hopper can't take the same items meanwhile.
         let mut stack = item_entity
             .get_item_stack()

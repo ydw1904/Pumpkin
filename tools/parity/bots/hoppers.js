@@ -145,4 +145,15 @@ h.start(async () => {
   h.cmd(`summon chest_minecart ${x + 0.5} ${y + 1} ${z + 0.5} {Items:[{Slot:0b,id:"minecraft:dirt",count:10}]}`)
   await h.ticks(100)
   h.result('minecart.hopper_below', await contents(x, y, z))
+
+  // A hopper minecart takes in as much of a dropped stack as fits at once, not one item a tick.
+  x = X + 6; z = Z + 6
+  await place(x, y, z, 'rail')
+  h.cmd(`summon hopper_minecart ${x + 0.5} ${y} ${z + 0.5}`)
+  await h.ticks(10)
+  h.cmd(`summon item ${x + 0.5} ${y + 1} ${z + 0.5} {Item:{id:"minecraft:dirt",count:30},PickupDelay:32767s,NoGravity:1b}`)
+  await h.ticks(5)
+  const left = Object.values(bot.entities).filter(e => e.name === 'item' &&
+    Math.abs(e.position.x - x - 0.5) < 1.5 && Math.abs(e.position.z - z - 0.5) < 1.5)
+  h.result('minecart.hopper_pickup_items_left', left.length)
 })

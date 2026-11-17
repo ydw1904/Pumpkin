@@ -75,45 +75,18 @@ impl HopperMinecart {
         Self::pick_up_item_internal(&world, inventory, &cart_box);
     }
 
+    /// Vanilla `HopperBlockEntity.addItem(Container, ItemEntity)` for each item in the box: takes
+    /// as much of each stack as fits and stops at the first one that goes in whole.
     fn pick_up_item_internal(
         world: &Arc<crate::world::World>,
         inventory: &Arc<MinecartInventory>,
         search_box: &BoundingBox,
     ) -> bool {
-        for entity in world.get_entities_at_box(search_box) {
-            let Some(item) = entity.get_item_entity() else {
-                continue;
-            };
-            let (backup, one) = {
-                let mut stack = item
-                    .get_item_stack()
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if stack.is_empty() {
-                    continue;
-                }
-                (stack.clone(), stack.split(1))
-            };
-            if HopperBlockEntity::add_one_item(inventory.as_ref(), inventory.as_ref(), &one, None) {
-                let is_empty = {
-                    let stack = item
-                        .get_item_stack()
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    stack.is_empty()
-                };
-                if is_empty {
-                    item.get_entity().remove();
-                }
-                return true;
-            }
-            let mut stack = item
-                .get_item_stack()
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            *stack = backup;
-        }
-        false
+        world
+            .get_entities_at_box(search_box)
+            .iter()
+            .filter_map(|entity| entity.get_item_entity())
+            .any(|item| HopperBlockEntity::add_item_entity(inventory.as_ref(), item))
     }
 
     pub(super) fn interact(&self, entity: &crate::entity::Entity, player: &Arc<Player>) -> bool {
