@@ -698,14 +698,24 @@ impl Level {
             .iter()
             .map(|p| *p.key())
             .collect();
-        for pos in scheduled_chunk_pos {
-            if !ticking.contains(&pos) || !self.is_chunk_ticking_ready(&pos) {
-                continue;
-            }
-            if let Some(chunk) = self.loaded_chunks.get(&pos) {
-                let chunk = chunk.value();
-                ticks.block_ticks.append(&mut chunk.block_ticks.step_tick());
-                ticks.fluid_ticks.append(&mut chunk.fluid_ticks.step_tick());
+        // Each chunk steps its own schedulers, so they step in parallel; the ticks are sorted below.
+        let stepped: Vec<_> = scheduled_chunk_pos
+            .par_iter()
+            .filter(|pos| ticking.contains(pos) && self.is_chunk_ticking_ready(pos))
+            .map(|pos| {
+                let stepped = self.loaded_chunks.get(pos).map(|chunk| {
+                    let chunk = chunk.value().clone();
+                    let block_ticks = chunk.block_ticks.step_tick();
+                    let fluid_ticks = chunk.fluid_ticks.step_tick();
+                    (chunk, block_ticks, fluid_ticks)
+                });
+                (*pos, stepped)
+            })
+            .collect();
+        for (pos, stepped) in stepped {
+            if let Some((chunk, mut block_ticks, mut fluid_ticks)) = stepped {
+                ticks.block_ticks.append(&mut block_ticks);
+                ticks.fluid_ticks.append(&mut fluid_ticks);
 
                 // Remove from set if it no longer has ticks
                 if !chunk.block_ticks.has_ticks() && !chunk.fluid_ticks.has_ticks() {
