@@ -689,8 +689,12 @@ pub struct Player {
     pub teleport_id_count: AtomicI32,
     /// The pending teleport information, including the teleport ID and target location.
     pub awaiting_teleport: Mutex<Option<(VarInt, Vector3<f64>)>>,
-    /// The coordinates of the chunk section the player is currently watching.
+    /// The chunks the player's client tracks (vanilla `ChunkTrackingView`). Follows the
+    /// player's position every tick, also before a teleport is confirmed.
     pub watched_section: AtomicCell<Cylindrical>,
+    /// The view the player's chunk tickets and loaded entities were last placed for (vanilla
+    /// `lastSectionPos`). Moves only in `chunker::update_position` (vanilla `ChunkMap.move`).
+    pub ticket_section: AtomicCell<Cylindrical>,
     /// The last time the player performed an action (for idle timeout).
     pub last_action_time: AtomicCell<Instant>,
     /// The ping in millis.
@@ -1102,6 +1106,10 @@ impl Player {
             watched_section: AtomicCell::new(Cylindrical::new(
                 Vector2::new(0, 0),
                 // Since 1 is not possible in vanilla it is used as uninit
+                NonZero::new(1).unwrap_or(NonZero::<u8>::MIN),
+            )),
+            ticket_section: AtomicCell::new(Cylindrical::new(
+                Vector2::new(0, 0),
                 NonZero::new(1).unwrap_or(NonZero::<u8>::MIN),
             )),
             last_action_time: AtomicCell::new(std::time::Instant::now()),
@@ -1582,7 +1590,7 @@ impl Player {
         let world = self.world();
         world.remove_player(self, true).await;
 
-        let cylindrical = self.watched_section.load();
+        let cylindrical = self.ticket_section.load();
         self.clean_up_chunk_tickets(&world.level);
         if let Ok(mut sender) = self.chunk_sender.lock() {
             sender.reset();
@@ -1655,6 +1663,19 @@ impl Player {
         (-1..=1).any(|dx| {
             (-1..=1).any(|dz| (dx != 0 || dz != 0) && !tracked(chunk.x + dx, chunk.y + dz))
         })
+    }
+
+    /// The chunk the player's simulation ticket sits at (vanilla `lastSectionPos`).
+    ///
+    /// It only moves in `chunker::update_position`, so an unconfirmed teleport leaves the old
+    /// area simulating.
+    pub fn ticket_center(&self) -> Vector2<i32> {
+        let ticket_section = self.ticket_section.load();
+        if ticket_section.view_distance.get() == 1 {
+            self.get_entity().chunk_pos.load()
+        } else {
+            ticket_section.center
+        }
     }
 
     pub fn clean_up_chunk_tickets(&self, level: &Arc<pumpkin_world::level::Level>) {
@@ -5166,8 +5187,9 @@ impl Player {
     pub async fn unload_watched_chunks(&self, world: &World) {
         let watched = self.watched_section.load();
         let level = &world.level;
-        let chunks_to_clean =
-            level.mark_chunks_as_not_watched(crate::world::chunker::entity_chunks(watched, world));
+        let chunks_to_clean = level.mark_chunks_as_not_watched(
+            crate::world::chunker::entity_chunks(self.ticket_section.load(), world),
+        );
         if !chunks_to_clean.is_empty() {
             world.remove_entities_in_chunks(&chunks_to_clean).await;
             level.clean_entity_chunks(&chunks_to_clean);
@@ -5179,10 +5201,12 @@ impl Player {
                 .await;
         }
 
-        self.watched_section.store(Cylindrical::new(
+        let uninit = Cylindrical::new(
             Vector2::new(0, 0),
             NonZero::new(1).unwrap_or(NonZero::<u8>::MIN),
-        ));
+        );
+        self.watched_section.store(uninit);
+        self.ticket_section.store(uninit);
     }
 
     /// Teleports the player to a different world or dimension with an optional position, yaw, and pitch.

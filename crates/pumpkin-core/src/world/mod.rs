@@ -654,7 +654,7 @@ impl World {
             tracker.update_player(
                 id,
                 ActivePlayerArea {
-                    center: player.get_entity().chunk_pos.load(),
+                    center: player.ticket_center(),
                     simulation_distance: sim_dist,
                 },
                 Arc::make_mut(&mut active_chunks),
@@ -2128,7 +2128,10 @@ impl World {
         self.flush_block_updates();
         // Vanilla `ServerChunkCache.tick` runs `ChunkMap.tick` after ticking chunks and before
         // entities and players tick, so a change made by a packet is seen for a tick even if
-        // the player's tick undoes it.
+        // the player's tick undoes it. It starts by re-centring every player's tracked chunks.
+        for player in self.players.load().iter() {
+            chunker::update_chunk_tracking(player);
+        }
         self.entity_tracker.update_all(self);
         // Vanilla `runBlockEvents` ends the handling phase, so a piston powered by a scheduled
         // tick moves in that tick and its moving blocks tick with the block entities.

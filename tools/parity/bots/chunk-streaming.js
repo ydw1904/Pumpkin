@@ -318,13 +318,14 @@ h.start(async () => {
   // Back to the spawn area (generated at join) without confirming the teleport for 5 s. Vanilla
   // re-centres the view in ChunkMap.tick (center and forgets go out at once) but moves the
   // player's tickets only on a client move, so the destination waits for the confirmation.
-  // Pumpkin does both on the confirmation, a round trip later. Known difference, not compared.
   begin()
   const spawnChunk = { x: 0, z: 0 }
   await withoutConfirm(async () => {
     h.cmd(`tp ${bot.username} 0.5 ${Y} 0.5`)
     await h.sleep(5000)
-    console.log(`NOTE unconfirmed_tp: before the confirmation center=${s.centers.includes(key(spawnChunk.x, spawnChunk.z))} forgets=${s.forgets > 0} destination=${held.has(key(spawnChunk.x, spawnChunk.z))}`)
+    h.result('unconfirmed_tp.center_before_confirm', s.centers.includes(key(spawnChunk.x, spawnChunk.z)))
+    h.result('unconfirmed_tp.forgets_before_confirm', s.forgets > 0)
+    h.result('unconfirmed_tp.destination_before_confirm', held.has(key(spawnChunk.x, spawnChunk.z)))
   })
   await settle()
   report('unconfirmed_tp')

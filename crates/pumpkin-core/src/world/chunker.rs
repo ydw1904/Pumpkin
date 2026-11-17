@@ -92,24 +92,46 @@ pub fn entity_chunks(view: Cylindrical, world: &World) -> Vec<Vector2<i32>> {
     area_chunks(entity_area(view, world))
 }
 
-#[allow(clippy::too_many_lines)]
+/// Vanilla `ChunkMap.move`.
+///
+/// Re-pairs the player's entity tracking (on every move, not only on a view change), moves its
+/// chunk tickets and loaded entities to its current chunk, then updates the chunks its client
+/// tracks.
 pub fn update_position(player: &Arc<Player>) {
-    let entity = &player.get_entity();
-    let new_chunk_center = entity.chunk_pos.load();
-    let old_cylindrical = player.watched_section.load();
-
-    // Vanilla `ChunkMap.move` -> re-pair on every move, not only on a view change.
     let world = player.world();
     world.entity_tracker.update_player_position(player, &world);
 
-    // This does break when a new player spawns
-    // if old_cylindrical.center == new_chunk_center {
-    //     return;
-    // }
+    let new_view = Cylindrical::new(
+        player.get_entity().chunk_pos.load(),
+        get_view_distance(player),
+    );
+    let old_view = player.ticket_section.swap(new_view);
+    if old_view != new_view {
+        move_tickets(player, &world, old_view, new_view);
+    }
+    update_chunk_tracking(player);
+}
 
+/// Vanilla `ChunkMap.updateChunkTracking`.
+///
+/// Centres the chunks the client tracks on the player's current chunk. Vanilla also runs it for every player each tick, so after a /tp the new center
+/// and the forgets go out before the client confirms, while the tickets wait for
+/// `update_position`.
+pub fn update_chunk_tracking(player: &Player) {
+    // Not placed in a world's chunk map yet (joining or changing dimension).
+    if player.ticket_section.load().view_distance.get() == 1 {
+        return;
+    }
+    let new_chunk_center = player.get_entity().chunk_pos.load();
     let view_distance = get_view_distance(player);
     let new_cylindrical = Cylindrical::new(new_chunk_center, view_distance);
 
+    // Held across the update so two callers can't both apply the same old view.
+    let mut sender = player
+        .chunk_sender
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let old_cylindrical = player.watched_section.load();
     if old_cylindrical == new_cylindrical {
         return;
     }
@@ -138,9 +160,26 @@ pub fn update_position(player: &Arc<Player>) {
     }
     let (loading_iter, unloading_iter) =
         Cylindrical::changed_chunks(old_cylindrical, new_cylindrical);
-    let loading_chunks: Vec<_> = loading_iter.collect();
-    let unloading_chunks: Vec<_> = unloading_iter.collect();
+    for pos in unloading_iter {
+        sender.unload_chunk(&player.client, pos);
+    }
+    for pos in loading_iter {
+        sender.enqueue_chunk(pos);
+    }
+    player.watched_section.store(new_cylindrical);
+}
 
+/// Moves the player's view and simulation tickets, and the entities it keeps loaded, from
+/// `old_view` to `new_view`.
+#[allow(clippy::too_many_lines)]
+fn move_tickets(
+    player: &Arc<Player>,
+    world: &Arc<World>,
+    old_view: Cylindrical,
+    new_view: Cylindrical,
+) {
+    let new_chunk_center = new_view.center;
+    let view_distance = new_view.view_distance;
     let level = &world.level;
     let mut held_tickets = player
         .held_chunk_tickets
@@ -158,7 +197,7 @@ pub fn update_position(player: &Arc<Player>) {
         (!is_spectator || spectators_generate_chunks).then(|| view_ticket_level(view_distance));
 
     let new_sim_level =
-        (!is_spectator || spectators_generate_chunks).then(|| simulation_ticket_level(&world));
+        (!is_spectator || spectators_generate_chunks).then(|| simulation_ticket_level(world));
 
     {
         let mut lock = level
@@ -187,22 +226,8 @@ pub fn update_position(player: &Arc<Player>) {
     };
     drop(held_tickets);
 
-    {
-        let mut sender = player
-            .chunk_sender
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        for pos in &unloading_chunks {
-            sender.unload_chunk(&player.client, *pos);
-        }
-        for pos in &loading_chunks {
-            sender.enqueue_chunk(*pos);
-        }
-    }
-    player.watched_section.store(new_cylindrical);
-
-    let old_area = entity_area(old_cylindrical, &world);
-    let new_area = entity_area(new_cylindrical, &world);
+    let old_area = entity_area(old_view, world);
+    let new_area = entity_area(new_view, world);
     let entity_loading: Vec<_> = area_chunks(new_area)
         .into_iter()
         .filter(|pos| !in_entity_area(old_area, *pos))
@@ -212,7 +237,7 @@ pub fn update_position(player: &Arc<Player>) {
         .filter(|pos| !in_entity_area(new_area, *pos))
         .collect();
 
-    // Make sure the watched section and the chunk watcher updates are async atomic. We want to
+    // Make sure the ticket section and the chunk watcher updates are async atomic. We want to
     // ensure what we unload when the player disconnects is correct.
     if !entity_loading.is_empty() || !entity_unloading.is_empty() {
         let level = world.level.clone();
