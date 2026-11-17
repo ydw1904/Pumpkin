@@ -3787,6 +3787,7 @@ mod tests {
             Some(
                 BundleContentsImpl {
                     items: vec![firework_rocket],
+                    selected_item: BundleContentsImpl::NO_SELECTED_ITEM_INDEX,
                 }
                 .to_dyn(),
             ),
