@@ -1,6 +1,8 @@
 // Leads go through vanilla `Entity.interact`, before a mob's own `mobInteract`: a lead ties any
 // mob `canBeLeashed` allows (not enemies, villagers, turtles), an empty hand unties it and drops
-// the lead, and a sneaking click moves the player's leashed mobs onto the clicked mob.
+// the lead, and a sneaking click moves the player's leashed mobs onto the clicked mob. Boats are
+// leashable too: tied and untied before boarding, pulled by the lead, tied to a fence, and
+// snapped when the holder gets too far away.
 const { make } = require('./survival-lib')
 const h = make('Leasher')
 const { bot } = h
@@ -70,6 +72,41 @@ async function transfer () {
   h.result('transfer.cow_holder', holderOf(cow))
 }
 
+async function boatPull () {
+  await reset()
+  await h.give('lead', 1)
+  // A strip of floor for the pull and the snap.
+  h.cmd(`fill ${X + 6} ${Y} ${Z} ${X + 30} ${Y} ${Z + 4} stone`)
+  const boat = await summon('oak_boat', 0)
+  if (!boat) { h.result('boat_pull', 'no_boat'); return }
+  await bot.lookAt(boat.position.offset(0, 0.3, 0), true)
+  await bot.activateEntity(boat)
+  await h.ticks(10)
+  h.result('boat_pull.tie', holderOf(boat))
+  await h.tp(X + 10.5, Y + 1, Z + 2.5)
+  await h.ticks(60)
+  h.result('boat_pull.pulled', `${holderOf(boat)} moved=${boat.position.x - X - 0.5 > 1}`)
+  // A fence takes the player's leashed boat.
+  h.cmd(`setblock ${X + 12} ${Y + 1} ${Z + 4} oak_fence`)
+  await h.ticks(5)
+  await bot.lookAt(new h.Vec3(X + 12.5, Y + 1.5, Z + 4.5), true)
+  await bot.activateBlock(h.block(X + 12, Y + 1, Z + 4)).catch(e => h.result('boat_pull.fence_error', e.message))
+  await h.ticks(10)
+  h.result('boat_pull.fence', holderOf(boat))
+  // Back on the player, then too far away: the lead snaps and drops.
+  const knot = named('leash_knot')[0]
+  if (knot) {
+    await bot.activateEntity(knot)
+    await h.ticks(10)
+  }
+  h.result('boat_pull.from_knot', holderOf(boat))
+  await h.tp(X + 28.5, Y + 1, Z + 2.5)
+  await h.ticks(20)
+  h.result('boat_pull.snap', `${holderOf(boat)} leads=${leads()}`)
+  h.cmd(`fill ${X + 6} ${Y} ${Z} ${X + 30} ${Y + 1} ${Z + 4} air`)
+  await h.tp(X + 0.5, Y + 1, Z + 0.5)
+}
+
 h.start(async () => {
   await h.arena(X, Y, Z, 6)
   h.cmd(`gamemode survival ${bot.username}`)
@@ -83,5 +120,8 @@ h.start(async () => {
   await leash('turtle')
   await leash('sheep')
   await transfer()
+  await leash('oak_boat')
+  await leash('bamboo_chest_raft')
+  await boatPull()
   h.cmd('kill @e[type=!player]')
 })

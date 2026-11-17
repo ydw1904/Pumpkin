@@ -25,7 +25,7 @@ use pumpkin_util::text::TextComponent;
 use crate::entity::living::is_allowed_by_team_rules;
 use crate::entity::player::Player;
 use crate::entity::vehicle::boat::chest::ChestBoat;
-use crate::entity::{Entity, EntityBase, living::LivingEntity, push_apart};
+use crate::entity::{Entity, EntityBase, RemovalReason, living::LivingEntity, push_apart};
 use crate::server::Server;
 use crate::world::game_event::GameEventContext;
 
@@ -481,6 +481,23 @@ impl EntityBase for BoatEntity {
         super::DIMENSION_CHANGING_DELAY
     }
 
+    /// Vanilla `AbstractBoat` is `Leashable`.
+    fn is_leashable(&self) -> bool {
+        true
+    }
+
+    fn support_quad_leash(&self) -> bool {
+        true
+    }
+
+    /// Vanilla `AbstractBoat.remove`: a destroyed boat drops its lead.
+    fn on_remove(&self, reason: RemovalReason) {
+        let entity = &self.vehicle.entity;
+        if reason.should_destroy() && entity.is_leashed() {
+            entity.drop_leash();
+        }
+    }
+
     fn get_air_drag(&self) -> f64 {
         1.0
     }
@@ -515,6 +532,16 @@ impl EntityBase for BoatEntity {
                 || plugins.has_handlers::<VehicleDamageEvent>()
                 || plugins.has_handlers::<VehicleDestroyEvent>()
         }) {
+            return None;
+        }
+        // A leash can snap, drop a lead, find its saved holder or tie to a new knot.
+        if entity.is_leashed()
+            || entity
+                .delayed_leash
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .is_some()
+        {
             return None;
         }
         let horizontal = entity.velocity.load().length()
@@ -647,6 +674,8 @@ impl EntityBase for BoatEntity {
         if entity.is_removed() {
             return;
         }
+        // The end of vanilla `Entity.baseTick`; a boat has nothing to add to the outcome.
+        entity.tick_leash(self, entity.is_alive());
 
         if self.is_client_authoritative() {
             // The rider's client moves it; `handle_move_vehicle` takes the result.
@@ -789,7 +818,10 @@ impl EntityBase for BoatEntity {
 
     /// Vanilla `AbstractBoat.interact`, and `AbstractChestBoat.interact` opening the chest
     /// when the player sneaks or can't board.
-    fn interact(&self, player: &Arc<Player>, _item_stack: &mut ItemStack) -> bool {
+    fn interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
+        if let Some(handled) = crate::entity::mob::leashable_interact(self, player, item_stack) {
+            return handled;
+        }
         let sneaking = player.get_entity().is_sneaking();
         if !sneaking
             && self.out_of_control_ticks.load() < TIME_TO_EJECT
@@ -822,12 +854,14 @@ impl EntityBase for BoatEntity {
     }
 
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
+        self.vehicle.entity.write_leash_data(nbt);
         if let BoatKind::Chest(boat) = &self.kind {
             boat.write_nbt(nbt);
         }
     }
 
     fn read_custom_nbt(&self, nbt: &NbtCompound) {
+        self.vehicle.entity.read_leash_data(nbt);
         if let BoatKind::Chest(boat) = &self.kind {
             boat.read_nbt(nbt);
         }

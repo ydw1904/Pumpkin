@@ -3601,18 +3601,19 @@ fn emit_entity_interact(entity: &Entity, player: &Player) {
     );
 }
 
-/// Vanilla `Entity.interact` for a mob, which is always `Leashable`: moving the player's leads
-/// to it, shears, then untying or tying a lead. `None` is vanilla `PASS`.
-fn leashable_interact<M: Mob + Send + 'static>(
-    mob: &M,
+/// Vanilla `Entity.interact` for a `Leashable` (mobs and boats): moving the player's leads to
+/// it, shears, then untying or tying a lead. `None` is vanilla `PASS`.
+pub(crate) fn leashable_interact(
+    leashable: &dyn EntityBase,
     player: &Arc<Player>,
     item_stack: &mut ItemStack,
 ) -> Option<bool> {
+    let entity = leashable.get_entity();
+    let living = leashable.get_living_entity();
     // Vanilla `Mob.interact` passes for a dead mob before reaching `Entity.interact`.
-    if !mob.get_mob_entity().living_entity.is_alive() {
+    if !living.map_or_else(|| entity.is_alive(), LivingEntity::is_alive) {
         return None;
     }
-    let entity = mob.get_entity();
     let world = entity.world.load();
     let player_id = player.entity_id();
     let held_by_player = |leashable: &Entity| {
@@ -3621,20 +3622,18 @@ fn leashable_interact<M: Mob + Send + 'static>(
             .is_some_and(|holder| holder.get_entity().entity_id == player_id)
     };
     if player.get_entity().is_sneaking()
-        && mob.can_be_leashed()
-        && !mob.get_mob_entity().living_entity.is_baby()
+        && leashable.is_leashable()
+        && !living.is_some_and(LivingEntity::is_baby)
         && let Some(this) = world.get_entity_by_id(entity.entity_id)
     {
-        // Vanilla `Leashable.leashableInArea`: a 32-block cube around this mob.
+        // Vanilla `Leashable.leashableInArea`: a 32-block cube around it.
         let bounding_box = entity.bounding_box.load();
         let center = (bounding_box.min + bounding_box.max) * 0.5;
         let area = BoundingBox::of_size(center, 32.0, 32.0, 32.0);
         let mut any_leashed = false;
-        for leashable in world.get_entities_at_box(&area) {
-            if held_by_player(leashable.get_entity())
-                && leashable.can_have_a_leash_attached_to(entity)
-            {
-                leashable.get_entity().leash_to(this.clone());
+        for other in world.get_entities_at_box(&area) {
+            if held_by_player(other.get_entity()) && other.can_have_a_leash_attached_to(entity) {
+                other.get_entity().leash_to(this.clone());
                 any_leashed = true;
             }
         }
@@ -3647,18 +3646,23 @@ fn leashable_interact<M: Mob + Send + 'static>(
                     affected_state: None,
                 },
             );
-            world.play_sound(Sound::ItemLeadTied, mob.sound_source(), &entity.pos.load());
+            world.play_sound(
+                Sound::ItemLeadTied,
+                leashable.sound_source(),
+                &entity.pos.load(),
+            );
             return Some(true);
         }
     }
 
     if item_stack.get_item() == &Item::SHEARS
-        && crate::entity::shear_off_all_leash_connections(mob, Some(player))
+        && crate::entity::shear_off_all_leash_connections(leashable, Some(player))
     {
         let _ = player.damage_item_stack(item_stack, 1);
         return Some(true);
     }
     if item_stack.get_item() == &Item::SHEARS
+        && let Some(mob) = leashable.get_mob()
         && mob.can_shear_equipment(player)
         && !player.get_entity().is_sneaking()
         && mob.attempt_to_shear_equipment(player, item_stack)
@@ -3676,7 +3680,7 @@ fn leashable_interact<M: Mob + Send + 'static>(
         emit_entity_interact(entity, player);
         world.play_sound(
             Sound::ItemLeadUntied,
-            mob.sound_source(),
+            leashable.sound_source(),
             &entity.pos.load(),
         );
         return Some(true);
@@ -3685,13 +3689,17 @@ fn leashable_interact<M: Mob + Send + 'static>(
         && entity
             .get_leash_holder()
             .is_none_or(|holder| holder.get_player().is_none())
-        && mob.can_have_a_leash_attached_to(player.get_entity())
+        && leashable.can_have_a_leash_attached_to(player.get_entity())
     {
         if entity.is_leashed() {
             entity.drop_leash();
         }
         if entity.leash_to(player.clone()) {
-            world.play_sound(Sound::ItemLeadTied, mob.sound_source(), &entity.pos.load());
+            world.play_sound(
+                Sound::ItemLeadTied,
+                leashable.sound_source(),
+                &entity.pos.load(),
+            );
             item_stack.decrement_unless_creative(player.gamemode.load(), 1);
         }
         return Some(true);
