@@ -81,14 +81,34 @@ impl PlayerDataStorage {
             return Ok((false, NbtCompound::new()));
         }
 
-        // If not in cache, load from disk
-        let path = self.get_player_data_path(uuid);
+        Self::read_player_data(&self.get_player_data_path(uuid), uuid)
+    }
+
+    /// Loads the `.dat_old` copy that the last save replaced, which vanilla falls back to when
+    /// `.dat` is missing or unreadable.
+    pub fn load_old_player_data(
+        &self,
+        uuid: &Uuid,
+    ) -> Result<(bool, NbtCompound), PlayerDataError> {
+        if !self.is_save_enabled() {
+            return Ok((false, NbtCompound::new()));
+        }
+        Self::read_player_data(
+            &self.get_player_data_path(uuid).with_extension("dat_old"),
+            uuid,
+        )
+    }
+
+    fn read_player_data(
+        path: &std::path::Path,
+        uuid: &Uuid,
+    ) -> Result<(bool, NbtCompound), PlayerDataError> {
         if !path.exists() {
-            debug!("No player data file found for {uuid}");
+            debug!("No player data file {} found for {uuid}", path.display());
             return Ok((false, NbtCompound::new()));
         }
 
-        let file = match File::open(&path) {
+        let file = match File::open(path) {
             Ok(file) => file,
             Err(e) => {
                 error!("Failed to open player data file for {uuid}: {e}");

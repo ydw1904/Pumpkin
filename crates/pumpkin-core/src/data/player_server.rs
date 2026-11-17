@@ -221,27 +221,42 @@ impl ServerPlayerData {
     ///
     /// A Result indicating success or the error that occurred.
     pub fn load_data(&self, uuid: &uuid::Uuid) -> Result<Option<NbtCompound>, PlayerDataError> {
-        let result = self.storage.load_player_data(uuid);
-
-        match result {
-            Ok((should_load, data)) => {
-                if !should_load {
-                    // No data to load, continue with default data
-                    return Ok(None);
-                }
-                Ok(Some(data))
-            }
+        match self.storage.load_player_data(uuid) {
+            Ok((true, data)) => return Ok(Some(data)),
+            Ok((false, _)) => {}
             Err(e) => {
-                if self.storage.is_save_enabled() {
-                    // Only log as error if player data saving is enabled
-                    error!("Error loading player data for {uuid}: {e}");
-                } else {
-                    // Otherwise just log as info since it's expected
-                    debug!("Not loading player data for {uuid} (saving disabled)");
-                }
-                // Continue with default data even if there's an error
+                error!("Error loading player data for {uuid}: {e}");
+                self.back_up_corrupted(uuid);
+            }
+        }
+
+        // Vanilla `PlayerDataStorage.load` falls back to `.dat_old` when `.dat` is missing or
+        // broken, and starts with default data only when that fails too.
+        match self.storage.load_old_player_data(uuid) {
+            Ok((true, data)) => Ok(Some(data)),
+            Ok((false, _)) => Ok(None),
+            Err(e) => {
+                error!("Error loading old player data for {uuid}: {e}");
                 Ok(None)
             }
+        }
+    }
+
+    /// Vanilla `PlayerDataStorage.backup`: keeps a copy of an unreadable `.dat`, since the next
+    /// save replaces it.
+    fn back_up_corrupted(&self, uuid: &Uuid) {
+        const FORMAT: &[time::format_description::FormatItem<'static>] =
+            time::macros::format_description!("[year]-[month]-[day]_[hour]-[minute]-[second]");
+        let path = self.storage.get_player_data_path(uuid);
+        if !path.is_file() {
+            return;
+        }
+        let now =
+            time::OffsetDateTime::now_local().unwrap_or_else(|_| time::OffsetDateTime::now_utc());
+        let date = now.format(FORMAT).unwrap_or_default();
+        let backup = path.with_file_name(format!("{uuid}_corrupted_{date}.dat"));
+        if let Err(e) = std::fs::copy(&path, &backup) {
+            error!("Failed to copy the player data file for {uuid}: {e}");
         }
     }
 
@@ -447,5 +462,37 @@ mod test {
 
         let (_, loaded) = storage.load_player_data(&uuid).unwrap();
         assert_eq!(loaded.get_int("level").unwrap(), 2);
+    }
+
+    #[test]
+    fn corrupt_player_data_is_backed_up_and_old_copy_loaded() {
+        let temp_dir = tempdir().unwrap();
+        let path = temp_dir.path();
+        let player_data =
+            ServerPlayerData::new(path, path.join("stats"), Duration::from_mins(5), true);
+        let uuid = Uuid::new_v4();
+        let mut nbt = NbtCompound::new();
+        nbt.put_int("level", 1);
+        player_data.storage.save_player_data(&uuid, nbt).unwrap();
+        let mut nbt = NbtCompound::new();
+        nbt.put_int("level", 2);
+        player_data.storage.save_player_data(&uuid, nbt).unwrap();
+        std::fs::write(path.join(format!("{uuid}.dat")), b"not gzip").unwrap();
+
+        let loaded = player_data.load_data(&uuid).unwrap().unwrap();
+
+        assert_eq!(loaded.get_int("level").unwrap(), 1);
+        let backups = std::fs::read_dir(path)
+            .unwrap()
+            .filter(|entry| {
+                entry
+                    .as_ref()
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(&format!("{uuid}_corrupted_"))
+            })
+            .count();
+        assert_eq!(backups, 1);
     }
 }
