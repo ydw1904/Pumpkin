@@ -3474,9 +3474,9 @@ impl Player {
             && let Ok(mut sender) = self.chunk_sender.try_lock()
         {
             let watched = self.watched_section.load();
-            while let Ok((pos, _)) = listener.try_recv() {
+            while let Ok((pos, chunk)) = listener.try_recv() {
                 if watched.is_within_distance(pos.x, pos.y) {
-                    sender.enqueue_chunk(pos);
+                    sender.enqueue_published_chunk(pos, &chunk);
                 }
             }
         }

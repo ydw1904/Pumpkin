@@ -4687,12 +4687,12 @@ impl World {
                 return;
             }
         }
-        client.send_chunks(&[chunk]).await;
+        client.send_chunks(std::slice::from_ref(&chunk)).await;
         player
             .chunk_sender
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .mark_sent_out_of_band(center_chunk);
+            .mark_sent_out_of_band(center_chunk, &chunk);
 
         debug!("Sending player teleport to {}", player.gameprofile.name);
         player.request_teleport(position, yaw, pitch);
@@ -6092,7 +6092,7 @@ impl World {
         // A cancelled `ChunkSend` keeps the chunk pending -> the batch path fires it again,
         // and parks it for a later retry if cancelled there too.
         if java_client
-            .send_chunks(&[chunk])
+            .send_chunks(std::slice::from_ref(&chunk))
             .await
             .sent
             .contains(&center_chunk)
@@ -6104,7 +6104,7 @@ impl World {
             // A world change resets the sender under this lock, after bumping the epoch,
             // so the chunk of the old world is not recorded in the new world's sender
             if player.chunk_send_epoch.load(Ordering::Relaxed) == epoch {
-                sender.mark_sent_out_of_band(center_chunk);
+                sender.mark_sent_out_of_band(center_chunk, &chunk);
             }
         }
     }

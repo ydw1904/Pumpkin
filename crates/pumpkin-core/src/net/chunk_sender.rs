@@ -118,7 +118,8 @@ struct AwaitingDelivery {
 #[derive(Debug)]
 pub struct ChunkSender {
     pub pending_chunks: FxHashSet<Vector2<i32>>,
-    sent_chunks: FxHashSet<Vector2<i32>>,
+    /// Chunks the client holds, with the copy it was sent.
+    sent_chunks: FxHashMap<Vector2<i32>, Weak<ChunkData>>,
     /// Committed Bedrock chunks whose packets are still being encoded.
     awaiting_delivery: FxHashMap<Vector2<i32>, AwaitingDelivery>,
     /// Failed Bedrock encode attempts per chunk.
@@ -143,7 +144,7 @@ impl ChunkSender {
     pub fn new() -> Self {
         Self {
             pending_chunks: FxHashSet::default(),
-            sent_chunks: FxHashSet::default(),
+            sent_chunks: FxHashMap::default(),
             awaiting_delivery: FxHashMap::default(),
             encode_failures: FxHashMap::default(),
             parked_chunks: FxHashMap::default(),
@@ -170,13 +171,13 @@ impl ChunkSender {
 
     #[must_use]
     pub fn is_chunk_sent(&self, pos: &Vector2<i32>) -> bool {
-        self.sent_chunks.contains(pos)
+        self.sent_chunks.contains_key(pos)
     }
 
     /// Vanilla `ChunkMap.isChunkTracked` -> the client holds this chunk (view checked by caller).
     #[must_use]
     pub fn is_chunk_ready(&self, pos: &Vector2<i32>) -> bool {
-        self.sent_chunks.contains(pos) && !self.awaiting_delivery.contains_key(pos)
+        self.sent_chunks.contains_key(pos) && !self.awaiting_delivery.contains_key(pos)
     }
 
     /// Bedrock chunks become ready once `send_chunks` has queued them. Returns the
@@ -314,12 +315,12 @@ impl ChunkSender {
     }
 
     /// Records a chunk sent outside the batch path as held.
-    pub fn mark_sent_out_of_band(&mut self, pos: Vector2<i32>) {
+    pub fn mark_sent_out_of_band(&mut self, pos: Vector2<i32>, chunk: &SyncChunk) {
         self.pending_chunks.remove(&pos);
         self.parked_chunks.remove(&pos);
         self.awaiting_delivery.remove(&pos);
         self.encode_failures.remove(&pos);
-        self.sent_chunks.insert(pos);
+        self.sent_chunks.insert(pos, Arc::downgrade(chunk));
     }
 
     pub const fn on_batch_acknowledged(&mut self, client_requested_rate: f32) -> bool {
@@ -349,12 +350,25 @@ impl ChunkSender {
         self.pending_chunks.insert(pos);
     }
 
+    /// A chunk was published: queued unless the client already holds this very copy, which
+    /// happens when a batch picked it up before the publish notice was read.
+    pub fn enqueue_published_chunk(&mut self, pos: Vector2<i32>, chunk: &Weak<ChunkData>) {
+        if self
+            .sent_chunks
+            .get(&pos)
+            .is_some_and(|sent| sent.ptr_eq(chunk))
+        {
+            return;
+        }
+        self.enqueue_chunk(pos);
+    }
+
     pub fn unload_chunk(&mut self, client: &ClientPlatform, pos: Vector2<i32>) {
         self.pending_chunks.remove(&pos);
         self.awaiting_delivery.remove(&pos);
         self.encode_failures.remove(&pos);
         self.parked_chunks.remove(&pos);
-        if self.sent_chunks.remove(&pos)
+        if self.sent_chunks.remove(&pos).is_some()
             && let ClientPlatform::Java(java_client) = client
             && !java_client.is_closed()
         {
@@ -574,7 +588,8 @@ impl ChunkSender {
             };
             if queued {
                 self.encode_failures.remove(&chunk.position);
-                self.sent_chunks.insert(chunk.position);
+                self.sent_chunks
+                    .insert(chunk.position, chunk.chunk_ref.clone());
                 dispatched_positions.push(chunk.position);
             } else {
                 // Dropped on purpose (e.g. a `PacketSentEvent` cancel) -> offered again later
@@ -623,9 +638,13 @@ impl ChunkSender {
                     previous.earlier.push(previous.token);
                     (previous.held_before, previous.earlier)
                 }
-                None => (self.sent_chunks.contains(&candidate.position), Vec::new()),
+                None => (
+                    self.sent_chunks.contains_key(&candidate.position),
+                    Vec::new(),
+                ),
             };
-            self.sent_chunks.insert(candidate.position);
+            self.sent_chunks
+                .insert(candidate.position, Arc::downgrade(&candidate.chunk));
             self.awaiting_delivery.insert(
                 candidate.position,
                 AwaitingDelivery {
@@ -1004,7 +1023,7 @@ mod tests {
         sender.enqueue_chunk(position);
         sender.cancel_pending(&batch_for(position, 0), 0, &[position]);
 
-        sender.mark_sent_out_of_band(position);
+        sender.mark_sent_out_of_band(position, &ChunkData::empty_sync(position.x, position.y));
         sender.batch_tick += CANCELLED_RETRY_TICKS;
         sender.release_parked();
 
@@ -1027,6 +1046,23 @@ mod tests {
 
         assert!(!sender.pending_chunks.contains(&position));
         assert!(sender.parked_chunks.contains_key(&position));
+    }
+
+    #[test]
+    fn publish_notice_for_the_held_copy_does_not_resend() {
+        let position = Vector2::new(3, 3);
+        let chunk = ChunkData::empty_sync(position.x, position.y);
+        let mut sender = ChunkSender::new();
+        sender.mark_sent_out_of_band(position, &chunk);
+
+        // The notice for the copy already sent arrives after the send
+        sender.enqueue_published_chunk(position, &Arc::downgrade(&chunk));
+        assert!(!sender.pending_chunks.contains(&position));
+
+        // A republished copy is sent again
+        let replacement = ChunkData::empty_sync(position.x, position.y);
+        sender.enqueue_published_chunk(position, &Arc::downgrade(&replacement));
+        assert!(sender.pending_chunks.contains(&position));
     }
 
     fn batch_for(position: Vector2<i32>, epoch_snapshot: u32) -> PreparedBatch {
