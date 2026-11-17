@@ -131,7 +131,13 @@ impl World {
             return Vec::new();
         }
         let mut searched = rustc_hash::FxHashSet::default();
+        // Many entities share a chunk. Skipping a repeat leaves the order chunks are first
+        // searched in, and so the stand-in IDs, unchanged.
+        let mut centers = rustc_hash::FxHashSet::default();
         for chunk in chunks {
+            if !centers.insert(chunk) {
+                continue;
+            }
             for x in -LISTENER_SEARCH_CHUNKS..=LISTENER_SEARCH_CHUNKS {
                 for z in -LISTENER_SEARCH_CHUNKS..=LISTENER_SEARCH_CHUNKS {
                     searched.insert(Vector2::new(chunk.x + x, chunk.y + z));
