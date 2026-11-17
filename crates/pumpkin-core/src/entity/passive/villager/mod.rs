@@ -1467,6 +1467,11 @@ impl AgeableMob for VillagerEntity {
 }
 
 impl Mob for VillagerEntity {
+    /// Vanilla `AbstractVillager.canBeLeashed`.
+    fn can_be_leashed(&self) -> bool {
+        false
+    }
+
     /// Runs right after `finalize_spawn` for mobs placed by world generation, which
     /// finalized the type with a biome the world couldn't see yet.
     fn finalize_spawn_in_biome(&self, biome: &'static pumpkin_data::chunk::Biome) {

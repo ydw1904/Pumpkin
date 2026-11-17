@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use crate::block::registry::BlockActionResult;
-use crate::entity::EntityBase;
 use crate::entity::decoration::leash_knot::LeashKnotEntity;
 use crate::entity::player::Player;
 use crate::item::{ItemBehaviour, ItemMetadata};
@@ -60,7 +57,8 @@ impl ItemBehaviour for LeadItem {
         let entities = world.get_entities_at_box(&search_box);
 
         let mut any_leashed = false;
-        let mut knot: Option<Arc<dyn EntityBase>> = None;
+        let existing_knot = LeashKnotEntity::get_knot(&world, location);
+        let mut knot = existing_knot.clone();
 
         for entity_base in entities {
             let ent = entity_base.get_entity();
@@ -77,14 +75,19 @@ impl ItemBehaviour for LeadItem {
                 .unwrap_or(false);
 
             if is_leashed_to_player {
-                if knot.is_none() {
-                    knot = Some(LeashKnotEntity::get_or_create(&world, location));
-                }
-                if let Some(k) = &knot {
+                let k = knot.get_or_insert_with(|| LeashKnotEntity::create_knot(&world, location));
+                if entity_base.can_have_a_leash_attached_to(k.get_entity()) {
                     ent.leash_to(k.clone());
                     any_leashed = true;
                 }
             }
+        }
+        // Vanilla `LeadItem.bindPlayerMobs` discards a knot it made for nothing.
+        if !any_leashed
+            && existing_knot.is_none()
+            && let Some(knot) = knot
+        {
+            knot.get_entity().remove();
         }
 
         if any_leashed {

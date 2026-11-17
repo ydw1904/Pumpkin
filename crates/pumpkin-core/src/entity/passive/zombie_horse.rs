@@ -1,4 +1,4 @@
-use std::sync::{Arc, atomic::Ordering};
+use std::sync::Arc;
 
 use pumpkin_data::BlockState;
 use pumpkin_data::attributes::Attributes;
@@ -166,16 +166,9 @@ impl Mob for ZombieHorseEntity {
         true
     }
 
-    fn mob_interact_with_hand(
-        &self,
-        _player: &Arc<Player>,
-        _item_stack: &mut ItemStack,
-        _hand: pumpkin_util::Hand,
-    ) -> Option<bool> {
-        self.mob_entity
-            .persistence_required
-            .store(true, Ordering::Relaxed);
-        None
+    /// Vanilla `ZombieHorse.interact`.
+    fn persists_on_interact(&self) -> bool {
+        true
     }
 
     fn mob_write_nbt(&self, nbt: &mut NbtCompound) {
@@ -191,7 +184,7 @@ impl Mob for ZombieHorseEntity {
     }
 
     fn mob_interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
-        if let Some(result) = self.handle_important_interactions(player, item_stack) {
+        if let Some(result) = self.handle_important_interactions(item_stack) {
             return result;
         }
         if let Some(result) = self.interact_with_held_item(player, item_stack, false) {

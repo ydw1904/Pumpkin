@@ -683,7 +683,7 @@ impl Mob for LlamaEntity {
     }
 
     fn mob_interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
-        if let Some(result) = self.handle_important_interactions(player, item_stack) {
+        if let Some(result) = self.handle_important_interactions(item_stack) {
             return result;
         }
         if let Some(result) = self.interact_with_held_item(player, item_stack, true) {

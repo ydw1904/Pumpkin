@@ -223,6 +223,11 @@ impl Animal for HoglinEntity {
 }
 
 impl Mob for HoglinEntity {
+    /// Vanilla `Hoglin.canBeLeashed`: leashable although it is an `Enemy`.
+    fn can_be_leashed(&self) -> bool {
+        true
+    }
+
     fn get_ambient_sound_interval(&self) -> i32 {
         crate::entity::passive::animal::AMBIENT_SOUND_INTERVAL
     }

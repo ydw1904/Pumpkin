@@ -382,6 +382,11 @@ impl NeutralMob for WolfEntity {
 }
 
 impl Mob for WolfEntity {
+    /// Vanilla `Wolf.canBeLeashed`.
+    fn can_be_leashed(&self) -> bool {
+        !self.is_angry()
+    }
+
     /// Vanilla `Wolf.finalizeSpawn`: a pack shares the variant its first wolf picked from the
     /// spawn biome, and every wolf rolls its own sound variant.
     fn finalize_spawn(

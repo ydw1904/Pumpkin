@@ -139,8 +139,7 @@ impl Mob for BoggedSkeletonEntity {
             let _ = player.damage_item_stack(item_stack, 1);
             return true;
         }
-        self.get_mob_entity()
-            .mob_interact(player, item_stack, self.can_be_leashed())
+        false
     }
 
     fn has_audited_tick(&self) -> bool {

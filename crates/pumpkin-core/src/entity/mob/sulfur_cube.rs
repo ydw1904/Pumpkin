@@ -1109,9 +1109,7 @@ impl Mob for SulfurCubeEntity {
                 self.play_eating_sound();
                 return true;
             }
-            return self
-                .mob_entity
-                .mob_interact(player, item_stack, self.can_be_leashed());
+            return false;
         }
 
         if self.is_primed() {
@@ -1160,9 +1158,7 @@ impl Mob for SulfurCubeEntity {
                 return equipped;
             }
 
-            return self
-                .mob_entity
-                .mob_interact(player, item_stack, self.can_be_leashed());
+            return false;
         }
 
         let world = self.get_entity().world.load();

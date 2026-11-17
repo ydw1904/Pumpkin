@@ -220,6 +220,11 @@ fn set_attack_target(brain: &mut BrainState, target: Arc<dyn EntityBase>) {
 }
 
 impl Mob for ZoglinEntity {
+    /// Vanilla `Zoglin.canBeLeashed`: leashable although it is an `Enemy`.
+    fn can_be_leashed(&self) -> bool {
+        true
+    }
+
     fn has_audited_tick(&self) -> bool {
         // An enchanted or special weapon hits more than the attack target.
         self.mob_entity.hits_only_its_target()

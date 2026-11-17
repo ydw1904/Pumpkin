@@ -198,6 +198,10 @@ impl Animal for TurtleEntity {
 }
 
 impl Mob for TurtleEntity {
+    fn can_be_leashed(&self) -> bool {
+        false
+    }
+
     fn get_ambient_sound_interval(&self) -> i32 {
         AMBIENT_SOUND_INTERVAL
     }

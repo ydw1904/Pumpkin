@@ -763,18 +763,13 @@ impl Mob for NautilusEntity {
         }
     }
 
-    /// Vanilla `AbstractNautilus.interact` and `mobInteract`.
+    /// Vanilla `AbstractNautilus.interact`.
+    fn persists_on_interact(&self) -> bool {
+        true
+    }
+
+    /// Vanilla `AbstractNautilus.mobInteract`.
     fn mob_interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
-        self.mob_entity
-            .persistence_required
-            .store(true, Ordering::Relaxed);
-        // Vanilla `Mob.checkAndHandleImportantInteractions` runs before `mobInteract`.
-        if self
-            .mob_entity
-            .mob_interact(player, item_stack, self.can_be_leashed())
-        {
-            return true;
-        }
         if item_stack.item == &Item::NAME_TAG
             || item_stack.item.registry_key.ends_with("_spawn_egg")
         {

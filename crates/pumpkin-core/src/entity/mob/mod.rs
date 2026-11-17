@@ -1563,48 +1563,6 @@ impl MobEntity {
             >= DAYLIGHT_BRIGHTNESS
     }
 
-    pub fn mob_interact(
-        &self,
-        player: &Arc<Player>,
-        item_stack: &mut ItemStack,
-        can_be_leashed: bool,
-    ) -> bool {
-        let entity = &self.living_entity.entity;
-
-        // If already leashed to player, right-clicking unleashes the mob
-        let currently_leashed = entity.is_leashed();
-
-        if currently_leashed {
-            entity.unleash();
-            let lead_item =
-                pumpkin_data::item_stack::ItemStack::new(1, &pumpkin_data::item::Item::LEAD);
-            entity
-                .world
-                .load()
-                .drop_stack(&entity.block_pos.load(), lead_item);
-            return true;
-        }
-
-        // If holding a lead, leash the mob to the player
-        if (item_stack.item.registry_key == "lead"
-            || item_stack.item.registry_key == "minecraft:lead")
-            && can_be_leashed
-        {
-            let diff = entity.pos.load() - player.get_entity().pos.load();
-            let dist_sq = diff.length_squared();
-            if dist_sq <= Entity::LEASH_SNAP_DISTANCE * Entity::LEASH_SNAP_DISTANCE {
-                if entity.leash_to(player.clone() as Arc<dyn EntityBase>)
-                    && player.gamemode.load() != pumpkin_util::GameMode::Creative
-                {
-                    item_stack.decrement(1);
-                }
-                return true;
-            }
-        }
-
-        false
-    }
-
     pub fn check_despawn(&self, mob: &dyn Mob) {
         let entity = &self.living_entity.entity;
 
@@ -2255,8 +2213,9 @@ pub trait Mob: EntityBase + Send + Sync {
         EquipmentSlot::HEAD
     }
 
+    /// Vanilla `Mob.canBeLeashed`: every mob but an `Enemy`.
     fn can_be_leashed(&self) -> bool {
-        true
+        !self.get_entity().entity_type.is_enemy
     }
 
     fn should_stay_close_to_leash_holder(&self) -> bool {
@@ -3295,9 +3254,14 @@ pub trait Mob: EntityBase + Send + Sync {
         self.get_mob_entity().set_target(target);
     }
 
-    fn mob_interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
-        self.get_mob_entity()
-            .mob_interact(player, item_stack, self.can_be_leashed())
+    /// Vanilla `mobInteract`, after name tags, spawn eggs and leads. The base passes.
+    fn mob_interact(&self, _player: &Arc<Player>, _item_stack: &mut ItemStack) -> bool {
+        false
+    }
+
+    /// Vanilla `interact` overrides that call `setPersistenceRequired` before `Mob.interact`.
+    fn persists_on_interact(&self) -> bool {
+        false
     }
 
     fn mob_interact_with_hand(
@@ -3637,6 +3601,104 @@ fn emit_entity_interact(entity: &Entity, player: &Player) {
     );
 }
 
+/// Vanilla `Entity.interact` for a mob, which is always `Leashable`: moving the player's leads
+/// to it, shears, then untying or tying a lead. `None` is vanilla `PASS`.
+fn leashable_interact<M: Mob + Send + 'static>(
+    mob: &M,
+    player: &Arc<Player>,
+    item_stack: &mut ItemStack,
+) -> Option<bool> {
+    // Vanilla `Mob.interact` passes for a dead mob before reaching `Entity.interact`.
+    if !mob.get_mob_entity().living_entity.is_alive() {
+        return None;
+    }
+    let entity = mob.get_entity();
+    let world = entity.world.load();
+    let player_id = player.entity_id();
+    let held_by_player = |leashable: &Entity| {
+        leashable
+            .get_leash_holder()
+            .is_some_and(|holder| holder.get_entity().entity_id == player_id)
+    };
+    if player.get_entity().is_sneaking()
+        && mob.can_be_leashed()
+        && !mob.get_mob_entity().living_entity.is_baby()
+        && let Some(this) = world.get_entity_by_id(entity.entity_id)
+    {
+        // Vanilla `Leashable.leashableInArea`: a 32-block cube around this mob.
+        let bounding_box = entity.bounding_box.load();
+        let center = (bounding_box.min + bounding_box.max) * 0.5;
+        let area = BoundingBox::of_size(center, 32.0, 32.0, 32.0);
+        let mut any_leashed = false;
+        for leashable in world.get_entities_at_box(&area) {
+            if held_by_player(leashable.get_entity())
+                && leashable.can_have_a_leash_attached_to(entity)
+            {
+                leashable.get_entity().leash_to(this.clone());
+                any_leashed = true;
+            }
+        }
+        if any_leashed {
+            world.emit_game_event_with_context(
+                GameEvent::EntityAction.name(),
+                entity.block_pos.load().to_centered_f64(),
+                &crate::world::game_event::GameEventContext {
+                    source_entity: Some(player.as_ref()),
+                    affected_state: None,
+                },
+            );
+            world.play_sound(Sound::ItemLeadTied, mob.sound_source(), &entity.pos.load());
+            return Some(true);
+        }
+    }
+
+    if item_stack.get_item() == &Item::SHEARS
+        && crate::entity::shear_off_all_leash_connections(mob, Some(player))
+    {
+        let _ = player.damage_item_stack(item_stack, 1);
+        return Some(true);
+    }
+    if item_stack.get_item() == &Item::SHEARS
+        && mob.can_shear_equipment(player)
+        && !player.get_entity().is_sneaking()
+        && mob.attempt_to_shear_equipment(player, item_stack)
+    {
+        return Some(true);
+    }
+
+    if held_by_player(entity) {
+        // Vanilla `removeLeash` for players with infinite materials, `dropLeash` otherwise.
+        if player.gamemode.load() == pumpkin_util::GameMode::Creative {
+            entity.unleash();
+        } else {
+            entity.drop_leash();
+        }
+        emit_entity_interact(entity, player);
+        world.play_sound(
+            Sound::ItemLeadUntied,
+            mob.sound_source(),
+            &entity.pos.load(),
+        );
+        return Some(true);
+    }
+    if item_stack.get_item() == &Item::LEAD
+        && entity
+            .get_leash_holder()
+            .is_none_or(|holder| holder.get_player().is_none())
+        && mob.can_have_a_leash_attached_to(player.get_entity())
+    {
+        if entity.is_leashed() {
+            entity.drop_leash();
+        }
+        if entity.leash_to(player.clone()) {
+            world.play_sound(Sound::ItemLeadTied, mob.sound_source(), &entity.pos.load());
+            item_stack.decrement_unless_creative(player.gamemode.load(), 1);
+        }
+        return Some(true);
+    }
+    None
+}
+
 impl<T: Mob + Send + 'static> EntityBase for T {
     fn kill(&self, caller: &dyn EntityBase) {
         if !self.mob_kill(caller) {
@@ -3897,33 +3959,23 @@ impl<T: Mob + Send + 'static> EntityBase for T {
 
     fn interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
         let entity = &self.get_mob_entity().living_entity.entity;
+        if self.persists_on_interact() {
+            self.get_mob_entity()
+                .persistence_required
+                .store(true, Ordering::Relaxed);
+        }
         if check_and_handle_important_interactions(self, player, item_stack) {
             emit_entity_interact(entity, player);
             return true;
         }
-        // Vanilla `Entity.interact`: shears cut leashes before they shear equipment.
-        if item_stack.get_item() == &Item::SHEARS
-            && self.get_mob_entity().living_entity.is_alive()
-            && crate::entity::shear_off_all_leash_connections(self, Some(player))
-        {
-            let _ = player.damage_item_stack(item_stack, 1);
-            return true;
+        if let Some(handled) = leashable_interact(self, player, item_stack) {
+            return handled;
         }
-        if item_stack.get_item() == &Item::SHEARS
-            && self.can_shear_equipment(player)
-            && !player.get_entity().is_sneaking()
-            && self.attempt_to_shear_equipment(player, item_stack)
-        {
-            return true;
-        }
-        let was_leashed = entity.is_leashed();
         let consumed = self.mob_interact(player, item_stack)
             || self
                 .as_ageable()
                 .is_some_and(|ageable| ageable.ageable_interact(player, item_stack));
-        // Vanilla `Mob.interact` emits for a consumed `mobInteract` and `Entity.interact` for
-        // an unleash, but tying a lead (handled in `mob_interact` here) emits nothing.
-        if consumed && (was_leashed || !entity.is_leashed()) {
+        if consumed {
             emit_entity_interact(entity, player);
         }
         consumed
@@ -3935,9 +3987,17 @@ impl<T: Mob + Send + 'static> EntityBase for T {
         item_stack: &mut ItemStack,
         hand: pumpkin_util::Hand,
     ) -> Option<bool> {
+        if self.persists_on_interact() {
+            self.get_mob_entity()
+                .persistence_required
+                .store(true, Ordering::Relaxed);
+        }
         if check_and_handle_important_interactions(self, player, item_stack) {
             emit_entity_interact(self.get_entity(), player);
             return Some(true);
+        }
+        if let Some(handled) = leashable_interact(self, player, item_stack) {
+            return Some(handled);
         }
         self.mob_interact_with_hand(player, item_stack, hand)
     }

@@ -631,13 +631,6 @@ impl Mob for HappyGhastEntity {
         if self.is_baby() {
             return self.animal_interact(player, item_stack);
         }
-        // Vanilla `Entity.interact` handles leads before the species' `mobInteract`.
-        if self
-            .mob_entity
-            .mob_interact(player, item_stack, self.can_be_leashed())
-        {
-            return true;
-        }
         if !item_stack.is_empty() {
             if equip_on_target(self, player, item_stack) {
                 return true;

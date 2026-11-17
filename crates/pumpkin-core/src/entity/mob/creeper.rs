@@ -322,9 +322,7 @@ impl Mob for CreeperEntity {
             .item
             .has_tag(&tag::Item::MINECRAFT_CREEPER_IGNITERS)
         {
-            return self
-                .mob_entity
-                .mob_interact(player, item_stack, self.can_be_leashed());
+            return false;
         }
 
         let sound = if item_stack.item.id == Item::FIRE_CHARGE.id {

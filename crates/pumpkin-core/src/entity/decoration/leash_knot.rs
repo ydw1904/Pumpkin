@@ -193,24 +193,27 @@ impl EntityBase for LeashKnotEntity {
                 && let Some(holder) = guard.as_ref().and_then(std::sync::Weak::upgrade)
                 && holder.get_entity().entity_id == player_id
             {
-                player_leashed_mobs.push(ent);
+                player_leashed_mobs.push(entity_base);
             }
         }
 
         if let Some(self_knot) = Self::get_knot(&world, self.entity.block_pos.load()) {
             for mob in player_leashed_mobs {
-                mob.leash_to(self_knot.clone());
-                attached_mob = true;
+                if mob.can_have_a_leash_attached_to(&self.entity) {
+                    mob.get_entity().leash_to(self_knot.clone());
+                    attached_mob = true;
+                }
             }
         }
 
         let mut any_dropped = false;
-        if !attached_mob {
+        if !attached_mob && !player.get_entity().is_sneaking() {
             let player_holder = player.clone() as Arc<dyn EntityBase>;
             for entity_base in &entities {
-                if entity_base
-                    .get_entity()
-                    .leash_to_if_held_by(knot_id, &player_holder)
+                if entity_base.can_have_a_leash_attached_to(player.get_entity())
+                    && entity_base
+                        .get_entity()
+                        .leash_to_if_held_by(knot_id, &player_holder)
                 {
                     any_dropped = true;
                 }

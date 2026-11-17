@@ -809,6 +809,14 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         Entity::LEASH_SNAP_DISTANCE
     }
 
+    /// Vanilla `Leashable.canHaveALeashAttachedTo`. Only mobs are leashable here.
+    fn can_have_a_leash_attached_to(&self, holder: &Entity) -> bool {
+        let entity = self.get_entity();
+        entity.entity_id != holder.entity_id
+            && entity.leash_distance_to(holder) <= self.leash_snap_distance()
+            && self.get_mob().is_some_and(mob::Mob::can_be_leashed)
+    }
+
     /// Vanilla `Leashable.leashElasticDistance`: the leash pulls beyond this.
     fn leash_elastic_distance(&self) -> f64 {
         Entity::LEASH_ELASTIC_DISTANCE

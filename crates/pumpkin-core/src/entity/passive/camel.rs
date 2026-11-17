@@ -458,18 +458,9 @@ impl Mob for CamelEntity {
         self.is_husk()
     }
 
-    fn mob_interact_with_hand(
-        &self,
-        _player: &Arc<Player>,
-        _item_stack: &mut ItemStack,
-        _hand: pumpkin_util::Hand,
-    ) -> Option<bool> {
-        if self.is_husk() {
-            self.mob_entity
-                .persistence_required
-                .store(true, Ordering::Relaxed);
-        }
-        None
+    /// Vanilla `CamelHusk.interact`.
+    fn persists_on_interact(&self) -> bool {
+        self.is_husk()
     }
 
     fn mob_write_nbt(&self, nbt: &mut NbtCompound) {
@@ -600,7 +591,7 @@ impl Mob for CamelEntity {
     }
 
     fn mob_interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
-        if let Some(result) = self.handle_important_interactions(player, item_stack) {
+        if let Some(result) = self.handle_important_interactions(item_stack) {
             return result;
         }
         if player.get_entity().is_sneaking() && !self.is_baby() {

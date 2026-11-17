@@ -175,7 +175,7 @@ impl Mob for SkeletonHorseEntity {
     }
 
     fn mob_interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
-        if let Some(result) = self.handle_important_interactions(player, item_stack) {
+        if let Some(result) = self.handle_important_interactions(item_stack) {
             return result;
         }
         if !self.is_tamed() {
