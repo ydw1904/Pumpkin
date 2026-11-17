@@ -2629,14 +2629,16 @@ impl DataComponentCodec<Self> for WritableBookContentImpl {
     }
 
     fn deserialize(seq: &mut impl NetworkReadExt) -> Result<Self, ReadingError> {
+        // Vanilla `WritableBookContent.MAX_PAGES` and `PAGE_EDIT_LENGTH`.
         const MAX_PAGES: usize = 100;
+        const PAGE_EDIT_LENGTH: usize = 1024;
         let len = read_count(seq, MAX_PAGES)?;
         let mut pages = Vec::with_capacity(len);
         for _ in 0..len {
-            let raw = seq.get_str()?.to_string();
+            let raw = seq.get_str_bounded(PAGE_EDIT_LENGTH)?.to_string();
             let has_filtered = seq.get_bool()?;
             if has_filtered {
-                let _ = seq.get_str()?;
+                let _ = seq.get_str_bounded(PAGE_EDIT_LENGTH)?;
             }
             pages.push(raw);
         }
@@ -2659,9 +2661,11 @@ impl DataComponentCodec<Self> for WrittenBookContentImpl {
     }
 
     fn deserialize(seq: &mut impl NetworkReadExt) -> Result<Self, ReadingError> {
-        let title = seq.get_str()?.to_string();
+        // Vanilla `WrittenBookContent.TITLE_MAX_LENGTH`.
+        const TITLE_MAX_LENGTH: usize = 32;
+        let title = seq.get_str_bounded(TITLE_MAX_LENGTH)?.to_string();
         if seq.get_bool()? {
-            let _ = seq.get_str()?;
+            let _ = seq.get_str_bounded(TITLE_MAX_LENGTH)?;
         }
         let author = seq.get_str()?.to_string();
         let generation = seq.get_var_int()?.0;
