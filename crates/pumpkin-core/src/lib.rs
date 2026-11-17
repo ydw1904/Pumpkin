@@ -618,7 +618,7 @@ impl PumpkinServer {
             error!("Error saving all players advancements during shutdown: {e}");
         }
 
-        let kick_message = TextComponent::text("Server stopped");
+        let kick_message = TextComponent::translate("multiplayer.disconnect.server_shutdown", &[]);
         for player in self.server.get_all_players() {
             player.kick(DisconnectReason::Shutdown, &kick_message);
         }

@@ -1055,7 +1055,10 @@ impl Server {
                     world.send_java_login(&self.basic_config, &player, self);
                 }
                 if !self.admit_player(&world, &player) {
-                    player.kick(DisconnectReason::Shutdown, &TextComponent::text("Server stopped"));
+                    player.kick(
+                        DisconnectReason::Shutdown,
+                        &TextComponent::translate("multiplayer.disconnect.server_shutdown", &[]),
+                    );
                     player.client.clear_player();
                     return None;
                 }
