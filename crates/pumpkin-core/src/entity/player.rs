@@ -8422,6 +8422,12 @@ impl NBTStorage for EnderChestInventory {
 impl NBTStorageInit for EnderChestInventory {}
 
 impl EntityBase for Player {
+    /// Vanilla `Player.getDimensionChangingDelay`.
+    fn get_dimension_changing_delay(&self) -> u32 {
+        const PLAYER_DIMENSION_CHANGING_DELAY: u32 = 10;
+        PLAYER_DIMENSION_CHANGING_DELAY
+    }
+
     /// Vanilla `Player`: a flying player isn't pushed by bubble columns.
     fn on_above_bubble_column(&self, drag_down: bool, pos: &BlockPos) {
         if !self.is_flying() {

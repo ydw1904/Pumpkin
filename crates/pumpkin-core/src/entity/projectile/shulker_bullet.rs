@@ -599,6 +599,10 @@ impl EntityBase for ShulkerBulletEntity {
         self.owner.check_left_owner(entity);
         // `Entity.baseTick` `computeSpeed`, the known speed a momentum deflection reads.
         entity.update_last_pos();
+        entity.handle_portal(caller);
+        if entity.is_removed() {
+            return;
+        }
 
         let target = self.target.get(&world);
         if target.is_none() {
@@ -632,6 +636,9 @@ impl EntityBase for ShulkerBulletEntity {
         let from = entity.pos.load();
         entity.set_pos(from + movement);
         entity.apply_effects_from_blocks(caller, from, entity.pos.load());
+        if entity.is_inside_portal_this_tick() {
+            entity.handle_portal(caller);
+        }
         if let Some(hit) = hit
             && !entity.is_removed()
         {

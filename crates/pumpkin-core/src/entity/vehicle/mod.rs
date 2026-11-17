@@ -13,6 +13,9 @@ use crate::entity::mob::piglin_ai::PiglinAi;
 use crate::entity::{Entity, player::Player};
 use crate::world::game_event::GameEventContext;
 
+/// Vanilla `VehicleEntity.getDimensionChangingDelay`, the portal cooldown of boats and minecarts.
+pub(crate) const DIMENSION_CHANGING_DELAY: u32 = 10;
+
 /// What vanilla `MinecartChest.interact` and `AbstractChestBoat` do once a player opens the
 /// chest: a `container_open` game event, and piglins that see the player get angry.
 pub(crate) fn chest_vehicle_opened(entity: &Entity, player: &Arc<Player>) {

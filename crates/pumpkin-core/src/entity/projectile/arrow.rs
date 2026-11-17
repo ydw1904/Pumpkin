@@ -774,7 +774,10 @@ impl EntityBase for ArrowEntity {
             self.apply_gravity();
         }
 
-        // Vanilla `super.tick()`, the fluid and fire part of `Entity.baseTick`.
+        // Vanilla `super.tick()`: the portal, fluid and fire part of `Entity.baseTick`.
+        if !entity.is_removed() {
+            entity.handle_portal(caller);
+        }
         if !entity.is_removed() {
             entity.update_fluid_state(caller);
             super::tick_fire(entity, false);
@@ -1144,6 +1147,9 @@ impl ArrowEntity {
             let next = hits.first().map_or(block_to, |(_, location)| *location);
             entity.set_pos(next);
             entity.apply_effects_from_blocks(caller, initial, next);
+            if entity.is_inside_portal_this_tick() {
+                entity.handle_portal(caller);
+            }
 
             if hits.is_empty() {
                 if let Some(block_hit) = block_hit

@@ -243,9 +243,9 @@ impl PortalType {
                         }
 
                         // Vanilla `Entity.adjustSpawnLocation`: on top of the world spawn column.
-                        let (spawn_x, spawn_z) = {
+                        let (spawn_x, spawn_z, spawn_yaw, spawn_pitch) = {
                             let info = dest_world.level_info.load();
-                            (info.spawn_x, info.spawn_z)
+                            (info.spawn_x, info.spawn_z, info.spawn_yaw, info.spawn_pitch)
                         };
                         dest_world
                             .level
@@ -263,8 +263,11 @@ impl PortalType {
                                 f64::from(spawn_y),
                                 f64::from(spawn_z) + 0.5,
                             ),
-                            yaw: None,
-                            pitch: None,
+                            // Vanilla `Relative.ROTATION`: the spawn angle is added on.
+                            yaw: Some(caller.get_entity().yaw.load() + spawn_yaw),
+                            pitch: Some(
+                                (caller.get_entity().pitch.load() + spawn_pitch).clamp(-90.0, 90.0),
+                            ),
                         })
                     }
                 } else {
@@ -405,11 +408,13 @@ impl PortalProcessor {
         if self.inside_portal_this_tick {
             self.inside_portal_this_tick = false;
             if allowed_to_teleport {
+                // Vanilla `portalTime++ >= getPortalTransitionTime(...)`.
+                let portal_time = self.portal_time;
                 self.portal_time += 1;
-                let transition_time = self
-                    .portal_type
-                    .get_portal_transition_time(current_world, entity);
-                self.portal_time >= transition_time
+                portal_time
+                    >= self
+                        .portal_type
+                        .get_portal_transition_time(current_world, entity)
             } else {
                 false
             }

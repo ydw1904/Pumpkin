@@ -477,6 +477,10 @@ impl BoatEntity {
 }
 
 impl EntityBase for BoatEntity {
+    fn get_dimension_changing_delay(&self) -> u32 {
+        super::DIMENSION_CHANGING_DELAY
+    }
+
     fn get_air_drag(&self) -> f64 {
         1.0
     }

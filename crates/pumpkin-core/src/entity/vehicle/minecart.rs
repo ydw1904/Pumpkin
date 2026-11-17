@@ -632,6 +632,10 @@ impl MinecartEntity {
 }
 
 impl EntityBase for MinecartEntity {
+    fn get_dimension_changing_delay(&self) -> u32 {
+        super::DIMENSION_CHANGING_DELAY
+    }
+
     fn get_container_inventory(&self) -> Option<Arc<dyn pumpkin_inventory::Inventory>> {
         self.container_inventory()
     }
@@ -690,8 +694,10 @@ impl EntityBase for MinecartEntity {
         if self.vehicle.entity.is_removed() {
             return;
         }
-        // Vanilla `handlePortal` is left out: non-player entities can't change dimension yet,
-        // so the minecart would stay behind while its rider is teleported.
+        self.vehicle.entity.handle_portal(caller);
+        if self.vehicle.entity.is_removed() {
+            return;
+        }
         match &self.kind {
             MinecartKind::Furnace(minecart) => minecart.tick(&self.vehicle.entity),
             MinecartKind::CommandBlock(minecart) => minecart.step_tick(),

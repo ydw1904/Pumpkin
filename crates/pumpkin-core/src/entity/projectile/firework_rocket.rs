@@ -258,6 +258,11 @@ impl EntityBase for FireworkRocketEntity {
     }
 
     fn tick(&self, caller: &dyn EntityBase, _server: &Server) {
+        // Vanilla `super.tick()` first.
+        self.get_entity().handle_portal(caller);
+        if self.get_entity().is_removed() {
+            return;
+        }
         self.entity.process_tick(caller);
 
         let entity = self.get_entity();

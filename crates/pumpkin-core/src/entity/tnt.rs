@@ -1,10 +1,14 @@
 use super::{Entity, EntityBase, living::LivingEntity, projectile::owner::EntityReference};
 use crate::server::Server;
 use crate::world::World;
+use crate::world::explosion::{
+    DefaultExplosionDamageCalculator, Explosion, ExplosionDamageCalculator,
+};
 use core::f32;
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::Block;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::fluid::FluidState;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_util::math::position::BlockPos;
@@ -15,18 +19,53 @@ use std::{
     sync::{
         Arc,
         atomic::{
-            AtomicU32,
+            AtomicBool, AtomicU32,
             Ordering::{self, Relaxed},
         },
     },
 };
 
-// TODO: `block_state` NBT tag and `usedPortal` damage calculator.
+// TODO: `block_state` NBT tag.
 pub struct TNTEntity {
     entity: Entity,
     power: AtomicCell<f32>,
     fuse: AtomicU32,
     owner: EntityReference,
+    /// Vanilla `usedPortal`: set on the copy a dimension change makes, never saved.
+    used_portal: AtomicBool,
+}
+
+/// Vanilla `PrimedTnt.USED_PORTAL_DAMAGE_CALCULATOR`: TNT that came through a portal leaves
+/// nether portals alone.
+struct UsedPortalDamageCalculator;
+
+impl ExplosionDamageCalculator for UsedPortalDamageCalculator {
+    fn get_block_explosion_resistance(
+        &self,
+        explosion: &Explosion,
+        world: &World,
+        pos: &BlockPos,
+        block: &Block,
+        fluid: &FluidState,
+    ) -> Option<f32> {
+        if block == &Block::NETHER_PORTAL {
+            None
+        } else {
+            DefaultExplosionDamageCalculator
+                .get_block_explosion_resistance(explosion, world, pos, block, fluid)
+        }
+    }
+
+    fn should_block_explode(
+        &self,
+        _explosion: &Explosion,
+        _world: &World,
+        _pos: &BlockPos,
+        block: &Block,
+        _power: f32,
+    ) -> bool {
+        block != &Block::NETHER_PORTAL
+    }
 }
 
 impl TNTEntity {
@@ -52,6 +91,7 @@ impl TNTEntity {
             power: AtomicCell::new(power),
             fuse: AtomicU32::new(fuse),
             owner: EntityReference::none(),
+            used_portal: AtomicBool::new(false),
         }
     }
 
@@ -101,6 +141,10 @@ impl TNTEntity {
 }
 
 impl EntityBase for TNTEntity {
+    fn after_dimension_teleport(&self) {
+        self.used_portal.store(true, Relaxed);
+    }
+
     /// Vanilla `PrimedTnt.addAdditionalSaveData`. Without it a chunk reload resets a
     /// nearly-detonated fuse and the TNT explodes late.
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
@@ -128,6 +172,10 @@ impl EntityBase for TNTEntity {
 
     fn tick(&self, caller: &dyn EntityBase, _server: &Server) {
         let entity = &self.entity;
+        entity.handle_portal(caller);
+        if entity.is_removed() {
+            return;
+        }
 
         let mut velo = entity.velocity.load();
         velo.y -= self.get_gravity_unless_disabled();
@@ -160,11 +208,14 @@ impl EntityBase for TNTEntity {
                 // Vanilla `PrimedTnt.explode`: `getY(0.0625)`.
                 let pos = entity.pos.load();
                 let y = f64::from(entity.entity_type.dimension[1]).mul_add(0.0625, pos.y);
-                world.explode(
+                world.explode_with_calculator(
                     Some(caller),
                     Vector3::new(pos.x, y, pos.z),
                     self.power.load(),
                     crate::world::ExplosionInteraction::Tnt,
+                    self.used_portal
+                        .load(Relaxed)
+                        .then(|| Arc::new(UsedPortalDamageCalculator) as _),
                 );
             }
         } else {

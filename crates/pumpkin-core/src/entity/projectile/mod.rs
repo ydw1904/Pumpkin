@@ -466,7 +466,11 @@ impl ThrownItemEntity {
         if entity.entity_type != &EntityType::LLAMA_SPIT {
             entity.apply_effects_from_blocks(caller, start_pos, entity.pos.load());
         }
-        // Vanilla `baseTick` after the move: the water state the next tick's inertia reads.
+        // Vanilla `baseTick` after the move: the portal (a firework rocket's `baseTick` comes
+        // before its move), then the water state the next tick's inertia reads.
+        if entity.entity_type != &EntityType::FIREWORK_ROCKET {
+            entity.handle_portal(caller);
+        }
         entity.update_fluid_state(caller);
         tick_fire(entity, should_burn);
         if entity.is_removed() {

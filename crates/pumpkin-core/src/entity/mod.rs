@@ -126,6 +126,8 @@ pub enum DelayedLeash {
 }
 
 const LEASH_RESTORE_TIMEOUT: i32 = 100;
+/// Vanilla `Entity.getDimensionChangingDelay` without a riding player.
+const DEFAULT_DIMENSION_CHANGING_DELAY: u32 = 300;
 /// Vanilla `Player.getFireImmuneTicks`.
 const PLAYER_FIRE_IMMUNE_TICKS: i32 = 20;
 
@@ -144,6 +146,16 @@ struct DimensionDeparture {
     pitch: f32,
     /// Each riding player, its offset from the vehicle that leaves and its own vehicle.
     players: Vec<(Arc<Player>, Vector3<f64>, Uuid)>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ArrivalKind {
+    /// Through a portal: the motion turns with the entity.
+    Portal,
+    /// A cross-dimension `/tp`.
+    Command,
+    /// A portal without a destination: vanilla doesn't teleport at all, so the copy stays put.
+    Stay,
 }
 
 impl DimensionDeparture {
@@ -171,6 +183,8 @@ impl DimensionDeparture {
         let mut nbt = NbtCompound::new();
         entity.write_nbt(&mut nbt);
         for traveller in self_and_passengers(entity).iter().rev() {
+            // Vanilla `removeAfterChangingDimensions`; the copy keeps the saved leash.
+            traveller.get_entity().remove_leash();
             from.remove_entity_with_reason(traveller.as_ref(), RemovalReason::ChangedDimension);
         }
         Self {
@@ -182,13 +196,34 @@ impl DimensionDeparture {
         }
     }
 
-    fn arrive(self, to: &Arc<World>, position: Vector3<f64>, yaw: Option<f32>, pitch: Option<f32>) {
+    fn arrive(
+        self,
+        to: &Arc<World>,
+        position: Vector3<f64>,
+        yaw: Option<f32>,
+        pitch: Option<f32>,
+        kind: ArrivalKind,
+    ) {
         let copy = load_entity(self.entity_type, position, &self.nbt, to);
-        copy.get_entity().set_pos(position);
-        copy.get_entity()
-            .set_rotation(yaw.unwrap_or(self.yaw), pitch.unwrap_or(self.pitch));
+        let copy_entity = copy.get_entity();
+        copy_entity.set_pos(position);
+        let (new_yaw, new_pitch) = (yaw.unwrap_or(self.yaw), pitch.unwrap_or(self.pitch));
+        copy_entity.set_rotation(new_yaw, new_pitch);
+        if kind == ArrivalKind::Portal {
+            // Vanilla `PositionMoveRotation.calculateAbsolute` with `Relative.ROTATE_DELTA`.
+            let velocity = x_rot(
+                copy_entity.velocity.load(),
+                (self.pitch - new_pitch).to_radians(),
+            );
+            copy_entity
+                .velocity
+                .store(y_rot(velocity, (self.yaw - new_yaw).to_radians()));
+        }
         let arrived = self_and_passengers(&copy);
         for entity in &arrived {
+            if kind != ArrivalKind::Stay {
+                entity.after_dimension_teleport();
+            }
             to.spawn_entity(entity.clone());
         }
         for (player, offset, vehicle_uuid) in self.players {
@@ -218,6 +253,33 @@ impl DimensionDeparture {
             });
         }
     }
+}
+
+/// Vanilla `Entity.canTeleport` for anything but a player, with the `ThrownEnderpearl`
+/// override: from the End to the overworld only once every riding player, and a pearl's
+/// thrower, has seen the credits.
+fn can_teleport(entity: &dyn EntityBase, from: &World, to: &World) -> bool {
+    if from.dimension != Dimension::THE_END || to.dimension != Dimension::OVERWORLD {
+        return true;
+    }
+    let seen_credits = |player: &Player| player.seen_credits.load(Ordering::Relaxed);
+    let passengers = entity
+        .get_entity()
+        .passengers
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    if passengers
+        .iter()
+        .any(|passenger| passenger.get_player().is_some_and(|p| !seen_credits(p)))
+    {
+        return false;
+    }
+    entity.get_entity().entity_type != &EntityType::ENDER_PEARL
+        || entity
+            .get_projectile_owner()
+            .and_then(|owner| owner.get_player(from))
+            .is_none_or(|player| seen_credits(player.as_ref()))
 }
 
 /// Vanilla `Entity.teleport` with the entity's passengers.
@@ -623,7 +685,13 @@ pub trait EntityBase: Send + Sync + std::any::Any {
             && let Some(entity_arc) = current.get_entity_by_id(entity.entity_id)
         {
             // Vanilla `teleportCrossDimension`: the entity and its passengers move over.
-            DimensionDeparture::leave(&entity_arc, &current).arrive(&world, position, yaw, pitch);
+            DimensionDeparture::leave(&entity_arc, &current).arrive(
+                &world,
+                position,
+                yaw,
+                pitch,
+                ArrivalKind::Command,
+            );
             return;
         }
         entity.teleport(position, yaw, pitch, &world);
@@ -653,6 +721,33 @@ pub trait EntityBase: Send + Sync + std::any::Any {
     fn can_use_portal(&self) -> bool {
         true
     }
+
+    /// Vanilla `Entity.getDimensionChangingDelay`, the portal cooldown after a teleport: a
+    /// riding player's, or 300 ticks. Vanilla `Projectile` overrides it with 2 ticks.
+    fn get_dimension_changing_delay(&self) -> u32 {
+        /// Vanilla `Projectile.getDimensionChangingDelay`.
+        const PROJECTILE_DIMENSION_CHANGING_DELAY: u32 = 2;
+        if self.get_projectile_owner().is_some() {
+            return PROJECTILE_DIMENSION_CHANGING_DELAY;
+        }
+        let first_passenger = self
+            .get_entity()
+            .passengers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .first()
+            .cloned();
+        match first_passenger {
+            Some(passenger) if passenger.get_player().is_some() => {
+                passenger.get_dimension_changing_delay()
+            }
+            _ => DEFAULT_DIMENSION_CHANGING_DELAY,
+        }
+    }
+
+    /// Vanilla `teleport` overrides acting on the entity a cross-dimension teleport made of this
+    /// one, called on that copy before it joins its new world.
+    fn after_dimension_teleport(&self) {}
 
     /// Vanilla `Entity.getDefaultGravity`.
     fn get_gravity(&self) -> f64 {
@@ -1687,6 +1782,17 @@ fn y_rot(vector: Vector3<f64>, angle: f32) -> Vector3<f64> {
         vector.x * cos + vector.z * sin,
         vector.y,
         vector.z * cos - vector.x * sin,
+    )
+}
+
+/// Vanilla `Vec3.xRot`.
+fn x_rot(vector: Vector3<f64>, angle: f32) -> Vector3<f64> {
+    let cos = f64::from(angle.cos());
+    let sin = f64::from(angle.sin());
+    Vector3::new(
+        vector.x,
+        vector.y * cos + vector.z * sin,
+        vector.z * cos - vector.y * sin,
     )
 }
 
@@ -2959,14 +3065,6 @@ impl Entity {
         self.pitch.store(pitch);
         self.yaw.store(yaw);
         self.head_yaw.store(yaw);
-    }
-
-    pub(crate) fn default_portal_cooldown(&self) -> u32 {
-        if self.entity_type == &EntityType::PLAYER {
-            10
-        } else {
-            300
-        }
     }
 
     #[must_use]
@@ -4603,18 +4701,37 @@ impl Entity {
         self.velocity.store(velo);
     }
 
-    fn tick_portal(&self, caller: &dyn EntityBase) {
+    /// Whether a portal block marked the entity as inside it since its last
+    /// [`Self::handle_portal`].
+    pub(crate) fn is_inside_portal_this_tick(&self) -> bool {
+        self.portal_manager
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .is_some_and(|processor| processor.inside_portal_this_tick)
+    }
+
+    /// Vanilla `Entity.handlePortal`: counts the portal cooldown down and teleports the entity
+    /// once it has been inside a portal long enough. Each entity's tick calls it where vanilla
+    /// does, usually through `baseTick`. Returns the world a non-player left for.
+    pub(crate) fn handle_portal(&self, caller: &dyn EntityBase) -> Option<Arc<World>> {
         if self.portal_cooldown.load(Ordering::Relaxed) > 0 {
             self.portal_cooldown.fetch_sub(1, Ordering::Relaxed);
         }
         let Ok(mut manager_guard) = self.portal_manager.try_lock() else {
-            return;
+            return None;
         };
         let mut should_remove = false;
         if let Some(portal_processor) = manager_guard.as_mut() {
-            if portal_processor.process_portal_teleportation(&self.world.load(), caller, true) {
+            // Vanilla `canUsePortal(false)`.
+            let allowed = caller.can_use_portal()
+                && !self.has_vehicle()
+                && caller
+                    .get_living_entity()
+                    .map_or_else(|| self.is_alive(), LivingEntity::is_alive);
+            if portal_processor.process_portal_teleportation(&self.world.load(), caller, allowed) {
                 self.portal_cooldown
-                    .store(self.default_portal_cooldown(), Ordering::Relaxed);
+                    .store(caller.get_dimension_changing_delay(), Ordering::Relaxed);
 
                 let world_clone = self.world.load_full();
                 let portal_type = portal_processor.portal_type;
@@ -4629,10 +4746,12 @@ impl Entity {
                     // loads.
                     if caller.get_player().is_none() && !Arc::ptr_eq(&dest_world_opt, &world_clone)
                     {
-                        let Some(entity_arc) = world_clone.get_entity_by_id(entity_id) else {
-                            return;
-                        };
+                        if !can_teleport(caller, &world_clone, &dest_world_opt) {
+                            return None;
+                        }
+                        let entity_arc = world_clone.get_entity_by_id(entity_id)?;
                         let departure = DimensionDeparture::leave(&entity_arc, &world_clone);
+                        let left_for = dest_world_opt.clone();
                         server.spawn_task(async move {
                             let transition = portal_type
                                 .get_portal_destination(
@@ -4648,6 +4767,7 @@ impl Entity {
                                     transition.position,
                                     transition.yaw,
                                     transition.pitch,
+                                    ArrivalKind::Portal,
                                 ),
                                 // Without a destination vanilla leaves the entity where it was.
                                 None => departure.arrive(
@@ -4655,10 +4775,11 @@ impl Entity {
                                     entity_arc.get_entity().pos.load(),
                                     None,
                                     None,
+                                    ArrivalKind::Stay,
                                 ),
                             }
                         });
-                        return;
+                        return Some(left_for);
                     }
                     server.spawn_task(async move {
                         let Some(entity_arc) = world_clone.get_entity_by_id(entity_id) else {
@@ -4700,6 +4821,7 @@ impl Entity {
         if should_remove {
             *manager_guard = None;
         }
+        None
     }
 
     /// Recursively teleports all passengers (and their passengers) to the destination
@@ -4717,10 +4839,9 @@ impl Entity {
         for passenger in passengers {
             let passenger_entity = passenger.get_entity();
             let passenger_yaw = yaw_delta.map(|delta| passenger_entity.yaw.load() + delta);
-            passenger_entity.portal_cooldown.store(
-                passenger_entity.default_portal_cooldown(),
-                Ordering::Relaxed,
-            );
+            passenger_entity
+                .portal_cooldown
+                .store(passenger.get_dimension_changing_delay(), Ordering::Relaxed);
 
             // Get nested passengers before teleporting
             let nested_passengers = passenger_entity
@@ -4739,7 +4860,9 @@ impl Entity {
         }
     }
 
-    pub fn try_use_portal(&self, portal_world: Arc<World>, pos: BlockPos) {
+    /// Vanilla `Entity.setAsInsidePortal` for nether and end portals; `caller` is the entity
+    /// itself.
+    pub fn try_use_portal(&self, caller: &dyn EntityBase, portal_world: Arc<World>, pos: BlockPos) {
         let mut portal_event =
             crate::plugin::api::events::entity::entity_portal::EntityPortalEvent::new(
                 self.entity_id,
@@ -4761,7 +4884,7 @@ impl Entity {
 
         if self.portal_cooldown.load(Ordering::Relaxed) > 0 {
             self.portal_cooldown
-                .store(self.default_portal_cooldown(), Ordering::Relaxed);
+                .store(caller.get_dimension_changing_delay(), Ordering::Relaxed);
             return;
         }
 
@@ -7271,7 +7394,7 @@ impl EntityBase for Entity {
         self.is_in_powder_snow.store(false, Ordering::Relaxed);
 
         self.update_last_pos();
-        self.tick_portal(caller);
+        self.handle_portal(caller);
         self.update_fluid_state(caller);
         self.check_out_of_world(caller);
         let fire_ticks = self.fire_ticks.load(Ordering::Relaxed);

@@ -59,9 +59,10 @@ impl BlockBehaviour for EndGatewayBlock {
 
         let on_cooldown = entity.portal_cooldown.load(Ordering::Relaxed) > 0;
         end_gateway.trigger_cooldown(args.world, *args.position);
-        entity
-            .portal_cooldown
-            .store(entity.default_portal_cooldown(), Ordering::Relaxed);
+        entity.portal_cooldown.store(
+            args.entity.get_dimension_changing_delay(),
+            Ordering::Relaxed,
+        );
         if on_cooldown {
             return;
         }

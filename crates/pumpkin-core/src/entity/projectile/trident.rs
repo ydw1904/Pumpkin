@@ -379,9 +379,12 @@ impl TridentEntity {
         self.life.store(0, Ordering::Relaxed);
     }
 
-    /// Vanilla `super.tick()` at the end of a flying tick: the fluid and fire part of
+    /// Vanilla `super.tick()` at the end of a flying tick: the portal, fluid and fire part of
     /// `Entity.baseTick`.
     fn base_tick(entity: &Entity, caller: &dyn EntityBase) {
+        if !entity.is_removed() {
+            entity.handle_portal(caller);
+        }
         if !entity.is_removed() {
             entity.update_fluid_state(caller);
             super::tick_fire(entity, false);
@@ -596,6 +599,10 @@ impl EntityBase for TridentEntity {
             entity.set_pos(block_to);
         }
         entity.apply_effects_from_blocks(caller, start_pos, entity.pos.load());
+        // Vanilla `AbstractArrow.stepMoveAndHit`.
+        if entity.is_inside_portal_this_tick() {
+            entity.handle_portal(caller);
+        }
 
         // Handle hit
         if let Some(h) = hit.filter(|_| !entity.is_removed()) {

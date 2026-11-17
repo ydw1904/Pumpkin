@@ -3,6 +3,7 @@ use pumpkin_data::Block;
 use pumpkin_data::BlockState;
 use pumpkin_data::BlockStateId;
 use pumpkin_data::damage::DamageType;
+use pumpkin_data::dimension::Dimension;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -350,7 +351,16 @@ impl EntityBase for FallingEntity {
         entity.move_entity(caller, velo);
         self.check_fall_damage(entity.pos.load().y - y_before);
         entity.tick_block_collisions(caller);
+        let left_for = entity.handle_portal(caller);
         let world = entity.world.load_full();
+        // Vanilla `forceTickAfterTeleportToDuplicate`: the original of a block that went to or
+        // from the End still lands.
+        let force_tick = left_for.is_some_and(|to| {
+            to.dimension == Dimension::THE_END || world.dimension == Dimension::THE_END
+        });
+        if entity.is_removed() && !force_tick {
+            return;
+        }
         let pos = self.entity.block_pos.load();
         let block = Block::from_state_id(self.block_state_id.load());
         // TODO: vanilla also clips through source water above a speed of 1 for concrete powder.

@@ -575,10 +575,15 @@ impl EntityReach {
 
     #[must_use]
     pub fn of(entity: &dyn EntityBase, config: &EntityIslandsConfig) -> Self {
-        if let Some(reach) = entity.audited_reach() {
+        let base = entity.get_entity();
+        // A portal entered last tick can send it to another dimension in this one. Entities
+        // that enter and leave within one tick (arrows, falling blocks) only leave their world
+        // during it; their arrival happens after the tick.
+        let changes_dimension = base.is_inside_portal_this_tick();
+        if let Some(mut reach) = entity.audited_reach() {
+            reach.global |= changes_dimension;
             return Self::Audited(reach);
         }
-        let base = entity.get_entity();
         let movement = base.velocity.load().length()
             + entity
                 .get_mob()
@@ -600,9 +605,10 @@ impl EntityReach {
                     .expand(player_radius, player_radius, player_radius);
         }
         // Blast power and chained block effects can exceed the configured margins.
-        reach.global = entity
-            .get_mob()
-            .is_some_and(crate::entity::mob::Mob::has_global_tick_reach)
+        reach.global = changes_dimension
+            || entity
+                .get_mob()
+                .is_some_and(crate::entity::mob::Mob::has_global_tick_reach)
             || entity
                 .cast_any()
                 .downcast_ref::<TNTEntity>()

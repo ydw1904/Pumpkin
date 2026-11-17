@@ -835,6 +835,11 @@ fn throw_setup(yaw: f32, pitch: f32, triangle: Vector3<f64>) -> (Vector3<f64>, V
 }
 
 impl EntityBase for FishingBobberEntity {
+    /// Vanilla `FishingHook.canUsePortal`.
+    fn can_use_portal(&self) -> bool {
+        false
+    }
+
     fn get_projectile_owner(&self) -> Option<&ProjectileOwner> {
         Some(&self.owner)
     }
