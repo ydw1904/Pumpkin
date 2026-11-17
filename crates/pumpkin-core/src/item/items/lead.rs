@@ -36,77 +36,81 @@ impl ItemBehaviour for LeadItem {
         if !block.has_tag(&pumpkin_data::tag::Block::MINECRAFT_FENCES) {
             return BlockActionResult::Pass;
         }
-
-        let world = player.world();
-        let center = Vector3::new(
-            f64::from(location.0.x) + 0.5,
-            f64::from(location.0.y) + 0.5,
-            f64::from(location.0.z) + 0.5,
-        );
-
-        let search_dim = EntityDimensions {
-            width: 32.0,
-            height: 32.0,
-            eye_height: 16.0,
-        };
-
-        let search_box =
-            BoundingBox::new_from_pos(center.x, center.y - 16.0, center.z, &search_dim);
-
-        let player_id = player.entity_id();
-        let entities = world.get_entities_at_box(&search_box);
-
-        let mut any_leashed = false;
-        let existing_knot = LeashKnotEntity::get_knot(&world, location);
-        let mut knot = existing_knot.clone();
-
-        for entity_base in entities {
-            let ent = entity_base.get_entity();
-            let is_leashed_to_player = ent
-                .leashed_to
-                .try_lock()
-                .ok()
-                .and_then(|guard| {
-                    guard
-                        .as_ref()
-                        .and_then(std::sync::Weak::upgrade)
-                        .map(|holder| holder.get_entity().entity_id == player_id)
-                })
-                .unwrap_or(false);
-
-            if is_leashed_to_player {
-                let k = knot.get_or_insert_with(|| LeashKnotEntity::create_knot(&world, location));
-                if entity_base.can_have_a_leash_attached_to(k.get_entity()) {
-                    ent.leash_to(k.clone());
-                    any_leashed = true;
-                }
-            }
-        }
-        // Vanilla `LeadItem.bindPlayerMobs` discards a knot it made for nothing.
-        if !any_leashed
-            && existing_knot.is_none()
-            && let Some(knot) = knot
-        {
-            knot.get_entity().remove();
-        }
-
-        if any_leashed {
-            world.play_sound(Sound::ItemLeadTied, SoundCategory::Neutral, &center);
-            world.emit_game_event_with_context(
-                GameEvent::BlockAttach.name(),
-                center,
-                &crate::world::game_event::GameEventContext {
-                    source_entity: Some(player),
-                    affected_state: None,
-                },
-            );
-            BlockActionResult::SuccessServer
-        } else {
-            BlockActionResult::Pass
-        }
+        bind_player_mobs(player, location)
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+}
+
+/// Vanilla `LeadItem.bindPlayerMobs`: ties everything the player leads to a knot on the fence
+/// at `location`.
+pub fn bind_player_mobs(player: &Player, location: BlockPos) -> BlockActionResult {
+    let world = player.world();
+    let center = Vector3::new(
+        f64::from(location.0.x) + 0.5,
+        f64::from(location.0.y) + 0.5,
+        f64::from(location.0.z) + 0.5,
+    );
+
+    let search_dim = EntityDimensions {
+        width: 32.0,
+        height: 32.0,
+        eye_height: 16.0,
+    };
+
+    let search_box = BoundingBox::new_from_pos(center.x, center.y - 16.0, center.z, &search_dim);
+
+    let player_id = player.entity_id();
+    let entities = world.get_entities_at_box(&search_box);
+
+    let mut any_leashed = false;
+    let existing_knot = LeashKnotEntity::get_knot(&world, location);
+    let mut knot = existing_knot.clone();
+
+    for entity_base in entities {
+        let ent = entity_base.get_entity();
+        let is_leashed_to_player = ent
+            .leashed_to
+            .try_lock()
+            .ok()
+            .and_then(|guard| {
+                guard
+                    .as_ref()
+                    .and_then(std::sync::Weak::upgrade)
+                    .map(|holder| holder.get_entity().entity_id == player_id)
+            })
+            .unwrap_or(false);
+
+        if is_leashed_to_player {
+            let k = knot.get_or_insert_with(|| LeashKnotEntity::create_knot(&world, location));
+            if entity_base.can_have_a_leash_attached_to(k.get_entity()) {
+                ent.leash_to(k.clone());
+                any_leashed = true;
+            }
+        }
+    }
+    // Vanilla `LeadItem.bindPlayerMobs` discards a knot it made for nothing.
+    if !any_leashed
+        && existing_knot.is_none()
+        && let Some(knot) = knot
+    {
+        knot.get_entity().remove();
+    }
+
+    if any_leashed {
+        world.play_sound(Sound::ItemLeadTied, SoundCategory::Neutral, &center);
+        world.emit_game_event_with_context(
+            GameEvent::BlockAttach.name(),
+            center,
+            &crate::world::game_event::GameEventContext {
+                source_entity: Some(player),
+                affected_state: None,
+            },
+        );
+        BlockActionResult::SuccessServer
+    } else {
+        BlockActionResult::Pass
     }
 }
