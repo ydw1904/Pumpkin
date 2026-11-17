@@ -1851,6 +1851,19 @@ impl World {
         }
     }
 
+    /// Encodes vanilla `TrailParticleOption` for [`Self::send_particles_with_data`].
+    #[must_use]
+    pub fn trail_particle_data(target: Vector3<f64>, color: i32, duration: i32) -> Vec<u8> {
+        let mut data = Vec::new();
+        for coordinate in [target.x, target.y, target.z] {
+            data.extend_from_slice(&coordinate.to_be_bytes());
+        }
+        data.extend_from_slice(&color.to_be_bytes());
+        // Writing to a Vec can't fail.
+        pumpkin_protocol::ser::NetworkWriteExt::write_var_int(&mut data, &VarInt(duration)).ok();
+        data
+    }
+
     /// Plays a Bedrock level sound for players close enough to hear it.
     pub fn play_bedrock_level_sound(
         &self,

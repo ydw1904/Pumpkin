@@ -25,6 +25,9 @@ use crate::{
 
 const EYEBLOSSOM_XZ_RANGE: i32 = 3;
 const EYEBLOSSOM_Y_RANGE: i32 = 2;
+/// Vanilla `EyeblossomBlock.Type` particle colors.
+const OPEN_PARTICLE_COLOR: i32 = 16_545_810;
+const CLOSED_PARTICLE_COLOR: i32 = 6_250_335;
 
 pub struct EyeblossomBlock;
 
@@ -142,15 +145,32 @@ pub fn try_changing_state(world: &Arc<World>, current_block: &Block, pos: &Block
         },
     );
 
-    world.spawn_particle(
-        pos.to_centered_f64(),
+    let rng = game_random();
+
+    // Vanilla `EyeblossomBlock.Type.spawnTransformParticle`, run on the type it turned into.
+    let start = pos.to_centered_f64();
+    let lifetime = 0.5 + rng.random::<f64>();
+    let velocity = Vector3::new(
+        rng.random::<f64>() - 0.5,
+        rng.random::<f64>() + 1.0,
+        rng.random::<f64>() - 0.5,
+    );
+    let color = if is_open {
+        CLOSED_PARTICLE_COLOR
+    } else {
+        OPEN_PARTICLE_COLOR
+    };
+    world.send_particles_with_data(
+        Particle::Trail,
+        &World::trail_particle_data(start + velocity * lifetime, color, (20.0 * lifetime) as i32),
+        false,
+        false,
+        start,
+        1,
         Vector3::new(0.0, 0.0, 0.0),
         0.0,
-        1,
-        Particle::Trail,
     );
 
-    let rng = game_random();
     for dx in -EYEBLOSSOM_XZ_RANGE..=EYEBLOSSOM_XZ_RANGE {
         for dy in -EYEBLOSSOM_Y_RANGE..=EYEBLOSSOM_Y_RANGE {
             for dz in -EYEBLOSSOM_XZ_RANGE..=EYEBLOSSOM_XZ_RANGE {

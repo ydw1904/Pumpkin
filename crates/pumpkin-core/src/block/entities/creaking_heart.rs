@@ -497,19 +497,9 @@ impl CreakingHeartBlockEntity {
             } else {
                 (source, destination)
             };
-            let mut data = Vec::new();
-            for coordinate in [destination.x, destination.y, destination.z] {
-                data.extend_from_slice(&coordinate.to_be_bytes());
-            }
-            data.extend_from_slice(&color.to_be_bytes());
-            pumpkin_protocol::ser::NetworkWriteExt::write_var_int(
-                &mut data,
-                &pumpkin_protocol::codec::var_int::VarInt(duration),
-            )
-            .ok();
             world.send_particles_with_data(
                 Particle::Trail,
-                &data,
+                &World::trail_particle_data(destination, color, duration),
                 true,
                 true,
                 source,
