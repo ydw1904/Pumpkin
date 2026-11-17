@@ -6,12 +6,15 @@ use crossbeam::atomic::AtomicCell;
 use pumpkin_inventory::screen_handler::ScreenHandler;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_world::data::player_data::{PlayerDataError, PlayerDataStorage};
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 use tracing::{debug, error};
+use uuid::Uuid;
 
 /// Helper for managing player data in the server context.
 ///
@@ -23,6 +26,65 @@ pub struct ServerPlayerData {
     stats_path: PathBuf,
     save_interval: Duration,
     last_save: AtomicCell<Instant>,
+    order: Arc<SaveOrder>,
+}
+
+/// Keeps a snapshot taken earlier (a periodic save still being written off the tick) from
+/// replacing one taken later (the save on disconnect).
+#[derive(Default)]
+struct SaveOrder {
+    next_generation: AtomicU64,
+    /// The generation last written for each player. Holding it also serializes the writes.
+    written: Mutex<HashMap<Uuid, u64>>,
+}
+
+struct PlayerSnapshot {
+    uuid: Uuid,
+    generation: u64,
+    nbt: NbtCompound,
+    stats: serde_json::Value,
+}
+
+impl SaveOrder {
+    fn snapshot(&self, player: &Player) -> PlayerSnapshot {
+        let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
+        let mut nbt = NbtCompound::new();
+        player.write_nbt(&mut nbt);
+        PlayerSnapshot {
+            uuid: player.gameprofile.id,
+            generation,
+            nbt,
+            stats: stats_json(player),
+        }
+    }
+
+    fn write(
+        &self,
+        storage: &PlayerDataStorage,
+        stats_path: &Path,
+        snapshot: PlayerSnapshot,
+    ) -> Result<(), PlayerDataError> {
+        let mut written = self
+            .written
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if written
+            .get(&snapshot.uuid)
+            .is_some_and(|&last| last > snapshot.generation)
+        {
+            debug!(
+                "Skipping an outdated player data save for {}",
+                snapshot.uuid
+            );
+            return Ok(());
+        }
+        storage.save_player_data(&snapshot.uuid, snapshot.nbt)?;
+        if storage.is_save_enabled() {
+            save_stats(stats_path, snapshot.uuid, &snapshot.stats);
+        }
+        written.insert(snapshot.uuid, snapshot.generation);
+        Ok(())
+    }
 }
 
 impl ServerPlayerData {
@@ -38,6 +100,7 @@ impl ServerPlayerData {
             stats_path: stats_path.into(),
             save_interval,
             last_save: AtomicCell::new(Instant::now()),
+            order: Arc::default(),
         }
     }
 
@@ -60,14 +123,8 @@ impl ServerPlayerData {
             .on_closed(player.as_ref());
         player.on_handled_screen_closed();
 
-        let mut nbt = NbtCompound::new();
-        player.write_nbt(&mut nbt);
-
-        self.storage.save_player_data(&player.gameprofile.id, nbt)?;
-        if self.storage.is_save_enabled() {
-            save_stats(&self.stats_path, player.gameprofile.id, &stats_json(player));
-        }
-        Ok(())
+        let snapshot = self.order.snapshot(player);
+        self.order.write(&self.storage, &self.stats_path, snapshot)
     }
 
     /// Reads a player's `players/stats/<uuid>.json`, if they have one.
@@ -107,9 +164,7 @@ impl ServerPlayerData {
             let mut snapshots = Vec::new();
             for world in server.worlds.load().iter() {
                 for player in world.players.load().iter() {
-                    let mut nbt = NbtCompound::new();
-                    player.write_nbt(&mut nbt);
-                    snapshots.push((player.gameprofile.id, nbt, stats_json(player)));
+                    snapshots.push(self.order.snapshot(player));
                 }
             }
 
@@ -119,14 +174,15 @@ impl ServerPlayerData {
 
             let storage = self.storage.clone();
             let stats_path = self.stats_path.clone();
+            let order = self.order.clone();
             // The tick runs on a simulation thread with no Tokio context, so use the
             // server's runtime handle instead of `tokio::task::spawn_blocking`.
             server.runtime.spawn_blocking(move || {
-                for (uuid, nbt, stats) in snapshots {
-                    if let Err(e) = storage.save_player_data(&uuid, nbt) {
+                for snapshot in snapshots {
+                    let uuid = snapshot.uuid;
+                    if let Err(e) = order.write(&storage, &stats_path, snapshot) {
                         error!("Failed to save player data for {uuid}: {e}");
                     }
-                    save_stats(&stats_path, uuid, &stats);
                 }
                 debug!("Periodic player data save completed");
             });
@@ -205,13 +261,8 @@ impl ServerPlayerData {
             return Ok(());
         }
 
-        let uuid = player.gameprofile.id;
-        let mut nbt = NbtCompound::new();
-        player.write_nbt(&mut nbt);
-
-        self.storage.save_player_data(&uuid, nbt)?;
-        save_stats(&self.stats_path, uuid, &stats_json(player));
-        Ok(())
+        let snapshot = self.order.snapshot(player);
+        self.order.write(&self.storage, &self.stats_path, snapshot)
     }
 }
 
@@ -237,7 +288,7 @@ fn save_stats(stats_path: &std::path::Path, uuid: uuid::Uuid, stats: &serde_json
 
 #[cfg(test)]
 mod test {
-    use crate::data::player_server::ServerPlayerData;
+    use crate::data::player_server::{PlayerSnapshot, SaveOrder, ServerPlayerData};
     use pumpkin_nbt::compound::NbtCompound;
     use pumpkin_world::data::player_data::PlayerDataStorage;
     use std::time::Duration;
@@ -370,5 +421,31 @@ mod test {
         assert!(success);
         assert_eq!(loaded_data.get_string("name").unwrap(), "TestPlayer");
         assert_eq!(loaded_data.get_int("level").unwrap(), 42);
+    }
+
+    #[test]
+    fn older_snapshot_does_not_replace_newer_save() {
+        let temp_dir = tempdir().unwrap();
+        let storage = PlayerDataStorage::new(temp_dir.path(), true);
+        let stats = temp_dir.path().join("stats");
+        let order = SaveOrder::default();
+        let uuid = Uuid::new_v4();
+        let snapshot = |generation, level| {
+            let mut nbt = NbtCompound::new();
+            nbt.put_int("level", level);
+            PlayerSnapshot {
+                uuid,
+                generation,
+                nbt,
+                stats: serde_json::Value::Null,
+            }
+        };
+
+        // A periodic snapshot taken first but written after the disconnect save.
+        order.write(&storage, &stats, snapshot(2, 2)).unwrap();
+        order.write(&storage, &stats, snapshot(1, 1)).unwrap();
+
+        let (_, loaded) = storage.load_player_data(&uuid).unwrap();
+        assert_eq!(loaded.get_int("level").unwrap(), 2);
     }
 }

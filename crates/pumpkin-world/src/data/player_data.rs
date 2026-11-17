@@ -137,20 +137,31 @@ impl PlayerDataStorage {
             return Err(PlayerDataError::Io(e));
         }
 
-        // Create the file and write directly with GZip compression
-        match File::create(&path) {
-            Ok(file) => {
-                if let Err(e) = pumpkin_nbt::nbt_compress::write_gzip_compound_tag(data, file) {
-                    error!("Failed to write compressed player data for {uuid}: {e}");
-                    Err(PlayerDataError::Nbt(e.to_string()))
-                } else {
-                    debug!("Saved player data for {uuid} to disk");
-                    Ok(())
+        // Vanilla `PlayerDataStorage.save`: write a new file and swap it in, keeping the previous
+        // one as `.dat_old`, so a crash or a concurrent load never sees a half-written file.
+        let new_path = path.with_extension("dat_new");
+        let result = File::create(&new_path)
+            .map_err(PlayerDataError::Io)
+            .and_then(|file| {
+                pumpkin_nbt::nbt_compress::write_gzip_compound_tag(data, file)
+                    .map_err(|e| PlayerDataError::Nbt(e.to_string()))
+            })
+            .and_then(|()| {
+                if path.exists() {
+                    std::fs::copy(&path, path.with_extension("dat_old"))?;
                 }
+                std::fs::rename(&new_path, &path)?;
+                Ok(())
+            });
+        match result {
+            Ok(()) => {
+                debug!("Saved player data for {uuid} to disk");
+                Ok(())
             }
             Err(e) => {
-                error!("Failed to create player data file for {uuid}: {e}");
-                Err(PlayerDataError::Io(e))
+                error!("Failed to save player data for {uuid}: {e}");
+                let _ = std::fs::remove_file(&new_path);
+                Err(e)
             }
         }
     }
