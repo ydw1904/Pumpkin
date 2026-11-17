@@ -2182,10 +2182,11 @@ impl World {
             )
         };
         let entity_ticking_ready: FxHashSet<_> = entities_to_tick
-            .iter()
+            .par_iter()
+            .with_min_len(ENTITY_SCAN_BATCH)
             .map(|entity| block_chunk(entity.get_entity().pos.load()))
             .collect::<FxHashSet<_>>()
-            .into_iter()
+            .into_par_iter()
             .filter(|chunk| {
                 active_chunks.ticking.contains(chunk)
                     && level_for_entities.is_chunk_entity_ticking_ready(chunk)
