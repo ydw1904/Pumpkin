@@ -222,6 +222,9 @@ h.start(async () => {
   h.result('gateways_kill1', gw1.join(','))
 
   // Respawn the dragon with four crystals on the exit portal; the spike is rebuilt.
+  // The dropped cobblestone can still lie where the first crystal goes, and an entity there
+  // stops the crystal from being placed.
+  h.cmd('kill @e[type=item]')
   if (spikeTop !== null) h.cmd(`${END}setblock 42 ${spikeTop - 3} 0 air`)
   await h.give('end_crystal', 4)
   const place = async (x, z) => {
