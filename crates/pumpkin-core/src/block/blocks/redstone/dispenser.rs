@@ -333,6 +333,8 @@ impl DispenserBlock {
     // Fire charges and wind charges share these values.
     pub const FIREBALL_PROJECTILE_POWER: f64 = 1.0;
     pub const FIREBALL_PROJECTILE_UNCERTAINTY: f64 = 6.666_666_5;
+    /// The spread of the direction fire and wind charges pick in their `asProjectile`.
+    pub const CHARGE_DIRECTION_SPREAD: f64 = 0.114_850_000_000_000_01;
     pub const FIREWORK_PROJECTILE_POWER: f64 = 0.5;
     pub const FIREWORK_PROJECTILE_UNCERTAINTY: f64 = 1.0;
 
@@ -811,9 +813,9 @@ impl DispenserBlock {
         fireball.item.set(fireball.get_entity(), dispensed);
         let facing = to_normal(ctx.facing);
         let dir = Vector3::new(
-            triangle(game_random(), facing.x, 0.114_850_000_000_000_01),
-            triangle(game_random(), facing.y, 0.114_850_000_000_000_01),
-            triangle(game_random(), facing.z, 0.114_850_000_000_000_01),
+            triangle(game_random(), facing.x, Self::CHARGE_DIRECTION_SPREAD),
+            triangle(game_random(), facing.y, Self::CHARGE_DIRECTION_SPREAD),
+            triangle(game_random(), facing.z, Self::CHARGE_DIRECTION_SPREAD),
         )
         .normalize();
         fireball.get_entity().set_velocity(dir);

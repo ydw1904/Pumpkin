@@ -156,6 +156,14 @@ impl OminousItemSpawnerEntity {
             thrown.owner = ProjectileOwner::new(Some(&self.entity));
             thrown.set_velocity(0.0, -1.0, 0.0, power, uncertainty);
         };
+        // Vanilla `FireChargeItem.asProjectile` and `WindChargeItem.asProjectile` aim down with
+        // their own spread, which the following `Projectile.shoot` replaces.
+        let draw_charge_aim = || {
+            for step in [0.0, -1.0, 0.0] {
+                let _ =
+                    game_random().next_triangular(step, DispenserBlock::CHARGE_DIRECTION_SPREAD);
+            }
+        };
 
         let projectile: Arc<dyn EntityBase> = if id == Item::ARROW.id
             || id == Item::TIPPED_ARROW.id
@@ -258,6 +266,7 @@ impl OminousItemSpawnerEntity {
         } else if id == Item::FIRE_CHARGE.id {
             world.sync_world_event(WorldEvent::SoundBlazeFireball, block_pos, 0);
             let mut fireball = SmallFireballEntity::new(new_entity(&EntityType::SMALL_FIREBALL));
+            draw_charge_aim();
             aim(
                 &mut fireball.thrown,
                 DispenserBlock::FIREBALL_PROJECTILE_POWER,
@@ -274,6 +283,7 @@ impl OminousItemSpawnerEntity {
                 last_deflected_by: LastDeflectedBy::new(),
                 gravity: WIND_CHARGE_GRAVITY,
             };
+            draw_charge_aim();
             aim(
                 &mut thrown,
                 DispenserBlock::FIREBALL_PROJECTILE_POWER,
