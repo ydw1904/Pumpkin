@@ -91,6 +91,9 @@ use pumpkin_util::version::BedrockMinecraftVersion;
 use pumpkin_world::{CURRENT_BEDROCK_MC_PROTOCOL, level::SyncChunk};
 pub use versions::BedrockVersions;
 
+/// Max wait for the reliable channel to deliver the last packets before the session closes.
+const DISCONNECT_FLUSH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
+
 pub struct OutgoingPacket {
     pub data: Bytes,
     pub completion: Option<oneshot::Sender<()>>,
@@ -359,6 +362,17 @@ impl BedrockClient {
                     }
                 }
             }
+
+            // `try_kick` only queues the disconnect before cancelling, and `close` returns early
+            // once cancelled, so the session is closed here after the queue is drained. Like the
+            // Java writer's drain on close, wait for the reliable channel to deliver it first.
+            if !client.session.is_closed() {
+                let _ = client
+                    .session
+                    .flush_reliable(DISCONNECT_FLUSH_TIMEOUT)
+                    .await;
+                client.session.close().await;
+            }
         });
     }
 
@@ -437,10 +451,7 @@ impl BedrockClient {
         warn!("Closing connection for {}: {message}", self.address);
         self.send_packet(&CDisconnect::new(reason as i32, message))
             .await;
-        let _ = self
-            .session
-            .flush_reliable(std::time::Duration::from_secs(1))
-            .await;
+        let _ = self.session.flush_reliable(DISCONNECT_FLUSH_TIMEOUT).await;
         self.close().await;
     }
 
@@ -461,10 +472,7 @@ impl BedrockClient {
                 filtered_message,
             })
             .await;
-            let _ = self
-                .session
-                .flush_reliable(std::time::Duration::from_secs(1))
-                .await;
+            let _ = self.session.flush_reliable(DISCONNECT_FLUSH_TIMEOUT).await;
         }
         self.close().await;
     }
