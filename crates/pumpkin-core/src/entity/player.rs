@@ -715,6 +715,8 @@ pub struct Player {
     /// Vanilla `isChangingDimension`: from a move to another world until the client accepts
     /// the teleport there.
     pub changing_dimension: AtomicBool,
+    /// Vanilla `ServerPlayer.disconnected`: set once the player starts leaving the server.
+    pub disconnected: AtomicBool,
     pub bedrock_spawned: AtomicBool,
     /// A hurt during the entity pass already ran this player's travel; its motion goes out
     /// after the next player tick, which skips its own travel.
@@ -1109,6 +1111,7 @@ impl Player {
             last_equipment: std::sync::Mutex::new(HashMap::new()),
             client_loaded: AtomicBool::new(initially_loaded),
             changing_dimension: AtomicBool::new(false),
+            disconnected: AtomicBool::new(false),
             bedrock_spawned: AtomicBool::new(false),
             client_loaded_timeout: AtomicU32::new(if initially_loaded { 0 } else { 60 }),
             chat_spam_tick_count: AtomicU32::new(0),
@@ -1539,6 +1542,13 @@ impl Player {
 
     /// Removes the [`Player`] out of the current [`World`].
     pub async fn remove(self: &Arc<Self>) {
+        self.disconnected.store(true, Ordering::Relaxed);
+        // Vanilla `Player.remove`: the inventory menu gives up its cursor and crafting grid
+        // before any other open container is closed.
+        self.player_screen_handler
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .on_closed(self.as_ref());
         if !self
             .current_screen_handler
             .lock()
@@ -9454,6 +9464,10 @@ impl InventoryPlayer for Player {
 
     fn drop_item(&self, item: ItemStack, retain_ownership: bool) {
         self.drop_item(item, retain_ownership);
+    }
+
+    fn has_disconnected(&self) -> bool {
+        self.disconnected.load(Ordering::Relaxed)
     }
 
     fn has_infinite_materials(&self) -> bool {

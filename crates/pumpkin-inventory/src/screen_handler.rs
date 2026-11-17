@@ -144,6 +144,11 @@ pub trait InventoryPlayer: Send + Sync {
     /// - `retain_ownership` - If true, the player keeps ownership (for pickup delay)
     fn drop_item(&self, item: ItemStack, retain_ownership: bool);
 
+    /// Vanilla `ServerPlayer.hasDisconnected`: the player is leaving the server.
+    fn has_disconnected(&self) -> bool {
+        false
+    }
+
     /// Gets the player's inventory.
     fn get_inventory(&self) -> Arc<PlayerInventory>;
 
@@ -274,8 +279,13 @@ pub trait InventoryPlayer: Send + Sync {
 /// Tries to insert the stack into the player's inventory first,
 /// and drops it in the world if there's no room.
 pub fn offer_or_drop_stack(player: &dyn InventoryPlayer, stack: ItemStack) {
-    // TODO: Super weird disconnect logic in vanilla, investigate this later
-    player.get_inventory().offer_or_drop_stack(stack, player);
+    // Vanilla `AbstractContainerMenu.dropOrPlaceInInventory`: a player who is leaving drops
+    // the stack instead of getting it back.
+    if !player.has_disconnected() {
+        player.get_inventory().offer_or_drop_stack(stack, player);
+    } else if !stack.is_empty() {
+        player.drop_item(stack, false);
+    }
 }
 
 /// The main trait for container screen handlers.
