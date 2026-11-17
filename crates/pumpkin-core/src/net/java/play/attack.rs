@@ -31,11 +31,11 @@ impl JavaClient {
             .map(|p| Arc::clone(p) as Arc<dyn EntityBase>)
             .or_else(|| world.get_entity_by_id(entity_id.0));
         let Some(target) = target else {
-            self.try_kick(&TextComponent::translate_cross(
-                translation::java::MULTIPLAYER_DISCONNECT_INVALID_ENTITY_ATTACKED,
-                translation::java::MULTIPLAYER_DISCONNECT_INVALID_ENTITY_ATTACKED,
-                [],
-            ));
+            // Vanilla ignores an attack on an entity it can't find, such as one that was removed
+            // just before the packet arrived.
+            let mut event =
+                PlayerInteractUnknownEntityEvent::new(player, entity_id.0, ActionType::Attack);
+            server.plugin_manager.fire_blocking(server, &mut event);
             return;
         };
         if !player.can_interact_with_entity(target.as_ref(), 1.0) {
