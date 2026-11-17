@@ -10,18 +10,13 @@ use pumpkin_data::item_stack::ItemStack;
 
 pub struct NameTagItem;
 
-impl ItemMetadata for NameTagItem {
-    fn ids() -> Box<[u16]> {
-        [Item::NAME_TAG.id].into()
-    }
-}
-
-impl ItemBehaviour for NameTagItem {
-    fn use_on_entity(
-        &self,
+impl NameTagItem {
+    /// Vanilla `NameTagItem.interactLivingEntity`. `Mob.interact` runs it before the mob's own
+    /// interaction.
+    pub fn interact_living_entity(
         item: &mut ItemStack,
         player: &Player,
-        entity: Arc<dyn EntityBase>,
+        entity: &dyn EntityBase,
     ) -> bool {
         let raw_entity = entity.get_entity();
         let Some(living) = entity.get_living_entity() else {
@@ -44,6 +39,23 @@ impl ItemBehaviour for NameTagItem {
             item.decrement_unless_creative(player.gamemode.load(), 1);
         }
         true
+    }
+}
+
+impl ItemMetadata for NameTagItem {
+    fn ids() -> Box<[u16]> {
+        [Item::NAME_TAG.id].into()
+    }
+}
+
+impl ItemBehaviour for NameTagItem {
+    fn use_on_entity(
+        &self,
+        item: &mut ItemStack,
+        player: &Player,
+        entity: Arc<dyn EntityBase>,
+    ) -> bool {
+        Self::interact_living_entity(item, player, entity.as_ref())
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

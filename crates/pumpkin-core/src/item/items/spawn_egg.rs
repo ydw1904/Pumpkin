@@ -42,6 +42,55 @@ use uuid::Uuid;
 
 pub struct SpawnEggItem;
 
+impl SpawnEggItem {
+    /// Vanilla `SpawnEggItem.spawnOffspringFromSpawnEgg`, which `Mob.interact` runs before
+    /// the mob's own interaction.
+    pub fn spawn_offspring_from_spawn_egg(
+        item: &mut ItemStack,
+        player: &Player,
+        entity: &dyn EntityBase,
+    ) -> bool {
+        if let Some(entity_type) = entity_type_from_spawn_egg_stack(item)
+            && entity.get_entity().entity_type.id == entity_type.id
+        {
+            let world = player.world();
+            if is_disallowed_in_peaceful(entity_type, &world) {
+                return false;
+            }
+            // An ageable parent breeds with itself, so the baby takes its variant.
+            let pos = entity.get_entity().pos.load();
+            let mob = if let Some(parent) = entity.get_mob().and_then(Mob::as_animal) {
+                parent.get_breed_offspring(entity)
+            } else if let Some(villager) = entity.cast_any().downcast_ref::<VillagerEntity>() {
+                match villager.get_breed_offspring(&world, villager) {
+                    Some(baby) => baby,
+                    None => return false,
+                }
+            } else {
+                from_type(entity_type, pos, &world, Uuid::new_v4())
+            };
+            // no baby form, no offspring.
+            if !mob.get_mob().is_some_and(Mob::spawn_as_baby) {
+                return false;
+            }
+            mob.get_entity().set_rotation(0.0, 0.0);
+            apply_entity_variant(item, mob.as_ref(), Some(player));
+            if world.spawn_creature(
+                mob.clone(),
+                CreatureSpawnReason::SpawnerEgg,
+                world.get_player_by_uuid(player.gameprofile.id),
+            ) {
+                if let Some(parent) = entity.get_mob() {
+                    parent.on_offspring_spawned_from_egg(player, mob.as_ref());
+                }
+                item.decrement_unless_creative(player.gamemode.load(), 1);
+                return true;
+            }
+        }
+        false
+    }
+}
+
 impl ItemMetadata for SpawnEggItem {
     fn ids() -> Box<[u16]> {
         pumpkin_data::entity::spawn_egg_ids()
@@ -413,53 +462,6 @@ impl ItemBehaviour for SpawnEggItem {
         } else {
             BlockActionResult::Pass
         }
-    }
-
-    fn use_on_entity(
-        &self,
-        item: &mut ItemStack,
-        player: &Player,
-        entity: Arc<dyn EntityBase>,
-    ) -> bool {
-        if let Some(entity_type) = entity_type_from_spawn_egg_stack(item)
-            && entity.get_entity().entity_type.id == entity_type.id
-        {
-            let world = player.world();
-            if is_disallowed_in_peaceful(entity_type, &world) {
-                return false;
-            }
-            // Vanilla `SpawnEggItem.spawnOffspringFromSpawnEgg`: an ageable parent breeds with
-            // itself, so the baby takes its variant.
-            let pos = entity.get_entity().pos.load();
-            let mob = if let Some(parent) = entity.get_mob().and_then(Mob::as_animal) {
-                parent.get_breed_offspring(entity.as_ref())
-            } else if let Some(villager) = entity.cast_any().downcast_ref::<VillagerEntity>() {
-                match villager.get_breed_offspring(&world, villager) {
-                    Some(baby) => baby,
-                    None => return false,
-                }
-            } else {
-                from_type(entity_type, pos, &world, Uuid::new_v4())
-            };
-            // no baby form, no offspring.
-            if !mob.get_mob().is_some_and(Mob::spawn_as_baby) {
-                return false;
-            }
-            mob.get_entity().set_rotation(0.0, 0.0);
-            apply_entity_variant(item, mob.as_ref(), Some(player));
-            if world.spawn_creature(
-                mob.clone(),
-                CreatureSpawnReason::SpawnerEgg,
-                world.get_player_by_uuid(player.gameprofile.id),
-            ) {
-                if let Some(parent) = entity.get_mob() {
-                    parent.on_offspring_spawned_from_egg(player, mob.as_ref());
-                }
-                item.decrement_unless_creative(player.gamemode.load(), 1);
-                return true;
-            }
-        }
-        false
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

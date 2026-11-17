@@ -41,4 +41,15 @@ h.start(async () => {
   h.result('wheat_uses', last.trades[0].nbTradeUses)
   h.result('player_got_xp', bot.experience.level > 0 || bot.experience.progress > 0 || h.orbs().length > 0)
   villager.close()
+  await h.ticks(10)
+
+  // Mob.interact uses a named name tag before the villager's own trading screen.
+  await h.give('name_tag[custom_name="Bob"]', 1)
+  await bot.equip(bot.inventory.items().find(i => i.name === 'name_tag'), 'hand')
+  const offersBefore = offers.length
+  await bot.activateEntity(Object.values(bot.entities).find(e => e.name === 'villager'))
+  await h.ticks(10)
+  h.result('name_tag_opened_trade', offers.length > offersBefore)
+  h.result('name_tags_left', h.inv().name_tag || 0)
+  if (bot.currentWindow) bot.closeWindow(bot.currentWindow)
 })

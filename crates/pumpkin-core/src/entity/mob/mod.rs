@@ -3602,6 +3602,41 @@ pub trait Mob: EntityBase + Send + Sync {
             .on_lightning_strike(caller, lightning);
     }
 }
+
+/// Vanilla `Mob.checkAndHandleImportantInteractions`: name tags and spawn eggs come before
+/// leads and the mob's own interaction.
+fn check_and_handle_important_interactions(
+    mob: &dyn EntityBase,
+    player: &Player,
+    item_stack: &mut ItemStack,
+) -> bool {
+    if !mob.get_entity().is_alive() {
+        return false;
+    }
+    if item_stack.item == &Item::NAME_TAG
+        && crate::item::items::name_tag::NameTagItem::interact_living_entity(
+            item_stack, player, mob,
+        )
+    {
+        return true;
+    }
+    pumpkin_data::entity::entity_from_egg(item_stack.item.id).is_some()
+        && crate::item::items::spawn_egg::SpawnEggItem::spawn_offspring_from_spawn_egg(
+            item_stack, player, mob,
+        )
+}
+
+fn emit_entity_interact(entity: &Entity, player: &Player) {
+    entity.world.load().emit_game_event_with_context(
+        GameEvent::EntityInteract.name(),
+        entity.pos.load(),
+        &crate::world::game_event::GameEventContext {
+            source_entity: Some(player),
+            affected_state: None,
+        },
+    );
+}
+
 impl<T: Mob + Send + 'static> EntityBase for T {
     fn kill(&self, caller: &dyn EntityBase) {
         if !self.mob_kill(caller) {
@@ -3861,6 +3896,11 @@ impl<T: Mob + Send + 'static> EntityBase for T {
     }
 
     fn interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
+        let entity = &self.get_mob_entity().living_entity.entity;
+        if check_and_handle_important_interactions(self, player, item_stack) {
+            emit_entity_interact(entity, player);
+            return true;
+        }
         // Vanilla `Entity.interact`: shears cut leashes before they shear equipment.
         if item_stack.get_item() == &Item::SHEARS
             && self.get_mob_entity().living_entity.is_alive()
@@ -3876,7 +3916,6 @@ impl<T: Mob + Send + 'static> EntityBase for T {
         {
             return true;
         }
-        let entity = &self.get_mob_entity().living_entity.entity;
         let was_leashed = entity.is_leashed();
         let consumed = self.mob_interact(player, item_stack)
             || self
@@ -3885,14 +3924,7 @@ impl<T: Mob + Send + 'static> EntityBase for T {
         // Vanilla `Mob.interact` emits for a consumed `mobInteract` and `Entity.interact` for
         // an unleash, but tying a lead (handled in `mob_interact` here) emits nothing.
         if consumed && (was_leashed || !entity.is_leashed()) {
-            entity.world.load().emit_game_event_with_context(
-                GameEvent::EntityInteract.name(),
-                entity.pos.load(),
-                &crate::world::game_event::GameEventContext {
-                    source_entity: Some(player.as_ref()),
-                    affected_state: None,
-                },
-            );
+            emit_entity_interact(entity, player);
         }
         consumed
     }
@@ -3903,6 +3935,10 @@ impl<T: Mob + Send + 'static> EntityBase for T {
         item_stack: &mut ItemStack,
         hand: pumpkin_util::Hand,
     ) -> Option<bool> {
+        if check_and_handle_important_interactions(self, player, item_stack) {
+            emit_entity_interact(self.get_entity(), player);
+            return Some(true);
+        }
         self.mob_interact_with_hand(player, item_stack, hand)
     }
 
