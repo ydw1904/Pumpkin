@@ -142,7 +142,10 @@ impl OminousItemSpawnerEntity {
     /// Vanilla `OminousItemSpawner.spawnProjectile`: each `ProjectileItem.asProjectile`, shot
     /// straight down with the item's `DispenseConfig` and owned by the spawner. Returns `None`
     /// for items that aren't projectiles.
-    #[expect(clippy::too_many_lines, reason = "one branch per vanilla `ProjectileItem`")]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one branch per vanilla `ProjectileItem`"
+    )]
     fn spawn_projectile(
         &self,
         world: &Arc<World>,

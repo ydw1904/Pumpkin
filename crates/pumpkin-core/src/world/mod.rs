@@ -6854,7 +6854,10 @@ impl World {
 
     /// Everything `set_block_state` does after the chunk write: callbacks, neighbour updates,
     /// client sync, POI and lighting (when `update_light` is set).
-    #[expect(clippy::too_many_lines, reason = "one step per part of vanilla `setBlock`")]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one step per part of vanilla `setBlock`"
+    )]
     fn on_block_state_set(
         self: &Arc<Self>,
         position: &BlockPos,
