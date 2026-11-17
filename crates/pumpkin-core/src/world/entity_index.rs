@@ -160,6 +160,19 @@ struct Index {
     buckets: Buckets,
     /// Slots of mobs with game event listeners, in list order.
     listeners: Vec<usize>,
+    /// The synced registry's entities by slot.
+    slots: Vec<Synced>,
+    /// Two slots share an entity ID or a UUID, so only a full sync keeps the maps right.
+    has_duplicates: bool,
+}
+
+/// An entity as of the last sync. The weak reference keeps its allocation, so an equal pointer
+/// in a later registry is the same entity.
+struct Synced {
+    entity: Weak<dyn EntityBase>,
+    entity_id: i32,
+    uuid: Uuid,
+    listener: bool,
 }
 
 impl Index {
@@ -168,39 +181,74 @@ impl Index {
     }
 
     fn sync(&mut self, registry: &Arc<Registry>) {
-        self.generation = self.generation.wrapping_add(1);
-        let generation = self.generation;
-        self.uuids.clear();
-        self.listeners.clear();
-        for (slot, registered) in registry.iter().enumerate() {
-            if registered.get_mob().is_some_and(has_game_event_listener) {
-                self.listeners.push(slot);
-            }
-            let entity = registered.get_entity();
-            // The first in list order wins, like a linear search.
-            self.uuids.entry(entity.entity_uuid).or_insert(slot);
-            let range = Self::entity_range(&entity.bounding_box.load());
-            match self.entries.entry(entity.entity_id) {
-                std::collections::hash_map::Entry::Occupied(mut entry) => {
-                    let entry = entry.get_mut();
-                    entry.slot = slot;
-                    entry.synced = generation;
-                    if entry.range != range {
-                        self.buckets.remove(entity.entity_id, entry.range);
-                        self.buckets.insert(entity.entity_id, range);
-                        entry.range = range;
-                    }
-                }
-                std::collections::hash_map::Entry::Vacant(entry) => {
-                    entry.insert(Tracked {
-                        slot,
-                        range,
-                        synced: generation,
-                    });
-                    self.buckets.insert(entity.entity_id, range);
-                }
+        if self.has_duplicates {
+            self.full_sync(registry);
+        } else {
+            self.sync_changes(registry);
+        }
+        self.registry = Arc::downgrade(registry);
+    }
+
+    /// Syncs only what changed: the synced entities missing from the registry, in its order,
+    /// are removed, and the registry's entities after the last one kept are added. Spawning,
+    /// removing and re-ordering spawns at the end keep the rest in place. Bounds changes of
+    /// kept entities already went through `update`, so this ends up like a full sync.
+    fn sync_changes(&mut self, registry: &Arc<Registry>) {
+        let mut kept = 0;
+        let mut removed = Vec::new();
+        for (slot, synced) in self.slots.iter().enumerate() {
+            if registry.get(kept).is_some_and(|entity| {
+                std::ptr::addr_eq(Arc::as_ptr(entity), synced.entity.as_ptr())
+            }) {
+                kept += 1;
+            } else {
+                removed.push(slot);
             }
         }
+        if let Some(&first_removed) = removed.first() {
+            // Without duplicates, each removed entity owns its entry and UUID.
+            for &slot in &removed {
+                let synced = &self.slots[slot];
+                if let Some(entry) = self.entries.remove(&synced.entity_id) {
+                    self.buckets.remove(synced.entity_id, entry.range);
+                }
+                self.uuids.remove(&synced.uuid);
+            }
+            let mut removed = removed.into_iter().peekable();
+            let mut slot = 0;
+            self.slots.retain(|_| {
+                let keep = removed.next_if_eq(&slot).is_none();
+                slot += 1;
+                keep
+            });
+            for (slot, synced) in self.slots.iter().enumerate().skip(first_removed) {
+                if let Some(entry) = self.entries.get_mut(&synced.entity_id) {
+                    entry.slot = slot;
+                }
+                self.uuids.insert(synced.uuid, slot);
+            }
+            self.listeners = self
+                .slots
+                .iter()
+                .enumerate()
+                .filter_map(|(slot, synced)| synced.listener.then_some(slot))
+                .collect();
+        }
+        for (slot, registered) in registry.iter().enumerate().skip(kept) {
+            self.sync_slot(slot, registered);
+        }
+    }
+
+    fn full_sync(&mut self, registry: &Arc<Registry>) {
+        self.generation = self.generation.wrapping_add(1);
+        self.uuids.clear();
+        self.listeners.clear();
+        self.slots.clear();
+        self.has_duplicates = false;
+        for (slot, registered) in registry.iter().enumerate() {
+            self.sync_slot(slot, registered);
+        }
+        let generation = self.generation;
         let buckets = &mut self.buckets;
         self.entries.retain(|&entity_id, entry| {
             let kept = entry.synced == generation;
@@ -209,7 +257,53 @@ impl Index {
             }
             kept
         });
-        self.registry = Arc::downgrade(registry);
+    }
+
+    /// Indexes the entity at `slot` of the registry being synced, after the slots before it.
+    fn sync_slot(&mut self, slot: usize, registered: &Arc<dyn EntityBase>) {
+        let listener = registered.get_mob().is_some_and(has_game_event_listener);
+        if listener {
+            self.listeners.push(slot);
+        }
+        let entity = registered.get_entity();
+        self.slots.push(Synced {
+            entity: Arc::downgrade(registered),
+            entity_id: entity.entity_id,
+            uuid: entity.entity_uuid,
+            listener,
+        });
+        // The first in list order wins, like a linear search.
+        match self.uuids.entry(entity.entity_uuid) {
+            std::collections::hash_map::Entry::Occupied(_) => self.has_duplicates = true,
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(slot);
+            }
+        }
+        let range = Self::entity_range(&entity.bounding_box.load());
+        match self.entries.entry(entity.entity_id) {
+            std::collections::hash_map::Entry::Occupied(mut entry) => {
+                let entry = entry.get_mut();
+                // Every entry is synced in the current generation once a sync is done.
+                if entry.synced == self.generation {
+                    self.has_duplicates = true;
+                }
+                entry.slot = slot;
+                entry.synced = self.generation;
+                if entry.range != range {
+                    self.buckets.remove(entity.entity_id, entry.range);
+                    self.buckets.insert(entity.entity_id, range);
+                    entry.range = range;
+                }
+            }
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(Tracked {
+                    slot,
+                    range,
+                    synced: self.generation,
+                });
+                self.buckets.insert(entity.entity_id, range);
+            }
+        }
     }
 
     fn entity_range(area: &BoundingBox) -> Option<CellRange> {
@@ -707,6 +801,51 @@ mod tests {
                 .collect::<Vec<_>>(),
             [near.entity.entity_id]
         );
+        world.level.shutdown().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn appended_and_replaced_slots_stay_in_sync() -> Result<(), Box<dyn std::error::Error>> {
+        let folder = tempfile::tempdir()?;
+        let world = world(&folder);
+        let cow = |x| {
+            CowEntity::new(Entity::new(
+                world.clone(),
+                Vector3::new(x, 64.0, 0.0),
+                &EntityType::COW,
+            ))
+        };
+        let (a, b, c) = (cow(0.0), cow(8.0), cow(16.0));
+        let id = |cow: &Arc<CowEntity>| cow.get_entity().entity_id;
+        let area = BoundingBox::new(
+            Vector3::new(-2.0, 63.0, -2.0),
+            Vector3::new(18.0, 66.0, 2.0),
+        );
+        world.entities.store(Arc::new(vec![a.clone()]));
+        assert_eq!(ids(&world, &area), [id(&a)]);
+        world.entities.store(Arc::new(vec![a.clone(), b.clone()]));
+        assert_eq!(ids(&world, &area), [id(&a), id(&b)]);
+        assert!(
+            world
+                .get_entity_by_uuid(b.get_entity().entity_uuid)
+                .is_some()
+        );
+        b.get_entity().set_pos(Vector3::new(40.0, 64.0, 0.0));
+        assert_eq!(ids(&world, &area), [id(&a)]);
+        // Same length as before, but the first slot now holds another entity.
+        world.entities.store(Arc::new(vec![b.clone(), c.clone()]));
+        assert_eq!(ids(&world, &area), [id(&c)]);
+        assert!(
+            world
+                .get_entity_by_uuid(a.get_entity().entity_uuid)
+                .is_none()
+        );
+        assert!(world.get_entity_by_id(id(&b)).is_some());
+        // Re-ordered, like spawns sorted at the end of a tick.
+        world.entities.store(Arc::new(vec![c.clone(), b.clone()]));
+        b.get_entity().set_pos(Vector3::new(8.0, 64.0, 0.0));
+        assert_eq!(ids(&world, &area), [id(&c), id(&b)]);
         world.level.shutdown().await;
         Ok(())
     }
