@@ -36,7 +36,7 @@ use crate::world::{BlockBreakingProgress, World, chunker};
 use pumpkin_data::block_properties::CommandBlockLikeProperties;
 use pumpkin_data::data_component::DataComponent;
 use pumpkin_data::data_component_impl::{
-    BlocksAttacksImpl, ConsumableImpl, DataComponentImpl, EquipmentSlot, EquippableImpl, FoodImpl,
+    BlocksAttacksImpl, ConsumableImpl, EquipmentSlot, EquippableImpl, FoodImpl,
     WritableBookContentImpl, WrittenBookContentImpl,
 };
 use pumpkin_data::item::Item;

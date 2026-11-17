@@ -2,16 +2,23 @@
 use super::*;
 
 impl JavaClient {
+    /// Vanilla `ServerGamePacketListenerImpl.handleEditBook`. Pumpkin has no text filter
+    /// service, so the text passes through unfiltered like vanilla's `TextFilter.DUMMY`.
     pub fn handle_edit_book(&self, player: &Player, packet: &SEditBook<'_>) {
-        let held_stack = player.inventory().held_item();
-        if held_stack.item.id != Item::WRITABLE_BOOK.id {
+        let Ok(slot) = usize::try_from(packet.slot.0) else {
+            return;
+        };
+        if !PlayerInventory::is_valid_hotbar_index(slot) && slot != PlayerInventory::OFF_HAND_SLOT {
+            return;
+        }
+        let carried = player.inventory().get_slot(slot);
+        if !carried.has_data_component(DataComponent::WritableBookContent) {
             return;
         }
 
         let mut pages: Vec<String> = packet.pages.iter().map(|p| (*p).to_string()).collect();
         let mut title = packet.title.map(std::string::ToString::to_string);
         let signing = title.is_some();
-        let slot = player.inventory().get_selected_slot() as u32;
 
         if let Some(player_arc) = player.world().get_player_by_uuid(player.gameprofile.id)
             && let Some(server) = player.world().server.upgrade()
@@ -19,7 +26,7 @@ impl JavaClient {
             let mut event =
                 crate::plugin::api::events::player::player_edit_book::PlayerEditBookEvent {
                     player: player_arc,
-                    slot,
+                    slot: slot as u32,
                     pages: pages.clone(),
                     title: title.clone(),
                     signing,
@@ -34,28 +41,27 @@ impl JavaClient {
         }
 
         if let Some(title) = title {
-            let mut written_book = ItemStack::new(1, &Item::WRITTEN_BOOK);
-            let content = WrittenBookContentImpl {
+            // `signBook`: keep the book's other components, swap the writable content for
+            // the written content.
+            let mut written_book = carried.transmute_copy(&Item::WRITTEN_BOOK, carried.item_count);
+            // `remove` on a component the written book has no default for drops it from the
+            // patch instead of recording a removal.
+            written_book
+                .patch
+                .retain(|(component, _)| *component != DataComponent::WritableBookContent);
+            written_book.set_data_component(WrittenBookContentImpl {
                 title,
                 author: player.gameprofile.name.clone(),
                 pages: pages.into_iter().map(TextComponent::text).collect(),
                 generation: 0,
-                resolved: false,
-            };
-            written_book
-                .patch
-                .push((DataComponent::WrittenBookContent, Some(content.to_dyn())));
-            player.inventory().set_held_item(written_book);
+                resolved: true,
+            });
+            player.inventory().set_slot(slot, written_book);
         } else {
-            let mut writable_book = held_stack;
-            let content = WritableBookContentImpl { pages };
-            writable_book
-                .patch
-                .retain(|(component, _)| *component != DataComponent::WritableBookContent);
-            writable_book
-                .patch
-                .push((DataComponent::WritableBookContent, Some(content.to_dyn())));
-            player.inventory().set_held_item(writable_book);
+            // `updateBookContents`
+            let mut writable_book = carried;
+            writable_book.set_data_component(WritableBookContentImpl { pages });
+            player.inventory().set_slot(slot, writable_book);
         }
     }
 }
