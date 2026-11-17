@@ -5549,11 +5549,6 @@ impl World {
                         for entity in self_and_passengers(&root) {
                             entity.init_data_tracker();
 
-                            // Clear velocity so the client does not replay the drop
-                            // animation; residual velocity from the original drop is
-                            // stale data.
-                            entity.get_entity().velocity.store(Vector3::default());
-
                             // UUID-dedupes if another watcher already loaded this entity.
                             // Tracker owns pairing (spawn packets + vehicle restore).
                             world.add_entity_silent(entity.clone());
