@@ -3420,9 +3420,7 @@ impl World {
         let categories: Vec<_> = spawn_list
             .iter()
             .copied()
-            .filter(|category| {
-                spawn_state.can_spawn_for_category_local(self, category, chunk_pos)
-            })
+            .filter(|category| spawn_state.can_spawn_for_category_local(category, chunk_pos))
             .collect();
         if categories.is_empty() || !self.can_spawn_entities_in_chunk(chunk_pos) {
             return ChunkSpawns::default();

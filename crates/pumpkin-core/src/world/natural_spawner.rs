@@ -8,7 +8,6 @@ use crate::entity::r#type::{
 };
 use crate::world::World;
 use arc_swap::ArcSwap;
-use dashmap::DashMap;
 use pumpkin_data::biome::{SpawnCosts, Spawner};
 use pumpkin_data::chunk::Biome;
 use pumpkin_data::dimension::Dimension;
@@ -120,53 +119,22 @@ impl MobCounts {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct ActiveSpawnPlayer {
-    entity_id: i32,
     chunk_pos: Vector2<i32>,
     pos: Vector3<f64>,
 }
 
+/// Vanilla `LocalMobCapCalculator`, over the players as they were when the state was made.
+///
+/// That snapshot is what vanilla's `playersNearChunk` cache sees within a tick, so the players
+/// near a chunk are found again on each call instead of cached.
+#[derive(Clone, Debug, Default)]
 pub struct LocalMobCapCalculator {
-    player_mob_counts: DashMap<i32, MobCounts>,
-    players_near_chunk: DashMap<Vector2<i32>, Arc<[i32]>>,
-    active_players: Option<Arc<[ActiveSpawnPlayer]>>,
-}
-
-impl Clone for LocalMobCapCalculator {
-    fn clone(&self) -> Self {
-        let player_mob_counts = DashMap::new();
-        for r in &self.player_mob_counts {
-            player_mob_counts.insert(*r.key(), r.value().clone());
-        }
-        let players_near_chunk = DashMap::new();
-        for r in &self.players_near_chunk {
-            players_near_chunk.insert(*r.key(), r.value().clone());
-        }
-        Self {
-            player_mob_counts,
-            players_near_chunk,
-            active_players: self.active_players.clone(),
-        }
-    }
-}
-
-impl Default for LocalMobCapCalculator {
-    fn default() -> Self {
-        Self {
-            player_mob_counts: DashMap::new(),
-            players_near_chunk: DashMap::new(),
-            active_players: None,
-        }
-    }
-}
-
-impl fmt::Debug for LocalMobCapCalculator {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("LocalMobCapCalculator")
-            .field("world", &"<skipped>")
-            .finish()
-    }
+    /// The non-spectator players.
+    players: Box<[ActiveSpawnPlayer]>,
+    /// Each player's mob counts, in `players` order.
+    player_mob_counts: Box<[MobCounts]>,
 }
 
 /// Vanilla `ChunkMap.euclideanDistanceSquared`: horizontal distance from the chunk's center.
@@ -195,124 +163,73 @@ pub fn any_player_close_enough_for_spawning(
 
 impl LocalMobCapCalculator {
     fn for_world(world: &World) -> Self {
-        let players = world.players.load();
-        let mut active = Vec::with_capacity(players.len());
-        for player in players.iter() {
-            if player.gamemode.load() == GameMode::Spectator {
-                continue;
-            }
-            let entity = player.get_entity();
-            active.push(ActiveSpawnPlayer {
-                entity_id: player.entity_id(),
-                chunk_pos: entity.chunk_pos.load(),
-                pos: entity.pos.load(),
-            });
-        }
+        let players: Box<[ActiveSpawnPlayer]> = world
+            .players
+            .load()
+            .iter()
+            .filter(|player| player.gamemode.load() != GameMode::Spectator)
+            .map(|player| {
+                let entity = player.get_entity();
+                ActiveSpawnPlayer {
+                    chunk_pos: entity.chunk_pos.load(),
+                    pos: entity.pos.load(),
+                }
+            })
+            .collect();
         Self {
-            player_mob_counts: DashMap::new(),
-            players_near_chunk: DashMap::new(),
-            active_players: Some(active.into()),
+            player_mob_counts: players.iter().map(|_| MobCounts::default()).collect(),
+            players,
         }
     }
 
-    fn nearest_player_distance_sq(&self, world: &World, x: f64, y: f64, z: f64) -> Option<f64> {
+    fn nearest_player_distance_sq(&self, x: f64, y: f64, z: f64) -> Option<f64> {
         let mut min_dst_sq = f64::MAX;
         let mut found = false;
-        if let Some(active_players) = &self.active_players {
-            for p in active_players.iter() {
-                let dx = x - p.pos.x;
-                let dy = y - p.pos.y;
-                let dz = z - p.pos.z;
-                let dist_sq = dx * dx + dy * dy + dz * dz;
-                if dist_sq < min_dst_sq {
-                    min_dst_sq = dist_sq;
-                    found = true;
-                }
-            }
-        } else {
-            let players = world.players.load();
-            for player in players.iter() {
-                if player.gamemode.load() != GameMode::Spectator {
-                    let ppos = player.position();
-                    let dx = x - ppos.x;
-                    let dy = y - ppos.y;
-                    let dz = z - ppos.z;
-                    let dist_sq = dx * dx + dy * dy + dz * dz;
-                    if dist_sq < min_dst_sq {
-                        min_dst_sq = dist_sq;
-                        found = true;
-                    }
-                }
+        for p in &self.players {
+            let dx = x - p.pos.x;
+            let dy = y - p.pos.y;
+            let dz = z - p.pos.z;
+            let dist_sq = dx * dx + dy * dy + dz * dz;
+            if dist_sq < min_dst_sq {
+                min_dst_sq = dist_sq;
+                found = true;
             }
         }
         found.then_some(min_dst_sq)
     }
 
-    fn get_players_near(&self, world: &World, chunk_pos: Vector2<i32>) -> Arc<[i32]> {
-        if let Some(players) = self.players_near_chunk.get(&chunk_pos) {
-            return players.value().clone();
-        }
-
-        let mut players = Vec::new();
-        if let Some(active_players) = &self.active_players {
-            for p in active_players.iter() {
-                if (chunk_pos.x - p.chunk_pos.x).abs() <= 9
+    /// Vanilla `getPlayersNear`: the mob counts of the players close enough to spawn in the
+    /// chunk.
+    fn counts_near(&self, chunk_pos: Vector2<i32>) -> impl Iterator<Item = &MobCounts> {
+        self.players
+            .iter()
+            .zip(self.player_mob_counts.iter())
+            .filter(move |(p, _)| {
+                (chunk_pos.x - p.chunk_pos.x).abs() <= 9
                     && (chunk_pos.y - p.chunk_pos.y).abs() <= 9
                     && chunk_center_distance_squared(chunk_pos, &p.pos) < 16384.0
-                {
-                    players.push(p.entity_id);
-                }
-            }
-        } else {
-            for player in world.players.load().iter() {
-                if player_is_close_enough_for_spawning(player, chunk_pos) {
-                    players.push(player.entity_id());
-                }
-            }
-        }
-        let players: Arc<[i32]> = players.into();
-        self.players_near_chunk.insert(chunk_pos, players.clone());
-        players
+            })
+            .map(|(_, counts)| counts)
     }
 
-    pub fn add_mob(&self, chunk_pos: Vector2<i32>, world: &World, category: &'static MobCategory) {
-        let players = self.get_players_near(world, chunk_pos);
-        for &player in players.iter() {
-            self.player_mob_counts
-                .entry(player)
-                .or_default()
-                .add(category);
+    pub fn add_mob(&self, chunk_pos: Vector2<i32>, category: &'static MobCategory) {
+        for counts in self.counts_near(chunk_pos) {
+            counts.add(category);
         }
     }
 
     /// Adds a chunk's mobs counted by category, like [`Self::add_mob`] for each of them.
-    fn add_mobs(&self, chunk_pos: Vector2<i32>, world: &World, counts: &[i32; MOB_CATEGORY_COUNT]) {
-        let players = self.get_players_near(world, chunk_pos);
-        for &player in players.iter() {
-            self.player_mob_counts
-                .entry(player)
-                .or_default()
-                .add_counts(counts);
+    fn add_mobs(&self, chunk_pos: Vector2<i32>, counts: &[i32; MOB_CATEGORY_COUNT]) {
+        for player_counts in self.counts_near(chunk_pos) {
+            player_counts.add_counts(counts);
         }
     }
 
-    pub fn can_spawn(
-        &self,
-        category: &'static MobCategory,
-        world: &World,
-        chunk_pos: Vector2<i32>,
-    ) -> bool {
-        let players = self.get_players_near(world, chunk_pos);
-        for &player in players.iter() {
-            if let Some(count) = self.player_mob_counts.get(&player) {
-                if count.can_spawn(category) {
-                    return true;
-                }
-            } else {
-                return true;
-            }
-        }
-        false
+    /// A player vanilla has no counts for yet passes, like one whose counts are all zero.
+    #[must_use]
+    pub fn can_spawn(&self, category: &'static MobCategory, chunk_pos: Vector2<i32>) -> bool {
+        self.counts_near(chunk_pos)
+            .any(|counts| counts.can_spawn(category))
     }
 }
 
@@ -505,7 +422,7 @@ impl SpawnState {
         }
         let local_mob_cap = LocalMobCapCalculator::for_world(world);
         for (chunk_pos, counts) in chunk_mob_counts {
-            local_mob_cap.add_mobs(chunk_pos, world, &counts);
+            local_mob_cap.add_mobs(chunk_pos, &counts);
         }
         Self {
             spawnable_chunk_count: chunk_count,
@@ -523,12 +440,10 @@ impl SpawnState {
 
     pub fn can_spawn_for_category_local(
         &self,
-        world: &Arc<World>,
         category: &'static MobCategory,
         chunk_pos: Vector2<i32>,
     ) -> bool {
-        self.local_mob_cap_calculator
-            .can_spawn(category, world, chunk_pos)
+        self.local_mob_cap_calculator.can_spawn(category, chunk_pos)
     }
 
     /// Vanilla `SpawnState.canSpawn`, which also counts the mobs `chunk` decided on so far.
@@ -554,18 +469,11 @@ impl SpawnState {
     }
 
     /// Vanilla `SpawnState.afterSpawn`.
-    fn after_spawn(
-        &self,
-        entity_type: &'static EntityType,
-        pos: &BlockPos,
-        charge: f64,
-        world: &Arc<World>,
-    ) {
+    fn after_spawn(&self, entity_type: &'static EntityType, pos: &BlockPos, charge: f64) {
         self.spawn_potential.add_charge(pos, charge);
         self.mob_category_counts.add(entity_type.category);
         self.local_mob_cap_calculator.add_mob(
             Vector2::<i32>::new(get_section_cord(pos.0.x), get_section_cord(pos.0.z)),
-            world,
             entity_type.category,
         );
     }
@@ -581,7 +489,7 @@ impl SpawnState {
             let allowed = match category_allowed {
                 Some((checked, allowed)) if checked.id == category.id => allowed,
                 _ => {
-                    let allowed = self.can_spawn_for_category_local(world, category, chunk_pos);
+                    let allowed = self.can_spawn_for_category_local(category, chunk_pos);
                     category_allowed = Some((category, allowed));
                     allowed
                 }
@@ -596,7 +504,7 @@ impl SpawnState {
                 continue;
             }
             world.spawn_entity_non_save(spawn.entity);
-            self.after_spawn(entity_type, &spawn.pos, spawn.cost.charge, world);
+            self.after_spawn(entity_type, &spawn.pos, spawn.cost.charge);
         }
     }
 }
@@ -1028,7 +936,7 @@ pub fn spawn_category_for_position(
 
             let nearest_player_distance_sq = spawn_state
                 .local_mob_cap_calculator
-                .nearest_player_distance_sq(world, xx, f64::from(y_start), zz);
+                .nearest_player_distance_sq(xx, f64::from(y_start), zz);
 
             if let Some(player_distance_sq) = nearest_player_distance_sq
                 && is_right_distance_to_player_and_spawn_point(
