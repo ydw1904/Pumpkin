@@ -3108,7 +3108,9 @@ impl LivingEntity {
             return;
         }
         let mut velo = self.entity.velocity.load();
-        velo.y += 0.04;
+        velo.y += caller
+            .get_mob()
+            .map_or(0.04, crate::entity::mob::Mob::fluid_jump_velocity);
         self.entity.velocity.store(velo);
     }
 

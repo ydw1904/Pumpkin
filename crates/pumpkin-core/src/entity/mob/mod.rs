@@ -2617,6 +2617,15 @@ pub trait Mob: EntityBase + Send + Sync {
 
     fn mob_ai_step(&self) {}
 
+    /// Extra block read range for the conservative reach of an unaudited mob.
+    fn conservative_block_read_radius(&self) -> f64 {
+        0.0
+    }
+
+    fn fluid_jump_velocity(&self) -> f64 {
+        0.04
+    }
+
     fn tick_jump_control(&self, jump: bool) {
         self.get_mob_entity()
             .living_entity

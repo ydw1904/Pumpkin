@@ -713,6 +713,15 @@ impl Mob for BeeEntity {
     }
 
     /// Vanilla `Bee.createNavigation`: the navigation pauses while the bee pollinates.
+    fn conservative_block_read_radius(&self) -> f64 {
+        f64::from(TOO_FAR_DISTANCE + 2)
+    }
+
+    /// Vanilla `Bee.jumpInLiquid`.
+    fn fluid_jump_velocity(&self) -> f64 {
+        0.01
+    }
+
     fn ticks_navigation(&self) -> bool {
         !self.is_pollinating()
     }
