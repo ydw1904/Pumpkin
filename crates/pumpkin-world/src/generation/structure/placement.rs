@@ -169,11 +169,8 @@ impl GlobalStructureCache {
             self.ensure_strongholds_generated();
             return Self::computed(self.stronghold_chunks.wait().as_deref());
         }
-        // Without a job the cell is only filled by `get_or_calculate_strongholds`, never with `None`.
-        self.stronghold_chunks
-            .get()
-            .and_then(Option::as_deref)
-            .unwrap_or_default()
+        // Only the job fills the cell.
+        &[]
     }
 
     /// Returns the stronghold ring positions without waiting.
@@ -515,31 +512,6 @@ impl GlobalStructureCache {
         }
 
         chunks
-    }
-
-    /// Retrieves the list of chunk coordinates for Concentric Ring structures.
-    /// If the cache is empty, it calculates the 128 ring positions.
-    pub fn get_or_calculate_strongholds(
-        &self,
-        seed: i64,
-        placement: &ConcentricRingsStructurePlacement,
-        multi_noise: Option<&ProtoMultiNoiseRouter>,
-    ) -> &[(i32, i32)] {
-        if self.stronghold_job.is_some() {
-            return self.get_stronghold_chunks();
-        }
-        // A panic here leaves the cell empty, so the next caller retries instead of waiting.
-        self.stronghold_chunks.get_or_init(|| {
-            Some(multi_noise.map_or_else(
-                || {
-                    let random_config = crate::GlobalRandomConfig::new(seed as u64, false);
-                    let base = pumpkin_data::noise_router::BaseNoiseRouters::from_dimension(&pumpkin_data::dimension::Dimension::OVERWORLD);
-                    let base_router = crate::generation::noise::router::proto_noise_router::ProtoNoiseRouters::generate(base, &random_config);
-                    Self::calculate_strongholds(seed, placement, &base_router.multi_noise)
-                },
-                |multi_noise| Self::calculate_strongholds(seed, placement, multi_noise),
-            ))
-        }).as_deref().unwrap_or_default()
     }
 }
 
