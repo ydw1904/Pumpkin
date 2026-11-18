@@ -208,7 +208,7 @@ pub struct ThrownItemEntity {
 impl ThrownItemEntity {
     pub fn new(entity: Entity, owner: &Entity, gravity: f64) -> Self {
         let mut owner_pos = owner.pos.load();
-        owner_pos.y += owner.get_eye_height() - 0.1;
+        owner_pos.y += owner.get_eye_height() - f64::from(0.1f32);
         entity.set_pos(owner_pos);
         Self {
             entity,
@@ -292,11 +292,12 @@ impl ThrownItemEntity {
             velocity.y -= self.get_gravity();
         }
 
-        let inertia = if entity.touching_water.load(Ordering::Relaxed) {
-            0.8
+        // Vanilla's inertia is a float, widened to double.
+        let inertia = f64::from(if entity.touching_water.load(Ordering::Relaxed) {
+            0.8f32
         } else {
-            0.99
-        };
+            0.99f32
+        });
         velocity = velocity.multiply(inertia, inertia, inertia);
 
         // Store velocity

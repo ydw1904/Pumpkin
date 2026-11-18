@@ -61,12 +61,6 @@ pub struct Biome {
 }
 
 impl Biome {
-    fn attr_bool(&self, key: &str) -> Option<bool> {
-        let val = self.attributes.get(key)?;
-        val.as_bool()
-            .or_else(|| val.get("argument").and_then(Value::as_bool))
-    }
-
     /// Replaces the spawners and spawn costs with the ones from the 26.3
     /// `natural_mob_spawns` attribute, panicking if the spawn list is malformed.
     fn apply_natural_mob_spawns(&mut self, name: &str) {
@@ -365,6 +359,12 @@ pub fn build() -> TokenStream {
         let format_name = format_ident!("{}", name.to_shouty_snake_case());
         let has_precipitation = biome.has_precipitation;
         let temperature = biome.temperature;
+        let boolean_attributes: Vec<_> = biome.attributes.iter().filter_map(|(name, value)| {
+            let value = value.as_bool().or_else(|| value.get("argument").and_then(Value::as_bool))?;
+            let name = name.strip_prefix("minecraft:").unwrap_or(name);
+            let variant = format_ident!("{}", name.replace('/', "_").to_pascal_case());
+            Some(quote! { (crate::environment_attribute::EnvironmentAttribute::#variant, #value) })
+        }).collect();
         let downfall = biome.downfall;
         let carvers: Vec<TokenStream> = biome
             .carvers
@@ -397,9 +397,6 @@ pub fn build() -> TokenStream {
             .get("minecraft:gameplay/creature_world_gen_spawn_probability")
             .and_then(Value::as_f64)
             .map_or(0.1, |probability| probability as f32);
-        let increased_fire_burnout = biome
-            .attr_bool("minecraft:gameplay/increased_fire_burnout")
-            .unwrap_or(false);
 
         let temperature_modifier = biome
             .temperature_modifier
@@ -479,22 +476,13 @@ pub fn build() -> TokenStream {
             TemperatureModifier::None => quote! { TemperatureModifier::None },
         };
         let index = LitInt::new(&biome.id.to_string(), Span::call_site());
-        let snow_golem_melts = biome
-            .attributes
-            .get("minecraft:gameplay/snow_golem_melts")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        let can_pillager_patrol_spawn = biome
-            .attributes
-            .get("minecraft:gameplay/can_pillager_patrol_spawn")
-            .and_then(Value::as_bool)
-            .unwrap_or(true);
 
         variants.extend([quote! {
             pub const #format_name: Biome = Biome {
                 id: #index,
                 registry_id: #name,
                 be_network_id: #be_network_id,
+                boolean_attributes: &[#(#boolean_attributes),*],
                 weather: Weather::new(
                      #has_precipitation,
                      #temperature,
@@ -504,9 +492,6 @@ pub fn build() -> TokenStream {
                 features: &[#(#features),*],
                 carvers: &[#(#carvers),*],
                 creature_spawn_probability: #creature_spawn_probability,
-                increased_fire_burnout: #increased_fire_burnout,
-                snow_golem_melts: #snow_golem_melts,
-                can_pillager_patrol_spawn: #can_pillager_patrol_spawn,
                 spawners: #spawners,
                 spawn_costs: phf::phf_map! {
                     #(#spawn_costs),*
@@ -535,16 +520,11 @@ pub fn build() -> TokenStream {
             pub id: u8,
             pub registry_id: &'static str,
             pub be_network_id: u8,
+            pub boolean_attributes: &'static [(crate::environment_attribute::EnvironmentAttribute, bool)],
             pub weather: Weather,
             pub carvers: &'static [&'static crate::carver::CarverConfig],
             pub features: &'static [&'static [crate::placed_feature::PlacedFeature]],
             pub creature_spawn_probability: f32,
-            /// The biome's `gameplay/increased_fire_burnout` environment attribute.
-            pub increased_fire_burnout: bool,
-            /// The biome's `gameplay/snow_golem_melts` environment attribute.
-            pub snow_golem_melts: bool,
-            /// The biome's `gameplay/can_pillager_patrol_spawn` environment attribute.
-            pub can_pillager_patrol_spawn: bool,
             pub spawners: SpawnGroups,
             pub spawn_costs: phf::Map<&'static str, SpawnCosts>,
         }

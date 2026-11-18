@@ -370,6 +370,15 @@ pub enum GearDamage {
     Helmet,
 }
 
+/// The equipment slot a hand holds.
+#[must_use]
+pub const fn hand_equipment_slot(hand: pumpkin_util::Hand) -> EquipmentSlot {
+    match hand {
+        pumpkin_util::Hand::Right => EquipmentSlot::MAIN_HAND,
+        pumpkin_util::Hand::Left => EquipmentSlot::OFF_HAND,
+    }
+}
+
 /// Returns the [`EntityStatus`] that should be broadcast when the given
 /// equipment slot breaks.
 #[must_use]

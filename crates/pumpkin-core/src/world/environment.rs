@@ -219,16 +219,18 @@ impl<'a> EnvironmentAttributes<'a> {
     /// Evaluates a boolean environment attribute at a position.
     #[must_use]
     pub fn get_value_bool(&self, attribute: EnvironmentAttribute, pos: &BlockPos) -> bool {
+        let biome = self
+            .world
+            .get_biome(pos)
+            .boolean_attributes
+            .iter()
+            .find_map(|(key, value)| (*key == attribute).then_some(*value));
         let value = self.get_dimension_value_bool(attribute);
         match attribute {
             // The early game timeline `and`s onto the biome's value.
-            EnvironmentAttribute::GameplayCanPillagerPatrolSpawn => {
-                value && self.world.get_biome(pos).can_pillager_patrol_spawn
-            }
-            EnvironmentAttribute::GameplayIncreasedFireBurnout => {
-                value || self.world.get_biome(pos).increased_fire_burnout
-            }
-            _ => value,
+            EnvironmentAttribute::GameplayCanPillagerPatrolSpawn => value && biome.unwrap_or(true),
+            EnvironmentAttribute::GameplayIncreasedFireBurnout => value || biome.unwrap_or(false),
+            _ => biome.unwrap_or(value),
         }
     }
 

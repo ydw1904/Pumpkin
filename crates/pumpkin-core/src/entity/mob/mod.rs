@@ -2521,7 +2521,14 @@ pub trait Mob: EntityBase + Send + Sync {
         let _ = player.damage_item_stack(shears, 1);
         mob_entity.set_item_slot(&slot, ItemStack::EMPTY.clone());
         world.emit_game_event(GameEvent::Unequip.name(), entity.pos.load());
-        world.emit_game_event(GameEvent::Shear.name(), entity.pos.load());
+        world.emit_game_event_with_context(
+            GameEvent::Shear.name(),
+            entity.pos.load(),
+            &crate::world::game_event::GameEventContext {
+                source_entity: Some(player.as_ref()),
+                affected_state: None,
+            },
+        );
         let item_id = format!("minecraft:{}", stack.item.registry_key);
         entity.spawn_at_location_offset(stack, average_passenger_attachment(self));
         player.trigger_advancement(AdvancementTrigger::PlayerShearedEquipment {
@@ -3914,11 +3921,6 @@ impl<T: Mob + Send + 'static> EntityBase for T {
         }
 
         mob_entity.living_entity.tick(caller, server);
-        // Vanilla `LivingEntity.aiStep` ends by hurting water-sensitive mobs in water or rain.
-        let entity = &mob_entity.living_entity.entity;
-        if self.is_sensitive_to_water() && !entity.is_removed() && entity.is_in_water_or_rain() {
-            caller.damage(caller, 1.0, DamageType::DROWN);
-        }
         self.post_tick();
         if mob_entity.living_entity.entity.tick_count.load(Relaxed)
             % MobEntity::CONTROL_FLAGS_UPDATE_INTERVAL

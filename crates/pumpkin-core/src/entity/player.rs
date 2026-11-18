@@ -2434,6 +2434,26 @@ impl Player {
         }
     }
 
+    /// Vanilla `hurtAndBreak` on a held stack: also counts the break and plays it for `hand`.
+    pub fn damage_held_stack(
+        &self,
+        stack: &mut ItemStack,
+        amount: i32,
+        hand: Hand,
+    ) -> DamageResult {
+        let item_id = stack.item.id;
+        let result = self.damage_item_stack(stack, amount);
+        if result == DamageResult::Broken {
+            self.increment_stat(statistics::StatisticCategory::Broken, i32::from(item_id), 1);
+            self.world().send_entity_status(
+                &self.living_entity.entity,
+                super::equipment_break_status(&super::hand_equipment_slot(hand)),
+                ActorEventID::None,
+            );
+        }
+        result
+    }
+
     /// Damages a stack through the player's item events; the caller handles inventory and break updates.
     pub fn damage_item_stack(&self, stack: &mut ItemStack, amount: i32) -> DamageResult {
         if matches!(

@@ -24,6 +24,7 @@ use crate::entity::ai::target_predicate::MIN_DISTANCE as MIN_TARGET_DISTANCE;
 use crate::entity::living::MAX_VISIBILITY_PERCENT;
 use crate::entity::player::Player;
 use crate::entity::{DelayedLeash, EntityBase, PUSH_STRENGTH, tnt::TNTEntity};
+use crate::plugin::api::events::block::entity_block_form::EntityBlockFormEvent;
 use crate::plugin::api::events::entity::{
     entity_breed::EntityBreedEvent, entity_change_block::EntityChangeBlockEvent,
     entity_target::EntityTargetEvent, entity_teleport::EntityTeleportEvent,
@@ -275,6 +276,7 @@ pub fn plugins_observe_entity_ticks(server: &Server) -> bool {
         || plugins.has_handlers::<EntityTeleportEvent>()
         || plugins.has_handlers::<EntityChangeBlockEvent>()
         || plugins.has_handlers::<GenericGameEvent>()
+        || plugins.has_handlers::<EntityBlockFormEvent>()
 }
 
 /// How far target searches can find players this tick. Planning refreshes it before the reports.
