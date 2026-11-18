@@ -196,6 +196,7 @@ pub mod natural_spawner;
 pub mod patrol_spawner;
 pub mod phantom_spawner;
 mod player_touch;
+pub(crate) use player_touch::pickup_area;
 pub mod scoreboard;
 pub mod sleep_status;
 pub mod village_siege;
@@ -5474,21 +5475,20 @@ impl World {
                 .store(crate::entity::player::LAST_SENT_HEALTH_UNSENT);
             player.last_sent_xp.store(-1, Ordering::Relaxed);
             player.send_active_effects();
-        } else {
-            player.living_entity.reset_state();
-            player.hunger_manager.restart();
-            if !keep_inventory {
-                player.total_experience.store(0, Ordering::Relaxed);
-                player.set_experience(0, 0.0, 0);
-                player.inventory.clear();
-            }
+        } else if !keep_inventory {
+            player.total_experience.store(0, Ordering::Relaxed);
+            player.set_experience(0, 0.0, 0);
+            player.inventory.clear();
         }
 
-        // Set entity position BEFORE loading chunks, so chunks load at the right location
-        // This mirrors the initial spawn flow where update_position is called before teleport
         player.get_entity().set_pos(position);
         player.get_entity().set_rotation(yaw, pitch);
         player.get_entity().last_pos.store(position);
+        if !alive {
+            // Restore health last so pickups only resume at the respawn position.
+            player.living_entity.reset_state();
+            player.hunger_manager.restart();
+        }
 
         // TODO: difficulty, exp bar, status effect
 
