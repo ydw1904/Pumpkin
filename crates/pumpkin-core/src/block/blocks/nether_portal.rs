@@ -8,7 +8,7 @@ use pumpkin_data::{
     entity::EntityType,
 };
 use pumpkin_macros::pumpkin_block;
-use pumpkin_util::{Difficulty, GameMode, math::vector3::Vector3};
+use pumpkin_util::{Difficulty, math::vector3::Vector3};
 use uuid::Uuid;
 
 use crate::{
@@ -16,32 +16,12 @@ use crate::{
         BlockBehaviour, GetStateForNeighborUpdateArgs, OnEntityCollisionArgs, OnStateReplacedArgs,
         RandomTickArgs,
     },
-    entity::{EntityBase, mob::spawn::finalize_spawn, r#type::from_type},
-    world::{World, portal::nether::NetherPortal},
+    entity::{mob::spawn::finalize_spawn, r#type::from_type},
+    world::portal::nether::NetherPortal,
 };
 
 #[pumpkin_block("minecraft:nether_portal")]
 pub struct NetherPortalBlock;
-
-impl NetherPortalBlock {
-    /// Gets the portal delay time based on entity type and gamemode
-    #[must_use]
-    pub fn get_portal_time(world: &Arc<World>, entity: &dyn EntityBase) -> u32 {
-        let entity_type = entity.get_entity().entity_type;
-        let level_info = world.level_info.load();
-        match entity_type.id {
-            id if id == EntityType::PLAYER.id => (world
-                .get_player_by_id(entity.get_entity().entity_id))
-            .map_or(80, |player| match player.gamemode.load() {
-                GameMode::Creative => {
-                    level_info.game_rules.players_nether_portal_creative_delay as u32
-                }
-                _ => level_info.game_rules.players_nether_portal_default_delay as u32,
-            }),
-            _ => 0,
-        }
-    }
-}
 
 impl BlockBehaviour for NetherPortalBlock {
     fn get_state_for_neighbor_update(

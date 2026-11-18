@@ -52,21 +52,21 @@ impl PortalType {
     ) -> u32 {
         match self {
             Self::End => 0,
-            Self::Nether => {
-                let entity_type = entity.get_entity().entity_type;
-                let level_info = current_world.level_info.load();
-                match entity_type.id {
-                    id if id == pumpkin_data::entity::EntityType::PLAYER.id => (current_world
-                        .get_player_by_id(entity.get_entity().entity_id))
-                    .map_or(80, |player| match player.gamemode.load() {
-                        pumpkin_util::GameMode::Creative => {
-                            level_info.game_rules.players_nether_portal_creative_delay as u32
-                        }
-                        _ => level_info.game_rules.players_nether_portal_default_delay as u32,
-                    }),
-                    _ => 0,
-                }
-            }
+            // Vanilla `NetherPortalBlock.getPortalTransitionTime`.
+            Self::Nether => entity.get_player().map_or(0, |player| {
+                let invulnerable = player
+                    .abilities
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .invulnerable;
+                let rules = &current_world.level_info.load().game_rules;
+                let delay = if invulnerable {
+                    rules.players_nether_portal_creative_delay
+                } else {
+                    rules.players_nether_portal_default_delay
+                };
+                u32::try_from(delay.max(0)).unwrap_or(u32::MAX)
+            }),
         }
     }
 
