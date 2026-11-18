@@ -1,5 +1,7 @@
 use std::sync::{Arc, RwLock, Weak};
 
+use arc_swap::ArcSwap;
+
 use pumpkin_util::math::boundingbox::BoundingBox;
 use rustc_hash::FxHashMap;
 use uuid::Uuid;
@@ -474,23 +476,34 @@ pub struct EntityIndex {
 }
 
 impl EntityIndex {
-    fn with_index<T>(&self, registry: &Arc<Registry>, query: impl FnOnce(&Index) -> T) -> T {
+    /// Runs `query` on the index and the current entity list, synced to each other.
+    ///
+    /// The list is loaded under the lock, so the index only ever syncs forward. Syncing back to
+    /// an older list a caller held would make every entity after one removed since look moved,
+    /// so the next sync would index them all again.
+    fn with_index<T>(
+        &self,
+        entities: &ArcSwap<Registry>,
+        query: impl FnOnce(&Index, Arc<Registry>) -> T,
+    ) -> T {
         let index = self
             .inner
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if index.matches(registry) {
-            return query(&index);
+        let registry = entities.load_full();
+        if index.matches(&registry) {
+            return query(&index, registry);
         }
         drop(index);
         let mut index = self
             .inner
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if !index.matches(registry) {
-            index.sync(registry);
+        let registry = entities.load_full();
+        if !index.matches(&registry) {
+            index.sync(&registry);
         }
-        query(&index)
+        query(&index, registry)
     }
 
     fn with_players<T>(
@@ -518,21 +531,23 @@ impl EntityIndex {
 
     pub fn query(
         &self,
-        registry: Arc<Registry>,
+        entities: &ArcSwap<Registry>,
         area: BoundingBox,
     ) -> impl Iterator<Item = Arc<dyn EntityBase>> + use<> {
-        self.query_matching(registry, area, |_| true)
+        self.query_matching(entities, area, |_| true)
     }
 
     /// Like [`Self::query`], but drops the candidates `keep` rejects before sorting them or
     /// reading their bounds.
     pub fn query_matching<F: Fn(&dyn EntityBase) -> bool>(
         &self,
-        registry: Arc<Registry>,
+        entities: &ArcSwap<Registry>,
         area: BoundingBox,
         keep: F,
     ) -> impl Iterator<Item = Arc<dyn EntityBase>> + use<F> {
-        let mut slots = self.with_index(&registry, |index| index.candidates(&area, registry.len()));
+        let (mut slots, registry) = self.with_index(entities, |index, registry| {
+            (index.candidates(&area, registry.len()), registry)
+        });
         slots.retain(|&slot| keep(registry[slot].as_ref()));
         // Keep the registry order, including entities spanning several cells.
         slots.sort_unstable();
@@ -560,10 +575,12 @@ impl EntityIndex {
     /// Mobs with game event listeners whose body overlaps `area`, in list order.
     pub fn listeners(
         &self,
-        registry: Arc<Registry>,
+        entities: &ArcSwap<Registry>,
         area: BoundingBox,
     ) -> impl Iterator<Item = Arc<dyn EntityBase>> + use<> {
-        let slots = self.with_index(&registry, |index| index.listeners.clone());
+        let (slots, registry) = self.with_index(entities, |index, registry| {
+            (index.listeners.clone(), registry)
+        });
         slots.into_iter().filter_map(move |slot| {
             let entity = &registry[slot];
             area.intersects(&entity.get_entity().bounding_box.load())
@@ -571,17 +588,20 @@ impl EntityIndex {
         })
     }
 
-    pub fn by_id(&self, registry: &Arc<Registry>, id: i32) -> Option<Arc<dyn EntityBase>> {
-        let slot = self.with_index(registry, |index| {
-            index.entries.get(&id).map(|entry| entry.slot)
-        })?;
-        Some(registry[slot].clone())
+    pub fn by_id(&self, entities: &ArcSwap<Registry>, id: i32) -> Option<Arc<dyn EntityBase>> {
+        self.with_index(entities, |index, registry| {
+            index
+                .entries
+                .get(&id)
+                .map(|entry| registry[entry.slot].clone())
+        })
     }
 
     /// The first entity with `uuid` in registry order, without a scan.
-    pub fn by_uuid(&self, registry: &Arc<Registry>, uuid: Uuid) -> Option<Arc<dyn EntityBase>> {
-        let slot = self.with_index(registry, |index| index.uuids.get(&uuid).copied())?;
-        Some(registry[slot].clone())
+    pub fn by_uuid(&self, entities: &ArcSwap<Registry>, uuid: Uuid) -> Option<Arc<dyn EntityBase>> {
+        self.with_index(entities, |index, registry| {
+            index.uuids.get(&uuid).map(|&slot| registry[slot].clone())
+        })
     }
 
     pub fn player_by_id(&self, registry: &Arc<PlayerRegistry>, id: i32) -> Option<Arc<Player>> {

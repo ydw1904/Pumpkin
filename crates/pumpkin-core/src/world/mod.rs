@@ -5706,7 +5706,7 @@ impl World {
 
     /// Gets an entity by an entity id
     pub fn get_entity_by_id(&self, id: i32) -> Option<Arc<dyn EntityBase>> {
-        if let Some(entity) = self.entity_index.by_id(&self.entities.load_full(), id) {
+        if let Some(entity) = self.entity_index.by_id(&self.entities, id) {
             entity_islands::check_reached(id);
             return Some(entity);
         }
@@ -5738,7 +5738,7 @@ impl World {
     // Gets all entities at a Box
     pub fn get_all_at_box(&self, aabb: &BoundingBox) -> Vec<Arc<dyn EntityBase>> {
         self.entity_index
-            .query(self.entities.load_full(), *aabb)
+            .query(&self.entities, *aabb)
             .chain(
                 self.entity_index
                     .query_players(self.players.load_full(), *aabb)
@@ -5751,7 +5751,7 @@ impl World {
     // Gets all non Player entities at a Box
     pub fn get_entities_at_box(&self, aabb: &BoundingBox) -> Vec<Arc<dyn EntityBase>> {
         self.entity_index
-            .query(self.entities.load_full(), *aabb)
+            .query(&self.entities, *aabb)
             .inspect(|entity| entity_islands::check_reached(entity.get_entity().entity_id))
             .collect()
     }
@@ -5764,7 +5764,7 @@ impl World {
         filter: impl Fn(&'static EntityType) -> bool,
     ) -> Vec<Arc<dyn EntityBase>> {
         self.entity_index
-            .query_matching(self.entities.load_full(), *aabb, |entity| {
+            .query_matching(&self.entities, *aabb, |entity| {
                 filter(entity.get_entity().entity_type)
             })
             .inspect(|entity| entity_islands::check_reached(entity.get_entity().entity_id))
@@ -5837,7 +5837,7 @@ impl World {
     /// An `Option<Arc<dyn EntityBase>>` containing the player if found, or `None` if not.
     pub fn get_entity_by_uuid(&self, id: uuid::Uuid) -> Option<Arc<dyn EntityBase>> {
         self.entity_index
-            .by_uuid(&self.entities.load_full(), id)
+            .by_uuid(&self.entities, id)
             .inspect(|entity| entity_islands::check_reached(entity.get_entity().entity_id))
     }
 
@@ -6008,10 +6008,7 @@ impl World {
                 }
             }
         }
-        for entity in self
-            .entity_index
-            .query(self.entities.load_full(), bounding_box)
-        {
+        for entity in self.entity_index.query(&self.entities, bounding_box) {
             if predicate(entity.as_ref()) {
                 entity_islands::check_reached(entity.get_entity().entity_id);
                 list.push(entity);
@@ -9006,7 +9003,7 @@ impl World {
 
         let mut hits = Vec::new();
 
-        for entity in self.entity_index.query(self.entities.load_full(), ray_box) {
+        for entity in self.entity_index.query(&self.entities, ray_box) {
             let bb = entity.get_entity().bounding_box.load();
             if let Some((t, _, hit_pos)) =
                 Self::intersects_aabb_with_hit(start, end, bb.min, bb.max)

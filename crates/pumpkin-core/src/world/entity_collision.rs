@@ -71,7 +71,7 @@ impl World {
         let area = area.expand_all(COLLISION_EPSILON);
         let mut boxes: Vec<BoundingBox> = self
             .entity_index
-            .query(self.entities.load_full(), area)
+            .query(&self.entities, area)
             .inspect(|entity| entity_islands::check_reached(entity.get_entity().entity_id))
             .filter(|entity| collides(source, entity.as_ref()))
             .map(|entity| entity.get_entity().bounding_box.load())

@@ -1909,7 +1909,7 @@ pub(crate) fn game_event_listener_links(
     links.extend(
         world
             .entity_index
-            .listeners(world.entities.load_full(), area)
+            .listeners(&world.entities, area)
             .map(|other| other.get_entity().entity_id),
     );
 }
