@@ -753,7 +753,7 @@ impl Mob for FoxEntity {
             self.drop_item_stack(stack.split(count - 1));
         }
         self.spit_out_item(self.mouth_item());
-        living.on_item_pickup(item);
+        living.on_item_pickup(item, &stack);
         self.set_mouth_item(stack.split(1));
         self.mob_entity
             .set_guaranteed_drop(&EquipmentSlot::MAIN_HAND);

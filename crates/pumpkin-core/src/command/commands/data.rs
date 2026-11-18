@@ -369,9 +369,7 @@ pub fn entity_nbt_with_selected_item(entity: &dyn EntityBase) -> NbtCompound {
     entity.write_nbt(&mut nbt);
     if let Some(player) = entity.get_player() {
         let held = player.inventory().held_item();
-        if !held.is_empty() {
-            let mut item = NbtCompound::new();
-            held.write_item_stack(&mut item);
+        if let Some(item) = held.to_nbt() {
             nbt.put_compound("SelectedItem", item);
         }
     }

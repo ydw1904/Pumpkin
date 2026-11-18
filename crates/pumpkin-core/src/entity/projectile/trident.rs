@@ -640,12 +640,14 @@ impl EntityBase for TridentEntity {
     }
 
     fn write_custom_nbt(&self, nbt: &mut pumpkin_nbt::compound::NbtCompound) {
-        let mut item = pumpkin_nbt::compound::NbtCompound::new();
-        self.item_stack
+        if let Some(item) = self
+            .item_stack
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .write_item_stack(&mut item);
-        nbt.put_compound("item", item);
+            .to_nbt()
+        {
+            nbt.put_compound("item", item);
+        }
         nbt.put_bool("inGround", self.in_ground.load(Ordering::Relaxed));
         nbt.put_int("life", self.life.load(Ordering::Relaxed) as i32);
         nbt.put_byte("shake", self.shake_time.load(Ordering::Relaxed) as i8);

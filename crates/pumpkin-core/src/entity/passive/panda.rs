@@ -651,7 +651,7 @@ impl Mob for PandaEntity {
         if !living.pickup(item.get_entity(), u32::from(stack.item_count)) {
             return;
         }
-        living.on_item_pickup(item);
+        living.on_item_pickup(item, &stack);
         self.mob_entity
             .set_item_slot(&EquipmentSlot::MAIN_HAND, stack);
         self.mob_entity

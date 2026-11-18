@@ -54,6 +54,8 @@ pub struct HopperBlock;
 
 type HopperLikeProperties = pumpkin_data::block_properties::HopperLikeProperties;
 
+// TODO vanilla `HopperBlock.entityInside`: an item entity touching `SUCK_AABB` is pulled in right away
+// (through `tryMoveItems`, so the cooldown still applies), not only on the hopper's own transfer tick.
 impl BlockBehaviour for HopperBlock {
     fn normal_use(&self, args: NormalUseArgs<'_>) -> BlockActionResult {
         if let Some(factory) = self.get_screen_handler_factory(GetScreenHandlerFactoryArgs {

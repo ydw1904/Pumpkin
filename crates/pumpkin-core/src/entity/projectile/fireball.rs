@@ -85,9 +85,9 @@ impl FireballItem {
     }
 
     pub fn write_nbt(&self, nbt: &mut NbtCompound) {
-        let mut item = NbtCompound::new();
-        self.get().write_item_stack(&mut item);
-        nbt.put_compound("Item", item);
+        if let Some(item) = self.get().to_nbt() {
+            nbt.put_compound("Item", item);
+        }
     }
 
     /// Vanilla `Fireball.readAdditionalSaveData`: a missing or invalid `Item` is a fire charge.

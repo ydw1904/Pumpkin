@@ -414,7 +414,7 @@ pub fn pick_up_item(raider: &dyn Raider, item: &ItemEntity) {
     {
         living.entity.spawn_at_location(current);
     }
-    living.on_item_pickup(item);
+    living.on_item_pickup(item, &stack);
     mob_entity.set_item_slot(&slot, stack.clone());
     living.pickup(item.get_entity(), u32::from(stack.item_count));
     item.get_entity().remove();

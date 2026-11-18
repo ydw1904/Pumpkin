@@ -10,6 +10,7 @@ use pumpkin_util::math::vector3::Vector3;
 use crate::block::entities::BlockEntity;
 use crate::entity::player::Player;
 use crate::entity::player::advancement::trigger::AdvancementTrigger;
+use crate::plugin::api::events::world::loot_generate::LootGenerateEvent;
 use crate::world::World;
 use crate::world::loot::{LootContextParameters, fill_chest_inventory_handle};
 
@@ -129,10 +130,17 @@ impl ContainerLoot {
         else {
             return;
         };
+        // Fired after the key is taken, so a handler reading this container doesn't unpack it
+        // again. A cancel still clears the key and the container stays empty.
+        // TODO let `LootGenerateEvent` carry the container, context and generated items so a plugin can edit the loot.
+        let cancelled = world.cancelled_by_plugin(|| LootGenerateEvent::new(key.clone()));
         if let Some(player) = player {
             player.trigger_advancement(AdvancementTrigger::PlayerGeneratesContainerLoot {
                 loot_table_id: key.clone(),
             });
+        }
+        if cancelled {
+            return;
         }
         // An unknown table is vanilla's empty one: the container stays empty.
         let Some(table) = world.get_loot_table(&key) else {

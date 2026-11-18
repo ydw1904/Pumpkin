@@ -169,12 +169,13 @@ impl AccelerationPower {
 
 /// Vanilla `ThrowableItemProjectile.addAdditionalSaveData`.
 pub(crate) fn write_thrown_item(stack: &std::sync::RwLock<ItemStack>, nbt: &mut NbtCompound) {
-    let mut item = NbtCompound::new();
-    stack
+    if let Some(item) = stack
         .read()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .write_item_stack(&mut item);
-    nbt.put_compound("Item", item);
+        .to_nbt()
+    {
+        nbt.put_compound("Item", item);
+    }
 }
 
 /// Vanilla `ThrowableItemProjectile.readAdditionalSaveData`: a missing `Item` is the default

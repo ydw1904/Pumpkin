@@ -233,6 +233,16 @@ impl ItemEntity {
         );
     }
 
+    /// Vanilla `ItemEntity.merge`: moves `min(min(max stack, max_count) - to.count, from.count)`.
+    ///
+    /// Not clamped at zero: a `to` above the limit is cut back and the excess goes into `from`.
+    pub fn merge(to: &mut ItemStack, from: &mut ItemStack, max_count: u8) {
+        let limit = i16::from(to.get_max_stack_size().min(max_count));
+        let delta = (limit - i16::from(to.item_count)).min(i16::from(from.item_count));
+        to.item_count = (i16::from(to.item_count) + delta).clamp(0, i16::from(u8::MAX)) as u8;
+        from.item_count = (i16::from(from.item_count) - delta).clamp(0, i16::from(u8::MAX)) as u8;
+    }
+
     /// Vanilla `ItemEntity.areMergable`.
     #[must_use]
     pub fn are_mergeable(stack: &ItemStack, other: &ItemStack) -> bool {
@@ -384,13 +394,7 @@ impl ItemEntity {
             (other_stack, self_stack)
         };
 
-        // Vanilla `ItemEntity.merge(to, from, 64)`.
-        let max_size = stack1.get_max_stack_size().min(MERGE_MAX_COUNT);
-        let moved = stack2
-            .item_count
-            .min(max_size.saturating_sub(stack1.item_count));
-        stack1.increment(moved);
-        stack2.decrement(moved);
+        Self::merge(&mut stack1, &mut stack2, MERGE_MAX_COUNT);
         let source_empty = stack2.is_empty();
         drop(stack1);
         drop(stack2);
@@ -420,6 +424,12 @@ impl ItemEntity {
                 .item_stack
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
+            // in a parallel batch -> the player already has the contents.
+            if stack.is_empty() {
+                return;
+            }
+            // Claims the item -> a pickup waiting on the lock sees an empty stack.
+            stack.set_count(0);
             let mut contents = Vec::new();
             if let Some(container) = stack.get_data_component::<ContainerImpl>()
                 && !container.items.is_empty()
@@ -447,7 +457,7 @@ impl ItemEntity {
 
     /// Resends the stack after its count changed. Bedrock item actors ignore the `ITEM`
     /// metadata, so they get the count as `UpdateStackSize`
-    fn on_count_changed(&self) {
+    pub(crate) fn on_count_changed(&self) {
         self.init_data_tracker();
 
         let count = self
@@ -569,6 +579,18 @@ impl ItemEntity {
         }
 
         let entity = &self.entity;
+        // Vanilla `ItemEntity.tick` merges before the age goes up.
+        // merge rate on `tickCount`: 2 while the item changes block cell, else 40.
+        let moved =
+            BlockPos::floored_v(entity.last_pos.load()) != BlockPos::floored_v(entity.pos.load());
+        let rate = if moved { 2 } else { 40 };
+        if entity.tick_count.load(Ordering::Relaxed) % rate == 0 {
+            self.merge_with_neighbours();
+            if entity.removed.load(Ordering::SeqCst) {
+                return false;
+            }
+        }
+
         let age = self.item_age.fetch_add(1, Ordering::Relaxed) + 1;
 
         if age >= LIFETIME {
@@ -587,14 +609,6 @@ impl ItemEntity {
                 e.get_entity().remove();
             }
             return false;
-        }
-
-        // merge rate on `tickCount`: 2 while the item changes block cell, else 40.
-        let moved =
-            BlockPos::floored_v(entity.last_pos.load()) != BlockPos::floored_v(entity.pos.load());
-        let rate = if moved { 2 } else { 40 };
-        if entity.tick_count.load(Ordering::Relaxed) % rate == 0 {
-            self.merge_with_neighbours();
         }
 
         true
@@ -819,26 +833,53 @@ impl EntityBase for ItemEntity {
             return;
         }
 
-        let (item_id, count_before) = {
+        // No event while the pickup cannot happen, this runs every tick of contact.
+        let (item_name, count) = {
             let stack = self
                 .item_stack
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            (stack.item.id, stack.item_count)
+            if stack.is_empty() || !(player.is_creative() || player.inventory.can_hold_any(&stack))
+            {
+                return;
+            }
+            (stack.item.registry_key.to_string(), stack.item_count)
         };
+        if self.entity.world.load().cancelled_by_plugin(|| {
+            crate::plugin::api::events::entity::entity_pickup_item::EntityPickupItemEvent::new(
+                player.entity_id(),
+                item_name,
+                count,
+            )
+        }) {
+            return;
+        }
 
-        let mut local_stack = self
-            .item_stack
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
-        let inserted = player.inventory.insert_stack_anywhere(&mut local_stack);
-        let count_after = local_stack.item_count;
-        let is_empty = local_stack.is_empty();
-        *self
-            .item_stack
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = local_stack;
+        // Inserted in place under the lock; an empty stack was already destroyed or merged away.
+        let (item_id, count_before, inserted, count_after, is_empty) = {
+            let mut stack = self
+                .item_stack
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            // A plugin or another thread may have removed the entity while the event fired.
+            if stack.is_empty() || self.entity.removed.load(Ordering::SeqCst) {
+                return;
+            }
+            let (item_id, count_before) = (stack.item.id, stack.item_count);
+            let inserted = player.inventory.insert_stack_anywhere(&mut stack);
+            // Vanilla `Inventory.add`: the loop ends on a pass that inserts nothing, so creative
+            // voids whatever is left of a stack that did not fully fit, even after a partial insert.
+            if !stack.is_empty() && player.is_creative() {
+                stack.set_count(0);
+            }
+            (
+                item_id,
+                count_before,
+                inserted,
+                stack.item_count,
+                stack.is_empty(),
+            )
+        };
 
         if inserted || player.is_creative() {
             player.inventory_changed.store(true, Ordering::Relaxed);
@@ -867,7 +908,7 @@ impl EntityBase for ItemEntity {
 
             player
                 .living_entity
-                .pickup(&self.entity, amount_picked_up.into());
+                .send_pickup_animation(&self.entity, amount_picked_up.into());
 
             player
                 .current_screen_handler
@@ -915,9 +956,9 @@ impl EntityBase for ItemEntity {
             .item_stack
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut item_compound = NbtCompound::new();
-        item.write_item_stack(&mut item_compound);
-        nbt.put_compound("Item", item_compound);
+        if let Some(item_compound) = item.to_nbt() {
+            nbt.put_compound("Item", item_compound);
+        }
 
         let age = if self.never_despawn.load(Ordering::Relaxed) {
             INFINITE_LIFETIME
@@ -1043,8 +1084,7 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let world = crate::entity::ai::test_support::world(&folder);
         for (as_int, delay) in [(false, 32767), (true, 32767), (false, 1000), (true, 1000)] {
-            let mut item = NbtCompound::new();
-            ItemStack::new(2, &Item::NETHER_STAR).write_item_stack(&mut item);
+            let item = ItemStack::new(2, &Item::NETHER_STAR).to_nbt().unwrap();
             let mut nbt = NbtCompound::new();
             nbt.put_string("id", "minecraft:item".to_string());
             nbt.put_compound("Item", item);
@@ -1081,8 +1121,7 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let world = crate::entity::ai::test_support::world(&folder);
         let owner = uuid::Uuid::from_u128(0x1234_5678_9abc_def0_1234_5678_9abc_def0);
-        let mut item = NbtCompound::new();
-        ItemStack::new(1, &Item::STONE).write_item_stack(&mut item);
+        let item = ItemStack::new(1, &Item::STONE).to_nbt().unwrap();
         let mut nbt = NbtCompound::new();
         nbt.put_string("id", "minecraft:item".to_string());
         nbt.put_compound("Item", item);

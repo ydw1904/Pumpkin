@@ -103,6 +103,9 @@ impl Default for ItemStackIdGenerator {
     }
 }
 
+/// Vanilla `ItemStack.CODEC` count range `1..=99`.
+pub const MAX_NBT_COUNT: u8 = 99;
+
 static ITEM_STACK_ID_GEN: ItemStackIdGenerator = ItemStackIdGenerator::new();
 
 impl ItemStack {
@@ -847,9 +850,12 @@ impl ItemStack {
         }
     }
 
+    /// Vanilla `ItemStack.isSameItemSameComponents`: an empty stack reads as air, whatever id is left on it.
     #[must_use]
     pub fn are_items_and_components_equal(&self, other: &Self) -> bool {
-        // Items must match
+        if self.is_empty() || other.is_empty() {
+            return self.is_empty() && other.is_empty();
+        }
         if self.item != other.item {
             return false;
         }
@@ -946,14 +952,26 @@ impl ItemStack {
         false
     }
 
-    pub fn write_item_stack(&self, compound: &mut NbtCompound) {
-        // Minecraft 1.21.4 uses "id" as string with namespaced ID (minecraft:diamond_sword)
+    /// Vanilla `ItemStack.CODEC`. `None` for an empty stack or a count outside `1..=99`.
+    #[must_use]
+    pub fn to_nbt(&self) -> Option<NbtCompound> {
+        if self.is_empty() {
+            return None;
+        }
+        if self.item_count > MAX_NBT_COUNT {
+            // Vanilla: encode error logged, stack not saved.
+            tracing::error!(
+                "Not saving {} x{}: count outside 1..={MAX_NBT_COUNT}",
+                self.item.registry_key,
+                self.item_count
+            );
+            return None;
+        }
+        let mut compound = NbtCompound::new();
         compound.put_string("id", format!("minecraft:{}", self.item.registry_key));
-        compound.put_int("count", self.item_count as i32);
+        compound.put_int("count", i32::from(self.item_count));
 
-        // Create a tag compound for additional data
         let mut tag = NbtCompound::new();
-
         for (id, data) in &self.patch {
             if !id.is_persistent() {
                 continue;
@@ -975,6 +993,7 @@ impl ItemStack {
         if !tag.is_empty() {
             compound.put_compound("components", tag);
         }
+        Some(compound)
     }
 
     #[must_use]
@@ -988,13 +1007,10 @@ impl ItemStack {
         // Try to get item by registry key
         let item = Item::from_registry_key(registry_key)?;
 
-        // `ItemStackTemplate`, used for items nested in components, leaves out a count of 1.
-        // The codec takes any numeric tag in `1..=99`.
-        let count = compound.get_numeric_int("count").unwrap_or(1);
-        if !(1..=99).contains(&count) {
-            return None;
-        }
-        let count = count as u8;
+        // Vanilla `ItemStack.CODEC`: `count` defaults to 1 and must be within 1..=99.
+        let count = u8::try_from(compound.get_numeric_int("count").unwrap_or(1))
+            .ok()
+            .filter(|count| (1..=MAX_NBT_COUNT).contains(count))?;
 
         // Create the item stack
         let mut item_stack = Self::new(count, item);
@@ -1105,8 +1121,7 @@ mod tests {
             Some(TooltipDisplayImpl.to_dyn()),
         ));
 
-        let mut item = NbtCompound::new();
-        stack.write_item_stack(&mut item);
+        let mut item = stack.to_nbt().unwrap();
 
         let mut root = NbtCompound::new();
         root.put_compound("Item", item);
@@ -1131,8 +1146,7 @@ mod tests {
             .patch
             .push((DataComponent::JukeboxPlayable, Some(parsed.to_dyn())));
 
-        let mut item = NbtCompound::new();
-        stack.write_item_stack(&mut item);
+        let mut item = stack.to_nbt().unwrap();
 
         let written = item
             .get_compound("components")
@@ -1154,8 +1168,7 @@ mod tests {
             .patch
             .push((DataComponent::JukeboxPlayable, Some(parsed.to_dyn())));
 
-        let mut item = NbtCompound::new();
-        stack.write_item_stack(&mut item);
+        let mut item = stack.to_nbt().unwrap();
 
         assert!(
             item.get_compound("components")
@@ -1178,8 +1191,7 @@ mod tests {
             ),
         ));
 
-        let mut item = NbtCompound::new();
-        stack.write_item_stack(&mut item);
+        let mut item = stack.to_nbt().unwrap();
 
         let written = item
             .get_compound("components")
@@ -1224,8 +1236,7 @@ mod tests {
         item.put_compound("components", components.clone());
 
         let stack = ItemStack::read_item_stack(&item).expect("vanilla item reads");
-        let mut written = NbtCompound::new();
-        stack.write_item_stack(&mut written);
+        let mut written = stack.to_nbt().unwrap();
         let written = written.get_compound("components").expect("components");
 
         for key in ["minecraft:custom_name", "minecraft:lore"] {
@@ -1255,6 +1266,50 @@ mod tests {
         ItemStack::new(1, &Item::IRON_SWORD)
     }
 
+    fn stack_nbt(count: Option<NbtTag>) -> NbtCompound {
+        let mut nbt = NbtCompound::new();
+        nbt.put_string("id", "minecraft:stone".to_string());
+        if let Some(count) = count {
+            nbt.put("count", count);
+        }
+        nbt
+    }
+
+    /// Vanilla `ItemStack.CODEC`: `/summon item ~ ~ ~ {Item:{id:"stone"}}` is one stone.
+    #[test]
+    fn missing_count_reads_as_one() {
+        let stack = ItemStack::read_item_stack(&stack_nbt(None));
+        assert_eq!(stack.map(|stack| stack.item_count), Some(1));
+    }
+
+    #[test]
+    fn count_accepts_any_numeric_tag() {
+        let stack = ItemStack::read_item_stack(&stack_nbt(Some(NbtTag::Byte(5))));
+        assert_eq!(stack.map(|stack| stack.item_count), Some(5));
+    }
+
+    #[test]
+    fn count_outside_one_to_ninety_nine_is_rejected() {
+        for count in [0, 100, 300, -1] {
+            assert!(
+                ItemStack::read_item_stack(&stack_nbt(Some(NbtTag::Int(count)))).is_none(),
+                "count {count} was accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn count_outside_one_to_ninety_nine_is_not_saved() {
+        assert!(ItemStack::new(100, &Item::STONE).to_nbt().is_none());
+        assert!(ItemStack::new(0, &Item::STONE).to_nbt().is_none());
+        assert!(ItemStack::EMPTY.to_nbt().is_none());
+        let nbt = ItemStack::new(99, &Item::STONE).to_nbt().expect("99 saves");
+        assert_eq!(
+            ItemStack::read_item_stack(&nbt).map(|stack| stack.item_count),
+            Some(99)
+        );
+    }
+
     #[test]
     fn items_with_different_components_are_not_equal_in_either_direction() {
         let plain = ItemStack::new(1, &Item::COAL);
@@ -1267,6 +1322,18 @@ mod tests {
         assert!(!plain.are_items_and_components_equal(&customized));
         assert!(!customized.are_items_and_components_equal(&plain));
         assert!(customized.are_items_and_components_equal(&customized.clone()));
+    }
+
+    /// A stack shrunk to 0 keeps its id, vanilla still reads it as air.
+    #[test]
+    fn empty_stack_with_a_leftover_id_is_air() {
+        let mut used_up = ItemStack::new(1, &Item::COAL);
+        used_up.decrement(1);
+        let coal = ItemStack::new(1, &Item::COAL);
+
+        assert!(!used_up.are_items_and_components_equal(&coal));
+        assert!(!coal.are_items_and_components_equal(&used_up));
+        assert!(used_up.are_items_and_components_equal(ItemStack::EMPTY));
     }
 
     #[test]
@@ -1431,8 +1498,7 @@ mod tests {
             .patch
             .push((DataComponent::Unbreakable, Some(UnbreakableImpl.to_dyn())));
 
-        let mut compound = NbtCompound::new();
-        stack.write_item_stack(&mut compound);
+        let compound = stack.to_nbt().expect("stack saves");
         let decoded = ItemStack::read_item_stack(&compound).expect("stack should decode");
 
         assert_eq!(
@@ -1459,8 +1525,7 @@ mod tests {
             ),
         ));
 
-        let mut compound = NbtCompound::new();
-        stack.write_item_stack(&mut compound);
+        let compound = stack.to_nbt().expect("stack saves");
         let decoded = ItemStack::read_item_stack(&compound).expect("stack should decode");
 
         assert_eq!(
@@ -1489,8 +1554,7 @@ mod tests {
             Some(decorations.clone().to_dyn()),
         ));
 
-        let mut compound = NbtCompound::new();
-        stack.write_item_stack(&mut compound);
+        let compound = stack.to_nbt().expect("stack saves");
         let bytes = Nbt::new(String::new(), compound).write();
         let mut reader = NbtReadHelperJava::new(Cursor::new(bytes.as_ref()));
         let decoded = Nbt::read(&mut reader).expect("written item stack should re-read");
@@ -1541,8 +1605,7 @@ mod tests {
         // Shaped like a player file: the inventory, then more fields after it.
         let mut inventory = Vec::new();
         for stack in [&sword, &ItemStack::new(3, &Item::COAL)] {
-            let mut compound = NbtCompound::new();
-            stack.write_item_stack(&mut compound);
+            let mut compound = stack.to_nbt().unwrap();
             inventory.push(NbtTag::Compound(compound));
         }
         let mut player = NbtCompound::new();
@@ -2052,8 +2115,7 @@ mod tests {
             Some(DamageImpl { damage: 10 }.to_dyn()),
         ));
 
-        let mut compound = NbtCompound::new();
-        stack.write_item_stack(&mut compound);
+        let compound = stack.to_nbt().expect("stack saves");
 
         let components = compound
             .get_compound("components")

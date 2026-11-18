@@ -65,9 +65,13 @@ const fn facing_direction(facing: FacingHopper) -> BlockDirection {
 /// double chest combined whether or not they are blocked.
 pub fn block_container(world: &Arc<World>, pos: &BlockPos) -> Option<Arc<dyn Inventory>> {
     // `WorldlyContainerHolder`: the composter makes a container from its state.
-    let (block, state_id) = world.get_block_and_state_id(pos);
+    let (block, state) = world.get_block_and_state(pos);
     if block == &Block::COMPOSTER {
-        return Some(ComposterBlock::get_container(state_id, world, pos));
+        return Some(ComposterBlock::get_container(state.id, world, pos));
+    }
+    // Checked first like vanilla, a miss here skips the block entity lookup.
+    if !state.has_block_entity() {
+        return None;
     }
     let entity = world.get_block_entity(pos)?;
     if is_chest_block_entity(entity.as_ref()) {

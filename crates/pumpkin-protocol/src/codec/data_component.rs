@@ -2599,9 +2599,9 @@ impl DataComponentCodec<Self> for ChargedProjectilesImpl {
         let mut projectiles = Vec::with_capacity(len);
         for _ in 0..len {
             let stack = deserialize_item_stack_template(seq)?;
-            let mut projectile = pumpkin_nbt::compound::NbtCompound::new();
-            stack.write_item_stack(&mut projectile);
-            projectiles.push(projectile);
+            if let Some(projectile) = stack.to_nbt() {
+                projectiles.push(projectile);
+            }
         }
         Ok(Self { projectiles })
     }

@@ -15,6 +15,7 @@ use pumpkin_protocol::bedrock::client::CUpdateBlock;
 use pumpkin_protocol::java::client::play::CBlockUpdate;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::random::gameplay::game_random;
+use pumpkin_util::resource_location::ToResourceLocation;
 use pumpkin_util::text::TextComponent;
 use pumpkin_world::generation::structure::template::PaletteEntry;
 use pumpkin_world::world::BlockFlags;
@@ -27,6 +28,7 @@ use crate::{
         registry::can_replace_with_other_block,
     },
     entity::{Entity, EntityBase, living::LivingEntity},
+    plugin::api::events::entity::entity_change_block::EntityChangeBlockEvent,
     server::Server,
     world::World,
 };
@@ -256,7 +258,22 @@ impl FallingEntity {
         {
             state_id = concrete.default_state.id;
         }
-        world.set_block_state(&pos, state_id, BlockFlags::NOTIFY_ALL);
+        if world.cancelled_by_plugin(|| {
+            EntityChangeBlockEvent::new(
+                self.entity.entity_id,
+                pos,
+                Block::from_state_id(state_id).to_resource_location(),
+            )
+        }) || world
+            .set_block_state_if(&pos, state_id, BlockFlags::NOTIFY_ALL, |now| {
+                now == current_state.id
+            })
+            .is_none()
+        {
+            // Vanilla drops the block when `setBlock` refuses; here also when the cell changed under the event.
+            self.drop_as_item(world, &pos);
+            return;
+        }
         // block updates to watchers before the despawn, else a invisible block gap until the tick flush.
         let placed = world.get_block_state_id(&pos);
         world.send_to_tracking_players_editioned(
@@ -298,20 +315,35 @@ impl FallingEntity {
         world: &Arc<World>,
         position: BlockPos,
         block_state: BlockStateId,
-    ) -> Arc<Self> {
+    ) -> Option<Arc<Self>> {
         let replacement = if block_state.is_waterlogged() {
             Block::WATER.default_state.id
         } else {
             Block::AIR.default_state.id
         };
-        world.set_block_state(&position, replacement, BlockFlags::NOTIFY_ALL);
+        // `block_state` can differ from the world's (scaffolding passes its recomputed state), so the
+        // write below compares against the cell as it was before the event.
+        let observed = world.get_block_state_id(&position);
+        let spawn_pos = position.0.to_f64().add_raw(0.5, 0.0, 0.5);
+        let entity = Entity::new(world.clone(), spawn_pos, &EntityType::FALLING_BLOCK);
+        if world.cancelled_by_plugin(|| {
+            EntityChangeBlockEvent::new(
+                entity.entity_id,
+                position,
+                Block::from_state_id(replacement).to_resource_location(),
+            )
+        }) {
+            return None;
+        }
+        // An event handler may have run long enough for another task to change the source block.
+        world.set_block_state_if(&position, replacement, BlockFlags::NOTIFY_ALL, |current| {
+            current == observed
+        })?;
         let block_state = block_state
             .to_state()
             .set_waterlogged(false)
             .map_or(block_state, |state| state.id);
 
-        let position = position.0.to_f64().add_raw(0.5, 0.0, 0.5);
-        let entity = Entity::new(world.clone(), position, &EntityType::FALLING_BLOCK);
         entity
             .data
             .store(i32::from(block_state.as_u16()), Ordering::Relaxed);
@@ -326,7 +358,7 @@ impl FallingEntity {
             entity.set_hurts_entities(ANVIL_FALL_DAMAGE_PER_DISTANCE, DEFAULT_MAX_FALL_DAMAGE);
         }
         world.spawn_entity_non_save(entity.clone());
-        entity
+        Some(entity)
     }
 }
 

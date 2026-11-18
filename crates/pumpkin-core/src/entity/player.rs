@@ -8419,10 +8419,8 @@ impl NBTStorage for PlayerInventory {
                 .read()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             for (i, stack) in main_inv.iter().enumerate() {
-                if !stack.is_empty() {
-                    let mut item_compound = NbtCompound::new();
+                if let Some(mut item_compound) = stack.to_nbt() {
                     item_compound.put_byte("Slot", i as i8);
-                    stack.write_item_stack(&mut item_compound);
                     items.push(NbtTag::Compound(item_compound));
                 }
             }
@@ -8435,9 +8433,7 @@ impl NBTStorage for PlayerInventory {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             for (slot, stack) in &equipment_guard.equipment {
-                if !stack.is_empty() {
-                    let mut item_compound = NbtCompound::new();
-                    stack.write_item_stack(&mut item_compound);
+                if let Some(item_compound) = stack.to_nbt() {
                     // Vanilla's `Inventory.save` only lists the main slots; armor and the
                     // offhand are saved in `equipment` alone.
                     let key = match slot {
@@ -8541,10 +8537,8 @@ impl NBTStorage for EnderChestInventory {
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         for (i, stack) in ec_items.iter().enumerate() {
-            if !stack.is_empty() {
-                let mut item_compound = NbtCompound::new();
+            if let Some(mut item_compound) = stack.to_nbt() {
                 item_compound.put_byte("Slot", i as i8);
-                stack.write_item_stack(&mut item_compound);
                 items.push(NbtTag::Compound(item_compound));
             }
         }

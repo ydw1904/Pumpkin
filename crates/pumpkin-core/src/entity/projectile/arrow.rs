@@ -271,9 +271,9 @@ impl ArrowEntity {
     }
 
     fn write_item_stack_nbt(item_stack: &ItemStack, nbt: &mut pumpkin_nbt::compound::NbtCompound) {
-        let mut item = pumpkin_nbt::compound::NbtCompound::new();
-        item_stack.copy_with_count(1).write_item_stack(&mut item);
-        nbt.put_compound("item", item);
+        if let Some(item) = item_stack.copy_with_count(1).to_nbt() {
+            nbt.put_compound("item", item);
+        }
     }
 
     fn read_item_stack_nbt(nbt: &pumpkin_nbt::compound::NbtCompound) -> Option<ItemStack> {
@@ -544,9 +544,7 @@ impl EntityBase for ArrowEntity {
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         Self::write_item_stack_nbt(&item_stack, nbt);
-        if let Some(weapon) = self.get_weapon_item() {
-            let mut weapon_nbt = pumpkin_nbt::compound::NbtCompound::new();
-            weapon.write_item_stack(&mut weapon_nbt);
+        if let Some(weapon_nbt) = self.get_weapon_item().and_then(|weapon| weapon.to_nbt()) {
             nbt.put_compound("weapon", weapon_nbt);
         }
         nbt.put_bool("crit", self.is_critical.load(Ordering::Relaxed));

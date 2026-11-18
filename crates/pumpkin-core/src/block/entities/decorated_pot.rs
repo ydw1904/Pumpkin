@@ -71,9 +71,8 @@ impl BlockEntity for DecoratedPotBlockEntity {
         if !self.loot.write_nbt(nbt)
             && let Ok(item) = self.item.lock()
             && let Some(it) = item.as_ref()
+            && let Some(it_nbt) = it.to_nbt()
         {
-            let mut it_nbt = NbtCompound::new();
-            it.write_item_stack(&mut it_nbt);
             nbt.put_compound("item", it_nbt);
         }
     }
@@ -87,9 +86,8 @@ impl BlockEntity for DecoratedPotBlockEntity {
         }
         if let Ok(item) = self.item.try_lock()
             && let Some(ref it) = *item
+            && let Some(it_nbt) = it.to_nbt()
         {
-            let mut it_nbt = NbtCompound::new();
-            it.write_item_stack(&mut it_nbt);
             nbt.put_compound("item", it_nbt);
         }
         Some(nbt)
@@ -336,6 +334,22 @@ impl Inventory for DecoratedPotBlockEntity {
             .unwrap_or_else(std::sync::PoisonError::into_inner) =
             (!stack.is_empty()).then_some(stack);
         self.mark_dirty();
+    }
+
+    fn update_stack(&self, slot: usize, update: &mut dyn FnMut(&mut ItemStack) -> bool) -> bool {
+        if slot != 0 {
+            return false;
+        }
+        self.unpack();
+        // One lock for read and write, a parallel insert can't be overwritten.
+        let mut guard = self
+            .item
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut stack = guard.take().unwrap_or_else(|| ItemStack::EMPTY.clone());
+        let changed = update(&mut stack);
+        *guard = (!stack.is_empty()).then_some(stack);
+        changed
     }
 
     fn mark_dirty(&self) {

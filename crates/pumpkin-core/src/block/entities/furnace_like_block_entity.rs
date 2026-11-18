@@ -332,18 +332,33 @@ macro_rules! impl_inventory_for_cooking {
                     && ItemStack::are_items_and_components_equal(&items[slot], &stack);
 
                 items[slot] = stack.clone();
-
-                if slot == 0 && !is_same_item {
-                    // AbstractFurnaceBlockEntity.getTotalCookTime: 200 when nothing cooks.
-                    let total =
-                        $crate::server::recipe::find_cooking_recipe(stack.item, &$recipe_kind)
-                            .map_or(200, |recipe| self.total_cook_time(&recipe));
-                    self.set_cooking_total_time(total);
-                    self.set_cooking_time_spent(0);
-                }
+                self.on_stack_set(slot, is_same_item, &stack);
 
                 // Always consider the inventory changed when setting a stack
                 self.mark_dirty();
+            }
+
+            fn update_stack(
+                &self,
+                slot: usize,
+                update: &mut dyn FnMut(&mut ItemStack) -> bool,
+            ) -> bool {
+                let mut items = self
+                    .items
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let Some(stack) = items.get_mut(slot) else {
+                    return false;
+                };
+                let old = (slot == 0).then(|| stack.clone());
+                if !update(stack) {
+                    return false;
+                }
+                let is_same_item = old.is_some_and(|old| {
+                    !stack.is_empty() && ItemStack::are_items_and_components_equal(&old, stack)
+                });
+                self.on_stack_set(slot, is_same_item, stack);
+                true
             }
 
             fn mark_dirty(&self) {
@@ -393,6 +408,20 @@ macro_rules! impl_inventory_for_cooking {
 
             fn as_any(&self) -> &dyn std::any::Any {
                 self
+            }
+        }
+
+        impl $struct_name {
+            /// Vanilla `AbstractFurnaceBlockEntity.setItem`: a different input item restarts cooking.
+            fn on_stack_set(&self, slot: usize, is_same_item: bool, stack: &ItemStack) {
+                if slot == 0 && !is_same_item {
+                    // AbstractFurnaceBlockEntity.getTotalCookTime: 200 when nothing cooks.
+                    let total =
+                        $crate::server::recipe::find_cooking_recipe(stack.item, &$recipe_kind)
+                            .map_or(200, |recipe| self.total_cook_time(&recipe));
+                    self.set_cooking_total_time(total);
+                    self.set_cooking_time_spent(0);
+                }
             }
         }
     };

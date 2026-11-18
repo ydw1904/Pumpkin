@@ -100,9 +100,7 @@ impl VaultConfig {
         if self.deactivation_range != DEFAULT_DEACTIVATION_RANGE {
             nbt.put_double("deactivation_range", self.deactivation_range);
         }
-        if !self.key_item.is_empty() {
-            let mut key = NbtCompound::new();
-            self.key_item.write_item_stack(&mut key);
+        if let Some(key) = self.key_item.to_nbt() {
             nbt.put_compound("key_item", key);
         }
         if let Some(table) = &self.override_loot_table_to_display {
@@ -131,12 +129,6 @@ fn put_uuids(nbt: &mut NbtCompound, key: &str, uuids: &[Uuid]) {
     if !uuids.is_empty() {
         nbt.put_list(key, uuids.iter().copied().map(NbtTag::uuid).collect());
     }
-}
-
-fn write_stack(stack: &ItemStack) -> NbtCompound {
-    let mut nbt = NbtCompound::new();
-    stack.write_item_stack(&mut nbt);
-    nbt
 }
 
 /// Vanilla `VaultServerData`.
@@ -183,7 +175,7 @@ impl VaultServerData {
                 "items_to_eject",
                 self.items_to_eject
                     .iter()
-                    .map(|stack| NbtTag::Compound(write_stack(stack)))
+                    .filter_map(|stack| stack.to_nbt().map(NbtTag::Compound))
                     .collect(),
             );
         }
@@ -285,8 +277,8 @@ impl VaultSharedData {
 
     fn write_nbt(&self) -> NbtCompound {
         let mut nbt = NbtCompound::new();
-        if !self.display_item.is_empty() {
-            nbt.put_compound("display_item", write_stack(&self.display_item));
+        if let Some(display_item) = self.display_item.to_nbt() {
+            nbt.put_compound("display_item", display_item);
         }
         put_uuids(&mut nbt, "connected_players", &self.connected_players);
         if self.connected_particles_range != DEFAULT_DEACTIVATION_RANGE {
