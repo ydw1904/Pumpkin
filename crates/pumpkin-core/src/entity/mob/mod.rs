@@ -350,7 +350,7 @@ impl MobEntity {
             mob,
             living.health.load() > 0.0 && !living.dead.load(Relaxed),
         ) {
-            LeashTick::NotLeashed => {}
+            LeashTick::NotLeashed | LeashTick::HolderElsewhere => {}
             LeashTick::Snapped => self.goals_selector.disable_control(Controls::MOVE),
             LeashTick::Elastic(holder) => {
                 self.when_leashed_to(mob, &*holder);

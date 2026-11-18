@@ -1950,6 +1950,7 @@ fn holder_movement(entity: &dyn EntityBase) -> Vector3<f64> {
 /// What a leash did this tick, see [`Entity::tick_leash`].
 pub enum LeashTick {
     NotLeashed,
+    HolderElsewhere,
     Snapped,
     Elastic(Arc<dyn EntityBase>),
     CloseRange(Arc<dyn EntityBase>),
@@ -6281,6 +6282,10 @@ impl Entity {
                 self.unleash();
             }
             return LeashTick::NotLeashed;
+        }
+        // Vanilla keeps the leash but skips the pull while the holder is in another level.
+        if !Arc::ptr_eq(&holder_entity.world.load(), &self.world.load()) {
+            return LeashTick::HolderElsewhere;
         }
 
         let distance = self.leash_distance_to(holder_entity);
