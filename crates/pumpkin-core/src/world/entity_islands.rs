@@ -104,7 +104,14 @@ pub(super) const MIN_PARALLEL_ENTITIES: usize = 16;
 /// Entities with a global reach split the tick into runs planned one after another. Past this
 /// many runs the rest of the tick runs in list order.
 pub(super) const MAX_PLANNED_RUNS: usize = 4;
+/// Parallel ticks between serial ones that measure the serial cost again, at first. Each serial
+/// tick that still loses doubles the interval up to [`MAX_SERIAL_PROBE_INTERVAL`], since it
+/// costs as much as the parallel ticks it was measured against save.
 const SERIAL_PROBE_INTERVAL: u8 = 20;
+const MAX_SERIAL_PROBE_INTERVAL: u8 = 160;
+/// Most serial ticks before planning again. Each planned tick that loses doubles the serial
+/// ticks after it, from one, so a single slow planned tick costs little.
+const MAX_SERIAL_TICKS: u8 = 19;
 const PARALLEL_SHARE_DIVISOR: usize = 4;
 /// A serial preference also ends once the entity count moves this share away from the count
 /// it was planned with. Spawns and despawns change the count almost every tick in a busy area.
@@ -150,6 +157,12 @@ pub(super) struct Schedule {
     ticks_until_probe: u8,
     /// Parallel ticks since the serial cost was last measured.
     parallel_ticks: u8,
+    /// Parallel ticks between serial cost measurements; zero until the first one.
+    probe_interval: u8,
+    /// The last planned tick was followed by a serial one to measure the serial cost.
+    probing: bool,
+    /// Serial ticks after the next planned tick that loses; zero until the first one.
+    serial_ticks: u8,
     /// Entity tick time per entity of recent serial and planned ticks.
     serial_cost: Option<Duration>,
     planned_cost: Option<Duration>,
@@ -160,6 +173,7 @@ impl Schedule {
         self.entity_count = entity_count;
         if entity_count < MIN_PARALLEL_ENTITIES {
             self.ticks_until_probe = 0;
+            self.probing = false;
             return false;
         }
         if self.ticks_until_probe > 0
@@ -168,6 +182,10 @@ impl Schedule {
         {
             self.ticks_until_probe -= 1;
             return false;
+        }
+        // A large count change skips the serial tick that would have measured the serial cost.
+        if self.ticks_until_probe > 0 {
+            self.probing = false;
         }
         true
     }
@@ -178,7 +196,7 @@ impl Schedule {
     /// Planning and waking pool threads can cost more than the parallel ticking saves, as with
     /// few or tiny islands, or on a large pool of idle cores. So a planned tick also loses to a
     /// serial tick that was cheaper per entity, measured at least every
-    /// [`SERIAL_PROBE_INTERVAL`] parallel ticks. Both ways tick the same, so the choice only
+    /// [`MAX_SERIAL_PROBE_INTERVAL`] parallel ticks. Both ways tick the same, so the choice only
     /// changes how long the tick takes.
     pub(super) fn record_plan(&mut self, largest_island: usize, elapsed: Duration) -> bool {
         self.planned_count = self.entity_count;
@@ -186,18 +204,36 @@ impl Schedule {
         self.planned_cost = Some(cost);
         let parallel = worth_parallel(largest_island, self.entity_count)
             && self.serial_cost.is_none_or(|serial| cost <= serial);
+        let probed = std::mem::take(&mut self.probing);
         // Only the serial preference is cached; parallel ticks always use a fresh plan, apart
         // from a serial tick now and then to keep the comparison current.
-        self.ticks_until_probe = if !parallel {
-            SERIAL_PROBE_INTERVAL - 1
-        } else if self.serial_cost.is_none() || self.parallel_ticks + 1 >= SERIAL_PROBE_INTERVAL {
+        if !parallel {
+            self.probe_interval = SERIAL_PROBE_INTERVAL;
+            self.serial_ticks = self
+                .serial_ticks
+                .saturating_mul(2)
+                .clamp(1, MAX_SERIAL_TICKS);
+            self.ticks_until_probe = self.serial_ticks;
+            return false;
+        }
+        self.serial_ticks = 0;
+        if probed {
+            self.probe_interval = self
+                .probe_interval
+                .saturating_mul(2)
+                .clamp(SERIAL_PROBE_INTERVAL, MAX_SERIAL_PROBE_INTERVAL);
+        }
+        self.ticks_until_probe = if self.serial_cost.is_none()
+            || self.parallel_ticks + 1 >= self.probe_interval.max(SERIAL_PROBE_INTERVAL)
+        {
             self.parallel_ticks = 0;
+            self.probing = true;
             1
         } else {
             self.parallel_ticks += 1;
             0
         };
-        parallel
+        true
     }
 
     /// Records a tick of at least [`MIN_PARALLEL_ENTITIES`] entities that ran in list order
@@ -2022,58 +2058,67 @@ mod tests {
     }
 
     #[test]
-    fn serial_schedule_retries_after_twenty_ticks_or_a_large_count_change() {
+    fn losing_plans_back_off_and_a_large_count_change_plans_at_once() {
         let cost = Duration::from_micros(64);
         let mut schedule = Schedule::default();
         assert!(!schedule.should_plan(1));
         assert!(schedule.should_plan(64));
-        assert!(!schedule.record_plan(64, cost));
-        // Small spawns and despawns keep the serial preference.
-        for tick in 0..19 {
-            assert!(!schedule.should_plan(64 + tick % 9));
+        // Each plan that loses doubles the serial ticks after it, which small spawns and
+        // despawns don't cut short.
+        for serial_ticks in [1, 2, 4, 8, 16, 19, 19] {
+            assert!(!schedule.record_plan(64, cost));
+            for tick in 0..serial_ticks {
+                assert!(!schedule.should_plan(64 + tick % 9));
+            }
+            assert!(schedule.should_plan(64));
         }
-        assert!(schedule.should_plan(64));
-        assert!(!schedule.record_plan(48, cost));
-        assert!(!schedule.should_plan(56));
+        assert!(!schedule.record_plan(64, cost));
+        assert!(!schedule.should_plan(70));
         assert!(schedule.should_plan(73));
         assert!(schedule.record_plan(49, cost));
         // The first parallel tick is followed by a serial one to compare with.
         assert!(!schedule.should_plan(73));
         schedule.record_serial(Duration::from_micros(2 * 73));
-        // Parallel ticks always plan.
         assert!(schedule.should_plan(73));
         assert!(schedule.record_plan(49, cost));
+        // A win starts the back-off over.
         assert!(schedule.should_plan(70));
         assert!(!schedule.record_plan(70, cost));
-        assert!(!schedule.should_plan(1));
-        assert!(schedule.should_plan(65));
-        assert!(schedule.record_plan(48, cost));
-        assert!(schedule.should_plan(65));
+        assert!(!schedule.should_plan(70));
+        assert!(schedule.should_plan(70));
     }
 
     #[test]
-    fn planned_ticks_slower_than_serial_ones_cache_the_serial_preference() {
+    fn serial_ticks_that_keep_losing_are_measured_less_often() {
         let planned = Duration::from_micros(800);
+        let serial = Duration::from_micros(1200);
         let mut schedule = Schedule::default();
         assert!(schedule.should_plan(40));
         assert!(schedule.record_plan(8, planned));
         assert!(!schedule.should_plan(40));
-        schedule.record_serial(Duration::from_micros(600));
-        assert!(schedule.should_plan(40));
-        assert!(!schedule.record_plan(8, planned));
-        for _ in 0..19 {
-            assert!(!schedule.should_plan(40));
-            schedule.record_serial(Duration::from_micros(1200));
-        }
-        // Serial ticks got slower, so planning wins again.
-        assert!(schedule.should_plan(40));
-        assert!(schedule.record_plan(8, planned));
-        // Twenty parallel ticks in a row measure a serial one again.
-        for _ in 0..19 {
+        schedule.record_serial(serial);
+        for _ in 0..20 {
             assert!(schedule.should_plan(40));
             assert!(schedule.record_plan(8, planned));
         }
-        assert!(!schedule.should_plan(40));
+        // A serial tick skipped for a large count change doesn't lengthen the interval.
+        assert!(schedule.should_plan(48));
+        assert!(schedule.record_plan(8, planned));
+        for _ in 1..20 {
+            assert!(schedule.should_plan(48));
+            assert!(schedule.record_plan(8, planned));
+        }
+        assert!(!schedule.should_plan(48));
+        schedule.record_serial(serial);
+        // Each serial tick that still loses doubles the parallel ticks before the next one.
+        for interval in [40, 80, 160, 160] {
+            for _ in 0..interval {
+                assert!(schedule.should_plan(48));
+                assert!(schedule.record_plan(8, planned));
+            }
+            assert!(!schedule.should_plan(48));
+            schedule.record_serial(serial);
+        }
     }
 
     #[expect(
