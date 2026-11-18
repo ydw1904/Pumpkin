@@ -2476,13 +2476,13 @@ impl World {
             .navigation_change_sequence
             .fetch_add(1, Ordering::AcqRel)
             + 1;
-        let entities = self.entities.load_full();
-        for entity in entities.iter() {
+        // Vanilla walks `navigatingMobs`; the index keeps the mobs in list order.
+        self.entity_index.for_each_mob(&self.entities, |entity| {
             if let Some(mob) = entity.get_mob() {
                 mob.get_mob_entity()
                     .on_navigation_block_changed(*position, self.uuid, sequence);
             }
-        }
+        });
     }
 
     pub fn register_block_change(&self, position: BlockPos, block_state_id: BlockStateId) {

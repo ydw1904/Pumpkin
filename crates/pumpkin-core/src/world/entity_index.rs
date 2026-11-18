@@ -162,6 +162,8 @@ struct Index {
     buckets: Buckets,
     /// Slots of mobs with game event listeners, in list order.
     listeners: Vec<usize>,
+    /// Slots of mobs, in list order.
+    mobs: Vec<usize>,
     /// The synced registry's entities by slot.
     slots: Vec<Synced>,
     /// Two slots share an entity ID or a UUID, so only a full sync keeps the maps right.
@@ -174,6 +176,7 @@ struct Synced {
     entity: Weak<dyn EntityBase>,
     entity_id: i32,
     uuid: Uuid,
+    mob: bool,
     listener: bool,
 }
 
@@ -235,6 +238,12 @@ impl Index {
                 .enumerate()
                 .filter_map(|(slot, synced)| synced.listener.then_some(slot))
                 .collect();
+            self.mobs = self
+                .slots
+                .iter()
+                .enumerate()
+                .filter_map(|(slot, synced)| synced.mob.then_some(slot))
+                .collect();
         }
         for (slot, registered) in registry.iter().enumerate().skip(kept) {
             self.sync_slot(slot, registered);
@@ -245,6 +254,7 @@ impl Index {
         self.generation = self.generation.wrapping_add(1);
         self.uuids.clear();
         self.listeners.clear();
+        self.mobs.clear();
         self.slots.clear();
         self.has_duplicates = false;
         for (slot, registered) in registry.iter().enumerate() {
@@ -263,7 +273,11 @@ impl Index {
 
     /// Indexes the entity at `slot` of the registry being synced, after the slots before it.
     fn sync_slot(&mut self, slot: usize, registered: &Arc<dyn EntityBase>) {
-        let listener = registered.get_mob().is_some_and(has_game_event_listener);
+        let mob = registered.get_mob();
+        if mob.is_some() {
+            self.mobs.push(slot);
+        }
+        let listener = mob.is_some_and(has_game_event_listener);
         if listener {
             self.listeners.push(slot);
         }
@@ -272,6 +286,7 @@ impl Index {
             entity: Arc::downgrade(registered),
             entity_id: entity.entity_id,
             uuid: entity.entity_uuid,
+            mob: mob.is_some(),
             listener,
         });
         // The first in list order wins, like a linear search.
@@ -586,6 +601,15 @@ impl EntityIndex {
             area.intersects(&entity.get_entity().bounding_box.load())
                 .then(|| entity.clone())
         })
+    }
+
+    /// Calls `f` on every mob, in list order, without holding the index lock.
+    pub fn for_each_mob(&self, entities: &ArcSwap<Registry>, mut f: impl FnMut(&dyn EntityBase)) {
+        let (slots, registry) =
+            self.with_index(entities, |index, registry| (index.mobs.clone(), registry));
+        for slot in slots {
+            f(registry[slot].as_ref());
+        }
     }
 
     pub fn by_id(&self, entities: &ArcSwap<Registry>, id: i32) -> Option<Arc<dyn EntityBase>> {
