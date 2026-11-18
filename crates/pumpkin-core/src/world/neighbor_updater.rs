@@ -10,6 +10,8 @@ use super::World;
 
 /// Default limit for Vanilla for updating neighbors
 const MAX_CHAINED_UPDATES: usize = 1_000_000;
+/// The longest queues a thread keeps for its next cascade.
+const MAX_SPARE_QUEUE: usize = 4096;
 
 #[derive(Clone, Copy)]
 enum UpdateKind {
@@ -96,13 +98,29 @@ impl<W: Clone> UpdateStack<W> {
 thread_local! {
     static PENDING_UPDATES: RefCell<Option<UpdateStack<Arc<World>>>> =
         const { RefCell::new(None) };
+    /// The emptied queues of the last cascade, so the next one doesn't allocate them again.
+    static SPARE_QUEUES: RefCell<Option<SpareQueues>> = const { RefCell::new(None) };
 }
+
+type SpareQueues = (Vec<QueuedUpdate<Arc<World>>>, Vec<QueuedUpdate<Arc<World>>>);
 
 struct CascadeGuard;
 
 impl Drop for CascadeGuard {
     fn drop(&mut self) {
-        drop(PENDING_UPDATES.try_with(|pending| pending.borrow_mut().take()));
+        let Ok(Some(stack)) = PENDING_UPDATES.try_with(|pending| pending.borrow_mut().take())
+        else {
+            return;
+        };
+        let (mut remaining, mut staged) = (stack.remaining, stack.staged);
+        // A huge cascade's queues are freed rather than kept by the thread.
+        if remaining.capacity().max(staged.capacity()) > MAX_SPARE_QUEUE {
+            return;
+        }
+        // A cascade that panicked can leave updates behind; they are dropped.
+        remaining.clear();
+        staged.clear();
+        let _ = SPARE_QUEUES.try_with(|spare| *spare.borrow_mut() = Some((remaining, staged)));
     }
 }
 
@@ -199,6 +217,10 @@ fn submit(world: &Arc<World>, updates: impl Iterator<Item = UpdateKind>) {
     }
 
     let mut stack = UpdateStack::new(id, MAX_CHAINED_UPDATES);
+    if let Some((remaining, staged)) = SPARE_QUEUES.with(|spare| spare.borrow_mut().take()) {
+        stack.remaining = remaining;
+        stack.staged = staged;
+    }
     stack.stage(world, id, updates);
     stack.promote_staged();
 
