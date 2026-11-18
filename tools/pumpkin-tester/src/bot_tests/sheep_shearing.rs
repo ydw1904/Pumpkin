@@ -5,7 +5,7 @@ use std::sync::{
 
 use pumpkin_core::{
     data::datapack::loot_table_loader::parse_loot_table,
-    entity::{Entity, EntityBase, passive::sheep::SheepEntity},
+    entity::{Entity, EntityBase, item::ItemEntity, passive::sheep::SheepEntity},
     net::ClientPlatform,
     plugin::{
         BoxFuture, EventHandler,
@@ -17,6 +17,7 @@ use pumpkin_core::{
         },
     },
     server::Server,
+    world::World,
 };
 use pumpkin_data::{
     dimension::Dimension, dye_color::DyeColor, entity::EntityType, item::Item,
@@ -103,6 +104,10 @@ pub fn run_sheep_shearing_test(
     if !world.spawn_entity(sheep.clone()) {
         return Err("Could not spawn the test sheep".into());
     }
+    // Items left by earlier tests would count as drops, or absorb them by merging.
+    for item in items_near(&world, &sheep) {
+        item.get_entity().remove();
+    }
     let interact = SInteract {
         entity_id: VarInt(sheep.get_entity().entity_id),
         r#type: VarInt(ActionType::InteractAt as i32),
@@ -128,28 +133,7 @@ pub fn run_sheep_shearing_test(
         let actual_damage = (!held.is_empty()).then(|| held.get_damage());
         let damage_events = hooks.damage.load(Ordering::Relaxed);
         let break_events = hooks.broken.load(Ordering::Relaxed);
-        let diamonds: usize = world
-            .get_entities_at_box(
-                &BoundingBox::from_block(&sheep.get_entity().block_pos.load()).expand_all(3.0),
-            )
-            .iter()
-            .filter_map(|entity| {
-                entity
-                    .cast_any()
-                    .downcast_ref::<pumpkin_core::entity::item::ItemEntity>()
-            })
-            .map(|entity| {
-                let stack = entity
-                    .get_item_stack()
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if stack.item == &Item::DIAMOND {
-                    usize::from(stack.item_count)
-                } else {
-                    0
-                }
-            })
-            .sum();
+        let diamonds = diamond_count(&items_near(&world, &sheep));
         if !sheep.is_sheared()
             || actual_damage != expected_damage
             || damage_events != expected_events
@@ -165,4 +149,33 @@ pub fn run_sheep_shearing_test(
     player.set_gamemode(GameMode::Creative);
     summary_lines.push("[PASS] bot:shearing_tool_loot_and_item_events".into());
     Ok(())
+}
+
+/// The live item entities within 3 blocks of the sheep.
+fn items_near(world: &World, sheep: &SheepEntity) -> Vec<Arc<dyn EntityBase>> {
+    world
+        .get_entities_at_box(
+            &BoundingBox::from_block(&sheep.get_entity().block_pos.load()).expand_all(3.0),
+        )
+        .into_iter()
+        .filter(|entity| !entity.get_entity().is_removed() && entity.cast_any().is::<ItemEntity>())
+        .collect()
+}
+
+fn diamond_count(items: &[Arc<dyn EntityBase>]) -> usize {
+    items
+        .iter()
+        .filter_map(|entity| entity.cast_any().downcast_ref::<ItemEntity>())
+        .map(|entity| {
+            let stack = entity
+                .get_item_stack()
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if stack.item == &Item::DIAMOND {
+                usize::from(stack.item_count)
+            } else {
+                0
+            }
+        })
+        .sum()
 }
