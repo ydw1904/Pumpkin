@@ -2895,6 +2895,8 @@ impl World {
 
         game_random().shuffle(&mut spawning_chunks);
 
+        // Nothing in the chunk loop changes the weather, so it is read once.
+        let weather = (self.is_raining(), self.is_thundering());
         let decided: Vec<_> = spawning_chunks
             .par_iter()
             .with_min_len(8)
@@ -2908,6 +2910,7 @@ impl World {
                             *pos,
                             chunk,
                             entity_ticking,
+                            weather,
                             &spawn_list,
                             &spawn_state,
                         )
@@ -3399,11 +3402,10 @@ impl World {
         chunk_pos: Vector2<i32>,
         chunk: &Arc<ChunkData>,
         entity_ticking: bool,
+        (is_raining, is_thundering): (bool, bool),
         spawn_list: &Vec<&'static MobCategory>,
         spawn_state: &Arc<SpawnState>,
     ) -> ChunkSpawns {
-        let (is_raining, is_thundering) = (self.is_raining(), self.is_thundering());
-
         // Vanilla `tickThunder`, only in entity ticking chunks.
         if entity_ticking
             && is_raining
