@@ -631,30 +631,29 @@ pub fn get_filtered_spawning_categories(
     ret
 }
 
+/// Vanilla `spawnForChunk` for the `categories` that passed the local mob cap. The counts only
+/// grow until [`SpawnState::commit`], so a category that fails the cap there failed it here too.
 pub fn spawn_for_chunk(
     world: &Arc<World>,
     chunk_pos: Vector2<i32>,
     chunk: &Arc<ChunkData>,
     spawn_state: &SpawnState,
-    spawn_list: &Vec<&'static MobCategory>,
+    categories: &[&'static MobCategory],
     is_thundering: bool,
 ) -> ChunkSpawns {
     let mut spawns = ChunkSpawns::default();
-    for category in spawn_list {
-        // The counts only grow until `commit`, so a category that fails here fails there too.
-        if spawn_state.can_spawn_for_category_local(world, category, chunk_pos) {
-            let random_pos = get_random_pos_within(world.min_y, &chunk_pos, chunk);
-            if random_pos.0.y > world.min_y {
-                spawn_category_for_position(
-                    category,
-                    world,
-                    random_pos,
-                    &chunk_pos,
-                    spawn_state,
-                    &mut spawns,
-                    is_thundering,
-                );
-            }
+    for category in categories {
+        let random_pos = get_random_pos_within(world.min_y, &chunk_pos, chunk);
+        if random_pos.0.y > world.min_y {
+            spawn_category_for_position(
+                category,
+                world,
+                random_pos,
+                &chunk_pos,
+                spawn_state,
+                &mut spawns,
+                is_thundering,
+            );
         }
     }
     spawns
