@@ -2876,14 +2876,13 @@ impl World {
         // Vanilla `ChunkMap.collectSpawningChunks` takes
         // the spawn candidates that tick and have a player within 128 blocks, and ticks them even
         // when no category can spawn, for thunder and inhabited time.
-        let players = self.players.load();
         let mut spawning_chunks: Vec<_> = active_chunks
             .spawn_candidates
             .par_iter()
             .filter(|pos| {
                 active_chunks.ticking.contains(*pos)
+                    && spawn_state.any_player_close_enough_for_spawning(**pos)
                     && self.level.is_chunk_ticking_ready(pos)
-                    && natural_spawner::any_player_close_enough_for_spawning(&players, **pos)
             })
             .filter_map(|pos| {
                 self.level
@@ -2891,7 +2890,6 @@ impl World {
                     .map(|chunk| (*pos, chunk))
             })
             .collect();
-        drop(players);
 
         game_random().shuffle(&mut spawning_chunks);
 

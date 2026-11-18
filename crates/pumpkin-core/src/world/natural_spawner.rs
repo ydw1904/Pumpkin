@@ -144,21 +144,12 @@ const fn chunk_center_distance_squared(chunk_pos: Vector2<i32>, player_pos: &Vec
     dx * dx + dy * dy
 }
 
-/// Vanilla `ChunkMap.playerIsCloseEnoughForSpawning`: a non-spectator within 128 blocks of the
-/// chunk's center.
-fn player_is_close_enough_for_spawning(player: &Player, chunk_pos: Vector2<i32>) -> bool {
-    player.gamemode.load() != GameMode::Spectator
-        && chunk_center_distance_squared(chunk_pos, &player.position()) < 16384.0
-}
-
-/// Vanilla `ChunkMap.anyPlayerCloseEnoughForSpawningInternal`.
-pub fn any_player_close_enough_for_spawning(
-    players: &[Arc<Player>],
-    chunk_pos: Vector2<i32>,
-) -> bool {
-    players
-        .iter()
-        .any(|player| player_is_close_enough_for_spawning(player, chunk_pos))
+impl ActiveSpawnPlayer {
+    /// Vanilla `ChunkMap.playerIsCloseEnoughForSpawning`: within 128 blocks of the chunk's
+    /// center.
+    fn is_close_enough_for_spawning(&self, chunk_pos: Vector2<i32>) -> bool {
+        chunk_center_distance_squared(chunk_pos, &self.pos) < 16384.0
+    }
 }
 
 impl LocalMobCapCalculator {
@@ -207,7 +198,7 @@ impl LocalMobCapCalculator {
             .filter(move |(p, _)| {
                 (chunk_pos.x - p.chunk_pos.x).abs() <= 9
                     && (chunk_pos.y - p.chunk_pos.y).abs() <= 9
-                    && chunk_center_distance_squared(chunk_pos, &p.pos) < 16384.0
+                    && p.is_close_enough_for_spawning(chunk_pos)
             })
             .map(|(_, counts)| counts)
     }
@@ -223,6 +214,13 @@ impl LocalMobCapCalculator {
         for player_counts in self.counts_near(chunk_pos) {
             player_counts.add_counts(counts);
         }
+    }
+
+    /// Vanilla `ChunkMap.anyPlayerCloseEnoughForSpawning`.
+    fn any_player_close_enough_for_spawning(&self, chunk_pos: Vector2<i32>) -> bool {
+        self.players
+            .iter()
+            .any(|p| p.is_close_enough_for_spawning(chunk_pos))
     }
 
     /// A player vanilla has no counts for yet passes, like one whose counts are all zero.
@@ -430,6 +428,13 @@ impl SpawnState {
             spawn_potential: PotentialCalculator(std::sync::Mutex::new(charges)),
             local_mob_cap_calculator: local_mob_cap,
         }
+    }
+
+    /// Whether a non-spectator player was within 128 blocks of the chunk's center when the
+    /// state was made.
+    pub fn any_player_close_enough_for_spawning(&self, chunk_pos: Vector2<i32>) -> bool {
+        self.local_mob_cap_calculator
+            .any_player_close_enough_for_spawning(chunk_pos)
     }
 
     #[inline]
