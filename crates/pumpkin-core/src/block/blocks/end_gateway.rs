@@ -3,12 +3,12 @@ use std::sync::atomic::Ordering;
 
 use pumpkin_data::entity::EntityType;
 use pumpkin_macros::pumpkin_block;
-use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
 
 use crate::block::entities::end_gateway::{EndGatewayBlockEntity, ExitChunkTickets};
 use crate::block::{BlockBehaviour, OnEntityCollisionArgs, OnSyncedBlockEventArgs, PlacedArgs};
 use crate::entity::{EntityBase, teleport_with_passengers};
-use crate::world::World;
+use crate::world::{TimedTicketType, World};
 
 #[pumpkin_block("minecraft:end_gateway")]
 pub struct EndGatewayBlock;
@@ -31,6 +31,11 @@ fn teleport_through(
         (entity.yaw.load(), entity.pitch.load())
     };
     teleport_with_passengers(traveller, destination, yaw, pitch, world);
+    // Vanilla `TeleportTransition.PLACE_PORTAL_TICKET`.
+    world.add_timed_ticket(
+        TimedTicketType::Portal,
+        BlockPos::floored_v(destination).chunk_position(),
+    );
 }
 
 impl BlockBehaviour for EndGatewayBlock {

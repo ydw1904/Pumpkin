@@ -117,7 +117,75 @@ pub(super) struct ActiveChunkTracker {
     entity_ticking: SquareUnion,
     block_ticking: SquareUnion,
     spawn_candidates: SquareUnion,
-    forced_chunks: FxHashSet<Vector2<i32>>,
+    tickets: FxHashSet<SimulationTicket>,
+}
+
+/// A simulating chunk ticket other than a player's: vanilla `addTicketWithRadius` for a forced
+/// chunk (radius 2) or a timed [`TimedTicketType`].
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct SimulationTicket {
+    pub center: Vector2<i32>,
+    pub radius: i32,
+}
+
+impl SimulationTicket {
+    /// Vanilla `FORCED` tickets use radius 2.
+    #[must_use]
+    pub const fn forced(center: Vector2<i32>) -> Self {
+        Self { center, radius: 2 }
+    }
+
+    /// The ticket sits at `FULL - radius`: chunks entity tick two rings in from the edge of
+    /// the full area and block tick one ring in. It doesn't make spawn candidates.
+    const fn squares(self) -> Squares {
+        let center = self.center;
+        [
+            if self.radius >= 2 {
+                Some(Square {
+                    center,
+                    radius: self.radius - 2,
+                })
+            } else {
+                None
+            },
+            if self.radius >= 1 {
+                Some(Square {
+                    center,
+                    radius: self.radius - 1,
+                })
+            } else {
+                None
+            },
+            None,
+        ]
+    }
+}
+
+/// Vanilla ticket types with a timeout, held by `World::add_timed_ticket`.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum TimedTicketType {
+    Portal,
+    EnderPearl,
+}
+
+impl TimedTicketType {
+    /// Vanilla `TicketType.timeout`.
+    #[must_use]
+    pub const fn timeout(self) -> i64 {
+        match self {
+            Self::Portal => 300,
+            Self::EnderPearl => 40,
+        }
+    }
+
+    /// The radius vanilla passes to `addTicketWithRadius`.
+    #[must_use]
+    pub const fn radius(self) -> i32 {
+        match self {
+            Self::Portal => 3,
+            Self::EnderPearl => 2,
+        }
+    }
 }
 
 /// The squares one ticket source covers: entity ticking, block ticking and spawn candidates.
@@ -141,16 +209,6 @@ impl ActivePlayerArea {
             }),
         ]
     }
-}
-
-/// Vanilla's `FORCED` ticket sits at the entity ticking level: the chunk itself entity ticks,
-/// its first ring block ticks, and it doesn't make spawn candidates.
-const fn forced_squares(center: Vector2<i32>) -> Squares {
-    [
-        Some(Square { center, radius: 0 }),
-        Some(Square { center, radius: 1 }),
-        None,
-    ]
 }
 
 impl ActiveChunkTracker {
@@ -200,29 +258,23 @@ impl ActiveChunkTracker {
         }
     }
 
-    /// Applies a new forced chunk set and returns the chunks that were added and removed.
-    pub fn sync_forced_chunks(
+    /// Applies a new set of forced and timed tickets and returns the ones that were added and
+    /// removed.
+    pub fn sync_tickets(
         &mut self,
-        forced_chunks: &FxHashSet<Vector2<i32>>,
+        tickets: &FxHashSet<SimulationTicket>,
         active: &mut ActiveChunks,
         newly_block_ticking: &mut Vec<Vector2<i32>>,
-    ) -> (Vec<Vector2<i32>>, Vec<Vector2<i32>>) {
-        let removed: Vec<_> = self
-            .forced_chunks
-            .difference(forced_chunks)
-            .copied()
-            .collect();
-        let added: Vec<_> = forced_chunks
-            .difference(&self.forced_chunks)
-            .copied()
-            .collect();
-        for &pos in &removed {
-            self.update_squares(forced_squares(pos), [None; 3], active, newly_block_ticking);
+    ) -> (Vec<SimulationTicket>, Vec<SimulationTicket>) {
+        let removed: Vec<_> = self.tickets.difference(tickets).copied().collect();
+        let added: Vec<_> = tickets.difference(&self.tickets).copied().collect();
+        for &ticket in &removed {
+            self.update_squares(ticket.squares(), [None; 3], active, newly_block_ticking);
         }
-        for &pos in &added {
-            self.update_squares([None; 3], forced_squares(pos), active, newly_block_ticking);
+        for &ticket in &added {
+            self.update_squares([None; 3], ticket.squares(), active, newly_block_ticking);
         }
-        self.forced_chunks.clone_from(forced_chunks);
+        self.tickets.clone_from(tickets);
         (added, removed)
     }
 
@@ -326,14 +378,14 @@ mod tests {
     fn forced_chunk_entity_ticks_alone_and_block_ticks_its_ring() {
         let mut tracker = ActiveChunkTracker::default();
         let mut active = ActiveChunks::default();
-        let forced = FxHashSet::from_iter([Vector2::new(5, 5)]);
+        let forced = FxHashSet::from_iter([SimulationTicket::forced(Vector2::new(5, 5))]);
 
-        tracker.sync_forced_chunks(&forced, &mut active, &mut Vec::new());
+        tracker.sync_tickets(&forced, &mut active, &mut Vec::new());
         assert_eq!(active.entity_ticking.len(), 1);
         assert_eq!(active.block_ticking.len(), 9);
         assert!(active.spawn_candidates.is_empty());
 
-        tracker.sync_forced_chunks(&FxHashSet::default(), &mut active, &mut Vec::new());
+        tracker.sync_tickets(&FxHashSet::default(), &mut active, &mut Vec::new());
         assert!(active.entity_ticking.is_empty());
         assert!(active.block_ticking.is_empty());
     }

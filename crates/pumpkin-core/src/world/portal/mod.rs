@@ -10,7 +10,7 @@ use pumpkin_util::math::vector3::Vector3;
 use pumpkin_world::chunk::ChunkHeightmapType;
 use pumpkin_world::world::BlockFlags;
 
-use super::World;
+use super::{TimedTicketType, World};
 
 pub mod end;
 pub mod nether;
@@ -140,11 +140,13 @@ impl PortalType {
                         drop(platform_lock);
 
                         // Vanilla faces west and keeps the pitch (`Relative.X_ROT`).
+                        let position = Vector3::new(100.5f64, y, 0.5f64);
                         Some(TeleportTransition {
                             new_world: dest_world,
-                            position: Vector3::new(100.5f64, y, 0.5f64),
+                            position,
                             yaw: Some(90.0f32),
                             pitch: Some(caller.get_entity().pitch.load()),
+                            portal_ticket: Some(BlockPos::floored_v(position)),
                         })
                     } else {
                         // Leaving the End through the exit portal. Vanilla `EndPortalBlock`
@@ -201,6 +203,7 @@ impl PortalType {
                                     position: respawn.position,
                                     yaw: Some(respawn.yaw),
                                     pitch: Some(respawn.pitch),
+                                    portal_ticket: None,
                                 });
                             }
                             let missing_respawn_block = player
@@ -239,6 +242,7 @@ impl PortalType {
                                 position,
                                 yaw: Some(yaw),
                                 pitch: Some(pitch),
+                                portal_ticket: None,
                             });
                         }
 
@@ -256,13 +260,15 @@ impl PortalType {
                             spawn_x,
                             spawn_z,
                         ) + 1;
+                        let position = Vector3::new(
+                            f64::from(spawn_x) + 0.5,
+                            f64::from(spawn_y),
+                            f64::from(spawn_z) + 0.5,
+                        );
                         Some(TeleportTransition {
                             new_world: dest_world,
-                            position: Vector3::new(
-                                f64::from(spawn_x) + 0.5,
-                                f64::from(spawn_y),
-                                f64::from(spawn_z) + 0.5,
-                            ),
+                            position,
+                            portal_ticket: Some(BlockPos::floored_v(position)),
                             // Vanilla `Relative.ROTATION`: the spawn angle is added on.
                             yaw: Some(caller.get_entity().yaw.load() + spawn_yaw),
                             pitch: Some(
@@ -300,6 +306,8 @@ impl PortalType {
                 let forcer = dest_world.portal_forcer.lock().await;
                 let mut exit_portal =
                     NetherPortal::search_for_portal(&dest_world, approximate_exit_pos).await;
+                // Vanilla tickets a portal it found, or else where the entity lands.
+                let found_portal = exit_portal.as_ref().map(|portal| portal.lower_corner);
 
                 if exit_portal.is_none() {
                     let center_chunk =
@@ -357,6 +365,9 @@ impl PortalType {
                     position: final_pos,
                     yaw,
                     pitch: None,
+                    portal_ticket: Some(
+                        found_portal.unwrap_or_else(|| BlockPos::floored_v(final_pos)),
+                    ),
                 })
             }
         }
@@ -368,6 +379,19 @@ pub struct TeleportTransition {
     pub position: Vector3<f64>,
     pub yaw: Option<f32>,
     pub pitch: Option<f32>,
+    /// Vanilla `TeleportTransition.PLACE_PORTAL_TICKET`: where the arrival is held with a
+    /// portal ticket.
+    pub portal_ticket: Option<BlockPos>,
+}
+
+impl TeleportTransition {
+    /// Runs the post-teleport part of the transition, once the entity has arrived.
+    pub fn place_portal_ticket(&self) {
+        if let Some(pos) = self.portal_ticket {
+            self.new_world
+                .add_timed_ticket(TimedTicketType::Portal, pos.chunk_position());
+        }
+    }
 }
 
 pub struct PortalProcessor {

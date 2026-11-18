@@ -4779,13 +4779,16 @@ impl Entity {
                                 )
                                 .await;
                             match transition {
-                                Some(transition) => departure.arrive(
-                                    &transition.new_world,
-                                    transition.position,
-                                    transition.yaw,
-                                    transition.pitch,
-                                    ArrivalKind::Portal,
-                                ),
+                                Some(transition) => {
+                                    departure.arrive(
+                                        &transition.new_world,
+                                        transition.position,
+                                        transition.yaw,
+                                        transition.pitch,
+                                        ArrivalKind::Portal,
+                                    );
+                                    transition.place_portal_ticket();
+                                }
                                 // Without a destination vanilla leaves the entity where it was.
                                 None => departure.arrive(
                                     &world_clone,
@@ -4828,6 +4831,7 @@ impl Entity {
                                 yaw_delta,
                                 &dest_world,
                             );
+                            transition.place_portal_ticket();
                         }
                     });
                 }

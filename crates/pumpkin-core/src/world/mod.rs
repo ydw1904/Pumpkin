@@ -80,7 +80,8 @@ use crate::{
     server::Server,
 };
 pub use active_chunks::ActiveChunks;
-use active_chunks::{ActiveChunkTracker, ActivePlayerArea};
+pub use active_chunks::TimedTicketType;
+use active_chunks::{ActiveChunkTracker, ActivePlayerArea, SimulationTicket};
 use arc_swap::{ArcSwap, ArcSwapOption};
 use border::Worldborder;
 pub use explosion::{
@@ -369,6 +370,8 @@ pub struct World {
     tick_spawns: std::sync::Mutex<Vec<(u64, i32)>>,
     active_chunk_tracker: std::sync::Mutex<ActiveChunkTracker>,
     pub forced_chunks: std::sync::Mutex<FxHashSet<Vector2<i32>>>,
+    /// Vanilla tickets with a timeout and the ticks they have left (`Ticket.ticksLeft`).
+    timed_tickets: std::sync::Mutex<FxHashMap<(Vector2<i32>, TimedTicketType), i64>>,
     /// Block entities indexed by chunk, so ticking only visits the currently
     /// active chunks instead of scanning every loaded block entity each tick.
     pub block_entities: DashMap<Vector2<i32>, FxHashMap<BlockPos, Arc<dyn BlockEntity>>>,
@@ -610,6 +613,7 @@ impl World {
             tick_spawns: std::sync::Mutex::new(Vec::new()),
             active_chunk_tracker: std::sync::Mutex::new(ActiveChunkTracker::default()),
             forced_chunks: std::sync::Mutex::new(forced_chunks),
+            timed_tickets: std::sync::Mutex::default(),
             server,
             block_entities: DashMap::with_shard_amount(TICK_SCANNED_MAP_SHARDS),
             block_listeners: game_event::BlockListenerRegistry::default(),
@@ -622,16 +626,100 @@ impl World {
         }
     }
 
+    /// Vanilla `TicketStorage.addTicketWithRadius` for a ticket type with a timeout: adding one
+    /// that is already there resets its timer.
+    pub fn add_timed_ticket(&self, ticket_type: TimedTicketType, pos: Vector2<i32>) {
+        use pumpkin_world::chunk_system::ChunkLoading;
+        let mut tickets = self
+            .timed_tickets
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if tickets
+            .insert((pos, ticket_type), ticket_type.timeout())
+            .is_none()
+        {
+            let mut loading = self
+                .level
+                .chunk_loading
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            loading.add_ticket(
+                pos,
+                ChunkLoading::FULL_CHUNK_LEVEL - ticket_type.radius() as i8,
+            );
+            loading.send_change();
+        }
+    }
+
+    /// Vanilla `TicketStorage.purgeStaleTickets`: timed tickets count down while their chunk is
+    /// loaded and go once they run out.
+    fn purge_stale_tickets(&self) {
+        use pumpkin_world::chunk_system::ChunkLoading;
+        let mut tickets = self
+            .timed_tickets
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if tickets.is_empty() {
+            return;
+        }
+        let mut expired = Vec::new();
+        tickets.retain(|&(pos, ticket_type), ticks_left| {
+            if !self.level.is_chunk_loaded(&pos) {
+                return true;
+            }
+            *ticks_left -= 1;
+            if *ticks_left < 0 {
+                expired.push((pos, ticket_type));
+                return false;
+            }
+            true
+        });
+        drop(tickets);
+        if expired.is_empty() {
+            return;
+        }
+        let mut loading = self
+            .level
+            .chunk_loading
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for (pos, ticket_type) in expired {
+            loading.remove_ticket(
+                pos,
+                ChunkLoading::FULL_CHUNK_LEVEL - ticket_type.radius() as i8,
+            );
+        }
+        loading.send_change();
+    }
+
+    /// The forced and timed tickets that simulate chunks.
+    fn simulation_tickets(&self) -> FxHashSet<SimulationTicket> {
+        let mut tickets: FxHashSet<SimulationTicket> = self
+            .forced_chunks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .map(|&pos| SimulationTicket::forced(pos))
+            .collect();
+        tickets.extend(
+            self.timed_tickets
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .keys()
+                .map(|&(center, ticket_type)| SimulationTicket {
+                    center,
+                    radius: ticket_type.radius(),
+                }),
+        );
+        tickets
+    }
+
     pub fn update_active_chunks(self: &Arc<Self>) {
         let sim_dist = self.server.upgrade().map_or(10, |s| {
             s.advanced_config.networking.java.simulation_distance.get()
         }) as i32;
         let players = self.players.load();
-        let forced_chunks = self
-            .forced_chunks
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
+        let tickets = self.simulation_tickets();
         let mut tracker = self
             .active_chunk_tracker
             .lock()
@@ -672,8 +760,8 @@ impl World {
         for id in removed_players {
             tracker.remove_player(id, Arc::make_mut(&mut active_chunks));
         }
-        let (forced_added, forced_removed) = tracker.sync_forced_chunks(
-            &forced_chunks,
+        let (tickets_added, tickets_removed) = tracker.sync_tickets(
+            &tickets,
             Arc::make_mut(&mut active_chunks),
             &mut newly_block_ticking,
         );
@@ -716,7 +804,7 @@ impl World {
         }
         drop(active_chunks);
         drop(tracker);
-        self.update_forced_entity_chunks(&forced_added, &forced_removed);
+        self.update_ticket_entity_chunks(&tickets_added, &tickets_removed);
         for pos in migrations {
             self.post_process_generation(pos);
             self.migrate_pending_block_entities(pos);
@@ -2123,6 +2211,9 @@ impl World {
         self.players.load().par_iter().for_each(|player| {
             player.process_inbound_packets();
         });
+        if server.tick_rate_manager.runs_normally() {
+            self.purge_stale_tickets();
+        }
         self.update_active_chunks();
         self.handling_tick.store(true, Relaxed);
         self.tick_environment();
@@ -5669,17 +5760,16 @@ impl World {
 
     /// Gives the full chunks around each forced chunk a watcher, so their entities load and
     /// stay loaded with no player nearby, like vanilla loads the entities of every full chunk.
-    fn update_forced_entity_chunks(
+    fn update_ticket_entity_chunks(
         self: &Arc<Self>,
-        added: &[Vector2<i32>],
-        removed: &[Vector2<i32>],
+        added: &[SimulationTicket],
+        removed: &[SimulationTicket],
     ) {
-        use pumpkin_world::chunk_system::ChunkLoading;
-        let radius = i32::from(ChunkLoading::FULL_CHUNK_LEVEL - ChunkLoading::FORCED_TICKET_LEVEL);
-        let full_area = |chunks: &[Vector2<i32>]| {
-            chunks
+        let full_area = |tickets: &[SimulationTicket]| {
+            tickets
                 .iter()
-                .flat_map(|pos| {
+                .flat_map(|ticket| {
+                    let (pos, radius) = (ticket.center, ticket.radius);
                     (-radius..=radius).flat_map(move |dx| {
                         (-radius..=radius).map(move |dz| Vector2::new(pos.x + dx, pos.y + dz))
                     })
@@ -5688,7 +5778,7 @@ impl World {
         };
         if !added.is_empty() {
             let mut added = full_area(added);
-            // Each forced chunk counts as a watcher of its whole area, overlaps included.
+            // Each ticket counts as a watcher of its whole full area, overlaps included.
             self.level.mark_chunks_as_newly_watched(&added);
             added.sort_unstable_by_key(|pos| (pos.x, pos.y));
             added.dedup();
