@@ -226,6 +226,11 @@ impl DimensionDeparture {
             }
             to.spawn_entity(entity.clone());
         }
+        if kind != ArrivalKind::Stay {
+            for entity in &arrived {
+                entity.after_teleport();
+            }
+        }
         for (player, offset, vehicle_uuid) in self.players {
             let Some(vehicle) = arrived
                 .iter()
@@ -695,6 +700,7 @@ pub trait EntityBase: Send + Sync + std::any::Any {
             return;
         }
         entity.teleport(position, yaw, pitch, &world);
+        self.after_teleport();
     }
 
     fn is_pushed_by_fluids(&self) -> bool {
@@ -748,6 +754,11 @@ pub trait EntityBase: Send + Sync + std::any::Any {
     /// Vanilla `teleport` overrides acting on the entity a cross-dimension teleport made of this
     /// one, called on that copy before it joins its new world.
     fn after_dimension_teleport(&self) {}
+
+    /// Vanilla `teleport` overrides acting on the entity once it is in place: the entity itself
+    /// after a teleport within its world, or the copy a cross-dimension teleport made, once it
+    /// has joined its new world.
+    fn after_teleport(&self) {}
 
     /// Vanilla `Entity.getDefaultGravity`.
     fn get_gravity(&self) -> f64 {

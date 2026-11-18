@@ -2,6 +2,7 @@
 // falling block and primed TNT go through vanilla `handlePortal` and arrive at the exit portal.
 // The exit portal is turned 90 degrees, so the arrow's motion turns with it (`ROTATE_DELTA`).
 // The falling block floats: one landing in the exit portal drops an item that travels back.
+// An item teleported onto another merges with it at once.
 // pumpkin-settings: allow_nether=true
 const { make } = require('./survival-lib')
 const h = make('Portaler')
@@ -35,6 +36,18 @@ h.start(async () => {
 
   // The overworld side: a portal along X.
   await h.arena(X, Y, Z, 8)
+  // Vanilla `ItemEntity.teleport` merges with neighbours at once, not on the next merge tick.
+  const emerald = '{Item:{id:"minecraft:emerald",count:1},PickupDelay:200,Tags:["tp_merge"]}'
+  h.cmd(`summon item ${X - 4.5} ${Y + 1} ${Z + 5.5} ${emerald}`)
+  h.cmd(`summon item ${X - 1.5} ${Y + 1} ${Z + 5.5} ${emerald}`)
+  await h.ticks(30)
+  h.cmd(`tp @e[type=item,tag=tp_merge,x=${X - 4.5},y=${Y + 1},z=${Z + 5.5},distance=..1] ${X - 1.5} ${Y + 1} ${Z + 5.5}`)
+  await h.waitFor(() => near('item', X - 4.5, Y + 1, Z + 5.5, 1).length === 0, 5000)
+  await h.ticks(2)
+  h.result('tp_merge', `${near('item', X - 1.5, Y + 1, Z + 5.5, 2).length}`)
+  h.cmd('kill @e[type=item,tag=tp_merge]')
+  await h.ticks(5)
+
   fill('overworld', [X - 1, Y + 1, Z], [X + 2, Y + 5, Z], 'obsidian')
   fill('overworld', [X, Y + 2, Z], [X + 1, Y + 4, Z], 'nether_portal[axis=x]')
   await h.ticks(20)

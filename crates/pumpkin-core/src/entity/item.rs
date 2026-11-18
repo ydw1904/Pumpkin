@@ -897,6 +897,11 @@ impl EntityBase for ItemEntity {
         Some(self)
     }
 
+    /// Vanilla `ItemEntity.teleport` merges with neighbours right away.
+    fn after_teleport(&self) {
+        self.merge_with_neighbours();
+    }
+
     fn get_gravity(&self) -> f64 {
         0.04
     }
