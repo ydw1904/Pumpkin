@@ -3,12 +3,10 @@ use crate::entity::{
     mob::{Mob, MobEntity, skeleton::SkeletonEntityBase},
     player::Player,
     projectile::arrow::ArrowEntity,
-    shearable::{Shearable, drop_from_shearing_loot_table},
+    shearable::{Shearable, drop_from_shearing_loot_table, shear_by_player},
 };
-use crate::world::game_event::GameEventContext;
 use pumpkin_data::BlockState;
 use pumpkin_data::effect::StatusEffect;
-use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
@@ -52,7 +50,11 @@ impl BoggedSkeletonEntity {
 }
 
 impl Shearable for BoggedSkeletonEntity {
-    fn shear(&self, sound_category: SoundCategory, tool: &ItemStack) {
+    fn shear(&self, sound_category: SoundCategory, tool: &ItemStack) -> bool {
+        if self.sheared.swap(true, Ordering::Relaxed) {
+            return false;
+        }
+
         let entity = self.get_entity();
         entity.world.load().play_sound(
             Sound::EntityBoggedShear,
@@ -66,6 +68,7 @@ impl Shearable for BoggedSkeletonEntity {
             f64::from(entity.height()),
         );
         self.set_sheared(true);
+        true
     }
 
     fn ready_for_shearing(&self) -> bool {
@@ -95,12 +98,12 @@ impl Mob for BoggedSkeletonEntity {
         &self.entity.mob_entity
     }
 
-    fn as_shearable(&self) -> Option<&dyn Shearable> {
-        Some(self)
-    }
-
     fn get_arrow(&self, arrow: ArrowEntity) -> ArrowEntity {
         super::arrow_with_effect(arrow, &StatusEffect::POISON, 100)
+    }
+
+    fn as_shearable(&self) -> Option<&dyn Shearable> {
+        Some(self)
     }
 
     fn mob_write_nbt(&self, nbt: &mut NbtCompound) {
@@ -113,31 +116,7 @@ impl Mob for BoggedSkeletonEntity {
 
     fn mob_interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
         if item_stack.get_item() == &Item::SHEARS && self.ready_for_shearing() {
-            let entity = self.get_entity();
-            let world = entity.world.load();
-            if let Some(server) = world.server.upgrade() {
-                let mut event = crate::plugin::api::events::player::player_shear_entity::PlayerShearEntityEvent {
-                    player: player.clone(),
-                    entity_id: entity.entity_id,
-                    hand: 0,
-                    cancelled: false,
-                };
-                server.plugin_manager.fire_blocking(&server, &mut event);
-                if event.cancelled {
-                    return false;
-                }
-            }
-            self.shear(SoundCategory::Players, item_stack);
-            world.emit_game_event_with_context(
-                GameEvent::Shear.name(),
-                entity.pos.load(),
-                &GameEventContext {
-                    source_entity: Some(player.as_ref()),
-                    affected_state: None,
-                },
-            );
-            let _ = player.damage_item_stack(item_stack, 1);
-            return true;
+            return shear_by_player(self, player, item_stack);
         }
         false
     }

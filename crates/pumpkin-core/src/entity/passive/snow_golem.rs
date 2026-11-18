@@ -23,7 +23,7 @@ use crate::entity::{
     mob::{Mob, MobEntity, RangedAttackMob},
     player::Player,
     projectile::snowball::SnowballEntity,
-    shearable::{Shearable, drop_from_shearing_loot_table},
+    shearable::{Shearable, drop_from_shearing_loot_table, shear_by_player},
 };
 use crate::world::game_event::GameEventContext;
 
@@ -206,38 +206,18 @@ impl Mob for SnowGolemEntity {
 
     fn mob_interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
         if item_stack.get_item() == &Item::SHEARS && self.ready_for_shearing() {
-            let entity = self.get_entity();
-            let world = entity.world.load();
-            if let Some(server) = world.server.upgrade() {
-                let mut event = crate::plugin::api::events::player::player_shear_entity::PlayerShearEntityEvent {
-                    player: player.clone(),
-                    entity_id: entity.entity_id,
-                    hand: 0,
-                    cancelled: false,
-                };
-                server.plugin_manager.fire_blocking(&server, &mut event);
-                if event.cancelled {
-                    return false;
-                }
-            }
-            self.shear(SoundCategory::Players, item_stack);
-            world.emit_game_event_with_context(
-                GameEvent::Shear.name(),
-                entity.pos.load(),
-                &GameEventContext {
-                    source_entity: Some(player.as_ref()),
-                    affected_state: None,
-                },
-            );
-            let _ = player.damage_item_stack(item_stack, 1);
-            return true;
+            return shear_by_player(self, player, item_stack);
         }
         false
     }
 }
 
 impl Shearable for SnowGolemEntity {
-    fn shear(&self, sound_category: SoundCategory, tool: &ItemStack) {
+    fn shear(&self, sound_category: SoundCategory, tool: &ItemStack) -> bool {
+        // Claim the pumpkin first so two shears landing at once drop it only once.
+        if !self.has_pumpkin.swap(false, Ordering::Relaxed) {
+            return false;
+        }
         let entity = self.get_entity();
         entity.world.load().play_sound(
             Sound::EntitySnowGolemShear,
@@ -251,6 +231,7 @@ impl Shearable for SnowGolemEntity {
             tool,
             entity.get_eye_height(),
         );
+        true
     }
 
     fn ready_for_shearing(&self) -> bool {

@@ -380,7 +380,10 @@ impl CopperGolemEntity {
         if event.cancelled || !self.can_drop_item(&self.antenna()) {
             return true;
         }
-        self.shear(SoundCategory::Players, item_stack);
+        // Another shear may have taken the antenna since `ready_for_shearing`.
+        if !self.shear(SoundCategory::Players, item_stack) {
+            return true;
+        }
         world.emit_game_event(GameEvent::Shear.name(), entity.pos.load());
         Self::damage_player_item(player, item_stack);
         true
@@ -690,7 +693,7 @@ impl Mob for CopperGolemEntity {
 
 impl Shearable for CopperGolemEntity {
     /// Vanilla `CopperGolem.shear`: drops the antenna item.
-    fn shear(&self, sound_category: SoundCategory, _tool: &ItemStack) {
+    fn shear(&self, sound_category: SoundCategory, _tool: &ItemStack) -> bool {
         let entity = self.get_entity();
         let world = entity.world.load();
         let pos = entity.pos.load();
@@ -698,8 +701,9 @@ impl Shearable for CopperGolemEntity {
         let stack = self
             .mob_entity
             .set_item_slot(&EQUIPMENT_SLOT_ANTENNA, ItemStack::EMPTY.clone());
+        // Taking the antenna and emptying the slot in one step keeps two shears from both dropping it.
         if stack.is_empty() {
-            return;
+            return false;
         }
         if !world.spawn_entity(Arc::new(ItemEntity::new(
             Entity::new(
@@ -712,6 +716,7 @@ impl Shearable for CopperGolemEntity {
             self.mob_entity
                 .set_item_slot(&EQUIPMENT_SLOT_ANTENNA, stack);
         }
+        true
     }
 
     fn ready_for_shearing(&self) -> bool {

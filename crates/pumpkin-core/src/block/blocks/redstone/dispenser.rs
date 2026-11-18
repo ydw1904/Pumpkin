@@ -47,6 +47,7 @@ use crate::item::items::honeycomb::try_wax_block;
 use crate::item::items::ignite::ignition::Ignition;
 use crate::item::items::minecart::MinecartItem;
 use crate::item::items::spawn_egg::prepare_egg_mob;
+use crate::plugin::api::events::block::block_shear_entity::BlockShearEntityEvent;
 use crate::plugin::api::events::entity::creature_spawn::CreatureSpawnReason;
 use crate::world::World;
 use crate::world::game_event::GameEventContext;
@@ -1179,10 +1180,24 @@ impl DispenserBlock {
                 continue;
             }
 
-            shearable.shear(SoundCategory::Blocks, tool);
+            if let Some(server) = ctx.world.server.upgrade() {
+                let mut event = BlockShearEntityEvent::new(
+                    *ctx.position,
+                    ctx.world.clone(),
+                    entity.clone(),
+                    tool.clone(),
+                );
+                server.plugin_manager.fire_blocking(&server, &mut event);
+                if event.cancelled {
+                    continue;
+                }
+            }
+
+            if !shearable.shear(SoundCategory::Blocks, tool) {
+                continue;
+            }
             ctx.world
                 .emit_game_event(GameEvent::Shear.name(), target.to_centered_f64());
-
             return true;
         }
 
