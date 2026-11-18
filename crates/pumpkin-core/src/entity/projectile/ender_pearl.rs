@@ -1,7 +1,7 @@
 use crate::entity::projectile::owner::ProjectileOwner;
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::RwLock;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 
 use crate::entity::projectile::ProjectileHit;
 use crate::{
@@ -10,6 +10,7 @@ use crate::{
         projectile::ThrownItemEntity,
     },
     server::Server,
+    world::TimedTicketType,
 };
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::entity::{EntityPose, EntityStatus};
@@ -28,6 +29,8 @@ const ENDERMITE_SPAWN_CHANCE: f32 = 0.05;
 pub struct EnderPearlEntity {
     pub thrown: ThrownItemEntity,
     pub item_stack: RwLock<ItemStack>,
+    /// Vanilla `ticketTimer`: ticks until the pearl renews its chunk ticket.
+    ticket_timer: AtomicI64,
 }
 
 impl EnderPearlEntity {
@@ -45,6 +48,7 @@ impl EnderPearlEntity {
         Self {
             thrown,
             item_stack: RwLock::new(ItemStack::new(1, &Item::ENDER_PEARL)),
+            ticket_timer: AtomicI64::new(0),
         }
     }
 
@@ -54,6 +58,7 @@ impl EnderPearlEntity {
         Self {
             thrown,
             item_stack: RwLock::new(ItemStack::new(1, &Item::ENDER_PEARL)),
+            ticket_timer: AtomicI64::new(0),
         }
     }
 
@@ -112,8 +117,46 @@ impl EntityBase for EnderPearlEntity {
         ));
     }
 
+    /// Vanilla `ThrownEnderpearl.tick`.
     fn tick(&self, caller: &dyn EntityBase, _server: &Server) {
-        self.thrown.process_tick(caller);
+        let entity = self.get_entity();
+        let world = entity.world.load_full();
+        let previous_chunk = BlockPos::floored_v(entity.pos.load()).chunk_position();
+        let owner = self.thrown.owner.get_player(&world);
+        if let Some(owner) = &owner
+            && !owner.living_entity.is_alive()
+            && !owner.won_game.load(Ordering::Relaxed)
+            && owner
+                .world()
+                .level_info
+                .load()
+                .game_rules
+                .ender_pearls_vanish_on_death
+        {
+            entity.remove();
+        } else {
+            self.thrown.process_tick(caller);
+        }
+
+        if entity.is_alive() {
+            let chunk = BlockPos::floored_v(entity.pos.load()).chunk_position();
+            let timer = self.ticket_timer.fetch_sub(1, Ordering::Relaxed) - 1;
+            if (timer <= 0 || chunk != previous_chunk) && owner.is_some() {
+                // Vanilla `ServerPlayer.registerAndUpdateEnderPearlTicket`.
+                world.add_timed_ticket(TimedTicketType::EnderPearl, chunk);
+                self.ticket_timer
+                    .store(TimedTicketType::EnderPearl.timeout() - 1, Ordering::Relaxed);
+            }
+        }
+    }
+
+    /// Vanilla `ThrownEnderpearl.teleport` holds the chunks it arrives in with a portal ticket.
+    fn after_teleport(&self) {
+        let entity = self.get_entity();
+        entity.world.load().add_timed_ticket(
+            TimedTicketType::Portal,
+            BlockPos::floored_v(entity.pos.load()).chunk_position(),
+        );
     }
 
     fn get_entity(&self) -> &Entity {
