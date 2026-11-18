@@ -222,6 +222,8 @@ const ENTITY_SCAN_BATCH: usize = 512;
 /// costs several microseconds, so even a few dozen of them on one thread take longer than the
 /// parallel island tick they plan.
 const ENTITY_REACH_BATCH: usize = 4;
+/// Reach reports taken at once while looking for the entity that ends an island run.
+const ENTITY_REACH_SCAN: usize = 1024;
 /// Shards of the maps the tick walks every tick. A walk locks every shard, and with dashmap's
 /// default of four shards per CPU that costs more than the entries on many-core machines.
 const TICK_SCANNED_MAP_SHARDS: usize = 32;
@@ -1997,15 +1999,26 @@ impl World {
                 self,
             ))));
         self.contact_sections.store(Some(Arc::default()));
-        let mut reports: Vec<_> = tickable
-            .par_iter()
-            .with_min_len(ENTITY_REACH_BATCH)
-            .map(|(entity, _)| entity_islands::EntityReach::of(entity.as_ref(), config))
-            .collect();
-        let end = reports
-            .iter()
-            .position(entity_islands::EntityReach::is_global)
-            .unwrap_or(reports.len());
+        // Reports past the run's end are taken again for the next run, after this one ticked,
+        // so only a batch past it is taken here.
+        let mut reports = Vec::with_capacity(tickable.len().min(ENTITY_REACH_SCAN));
+        let mut end = tickable.len();
+        while reports.len() < end {
+            let from = reports.len();
+            let to = (from + ENTITY_REACH_SCAN).min(tickable.len());
+            reports.par_extend(
+                tickable[from..to]
+                    .par_iter()
+                    .with_min_len(ENTITY_REACH_BATCH)
+                    .map(|(entity, _)| entity_islands::EntityReach::of(entity.as_ref(), config)),
+            );
+            if let Some(global) = reports[from..]
+                .iter()
+                .position(entity_islands::EntityReach::is_global)
+            {
+                end = from + global;
+            }
+        }
         reports.truncate(end);
         let islands = (end >= entity_islands::MIN_PARALLEL_ENTITIES)
             .then(|| self.plan_islands(&tickable[..end], &reports, players, config))

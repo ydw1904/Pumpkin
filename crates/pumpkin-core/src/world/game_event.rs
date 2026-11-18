@@ -130,30 +130,24 @@ impl World {
         if self.block_listeners.is_empty() {
             return Vec::new();
         }
-        let mut searched = rustc_hash::FxHashSet::default();
-        // Many entities share a chunk. Skipping a repeat leaves the order chunks are first
-        // searched in, and so the stand-in IDs, unchanged.
-        let mut centers = rustc_hash::FxHashSet::default();
-        for chunk in chunks {
-            if !centers.insert(chunk) {
-                continue;
-            }
-            for x in -LISTENER_SEARCH_CHUNKS..=LISTENER_SEARCH_CHUNKS {
-                for z in -LISTENER_SEARCH_CHUNKS..=LISTENER_SEARCH_CHUNKS {
-                    searched.insert(Vector2::new(chunk.x + x, chunk.y + z));
-                }
-            }
-        }
+        let centers: rustc_hash::FxHashSet<_> = chunks.collect();
+        // Far fewer chunks hold listeners than lie around the entities, so each listener chunk
+        // looks for an entity chunk near it.
+        let searched: Vec<_> = self
+            .block_listeners
+            .chunks
+            .iter()
+            .filter(|entry| {
+                let chunk = entry.key();
+                (-LISTENER_SEARCH_CHUNKS..=LISTENER_SEARCH_CHUNKS).any(|x| {
+                    (-LISTENER_SEARCH_CHUNKS..=LISTENER_SEARCH_CHUNKS)
+                        .any(|z| centers.contains(&Vector2::new(chunk.x + x, chunk.y + z)))
+                })
+            })
+            .map(|entry| (*entry.key(), entry.value().clone()))
+            .collect();
         let mut stand_ins = Vec::new();
-        for chunk in searched {
-            let Some(positions) = self
-                .block_listeners
-                .chunks
-                .get(&chunk)
-                .map(|positions| positions.clone())
-            else {
-                continue;
-            };
+        for (chunk, positions) in searched {
             let Some(block_entities) = self.block_entities.get(&chunk) else {
                 continue;
             };
