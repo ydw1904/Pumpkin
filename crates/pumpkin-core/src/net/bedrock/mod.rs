@@ -363,8 +363,8 @@ impl BedrockClient {
                 }
             }
 
-            // `try_kick` only queues the disconnect before cancelling, and `close` returns early
-            // once cancelled, so the session is closed here after the queue is drained. Like the
+            // `try_kick` only queues the disconnect before cancelling, and `close` leaves the
+            // session alone once cancelled, so the session is closed here after the queue is drained. Like the
             // Java writer's drain on close, wait for the reliable channel to deliver it first.
             if !client.session.is_closed() {
                 let _ = client
@@ -948,12 +948,19 @@ impl BedrockClient {
     }
 
     pub async fn close(&self) {
-        if self.close_token.is_cancelled() {
-            return;
+        if !self.close_token.is_cancelled() {
+            self.close_token.cancel();
+            self.session.close().await;
         }
-        self.close_token.cancel();
-        self.session.close().await;
-        self.be_clients.lock().await.remove(&self.address);
+        // After `try_kick` the outgoing task closes the session, so the entry goes here too.
+        // A newer client from the same address keeps its own.
+        let mut clients = self.be_clients.lock().await;
+        if clients
+            .get(&self.address)
+            .is_some_and(|client| std::ptr::eq(Arc::as_ptr(client), self))
+        {
+            clients.remove(&self.address);
+        }
     }
 
     pub async fn await_tasks(&self) {
