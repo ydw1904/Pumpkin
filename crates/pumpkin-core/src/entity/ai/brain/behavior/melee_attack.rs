@@ -6,8 +6,6 @@ use super::OneShot;
 use crate::entity::mob::Mob;
 
 /// Vanilla `MeleeAttack.create`.
-// TODO: vanilla also skips mobs holding a usable non-melee weapon (`Mob.canUseNonMeleeWeapon`);
-// no brain mob that can hold one uses this yet.
 #[must_use]
 pub fn create(cooldown_between_attacks: i32) -> OneShot {
     create_when(|_| true, cooldown_between_attacks)
@@ -15,7 +13,10 @@ pub fn create(cooldown_between_attacks: i32) -> OneShot {
 
 /// Vanilla `MeleeAttack.create(canAttackPredicate, cooldownBetweenAttacks)`.
 #[must_use]
-pub fn create_when(can_attack: fn(&dyn Mob) -> bool, cooldown_between_attacks: i32) -> OneShot {
+pub fn create_when(
+    can_attack: impl Fn(&dyn Mob) -> bool + Send + Sync + 'static,
+    cooldown_between_attacks: i32,
+) -> OneShot {
     OneShot::new(
         "MeleeAttack",
         vec![
@@ -32,6 +33,7 @@ pub fn create_when(can_attack: fn(&dyn Mob) -> bool, cooldown_between_attacks: i
                 return false;
             };
             if !can_attack(tick.mob)
+                || is_holding_usable_non_melee_weapon(tick.mob)
                 || !tick.mob.is_in_attack_range(target.as_ref())
                 || !tick
                     .state
@@ -54,4 +56,11 @@ pub fn create_when(can_attack: fn(&dyn Mob) -> bool, cooldown_between_attacks: i
             true
         },
     )
+}
+
+/// Vanilla `MeleeAttack.isHoldingUsableNonMeleeWeapon`.
+fn is_holding_usable_non_melee_weapon(mob: &dyn Mob) -> bool {
+    let living = &mob.get_mob_entity().living_entity;
+    mob.can_use_non_melee_weapon(&living.held_item(mob))
+        || mob.can_use_non_melee_weapon(&living.off_hand_item(mob))
 }

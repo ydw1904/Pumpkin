@@ -38,7 +38,11 @@ pub fn create(
             let target_entity = target.get_entity();
             if tick.mob.can_attack(target.as_ref())
                 && !tired
-                && target_entity.is_alive()
+                // Vanilla `LivingEntity.isAlive` also needs health left.
+                && target.get_living_entity().map_or_else(
+                    || target_entity.is_alive(),
+                    crate::entity::living::LivingEntity::is_alive,
+                )
                 && Arc::ptr_eq(&target_entity.world.load_full(), tick.world)
                 && !stop_attacking_when(tick, &target)
             {

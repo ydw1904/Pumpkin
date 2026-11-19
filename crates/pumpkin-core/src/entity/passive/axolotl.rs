@@ -702,6 +702,20 @@ impl Animal for AxolotlEntity {
         item_stack.item.has_tag(&tag::Item::MINECRAFT_AXOLOTL_FOOD)
     }
 
+    /// Vanilla `Axolotl.usePlayerItem`: a bucket of tropical fish leaves a water bucket.
+    fn use_player_item(&self, player: &Player, item_stack: &mut ItemStack) {
+        if item_stack.get_item() == &Item::TROPICAL_FISH_BUCKET {
+            crate::item::items::bucket::create_filled_result(
+                item_stack,
+                player,
+                ItemStack::new(1, &Item::WATER_BUCKET),
+                true,
+            );
+        } else {
+            item_stack.decrement_unless_creative(player.gamemode.load(), 1);
+        }
+    }
+
     /// Vanilla `Axolotl.getBreedOffspring`: a rare blue, else either parent's variant.
     fn get_breed_offspring(&self, partner: &dyn EntityBase) -> Arc<dyn EntityBase> {
         let entity = self.get_entity();
@@ -830,6 +844,11 @@ impl Mob for AxolotlEntity {
 
     fn as_ageable(&self) -> Option<&dyn AgeableMob> {
         Some(self)
+    }
+
+    /// Vanilla `Axolotl.playAttackSound`, which `Mob.doHurtTarget` plays after a hit.
+    fn on_attack(&self, _target: &dyn EntityBase) {
+        self.play_entity_sound(Sound::EntityAxolotlAttack, 1.0, 1.0);
     }
 
     fn get_max_look_pitch_change(&self) -> f32 {

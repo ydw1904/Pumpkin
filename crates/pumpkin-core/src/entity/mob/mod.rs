@@ -2438,6 +2438,10 @@ pub trait Mob: EntityBase + Send + Sync {
         None
     }
 
+    fn can_use_non_melee_weapon(&self, _stack: &ItemStack) -> bool {
+        false
+    }
+
     fn can_use_slot(&self, _slot: &EquipmentSlot) -> bool {
         true
     }
