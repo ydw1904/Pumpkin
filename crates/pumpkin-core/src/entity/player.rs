@@ -2337,7 +2337,7 @@ impl Player {
                 );
             }
         }
-        combat::spawn_sweep_particle(attacker_entity, world, &attacker_pos);
+        combat::spawn_sweep_particle(attacker_entity, world);
     }
 
     /// Vanilla `ServerPlayer.crit` and `magicCrit`.
