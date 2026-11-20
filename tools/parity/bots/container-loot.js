@@ -92,4 +92,34 @@ h.start(async () => {
     h.cmd('kill @e[type=chest_minecart]')
   } else h.result('chest_minecart.opened', 'missing')
   await h.ticks(5)
+
+  // Pickup delays: a broken chest scatters its contents with none (`Containers.dropContents`),
+  // while the chest item itself pops with the default 10 ticks. The bot stands on the chest and
+  // drops into its spot, so every drop is in reach from the first tick.
+  h.cmd('kill @e[type=item]')
+  await h.clear()
+  await place('chest{Items:[{Slot:0b,id:"minecraft:diamond",count:1}]}')
+  await h.tp(BX + 0.5, BY + 1, BZ + 0.5, 180, 0)
+  await h.ticks(10)
+  // Counted from when the client sees the chest go, since console commands land a little late.
+  let ticks = 0
+  let broken
+  const arrived = {}
+  const onTick = () => {
+    ticks++
+    if (broken === undefined && h.blockName(BX, BY, BZ) === 'air') broken = ticks
+    for (const name of ['diamond', 'chest']) {
+      if (arrived[name] === undefined && bot.inventory.items().some((it) => it.name === name)) arrived[name] = ticks - (broken ?? ticks)
+    }
+  }
+  bot.on('physicsTick', onTick)
+  h.cmd(`setblock ${BX} ${BY} ${BZ} air destroy`)
+  await h.waitFor(() => arrived.diamond !== undefined && arrived.chest !== undefined, 5000)
+  bot.removeListener('physicsTick', onTick)
+  // Picked up within 7 ticks of the break means no delay; 10 ticks of delay can't be that fast.
+  const bucket = (t) => t === undefined ? 'never' : t <= 7 ? 'immediate' : 'delayed'
+  h.result('chest.contents_pickup', bucket(arrived.diamond))
+  h.result('chest.block_pickup', bucket(arrived.chest))
+  await h.tp(BX + 0.5, Y + 1, BZ + 2.5, 180, 0)
+  await h.ticks(5)
 })
