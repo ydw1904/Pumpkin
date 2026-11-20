@@ -116,7 +116,7 @@ impl ItemBehaviour for BrushItem {
         item: &mut ItemStack,
         player: &Player,
         location: BlockPos,
-        _face: BlockDirection,
+        face: BlockDirection,
         _cursor_pos: Vector3<f32>,
         block: &Block,
         _server: &Server,
@@ -199,15 +199,19 @@ impl ItemBehaviour for BrushItem {
             );
 
             if !loot_item.is_empty() {
+                // Vanilla `BrushableBlockEntity.dropContent`: centred in the block on the
+                // brushed side, standing still.
+                let drop_pos = location.offset(face.to_offset());
                 let spawn_pos = Vector3::new(
-                    f64::from(location.0.x) + 0.5,
-                    f64::from(location.0.y) + 1.0,
-                    f64::from(location.0.z) + 0.5,
+                    f64::from(drop_pos.0.x) + 0.5,
+                    f64::from(drop_pos.0.y) + 0.5 + f64::from(EntityType::ITEM.dimension[1]) / 2.0,
+                    f64::from(drop_pos.0.z) + 0.5,
                 );
                 let item_entity = Arc::new(ItemEntity::new(
                     Entity::new(world.clone(), spawn_pos, &EntityType::ITEM),
                     loot_item,
                 ));
+                item_entity.get_entity().velocity.store(Vector3::default());
                 world.spawn_entity(item_entity);
             }
 
