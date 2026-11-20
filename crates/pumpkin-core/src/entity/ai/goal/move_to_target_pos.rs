@@ -118,6 +118,7 @@ impl<M: MoveToTargetPos> MoveToTargetPosGoal<M> {
             ),
             speed: self.speed,
             reach_range: 1,
+            keep_path_on_failure: false,
         });
     }
 }
@@ -212,6 +213,7 @@ impl<M: MoveToTargetPos> Goal for MoveToTargetPosGoal<M> {
                     ),
                     speed: self.speed,
                     reach_range: 1,
+                    keep_path_on_failure: false,
                 });
             }
         }

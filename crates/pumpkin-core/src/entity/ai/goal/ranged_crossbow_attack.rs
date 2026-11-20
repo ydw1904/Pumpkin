@@ -226,12 +226,11 @@ impl RangedCrossbowAttackGoal {
                 mob.get_mob_entity()
                     .steered()
                     .navigator()
-                    .set_progress(NavigatorGoal {
-                        current_progress: mob.get_entity().pos.load(),
-                        destination: target.get_entity().pos.load(),
-                        speed: move_speed,
-                        reach_range: 1,
-                    });
+                    .set_progress(NavigatorGoal::to_entity(
+                        mob.get_entity().pos.load(),
+                        target.get_entity().pos.load(),
+                        move_speed,
+                    ));
                 self.update_path_delay = 20 + game_random().random_range(0..20);
             }
         } else {
@@ -284,6 +283,7 @@ impl RangedCrossbowAttackGoal {
                     destination: target_pos,
                     speed: self.speed,
                     reach_range: 0,
+                    keep_path_on_failure: false,
                 });
             self.path_target = Some(target_pos);
         }

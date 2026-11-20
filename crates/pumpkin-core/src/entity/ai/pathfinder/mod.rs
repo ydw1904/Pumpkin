@@ -268,6 +268,8 @@ pub struct NavigatorGoal {
     pub speed: f64,
     /// Vanilla `reachRange`: the path may end this many blocks (Manhattan) from the destination.
     pub reach_range: i32,
+    /// Vanilla `moveTo(Entity)`: when no path can be made, the current one is kept.
+    pub keep_path_on_failure: bool,
 }
 
 impl NavigatorGoal {
@@ -282,6 +284,20 @@ impl NavigatorGoal {
             destination,
             speed,
             reach_range: 1,
+            keep_path_on_failure: false,
+        }
+    }
+
+    /// Vanilla `moveTo(Entity, speed)`: reach range 1, and a failed path keeps the current one.
+    #[must_use]
+    pub const fn to_entity(
+        current_progress: Vector3<f64>,
+        destination: Vector3<f64>,
+        speed: f64,
+    ) -> Self {
+        Self {
+            keep_path_on_failure: true,
+            ..Self::new(current_progress, destination, speed)
         }
     }
 }
@@ -895,6 +911,7 @@ impl PathNavigation {
                 // Vanilla moveTo(Path): an equivalent route keeps the installed path and its progress.
                 match self.create_path(entity, goal.destination, goal.reach_range) {
                     Some(path) if path.same_as(self.path.as_ref()) => {}
+                    None if goal.keep_path_on_failure => {}
                     path => self.path = path,
                 }
                 if self.path.as_ref().is_some_and(|path| !path.is_done()) {
@@ -1335,7 +1352,7 @@ impl PathNavigationTrait for GroundPathNavigation {
     fn move_to_entity(&mut self, target: &LivingEntity, speed: f64, entity: &LivingEntity) -> bool {
         let p = entity.entity.pos.load();
         let target_pos = target.entity.pos.load();
-        self.set_progress(NavigatorGoal::new(p, target_pos, speed));
+        self.set_progress(NavigatorGoal::to_entity(p, target_pos, speed));
         true
     }
 
@@ -1651,7 +1668,7 @@ impl PathNavigationTrait for FlyingPathNavigation {
     fn move_to_entity(&mut self, target: &LivingEntity, speed: f64, entity: &LivingEntity) -> bool {
         let p = entity.entity.pos.load();
         let target_pos = target.entity.pos.load();
-        self.set_progress(NavigatorGoal::new(p, target_pos, speed));
+        self.set_progress(NavigatorGoal::to_entity(p, target_pos, speed));
         true
     }
 
@@ -1955,7 +1972,7 @@ impl PathNavigationTrait for WaterBoundPathNavigation {
     fn move_to_entity(&mut self, target: &LivingEntity, speed: f64, entity: &LivingEntity) -> bool {
         let p = entity.entity.pos.load();
         let target_pos = target.entity.pos.load();
-        self.set_progress(NavigatorGoal::new(p, target_pos, speed));
+        self.set_progress(NavigatorGoal::to_entity(p, target_pos, speed));
         true
     }
 
@@ -2523,7 +2540,7 @@ impl PathNavigationTrait for AmphibiousPathNavigation {
     fn move_to_entity(&mut self, target: &LivingEntity, speed: f64, entity: &LivingEntity) -> bool {
         let p = entity.entity.pos.load();
         let target_pos = target.entity.pos.load();
-        self.set_progress(NavigatorGoal::new(p, target_pos, speed));
+        self.set_progress(NavigatorGoal::to_entity(p, target_pos, speed));
         true
     }
 

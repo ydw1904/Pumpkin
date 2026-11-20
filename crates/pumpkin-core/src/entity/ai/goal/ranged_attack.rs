@@ -142,12 +142,11 @@ impl Goal for RangedAttackGoal {
             if target_dist_sq <= self.attack_radius_sqr && self.see_time >= 5 {
                 navigator.stop();
             } else {
-                navigator.set_progress(NavigatorGoal {
-                    current_progress: mob_pos,
-                    destination: target_pos,
-                    speed: self.speed_modifier,
-                    reach_range: 1,
-                });
+                navigator.set_progress(NavigatorGoal::to_entity(
+                    mob_pos,
+                    target_pos,
+                    self.speed_modifier,
+                ));
             }
         }
 

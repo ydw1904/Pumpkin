@@ -2090,6 +2090,7 @@ impl PiglinRunOneGoal {
                 destination,
                 speed: PiglinAi::SPEED_MULTIPLIER_WHEN_IDLING,
                 reach_range,
+                keep_path_on_failure: false,
             });
         self.walking = true;
     }
