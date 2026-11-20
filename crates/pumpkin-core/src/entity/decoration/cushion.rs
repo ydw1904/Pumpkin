@@ -97,10 +97,7 @@ impl CushionEntity {
             SoundCategory::Blocks,
             &entity.pos.load(),
         );
-        world.drop_stack(
-            &entity.block_pos.load(),
-            ItemStack::new(1, Self::item_for_color(self.color())),
-        );
+        entity.spawn_at_location(ItemStack::new(1, Self::item_for_color(self.color())));
         entity.remove();
     }
 }

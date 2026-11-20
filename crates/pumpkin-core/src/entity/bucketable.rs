@@ -117,7 +117,7 @@ pub fn bucket_mob_pickup(
     if leashed {
         entity.unleash();
         if !entity.is_leashed() {
-            world.drop_stack(&entity.block_pos.load(), ItemStack::new(1, &Item::LEAD));
+            entity.spawn_at_location(ItemStack::new(1, &Item::LEAD));
         }
     }
     entity.remove();

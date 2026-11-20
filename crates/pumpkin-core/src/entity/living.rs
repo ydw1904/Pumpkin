@@ -3682,9 +3682,6 @@ impl LivingEntity {
     /// Vanilla `Mob.dropCustomDeathLoot`: only preserved (picked up) items drop without a player
     /// kill.
     fn drop_equipment(&self, looting_level: u32, killed_by_player: bool) {
-        let world = self.entity.world.load();
-        let block_pos = self.entity.block_pos.load();
-
         let drop_chances = self
             .equipment_drop_chances
             .lock()
@@ -3742,7 +3739,8 @@ impl LivingEntity {
                 let outer = rng.random_range(0..=inner);
                 item.set_damage((max_damage - outer).max(0));
             }
-            world.drop_stack(&block_pos, item);
+            // Vanilla `spawnAtLocation`.
+            self.entity.spawn_at_location(item);
         }
     }
 
@@ -3970,9 +3968,9 @@ impl LivingEntity {
         if let Some(loot_table) = world.get_loot_table(&key) {
             // A seed of 0 rolls from the level's random, like vanilla's `withOptionalRandomSeed`.
             let seed = mob.map_or(0, |mob| mob.death_loot_table_seed.load(Relaxed));
-            let pos = self.entity.block_pos.load();
+            // Vanilla `dropFromLootTable(..., itemStack -> spawnAtLocation(level, itemStack))`.
             for stack in crate::world::loot::generate_loot_from_handle(&loot_table, seed, params) {
-                world.drop_stack(&pos, stack);
+                self.entity.spawn_at_location(stack);
             }
         }
     }

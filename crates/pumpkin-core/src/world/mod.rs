@@ -7702,6 +7702,21 @@ impl World {
         }
     }
 
+    /// Fires `ItemSpawnEvent` for an item entity about to spawn, false if a plugin cancelled it.
+    pub fn fire_item_spawn_event(&self, entity: &Entity, stack: &ItemStack) -> bool {
+        let mut item_event = crate::plugin::api::events::entity::item_spawn::ItemSpawnEvent::new(
+            entity.entity_id,
+            entity.pos.load(),
+            stack.item.registry_key.to_string(),
+        );
+        if let Some(server) = self.server.upgrade() {
+            server
+                .plugin_manager
+                .fire_blocking(&server, &mut item_event);
+        }
+        !item_event.cancelled
+    }
+
     pub fn drop_stack(self: &Arc<Self>, pos: &BlockPos, stack: ItemStack) {
         if stack.is_empty() {
             return;
@@ -7717,27 +7732,17 @@ impl World {
         );
 
         let entity = Entity::new(self.clone(), spawn_pos, &EntityType::ITEM);
-        let mut item_event = crate::plugin::api::events::entity::item_spawn::ItemSpawnEvent::new(
-            entity.entity_id,
-            spawn_pos,
-            stack.item.registry_key.to_string(),
-        );
-        if let Some(server) = self.server.upgrade() {
-            server
-                .plugin_manager
-                .fire_blocking(&server, &mut item_event);
-        }
-        if item_event.cancelled {
+        if !self.fire_item_spawn_event(&entity, &stack) {
             return;
         }
 
         let item_entity = Arc::new(ItemEntity::new(entity, stack));
+        item_entity.set_default_pickup_delay();
         self.spawn_entity(item_entity);
     }
 
     pub fn drop_stack_from_face(
         self: &Arc<Self>,
-        item_entity.set_default_pickup_delay();
         pos: &BlockPos,
         face: BlockDirection,
         stack: ItemStack,
@@ -7802,17 +7807,7 @@ impl World {
         };
 
         let entity = Entity::new(self.clone(), spawn_pos, &EntityType::ITEM);
-        let mut item_event = crate::plugin::api::events::entity::item_spawn::ItemSpawnEvent::new(
-            entity.entity_id,
-            spawn_pos,
-            stack.item.registry_key.to_string(),
-        );
-        if let Some(server) = self.server.upgrade() {
-            server
-                .plugin_manager
-                .fire_blocking(&server, &mut item_event);
-        }
-        if item_event.cancelled {
+        if !self.fire_item_spawn_event(&entity, &stack) {
             return;
         }
 

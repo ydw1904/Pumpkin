@@ -1006,7 +1006,9 @@ impl EntityBase for MinecartEntity {
                     world.scatter_inventory(&position, &inventory);
                     crate::entity::vehicle::chest_vehicle_destroyed(&self.vehicle.entity, source);
                 }
-                world.drop_stack(&position, ItemStack::new(1, self.drop_item()));
+                self.vehicle
+                    .entity
+                    .spawn_at_location(ItemStack::new(1, self.drop_item()));
             }
         }
 

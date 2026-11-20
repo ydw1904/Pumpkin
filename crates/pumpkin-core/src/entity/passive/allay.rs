@@ -611,18 +611,12 @@ impl Mob for AllayEntity {
             ItemStack::EMPTY.clone(),
         );
         if !stack.is_empty() {
-            self.get_entity()
-                .world
-                .load()
-                .drop_stack(&self.get_entity().block_pos.load(), stack);
+            self.get_entity().spawn_at_location(stack);
         }
         let sample = self.sample();
         if !sample.is_empty() {
             if !prevents_equipment_drop(&sample) {
-                self.get_entity()
-                    .world
-                    .load()
-                    .drop_stack(&self.get_entity().block_pos.load(), sample);
+                self.get_entity().spawn_at_location(sample);
             }
             self.set_sample(ItemStack::EMPTY.clone());
         }

@@ -103,7 +103,7 @@ impl ItemBehaviour for FireworkRocketItem {
                 });
                 if is_leashed_to_player {
                     ent.unleash();
-                    world.drop_stack(&ent.block_pos.load(), ItemStack::new(1, &Item::LEAD));
+                    ent.spawn_at_location(ItemStack::new(1, &Item::LEAD));
                     dropped_leash = true;
                 }
             }

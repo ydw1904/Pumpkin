@@ -317,7 +317,7 @@ impl CopperGolemEntity {
             if entity.is_leashed() {
                 entity.unleash();
                 if !entity.is_leashed() && world.level_info.load().game_rules.entity_drops {
-                    world.drop_stack(&pos, ItemStack::new(1, &Item::LEAD));
+                    entity.spawn_at_location(ItemStack::new(1, &Item::LEAD));
                 }
             }
             entity.remove();

@@ -6568,10 +6568,11 @@ impl Entity {
             return None;
         }
         let world = self.world.load();
-        let item_entity = Arc::new(ItemEntity::new(
-            Self::new(world.clone(), self.pos.load() + offset, &EntityType::ITEM),
-            stack,
-        ));
+        let entity = Self::new(world.clone(), self.pos.load() + offset, &EntityType::ITEM);
+        if !world.fire_item_spawn_event(&entity, &stack) {
+            return None;
+        }
+        let item_entity = Arc::new(ItemEntity::new(entity, stack));
         item_entity.set_default_pickup_delay();
         world.spawn_entity(item_entity.clone());
         Some(item_entity)
