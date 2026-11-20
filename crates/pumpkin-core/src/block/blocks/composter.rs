@@ -168,11 +168,12 @@ impl ComposterBlock {
         location: &BlockPos,
     ) -> BlockStateId {
         let block = Block::from_state_id(state_id);
+        // Vanilla `atLowerCornerWithOffset(pos, 0.5, 1.01, 0.5).offsetRandomXZ(random, 0.7F)`.
         let item_position = {
             let rng = game_random();
             location.to_centered_f64().add_raw(
                 rng.random_range(-0.35..=0.35),
-                rng.random_range(-0.35..=0.35) + 0.51,
+                0.51,
                 rng.random_range(-0.35..=0.35),
             )
         };
