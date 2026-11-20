@@ -2,7 +2,7 @@ use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
-use pumpkin_data::sound::{Sound, SoundCategory};
+use pumpkin_data::sound::Sound;
 use pumpkin_util::{Difficulty, Hand};
 use std::sync::Arc;
 
@@ -11,6 +11,7 @@ use crate::entity::ai::pathfinder::NavigatorGoal;
 use crate::entity::mob::Mob;
 use crate::entity::projectile::arrow::{ArrowEntity, ArrowPickup};
 use crate::entity::{Entity, EntityBase};
+use crate::item::items::bow::BowItem;
 
 /// Ranged bow attack used by skeletons and their variants.
 /// Mirrors vanilla `RangedBowAttackGoal`: the mob keeps its distance, draws the bow
@@ -95,7 +96,7 @@ impl BowAttackGoal {
     }
 
     /// Spawns the arrow, matching vanilla `AbstractSkeleton::performRangedAttack`.
-    fn shoot(mob: &dyn Mob, target: &Arc<dyn EntityBase>) {
+    fn shoot(mob: &dyn Mob, target: &Arc<dyn EntityBase>, power: f32) {
         let entity = mob.get_entity();
         let world = entity.world.load();
         let world_full = entity.world.load_full();
@@ -111,14 +112,11 @@ impl BowAttackGoal {
             ArrowPickup::Disallowed,
         );
 
-        // Vanilla scales base damage with power and world difficulty
+        // Vanilla `getMobArrow`: base damage from the draw power and the world difficulty.
         let difficulty = world.level_info.load().difficulty as i32;
-        arrow.set_base_damage_from_mob(Self::ARROW_SPEED, difficulty);
+        arrow.set_base_damage_from_mob(f64::from(power), difficulty);
         let arrow = mob.get_arrow(arrow);
         arrow.apply_on_projectile_spawned(&projectile);
-        if entity.is_on_fire() {
-            arrow.set_flame(true);
-        }
 
         let mob_pos = entity.pos.load();
         let target_entity = target.get_entity();
@@ -141,8 +139,6 @@ impl BowAttackGoal {
             divergence,
         );
 
-        world.play_sound(Sound::EntityArrowShoot, SoundCategory::Hostile, &mob_pos);
-
         let arrow: Arc<dyn EntityBase> = Arc::new(arrow);
         let entity_id = entity.entity_id;
         if let Some(server) = world_full.server.upgrade() {
@@ -150,7 +146,7 @@ impl BowAttackGoal {
                 crate::plugin::api::events::entity::entity_shoot_bow::EntityShootBowEvent::new(
                     entity_id,
                     "minecraft:bow".to_string(),
-                    1.0,
+                    power,
                 );
             server.plugin_manager.fire_blocking(&server, &mut event);
             if event.cancelled {
@@ -158,6 +154,8 @@ impl BowAttackGoal {
             }
         }
         world_full.spawn_entity(arrow);
+        let pitch = 1.0 / mob.get_random().random::<f32>().mul_add(0.4, 0.8);
+        mob.play_entity_sound(Sound::EntitySkeletonShoot, 1.0, pitch);
     }
 }
 
@@ -253,15 +251,15 @@ impl Goal for BowAttackGoal {
             .look_at_entity_with_range(&target, 30.0, 30.0);
 
         if self.drawing {
+            // Vanilla `getTicksUsingItem`: the draw keeps counting while the target is hidden.
+            self.draw_ticks += 1;
             if !has_line_of_sight && self.see_time < -60 {
                 self.stop_drawing(mob);
-            } else if has_line_of_sight {
-                self.draw_ticks += 1;
-                if self.draw_ticks >= Self::DRAW_TIME {
-                    self.stop_drawing(mob);
-                    Self::shoot(mob, &target);
-                    self.attack_time = self.min_attack_interval(mob);
-                }
+            } else if has_line_of_sight && self.draw_ticks >= Self::DRAW_TIME {
+                let power = BowItem::get_power_for_time(self.draw_ticks);
+                self.stop_drawing(mob);
+                Self::shoot(mob, &target, power);
+                self.attack_time = self.min_attack_interval(mob);
             }
         } else {
             self.attack_time -= 1;

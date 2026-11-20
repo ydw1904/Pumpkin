@@ -10,6 +10,20 @@ bot._client.on('entity_velocity', (p) => {
   if (p.entityId === bot.entity.id) velocities.push({ t: Date.now(), kb: Math.hypot(p.velocity.x, p.velocity.z) })
 })
 let firstHit = null
+// Raw sound ids heard within 100 ms of an arrow appearing: vanilla plays entity.skeleton.shoot
+// as it releases (mineflayer's 26.3 sound names are off, so ids are compared).
+const shootSounds = new Set()
+const sounds = []
+let arrowSeen = 0
+bot.on('entitySpawn', (e) => { if (e.name === 'arrow') arrowSeen = Date.now() })
+bot._client.on('sound_effect', (p) => {
+  const s = p.sound
+  sounds.push({ t: Date.now(), id: s && s.data ? s.data.soundName : String(s ? s.soundId : p.soundId) })
+})
+const collectShootSounds = () => {
+  for (const s of sounds) if (arrowSeen && Math.abs(s.t - arrowSeen) < 100) shootSounds.add(s.id)
+  sounds.length = 0
+}
 bot.on('health', () => {
   if (firstHit && firstHit.damage === null && bot.health < firstHit.before) {
     firstHit.damage = firstHit.before - bot.health
@@ -35,9 +49,15 @@ h.start(async () => {
     await h.ticks(10)
     // The strongest push the bot was sent around the hit: hurt knockback alone is about 0.4.
     const kb = Math.max(0, ...velocities.filter((v) => Math.abs(v.t - firstHit.t) < 1000).map((v) => v.kb))
-    // The damage has a random part (`setBaseDamageFromMob`), so only the range is compared.
-    h.result(`${label}.damage`, hit ? (firstHit.damage >= 7 ? 'high' : 'low') : 'no_hit')
+    // The damage has a random part (`setBaseDamageFromMob`), so only the range is compared. A
+    // full draw is power 1: base 2 plus the triangle roll, at most 5 damage without Power.
+    const band = (d) => d >= 7 ? 'high' : d >= 6 ? 'mid' : 'low'
+    h.result(`${label}.damage`, hit ? band(firstHit.damage) : 'no_hit')
     h.result(`${label}.knockback`, !hit ? 'none' : kb > 1.0 ? 'strong' : 'normal')
+    collectShootSounds()
+    h.result(`${label}.shoot_sound`, [...shootSounds].sort().join(',') || 'none')
+    shootSounds.clear()
+    arrowSeen = 0
     firstHit = null
     await h.ticks(20)
   }
