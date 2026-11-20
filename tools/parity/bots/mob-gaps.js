@@ -1,7 +1,7 @@
 // Mob and item behaviour that shows in entity data and positions: health read from NBT,
 // axolotls drying out on land, bounces off slime blocks, dispensed shears cutting leashes and
 // emptying beehives, spawn egg babies taking the parent's variant, drowning, wolf variants and
-// taming health, players emptying beehives, and the Peaceful despawn.
+// taming health, players emptying beehives, a creeper killed mid-fuse, and the Peaceful despawn.
 const { make } = require('./survival-lib')
 const h = make('Gaps')
 const { bot } = h
@@ -57,6 +57,15 @@ h.start(async () => {
   await h.serverTicks(480)
   h.result('bright_despawn', `summoned=${penned} despawned_any=${named('creeper').length < penned}`)
   h.cmd(`kill @e[type=creeper]`)
+
+  // A creeper killed mid-fuse stops swelling: its death animation leaves the floor whole.
+  h.cmd(`fill ${PX - 1} ${Y} ${Z - 1} ${PX + 1} ${Y} ${Z + 1} stone`)
+  await h.ticks(25)
+  h.cmd(`summon creeper ${PX + 0.5} ${Y + 1} ${Z + 0.5} {ignited:1b,Fuse:30s,NoAI:1b,Silent:1b}`)
+  await h.ticks(20)
+  h.cmd(`kill @e[type=creeper]`)
+  await h.ticks(40)
+  h.result('dying_creeper.floor', h.blockName(PX, Y, Z))
   h.cmd(`fill ${PX - 3} ${Y} ${Z - 3} ${PX + 3} ${Y + 3} ${Z + 3} air`)
 
   // Health a summon reads from its NBT reaches the client.
