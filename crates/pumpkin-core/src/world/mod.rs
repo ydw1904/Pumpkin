@@ -558,13 +558,29 @@ impl World {
                 .into_iter()
                 .map(|(x, z)| Vector2::new(x, z))
                 .collect();
-        if !forced_chunks.is_empty() {
+        // Vanilla `TicketStorage` keeps portal tickets across restarts with the ticks they
+        // have left.
+        let timed_tickets: FxHashMap<(Vector2<i32>, TimedTicketType), i64> =
+            pumpkin_world::world_info::data_files::read_portal_tickets(&data_dir)
+                .into_iter()
+                .map(|(x, z, ticks_left)| {
+                    ((Vector2::new(x, z), TimedTicketType::Portal), ticks_left)
+                })
+                .collect();
+        if !forced_chunks.is_empty() || !timed_tickets.is_empty() {
+            use pumpkin_world::chunk_system::ChunkLoading;
             let mut chunk_loading = level
                 .chunk_loading
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             for pos in &forced_chunks {
                 chunk_loading.add_force_ticket(*pos);
+            }
+            for &(pos, ticket_type) in timed_tickets.keys() {
+                chunk_loading.add_ticket(
+                    pos,
+                    ChunkLoading::FULL_CHUNK_LEVEL - ticket_type.radius() as i8,
+                );
             }
             chunk_loading.send_change();
         }
@@ -613,7 +629,7 @@ impl World {
             tick_spawns: std::sync::Mutex::new(Vec::new()),
             active_chunk_tracker: std::sync::Mutex::new(ActiveChunkTracker::default()),
             forced_chunks: std::sync::Mutex::new(forced_chunks),
-            timed_tickets: std::sync::Mutex::default(),
+            timed_tickets: std::sync::Mutex::new(timed_tickets),
             server,
             block_entities: DashMap::with_shard_amount(TICK_SCANNED_MAP_SHARDS),
             block_listeners: game_event::BlockListenerRegistry::default(),
@@ -967,7 +983,7 @@ impl World {
             self.save_block_entities(chunk_pos);
         }
         self.save_world_border();
-        self.save_forced_chunks();
+        self.save_chunk_tickets();
         self.save_raids();
         self.save_dragon_fight();
 
@@ -1052,8 +1068,9 @@ impl World {
         }
     }
 
-    /// Vanilla keeps `/forceload` chunks in each dimension's `chunk_tickets.dat`.
-    fn save_forced_chunks(&self) {
+    /// Vanilla keeps the persistent tickets, `/forceload` chunks and portal tickets, in each
+    /// dimension's `chunk_tickets.dat`.
+    fn save_chunk_tickets(&self) {
         let forced: Vec<(i32, i32)> = self
             .forced_chunks
             .lock()
@@ -1061,15 +1078,24 @@ impl World {
             .iter()
             .map(|pos| (pos.x, pos.y))
             .collect();
+        let portal: Vec<(i32, i32, i64)> = self
+            .timed_tickets
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .filter(|((_, ticket_type), _)| *ticket_type == TimedTicketType::Portal)
+            .map(|(&(pos, _), &ticks_left)| (pos.x, pos.y, ticks_left))
+            .collect();
         let data_dir = pumpkin_world::world_info::data_files::minecraft_data_dir(
             &self.level.level_folder.dim_folder,
         );
-        if let Err(e) = pumpkin_world::world_info::data_files::write_forced_chunks(
+        if let Err(e) = pumpkin_world::world_info::data_files::write_chunk_tickets(
             &data_dir,
             forced,
+            portal,
             pumpkin_world::world_info::MAXIMUM_SUPPORTED_WORLD_DATA_VERSION,
         ) {
-            error!("Failed to save the forced chunks: {e}");
+            error!("Failed to save the chunk tickets: {e}");
         }
     }
 
@@ -9454,7 +9480,7 @@ impl World {
             self.save_block_entities(chunk_pos);
         }
         self.save_world_border();
-        self.save_forced_chunks();
+        self.save_chunk_tickets();
         self.save_raids();
         self.save_dragon_fight();
 

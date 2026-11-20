@@ -695,6 +695,9 @@ pub fn write_world_border(
 const FORCED_TICKET_TYPE: &str = "minecraft:forced";
 /// Vanilla `ChunkMap.FORCED_TICKET_LEVEL`, `ChunkLevel.byStatus(ENTITY_TICKING)`.
 const FORCED_TICKET_LEVEL: i32 = 31;
+const PORTAL_TICKET_TYPE: &str = "minecraft:portal";
+/// Vanilla `Entity.placePortalTicket` adds the ticket with radius 3, `ChunkLevel.byStatus(FULL) - 3`.
+const PORTAL_TICKET_LEVEL: i32 = 30;
 
 fn read_chunk_tickets(data_dir: &Path) -> Vec<NbtTag> {
     let path = data_dir.join("chunk_tickets.dat");
@@ -715,11 +718,15 @@ fn read_chunk_tickets(data_dir: &Path) -> Vec<NbtTag> {
         .unwrap_or_default()
 }
 
-fn is_forced_ticket(ticket: &NbtTag) -> bool {
+fn is_ticket_of_type(ticket: &NbtTag, ticket_type: &str) -> bool {
     ticket
         .extract_compound()
         .and_then(|t| t.get_string("type"))
-        .is_some_and(|ty| ty == FORCED_TICKET_TYPE)
+        .is_some_and(|ty| ty == ticket_type)
+}
+
+fn is_forced_ticket(ticket: &NbtTag) -> bool {
+    is_ticket_of_type(ticket, FORCED_TICKET_TYPE)
 }
 
 /// The chunks a dimension's `chunk_tickets.dat` keeps loaded with `/forceload`.
@@ -737,21 +744,54 @@ pub fn read_forced_chunks(data_dir: &Path) -> Vec<(i32, i32)> {
         .collect()
 }
 
-/// Saves the forced chunks into `chunk_tickets.dat`, keeping tickets of other types.
-pub fn write_forced_chunks(
+/// The portal tickets in a dimension's `chunk_tickets.dat`, with the ticks they have left.
+#[must_use]
+pub fn read_portal_tickets(data_dir: &Path) -> Vec<(i32, i32, i64)> {
+    read_chunk_tickets(data_dir)
+        .iter()
+        .filter(|ticket| is_ticket_of_type(ticket, PORTAL_TICKET_TYPE))
+        .filter_map(|ticket| {
+            let ticket = ticket.extract_compound()?;
+            let &[x, z] = ticket.get_int_array("chunk_pos")? else {
+                return None;
+            };
+            Some((x, z, ticket.get_long("ticks_left").unwrap_or(0)))
+        })
+        .collect()
+}
+
+/// Saves the forced chunks and portal tickets (vanilla's persistent ticket types) into
+/// `chunk_tickets.dat`, keeping tickets of other types.
+pub fn write_chunk_tickets(
     data_dir: &Path,
     forced: impl IntoIterator<Item = (i32, i32)>,
+    portal: impl IntoIterator<Item = (i32, i32, i64)>,
     data_version: i32,
 ) -> Result<(), WorldInfoError> {
     let mut tickets: Vec<NbtTag> = read_chunk_tickets(data_dir)
         .into_iter()
-        .filter(|ticket| !is_forced_ticket(ticket))
+        .filter(|ticket| {
+            !is_forced_ticket(ticket) && !is_ticket_of_type(ticket, PORTAL_TICKET_TYPE)
+        })
         .collect();
-    for (x, z) in forced {
+    let ticket = |x: i32, z: i32, level: i32, ticket_type: &str| {
         let mut ticket = NbtCompound::new();
         ticket.put("chunk_pos", NbtTag::IntArray(vec![x, z]));
-        ticket.put_int("level", FORCED_TICKET_LEVEL);
-        ticket.put_string("type", FORCED_TICKET_TYPE.to_string());
+        ticket.put_int("level", level);
+        ticket.put_string("type", ticket_type.to_string());
+        ticket
+    };
+    for (x, z) in forced {
+        tickets.push(NbtTag::Compound(ticket(
+            x,
+            z,
+            FORCED_TICKET_LEVEL,
+            FORCED_TICKET_TYPE,
+        )));
+    }
+    for (x, z, ticks_left) in portal {
+        let mut ticket = ticket(x, z, PORTAL_TICKET_LEVEL, PORTAL_TICKET_TYPE);
+        ticket.put_long("ticks_left", ticks_left);
         tickets.push(NbtTag::Compound(ticket));
     }
     fs::create_dir_all(data_dir)?;
@@ -916,9 +956,10 @@ pub fn write_saved_data(
 mod tests {
     use super::*;
 
-    /// Forced chunks set in vanilla stay forced, and other ticket types in the file survive.
+    /// Forced chunks and portal tickets set in vanilla load, and other ticket types in the file
+    /// survive.
     #[test]
-    fn forced_chunks_round_trip_and_keep_other_tickets() {
+    fn chunk_tickets_round_trip_and_keep_other_tickets() {
         let dir = tempfile::tempdir().unwrap();
         let ticket = |x: i32, z: i32, ty: &str| {
             let mut ticket = NbtCompound::new();
@@ -933,7 +974,15 @@ mod tests {
             "tickets",
             vec![
                 ticket(10, 10, "minecraft:forced"),
-                ticket(3, 4, "minecraft:portal"),
+                ticket(3, 4, "minecraft:unknown"),
+                {
+                    let mut portal = NbtCompound::new();
+                    portal.put("chunk_pos", NbtTag::IntArray(vec![-7, 2]));
+                    portal.put_int("level", 30);
+                    portal.put_long("ticks_left", 212);
+                    portal.put_string("type", "minecraft:portal".to_string());
+                    NbtTag::Compound(portal)
+                },
             ],
         );
         let mut root = NbtCompound::new();
@@ -943,9 +992,11 @@ mod tests {
         pumpkin_nbt::nbt_compress::write_gzip_compound_tag(root, file).unwrap();
 
         assert_eq!(read_forced_chunks(dir.path()), [(10, 10)]);
+        assert_eq!(read_portal_tickets(dir.path()), [(-7, 2, 212)]);
 
-        write_forced_chunks(dir.path(), [(1, 2)], 5023).unwrap();
+        write_chunk_tickets(dir.path(), [(1, 2)], [(5, 6, 299)], 5023).unwrap();
         assert_eq!(read_forced_chunks(dir.path()), [(1, 2)]);
-        assert!(read_chunk_tickets(dir.path()).contains(&ticket(3, 4, "minecraft:portal")));
+        assert_eq!(read_portal_tickets(dir.path()), [(5, 6, 299)]);
+        assert!(read_chunk_tickets(dir.path()).contains(&ticket(3, 4, "minecraft:unknown")));
     }
 }
