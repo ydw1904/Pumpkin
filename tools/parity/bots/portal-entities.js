@@ -2,7 +2,8 @@
 // falling block and primed TNT go through vanilla `handlePortal` and arrive at the exit portal.
 // The exit portal is turned 90 degrees, so the arrow's motion turns with it (`ROTATE_DELTA`).
 // The falling block floats: one landing in the exit portal drops an item that travels back.
-// An item teleported onto another merges with it at once.
+// An item teleported onto another merges with it at once. A survival player walks in and stands
+// still until the portal delay sends them through.
 // pumpkin-settings: allow_nether=true
 const { make } = require('./survival-lib')
 const h = make('Portaler')
@@ -64,8 +65,19 @@ h.start(async () => {
   h.result('left_overworld', types.map(n => `${n}=${near(n, X + 1, Y + 3, Z, 10).length}`).join(','))
   h.result('overworld_items', near('item', X + 1, Y + 3, Z, 10).map(itemName).sort().join(',') || 'none')
 
-  h.cmd(`tp ${bot.username} ${X + 0.5} ${Y + 2} ${Z + 0.5}`)
-  await h.waitFor(() => dimName() === 'the_nether', 30000)
+  // A survival player walks into the portal and stands still in it.
+  fill('overworld', [X, Y + 1, Z - 3], [X + 1, Y + 1, Z - 1], 'stone')
+  await h.waitFor(() => h.blockName(X, Y + 1, Z - 3) === 'stone', 5000)
+  h.cmd(`tp ${bot.username} ${X + 0.5} ${Y + 2} ${Z - 2.5}`)
+  await h.ticks(20)
+  await bot.lookAt(new Vec3(X + 0.5, Y + 2.6, Z + 5), true)
+  bot.setControlState('forward', true)
+  await h.waitFor(() => bot.entity.position.z > Z + 0.3, 5000)
+  bot.setControlState('forward', false)
+  const start = bot.time.age
+  const walked = await h.waitFor(() => dimName() === 'the_nether', 30000)
+  const age = Number(bot.time.age - start)
+  h.result('walk_in', walked ? (age >= 80 && age < 120 ? '80-119' : age) : `stayed z=${bot.entity.position.z.toFixed(2)}`)
   await h.waitFor(() => bot.entity && bot.entity.position && h.chunksLoaded(), 60000)
   await h.ticks(40)
   h.result('nether_dim', dimName())
