@@ -589,12 +589,14 @@ impl Level {
         gameplay::block_random_pos(&self.rand_value, x, y, z, y_mask)
     }
 
-    /// One chunk's part of vanilla `ServerLevel.tickChunk`: precipitation positions and random
-    /// tick samples.
+    /// One chunk's part of vanilla `ServerLevel.tickChunk`: appends its precipitation positions
+    /// and random tick samples.
     fn random_tick_samples(
         chunk: &ChunkData,
         samples_per_section: i64,
-    ) -> (Vec<BlockPos>, Vec<RandomTickSample>) {
+        precipitation: &mut Vec<BlockPos>,
+        samples: &mut Vec<RandomTickSample>,
+    ) {
         // Vanilla `ServerLevel.tickChunk`, which the RNG lockdown keys by chunk.
         let _owner = gameplay::is_locked_down()
             .then(|| gameplay::OwnerScope::enter(format!("chunk@{},{}", chunk.x, chunk.z)));
@@ -608,8 +610,6 @@ impl Level {
         let random_pos = |x, y, z, y_mask| gameplay::block_random_pos(&rand_value, x, y, z, y_mask);
         let chunk_x_base = chunk.x * 16;
         let chunk_z_base = chunk.z * 16;
-        let mut precipitation = Vec::new();
-        let mut samples = Vec::new();
 
         for _ in 0..samples_per_section {
             if gameplay::game_random().next_bounded_i32(48) == 0 {
@@ -651,7 +651,6 @@ impl Level {
                 }
             }
         }
-        (precipitation, samples)
     }
 
     /// Collects this tick's random ticks and precipitation from `entity_ticking` chunks, and its
@@ -666,9 +665,10 @@ impl Level {
     ) -> TickData {
         let samples_per_section = random_tick_speed.max(0);
 
-        // 1. Random ticks and precipitation. Chunks sample in parallel; each chunk keeps its own
-        // samples in order.
-        let per_chunk: Vec<(Vec<BlockPos>, Vec<RandomTickSample>)> = entity_ticking
+        // 1. Random ticks and precipitation. Chunks sample in parallel; the samples stay in set
+        // order, and each chunk's in its own order. Each chunk reads several cold cache lines,
+        // so unlike the light steps this one is worth every pool thread.
+        let (precipitation, random_ticks) = entity_ticking
             .par_iter()
             .filter(|pos| ticking.contains(pos) && self.is_chunk_ticking_ready(pos))
             .filter_map(|pos| {
@@ -676,20 +676,32 @@ impl Level {
                     .get(pos)
                     .map(|chunk| chunk.value().clone())
             })
-            .map(|chunk| Self::random_tick_samples(&chunk, samples_per_section))
-            .collect();
+            .fold(
+                || (Vec::new(), Vec::new()),
+                |(mut precipitation, mut samples), chunk| {
+                    Self::random_tick_samples(
+                        &chunk,
+                        samples_per_section,
+                        &mut precipitation,
+                        &mut samples,
+                    );
+                    (precipitation, samples)
+                },
+            )
+            .reduce(
+                || (Vec::new(), Vec::new()),
+                |(mut precipitation, mut samples), (mut more_precipitation, mut more_samples)| {
+                    precipitation.append(&mut more_precipitation);
+                    samples.append(&mut more_samples);
+                    (precipitation, samples)
+                },
+            );
         let mut ticks = TickData {
             block_ticks: Vec::new(),
             fluid_ticks: Vec::new(),
-            random_ticks: Vec::with_capacity(
-                per_chunk.iter().map(|(_, samples)| samples.len()).sum(),
-            ),
-            precipitation: Vec::new(),
+            random_ticks,
+            precipitation,
         };
-        for (precipitation, samples) in per_chunk {
-            ticks.precipitation.extend(precipitation);
-            ticks.random_ticks.extend(samples);
-        }
 
         // 2. Process chunks with scheduled ticks
         // We collect keys first to avoid holding DashSet shard lock while accessing loaded_chunks (deadlock risk)
