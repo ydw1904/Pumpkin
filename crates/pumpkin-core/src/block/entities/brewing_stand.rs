@@ -310,7 +310,9 @@ impl BrewingStandBlockEntity {
         }
 
         if let Some(remainder) = dropped_remainder {
-            world.drop_stack(&self.position, remainder);
+            // Vanilla `Containers.dropItemStack`.
+            let pos = self.position.to_f64();
+            world.scatter_stack(pos.x, pos.y, pos.z, remainder);
         }
 
         if !ingredient_used {
@@ -431,7 +433,9 @@ impl BrewingStandBlockEntity {
         };
 
         if let Some(remainder) = dropped_remainder {
-            world.drop_stack(&self.position, remainder);
+            // Vanilla `Containers.dropItemStack`.
+            let pos = self.position.to_f64();
+            world.scatter_stack(pos.x, pos.y, pos.z, remainder);
         }
 
         refilled

@@ -521,18 +521,14 @@ macro_rules! impl_block_entity_for_cooking {
                                             if items_guard[1].is_empty() {
                                                 items_guard[1] = remainder_stack;
                                             } else {
-                                                let pos = self.position.to_centered_f64();
-                                                let entity = $crate::entity::Entity::new(
-                                                    world.clone(),
-                                                    pos,
-                                                    &pumpkin_data::entity::EntityType::ITEM,
+                                                // Vanilla `Containers.dropItemStack`.
+                                                let pos = self.position.to_f64();
+                                                world.scatter_stack(
+                                                    pos.x,
+                                                    pos.y,
+                                                    pos.z,
+                                                    remainder_stack,
                                                 );
-                                                world.spawn_entity(std::sync::Arc::new(
-                                                    $crate::entity::item::ItemEntity::new(
-                                                        entity,
-                                                        remainder_stack,
-                                                    ),
-                                                ));
                                             }
                                         }
                                     }

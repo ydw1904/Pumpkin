@@ -32,8 +32,10 @@ impl BlockEntity for DecoratedPotBlockEntity {
     }
 
     fn on_block_replaced(self: Arc<Self>, world: &Arc<World>, position: &BlockPos) {
+        // Vanilla `Containers.dropContents` from `BlockEntity.preRemoveSideEffects`.
         if let Some(item) = self.take_item() {
-            world.drop_stack(position, item);
+            let pos = position.to_f64();
+            world.scatter_stack(pos.x, pos.y, pos.z, item);
         }
     }
 
