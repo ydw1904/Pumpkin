@@ -96,8 +96,9 @@ fn burn(mob: &dyn Mob) {
 
 /// Daylight burning, once per tick for every mob.
 pub fn tick(mob: &dyn Mob) {
-    let entity = &mob.get_mob_entity().living_entity.entity;
-    if !entity.is_alive() || !mob.burns_in_daylight() {
+    let living = &mob.get_mob_entity().living_entity;
+    let entity = &living.entity;
+    if !living.is_alive() || !mob.burns_in_daylight() {
         return;
     }
     if is_sun_burn_tick(entity) {
