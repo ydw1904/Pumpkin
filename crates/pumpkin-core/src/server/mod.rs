@@ -1749,10 +1749,11 @@ impl Server {
             world.flush_block_updates();
 
             let players = world.players.load();
-            players.par_iter().for_each(|player| {
+            let batch = pumpkin_world::tick_step_min_len(players.len(), 1);
+            players.par_iter().with_min_len(batch).for_each(|player| {
                 player.process_inbound_packets();
             });
-            players.par_iter().for_each(|player| {
+            players.par_iter().with_min_len(batch).for_each(|player| {
                 player.tick(self);
                 player.send_tick_stats();
             });

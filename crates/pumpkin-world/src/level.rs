@@ -701,6 +701,7 @@ impl Level {
         // Each chunk steps its own schedulers, so they step in parallel; the ticks are sorted below.
         let stepped: Vec<_> = scheduled_chunk_pos
             .par_iter()
+            .with_min_len(crate::tick_step_min_len(scheduled_chunk_pos.len(), 1))
             .filter(|pos| ticking.contains(pos) && self.is_chunk_ticking_ready(pos))
             .map(|pos| {
                 let stepped = self.loaded_chunks.get(pos).map(|chunk| {

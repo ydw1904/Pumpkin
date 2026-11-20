@@ -37,6 +37,21 @@ pub const CURRENT_MC_DATA_VERSION: i32 = 5023;
 pub const CURRENT_BEDROCK_MC_VERSION: &str = "1.26.63";
 pub const CURRENT_BEDROCK_MC_PROTOCOL: u32 = 2225;
 
+/// Most rayon jobs a light parallel step of the tick splits into.
+///
+/// Each job can wake a sleeping pool thread, and a woken thread searches every other thread's
+/// queue many times before it sleeps again. On a large pool that costs far more than splitting a
+/// cheap step further saves.
+pub const MAX_TICK_STEP_JOBS: usize = 16;
+
+/// The fewest items a rayon job takes in a parallel tick step over `len` items, when a job is
+/// worth at least `min` items.
+#[must_use]
+pub const fn tick_step_min_len(len: usize, min: usize) -> usize {
+    let bounded = len.div_ceil(MAX_TICK_STEP_JOBS);
+    if bounded > min { bounded } else { min }
+}
+
 #[macro_export]
 macro_rules! global_path {
     ($path:expr) => {{

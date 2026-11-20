@@ -168,6 +168,7 @@ use pumpkin_util::{
     math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3},
 };
 use pumpkin_world::chunk::CHUNK_WIDTH;
+use pumpkin_world::tick_step_min_len;
 use pumpkin_world::world::{GetBlockError, WorldPortalExt};
 use pumpkin_world::world_info::OVERWORLD_CLOCK;
 use pumpkin_world::{
@@ -2236,9 +2237,13 @@ impl World {
         // Vanilla `processPacketsAndTick` handles queued player packets before the level tick
         // advances time and runs scheduled ticks, so a player's action lands a tick earlier than
         // it would with the rest of `Player::tick`.
-        self.players.load().par_iter().for_each(|player| {
-            player.process_inbound_packets();
-        });
+        let players = self.players.load();
+        players
+            .par_iter()
+            .with_min_len(tick_step_min_len(players.len(), 1))
+            .for_each(|player| {
+                player.process_inbound_packets();
+            });
         if server.tick_rate_manager.runs_normally() {
             self.purge_stale_tickets();
         }
@@ -2277,9 +2282,12 @@ impl World {
         for player in players.iter() {
             player.send_hurt_velocity_before_travel();
         }
-        players.par_iter().for_each(|player| {
-            player.tick(server);
-        });
+        players
+            .par_iter()
+            .with_min_len(tick_step_min_len(player_count, 1))
+            .for_each(|player| {
+                player.tick(server);
+            });
         self.encoded_chunk_cache.clear();
         // Vanilla `ServerPlayer.pushEntities`: one player after another, not while frozen
         if server.tick_rate_manager.runs_normally() {
@@ -2313,16 +2321,22 @@ impl World {
                 get_section_cord(pos.z.floor() as i32),
             )
         };
-        let entity_ticking_ready: FxHashSet<_> = entities_to_tick
+        let entity_scan_batch = tick_step_min_len(entity_count, ENTITY_SCAN_BATCH);
+        let entity_chunks: Vec<_> = entities_to_tick
             .par_iter()
-            .with_min_len(ENTITY_SCAN_BATCH)
+            .with_min_len(entity_scan_batch)
             .map(|entity| block_chunk(entity.get_entity().pos.load()))
             .collect::<FxHashSet<_>>()
-            .into_par_iter()
+            .into_iter()
+            .collect();
+        let entity_ticking_ready: FxHashSet<_> = entity_chunks
+            .par_iter()
+            .with_min_len(tick_step_min_len(entity_chunks.len(), 1))
             .filter(|chunk| {
-                active_chunks.ticking.contains(chunk)
+                active_chunks.ticking.contains(*chunk)
                     && level_for_entities.is_chunk_entity_ticking_ready(chunk)
             })
+            .copied()
             .collect();
         // Vanilla `ServerLevel.tick` keeps entities whose chunk can entity tick in its tick list,
         // and ticks those in entity ticking range. The entity ticking promotion is a main thread
@@ -2331,7 +2345,7 @@ impl World {
         // always ticks.
         let (tickable, frozen): (Vec<_>, Vec<_>) = entities_to_tick
             .par_iter()
-            .with_min_len(ENTITY_SCAN_BATCH)
+            .with_min_len(entity_scan_batch)
             .filter_map(|entity| {
                 let entity_chunk = block_chunk(entity.get_entity().pos.load());
                 if !entity_ticking_ready.contains(&entity_chunk) {
@@ -2516,7 +2530,8 @@ impl World {
         let block_entity_count = block_entities.len();
 
         let t_be = std::time::Instant::now();
-        block_entities.par_chunks(16).for_each(|batch| {
+        let batch = tick_step_min_len(block_entity_count, 16);
+        block_entities.par_chunks(batch).for_each(|batch| {
             for be in batch {
                 // Vanilla's ticking wrapper skips a block entity whose block no longer owns
                 // it. Without this, a leftover (say, a daylight detector under a `fill` of
@@ -2995,18 +3010,19 @@ impl World {
         // Vanilla `ChunkMap.collectSpawningChunks` takes
         // the spawn candidates that tick and have a player within 128 blocks, and ticks them even
         // when no category can spawn, for thunder and inhabited time.
-        let mut spawning_chunks: Vec<_> = active_chunks
-            .spawn_candidates
+        let candidates: Vec<_> = active_chunks.spawn_candidates.iter().collect();
+        let mut spawning_chunks: Vec<_> = candidates
             .par_iter()
+            .with_min_len(tick_step_min_len(candidates.len(), 1))
             .filter(|pos| {
-                active_chunks.ticking.contains(*pos)
-                    && spawn_state.any_player_close_enough_for_spawning(**pos)
+                active_chunks.ticking.contains(**pos)
+                    && spawn_state.any_player_close_enough_for_spawning(***pos)
                     && self.level.is_chunk_ticking_ready(pos)
             })
             .filter_map(|pos| {
                 self.level
                     .read_chunk_sync(pos, std::clone::Clone::clone)
-                    .map(|chunk| (*pos, chunk))
+                    .map(|chunk| (**pos, chunk))
             })
             .collect();
 
@@ -3016,7 +3032,7 @@ impl World {
         let weather = (self.is_raining(), self.is_thundering());
         let decided: Vec<_> = spawning_chunks
             .par_iter()
-            .with_min_len(8)
+            .with_min_len(tick_step_min_len(spawning_chunks.len(), 8))
             .map(|(pos, chunk)| {
                 chunk.inhabited_time.fetch_add(1, Relaxed);
                 let entity_ticking = active_chunks.entity_ticking.contains(pos);
@@ -3058,16 +3074,20 @@ impl World {
         // Parallel random ticks. Chunks tick in parallel, but each chunk's samples
         // run in order on one thread, like vanilla's `ServerLevel.tickChunk`.
         let world = self.clone();
-        tick_data
+        let chunk_samples: Vec<_> = tick_data
             .random_ticks
-            .par_chunk_by(|a, b| a.position.chunk_position() == b.position.chunk_position())
+            .chunk_by(|a, b| a.position.chunk_position() == b.position.chunk_position())
+            .collect();
+        chunk_samples
+            .par_iter()
+            .with_min_len(tick_step_min_len(chunk_samples.len(), 1))
             .for_each(|samples| {
                 let world = world.clone();
                 let _owner = gameplay::is_locked_down().then(|| {
                     let chunk = samples[0].position.chunk_position();
                     gameplay::OwnerScope::enter(format!("chunk@{},{}", chunk.x, chunk.y))
                 });
-                for scheduled_tick in samples {
+                for scheduled_tick in *samples {
                     let pos = scheduled_tick.position;
                     let (block, fluid) =
                         match (scheduled_tick.tick_block, scheduled_tick.tick_fluid) {

@@ -366,10 +366,13 @@ impl SpawnState {
     ) -> Self {
         // Reading the entities is the slow part, so it runs in parallel; the counts are added up
         // in list order afterwards.
+        let entities = entities.load();
         let candidates: Vec<_> = entities
-            .load()
             .par_iter()
-            .with_min_len(super::ENTITY_SCAN_BATCH)
+            .with_min_len(pumpkin_world::tick_step_min_len(
+                entities.len(),
+                super::ENTITY_SCAN_BATCH,
+            ))
             .filter_map(|entity| {
                 let base_entity = entity.get_entity();
                 let entity_type = base_entity.entity_type;
