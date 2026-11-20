@@ -999,7 +999,15 @@ impl Server {
             gamemode,
         );
 
+        let mut ender_pearls = Vec::new();
         if let Some(mut nbt_data) = nbt {
+            // Spawned once the player is in the world; the live pearls are saved instead.
+            if let Some(NbtTag::List(pearls)) = nbt_data
+                .child_tags
+                .remove(crate::entity::player::ENDER_PEARLS_TAG)
+            {
+                ender_pearls = pearls;
+            }
             player.read_nbt(&mut nbt_data);
             // Older Pumpkin versions kept the stats in the player file; they're in `players/stats` now.
             nbt_data.child_tags.remove("Statistics");
@@ -1062,6 +1070,7 @@ impl Server {
                     player.client.clear_player();
                     return None;
                 }
+                player.load_and_spawn_ender_pearls(self, &ender_pearls);
                 Some({
                     {
                         let mut user_cache = self

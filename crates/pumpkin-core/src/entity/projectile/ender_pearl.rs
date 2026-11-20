@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use crate::entity::projectile::ProjectileHit;
 use crate::{
     entity::{
-        Entity, EntityBase, EntityType, mob::endermite::EndermiteEntity,
+        Entity, EntityBase, EntityType, RemovalReason, mob::endermite::EndermiteEntity,
         projectile::ThrownItemEntity,
     },
     server::Server,
@@ -141,8 +141,11 @@ impl EntityBase for EnderPearlEntity {
         if entity.is_alive() {
             let chunk = BlockPos::floored_v(entity.pos.load()).chunk_position();
             let timer = self.ticket_timer.fetch_sub(1, Ordering::Relaxed) - 1;
-            if (timer <= 0 || chunk != previous_chunk) && owner.is_some() {
+            if (timer <= 0 || chunk != previous_chunk)
+                && let Some(owner) = &owner
+            {
                 // Vanilla `ServerPlayer.registerAndUpdateEnderPearlTicket`.
+                owner.register_ender_pearl(entity.entity_uuid);
                 world.add_timed_ticket(TimedTicketType::EnderPearl, chunk);
                 self.ticket_timer
                     .store(TimedTicketType::EnderPearl.timeout() - 1, Ordering::Relaxed);
@@ -157,6 +160,22 @@ impl EntityBase for EnderPearlEntity {
             TimedTicketType::Portal,
             BlockPos::floored_v(entity.pos.load()).chunk_position(),
         );
+    }
+
+    /// Vanilla `ThrownEnderpearl.onRemoval`: the pearl stays registered with an owner who
+    /// logged out with it. Vanilla's copy in the new dimension registers itself again; here the
+    /// same pearl arrives, so it stays registered.
+    fn on_remove(&self, reason: RemovalReason) {
+        if matches!(
+            reason,
+            RemovalReason::UnloadedWithPlayer | RemovalReason::ChangedDimension
+        ) {
+            return;
+        }
+        let entity = self.get_entity();
+        if let Some(owner) = self.thrown.owner.get_player(&entity.world.load()) {
+            owner.deregister_ender_pearl(entity.entity_uuid);
+        }
     }
 
     fn get_entity(&self) -> &Entity {

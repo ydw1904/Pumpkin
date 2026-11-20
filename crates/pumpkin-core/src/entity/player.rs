@@ -409,6 +409,9 @@ fn read_last_death_location(nbt: &NbtCompound) -> Option<(ResourceLocation, Bloc
 
 pub const DATA_VERSION: i32 = 5023; // 26.3
 
+/// Vanilla `ServerPlayer.ENDER_PEARLS_TAG`.
+pub const ENDER_PEARLS_TAG: &str = "ender_pearls";
+
 /// Food exhaustion applied for every block a player mines, vanilla `Block.playerDestroy`.
 const MINE_BLOCK_EXHAUSTION: f32 = 0.005;
 /// Vanilla `ServerPlayer.lastSentHealth` start value, so the first tick always sends health.
@@ -756,6 +759,8 @@ pub struct Player {
     pub chunk_send_epoch: AtomicU32,
     pub has_played_before: AtomicBool,
     root_vehicle_uuid: AtomicCell<Option<Uuid>>,
+    /// Vanilla `ServerPlayer.enderPearls`: the UUIDs of the player's ender pearls in flight.
+    ender_pearls: Mutex<Vec<Uuid>>,
     pub chat_session: Arc<Mutex<ChatSession>>,
     pub signature_cache: Mutex<MessageCache>,
     pub player_screen_handler: Arc<std::sync::Mutex<PlayerScreenHandler>>,
@@ -1160,6 +1165,7 @@ impl Player {
             subscribed_debug_sample: AtomicBool::new(false),
             has_played_before: AtomicBool::new(false),
             root_vehicle_uuid: AtomicCell::new(None),
+            ender_pearls: Mutex::new(Vec::new()),
             chat_session: Arc::new(Mutex::new(ChatSession::default())), // Placeholder value until the player actually sets their session id
             signature_cache: Mutex::new(MessageCache::default()),
             player_screen_handler: player_screen_handler.clone(),
@@ -1628,6 +1634,121 @@ impl Player {
         );
 
         //self.world().level.list_cached();
+    }
+
+    /// Vanilla `ServerPlayer.registerEnderPearl`.
+    pub fn register_ender_pearl(&self, pearl: Uuid) {
+        let mut pearls = self
+            .ender_pearls
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !pearls.contains(&pearl) {
+            pearls.push(pearl);
+        }
+    }
+
+    /// Vanilla `ServerPlayer.deregisterEnderPearl`.
+    pub fn deregister_ender_pearl(&self, pearl: Uuid) {
+        self.ender_pearls
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .retain(|uuid| *uuid != pearl);
+    }
+
+    /// The registered ender pearls still live in a world. Vanilla deregisters a pearl that
+    /// unloads with its chunk; here it is dropped once it can't be found.
+    fn live_ender_pearls(&self) -> Vec<(Arc<World>, Arc<dyn EntityBase>)> {
+        let Some(server) = self.world().server.upgrade() else {
+            return Vec::new();
+        };
+        let worlds = server.worlds.load();
+        let mut pearls = self
+            .ender_pearls
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut live = Vec::with_capacity(pearls.len());
+        pearls.retain(|uuid| {
+            let found = worlds.iter().find_map(|world| {
+                world
+                    .get_entity_by_uuid(*uuid)
+                    .filter(|pearl| !pearl.get_entity().is_removed())
+                    .map(|pearl| (world.clone(), pearl))
+            });
+            let keep = found.is_some();
+            live.extend(found);
+            keep
+        });
+        live
+    }
+
+    /// Vanilla `ServerPlayer.saveEnderPearls`.
+    fn save_ender_pearls(&self, nbt: &mut NbtCompound) {
+        let pearls = self.live_ender_pearls();
+        if pearls.is_empty() {
+            return;
+        }
+        let list = pearls
+            .iter()
+            .map(|(world, pearl)| {
+                let mut tag = NbtCompound::new();
+                EntityBase::write_nbt(pearl.as_ref(), &mut tag);
+                tag.put_string(
+                    "ender_pearl_dimension",
+                    world.dimension.minecraft_name.to_owned(),
+                );
+                NbtTag::Compound(tag)
+            })
+            .collect();
+        nbt.put(ENDER_PEARLS_TAG, NbtTag::List(list));
+    }
+
+    /// Vanilla `ServerPlayer.loadAndSpawnEnderPearls`, once the player is in its world.
+    pub fn load_and_spawn_ender_pearls(&self, server: &Server, pearls: &[NbtTag]) {
+        let worlds = server.worlds.load();
+        for pearl in pearls {
+            let Some(pearl) = pearl.extract_compound() else {
+                continue;
+            };
+            let Some(dimension) = pearl.get_string("ender_pearl_dimension") else {
+                continue;
+            };
+            let Some(world) = worlds
+                .iter()
+                .find(|world| world.dimension.minecraft_name == dimension)
+            else {
+                warn!(
+                    "Trying to load ender pearl without level ({dimension}) being loaded, skipping"
+                );
+                continue;
+            };
+            let Some(entity) =
+                crate::entity::r#type::load_entity_from_nbt(pearl, Vector3::default(), world)
+            else {
+                continue;
+            };
+            let base = entity.get_entity();
+            // Vanilla `addWithUUID` refuses a UUID that is already in the level.
+            if world.get_entity_by_uuid(base.entity_uuid).is_some() {
+                warn!("Failed to spawn player ender pearl in level ({dimension}), skipping");
+                continue;
+            }
+            self.register_ender_pearl(base.entity_uuid);
+            let chunk = base.chunk_pos.load();
+            entity.init_data_tracker();
+            world.add_entity_silent(entity);
+            world.add_timed_ticket(crate::world::TimedTicketType::EnderPearl, chunk);
+        }
+    }
+
+    /// Vanilla `PlayerList.remove`: the player's ender pearls leave with them, after the player
+    /// data that holds them is saved.
+    pub fn remove_ender_pearls_on_logout(&self) {
+        for (world, pearl) in self.live_ender_pearls() {
+            world.remove_entity_with_reason(
+                pearl.as_ref(),
+                crate::entity::RemovalReason::UnloadedWithPlayer,
+            );
+        }
     }
 
     pub(crate) fn try_restore_vehicle(self: &Arc<Self>, vehicle: &Arc<dyn EntityBase>) {
@@ -8854,6 +8975,7 @@ impl EntityBase for Player {
         if let Some(vehicle_uuid) = vehicle_uuid {
             write_root_vehicle(nbt, vehicle_uuid);
         }
+        self.save_ender_pearls(nbt);
     }
 
     #[expect(clippy::too_many_lines)]

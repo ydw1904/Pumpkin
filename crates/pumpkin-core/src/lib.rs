@@ -265,6 +265,7 @@ pub async fn serve_java_connection(server: Arc<Server>, mut pending: PendingConn
                 if let Err(e) = server.player_data_storage.handle_player_leave(&player) {
                     error!("Failed to save player data on disconnect: {e}");
                 }
+                player.remove_ender_pearls_on_logout();
                 if let Err(e) = server.advancement_manager.save_player(&player).await {
                     error!("Failed to save player advancement on disconnect: {e}");
                 }
@@ -764,6 +765,7 @@ impl PumpkinServer {
                         {
                             error!("Failed to save player data on disconnect: {error}");
                         }
+                        player.remove_ender_pearls_on_logout();
                     }
                 }
             }
