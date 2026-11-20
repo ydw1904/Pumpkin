@@ -167,10 +167,13 @@ impl EntityBase for LeashKnotEntity {
         // Vanilla `LeashFenceKnotEntity.interact` lets shears cut its leashes first, and
         // `notifyLeasheeRemoved` discards the knot once none are left.
         if item_stack.get_item() == &Item::SHEARS
-            && crate::entity::shear_off_all_leash_connections(self, Some(player))
+            && let Some(sheared) =
+                crate::entity::shear_off_all_leash_connections(self, Some(player))
         {
-            let _ = player.damage_item_stack(item_stack, 1);
-            return true;
+            if sheared {
+                let _ = player.damage_item_stack(item_stack, 1);
+            }
+            return sheared;
         }
         let knot_id = self.entity.entity_id;
         let player_id = player.entity_id();

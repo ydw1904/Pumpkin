@@ -8629,7 +8629,7 @@ impl EntityBase for Player {
     /// Vanilla `Entity.interact`: shears cut the leashes this player holds.
     fn interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
         if item_stack.get_item() == &pumpkin_data::item::Item::SHEARS
-            && crate::entity::shear_off_all_leash_connections(self, Some(player))
+            && crate::entity::shear_off_all_leash_connections(self, Some(player)) == Some(true)
         {
             let _ = player.damage_item_stack(item_stack, 1);
             return true;

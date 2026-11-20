@@ -1166,8 +1166,11 @@ impl DispenserBlock {
             {
                 continue;
             }
-            if crate::entity::shear_off_all_leash_connections(entity.as_ref(), None) {
-                return true;
+            match crate::entity::shear_off_all_leash_connections(entity.as_ref(), None) {
+                Some(true) => return true,
+                // Plugins kept the leash, so the mob itself isn't sheared either.
+                Some(false) => continue,
+                None => {}
             }
             // Vanilla `LivingEntity.isAlive` also needs health left.
             let alive = entity

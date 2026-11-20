@@ -6171,17 +6171,9 @@ impl Entity {
             }
         }
 
-        let old_holder = self
-            .leashed_to
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take();
-        let Some(old_holder) = old_holder else {
-            return;
-        };
-        self.send_leash_removed();
-
-        if let Some(holder) = old_holder.upgrade()
+        // A player holding the leash can have a plugin keep it, so the event fires before the
+        // leash is taken.
+        if let Some(holder) = self.get_leash_holder()
             && let Some(server) = world.server.upgrade()
             && let Some(player) = holder.get_player()
             && let Some(player_arc) = world.get_player_by_uuid(player.gameprofile.id)
@@ -6192,7 +6184,20 @@ impl Entity {
                 cancelled: false,
             };
             server.plugin_manager.fire_blocking(&server, &mut event);
+            if event.cancelled {
+                return;
+            }
         }
+
+        let old_holder = self
+            .leashed_to
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        let Some(old_holder) = old_holder else {
+            return;
+        };
+        self.send_leash_removed();
         if let Some(holder) = old_holder.upgrade() {
             notify_leashee_removed(holder.as_ref());
         }
@@ -6516,16 +6521,24 @@ impl Entity {
 
     /// Vanilla `Entity.dropAllLeashConnections`: drops this entity's leash and every leash
     /// held by it.
-    pub fn drop_all_leash_connections(&self, player: Option<&dyn EntityBase>) -> bool {
+    ///
+    /// `None` when there is no leash to cut, `Some(false)` when plugins kept every one.
+    pub fn drop_all_leash_connections(&self, player: Option<&dyn EntityBase>) -> Option<bool> {
         let leashed = self.leashed_to_this();
-        let dropped = if self.is_leashed() {
+        if !self.is_leashed() && leashed.is_empty() {
+            return None;
+        }
+        let mut dropped = false;
+        if self.is_leashed() {
             self.drop_leash();
-            true
-        } else {
-            !leashed.is_empty()
-        };
+            dropped |= !self.is_leashed();
+        }
         for entity in leashed {
-            entity.get_entity().drop_leash();
+            let other = entity.get_entity();
+            other.drop_leash();
+            dropped |= other
+                .get_leash_holder()
+                .is_none_or(|holder| holder.get_entity().entity_id != self.entity_id);
         }
         if dropped {
             self.world.load().emit_game_event_with_context(
@@ -6537,7 +6550,7 @@ impl Entity {
                 },
             );
         }
-        dropped
+        Some(dropped)
     }
 
     /// Vanilla `Entity.spawnAtLocation`: drops `stack` at this entity's position.
@@ -7578,10 +7591,16 @@ fn notify_leashee_removed(holder: &dyn EntityBase) {
 }
 
 /// Vanilla `Entity.shearOffAllLeashConnections`: shears snip every leash on or held by `entity`.
-pub fn shear_off_all_leash_connections(entity: &dyn EntityBase, player: Option<&Player>) -> bool {
+///
+/// `None` when there is no leash to cut. `Some(false)` means plugins kept every leash; callers
+/// must not fall through to shearing the mob itself.
+pub fn shear_off_all_leash_connections(
+    entity: &dyn EntityBase,
+    player: Option<&Player>,
+) -> Option<bool> {
     let base = entity.get_entity();
     let dropped = base.drop_all_leash_connections(player.map(|player| player as &dyn EntityBase));
-    if dropped {
+    if dropped == Some(true) {
         let category = if player.is_some() {
             SoundCategory::Players
         } else {

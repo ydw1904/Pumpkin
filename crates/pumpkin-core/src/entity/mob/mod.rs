@@ -3678,10 +3678,13 @@ pub(crate) fn leashable_interact(
     }
 
     if item_stack.get_item() == &Item::SHEARS
-        && crate::entity::shear_off_all_leash_connections(leashable, Some(player))
+        && let Some(sheared) =
+            crate::entity::shear_off_all_leash_connections(leashable, Some(player))
     {
-        let _ = player.damage_item_stack(item_stack, 1);
-        return Some(true);
+        if sheared {
+            let _ = player.damage_item_stack(item_stack, 1);
+        }
+        return Some(sheared);
     }
     if item_stack.get_item() == &Item::SHEARS
         && let Some(mob) = leashable.get_mob()
