@@ -481,8 +481,8 @@ impl Mob for PiglinBruteEntity {
     }
 
     fn mob_tick(&self, _caller: &dyn EntityBase) {
-        let entity = &self.mob_entity.living_entity.entity;
-        if !entity.is_alive() {
+        // Vanilla converts in `customServerAiStep`, which a dying piglin skips.
+        if !self.mob_entity.living_entity.is_alive() {
             return;
         }
         self.zombification

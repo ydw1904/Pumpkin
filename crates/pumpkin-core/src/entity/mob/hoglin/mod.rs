@@ -387,7 +387,8 @@ impl Mob for HoglinEntity {
 
     fn mob_tick(&self, _caller: &dyn EntityBase) {
         let entity = &self.mob_entity.living_entity.entity;
-        if !entity.is_alive() {
+        // Vanilla converts in `customServerAiStep`, which a dying hoglin skips.
+        if !self.mob_entity.living_entity.is_alive() {
             return;
         }
 
