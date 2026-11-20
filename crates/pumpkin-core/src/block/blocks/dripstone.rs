@@ -296,10 +296,12 @@ fn spawn_falling_stalactite(world: &Arc<World>, pos: &BlockPos, state_id: BlockS
         if is_tip(fall_state, true) {
             let size =
                 (1 + pos.0.y - fall_pos.0.y).max(MAX_STALACTITE_HEIGHT_FOR_DAMAGE_CALCULATION);
-            entity.set_hurts_entities(
-                STALACTITE_DAMAGE_PER_FALL_DISTANCE_AND_SIZE * size as f32,
-                STALACTITE_MAX_DAMAGE,
-            );
+            if let Some(entity) = entity {
+                entity.set_hurts_entities(
+                    STALACTITE_DAMAGE_PER_FALL_DISTANCE_AND_SIZE * size as f32,
+                    STALACTITE_MAX_DAMAGE,
+                );
+            }
             break;
         }
         fall_pos = fall_pos.down();
