@@ -304,10 +304,12 @@ impl PortalType {
                 let source_portal_axis = source_portal.map_or(HorizontalAxis::X, |p| p.axis);
 
                 let forcer = dest_world.portal_forcer.lock().await;
-                let mut exit_portal =
+                let found =
                     NetherPortal::search_for_portal(&dest_world, approximate_exit_pos).await;
-                // Vanilla tickets a portal it found, or else where the entity lands.
-                let found_portal = exit_portal.as_ref().map(|portal| portal.lower_corner);
+                // Vanilla tickets the closest portal block it found, or else where the entity
+                // lands.
+                let found_portal = found.as_ref().map(|(_, closest)| *closest);
+                let mut exit_portal = found.map(|(portal, _)| portal);
 
                 if exit_portal.is_none() {
                     let center_chunk =

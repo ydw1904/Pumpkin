@@ -483,7 +483,7 @@ impl NetherPortal {
     pub async fn search_for_portal(
         world: &Arc<World>,
         target_pos: BlockPos,
-    ) -> Option<PortalSearchResult> {
+    ) -> Option<(PortalSearchResult, BlockPos)> {
         tracing::debug!(
             "Searching for portal in {:?} around {:?}",
             world.dimension.minecraft_name,
@@ -529,7 +529,7 @@ impl NetherPortal {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
 
-        let mut best: Option<(PortalSearchResult, f64, i32)> = None;
+        let mut best: Option<(PortalSearchResult, f64, BlockPos)> = None;
 
         for pos in portal_positions {
             if pos.0.y < min_y || pos.0.y > max_y {
@@ -552,13 +552,12 @@ impl NetherPortal {
             {
                 // Use POI position for distance calculation (matches vanilla behavior)
                 let dist = f64::from(target_pos.0.squared_distance_to(pos.0.x, pos.0.y, pos.0.z));
-                let y = portal.lower_conor.0.y;
 
                 let is_better = match &best {
                     None => true,
-                    Some((_, best_dist, best_y)) => {
+                    Some((_, best_dist, best_pos)) => {
                         dist < *best_dist
-                            || ((dist - *best_dist).abs() < f64::EPSILON && y < *best_y)
+                            || ((dist - *best_dist).abs() < f64::EPSILON && pos.0.y < best_pos.0.y)
                     }
                 };
 
@@ -571,13 +570,13 @@ impl NetherPortal {
                             height: portal.height,
                         },
                         dist,
-                        y,
+                        pos,
                     ));
                 }
             }
         }
 
-        best.map(|(result, _, _)| result)
+        best.map(|(result, _, pos)| (result, pos))
     }
 
     /// Vanilla `PortalForcer.createPortal`: builds a 2x3 portal along `axis` at the closest spot
