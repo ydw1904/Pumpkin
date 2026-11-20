@@ -3,7 +3,6 @@ use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::translation;
 use pumpkin_inventory::Inventory;
 use pumpkin_util::PermissionLvl;
-use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
@@ -517,13 +516,22 @@ impl CommandExecutor for LootExecutor {
             Target::Spawn => {
                 let pos = Vec3ArgumentType::get_vector3(context, "targetPos")?;
                 let world = context.world();
-                let block_pos = BlockPos::new(
-                    pos.x.floor() as i32,
-                    pos.y.floor() as i32,
-                    pos.z.floor() as i32,
-                );
+                // Vanilla `LootCommand.dropInWorld`: exactly at the position, default delay.
                 for stack in &drops {
-                    world.drop_stack(&block_pos, stack.clone());
+                    let entity = crate::entity::Entity::new(
+                        world.clone(),
+                        pos,
+                        &pumpkin_data::entity::EntityType::ITEM,
+                    );
+                    if !world.fire_item_spawn_event(&entity, stack) {
+                        continue;
+                    }
+                    let item = std::sync::Arc::new(crate::entity::item::ItemEntity::new(
+                        entity,
+                        stack.clone(),
+                    ));
+                    item.set_default_pickup_delay();
+                    world.spawn_entity(item);
                 }
                 send_callback(context, &drops, table_id_for_callback.as_deref());
                 Ok(drops.len() as i32)
