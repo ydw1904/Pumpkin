@@ -49,7 +49,6 @@ impl GlassBottleItem {
         mut stack_to_give: ItemStack,
     ) {
         player.increment_stat(StatisticCategory::Used, i32::from(Item::GLASS_BOTTLE.id), 1);
-        let world = player.world();
         if held.item_count == 1 && player.gamemode.load() != pumpkin_util::GameMode::Creative {
             match hand {
                 pumpkin_util::Hand::Right => player.inventory().set_held_item(stack_to_give),
@@ -67,7 +66,7 @@ impl GlassBottleItem {
             }
             let was_added = player.inventory().insert_stack_anywhere(&mut stack_to_give);
             if !was_added && !stack_to_give.is_empty() {
-                world.drop_stack(&player.position().to_block_pos(), stack_to_give);
+                player.drop_item(stack_to_give, false);
             }
         }
     }

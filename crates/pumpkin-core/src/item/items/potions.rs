@@ -97,7 +97,7 @@ fn try_convert_to_mud(
         item.decrement(1);
         let was_added = player.inventory.insert_stack_anywhere(&mut glass_bottle);
         if !was_added && !glass_bottle.is_empty() {
-            world.drop_stack(&player.position().to_block_pos(), glass_bottle);
+            player.drop_item(glass_bottle, false);
         }
     }
 

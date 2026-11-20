@@ -212,8 +212,7 @@ impl BeehiveBlock {
             if !player.inventory().insert_stack_anywhere(&mut honey_bottle)
                 && !honey_bottle.is_empty()
             {
-                args.world
-                    .drop_stack(&player.position().to_block_pos(), honey_bottle);
+                player.drop_item(honey_bottle, false);
             }
         }
         args.world.emit_game_event_with_context(

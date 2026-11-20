@@ -89,9 +89,7 @@ impl ItemBehaviour for MapItem {
             let mut stack_to_give = filled_map;
             let was_added = inventory.insert_stack_anywhere(&mut stack_to_give);
             if !was_added && !stack_to_give.is_empty() {
-                player
-                    .world()
-                    .drop_stack(&pos.to_block_pos(), stack_to_give);
+                player.drop_item(stack_to_give, false);
             }
         }
         player.increment_stat(StatisticCategory::Used, i32::from(item.id), 1);

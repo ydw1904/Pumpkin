@@ -152,9 +152,7 @@ pub(crate) fn create_filled_result(
             player.sync_inventory_to_client();
         }
         if !was_added && !filled.is_empty() {
-            player
-                .world()
-                .drop_stack(&player.position().to_block_pos(), filled);
+            player.drop_item(filled, false);
         }
     }
 }

@@ -61,7 +61,7 @@ impl ItemBehaviour for CompassItem {
                 item.decrement_unless_creative(gamemode, 1);
                 let was_added = player.inventory.insert_stack_anywhere(&mut new_compass);
                 if !was_added && !new_compass.is_empty() {
-                    world.drop_stack(&player.position().to_block_pos(), new_compass);
+                    player.drop_item(new_compass, false);
                 }
             }
             player
