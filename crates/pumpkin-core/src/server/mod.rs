@@ -1281,6 +1281,14 @@ impl Server {
                     world.update_mob_spawning_flags();
                 }
             }
+            // Vanilla broadcasts the clocks again so clients stop or resume their own clock.
+            GameRule::AdvanceTime => {
+                for world in self.worlds.load().iter() {
+                    for player in world.players.load().iter() {
+                        player.send_time(world);
+                    }
+                }
+            }
             _ => {}
         }
     }
