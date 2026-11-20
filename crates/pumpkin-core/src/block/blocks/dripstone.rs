@@ -267,9 +267,10 @@ fn can_grow(world: &World, speleothem: &Block, pos: &BlockPos) -> bool {
         &Block::DRIPSTONE_BLOCK
     };
     world.get_block(&pos.up()) == grows_on
-        && (speleothem != &Block::POINTED_DRIPSTONE
-            || *World::get_fluid_type_from_state_id(world.get_block_state_id(&pos.up_height(2)))
-                == Fluid::WATER)
+        && (speleothem != &Block::POINTED_DRIPSTONE || {
+            let (fluid, fluid_state) = world.get_fluid_and_fluid_state(&pos.up_height(2));
+            fluid.has_tag(&tag::Fluid::MINECRAFT_WATER) && fluid_state.is_source
+        })
 }
 
 /// Vanilla `SpeleothemBlock.canTipGrow`.
@@ -280,7 +281,7 @@ fn can_tip_grow(
     tip_state: BlockStateId,
 ) -> bool {
     let direction = PointedDripstoneLikeProperties::from_state_id(tip_state).vertical_direction;
-    let grow_state = world.get_block_state_id(&offset_pos_by_vertical_dir(tip, direction));
+    let grow_state = world.get_block_state_id(&relative_vertical(tip, direction));
     if *World::get_fluid_type_from_state_id(grow_state) != Fluid::EMPTY {
         return false;
     }
@@ -299,7 +300,7 @@ fn is_unmerged_tip_with_direction(
 
 /// Vanilla `SpeleothemBlock.grow`.
 fn grow(world: &Arc<World>, speleothem: &Block, from: &BlockPos, direction: VerticalDirection) {
-    let target = offset_pos_by_vertical_dir(from, direction);
+    let target = relative_vertical(from, direction);
     let existing = world.get_block_state_id(&target);
     if is_unmerged_tip_with_direction(existing, speleothem, flip_dir(direction)) {
         // `createMergedTips`.
@@ -995,6 +996,14 @@ fn modify_dripstone_thickness_to(
         support_props.to_state_id(speleothem),
         BlockFlags::empty(),
     );
+}
+
+/// Vanilla `BlockPos.relative` for a vertical direction.
+fn relative_vertical(pos: &BlockPos, ver_dir: VerticalDirection) -> BlockPos {
+    match ver_dir {
+        VerticalDirection::Up => pos.up(),
+        VerticalDirection::Down => pos.down(),
+    }
 }
 
 fn offset_pos_by_vertical_dir(pos: &BlockPos, ver_dir: VerticalDirection) -> BlockPos {
