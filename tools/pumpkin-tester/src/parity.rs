@@ -23,7 +23,9 @@ use pumpkin_core::server::{
     },
 };
 use pumpkin_data::dimension::Dimension;
-use pumpkin_gametest::{GameTestReporter, GameTestRunner};
+use pumpkin_gametest::{
+    GameTestReporter, GameTestRotation, GameTestRunner, GameTestStructureTemplate,
+};
 use pumpkin_util::text::TextComponent;
 
 use crate::harness;
@@ -31,8 +33,9 @@ use crate::harness;
 // Vanilla's GameTestServer starts the grid at y=4 and lays out 8 tests per row.
 const START_Y: i32 = 4;
 const TESTS_PER_ROW: i32 = 8;
-// Vanilla packs structures by their size; a fixed generous spacing keeps tests from touching.
-const GRID_SPACING: i32 = 32;
+// Vanilla `StructureGridSpawner` gaps; mobs can see and path onto neighbouring tests.
+const SPACE_BETWEEN_COLUMNS: i32 = 5;
+const SPACE_BETWEEN_ROWS: i32 = 6;
 const START_X: i32 = 100_000;
 const START_Z: i32 = 100_000;
 const MAX_TICKS: usize = 20 * 60 * 10;
@@ -109,6 +112,66 @@ struct TestRun {
 enum Outcome {
     Passed,
     Failed(String),
+}
+
+/// Vanilla `StructureGridSpawner`: each test sits its bounds plus a gap east of the last,
+/// and a new row starts below the deepest test of the previous one.
+struct Grid {
+    x: i32,
+    z: i32,
+    row_count: i32,
+    row_depth: i32,
+}
+
+impl Grid {
+    const fn new() -> Self {
+        Self {
+            x: START_X,
+            z: START_Z,
+            row_count: 0,
+            // The row's bounds start as the unit box at its first corner.
+            row_depth: 1,
+        }
+    }
+
+    /// Returns the test block position for a test whose bounds are `size_x` by `size_z`.
+    fn place(&mut self, size_x: i32, size_z: i32) -> (i32, i32) {
+        let corner = (self.x, self.z);
+        // The structure starts one block south of the test block (STRUCTURE_OFFSET).
+        self.row_depth = self.row_depth.max(1 + size_z);
+        self.x += size_x + SPACE_BETWEEN_COLUMNS;
+        self.row_count += 1;
+        if self.row_count >= TESTS_PER_ROW {
+            self.row_count = 0;
+            self.z += self.row_depth + SPACE_BETWEEN_ROWS;
+            self.x = START_X;
+            self.row_depth = 1;
+        }
+        corner
+    }
+}
+
+/// Horizontal size of a test's bounds (structure after rotation, plus padding on both sides).
+async fn test_bounds_size(server: &Server, id: &str) -> (i32, i32) {
+    let Some(instance) = server.datapack_manager.get_test_instance(id) else {
+        return (1, 1);
+    };
+    let size = match server
+        .datapack_manager
+        .load_structure(&instance.structure)
+        .await
+    {
+        Ok(nbt) => GameTestStructureTemplate::from_nbt(&nbt)
+            .map(|t| t.size())
+            .ok(),
+        Err(_) => GameTestStructureTemplate::parse_empty_id(&instance.structure).map(|t| t.size()),
+    }
+    .unwrap_or([1, 1, 1]);
+    let (x, z) = match instance.rotation {
+        GameTestRotation::Clockwise90 | GameTestRotation::Counterclockwise90 => (size[2], size[0]),
+        GameTestRotation::None | GameTestRotation::Clockwise180 => (size[0], size[2]),
+    };
+    (x + 2 * instance.padding, z + 2 * instance.padding)
 }
 
 /// Matches vanilla's test selector wildcards: `*` for any run of characters, `?` for one.
@@ -261,15 +324,18 @@ async fn run_tests(
 
     let mut runner = GameTestRunner::new();
     let mut runs = Vec::with_capacity(ids.len());
-    for (slot, (id, required)) in (0i32..).zip(ids) {
+    let mut grid = Grid::new();
+    for (id, required) in ids {
         let reporter = Arc::new(CaptureReporter::default());
         let sink: Arc<dyn GameTestReporter> = reporter.clone();
         let report = Arc::new(GameTestBatchReport::new(sink.clone(), 1));
+        let (size_x, size_z) = test_bounds_size(server, &id).await;
+        let (test_x, test_z) = grid.place(size_x, size_z);
         let entry = GameTestQueueEntry::new(
             id.clone(),
             world.clone(),
-            START_X + (slot % TESTS_PER_ROW) * GRID_SPACING,
-            START_Z + (slot / TESTS_PER_ROW) * GRID_SPACING,
+            test_x,
+            test_z,
             0,
             GameTestRetryOptions::no_retries(),
             report.clone(),
