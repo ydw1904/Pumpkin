@@ -224,6 +224,7 @@ impl Shearable for SheepEntity {
                         Entity::new(world.clone(), pos.add_raw(0.0, 1.0, 0.0), &EntityType::ITEM),
                         stack.copy_with_count(1),
                     );
+                    item_entity.set_default_pickup_delay();
                     let velocity = &item_entity.get_entity().velocity;
                     velocity.store(velocity.load().add_raw(
                         f64::from((rng.random::<f32>() - rng.random::<f32>()) * 0.1),

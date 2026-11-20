@@ -209,6 +209,7 @@ impl AllayEntity {
             stack,
         );
         item.set_thrower(entity.entity_uuid);
+        item.set_default_pickup_delay();
         item.get_entity().velocity.store(
             (target - pos)
                 .normalize()

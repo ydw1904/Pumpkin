@@ -181,7 +181,7 @@ impl ComposterBlock {
             Entity::new(world.clone(), item_position, &EntityType::ITEM),
             ItemStack::new(1, &Item::BONE_MEAL),
         );
-
+        item_entity.set_default_pickup_delay();
         world.spawn_entity(Arc::new(item_entity));
         let empty_state_id =
             Self::set_level_with_source(source, world, location, state_id, block, 0);

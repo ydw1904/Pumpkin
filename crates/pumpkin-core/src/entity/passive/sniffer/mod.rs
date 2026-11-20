@@ -323,7 +323,9 @@ impl SnifferEntity {
         let world = entity.world.load_full();
         drop_from_gift_loot_table_with(self, SNIFFER_DIGGING_LOOT_TABLE, |stack| {
             let item = Entity::new(world.clone(), head.0.to_f64(), &EntityType::ITEM);
-            world.spawn_entity(Arc::new(ItemEntity::new(item, stack)));
+            let item = Arc::new(ItemEntity::new(item, stack));
+            item.set_default_pickup_delay();
+            world.spawn_entity(item);
         });
         self.play_entity_sound(Sound::EntitySnifferDropSeed, 1.0, 1.0);
     }
@@ -392,6 +394,7 @@ impl Animal for SnifferEntity {
         let world = entity.world.load_full();
         let egg = Entity::new(world.clone(), entity.pos.load(), &EntityType::ITEM);
         let egg = Arc::new(ItemEntity::new(egg, ItemStack::new(1, &Item::SNIFFER_EGG)));
+        egg.set_default_pickup_delay();
         let random = &mut self.get_random();
         let pitch = (random.random::<f32>() - random.random::<f32>()).mul_add(0.2, 0.5);
         self.play_entity_sound(Sound::BlockSnifferEggPlop, 1.0, pitch);

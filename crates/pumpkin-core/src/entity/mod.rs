@@ -6572,6 +6572,7 @@ impl Entity {
             Self::new(world.clone(), self.pos.load() + offset, &EntityType::ITEM),
             stack,
         ));
+        item_entity.set_default_pickup_delay();
         world.spawn_entity(item_entity.clone());
         Some(item_entity)
     }

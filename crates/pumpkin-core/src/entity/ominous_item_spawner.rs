@@ -119,8 +119,6 @@ impl OminousItemSpawnerEntity {
                     Entity::new(world.clone(), pos, &EntityType::ITEM),
                     item,
                 ));
-                // Vanilla's `ItemEntity` constructor leaves the pickup delay at 0.
-                item_entity.set_pickup_delay(0);
                 world.spawn_entity(item_entity.clone());
                 item_entity as Arc<dyn EntityBase>
             });

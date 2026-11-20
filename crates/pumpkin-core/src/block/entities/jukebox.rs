@@ -172,6 +172,7 @@ impl BlockEntity for JukeboxBlockEntity {
                 &pumpkin_data::entity::EntityType::ITEM,
             );
             let item_entity = Arc::new(crate::entity::item::ItemEntity::new(entity, record));
+            item_entity.set_default_pickup_delay();
             world.spawn_entity(item_entity);
         }
         world.emit_game_event(

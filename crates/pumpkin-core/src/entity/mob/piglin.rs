@@ -1442,14 +1442,8 @@ impl PiglinEntity {
             .try_lock()
             .map_or_else(|_| Vec::new(), |mut inv| std::mem::take(&mut *inv));
         let entity = &self.mob_entity.living_entity.entity;
-        let world = entity.world.load();
-        let pos = entity.pos.load();
         for item in items {
-            if !item.is_empty() {
-                let item_entity =
-                    ItemEntity::new(Entity::new(world.clone(), pos, &EntityType::ITEM), item);
-                world.spawn_entity(Arc::new(item_entity));
-            }
+            entity.spawn_at_location(item);
         }
     }
 

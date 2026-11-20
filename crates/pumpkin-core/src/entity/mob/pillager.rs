@@ -149,6 +149,7 @@ impl PillagerEntity {
                     Entity::new(world.clone(), pos, &EntityType::ITEM),
                     item,
                 );
+                item_entity.set_default_pickup_delay();
                 world.spawn_entity(Arc::new(item_entity));
             }
         }

@@ -7737,6 +7737,7 @@ impl World {
 
     pub fn drop_stack_from_face(
         self: &Arc<Self>,
+        item_entity.set_default_pickup_delay();
         pos: &BlockPos,
         face: BlockDirection,
         stack: ItemStack,
@@ -7815,7 +7816,12 @@ impl World {
             return;
         }
 
-        let item_entity = Arc::new(ItemEntity::new_with_velocity(entity, stack, velocity, 10));
+        let item_entity = Arc::new(ItemEntity::new_with_velocity(
+            entity,
+            stack,
+            velocity,
+            ItemEntity::DEFAULT_PICKUP_DELAY,
+        ));
         self.spawn_entity(item_entity);
     }
 
@@ -7895,7 +7901,7 @@ impl World {
             );
 
             let entity = Entity::new(self.clone(), Vector3::new(x, y, z), &EntityType::ITEM);
-            let entity = Arc::new(ItemEntity::new_with_velocity(entity, item, velocity, 10));
+            let entity = Arc::new(ItemEntity::new_with_velocity(entity, item, velocity, 0));
             self.spawn_entity(entity);
         }
     }

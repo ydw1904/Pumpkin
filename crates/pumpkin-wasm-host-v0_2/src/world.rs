@@ -1863,8 +1863,9 @@ impl pumpkin::plugin::world::HostWorldWithStore<PluginHostState> for HasSelf<Plu
             natural_pos,
             &pumpkin_data::entity::EntityType::ITEM,
         );
-        let item_entity: Arc<dyn pumpkin_core::entity::EntityBase> =
-            Arc::new(pumpkin_core::entity::item::ItemEntity::new(entity, stack));
+        let item_entity = Arc::new(pumpkin_core::entity::item::ItemEntity::new(entity, stack));
+        item_entity.set_default_pickup_delay();
+        let item_entity: Arc<dyn pumpkin_core::entity::EntityBase> = item_entity;
         let spawned = Arc::clone(&item_entity);
         run_blocking(accessor, move || {
             world.spawn_entity(spawned);

@@ -1,16 +1,14 @@
 use std::sync::Arc;
 
-use pumpkin_data::entity::EntityType;
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::SoundCategory;
 use pumpkin_util::Hand;
 use pumpkin_util::math::vector3::Vector3;
 
-use crate::entity::item::ItemEntity;
+use crate::entity::EntityBase;
 use crate::entity::mob::Mob;
 use crate::entity::player::Player;
-use crate::entity::{Entity, EntityBase};
 use crate::plugin::api::events::player::player_shear_entity::PlayerShearEntityEvent;
 use crate::world::game_event::GameEventContext;
 use crate::world::loot::{LootContextParameters, generate_loot_from_handle};
@@ -135,13 +133,6 @@ pub fn drop_from_shearing_loot_table(
     };
     let seed = shearable.get_random().random();
     for stack in generate_loot_from_handle(&table, seed, &params) {
-        if stack.is_empty() {
-            continue;
-        }
-        let drop_pos = Vector3::new(pos.x, pos.y + y_offset, pos.z);
-        world.spawn_entity(Arc::new(ItemEntity::new(
-            Entity::new(world.clone(), drop_pos, &EntityType::ITEM),
-            stack,
-        )));
+        entity.spawn_at_location_offset(stack, Vector3::new(0.0, y_offset, 0.0));
     }
 }

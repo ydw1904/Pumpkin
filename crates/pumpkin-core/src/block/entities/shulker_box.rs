@@ -391,7 +391,9 @@ pub fn player_will_destroy(
     let mut stack = ItemStack::new(1, item);
     world.collect_block_entity_components(entity.as_ref(), &mut stack);
     let item_entity = Entity::new(world.clone(), position.to_centered_f64(), &EntityType::ITEM);
-    world.spawn_entity(Arc::new(ItemEntity::new(item_entity, stack)));
+    let item_entity = Arc::new(ItemEntity::new(item_entity, stack));
+    item_entity.set_default_pickup_delay();
+    world.spawn_entity(item_entity);
 }
 
 #[cfg(test)]

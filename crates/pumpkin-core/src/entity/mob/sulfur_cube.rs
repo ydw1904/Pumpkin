@@ -8,7 +8,6 @@ use pumpkin_data::data_component::DataComponent;
 use pumpkin_data::data_component_impl::{
     BucketEntityDataImpl, DataComponentImpl, EquipmentSlot, Operation, SulfurCubeContentImpl,
 };
-use pumpkin_data::entity::EntityType;
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -364,18 +363,9 @@ impl SulfurCubeEntity {
     }
 
     fn spawn_at_attachment(&self, stack: ItemStack) {
-        if stack.is_empty() {
-            return;
-        }
-        let entity = self.get_entity();
         let offset = crate::entity::default_passenger_attachment_point(self, 0)
             .unwrap_or_else(|| Vector3::new(0.0, 0.0, 0.0));
-        let world = entity.world.load();
-        let item_entity = ItemEntity::new(
-            Entity::new(world.clone(), entity.pos.load() + offset, &EntityType::ITEM),
-            stack,
-        );
-        world.spawn_entity(Arc::new(item_entity));
+        self.get_entity().spawn_at_location_offset(stack, offset);
     }
 
     pub(crate) fn detect_body_item_change(&self) {

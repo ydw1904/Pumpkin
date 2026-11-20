@@ -65,8 +65,8 @@ impl JukeboxBlock {
                 );
 
                 let entity = Entity::new(world.clone(), spawn_pos, &EntityType::ITEM);
-                // Vanilla: setToDefaultPickupDelay() = 10 ticks
                 let item_entity = Arc::new(ItemEntity::new(entity, record));
+                item_entity.set_default_pickup_delay();
                 world.spawn_entity(item_entity);
             }
         }

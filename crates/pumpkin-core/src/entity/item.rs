@@ -104,6 +104,7 @@ const MERGE_MAX_COUNT: u8 = 64;
 const MERGE_DISTANCE: f64 = 0.5;
 
 impl ItemEntity {
+    /// Vanilla `setDefaultPickUpDelay`'s delay.
     pub const DEFAULT_PICKUP_DELAY: i32 = 10;
 
     /// Vanilla `setExtendedLifetime`: the item lasts 6000 ticks longer.
@@ -131,7 +132,7 @@ impl ItemEntity {
             item_age: AtomicI32::new(0),
             thrower: crossbeam::atomic::AtomicCell::new(None),
             target: crossbeam::atomic::AtomicCell::new(None),
-            pickup_delay: AtomicI32::new(Self::DEFAULT_PICKUP_DELAY),
+            pickup_delay: AtomicI32::new(0),
             health: AtomicF32::new(5.0),
             never_despawn: AtomicBool::new(false),
             merge_reserved: AtomicBool::new(false),
@@ -206,6 +207,11 @@ impl ItemEntity {
         self.pickup_delay
             .store(INFINITE_PICKUP_DELAY, Ordering::Relaxed);
         self.item_age.store(LIFETIME - 1, Ordering::Relaxed);
+    }
+
+    /// Vanilla `setDefaultPickUpDelay`.
+    pub fn set_default_pickup_delay(&self) {
+        self.set_pickup_delay(Self::DEFAULT_PICKUP_DELAY);
     }
 
     pub fn get_pickup_delay(&self) -> i32 {

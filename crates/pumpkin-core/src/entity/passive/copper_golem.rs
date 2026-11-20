@@ -705,14 +705,17 @@ impl Shearable for CopperGolemEntity {
         if stack.is_empty() {
             return false;
         }
-        if !world.spawn_entity(Arc::new(ItemEntity::new(
+        // Vanilla `spawnAtLocation(level, itemStack, 1.5F)`.
+        let item = Arc::new(ItemEntity::new(
             Entity::new(
                 world.clone(),
                 pos + Vector3::new(0.0, ANTENNA_DROP_Y_OFFSET, 0.0),
                 &EntityType::ITEM,
             ),
             stack.clone(),
-        ))) {
+        ));
+        item.set_default_pickup_delay();
+        if !world.spawn_entity(item) {
             self.mob_entity
                 .set_item_slot(&EQUIPMENT_SLOT_ANTENNA, stack);
         }
