@@ -466,7 +466,7 @@ impl ShulkerEntity {
     /// Vanilla `Shulker.teleportSomewhere`.
     pub fn teleport_somewhere(&self) -> bool {
         let entity = &self.mob_entity.living_entity.entity;
-        if self.mob_entity.is_no_ai() || !entity.is_alive() {
+        if self.mob_entity.is_no_ai() || !self.mob_entity.living_entity.is_alive() {
             return false;
         }
         let old_pos = entity.block_pos.load();

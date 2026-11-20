@@ -165,7 +165,7 @@ impl EndermanEntity {
     /// Vanilla `Enderman.teleport()`.
     pub fn teleport_randomly(&self) -> bool {
         let entity = &self.mob_entity.living_entity.entity;
-        if !entity.is_alive() {
+        if !self.mob_entity.living_entity.is_alive() {
             return false;
         }
         let pos = entity.pos.load();
