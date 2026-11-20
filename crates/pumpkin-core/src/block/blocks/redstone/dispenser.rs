@@ -1140,7 +1140,8 @@ impl DispenserBlock {
             for stack in
                 crate::world::loot::generate_loot_from_handle(&table, rand::random(), &params)
             {
-                Self::drop_at(ctx.world, target.to_centered_f64(), stack);
+                // Vanilla `BeehiveBlock.dropHoneycomb` pops each drop like a block drop.
+                ctx.world.drop_stack(&target, stack);
             }
         }
         BeehiveBlock::release_bees_and_reset_honey_level(
@@ -1520,11 +1521,6 @@ impl DispenserBlock {
         } else if let Some(rest) = Self::add_to_first_free_slot(dispenser, remainder) {
             Self::eject_item(ctx, rest);
         }
-    }
-
-    fn drop_at(world: &Arc<World>, position: Vector3<f64>, stack: ItemStack) {
-        let entity = Entity::new(world.clone(), position, &EntityType::ITEM);
-        world.spawn_entity(Arc::new(ItemEntity::new(entity, stack)));
     }
 
     fn drop_item(ctx: &DispenseContext<'_>, item: &mut ItemStack) {
