@@ -160,13 +160,12 @@ impl BlockBehaviour for DripstoneBlock {
         }
     }
 
-    /// Vanilla `PointedDripstoneBlock.onProjectileHit`: a fast trident breaks it.
+    /// Vanilla `SpeleothemBlock.onProjectileHit`: a fast trident breaks it.
     fn on_projectile_hit(&self, args: OnProjectileHitArgs<'_>) {
         const TRIDENT_BREAK_MIN_SPEED: f64 = 0.6;
 
         let projectile = args.projectile.get_entity();
-        if args.block != &Block::POINTED_DRIPSTONE
-            || projectile.entity_type != &EntityType::TRIDENT
+        if projectile.entity_type != &EntityType::TRIDENT
             || projectile.velocity.load().length() <= TRIDENT_BREAK_MIN_SPEED
         {
             return;
