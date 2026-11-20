@@ -3145,6 +3145,7 @@ impl LivingEntity {
                     caller,
                     fall_distance * f64::from(1.0 - block.get_fall_distance_reduction()),
                     1.0,
+                    DamageType::FALL,
                 );
             }
             self.entity.emit_hit_ground(caller, state);
@@ -3164,10 +3165,11 @@ impl LivingEntity {
         caller: &dyn EntityBase,
         fall_distance: f64,
         damage_modifier: f32,
+        damage_type: DamageType,
     ) -> bool {
         caller.get_mob().map_or_else(
-            || self.cause_fall_damage(caller, fall_distance, damage_modifier),
-            |mob| mob.cause_fall_damage(caller, fall_distance, damage_modifier),
+            || self.cause_fall_damage(caller, fall_distance, damage_modifier, damage_type),
+            |mob| mob.cause_fall_damage(caller, fall_distance, damage_modifier, damage_type),
         )
     }
 
@@ -3176,6 +3178,7 @@ impl LivingEntity {
         caller: &dyn EntityBase,
         fall_distance: f64,
         damage_modifier: f32,
+        damage_type: DamageType,
     ) -> bool {
         let may_fly = caller.get_player().is_some_and(|player| {
             player
@@ -3227,7 +3230,7 @@ impl LivingEntity {
             effective
         });
 
-        self.propagate_fall_to_passengers(effective_fall_distance, damage_modifier);
+        self.propagate_fall_to_passengers(effective_fall_distance, damage_modifier, damage_type);
         let damage = self.calculate_fall_damage(caller, effective_fall_distance, damage_modifier);
         if damage <= 0 {
             return false;
@@ -3235,7 +3238,7 @@ impl LivingEntity {
         self.reset_current_impulse_context();
         caller.play_entity_sound(Self::get_fall_damage_sound(caller, damage), 1.0, 1.0);
         self.play_block_fall_sound(caller);
-        self.damage(caller, damage as f32, DamageType::FALL);
+        self.damage(caller, damage as f32, damage_type);
         true
     }
 
@@ -3263,7 +3266,12 @@ impl LivingEntity {
         .floor() as i32
     }
 
-    pub fn propagate_fall_to_passengers(&self, fall_distance: f64, damage_modifier: f32) {
+    pub fn propagate_fall_to_passengers(
+        &self,
+        fall_distance: f64,
+        damage_modifier: f32,
+        damage_type: DamageType,
+    ) {
         let passengers = self
             .entity
             .passengers
@@ -3272,7 +3280,12 @@ impl LivingEntity {
             .clone();
         for passenger in passengers {
             if let Some(living) = passenger.get_living_entity() {
-                living.handle_fall_damage(passenger.as_ref(), fall_distance, damage_modifier);
+                living.handle_fall_damage(
+                    passenger.as_ref(),
+                    fall_distance,
+                    damage_modifier,
+                    damage_type,
+                );
             }
         }
     }
@@ -7094,6 +7107,7 @@ mod ai_step_tests {
 #[cfg(test)]
 mod player_wall_tests {
     use pumpkin_data::attributes::Attributes;
+    use pumpkin_data::damage::DamageType;
     use pumpkin_data::entity::EntityType;
     use pumpkin_util::math::position::BlockPos;
     use pumpkin_util::math::vector3::Vector3;
@@ -7191,7 +7205,7 @@ mod player_wall_tests {
         );
 
         // Only `Player.causeFallDamage` cuts the fall at the impact height: a zombie takes all of it.
-        assert!(restored.cause_fall_damage(&restored, 12.0, 1.0));
+        assert!(restored.cause_fall_damage(&restored, 12.0, 1.0, DamageType::FALL));
         assert_eq!(restored.last_damage_taken.load(), 9.0);
 
         world.level.shutdown().await;

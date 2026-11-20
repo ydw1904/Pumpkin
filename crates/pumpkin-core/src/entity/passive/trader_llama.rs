@@ -1,3 +1,4 @@
+use pumpkin_data::damage::DamageType;
 use std::sync::atomic::{AtomicI32, Ordering::Relaxed};
 use std::sync::{Arc, Weak};
 
@@ -202,9 +203,10 @@ impl Mob for TraderLlamaEntity {
         caller: &dyn EntityBase,
         fall_distance: f64,
         damage_modifier: f32,
+        damage_type: DamageType,
     ) -> bool {
         self.llama
-            .cause_fall_damage(caller, fall_distance, damage_modifier)
+            .cause_fall_damage(caller, fall_distance, damage_modifier, damage_type)
     }
 
     fn mob_is_pushable(&self) -> bool {

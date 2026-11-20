@@ -1,3 +1,4 @@
+use pumpkin_data::damage::DamageType;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicBool, AtomicI32, Ordering},
@@ -189,11 +190,14 @@ impl Mob for CreeperEntity {
         caller: &dyn EntityBase,
         fall_distance: f64,
         damage_modifier: f32,
+        damage_type: DamageType,
     ) -> bool {
-        let damaged =
-            self.mob_entity
-                .living_entity
-                .cause_fall_damage(caller, fall_distance, damage_modifier);
+        let damaged = self.mob_entity.living_entity.cause_fall_damage(
+            caller,
+            fall_distance,
+            damage_modifier,
+            damage_type,
+        );
         let max_swell = self.fuse_time.load(Ordering::Relaxed) - 5;
         let swell = self.current_fuse_time.load(Ordering::Relaxed) + (fall_distance * 1.5) as i32;
         self.current_fuse_time

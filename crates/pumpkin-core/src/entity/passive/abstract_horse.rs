@@ -941,6 +941,7 @@ pub fn cause_fall_damage(
     caller: &dyn EntityBase,
     fall_distance: f64,
     damage_modifier: f32,
+    damage_type: DamageType,
 ) -> bool {
     if fall_distance > 1.0 {
         let sound = if mob.as_ageable().is_some_and(AgeableMob::is_baby) {
@@ -955,8 +956,8 @@ pub fn cause_fall_damage(
         return false;
     }
     let living = &mob.get_mob_entity().living_entity;
-    living.damage(caller, damage as f32, DamageType::FALL);
-    living.propagate_fall_to_passengers(fall_distance, damage_modifier);
+    living.damage(caller, damage as f32, damage_type);
+    living.propagate_fall_to_passengers(fall_distance, damage_modifier, damage_type);
     living.play_block_fall_sound(caller);
     true
 }
@@ -1354,12 +1355,14 @@ macro_rules! abstract_horse_mob_hooks {
             caller: &dyn $crate::entity::EntityBase,
             fall_distance: f64,
             damage_modifier: f32,
+            damage_type: pumpkin_data::damage::DamageType,
         ) -> bool {
             $crate::entity::passive::abstract_horse::cause_fall_damage(
                 self,
                 caller,
                 fall_distance,
                 damage_modifier,
+                damage_type,
             )
         }
 

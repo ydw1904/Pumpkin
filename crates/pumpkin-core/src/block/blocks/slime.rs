@@ -1,3 +1,4 @@
+use pumpkin_data::damage::DamageType;
 use pumpkin_macros::pumpkin_block;
 use pumpkin_util::math::vector3::Vector3;
 
@@ -11,7 +12,7 @@ impl BlockBehaviour for SlimeBlock {
         if !args.entity.get_entity().is_sneaking()
             && let Some(living) = args.entity.get_living_entity()
         {
-            living.handle_fall_damage(args.entity, args.fall_distance, 0.0);
+            living.handle_fall_damage(args.entity, args.fall_distance, 0.0, DamageType::FALL);
         }
     }
 

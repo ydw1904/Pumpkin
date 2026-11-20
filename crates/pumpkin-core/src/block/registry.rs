@@ -185,6 +185,7 @@ use crate::world::World;
 use pumpkin_data::BlockStateId;
 use pumpkin_data::block_properties::SnowLikeProperties;
 use pumpkin_data::block_rotation::{Mirror, Rotation};
+use pumpkin_data::damage::DamageType;
 use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::fluid::Fluid;
 use pumpkin_data::item::Item;
@@ -1343,7 +1344,7 @@ impl BlockRegistry {
         } else if let Some(living) = entity.get_living_entity() {
             let reduced_fall_distance =
                 fall_distance * f64::from(1.0 - block.get_fall_distance_reduction());
-            living.handle_fall_damage(entity, reduced_fall_distance, 1.0);
+            living.handle_fall_damage(entity, reduced_fall_distance, 1.0, DamageType::FALL);
         }
     }
 

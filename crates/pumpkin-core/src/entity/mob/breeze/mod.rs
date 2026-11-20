@@ -120,12 +120,16 @@ impl Mob for BreezeEntity {
         caller: &dyn EntityBase,
         fall_distance: f64,
         damage_modifier: f32,
+        damage_type: DamageType,
     ) -> bool {
         if fall_distance > FALL_DISTANCE_SOUND_TRIGGER_THRESHOLD {
             caller.play_entity_sound(Sound::EntityBreezeLand, 1.0, 1.0);
         }
-        self.mob_entity
-            .living_entity
-            .cause_fall_damage(caller, fall_distance, damage_modifier)
+        self.mob_entity.living_entity.cause_fall_damage(
+            caller,
+            fall_distance,
+            damage_modifier,
+            damage_type,
+        )
     }
 }

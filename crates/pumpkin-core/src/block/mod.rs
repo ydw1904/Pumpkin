@@ -25,6 +25,7 @@ use crate::server::Server;
 use pumpkin_data::BlockDirection;
 use pumpkin_data::block_properties::WaterLikeProperties;
 use pumpkin_data::block_rotation::{Mirror, Rotation};
+use pumpkin_data::damage::DamageType;
 use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_inventory::screen_handler::ScreenHandlerFactory;
@@ -200,6 +201,7 @@ pub trait BlockBehaviour: Send + Sync {
                 args.entity,
                 args.fall_distance * f64::from(1.0 - args.block.get_fall_distance_reduction()),
                 1.0,
+                DamageType::FALL,
             );
         }
     }

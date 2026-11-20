@@ -2730,11 +2730,13 @@ pub trait Mob: EntityBase + Send + Sync {
         caller: &dyn EntityBase,
         fall_distance: f64,
         damage_modifier: f32,
+        damage_type: DamageType,
     ) -> bool {
         self.get_mob_entity().living_entity.cause_fall_damage(
             caller,
             fall_distance,
             damage_modifier,
+            damage_type,
         )
     }
 

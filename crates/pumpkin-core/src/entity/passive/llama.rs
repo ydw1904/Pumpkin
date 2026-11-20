@@ -508,6 +508,7 @@ impl Mob for LlamaEntity {
         caller: &dyn EntityBase,
         fall_distance: f64,
         damage_modifier: f32,
+        damage_type: DamageType,
     ) -> bool {
         let damage = self.calculate_fall_damage(fall_distance, damage_modifier);
         if damage <= 0 {
@@ -515,8 +516,8 @@ impl Mob for LlamaEntity {
         }
         let living = &self.mob_entity.living_entity;
         if fall_distance >= LLAMA_SAFE_FALL_DISTANCE {
-            living.damage(caller, damage as f32, DamageType::FALL);
-            living.propagate_fall_to_passengers(fall_distance, damage_modifier);
+            living.damage(caller, damage as f32, damage_type);
+            living.propagate_fall_to_passengers(fall_distance, damage_modifier, damage_type);
         }
         living.play_block_fall_sound(caller);
         true

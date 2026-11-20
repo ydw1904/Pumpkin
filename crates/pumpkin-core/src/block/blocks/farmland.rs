@@ -1,3 +1,4 @@
+use pumpkin_data::damage::DamageType;
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
@@ -92,7 +93,7 @@ impl BlockBehaviour for FarmlandBlock {
                     turn_to_base_block(args.world, &pos, Some(args.entity));
                 }
             }
-            living.handle_fall_damage(args.entity, args.fall_distance, 1.0);
+            living.handle_fall_damage(args.entity, args.fall_distance, 1.0, DamageType::FALL);
         }
     }
 

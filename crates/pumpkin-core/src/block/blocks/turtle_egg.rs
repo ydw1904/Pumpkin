@@ -1,3 +1,4 @@
+use pumpkin_data::damage::DamageType;
 use pumpkin_util::random::gameplay::game_random;
 use std::sync::Arc;
 
@@ -138,7 +139,7 @@ impl BlockBehaviour for TurtleEggBlock {
 
     fn on_landed_upon(&self, args: OnLandedUponArgs<'_>) {
         if let Some(living) = args.entity.get_living_entity() {
-            living.handle_fall_damage(args.entity, args.fall_distance, 1.0);
+            living.handle_fall_damage(args.entity, args.fall_distance, 1.0, DamageType::FALL);
         }
 
         if args.entity.get_entity().entity_type.id != EntityType::ZOMBIE.id {

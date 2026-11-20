@@ -12,6 +12,7 @@ use crate::{
 use pumpkin_data::{
     Block, BlockDirection, BlockState, BlockStateId,
     block_properties::{PointedDripstoneLikeProperties, SpeleothemThickness, VerticalDirection},
+    damage::DamageType,
     entity::EntityType,
     fluid::Fluid,
     game_event::GameEvent,
@@ -135,23 +136,27 @@ impl BlockBehaviour for DripstoneBlock {
         args.state_id
     }
 
+    /// Vanilla `PointedDripstoneBlock.fallOn`.
     fn on_landed_upon(&self, args: OnLandedUponArgs<'_>) {
-        let entity_pos = args.entity.get_entity().pos.load();
-        let pos = BlockPos::floored(entity_pos.x, entity_pos.y, entity_pos.z);
+        let Some(living) = args.entity.get_living_entity() else {
+            return;
+        };
+        let pos = args.entity.get_entity().get_on_pos_legacy();
         let (block, state_id) = args.world.get_block_and_state_id(&pos);
-        if block == &Block::POINTED_DRIPSTONE {
+        let stalagmite_tip = block == &Block::POINTED_DRIPSTONE && {
             let props = PointedDripstoneLikeProperties::from_state_id(state_id);
-            if props.vertical_direction == VerticalDirection::Up
+            props.vertical_direction == VerticalDirection::Up
                 && props.thickness == SpeleothemThickness::Tip
-            {
-                if let Some(living) = args.entity.get_living_entity() {
-                    living.handle_fall_damage(args.entity, args.fall_distance + 2.5, 2.0);
-                }
-                return;
-            }
-        }
-        if let Some(living) = args.entity.get_living_entity() {
-            living.handle_fall_damage(args.entity, args.fall_distance, 1.0);
+        };
+        if stalagmite_tip {
+            living.handle_fall_damage(
+                args.entity,
+                args.fall_distance + 2.5,
+                2.0,
+                DamageType::STALAGMITE,
+            );
+        } else {
+            living.handle_fall_damage(args.entity, args.fall_distance, 1.0, DamageType::FALL);
         }
     }
 
