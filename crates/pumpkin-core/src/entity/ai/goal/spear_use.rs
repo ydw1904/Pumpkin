@@ -4,8 +4,10 @@ use pumpkin_util::Hand;
 use pumpkin_util::math::vector3::Vector3;
 
 use super::{Controls, Goal, GoalReach, to_goal_ticks};
+use crate::entity::ai::pathfinder::Navigator;
 use crate::entity::ai::pathfinder::path::Path;
 use crate::entity::ai::util::land_random_pos;
+use crate::entity::living::LivingEntity;
 use crate::entity::mob::Mob;
 use crate::item::items::spear::SpearItem;
 
@@ -143,6 +145,32 @@ impl SpearUseGoal {
         let living = &steered.mob_entity().living_entity;
         let mut navigator = steered.navigator();
         let path = navigator.create_path(living, destination, reach_range);
+        Self::follow(&mut navigator, living, last_path, path, speed);
+    }
+
+    /// Vanilla `moveTo(Entity, speed)`: reach range 1, and a failed path keeps the current one.
+    fn move_to_target(
+        mob: &dyn Mob,
+        last_path: &mut Option<Path>,
+        target_pos: Vector3<f64>,
+        speed: f64,
+    ) {
+        let steered = mob.get_mob_entity().steered();
+        let living = &steered.mob_entity().living_entity;
+        let mut navigator = steered.navigator();
+        let path = navigator.create_path(living, target_pos, 1);
+        if path.is_some() {
+            Self::follow(&mut navigator, living, last_path, path, speed);
+        }
+    }
+
+    fn follow(
+        navigator: &mut Navigator,
+        living: &LivingEntity,
+        last_path: &mut Option<Path>,
+        path: Option<Path>,
+        speed: f64,
+    ) {
         if navigator.is_done()
             && path
                 .as_ref()
@@ -220,11 +248,10 @@ impl Goal for SpearUseGoal {
 
         if state.not_engaged_yet() {
             if target_dist_sq > self.approach_distance_sq {
-                Self::move_to(
+                Self::move_to_target(
                     mob,
                     &mut state.last_path,
                     target_pos,
-                    0,
                     speed_modifier * self.speed_modifier_when_repositioning,
                 );
                 return;
@@ -274,11 +301,10 @@ impl Goal for SpearUseGoal {
                 state.away_pos = None;
             }
         } else {
-            Self::move_to(
+            Self::move_to_target(
                 mob,
                 &mut state.last_path,
                 target_pos,
-                0,
                 speed_modifier * self.speed_modifier_when_charging,
             );
             if target_dist_sq < self.target_in_range_radius_sq || Self::is_navigation_done(mob) {
