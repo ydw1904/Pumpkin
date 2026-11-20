@@ -276,7 +276,8 @@ impl Mob for CreeperEntity {
 
     fn mob_tick(&self, caller: &dyn EntityBase) {
         let entity = &self.mob_entity.living_entity.entity;
-        if !entity.is_alive() {
+        // Vanilla `LivingEntity.isAlive`: a dying creeper stops swelling.
+        if !self.mob_entity.living_entity.is_alive() {
             return;
         }
 
