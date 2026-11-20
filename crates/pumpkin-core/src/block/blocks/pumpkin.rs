@@ -8,6 +8,8 @@ use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_macros::pumpkin_block;
+use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::gameplay::game_random;
 use pumpkin_world::world::BlockFlags;
 use std::sync::Arc;
 
@@ -54,9 +56,26 @@ impl crate::block::BlockBehaviour for PumpkinBlock {
                     crate::world::loot::generate_loot_from_handle(&handle, rand::random(), &params)
                 },
             );
+        // Vanilla throws the seeds out of the carved face.
+        let step = props.facing.to_offset();
+        let (step_x, step_z) = (f64::from(step.x), f64::from(step.z));
+        let spawn_pos = Vector3::new(
+            f64::from(args.position.0.x) + 0.5 + step_x * 0.65,
+            f64::from(args.position.0.y) + 0.1,
+            f64::from(args.position.0.z) + 0.5 + step_z * 0.65,
+        );
         for drop_stack in drops {
-            let entity = Entity::new(args.world.clone(), drop_pos, &EntityType::ITEM);
+            let velocity = {
+                let rng = game_random();
+                Vector3::new(
+                    0.05 * step_x + rng.next_f64() * 0.02,
+                    0.05,
+                    0.05 * step_z + rng.next_f64() * 0.02,
+                )
+            };
+            let entity = Entity::new(args.world.clone(), spawn_pos, &EntityType::ITEM);
             let item_entity = Arc::new(ItemEntity::new(entity, drop_stack));
+            item_entity.get_entity().velocity.store(velocity);
             args.world.spawn_entity(item_entity);
         }
         args.player.damage_item_in_slot(args.equipment_slot, 1);
