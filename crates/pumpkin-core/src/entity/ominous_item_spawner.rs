@@ -357,7 +357,10 @@ impl EntityBase for OminousItemSpawnerEntity {
             .and_then(ItemStack::read_item_stack)
             .unwrap_or_else(|| ItemStack::EMPTY.clone());
         self.set_item(item);
-        let ticks = nbt.get_long(TAG_SPAWN_ITEM_AFTER_TICKS).unwrap_or(0);
+        // Vanilla `getLongOr` takes any number, so `/summon` SNBT ints work too.
+        let ticks = nbt
+            .get_numeric_long(TAG_SPAWN_ITEM_AFTER_TICKS)
+            .unwrap_or(0);
         self.spawn_item_after_ticks.store(ticks, Ordering::Relaxed);
     }
 

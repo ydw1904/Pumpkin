@@ -485,6 +485,21 @@ impl NbtTag {
         }
     }
 
+    /// Converts any numeric tag to a long, `NumericTag.longValue`.
+    #[must_use]
+    #[expect(clippy::cast_possible_truncation)]
+    pub fn as_numeric_long(&self) -> Option<i64> {
+        match *self {
+            Self::Byte(byte) => Some(byte.into()),
+            Self::Short(short) => Some(short.into()),
+            Self::Int(int) => Some(int.into()),
+            Self::Long(long) => Some(long),
+            Self::Float(float) => Some(float as i64),
+            Self::Double(double) => Some(double.floor() as i64),
+            _ => None,
+        }
+    }
+
     /// Converts any numeric tag to an int, `NumericTag.intValue`.
     #[must_use]
     #[expect(clippy::cast_possible_truncation)]

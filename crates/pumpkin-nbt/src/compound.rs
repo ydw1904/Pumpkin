@@ -259,6 +259,12 @@ impl NbtCompound {
         self.get(name).and_then(super::tag::NbtTag::extract_long)
     }
 
+    /// Returns any named numeric value as a long, like vanilla's `getLongOr`.
+    #[must_use]
+    pub fn get_numeric_long(&self, name: &str) -> Option<i64> {
+        self.get(name).and_then(super::tag::NbtTag::as_numeric_long)
+    }
+
     /// Returns the named float value, or `None` if the tag is absent or has another type.
     #[must_use]
     pub fn get_float(&self, name: &str) -> Option<f32> {
