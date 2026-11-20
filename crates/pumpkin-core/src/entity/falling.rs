@@ -132,7 +132,7 @@ impl FallingEntity {
         let damage = ((distance as f32 * self.fall_damage_per_distance.load()).floor() as i32)
             .min(self.fall_damage_max.load(Ordering::Relaxed)) as f32;
         let world = self.entity.world.load();
-        for target in world.get_entities_at_box(&self.entity.bounding_box.load()) {
+        for target in world.get_all_at_box(&self.entity.bounding_box.load()) {
             let target_entity = target.get_entity();
             // `NO_CREATIVE_OR_SPECTATOR` and `LIVING_ENTITY_STILL_ALIVE`.
             if target_entity.entity_id == self.entity.entity_id
