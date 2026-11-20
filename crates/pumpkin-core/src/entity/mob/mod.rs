@@ -3596,9 +3596,6 @@ fn check_and_handle_important_interactions(
     player: &Player,
     item_stack: &mut ItemStack,
 ) -> bool {
-    if !mob.get_entity().is_alive() {
-        return false;
-    }
     if item_stack.item == &Item::NAME_TAG
         && crate::item::items::name_tag::NameTagItem::interact_living_entity(
             item_stack, player, mob,
@@ -3992,6 +3989,10 @@ impl<T: Mob + Send + 'static> EntityBase for T {
                 .persistence_required
                 .store(true, Ordering::Relaxed);
         }
+        // Vanilla `Mob.interact` passes for a dying mob.
+        if !self.get_mob_entity().living_entity.is_alive() {
+            return false;
+        }
         if check_and_handle_important_interactions(self, player, item_stack) {
             emit_entity_interact(entity, player);
             return true;
@@ -4019,6 +4020,9 @@ impl<T: Mob + Send + 'static> EntityBase for T {
             self.get_mob_entity()
                 .persistence_required
                 .store(true, Ordering::Relaxed);
+        }
+        if !self.get_mob_entity().living_entity.is_alive() {
+            return None;
         }
         if check_and_handle_important_interactions(self, player, item_stack) {
             emit_entity_interact(self.get_entity(), player);

@@ -893,7 +893,7 @@ pub fn equip_on_target(mob: &dyn Mob, player: &Player, stack: &mut ItemStack) ->
     let mob_entity = mob.get_mob_entity();
     if !mob.is_equippable_in_slot(stack, slot)
         || !mob_entity.is_slot_empty(slot)
-        || !mob_entity.living_entity.entity.is_alive()
+        || !mob_entity.living_entity.is_alive()
     {
         return false;
     }

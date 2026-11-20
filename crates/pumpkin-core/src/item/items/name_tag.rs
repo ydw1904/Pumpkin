@@ -29,7 +29,7 @@ impl NameTagItem {
             return false;
         }
         // Vanilla succeeds on a dead target too, it just doesn't rename it.
-        if living.entity.is_alive() {
+        if living.is_alive() {
             raw_entity.set_custom_name(name.name.clone());
             if let Some(mob) = entity.get_mob() {
                 mob.get_mob_entity()
