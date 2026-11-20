@@ -2,7 +2,7 @@
 // takes a trial key, ejects its loot one item a second from above the vault, remembers the
 // player in its saved data and rejects a second key; a trial spawner detects a player, spawns,
 // ejects its reward from above itself and cools down; Bad Omen turns into Trial Omen and makes
-// the spawner ominous.
+// the spawner ominous, which then drops ominous item spawners over the player.
 // pumpkin-settings: spawn_protection=0
 const { make } = require('./survival-lib')
 const h = make('Trialist', 900000)
@@ -143,7 +143,7 @@ h.start(async () => {
   const reward = spawned.filter(s => Math.hypot(s.x - (SX + 0.5), s.z - (SZ + 0.5)) < 0.01)
   h.result('spawner_reward_from_top_centre', reward.length > 0 && reward.length === spawned.length)
   h.result('spawner_eject_y', spawned.length ? (spawned[0].y - SY).toFixed(3) : 'none')
-  await h.waitFor(() => props(SX, SY, SZ).trial_spawner_state === 'waiting_for_players' || props(SX, SY, SZ).trial_spawner_state === 'active', 15000)
+  await h.waitFor(() => props(SX, SY, SZ).trial_spawner_state === 'waiting_for_players' || props(SX, SY, SZ).trial_spawner_state === 'active', 30000)
   spawner.stop()
   h.result('spawner_states', spawner.log.filter((s, i) => i > 0 || s !== 'inactive').join('>'))
   h.cmd(`kill @e[type=zombie,x=${X},y=${Y},z=${Z},distance=..40]`)
@@ -152,7 +152,7 @@ h.start(async () => {
   // Bad Omen II near a fresh spawner: Trial Omen for 2 x 18000 ticks and an ominous spawner.
   const OX = X + 8; const OY = Y + 1; const OZ = Z - 8
   await h.tp(X + 0.5, Y + 1, Z + 14.5)
-  h.cmd(`setblock ${OX} ${OY} ${OZ} trial_spawner{normal_config:{spawn_potentials:[{data:{entity:{id:"minecraft:zombie"}},weight:1}],total_mobs:1.0f,simultaneous_mobs:1.0f}}`)
+  h.cmd(`setblock ${OX} ${OY} ${OZ} trial_spawner{normal_config:{spawn_potentials:[{data:{entity:{id:"minecraft:zombie"}},weight:1}],total_mobs:1.0f,simultaneous_mobs:1.0f},ominous_config:{spawn_potentials:[{data:{entity:{id:"minecraft:zombie"}},weight:1}],total_mobs:1.0f,simultaneous_mobs:1.0f,ticks_between_spawn:1000}}`)
   h.cmd(`effect give ${bot.username} bad_omen 600 1`)
   await h.waitFor(() => effect('bad_omen') !== undefined, 5000)
   await h.tp(OX + 4.5, OY, OZ + 0.5)
@@ -162,7 +162,50 @@ h.start(async () => {
   const trial = effect('trial_omen')
   h.result('trial_omen', trial ? `${trial.amplifier}/${Math.round(trial.duration / 1000)}k` : 'none')
   h.result('bad_omen_gone', effect('bad_omen') === undefined)
+  // The ominous spawner drops an item spawner over the player or its mob, which releases its
+  // item later.
+  const omen = await h.waitFor(() => Object.values(bot.entities).some(e => e.name === 'ominous_item_spawner'), 15000)
+  h.result('ominous_item_spawner_seen', omen)
+  const itemSpawner = Object.values(bot.entities).find(e => e.name === 'ominous_item_spawner')
+  if (itemSpawner) {
+    const p = itemSpawner.position
+    h.result('ominous_item_spawner_centred', Math.abs(p.x - Math.floor(p.x) - 0.5) < 0.01 && Math.abs(p.z - Math.floor(p.z) - 0.5) < 0.01)
+    const start = tick
+    await h.waitFor(() => !bot.entities[itemSpawner.id], 10000)
+    const life = tick - start
+    h.result('ominous_item_spawner_life', life >= 40 && life <= 140)
+  }
   h.cmd('gamerule spawn_mobs false')
+  h.cmd(`kill @e[type=!player,x=${X},y=${Y},z=${Z},distance=..40]`)
+  await h.ticks(10)
+  await h.clear()
+
+  // A summoned item spawner inside the bot: the sound 36 ticks before, then the item, which has no
+  // pickup delay, and the spawner goes; an arrow is shot straight down instead.
+  await h.tp(X + 0.5, Y + 1, Z + 0.5)
+  await h.ticks(10)
+  const sounds = []
+  const soundListener = () => sounds.push(tick)
+  bot._client.on('sound_effect', soundListener)
+  spawned.length = 0
+  const summonedAt = tick
+  h.cmd(`summon ominous_item_spawner ${X + 0.5} ${Y + 2} ${Z + 0.5} {item:{id:"minecraft:diamond",count:1},spawn_item_after_ticks:40}`)
+  await h.waitFor(() => (h.inv().diamond || 0) > 0, 8000)
+  const pickedAt = tick
+  await h.ticks(5)
+  bot._client.removeListener('sound_effect', soundListener)
+  h.result('summoned_sound_before_item', sounds.length > 0 && spawned.length > 0 && sounds[0] < spawned[0].tick)
+  h.result('summoned_item_after_40', spawned.length ? Math.round((spawned[0].tick - summonedAt) / 10) * 10 : 'none')
+  h.result('summoned_picked_fast', spawned.length > 0 && pickedAt - spawned[0].tick < 5)
+  h.result('summoned_spawner_gone', !Object.values(bot.entities).some(e => e.name === 'ominous_item_spawner'))
+  const arrows = []
+  const arrowListener = (e) => { if (e.name === 'arrow') arrows.push({ vx: e.velocity.x, vy: e.velocity.y }) }
+  bot.on('entitySpawn', arrowListener)
+  h.cmd(`summon ominous_item_spawner ${X + 4.5} ${Y + 4.5} ${Z + 0.5} {item:{id:"minecraft:arrow",count:1},spawn_item_after_ticks:10}`)
+  await h.waitFor(() => arrows.length > 0, 5000)
+  await h.ticks(3)
+  bot.removeListener('entitySpawn', arrowListener)
+  h.result('summoned_arrow_down', arrows.length > 0 && arrows[0].vy < 0 && Math.abs(arrows[0].vx) < 0.1)
   h.cmd(`kill @e[type=!player,x=${X},y=${Y},z=${Z},distance=..40]`)
   await h.ticks(10)
 })
