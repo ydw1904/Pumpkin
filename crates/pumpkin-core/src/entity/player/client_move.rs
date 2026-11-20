@@ -3,10 +3,7 @@ use std::sync::atomic::Ordering;
 
 use pumpkin_data::translation;
 use pumpkin_protocol::bedrock::client::CMovePlayer;
-use pumpkin_protocol::java::client::play::{
-    CEntityPositionSync, CHeadRot, CPlayerPosition, CSetCamera, CUpdateEntityPos,
-    CUpdateEntityPosRot, CUpdateEntityRot,
-};
+use pumpkin_protocol::java::client::play::{CPlayerPosition, CSetCamera};
 use pumpkin_protocol::java::server::play::SPlayerInput;
 use pumpkin_util::GameMode;
 use pumpkin_util::math::{vector3::Vector3, wrap_degrees};
@@ -50,10 +47,6 @@ impl Player {
 
     const fn clamp_vertical(pos: f64) -> f64 {
         pos.clamp(-2.0E7, 2.0E7)
-    }
-
-    fn packed_rot(degrees: f32) -> u8 {
-        (degrees * 256.0 / 360.0).rem_euclid(256.0) as u8
     }
 
     /// Vanilla `ServerGamePacketListenerImpl.handlePlayerInput`
@@ -311,13 +304,7 @@ impl Player {
         self.apply_look(requested);
 
         if pos_changed || rot_changed {
-            self.broadcast_client_move(
-                last_pos,
-                pos,
-                requested.on_ground,
-                pos_changed,
-                rot_changed,
-            );
+            self.broadcast_bedrock_move(last_pos, pos, requested.on_ground, pos_changed);
         }
 
         self.do_check_fall_damage(delta, requested.on_ground, requested.horizontal_collision);
@@ -372,7 +359,7 @@ impl Player {
             let entity = self.get_entity();
             let pos = entity.pos.load();
             let on_ground = entity.on_ground.load(Ordering::Relaxed);
-            self.broadcast_client_move(pos, pos, on_ground, false, true);
+            self.broadcast_bedrock_move(pos, pos, on_ground, false);
         }
     }
 
@@ -406,78 +393,29 @@ impl Player {
         );
     }
 
-    fn broadcast_client_move(
+    /// Bedrock watchers get each client move as it arrives. Java watchers get it from the
+    /// entity tracker, which encodes it against the position it last sent.
+    fn broadcast_bedrock_move(
         &self,
         last_pos: Vector3<f64>,
         pos: Vector3<f64>,
         on_ground: bool,
         pos_changed: bool,
-        rot_changed: bool,
     ) {
         let entity = self.get_entity();
         let world = entity.world.load_full();
-        let entity_id = entity.entity_id;
-        let yaw = Self::packed_rot(entity.yaw.load());
-        let pitch = Self::packed_rot(entity.pitch.load());
-        let head = Self::packed_rot(entity.head_yaw.load());
-        let delta = pos - last_pos;
-
-        if pos_changed && delta.length_squared() >= 64.0 {
-            world.send_to_tracking_players_editioned(
-                entity,
-                &CEntityPositionSync::new(
-                    entity_id.into(),
-                    pos,
-                    Vector3::new(0.0, 0.0, 0.0),
-                    entity.yaw.load(),
-                    entity.pitch.load(),
-                    on_ground,
-                ),
-                &self.bedrock_move_packet(CMovePlayer::MODE_TELEPORT, on_ground, 0),
-            );
-            // Bedrock ignores head yaw on teleport -> a normal move re-asserts it
+        if pos_changed && (pos - last_pos).length_squared() >= 64.0 {
             world.send_to_tracking_players_bedrock(
                 entity,
-                &self.bedrock_move_packet(CMovePlayer::MODE_NORMAL, on_ground, 0),
-            );
-        } else if pos_changed && rot_changed {
-            world.send_to_tracking_players_editioned(
-                entity,
-                &CUpdateEntityPosRot::new(
-                    entity_id.into(),
-                    packed_delta(last_pos, pos),
-                    yaw,
-                    pitch,
-                    on_ground,
-                ),
-                &self.bedrock_move_packet(CMovePlayer::MODE_NORMAL, on_ground, 0),
-            );
-        } else if pos_changed {
-            world.send_to_tracking_players_editioned(
-                entity,
-                &CUpdateEntityPos::new(entity_id.into(), packed_delta(last_pos, pos), on_ground),
-                &self.bedrock_move_packet(CMovePlayer::MODE_NORMAL, on_ground, 0),
-            );
-        } else if rot_changed {
-            world.send_to_tracking_players_editioned(
-                entity,
-                &CUpdateEntityRot::new(entity_id.into(), yaw, pitch, on_ground),
-                &self.bedrock_move_packet(CMovePlayer::MODE_NORMAL, on_ground, 0),
+                &self.bedrock_move_packet(CMovePlayer::MODE_TELEPORT, on_ground, 0),
             );
         }
-
-        if rot_changed {
-            world.send_to_tracking_players(entity, &CHeadRot::new(entity_id.into(), head));
-        }
+        // After a teleport too: Bedrock ignores head yaw on teleport -> a normal move re-asserts it
+        world.send_to_tracking_players_bedrock(
+            entity,
+            &self.bedrock_move_packet(CMovePlayer::MODE_NORMAL, on_ground, 0),
+        );
     }
-}
-
-fn packed_delta(last_pos: Vector3<f64>, pos: Vector3<f64>) -> Vector3<i16> {
-    Vector3::new(
-        pos.x.mul_add(4096.0, -(last_pos.x * 4096.0)) as i16,
-        pos.y.mul_add(4096.0, -(last_pos.y * 4096.0)) as i16,
-        pos.z.mul_add(4096.0, -(last_pos.z * 4096.0)) as i16,
-    )
 }
 
 fn dismount_if_riding(entity: &crate::entity::Entity) {

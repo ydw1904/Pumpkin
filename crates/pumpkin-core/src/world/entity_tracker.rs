@@ -169,18 +169,27 @@ impl TrackedEntity {
             .contains_key(uuid)
     }
 
-    /// Vanilla `ServerEntity.sendChanges`. Non-player entities only.
+    /// Vanilla `ServerEntity.sendChanges`.
     pub fn send_changes(&self, world: &World) {
         let entity = self.entity.get_entity();
+        // A player's velocity goes out from `client_push` and its Bedrock moves from
+        // `broadcast_bedrock_move`, as its packets arrive.
+        let is_player = self.entity.get_player().is_some();
         self.send_passengers_if_changed(entity, world);
-        self.send_bedrock_move(entity, world);
+        if !is_player {
+            self.send_bedrock_move(entity, world);
+        }
         let tick = self.tick_count.fetch_add(1, Relaxed);
-        let needs_sync = entity.velocity_dirty.swap(false, Ordering::SeqCst);
+        let needs_sync = !is_player && entity.velocity_dirty.swap(false, Ordering::SeqCst);
+        // Players sync every tick instead of vanilla's 2, so watchers see each move in the
+        // tick it arrived.
+        let update_interval = if is_player {
+            1
+        } else {
+            self.update_interval.max(1)
+        };
         // Head yaw stays live every tick, only position/rotation sync is throttled.
-        if tick.is_multiple_of(self.update_interval.max(1))
-            || needs_sync
-            || entity.synched_data.is_dirty()
-        {
+        if tick.is_multiple_of(update_interval) || needs_sync || entity.synched_data.is_dirty() {
             let yaw = pack_degrees(entity.yaw.load());
             let pitch = pack_degrees(entity.pitch.load());
             let rot_changed = yaw != entity.last_sent_yaw.load(Relaxed)
@@ -198,7 +207,7 @@ impl TrackedEntity {
             } else {
                 let pos = entity.pos.load();
                 let sync = self.pick_move(entity, pos, tick, rot_changed);
-                if needs_sync || self.track_deltas || entity.is_fall_flying() {
+                if !is_player && (needs_sync || self.track_deltas || entity.is_fall_flying()) {
                     self.send_motion(entity, world);
                 }
                 if let Some(sync) = sync {
@@ -220,7 +229,7 @@ impl TrackedEntity {
 
         // Vanilla `ServerEntity.sendChanges`: after the needsSync block, `syncVelocity`
         // (`hurtMarked`) always sends the motion alone, leaving `lastSentMovement` as it was.
-        if entity.sync_velocity.swap(false, Ordering::SeqCst) {
+        if !is_player && entity.sync_velocity.swap(false, Ordering::SeqCst) {
             let velocity = entity.velocity.load();
             self.send_to_tracking_players_editioned(
                 &CEntityVelocity::new(VarInt(self.entity_id), velocity),
@@ -1410,12 +1419,6 @@ impl EntityTracker {
         tracked_entities
             .par_iter()
             .with_min_len(TRACKED_SEND_BATCH)
-            .for_each(|tracked| {
-                if tracked.entity.get_player().is_none() {
-                    tracked.send_changes(world);
-                } else if tracked.entity.get_entity().synched_data.is_dirty() {
-                    tracked.entity.get_entity().send_dirty_entity_data();
-                }
-            });
+            .for_each(|tracked| tracked.send_changes(world));
     }
 }
