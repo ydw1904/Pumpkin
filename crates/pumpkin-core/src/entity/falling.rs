@@ -121,9 +121,11 @@ impl FallingEntity {
         }
         let state = self.block_state_id.load();
         let is_anvil = Block::from_state_id(state).has_tag(&tag::Block::MINECRAFT_ANVIL);
-        // `Fallable.getFallDamageSource`: anvils have their own damage type.
+        // `Fallable.getFallDamageSource`: anvils and speleothems have their own damage type.
         let damage_type = if is_anvil {
             DamageType::FALLING_ANVIL
+        } else if Block::from_state_id(state).has_tag(&tag::Block::MINECRAFT_SPELEOTHEMS) {
+            DamageType::FALLING_STALACTITE
         } else {
             DamageType::FALLING_BLOCK
         };
@@ -175,6 +177,16 @@ impl FallingEntity {
         if block.has_tag(&tag::Block::MINECRAFT_ANVIL) {
             if !self.entity.is_silent() {
                 world.sync_world_event(WorldEvent::SoundAnvilBroken, *pos, 0);
+            }
+        } else if block.has_tag(&tag::Block::MINECRAFT_SPELEOTHEMS) {
+            // `SpeleothemBlock.getStalactiteLandingSound`.
+            let sound = if block == &Block::SULFUR_SPIKE {
+                WorldEvent::SoundSulfurSpikeLand
+            } else {
+                WorldEvent::SoundPointedDripstoneLand
+            };
+            if !self.entity.is_silent() {
+                world.sync_world_event(sound, *pos, 0);
             }
         } else if block == &Block::SUSPICIOUS_SAND || block == &Block::SUSPICIOUS_GRAVEL {
             let bounding_box = self.entity.bounding_box.load();
