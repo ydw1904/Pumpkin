@@ -72,7 +72,9 @@ impl From<ChunkStatus> for StagedChunkEnum {
             ChunkStatus::StructureStarts => Self::StructureStart,
             ChunkStatus::StructureReferences => Self::StructureReferences,
             ChunkStatus::Biomes => Self::Biomes,
-            ChunkStatus::Terrain => Self::Noise,
+            // Vanilla builds noise, surface and carvers in one step, so a terrain chunk has all
+            // three. Rerunning surface would bury blocks neighbours' features placed in it.
+            ChunkStatus::Terrain => Self::Carvers,
             ChunkStatus::Features => Self::Features,
             ChunkStatus::InitializeLight | ChunkStatus::Light => Self::Lighting,
             ChunkStatus::Spawn => Self::Spawn,
@@ -88,10 +90,10 @@ impl From<StagedChunkEnum> for ChunkStatus {
             StagedChunkEnum::Empty => Self::Empty,
             StagedChunkEnum::StructureStart => Self::StructureStarts,
             StagedChunkEnum::StructureReferences => Self::StructureReferences,
-            StagedChunkEnum::Biomes => Self::Biomes,
-            StagedChunkEnum::Noise | StagedChunkEnum::Surface | StagedChunkEnum::Carvers => {
-                Self::Terrain
+            StagedChunkEnum::Biomes | StagedChunkEnum::Noise | StagedChunkEnum::Surface => {
+                Self::Biomes
             }
+            StagedChunkEnum::Carvers => Self::Terrain,
             StagedChunkEnum::Features => Self::Features,
             StagedChunkEnum::Lighting => Self::Light,
             StagedChunkEnum::Spawn => Self::Spawn,
@@ -299,7 +301,13 @@ impl Chunk {
             Self::Level(_) => panic!("Cannot upgrade a Level chunk"),
         };
 
-        let proto_chunk = *proto_chunk_box;
+        let mut proto_chunk = *proto_chunk_box;
+        if matches!(
+            proto_chunk.stage,
+            StagedChunkEnum::Noise | StagedChunkEnum::Surface
+        ) {
+            proto_chunk.discard_partial_terrain();
+        }
 
         // Only mark lit if past the lighting stage, and the lighting config is "default" ("full" and "dark" modes skip proper lighting)
         let is_lit = proto_chunk.stage >= StagedChunkEnum::Lighting

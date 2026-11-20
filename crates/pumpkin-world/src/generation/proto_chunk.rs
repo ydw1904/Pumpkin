@@ -1042,6 +1042,23 @@ impl ProtoChunk {
         (self.block_sections.len() * BlockPalette::SIZE) as i32
     }
 
+    /// Drops terrain from a chunk saved between noise and carvers. Vanilla has no status there,
+    /// so the chunk is saved as `biomes` and its terrain is built again in one go on reload.
+    pub(crate) fn discard_partial_terrain(&mut self) {
+        let default_heightmap = [i16::from(self.bottom_y) - 1; CHUNK_AREA];
+        self.block_sections.clear();
+        self.flat_surface_height_map = default_heightmap;
+        self.flat_ocean_floor_height_map = default_heightmap;
+        self.flat_motion_blocking_height_map = default_heightmap;
+        self.flat_motion_blocking_no_leaves_height_map = default_heightmap;
+        self.flat_surface_wg_height_map = [i16::MIN; CHUNK_AREA];
+        self.flat_ocean_floor_wg_height_map = [i16::MIN; CHUNK_AREA];
+        self.block_ticks.clear();
+        self.fluid_ticks.clear();
+        self.post_processing.clear();
+        self.stage = StagedChunkEnum::Biomes;
+    }
+
     #[inline]
     #[must_use]
     pub fn get_block_state_raw(&self, x: i32, y: i32, z: i32) -> BlockStateId {
