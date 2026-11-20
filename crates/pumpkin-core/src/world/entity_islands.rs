@@ -167,6 +167,8 @@ pub(super) struct Schedule {
     /// Entity tick time per entity of recent serial and planned ticks.
     serial_cost: Option<Duration>,
     planned_cost: Option<Duration>,
+    /// Entity tick time per entity of the latest serial tick.
+    last_serial_cost: Option<Duration>,
 }
 
 impl Schedule {
@@ -201,10 +203,18 @@ impl Schedule {
     /// changes how long the tick takes.
     pub(super) fn record_plan(&mut self, largest_island: usize, elapsed: Duration) -> bool {
         self.planned_count = self.entity_count;
-        let cost = average(self.planned_cost, per_entity(elapsed, self.entity_count));
+        let current = per_entity(elapsed, self.entity_count);
+        let cost = average(self.planned_cost, current);
         self.planned_cost = Some(cost);
+        // A plan loses only when both this tick and the average cost more than both the average
+        // and the latest serial tick, so one slow tick on either side doesn't start a run of
+        // serial ticks that lasts until the averages recover.
+        let serial = self
+            .serial_cost
+            .zip(self.last_serial_cost)
+            .map(|(average, last)| average.max(last));
         let parallel = worth_parallel(largest_island, self.entity_count)
-            && self.serial_cost.is_none_or(|serial| cost <= serial);
+            && serial.is_none_or(|serial| cost.min(current) <= serial);
         let probed = std::mem::take(&mut self.probing);
         // Only the serial preference is cached; parallel ticks always use a fresh plan, apart
         // from a serial tick now and then to keep the comparison current.
@@ -243,10 +253,9 @@ impl Schedule {
         if self.entity_count < MIN_PARALLEL_ENTITIES {
             return;
         }
-        self.serial_cost = Some(average(
-            self.serial_cost,
-            per_entity(elapsed, self.entity_count),
-        ));
+        let cost = per_entity(elapsed, self.entity_count);
+        self.serial_cost = Some(average(self.serial_cost, cost));
+        self.last_serial_cost = Some(cost);
     }
 }
 
@@ -2095,6 +2104,37 @@ mod tests {
         assert!(!schedule.record_plan(70, cost));
         assert!(!schedule.should_plan(70));
         assert!(schedule.should_plan(70));
+    }
+
+    #[test]
+    fn one_noisy_tick_costs_at_most_one_serial_tick() {
+        let planned = Duration::from_micros(1000);
+        let serial = Duration::from_micros(1200);
+        let mut schedule = Schedule::default();
+        assert!(schedule.should_plan(40));
+        assert!(schedule.record_plan(8, planned));
+        assert!(!schedule.should_plan(40));
+        schedule.record_serial(serial);
+        // A planned tick that waited on a descheduled worker.
+        assert!(schedule.should_plan(40));
+        assert!(!schedule.record_plan(8, planned * 10));
+        assert!(!schedule.should_plan(40));
+        schedule.record_serial(serial);
+        assert!(schedule.should_plan(40));
+        assert!(schedule.record_plan(8, planned));
+        // A serial tick that happened to be cheap.
+        for _ in 0..19 {
+            assert!(schedule.should_plan(40));
+            assert!(schedule.record_plan(8, planned));
+        }
+        assert!(!schedule.should_plan(40));
+        schedule.record_serial(serial / 10);
+        assert!(schedule.should_plan(40));
+        assert!(!schedule.record_plan(8, planned));
+        assert!(!schedule.should_plan(40));
+        schedule.record_serial(serial);
+        assert!(schedule.should_plan(40));
+        assert!(schedule.record_plan(8, planned));
     }
 
     #[test]
