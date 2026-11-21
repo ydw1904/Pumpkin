@@ -100,7 +100,11 @@ impl Goal for EatGrassGoal {
             if block_at_pos.has_tag(&tag::Block::MINECRAFT_EDIBLE_FOR_SHEEP) {
                 if mob_griefing {
                     // Break effects, no drops.
-                    world.destroy_block(&block_pos, None, BlockFlags::SKIP_DROPS);
+                    world.destroy_block(
+                        &block_pos,
+                        None,
+                        BlockFlags::NOTIFY_ALL | BlockFlags::SKIP_DROPS,
+                    );
                 }
                 entity.emit_own_game_event(mob, GameEvent::Eat);
                 mob.on_eating_grass();

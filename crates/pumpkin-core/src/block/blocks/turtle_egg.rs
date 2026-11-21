@@ -202,8 +202,11 @@ impl BlockBehaviour for TurtleEggBlock {
                 },
             );
         } else {
-            args.world
-                .destroy_block(args.position, None, BlockFlags::SKIP_DROPS);
+            args.world.destroy_block(
+                args.position,
+                None,
+                BlockFlags::NOTIFY_ALL | BlockFlags::SKIP_DROPS,
+            );
 
             args.world.play_sound(
                 Sound::EntityTurtleEggHatch,
