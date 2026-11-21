@@ -181,10 +181,7 @@ pub fn write_chunk_data(
         write.write_slice(&blocks_and_biomes_buf)?;
     };
 
-    let block_entities = chunk
-        .pending_block_entities
-        .lock()
-        .map_err(|_| WritingError::Message("block_entities lock poisoned".into()))?;
+    let block_entities = chunk.block_entity_nbt();
     // Block entities the Java client has no type for, like Pumpkin's Bedrock-only bed one, are left out.
     let typed: Vec<_> = block_entities
         .iter()

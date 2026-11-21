@@ -521,7 +521,7 @@ impl ChunkData {
                     && let Some(y) = nbt.get_int("y")
                     && let Some(z) = nbt.get_int("z")
                 {
-                    block_entities.insert(BlockPos::new(x, y, z), nbt.clone());
+                    block_entities.insert(BlockPos::new(x, y, z), nbt.clone().into());
                 }
             }
         }
@@ -614,18 +614,13 @@ impl ChunkData {
             .light_populated
             .load(std::sync::atomic::Ordering::Relaxed);
 
-        let block_entities_nbt = {
-            let entities_guard = self
-                .pending_block_entities
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            // Pumpkin-only block entities, like the bed one Bedrock needs, are invalid to vanilla.
-            entities_guard
-                .values()
-                .filter(|nbt| is_vanilla_block_entity(nbt))
-                .cloned()
-                .collect::<Vec<_>>()
-        };
+        // Pumpkin-only block entities, like the bed one Bedrock needs, are invalid to vanilla.
+        let block_entities_nbt = self
+            .block_entity_nbt()
+            .into_iter()
+            .map(|(_, nbt)| nbt)
+            .filter(is_vanilla_block_entity)
+            .collect::<Vec<_>>();
 
         let light_lock = self
             .light_engine
@@ -849,13 +844,11 @@ impl ChunkData {
         const PUMP_CHUNK_VERSION: u8 = 1;
 
         let is_light_correct = self.light_populated.load(Ordering::Relaxed);
-        let block_entities_nbt = {
-            let entities_guard = self
-                .pending_block_entities
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            entities_guard.values().cloned().collect::<Vec<_>>()
-        };
+        let block_entities_nbt = self
+            .block_entity_nbt()
+            .into_iter()
+            .map(|(_, nbt)| nbt)
+            .collect::<Vec<_>>();
 
         let light_lock = self
             .light_engine
@@ -1311,7 +1304,7 @@ impl ChunkData {
                 && let Some(y) = nbt.get_int("y")
                 && let Some(z) = nbt.get_int("z")
             {
-                block_entities.insert(BlockPos::new(x, y, z), nbt);
+                block_entities.insert(BlockPos::new(x, y, z), nbt.into());
             }
         }
 

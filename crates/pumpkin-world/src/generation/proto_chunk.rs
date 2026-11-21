@@ -524,11 +524,9 @@ impl ProtoChunk {
         // Keep them so the world can create the block entities when the chunk
         // becomes active, and so saving the chunk again does not drop them.
         proto_chunk.pending_block_entities = chunk_data
-            .pending_block_entities
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .values()
-            .cloned()
+            .block_entity_nbt()
+            .into_iter()
+            .map(|(_, nbt)| nbt)
             .collect();
         proto_chunk.entities.clone_from(
             &chunk_data

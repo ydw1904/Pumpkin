@@ -97,7 +97,7 @@ mod tests {
             pumpkin_util::math::position::BlockPos(pumpkin_util::math::vector3::Vector3::new(
                 0, 64, 0,
             )),
-            nbt,
+            nbt.into(),
         );
 
         let packet = CChunkData {

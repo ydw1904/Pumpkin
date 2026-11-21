@@ -350,8 +350,10 @@ impl Chunk {
                 && let Some(y) = nbt.get_int("y")
                 && let Some(z) = nbt.get_int("z")
             {
-                pending_block_entities
-                    .insert(pumpkin_util::math::position::BlockPos::new(x, y, z), nbt);
+                pending_block_entities.insert(
+                    pumpkin_util::math::position::BlockPos::new(x, y, z),
+                    nbt.into(),
+                );
             }
         }
 

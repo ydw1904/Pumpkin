@@ -66,6 +66,55 @@ pub enum CompressionError {
     ZstdError(std::io::Error),
 }
 
+/// A live block entity whose data the chunk serializes only when it's read.
+pub trait LiveBlockEntity: Send + Sync {
+    /// The block entity type, like `minecraft:chest`.
+    fn id(&self) -> &'static str;
+    /// The data the block entity is saved with.
+    fn saved_nbt(&self) -> NbtCompound;
+}
+
+/// A block entity in [`ChunkData::pending_block_entities`].
+#[derive(Clone)]
+pub enum ChunkBlockEntity {
+    Saved(NbtCompound),
+    Live(std::sync::Arc<dyn LiveBlockEntity>),
+}
+
+impl ChunkBlockEntity {
+    #[must_use]
+    pub fn id(&self) -> Option<&str> {
+        match self {
+            Self::Saved(nbt) => nbt.get_string("id"),
+            Self::Live(live) => Some(live.id()),
+        }
+    }
+
+    /// The saved data. A live block entity may lock its own state, so callers must not hold
+    /// the `pending_block_entities` lock while calling this.
+    #[must_use]
+    pub fn nbt(&self) -> std::borrow::Cow<'_, NbtCompound> {
+        match self {
+            Self::Saved(nbt) => std::borrow::Cow::Borrowed(nbt),
+            Self::Live(live) => std::borrow::Cow::Owned(live.saved_nbt()),
+        }
+    }
+
+    #[must_use]
+    pub fn into_nbt(self) -> NbtCompound {
+        match self {
+            Self::Saved(nbt) => nbt,
+            Self::Live(live) => live.saved_nbt(),
+        }
+    }
+}
+
+impl From<NbtCompound> for ChunkBlockEntity {
+    fn from(nbt: NbtCompound) -> Self {
+        Self::Saved(nbt)
+    }
+}
+
 // Clone here cause we want to clone a snapshot of the chunk so we don't block writing for too long
 pub struct ChunkData {
     pub section: ChunkSections,
@@ -75,7 +124,9 @@ pub struct ChunkData {
     pub z: i32,
     pub block_ticks: ChunkTickScheduler<&'static Block>,
     pub fluid_ticks: ChunkTickScheduler<&'static Fluid>,
-    pub pending_block_entities: std::sync::Mutex<FxHashMap<BlockPos, NbtCompound>>,
+    /// The chunk's block entity data: saved data of block entities the world hasn't loaded yet,
+    /// and the live ones, which are serialized only when the data is read.
+    pub pending_block_entities: std::sync::Mutex<FxHashMap<BlockPos, ChunkBlockEntity>>,
     /// Lock order: a `Level::loaded_chunks` guard, then `light_engine`, then `heightmap`, then
     /// `section`. The runtime light batch and the tick lock this inside `read_chunk_sync`, so
     /// never hold it (or `heightmap` or `section`) while inserting into or removing from
@@ -673,6 +724,25 @@ impl ChunkSections {
 }
 
 impl ChunkData {
+    /// The saved data of every block entity in the chunk. Live block entities are serialized
+    /// after the lock is released, since they lock their own state.
+    pub fn block_entity_nbt(&self) -> Vec<(BlockPos, NbtCompound)> {
+        let entries: Vec<(BlockPos, ChunkBlockEntity)> = {
+            let pending = self
+                .pending_block_entities
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            pending
+                .iter()
+                .map(|(pos, entry)| (*pos, entry.clone()))
+                .collect()
+        };
+        entries
+            .into_iter()
+            .map(|(pos, entry)| (pos, entry.into_nbt()))
+            .collect()
+    }
+
     #[must_use]
     pub fn empty(x: i32, z: i32) -> Self {
         Self {

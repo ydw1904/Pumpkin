@@ -171,7 +171,7 @@ use pumpkin_util::{
     Difficulty,
     math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3},
 };
-use pumpkin_world::chunk::CHUNK_WIDTH;
+use pumpkin_world::chunk::{CHUNK_WIDTH, ChunkBlockEntity, LiveBlockEntity};
 use pumpkin_world::tick_step_min_len;
 use pumpkin_world::world::{GetBlockError, WorldPortalExt};
 use pumpkin_world::world_info::OVERWORLD_CLOCK;
@@ -247,18 +247,18 @@ fn remove_invalid_pending_block_entities(chunk: &ChunkData) -> Vec<BlockPos> {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let original_len = pending.len();
-    pending.retain(|position, nbt| {
+    pending.retain(|position, entry| {
         let relative = position.chunk_relative_position();
         let block = chunk
             .section
             .get_block_absolute_y(relative.x as usize, relative.y, relative.z as usize)
             .map(Block::from_state_id);
-        let valid = matches!((block, nbt.get_string("id")), (Some(block), Some(id)) if block_owns_block_entity(block, id));
+        let valid = matches!((block, entry.id()), (Some(block), Some(id)) if block_owns_block_entity(block, id));
         if !valid {
             debug!(
                 ?position,
                 block = ?block.map(|block| block.name),
-                block_entity_id = ?nbt.get_string("id"),
+                block_entity_id = ?entry.id(),
                 "Dropping pending block entity that does not match its block"
             );
         }
@@ -1166,25 +1166,17 @@ impl World {
         }
     }
 
-    /// The NBT a block entity is saved with. The chunk keeps this copy whenever the
-    /// entity changes: a chunk can be written out on unload before
-    /// `save_block_entities` gets to it.
+    /// The NBT a block entity is saved with.
     fn saved_block_entity_nbt(&self, block_entity: &dyn BlockEntity) -> NbtCompound {
-        let mut nbt = block_entity_nbt(block_entity);
         let position = block_entity.get_position();
-        if let Some(custom_data) = self.custom_block_entity_data.get(&position)
-            && !custom_data.is_empty()
-        {
-            nbt.put_compound("PumpkinCustomData", custom_data.clone());
-        }
-        if let Some(unmodelled) = self.unmodelled_block_entity_nbt.get(&position) {
-            for (name, tag) in &unmodelled.child_tags {
-                if !nbt.has(name) {
-                    nbt.put(name, tag.clone());
-                }
-            }
-        }
-        nbt
+        saved_block_entity_nbt(
+            block_entity,
+            self.custom_block_entity_data
+                .get(&position)
+                .as_deref()
+                .filter(|custom_data| !custom_data.is_empty()),
+            self.unmodelled_block_entity_nbt.get(&position).as_deref(),
+        )
     }
 
     /// Broadcasts an entity status update / event to all players tracking the specified entity,
@@ -8513,12 +8505,13 @@ impl World {
         {
             return Some(nbt);
         }
-        chunk
+        let entry = chunk
             .pending_block_entities
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .get(block_pos)
-            .cloned()
+            .cloned();
+        entry.map(ChunkBlockEntity::into_nbt)
     }
 
     pub fn get_block_entity(&self, block_pos: &BlockPos) -> Option<Arc<dyn BlockEntity>> {
@@ -8541,7 +8534,8 @@ impl World {
                     .get(block_pos)
                     .cloned()
             })
-            .flatten()?;
+            .flatten()?
+            .into_nbt();
         if let Some(custom_data) = nbt
             .get_compound("PumpkinCustomData")
             .or_else(|| nbt.get_compound("BukkitValues"))
@@ -8589,10 +8583,15 @@ impl World {
                     .collect()
             })
             .unwrap_or_default();
-        let pending = chunk
+        // Cloned out first: a live block entity's data locks its own state.
+        let pending: Vec<(BlockPos, ChunkBlockEntity)> = chunk
             .pending_block_entities
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .filter(|(position, _)| !live_entities.contains_key(position))
+            .map(|(position, entry)| (*position, entry.clone()))
+            .collect();
 
         live_entities
             .iter()
@@ -8606,22 +8605,17 @@ impl World {
                             .or_else(|| entity.bedrock_block_actor_data(state_id))
                     })
             })
-            .chain(
-                pending
-                    .iter()
-                    .filter(|(position, _)| !live_entities.contains_key(position))
-                    .filter_map(|(position, nbt)| {
-                        let relative = position.chunk_relative_position();
-                        let state_id = chunk.section.get_block_absolute_y(
-                            relative.x as usize,
-                            relative.y,
-                            relative.z as usize,
-                        )?;
-                        bedrock_chest_block_actor(state_id, *position).or_else(|| {
-                            block_entity_from_nbt(nbt)?.bedrock_block_actor_data(state_id)
-                        })
-                    }),
-            )
+            .chain(pending.iter().filter_map(|(position, entry)| {
+                let relative = position.chunk_relative_position();
+                let state_id = chunk.section.get_block_absolute_y(
+                    relative.x as usize,
+                    relative.y,
+                    relative.z as usize,
+                )?;
+                bedrock_chest_block_actor(state_id, *position).or_else(|| {
+                    block_entity_from_nbt(&entry.nbt())?.bedrock_block_actor_data(state_id)
+                })
+            }))
             .collect()
     }
 
@@ -8656,7 +8650,6 @@ impl World {
         if !replaces_same_kind {
             self.unmodelled_block_entity_nbt.remove(&block_pos);
         }
-        let saved_nbt = self.saved_block_entity_nbt(block_entity.as_ref());
         let state = self.get_block_state(&block_pos);
 
         if let Some(nbt) = block_entity.update_packet_nbt(state.id) {
@@ -8680,16 +8673,11 @@ impl World {
         self.set_block_entity_world(block_entity.as_ref());
         self.block_listeners.update(block_entity.as_ref());
         self.block_entity_tickers.add(&block_entity);
+        self.store_live_block_entity(&block_entity);
         self.block_entities
             .entry(chunk_pos)
             .or_default()
             .insert(block_pos, block_entity);
-
-        self.add_block_entity_nbt(block_pos, &saved_nbt);
-
-        self.level.read_chunk_sync(&chunk_pos, |chunk| {
-            chunk.mark_dirty(true);
-        });
     }
 
     /// A block entity's full data as vanilla `saveWithFullMetadata` gives it, with the fields
@@ -8822,7 +8810,7 @@ impl World {
                     .pending_block_entities
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .insert(block_pos, nbt.clone());
+                    .insert(block_pos, ChunkBlockEntity::Saved(nbt.clone()));
                 chunk.mark_dirty(true);
             })
             .is_some()
@@ -8946,10 +8934,39 @@ impl World {
     /// Vanilla `BlockEntity.setChanged` without a client update: the chunk keeps the changed
     /// block entity's data for saving.
     pub fn mark_block_entity_changed(&self, block_entity: &Arc<dyn BlockEntity>) {
-        self.add_block_entity_nbt(
-            block_entity.get_position(),
-            &self.saved_block_entity_nbt(block_entity.as_ref()),
-        );
+        self.store_live_block_entity(block_entity);
+    }
+
+    /// Keeps the live block entity in its chunk's data, serialized only when the chunk is saved
+    /// or sent, so a chunk written out on unload before `save_block_entities` gets to it still
+    /// has it. The fields the world keeps beside it are copied as they are now.
+    fn store_live_block_entity(&self, block_entity: &Arc<dyn BlockEntity>) {
+        let position = block_entity.get_position();
+        let live = LiveBlockEntityData {
+            block_entity: block_entity.clone(),
+            custom_data: self
+                .custom_block_entity_data
+                .get(&position)
+                .filter(|custom_data| !custom_data.is_empty())
+                .map(|custom_data| custom_data.clone()),
+            unmodelled: self
+                .unmodelled_block_entity_nbt
+                .get(&position)
+                .map(|unmodelled| unmodelled.clone()),
+        };
+        let replaced = self
+            .level
+            .read_chunk_sync(&position.chunk_position(), |chunk| {
+                let replaced = chunk
+                    .pending_block_entities
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .insert(position, ChunkBlockEntity::Live(Arc::new(live)));
+                chunk.mark_dirty(true);
+                replaced
+            });
+        // Dropped outside the lock: it may hold the last reference to a replaced block entity.
+        drop(replaced);
     }
 
     pub fn update_block_entity(&self, block_entity: &Arc<dyn BlockEntity>) {
@@ -8968,20 +8985,13 @@ impl World {
                 ),
             );
         }
-        self.add_block_entity_nbt(
-            block_pos,
-            &self.saved_block_entity_nbt(block_entity.as_ref()),
-        );
+        self.store_live_block_entity(block_entity);
 
         if let Some(data) = bedrock_chest_block_actor(state.id, block_pos)
             .or_else(|| block_entity.bedrock_block_actor_data(state.id))
         {
             self.broadcast_to_chunk_bedrock(chunk_pos, &CBlockActorData::new(block_pos, data));
         }
-
-        self.level.read_chunk_sync(&chunk_pos, |chunk| {
-            chunk.mark_dirty(true);
-        });
     }
 
     #[must_use]
@@ -10075,6 +10085,49 @@ fn block_entity_nbt(block_entity: &dyn BlockEntity) -> NbtCompound {
     nbt
 }
 
+/// A block entity's data with the Pumpkin custom data and the fields Pumpkin keeps without
+/// modelling.
+fn saved_block_entity_nbt(
+    block_entity: &dyn BlockEntity,
+    custom_data: Option<&NbtCompound>,
+    unmodelled: Option<&NbtCompound>,
+) -> NbtCompound {
+    let mut nbt = block_entity_nbt(block_entity);
+    if let Some(custom_data) = custom_data {
+        nbt.put_compound("PumpkinCustomData", custom_data.clone());
+    }
+    if let Some(unmodelled) = unmodelled {
+        for (name, tag) in &unmodelled.child_tags {
+            if !nbt.has(name) {
+                nbt.put(name, tag.clone());
+            }
+        }
+    }
+    nbt
+}
+
+/// A live block entity in its chunk's data, with the fields the world keeps beside it as they
+/// were when it was stored.
+struct LiveBlockEntityData {
+    block_entity: Arc<dyn BlockEntity>,
+    custom_data: Option<NbtCompound>,
+    unmodelled: Option<NbtCompound>,
+}
+
+impl LiveBlockEntity for LiveBlockEntityData {
+    fn id(&self) -> &'static str {
+        self.block_entity.resource_location()
+    }
+
+    fn saved_nbt(&self) -> NbtCompound {
+        saved_block_entity_nbt(
+            self.block_entity.as_ref(),
+            self.custom_data.as_ref(),
+            self.unmodelled.as_ref(),
+        )
+    }
+}
+
 /// The fields of `nbt` that `block_entity`, loaded from it, doesn't write itself but vanilla's
 /// block entity keeps. Keys vanilla doesn't read are dropped, like vanilla does on load.
 fn unmodelled_block_entity_fields(
@@ -10130,7 +10183,8 @@ mod tests {
     };
     use pumpkin_nbt::compound::NbtCompound;
     use pumpkin_util::math::position::BlockPos;
-    use pumpkin_world::chunk::{ChunkData, io::Dirtiable};
+    use pumpkin_world::chunk::{ChunkBlockEntity, ChunkData, io::Dirtiable};
+    use std::sync::Arc;
     use uuid::Uuid;
 
     use super::{
@@ -10304,7 +10358,8 @@ mod tests {
                     .get(&position)
                     .cloned()
             })
-            .unwrap();
+            .unwrap()
+            .into_nbt();
         assert_eq!(
             saved.get_string("LootTable"),
             Some("minecraft:chests/simple_dungeon")
@@ -10330,7 +10385,7 @@ mod tests {
             .pending_block_entities
             .lock()
             .unwrap()
-            .insert(position, nbt);
+            .insert(position, nbt.into());
         world.level.loaded_chunks.insert(chunk_pos, chunk);
 
         let chest = world.get_block_entity(&position).unwrap();
@@ -10348,8 +10403,86 @@ mod tests {
                     .get(&position)
                     .cloned()
             })
-            .unwrap();
+            .unwrap()
+            .into_nbt();
         assert_eq!(saved.get_string("CustomName"), Some("Treasure"));
+        world.level.shutdown().await;
+    }
+
+    fn chest_world(folder: &tempfile::TempDir) -> (Arc<World>, Arc<ChunkData>, BlockPos) {
+        let world = crate::entity::ai::test_support::world(folder);
+        let chunk = ChunkData::empty_sync(0, 0);
+        chunk
+            .section
+            .set_block_absolute_y(1, 64, 1, Block::CHEST.default_state.id);
+        world.level.loaded_chunks.insert(
+            pumpkin_util::math::vector2::Vector2::new(0, 0),
+            chunk.clone(),
+        );
+        (world, chunk, BlockPos::new(1, 64, 1))
+    }
+
+    fn saved_block_entities(chunk: &ChunkData) -> Vec<NbtCompound> {
+        let saved = ChunkData::internal_from_bytes(
+            &chunk.internal_to_bytes(),
+            pumpkin_util::math::vector2::Vector2::new(0, 0),
+        )
+        .unwrap();
+        saved
+            .block_entity_nbt()
+            .into_iter()
+            .map(|(_, nbt)| nbt)
+            .collect()
+    }
+
+    /// An added block entity is serialized only when its chunk is saved, with the fields the
+    /// world keeps beside it.
+    #[tokio::test]
+    async fn chunk_saves_a_block_entity_it_never_serialized() {
+        let folder = tempfile::tempdir().unwrap();
+        let (world, chunk, position) = chest_world(&folder);
+        let mut nbt = block_entity_nbt("minecraft:chest", position);
+        nbt.put_string("LootTable", "minecraft:chests/simple_dungeon".to_string());
+        let mut custom_data = NbtCompound::new();
+        custom_data.put_int("plugin:key", 7);
+        world
+            .custom_block_entity_data
+            .insert(position, custom_data.clone());
+
+        world.add_block_entity(crate::block::entities::block_entity_from_nbt(&nbt).unwrap());
+
+        assert!(matches!(
+            chunk.pending_block_entities.lock().unwrap().get(&position),
+            Some(ChunkBlockEntity::Live(_))
+        ));
+        let saved = saved_block_entities(&chunk);
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].get_string("id"), Some("minecraft:chest"));
+        assert_eq!(
+            saved[0].get_string("LootTable"),
+            Some("minecraft:chests/simple_dungeon")
+        );
+        assert_eq!(
+            saved[0].get_compound("PumpkinCustomData"),
+            Some(&custom_data)
+        );
+        world.level.shutdown().await;
+    }
+
+    /// A block entity added and removed before its chunk is saved leaves nothing behind to
+    /// save or to load again.
+    #[tokio::test]
+    async fn block_entity_removed_in_the_tick_it_was_added_leaves_no_data() {
+        let folder = tempfile::tempdir().unwrap();
+        let (world, chunk, position) = chest_world(&folder);
+        let nbt = block_entity_nbt("minecraft:chest", position);
+
+        world.add_block_entity(crate::block::entities::block_entity_from_nbt(&nbt).unwrap());
+        world.remove_block_entity(&position);
+
+        assert!(chunk.pending_block_entities.lock().unwrap().is_empty());
+        assert!(saved_block_entities(&chunk).is_empty());
+        assert!(world.get_block_entity(&position).is_none());
         world.level.shutdown().await;
     }
 
@@ -10372,7 +10505,7 @@ mod tests {
             chunk
                 .section
                 .set_block_absolute_y(x as usize, 64, x as usize, block.default_state.id);
-            pending.insert(position, block_entity_nbt(id, position));
+            pending.insert(position, block_entity_nbt(id, position).into());
         }
         drop(pending);
 
