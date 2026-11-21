@@ -416,9 +416,10 @@ macro_rules! impl_inventory_for_cooking {
             fn on_stack_set(&self, slot: usize, is_same_item: bool, stack: &ItemStack) {
                 if slot == 0 && !is_same_item {
                     // AbstractFurnaceBlockEntity.getTotalCookTime: 200 when nothing cooks.
-                    let total =
-                        $crate::server::recipe::find_cooking_recipe(stack.item, &$recipe_kind)
-                            .map_or(200, |recipe| self.total_cook_time(&recipe));
+                    let total = self
+                        .quick_check
+                        .get_recipe_for(stack)
+                        .map_or(200, |recipe| self.total_cook_time(&recipe));
                     self.set_cooking_total_time(total);
                     self.set_cooking_time_spent(0);
                 }
@@ -449,19 +450,15 @@ macro_rules! impl_block_entity_for_cooking {
                 };
 
                 let is_top_items_empty = top_item.is_empty();
-
-                let furnace_recipe = if is_top_items_empty {
-                    None
-                } else {
-                    $crate::server::recipe::find_cooking_recipe(top_item.item, &$recipe_kind)
-                };
-                let furnace_recipe = furnace_recipe.as_ref();
-
-                let can_accept_output = self
-                    .can_accept_recipe_output(furnace_recipe, self.get_max_count_per_stack());
-
                 let bottom_items_is_empty = bottom_item.is_empty();
                 if self.is_burning() || !bottom_items_is_empty && !is_top_items_empty {
+                    // Vanilla only asks its `quickCheck` here, which matters for the recipe it
+                    // remembers.
+                    let furnace_recipe = self.quick_check.get_recipe_for(&top_item);
+                    let furnace_recipe = furnace_recipe.as_deref();
+                    let can_accept_output = self
+                        .can_accept_recipe_output(furnace_recipe, self.get_max_count_per_stack());
+
                     if !self.is_burning() && can_accept_output {
                         let is_fast = matches!(
                             $recipe_kind,
@@ -670,6 +667,7 @@ macro_rules! impl_block_entity_for_cooking {
                     lit_total_time,
                     lit_time_remaining,
                     recipes_used: std::sync::Mutex::new(recipes_used_map),
+                    quick_check: $crate::server::recipe::CookingRecipeCheck::new($recipe_kind),
                     base: $crate::block::entities::base_container::BaseContainer::new(),
                 };
                 furnace.base.read_nbt(nbt);

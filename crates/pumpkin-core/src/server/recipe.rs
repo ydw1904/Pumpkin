@@ -1,5 +1,6 @@
 use std::collections::HashSet;
-use std::sync::{Arc, RwLock, Weak};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, RwLock, Weak};
 
 use pumpkin_data::data_component::DataComponent;
 use pumpkin_data::data_component_impl::{MapIdImpl, MapPostProcessing, MapPostProcessingImpl};
@@ -60,9 +61,12 @@ impl RecipeManager {
     }
 
     fn write(&self) -> std::sync::RwLockWriteGuard<'_, DynamicRecipes> {
-        self.dynamic_recipes
+        let recipes = self
+            .dynamic_recipes
             .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        RECIPE_GENERATION.fetch_add(1, Ordering::Relaxed);
+        recipes
     }
 
     fn read(&self) -> std::sync::RwLockReadGuard<'_, DynamicRecipes> {
@@ -263,11 +267,17 @@ impl RecipeProvider for ServerRecipeAccess {
 /// furnace's `setItem`.
 static ACTIVE_RECIPE_MANAGER: RwLock<Weak<RecipeManager>> = RwLock::new(Weak::new());
 
+/// Changes whenever the recipes [`find_cooking_recipe`] reads may have changed, so a
+/// [`CookingRecipeCheck`] knows to look its last recipe up again. Bumped under the write lock,
+/// which keeps it in step with what a reader holding the read lock sees.
+static RECIPE_GENERATION: AtomicU64 = AtomicU64::new(0);
+
 /// Makes `manager` the one [`find_cooking_recipe`] reads.
 pub fn set_active_recipe_manager(manager: &Arc<RecipeManager>) {
     *ACTIVE_RECIPE_MANAGER
         .write()
         .unwrap_or_else(std::sync::PoisonError::into_inner) = Arc::downgrade(manager);
+    RECIPE_GENERATION.fetch_add(1, Ordering::Relaxed);
 }
 
 fn active_recipe_manager() -> Option<Arc<RecipeManager>> {
@@ -336,42 +346,183 @@ const fn owned_cooking_kind_of(
     }
 }
 
+/// Where a cooking recipe lives: the generated table, or a slot of the dynamic recipes, which
+/// stays valid until [`RECIPE_GENERATION`] changes.
+#[derive(Clone, Copy)]
+enum CookingSource {
+    Builtin(&'static CookingRecipe),
+    Dynamic(usize),
+}
+
+impl CookingSource {
+    fn dynamic_recipe(
+        recipes: Option<&DynamicRecipes>,
+        index: usize,
+    ) -> Option<&OwnedCookingRecipe> {
+        match recipes?.recipes.get(index)? {
+            DynamicRecipe::Cooking(cooking) => Some(owned_cooking_kind_of(cooking).1),
+            _ => None,
+        }
+    }
+
+    /// `SingleItemRecipe.matches`.
+    fn matches(self, recipes: Option<&DynamicRecipes>, item: &Item) -> bool {
+        match self {
+            Self::Builtin(recipe) => recipe.ingredient.match_item(item),
+            Self::Dynamic(index) => Self::dynamic_recipe(recipes, index)
+                .is_some_and(|recipe| recipe.ingredient.match_item(item)),
+        }
+    }
+
+    fn to_match(self, recipes: Option<&DynamicRecipes>) -> Option<CookingMatch> {
+        match self {
+            Self::Builtin(recipe) => CookingMatch::builtin(recipe),
+            Self::Dynamic(index) => CookingMatch::dynamic(Self::dynamic_recipe(recipes, index)?),
+        }
+    }
+}
+
+/// Where the recipe [`find_cooking_recipe`] returns lives.
+fn search_cooking(
+    recipes: Option<&DynamicRecipes>,
+    item: &Item,
+    kind: &CookingRecipeKind,
+) -> Option<CookingSource> {
+    let kind = std::mem::discriminant(kind);
+    let builtin = RECIPES_COOKING.iter().map(cooking_kind_of).find(|(k, r)| {
+        std::mem::discriminant(k) == kind
+            && r.ingredient.match_item(item)
+            && !recipes.is_some_and(|recipes| recipes.ids.contains(r.recipe_id))
+    });
+    let dynamic = recipes
+        .into_iter()
+        .flat_map(|recipes| recipes.recipes.iter().enumerate())
+        .filter_map(|(index, recipe)| match recipe {
+            DynamicRecipe::Cooking(cooking) => Some((index, owned_cooking_kind_of(cooking))),
+            _ => None,
+        })
+        .filter(|(_, (k, r))| std::mem::discriminant(k) == kind && r.ingredient.match_item(item))
+        .min_by(|(_, (_, a)), (_, (_, b))| {
+            recipe_registry_order(&a.recipe_id).cmp(&recipe_registry_order(&b.recipe_id))
+        });
+    match (builtin, dynamic) {
+        (Some((_, builtin)), Some((_, (_, dynamic))))
+            if recipe_registry_order(builtin.recipe_id)
+                < recipe_registry_order(&dynamic.recipe_id) =>
+        {
+            Some(CookingSource::Builtin(builtin))
+        }
+        (_, Some((index, _))) => Some(CookingSource::Dynamic(index)),
+        (Some((_, builtin)), None) => Some(CookingSource::Builtin(builtin)),
+        (None, None) => None,
+    }
+}
+
+/// `RecipeManager.byKeyTyped`: the recipe with this id, if it is of `kind`.
+fn cooking_by_id(
+    recipes: Option<&DynamicRecipes>,
+    recipe_id: &str,
+    kind: &CookingRecipeKind,
+) -> Option<CookingSource> {
+    let kind = std::mem::discriminant(kind);
+    if let Some(recipes) = recipes
+        && recipes.ids.contains(recipe_id)
+    {
+        let index = recipes
+            .recipes
+            .iter()
+            .position(|recipe| recipe.recipe_id() == Some(recipe_id))?;
+        let DynamicRecipe::Cooking(cooking) = &recipes.recipes[index] else {
+            return None;
+        };
+        return (std::mem::discriminant(&owned_cooking_kind_of(cooking).0) == kind)
+            .then_some(CookingSource::Dynamic(index));
+    }
+    RECIPES_COOKING
+        .iter()
+        .map(cooking_kind_of)
+        .find(|(_, recipe)| recipe.recipe_id == recipe_id)
+        .and_then(|(k, recipe)| {
+            (std::mem::discriminant(&k) == kind).then_some(CookingSource::Builtin(recipe))
+        })
+}
+
 /// `RecipeManager.getRecipeFor` for a cooking recipe type: the first recipe in registry order
 /// that takes `item`, where a datapack or plugin recipe replaces the built-in one of its id.
 #[must_use]
 pub fn find_cooking_recipe(item: &Item, kind: &CookingRecipeKind) -> Option<CookingMatch> {
     let manager = active_recipe_manager();
     let recipes = manager.as_ref().map(|manager| manager.read());
-    let kind = std::mem::discriminant(kind);
-    let builtin = RECIPES_COOKING.iter().map(cooking_kind_of).find(|(k, r)| {
-        std::mem::discriminant(k) == kind
-            && r.ingredient.match_item(item)
-            && !recipes
-                .as_ref()
-                .is_some_and(|recipes| recipes.ids.contains(r.recipe_id))
-    });
-    let dynamic = recipes
-        .as_ref()
-        .into_iter()
-        .flat_map(|recipes| &recipes.recipes)
-        .filter_map(|recipe| match recipe {
-            DynamicRecipe::Cooking(cooking) => Some(owned_cooking_kind_of(cooking)),
-            _ => None,
-        })
-        .filter(|(k, r)| std::mem::discriminant(k) == kind && r.ingredient.match_item(item))
-        .min_by(|(_, a), (_, b)| {
-            recipe_registry_order(&a.recipe_id).cmp(&recipe_registry_order(&b.recipe_id))
-        });
-    match (builtin, dynamic) {
-        (Some((_, builtin)), Some((_, dynamic)))
-            if recipe_registry_order(builtin.recipe_id)
-                < recipe_registry_order(&dynamic.recipe_id) =>
-        {
-            CookingMatch::builtin(builtin)
+    let recipes = recipes.as_deref();
+    search_cooking(recipes, item, kind)?.to_match(recipes)
+}
+
+/// `RecipeManager.CachedCheck` for a cooking recipe type. It tries the recipe it found last
+/// before searching, so an input several recipes take keeps getting the one it got before.
+pub struct CookingRecipeCheck {
+    kind: CookingRecipeKind,
+    last_recipe: Mutex<Option<LastCookingRecipe>>,
+}
+
+/// `CachedCheck.lastRecipe`, a recipe id, with what it resolved to while the recipes stayed
+/// the same.
+struct LastCookingRecipe {
+    recipe_id: String,
+    generation: u64,
+    resolved: Option<(CookingSource, Arc<CookingMatch>)>,
+}
+
+impl CookingRecipeCheck {
+    #[must_use]
+    pub const fn new(kind: CookingRecipeKind) -> Self {
+        Self {
+            kind,
+            last_recipe: Mutex::new(None),
         }
-        (_, Some((_, dynamic))) => CookingMatch::dynamic(dynamic),
-        (Some((_, builtin)), None) => CookingMatch::builtin(builtin),
-        (None, None) => None,
+    }
+
+    /// Forgets the last recipe, like a fresh `RecipeManager.createCheck`.
+    pub fn reset(&self) {
+        *self
+            .last_recipe
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    }
+
+    /// `CachedCheck.getRecipeFor`.
+    pub fn get_recipe_for(&self, input: &ItemStack) -> Option<Arc<CookingMatch>> {
+        // `RecipeMap.getRecipesFor`: an empty input matches nothing, and no ingredient takes air.
+        if input.is_empty() {
+            return None;
+        }
+        let manager = active_recipe_manager();
+        let recipes = manager.as_ref().map(|manager| manager.read());
+        let recipes = recipes.as_deref();
+        let generation = RECIPE_GENERATION.load(Ordering::Relaxed);
+        let mut last_recipe = self
+            .last_recipe
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(last) = last_recipe.as_mut() {
+            if last.generation != generation {
+                last.resolved = cooking_by_id(recipes, &last.recipe_id, &self.kind)
+                    .and_then(|source| Some((source, Arc::new(source.to_match(recipes)?))));
+                last.generation = generation;
+            }
+            if let Some((source, recipe)) = &last.resolved
+                && source.matches(recipes, input.item)
+            {
+                return Some(recipe.clone());
+            }
+        }
+        let source = search_cooking(recipes, input.item, &self.kind)?;
+        let recipe = Arc::new(source.to_match(recipes)?);
+        *last_recipe = Some(LastCookingRecipe {
+            recipe_id: recipe.recipe_id.clone(),
+            generation,
+            resolved: Some((source, recipe.clone())),
+        });
+        Some(recipe)
     }
 }
 
@@ -392,4 +543,59 @@ pub fn cooking_recipe_experience(recipe_id: &str) -> Option<f32> {
         }
     }
     pumpkin_data::recipes::get_recipe_experience(recipe_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pumpkin_data::recipes::RecipeCategoryTypes;
+    use pumpkin_protocol::codec::recipe::{OwnedRecipeIngredient, OwnedRecipeResult};
+
+    /// Vanilla `CachedCheck` keeps the recipe it matched last while that recipe still takes the
+    /// input, even when another recipe comes first in registry order, until the recipes change.
+    #[test]
+    fn cooking_check_prefers_its_last_recipe_until_the_recipes_change() {
+        let manager = Arc::new(RecipeManager::new());
+        set_active_recipe_manager(&manager);
+        manager.add_recipe(DynamicRecipe::Cooking(OwnedCookingRecipeType::Smelting(
+            OwnedCookingRecipe {
+                recipe_id: "test:z_dirt_or_kelp".to_owned(),
+                category: RecipeCategoryTypes::Misc,
+                group: None,
+                ingredient: OwnedRecipeIngredient::OneOf(vec![
+                    "minecraft:dirt".to_owned(),
+                    "minecraft:kelp".to_owned(),
+                ]),
+                cooking_time: 200,
+                experience: 0.0,
+                result: OwnedRecipeResult {
+                    item_id: "minecraft:diamond".to_owned(),
+                    count: 1,
+                    components: Vec::new(),
+                },
+            },
+        )));
+        let check = CookingRecipeCheck::new(CookingRecipeKind::Smelting);
+        let id = |item: &'static Item| {
+            check
+                .get_recipe_for(&ItemStack::new(1, item))
+                .map(|recipe| recipe.recipe_id.clone())
+        };
+
+        assert_eq!(id(&Item::DIRT).as_deref(), Some("test:z_dirt_or_kelp"));
+        assert_eq!(id(&Item::KELP).as_deref(), Some("test:z_dirt_or_kelp"));
+        assert_eq!(
+            find_cooking_recipe(&Item::KELP, &CookingRecipeKind::Smelting)
+                .map(|recipe| recipe.recipe_id)
+                .as_deref(),
+            Some("minecraft:dried_kelp_from_smelting")
+        );
+
+        manager.clear();
+        assert_eq!(
+            id(&Item::KELP).as_deref(),
+            Some("minecraft:dried_kelp_from_smelting")
+        );
+        assert_eq!(id(&Item::DIRT), None);
+    }
 }
