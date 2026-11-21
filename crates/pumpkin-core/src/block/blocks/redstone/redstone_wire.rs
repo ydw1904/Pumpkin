@@ -290,16 +290,36 @@ pub fn update_power_strength(world: &Arc<World>, pos: &BlockPos) {
 
         world.set_block_state(pos, new_state_id, BlockFlags::NOTIFY_LISTENERS);
 
-        let mut to_update = Vec::with_capacity(7);
-        to_update.push(*pos);
-        for direction in BlockDirection::all() {
-            to_update.push(pos.offset(direction.to_offset()));
-        }
-
-        for block_pos in to_update {
+        for block_pos in positions_to_update(pos) {
             update_neighbors_at(world, &block_pos, &Block::REDSTONE_WIRE);
         }
     }
+}
+
+/// The wire and its neighbours in the order vanilla updates them: it collects them in a
+/// `HashSet<BlockPos>` and walks the set, which decides which neighbour (and which piston's
+/// block event) goes first.
+fn positions_to_update(pos: &BlockPos) -> Vec<BlockPos> {
+    let mut to_update = Vec::with_capacity(7);
+    to_update.push(*pos);
+    for direction in BlockDirection::all() {
+        to_update.push(pos.offset(direction.to_offset()));
+    }
+    to_update.sort_by_key(java_hash_set_bucket);
+    to_update
+}
+
+/// The bucket of `pos` in a default-sized (16 bucket) Java `HashSet`, using `Vec3i.hashCode`
+/// spread like `HashMap.hash`. A stable sort by it gives the set's iteration order.
+const fn java_hash_set_bucket(pos: &BlockPos) -> u32 {
+    let hash = pos
+        .0
+        .y
+        .wrapping_add(pos.0.z.wrapping_mul(31))
+        .wrapping_mul(31)
+        .wrapping_add(pos.0.x)
+        .cast_unsigned();
+    (hash ^ (hash >> 16)) & 15
 }
 
 fn calculate_target_strength(world: &World, pos: &BlockPos) -> u8 {
@@ -672,6 +692,62 @@ impl CardinalWireConnectionExt for WestRedstone {
             Self::Side => WireConnection::Side,
             Self::Up => WireConnection::Up,
             Self::None => WireConnection::None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Iteration orders printed by a Java `HashSet` of positions with `Vec3i.hashCode`, filled
+    /// like `DefaultRedstoneWireEvaluator.updatePowerStrength`.
+    #[test]
+    fn update_order_matches_java_hash_set() {
+        let cases = [
+            (
+                (-279, 64, 710),
+                [
+                    (-279, 65, 710),
+                    (-279, 64, 709),
+                    (-280, 64, 710),
+                    (-279, 64, 710),
+                    (-279, 63, 710),
+                    (-279, 64, 711),
+                    (-278, 64, 710),
+                ],
+            ),
+            (
+                (0, -64, 0),
+                [
+                    (0, -63, 0),
+                    (0, -64, -1),
+                    (-1, -64, 0),
+                    (0, -65, 0),
+                    (0, -64, 1),
+                    (1, -64, 0),
+                    (0, -64, 0),
+                ],
+            ),
+            (
+                (30_000_000, 320, -30_000_000),
+                [
+                    (30_000_000, 319, -30_000_000),
+                    (30_000_000, 320, -29_999_999),
+                    (30_000_001, 320, -30_000_000),
+                    (30_000_000, 320, -30_000_000),
+                    (30_000_000, 321, -30_000_000),
+                    (30_000_000, 320, -30_000_001),
+                    (29_999_999, 320, -30_000_000),
+                ],
+            ),
+        ];
+        for ((x, y, z), expected) in cases {
+            let expected: Vec<BlockPos> = expected
+                .iter()
+                .map(|&(x, y, z)| BlockPos::new(x, y, z))
+                .collect();
+            assert_eq!(positions_to_update(&BlockPos::new(x, y, z)), expected);
         }
     }
 }
