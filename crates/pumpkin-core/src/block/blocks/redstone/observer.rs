@@ -90,10 +90,12 @@ impl BlockBehaviour for ObserverBlock {
                     .is_block_tick_scheduled(args.position, args.block)
             {
                 props.powered = false;
+                // Vanilla flags 18: no shape updates here, and the outer `setBlock` skips its own
+                // because the state changed under it, so neighbours such as wire keep their shape.
                 args.world.set_block_state(
                     args.position,
                     props.to_state_id(args.block),
-                    BlockFlags::NOTIFY_LISTENERS | BlockFlags::FORCE_STATE,
+                    BlockFlags::NOTIFY_LISTENERS | BlockFlags::UPDATE_KNOWN_SHAPE,
                 );
                 Self::update_neighbors(args.world, args.block, args.position, props);
             }
