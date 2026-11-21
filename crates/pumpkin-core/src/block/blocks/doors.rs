@@ -22,7 +22,6 @@ use crate::block::GetStateForNeighborUpdateArgs;
 use crate::block::NormalUseArgs;
 use crate::block::OnNeighborUpdateArgs;
 use crate::block::OnPlaceArgs;
-use crate::block::OnStateReplacedArgs;
 use crate::block::PathComputationType;
 use crate::block::PlacedArgs;
 use crate::block::blocks::redstone::block_receives_redstone_power;
@@ -398,6 +397,7 @@ impl BlockBehaviour for DoorBlock {
         args: GetStateForNeighborUpdateArgs<'_>,
     ) -> BlockStateId {
         let lv = DoorProperties::from_state_id(args.state_id).half;
+        let neighbor_block = Block::from_state_id(args.neighbor_state_id);
         if args.direction.to_axis() != Axis::Y
             || (lv == DoubleBlockHalf::Lower) != (args.direction == BlockDirection::Up)
         {
@@ -407,40 +407,17 @@ impl BlockBehaviour for DoorBlock {
             {
                 return BlockStateId::AIR;
             }
-        } else if Block::from_state_id(args.neighbor_state_id).id == args.block.id
+        } else if neighbor_block.has_tag(&tag::Block::MINECRAFT_DOORS)
             && DoorProperties::from_state_id(args.neighbor_state_id).half != lv
         {
+            // Takes the other half's block too, so waxing or scraping one half converts both.
             let mut new_state = DoorProperties::from_state_id(args.neighbor_state_id);
             new_state.half = lv;
-            return new_state.to_state_id(args.block);
+            return new_state.to_state_id(neighbor_block);
         } else {
             return BlockStateId::AIR;
         }
         args.state_id
-    }
-
-    fn on_state_replaced(&self, args: OnStateReplacedArgs<'_>) {
-        if args.moved {
-            return;
-        }
-
-        let door_props = DoorProperties::from_state_id(args.old_state_id);
-        let other_half_pos = match door_props.half {
-            DoubleBlockHalf::Upper => args.position.down(),
-            DoubleBlockHalf::Lower => args.position.up(),
-        };
-
-        let (other_block, other_state) = args.world.get_block_and_state(&other_half_pos);
-        if other_block.id == args.block.id {
-            let other_props = DoorProperties::from_state_id(other_state.id);
-            if other_props.half != door_props.half {
-                args.world.destroy_block(
-                    &other_half_pos,
-                    None,
-                    BlockFlags::SKIP_DROPS | BlockFlags::NOTIFY_ALL,
-                );
-            }
-        }
     }
 
     fn is_pathfindable(&self, state: &BlockState, computation_type: PathComputationType) -> bool {

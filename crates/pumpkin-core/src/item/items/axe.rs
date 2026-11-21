@@ -2,9 +2,7 @@ use crate::block::registry::BlockActionResult;
 use crate::entity::player::Player;
 use crate::item::{ItemBehaviour, ItemMetadata};
 use crate::server::Server;
-use pumpkin_data::block_properties::{
-    ChestLikeProperties, ChestType, DoubleBlockHalf, OakDoorLikeProperties,
-};
+use pumpkin_data::block_properties::{ChestLikeProperties, ChestType};
 use pumpkin_data::data_component_impl::BlockTransformerImpl;
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item_stack::ItemStack;
@@ -51,66 +49,43 @@ impl ItemBehaviour for AxeItem {
         let current_state_id = world.get_block_state_id(&location);
 
         if let Some(result) = transformer.transform(block, current_state_id, face, &get_block) {
+            // Vanilla `BlockTransformer.transformBlock` only sets the clicked block. The other
+            // door or chest half takes the new block from it in its shape update.
+            world.set_block_state(&location, result.new_state_id, BlockFlags::NOTIFY_ALL);
             if let Some(sound) = result.entry.sound {
                 world.play_sound(sound, SoundCategory::Blocks, &location.to_f64());
             }
             if let Some(particle) = result.entry.particle {
                 world.sync_world_event(particle, location, 0);
             }
-
-            if block.has_tag(&tag::Block::MINECRAFT_DOORS) {
-                let door_props = OakDoorLikeProperties::from_state_id(current_state_id);
-                let other_half_pos = match door_props.half {
-                    DoubleBlockHalf::Lower => location.up(),
-                    DoubleBlockHalf::Upper => location.down(),
-                };
-                let (other_block, other_state_id) = world.get_block_and_state_id(&other_half_pos);
-                if other_block == block {
-                    let other_new_state_id = result
-                        .target_block
-                        .with_properties_of(other_block, other_state_id);
-                    world.set_block_state(
-                        &other_half_pos,
-                        other_new_state_id,
-                        BlockFlags::NOTIFY_LISTENERS | BlockFlags::FORCE_STATE,
-                    );
-                }
-            } else if block.has_tag(&tag::Block::MINECRAFT_COPPER_CHESTS) {
-                let chest_props = ChestLikeProperties::from_state_id(current_state_id);
-                if chest_props.r#type != ChestType::Single {
-                    let neighbor_dir = match chest_props.r#type {
-                        ChestType::Left => chest_props.facing.rotate_clockwise(),
-                        ChestType::Right => chest_props.facing.rotate_counter_clockwise(),
-                        ChestType::Single => chest_props.facing,
-                    };
-                    let neighbor_pos = location.offset(neighbor_dir.to_offset());
-                    let (neighbor_block, neighbor_state_id) =
-                        world.get_block_and_state_id(&neighbor_pos);
-                    if neighbor_block == block {
-                        let neighbor_new_state_id = result
-                            .target_block
-                            .with_properties_of(neighbor_block, neighbor_state_id);
-                        world.set_block_state(
-                            &neighbor_pos,
-                            neighbor_new_state_id,
-                            BlockFlags::NOTIFY_LISTENERS,
-                        );
-                        if let Some(particle) = result.entry.particle {
-                            world.sync_world_event(particle, neighbor_pos, 0);
-                        }
-                    }
-                }
-            }
-
-            world.set_block_state(&location, result.new_state_id, BlockFlags::NOTIFY_ALL);
+            let game_event_context = crate::world::game_event::GameEventContext {
+                source_entity: Some(player),
+                affected_state: None,
+            };
             world.emit_game_event_with_context(
                 GameEvent::BlockChange.name(),
                 location.to_centered_f64(),
-                &crate::world::game_event::GameEventContext {
-                    source_entity: Some(player),
-                    affected_state: None,
-                },
+                &game_event_context,
             );
+            if block.has_tag(&tag::Block::MINECRAFT_COPPER_CHESTS) {
+                let chest_props = ChestLikeProperties::from_state_id(current_state_id);
+                let neighbor_dir = match chest_props.r#type {
+                    ChestType::Left => Some(chest_props.facing.rotate_clockwise()),
+                    ChestType::Right => Some(chest_props.facing.rotate_counter_clockwise()),
+                    ChestType::Single => None,
+                };
+                if let Some(neighbor_dir) = neighbor_dir {
+                    let neighbor_pos = location.offset(neighbor_dir.to_offset());
+                    world.emit_game_event_with_context(
+                        GameEvent::BlockChange.name(),
+                        neighbor_pos.to_centered_f64(),
+                        &game_event_context,
+                    );
+                    if let Some(particle) = result.entry.particle {
+                        world.sync_world_event(particle, neighbor_pos, 0);
+                    }
+                }
+            }
 
             if player.gamemode.load() != GameMode::Creative {
                 let _ = item.damage_item(i32::from(result.entry.item_damage_per_use));
