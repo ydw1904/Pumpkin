@@ -1,4 +1,5 @@
-use std::sync::{Arc, Mutex, OnceLock, PoisonError, Weak};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, Weak};
 
 use pumpkin_data::data_component_impl::ContainerLootImpl;
 use pumpkin_data::item_stack::ItemStack;
@@ -22,6 +23,9 @@ const LOOT_TABLE_SEED_TAG: &str = "LootTableSeed";
 #[derive(Default)]
 pub struct ContainerLoot {
     table: Mutex<Option<(String, i64)>>,
+    /// Whether `table` holds a loot table, written under its lock. Every container accessor
+    /// asks, and almost always gets no.
+    pending: AtomicBool,
     /// Vanilla `BlockEntity.level`, which the accessors unpack into.
     world: OnceLock<Weak<World>>,
 }
@@ -31,8 +35,13 @@ impl ContainerLoot {
     pub const fn new() -> Self {
         Self {
             table: Mutex::new(None),
+            pending: AtomicBool::new(false),
             world: OnceLock::new(),
         }
+    }
+
+    fn table(&self) -> MutexGuard<'_, Option<(String, i64)>> {
+        self.table.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Vanilla `tryLoadLootTable`. Returns whether the tag holds a loot table, in which case
@@ -45,7 +54,7 @@ impl ContainerLoot {
             )
         });
         let has_table = table.is_some();
-        *self.table.lock().unwrap_or_else(PoisonError::into_inner) = table;
+        self.set(table);
         has_table
     }
 
@@ -64,22 +73,24 @@ impl ContainerLoot {
 
     #[must_use]
     pub fn get(&self) -> Option<(String, i64)> {
-        self.table
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+        self.table().clone()
     }
 
     pub fn set(&self, table: Option<(String, i64)>) {
-        *self.table.lock().unwrap_or_else(PoisonError::into_inner) = table;
+        let mut current = self.table();
+        self.pending.store(table.is_some(), Ordering::Release);
+        *current = table;
+    }
+
+    fn take(&self) -> Option<(String, i64)> {
+        let mut table = self.table();
+        self.pending.store(false, Ordering::Release);
+        table.take()
     }
 
     #[must_use]
     pub fn is_pending(&self) -> bool {
-        self.table
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .is_some()
+        self.pending.load(Ordering::Acquire)
     }
 
     /// Vanilla `BlockEntity.setLevel`.
@@ -122,12 +133,7 @@ impl ContainerLoot {
         player: Option<&Player>,
     ) {
         // Cleared before filling, so the accessors the fill goes through don't unpack again.
-        let Some((key, seed)) = self
-            .table
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .take()
-        else {
+        let Some((key, seed)) = self.take() else {
             return;
         };
         // Fired after the key is taken, so a handler reading this container doesn't unpack it
