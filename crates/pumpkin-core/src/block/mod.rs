@@ -586,13 +586,46 @@ pub struct GetInsideCollisionShapeArgs<'a> {
     pub position: &'a BlockPos,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct BlockEvent {
     pub pos: BlockPos,
     /// The block that queued the event; the event is dropped if it's gone.
     pub block: BlockId,
     pub r#type: u8,
     pub data: u8,
+}
+
+/// Vanilla `ServerLevel.blockEvents`, an `ObjectLinkedOpenHashSet`: events run in the order
+/// they were queued, and an event equal to one still waiting isn't queued again.
+#[derive(Default)]
+pub(crate) struct BlockEventQueue {
+    order: std::collections::VecDeque<BlockEvent>,
+    queued: rustc_hash::FxHashSet<BlockEvent>,
+}
+
+impl BlockEventQueue {
+    pub(crate) fn push(&mut self, event: BlockEvent) {
+        if self.queued.insert(event.clone()) {
+            self.order.push_back(event);
+        }
+    }
+
+    pub(crate) fn pop_front(&mut self) -> Option<BlockEvent> {
+        let event = self.order.pop_front()?;
+        self.queued.remove(&event);
+        Some(event)
+    }
+
+    pub(crate) fn retain(&mut self, mut keep: impl FnMut(&BlockEvent) -> bool) {
+        let queued = &mut self.queued;
+        self.order.retain(|event| {
+            let kept = keep(event);
+            if !kept {
+                queued.remove(event);
+            }
+            kept
+        });
+    }
 }
 
 /// Rolls the block's loot table and fires `BlockDropItemEvent`, without spawning anything.

@@ -51,7 +51,10 @@ pub mod time;
 use crate::block::blocks::bubble_column;
 use crate::block::{HandlePrecipitationArgs, RandomTickArgs};
 use crate::world::chunker::is_within_chebyshev_distance;
-use crate::{block::BlockEvent, entity::item::ItemEntity};
+use crate::{
+    block::{BlockEvent, BlockEventQueue},
+    entity::item::ItemEntity,
+};
 use crate::{
     block::{
         registry::BlockRegistry,
@@ -333,7 +336,7 @@ pub struct World {
     /// Block Behaviour
     pub block_registry: Arc<BlockRegistry>,
     pub server: Weak<Server>,
-    synced_block_event_queue: std::sync::Mutex<Vec<BlockEvent>>,
+    synced_block_event_queue: std::sync::Mutex<BlockEventQueue>,
     /// Vanilla `ServerLevel.handlingTick`. Per world, because worlds tick in parallel; commands
     /// run after all worlds ticked, so they never see it set.
     handling_tick: std::sync::atomic::AtomicBool,
@@ -617,7 +620,7 @@ impl World {
             block_registry,
             sea_level: generation_settings.sea_level,
             min_y: i32::from(generation_settings.shape.min_y),
-            synced_block_event_queue: std::sync::Mutex::new(Vec::new()),
+            synced_block_event_queue: std::sync::Mutex::new(BlockEventQueue::default()),
             handling_tick: std::sync::atomic::AtomicBool::new(false),
             unsent_block_changes: std::sync::Mutex::new(FxHashMap::default()),
             portal_poi: std::sync::Mutex::new(portal_poi),
@@ -1400,13 +1403,10 @@ impl World {
             r#type,
             data,
         };
-        let mut queue = self
-            .synced_block_event_queue
+        self.synced_block_event_queue
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if !queue.contains(&event) {
-            queue.push(event);
-        }
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(event);
     }
 
     /// Whether this world is running its weather, scheduled ticks, chunk ticks or block events.
@@ -1426,26 +1426,27 @@ impl World {
 
         // Vanilla `runBlockEvents` holds events outside block ticking chunks for a later tick.
         let mut to_reschedule = Vec::new();
+        // One event at a time, like vanilla's `removeFirst`, so an event queued again while
+        // its earlier copy is still waiting runs once. The lock is released while it runs.
         loop {
-            // Taken out of the lock so events can queue more events.
-            let events = std::mem::take(
-                &mut *self
-                    .synced_block_event_queue
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner),
-            );
-            if events.is_empty() {
-                break;
-            }
-            for event in events {
-                self.run_block_event(&event, &active_chunks, &mut to_reschedule);
-            }
-        }
-        if !to_reschedule.is_empty() {
-            self.synced_block_event_queue
+            let event = self
+                .synced_block_event_queue
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .splice(0..0, to_reschedule);
+                .pop_front();
+            let Some(event) = event else {
+                break;
+            };
+            self.run_block_event(&event, &active_chunks, &mut to_reschedule);
+        }
+        if !to_reschedule.is_empty() {
+            let mut queue = self
+                .synced_block_event_queue
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            for event in to_reschedule {
+                queue.push(event);
+            }
         }
     }
 
