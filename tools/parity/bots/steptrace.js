@@ -9,7 +9,9 @@
 //           { key: { block: [x, y, z] } } read from the bot's own view of the world (what a
 //           client was sent), or
 //           { key: { server: [x, y, z], states: ['air', 'piston[extended=true]', ...] } }, the
-//           first state `execute if block` accepts on the server ('other' if none).
+//           first state `execute if block` accepts on the server ('other' if none), or
+//           { key: { packets: [[x, y, z], ...] } }, the block events and block changes the
+//           client was sent for those positions since the last step, in arrival order.
 //   ticks:  how many single steps to trace.
 // Command replies are normalised (see `normalise`) so the trace compares values, not formatting.
 //
@@ -52,6 +54,30 @@ function trace ({ name, setup, probes, ticks }) {
   })
   const chat = []
   bot.on('message', (m) => chat.push(m.toString()))
+  // [position, packet] pairs for block packets since the last step, in arrival order.
+  let packets = []
+  const posKey = (x, y, z) => `${x},${y},${z}`
+  const stateName = (id) => {
+    if (!bot.registry.blocksByStateId[id]) return `state${id}`
+    const b = require('prismarine-block')(bot.registry).fromStateId(id, 0)
+    const props = Object.entries(b.getProperties()).map(([k, v]) => `${k}=${v}`).join(',')
+    return props ? `${b.name}[${props}]` : b.name
+  }
+  bot._client.on('block_action', (p) => packets.push([posKey(p.location.x, p.location.y, p.location.z), `event:${p.byte1}/${p.byte2}`]))
+  bot._client.on('block_change', (p) => packets.push([posKey(p.location.x, p.location.y, p.location.z), `block:${stateName(p.type)}`]))
+  bot._client.on('multi_block_change', (p) => {
+    // The client applies a section update at once, so its record order (vanilla's hash set
+    // order) doesn't matter: sort it so traces compare.
+    const c = p.chunkCoordinates
+    const records = p.records.map((record) => {
+      const r = BigInt(record)
+      const x = c.x * 16 + Number((r >> 8n) & 15n)
+      const y = c.y * 16 + Number(r & 15n)
+      const z = c.z * 16 + Number((r >> 4n) & 15n)
+      return [posKey(x, y, z), `block:${stateName(Number(r >> 12n))}`]
+    })
+    packets.push(...records.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+  })
   bot.on('kicked', (reason) => { result('kicked', JSON.stringify(reason)); process.exit(1) })
   bot.on('error', (err) => console.log('ERROR', err.message))
   setTimeout(() => { result('finished', 'timeout'); process.exit(1) }, 280000)
@@ -91,6 +117,10 @@ function trace ({ name, setup, probes, ticks }) {
     for (const [key, probe] of Object.entries(probes)) {
       if (typeof probe === 'string') values[key] = normalise(await ask(probe))
       else if (probe.block) values[key] = readBlock(probe.block)
+      else if (probe.packets) {
+        const wanted = probe.packets.map(([x, y, z]) => posKey(x, y, z))
+        values[key] = packets.filter(([pos]) => wanted.includes(pos)).map(([pos, what]) => `${pos}=${what}`).join(' ') || '-'
+      }
       else values[key] = await serverBlock(probe.server, probe.states)
     }
     return values
@@ -125,6 +155,7 @@ function trace ({ name, setup, probes, ticks }) {
       await sleep(500)
 
       await ask('/tick freeze')
+      packets = []
       for (const [i, cmd] of setup.entries()) result(`setup.${i}`, `${cmd} -> ${await ask(cmd)}`)
       let time = await gameTime()
       let tick = 0
@@ -134,6 +165,7 @@ function trace ({ name, setup, probes, ticks }) {
       }
       await report()
       for (tick = 1; tick <= ticks; tick++) {
+        packets = []
         await ask('/tick step 1')
         let now = time
         for (let i = 0; i < 100 && now === time; i++) now = await gameTime()
