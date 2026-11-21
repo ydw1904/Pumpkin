@@ -107,7 +107,7 @@ impl BlockBehaviour for TargetBlock {
                 args.world.set_block_state(
                     args.position,
                     props.to_state_id(args.block),
-                    BlockFlags::NOTIFY_LISTENERS | BlockFlags::FORCE_STATE,
+                    BlockFlags::NOTIFY_LISTENERS | BlockFlags::UPDATE_KNOWN_SHAPE,
                 );
             }
         }

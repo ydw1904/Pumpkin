@@ -267,7 +267,7 @@ impl BlockBehaviour for SculkSensorBlock {
                 args.world.set_block_state(
                     args.position,
                     with_phase(args.block, args.state_id, phase, 0),
-                    BlockFlags::NOTIFY_LISTENERS | BlockFlags::FORCE_STATE,
+                    BlockFlags::NOTIFY_LISTENERS | BlockFlags::UPDATE_KNOWN_SHAPE,
                 );
             }
         }

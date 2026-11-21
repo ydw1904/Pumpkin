@@ -176,7 +176,7 @@ impl BlockBehaviour for SmallDripleafBlock {
             args.world.set_block_state(
                 &above,
                 above_state,
-                BlockFlags::NOTIFY_LISTENERS | BlockFlags::FORCE_STATE,
+                BlockFlags::NOTIFY_LISTENERS | BlockFlags::UPDATE_KNOWN_SHAPE,
             );
             BigDripleafBlock::place_with_random_height(args.world, args.position, props.facing);
         } else {

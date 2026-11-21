@@ -113,7 +113,7 @@ impl DebugStickItem {
             world.set_block_state(
                 pos,
                 new_state_id,
-                BlockFlags::NOTIFY_LISTENERS | BlockFlags::FORCE_STATE,
+                BlockFlags::NOTIFY_LISTENERS | BlockFlags::UPDATE_KNOWN_SHAPE,
             );
 
             player.send_system_message_raw(
