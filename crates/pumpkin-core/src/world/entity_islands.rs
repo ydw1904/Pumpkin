@@ -580,6 +580,8 @@ fn changes_on_contact(block: &Block) -> bool {
             &Block::FARMLAND,
             &Block::NETHER_PORTAL,
             &Block::END_PORTAL,
+            // `HopperBlock.entityInside` moves items into the hopper and out to its target.
+            &Block::HOPPER,
         ]
         .iter()
         .any(|candidate| candidate.id == block.id)

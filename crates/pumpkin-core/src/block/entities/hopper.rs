@@ -24,6 +24,9 @@ use std::sync::RwLock;
 use std::sync::atomic::Ordering;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64};
 
+/// Vanilla `HopperBlockEntity.MOVE_ITEM_SPEED`: ticks between transfers.
+const MOVE_ITEM_SPEED: i32 = 8;
+
 /// Vanilla `Hopper.SUCK_AABB`: from the floor of the hopper's bowl to the top of the block above.
 const SUCK_AABB: BoundingBox = BoundingBox::new_array([0.0, 11.0 / 16.0, 0.0], [1.0, 2.0, 1.0]);
 
@@ -191,9 +194,8 @@ impl BlockEntity for HopperBlockEntity {
         hopper
     }
 
+    /// Vanilla `pushItemsTick`.
     fn tick(&self, world: &Arc<World>) {
-        self.ticked_game_time
-            .store(world.get_world_age(), Ordering::Relaxed);
         // The block entity outlives its block by a tick when another Rayon worker replaces it,
         // so guard like `trial_spawner.rs::tick` does. One snapshot for id and state: a second
         // read could already be the replacement, and the pair would not belong together.
@@ -201,11 +203,13 @@ impl BlockEntity for HopperBlockEntity {
         let Some(properties) = hopper_properties(block.id, state.id) else {
             return;
         };
-        if self.cooldown_time.fetch_sub(1, Ordering::Relaxed) <= 0 {
+        // Vanilla tests the decremented value.
+        let cooldown = self.cooldown_time.fetch_sub(1, Ordering::Relaxed) - 1;
+        self.ticked_game_time
+            .store(world.get_world_age(), Ordering::Relaxed);
+        if cooldown <= 0 {
             self.cooldown_time.store(0, Ordering::Relaxed);
-            if properties.enabled {
-                self.try_move_items(properties, world);
-            }
+            self.try_move_items(properties, world, || self.suck_in_items(world));
         }
     }
 
@@ -304,7 +308,14 @@ impl HopperBlockEntity {
             ticked_game_time: AtomicI64::new(0),
         }
     }
-    fn try_move_items(&self, state: HopperLikeProperties, world: &Arc<World>) {
+    /// Vanilla `tryMoveItems`: ejects, then runs `action` to take items in, and goes on cooldown
+    /// if either moved something.
+    fn try_move_items(
+        &self,
+        state: HopperLikeProperties,
+        world: &Arc<World>,
+        action: impl FnOnce() -> bool,
+    ) {
         if self.cooldown_time.load(Ordering::Relaxed) <= 0 && state.enabled {
             // An empty hopper is not full, so it skips looking again.
             let (mut success, has_room) = if self.is_empty() {
@@ -316,10 +327,10 @@ impl HopperBlockEntity {
                 )
             };
             if has_room {
-                success |= self.suck_in_items(world);
+                success |= action();
             }
             if success {
-                self.cooldown_time.store(8, Ordering::Relaxed);
+                self.cooldown_time.store(MOVE_ITEM_SPEED, Ordering::Relaxed);
                 self.mark_dirty();
             }
         }
@@ -396,37 +407,71 @@ impl HopperBlockEntity {
         if !is_blocked {
             let entities = world.get_entities_at_box(&SUCK_AABB.at_pos(self.position));
             for entity_base in entities {
-                if let Some(item_entity) = entity_base.get_item_entity() {
-                    let (is_empty, registry_key) = {
-                        let stack = item_entity
-                            .get_item_stack()
-                            .lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner);
-                        (stack.is_empty(), stack.item.registry_key.to_string())
-                    };
-                    if !is_empty {
-                        let mut pickup_event =
-                            crate::plugin::api::events::inventory::inventory_pickup_item::InventoryPickupItemEvent::new(
-                                self.position,
-                                item_entity.get_entity().entity_id,
-                                registry_key,
-                            );
-                        if let Some(server) = world.server.upgrade() {
-                            server
-                                .plugin_manager
-                                .fire_blocking(&server, &mut pickup_event);
-                        }
-                        if pickup_event.cancelled {
-                            continue;
-                        }
-                        if Self::add_item_entity(self, item_entity) {
-                            return true;
-                        }
-                    }
+                if let Some(item_entity) = entity_base.get_item_entity()
+                    && self.pick_up_item_entity(world, item_entity)
+                {
+                    return true;
                 }
             }
         }
         false
+    }
+
+    /// Vanilla `addItem(hopper, itemEntity)`, behind the plugin pickup event.
+    fn pick_up_item_entity(&self, world: &Arc<World>, item_entity: &ItemEntity) -> bool {
+        let (is_empty, registry_key) = {
+            let stack = item_entity
+                .get_item_stack()
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            (stack.is_empty(), stack.item.registry_key.to_string())
+        };
+        if is_empty {
+            return false;
+        }
+        let mut pickup_event =
+            crate::plugin::api::events::inventory::inventory_pickup_item::InventoryPickupItemEvent::new(
+                self.position,
+                item_entity.get_entity().entity_id,
+                registry_key,
+            );
+        if let Some(server) = world.server.upgrade() {
+            server
+                .plugin_manager
+                .fire_blocking(&server, &mut pickup_event);
+        }
+        !pickup_event.cancelled && Self::add_item_entity(self, item_entity)
+    }
+
+    /// Vanilla `entityInside`: an item entity in the suction area is taken in during its own
+    /// tick, through `tryMoveItems` so the cooldown applies.
+    pub fn entity_inside(
+        &self,
+        world: &Arc<World>,
+        block: &Block,
+        state: &BlockState,
+        item_entity: &ItemEntity,
+    ) {
+        let Some(properties) = hopper_properties(block.id, state.id) else {
+            return;
+        };
+        let is_empty = item_entity
+            .get_item_stack()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_empty();
+        if is_empty
+            || !item_entity
+                .get_entity()
+                .bounding_box
+                .load()
+                .intersects(&SUCK_AABB.at_pos(self.position))
+        {
+            return;
+        }
+        self.try_move_items(properties, world, || {
+            self.pick_up_item_entity(world, item_entity)
+        });
     }
 
     /// Splits one item off `slot`. One lock for read and write, so the snapshot is the state the
@@ -616,23 +661,23 @@ impl HopperBlockEntity {
             success
         };
         if success {
+            // Vanilla skips this while the hopper is on a custom cooldown (above the normal one).
             if to_empty
                 && let Some(hopper) = to.as_any().downcast_ref::<Self>()
-                && hopper.cooldown_time.load(Ordering::Relaxed) <= 8
+                && hopper.cooldown_time.load(Ordering::Relaxed) <= MOVE_ITEM_SPEED
             {
-                if let Some(from_hopper) =
-                    from.and_then(|from| from.as_any().downcast_ref::<Self>())
-                {
-                    if from_hopper.cooldown_time.load(Ordering::Relaxed)
-                        >= hopper.cooldown_time.load(Ordering::Relaxed)
-                    {
-                        hopper.cooldown_time.store(7, Ordering::Relaxed);
-                    } else {
-                        hopper.cooldown_time.store(8, Ordering::Relaxed);
-                    }
-                } else {
-                    hopper.cooldown_time.store(8, Ordering::Relaxed);
-                }
+                // A hopper that already ticked this game tick won't count this tick down, so it
+                // waits one less and passes the item on at the same tick either way.
+                let skip_tick_count = from
+                    .and_then(|from| from.as_any().downcast_ref::<Self>())
+                    .is_some_and(|from_hopper| {
+                        hopper.ticked_game_time.load(Ordering::Relaxed)
+                            >= from_hopper.ticked_game_time.load(Ordering::Relaxed)
+                    });
+                hopper.cooldown_time.store(
+                    MOVE_ITEM_SPEED - i32::from(skip_tick_count),
+                    Ordering::Relaxed,
+                );
             }
             to.mark_dirty();
         }

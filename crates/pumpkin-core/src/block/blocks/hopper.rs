@@ -3,8 +3,8 @@ use std::sync::Mutex;
 
 use crate::block::blocks::redstone::block_receives_redstone_power;
 use crate::block::{
-    GetComparatorOutputArgs, GetScreenHandlerFactoryArgs, OnNeighborUpdateArgs, OnPlaceArgs,
-    PathComputationType, PlacedArgs,
+    GetComparatorOutputArgs, GetScreenHandlerFactoryArgs, OnEntityCollisionArgs,
+    OnNeighborUpdateArgs, OnPlaceArgs, PathComputationType, PlacedArgs,
 };
 use crate::block::{
     registry::BlockActionResult,
@@ -54,9 +54,16 @@ pub struct HopperBlock;
 
 type HopperLikeProperties = pumpkin_data::block_properties::HopperLikeProperties;
 
-// TODO vanilla `HopperBlock.entityInside`: an item entity touching `SUCK_AABB` is pulled in right away
-// (through `tryMoveItems`, so the cooldown still applies), not only on the hopper's own transfer tick.
 impl BlockBehaviour for HopperBlock {
+    fn on_entity_collision(&self, args: OnEntityCollisionArgs<'_>) {
+        if let Some(item_entity) = args.entity.get_item_entity()
+            && let Some(block_entity) = args.world.get_block_entity(args.position)
+            && let Some(hopper) = block_entity.as_any().downcast_ref::<HopperBlockEntity>()
+        {
+            hopper.entity_inside(args.world, args.block, args.state, item_entity);
+        }
+    }
+
     fn normal_use(&self, args: NormalUseArgs<'_>) -> BlockActionResult {
         if let Some(factory) = self.get_screen_handler_factory(GetScreenHandlerFactoryArgs {
             server: args.server,
