@@ -871,6 +871,12 @@ impl ChunkData {
         let x = relative_x as i32;
         let y = relative_y as i32 + min_y;
         let z = relative_z as i32;
+        // Locked once for the whole column scan, not once per block read.
+        let sections = self
+            .section
+            .block_sections
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         for &hm_type in &[
             ChunkHeightmapType::WorldSurface,
@@ -878,9 +884,13 @@ impl ChunkData {
             ChunkHeightmapType::MotionBlockingNoLeaves,
         ] {
             heightmap.update(hm_type, x, y, z, block_state, min_y, |y_at| {
-                let id = self
-                    .section
-                    .get_block_absolute_y(relative_x, y_at, relative_z)
+                let id = usize::try_from(y_at - min_y)
+                    .ok()
+                    .and_then(|rel_y| {
+                        sections.get(rel_y / BlockPalette::SIZE).map(|section| {
+                            section.get(relative_x, rel_y % BlockPalette::SIZE, relative_z)
+                        })
+                    })
                     .unwrap_or(BlockStateId::AIR);
                 BlockState::from_id(id)
             });
