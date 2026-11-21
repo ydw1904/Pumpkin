@@ -191,13 +191,24 @@ impl TreeGrower {
             } else {
                 Block::AIR.default_state.id
             };
-            world.set_block_state(pos, new_state, BlockFlags::NOTIFY_LISTENERS);
+            world.set_block_state(
+                pos,
+                new_state,
+                BlockFlags::NOTIFY_LISTENERS
+                    | BlockFlags::SKIP_DROPS
+                    | BlockFlags::SKIP_BLOCK_ENTITY_REPLACED_CALLBACK
+                    | BlockFlags::SKIP_BLOCK_ADDED_CALLBACK,
+            );
         }
     }
 
     fn reset_saplings(world: &Arc<World>, saplings: &[(BlockPos, BlockStateId)]) {
         for (pos, state_id) in saplings {
-            world.set_block_state(pos, *state_id, BlockFlags::NOTIFY_LISTENERS);
+            world.set_block_state(
+                pos,
+                *state_id,
+                BlockFlags::SKIP_BLOCK_ENTITY_REPLACED_CALLBACK,
+            );
         }
     }
 

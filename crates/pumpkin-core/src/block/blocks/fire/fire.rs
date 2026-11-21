@@ -300,7 +300,12 @@ impl BlockBehaviour for FireBlock {
         if new_age != age {
             fire_props.age = new_age;
             let new_state_id = fire_props.to_state_id(&Block::FIRE);
-            world.set_block_state(pos, new_state_id, BlockFlags::NOTIFY_ALL);
+            // Vanilla `UPDATE_NONE`: the age change reaches neither clients nor neighbours.
+            world.set_block_state(
+                pos,
+                new_state_id,
+                BlockFlags::SKIP_BLOCK_ENTITY_REPLACED_CALLBACK,
+            );
         }
 
         if !infiniburn {

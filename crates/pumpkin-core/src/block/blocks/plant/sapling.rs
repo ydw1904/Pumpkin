@@ -50,7 +50,12 @@ impl SaplingBlock {
             let mut props = OakSaplingLikeProperties::from_state_id(state_id);
             if props.stage == 0 {
                 props.stage = 1;
-                world.set_block_state(pos, props.to_state_id(block), BlockFlags::NOTIFY_ALL);
+                // Vanilla `UPDATE_NONE`: the stage change reaches neither clients nor neighbours.
+                world.set_block_state(
+                    pos,
+                    props.to_state_id(block),
+                    BlockFlags::SKIP_BLOCK_ENTITY_REPLACED_CALLBACK,
+                );
                 return;
             }
         }

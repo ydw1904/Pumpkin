@@ -39,18 +39,19 @@ impl BlockBehaviour for SugarCaneBlock {
                     args.block.default_state.id,
                     BlockFlags::NOTIFY_ALL,
                 );
+                // Vanilla `UPDATE_NONE`: the age change reaches neither clients nor neighbours.
                 let props = CactusLikeProperties { age: 0 };
                 args.world.set_block_state(
                     args.position,
                     props.to_state_id(args.block),
-                    BlockFlags::NOTIFY_ALL,
+                    BlockFlags::SKIP_BLOCK_ENTITY_REPLACED_CALLBACK,
                 );
             } else {
                 let props = CactusLikeProperties { age: age + 1 };
                 args.world.set_block_state(
                     args.position,
                     props.to_state_id(args.block),
-                    BlockFlags::NOTIFY_ALL,
+                    BlockFlags::SKIP_BLOCK_ENTITY_REPLACED_CALLBACK,
                 );
             }
         }

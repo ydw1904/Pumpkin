@@ -58,7 +58,7 @@ impl DecoratedPotBlock {
             world.set_block_state(
                 position,
                 cracked_id,
-                BlockFlags::SKIP_BLOCK_ENTITY_REPLACED_CALLBACK | BlockFlags::UPDATE_KNOWN_SHAPE,
+                BlockFlags::SKIP_BLOCK_ENTITY_REPLACED_CALLBACK,
             );
             return BlockState::from_id(cracked_id);
         }
@@ -194,7 +194,7 @@ impl BlockBehaviour for DecoratedPotBlock {
             args.world.set_block_state(
                 args.position,
                 props.to_state_id(args.block),
-                BlockFlags::SKIP_BLOCK_ENTITY_REPLACED_CALLBACK | BlockFlags::UPDATE_KNOWN_SHAPE,
+                BlockFlags::SKIP_BLOCK_ENTITY_REPLACED_CALLBACK,
             );
             args.world
                 .break_block(args.position, None, BlockFlags::NOTIFY_ALL);
