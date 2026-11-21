@@ -9,7 +9,7 @@ use pumpkin_data::block_properties::{FacingHopper, HopperLikeProperties};
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::tag;
 use pumpkin_data::tag::Taggable;
-use pumpkin_data::{Block, BlockDirection, BlockId, BlockStateId};
+use pumpkin_data::{Block, BlockDirection, BlockId, BlockState, BlockStateId};
 use pumpkin_inventory::{Clearable, Inventory};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
@@ -64,8 +64,18 @@ const fn facing_direction(facing: FacingHopper) -> BlockDirection {
 /// `HopperBlockEntity.getBlockContainer`: the block entity's container, with both halves of a
 /// double chest combined whether or not they are blocked.
 pub fn block_container(world: &Arc<World>, pos: &BlockPos) -> Option<Arc<dyn Inventory>> {
-    // `WorldlyContainerHolder`: the composter makes a container from its state.
     let (block, state) = world.get_block_and_state(pos);
+    block_container_in(world, pos, block, state)
+}
+
+/// [`block_container`] for a block whose state was already read.
+fn block_container_in(
+    world: &Arc<World>,
+    pos: &BlockPos,
+    block: &Block,
+    state: &BlockState,
+) -> Option<Arc<dyn Inventory>> {
+    // `WorldlyContainerHolder`: the composter makes a container from its state.
     if block == &Block::COMPOSTER {
         return Some(ComposterBlock::get_container(state.id, world, pos));
     }
@@ -84,9 +94,11 @@ pub fn block_container(world: &Arc<World>, pos: &BlockPos) -> Option<Arc<dyn Inv
 /// `HopperBlockEntity.getContainerAt`: the block's container, or else a random container entity
 /// (chest or hopper minecart, chest boat) inside the block.
 pub fn container_at(world: &Arc<World>, pos: BlockPos) -> Option<Arc<dyn Inventory>> {
-    if let Some(container) = block_container(world, &pos) {
-        return Some(container);
-    }
+    block_container(world, &pos).or_else(|| entity_container_at(world, pos))
+}
+
+/// `HopperBlockEntity.getEntityContainer`: a random container entity inside the block.
+fn entity_container_at(world: &Arc<World>, pos: BlockPos) -> Option<Arc<dyn Inventory>> {
     let min = pos.0.to_f64();
     let block = BoundingBox::new(min, min + Vector3::new(1.0, 1.0, 1.0));
     let mut containers: Vec<_> = world
@@ -103,10 +115,21 @@ pub fn container_at(world: &Arc<World>, pos: BlockPos) -> Option<Arc<dyn Invento
 }
 
 /// `HopperBlockEntity.getSlots`: the slots a container exposes on `side`.
-pub fn slots_for(container: &dyn Inventory, side: BlockDirection) -> Vec<usize> {
-    container
-        .slots_for_face(side)
-        .map_or_else(|| (0..container.size()).collect(), <[usize]>::to_vec)
+pub fn slots_for(
+    container: &dyn Inventory,
+    side: BlockDirection,
+) -> impl Iterator<Item = usize> + use<> {
+    face_slots(container, Some(side))
+}
+
+/// [`slots_for`], or every slot without a side, like vanilla `addItem`.
+fn face_slots(
+    container: &dyn Inventory,
+    side: Option<BlockDirection>,
+) -> impl Iterator<Item = usize> + use<> {
+    let face = side.and_then(|side| container.slots_for_face(side));
+    let count = face.map_or_else(|| container.size(), <[usize]>::len);
+    (0..count).map(move |i| face.map_or(i, |face| face[i]))
 }
 
 /// Properties of one state snapshot, `None` for any other block. `from_state_id` parses whatever
@@ -180,11 +203,8 @@ impl BlockEntity for HopperBlockEntity {
         };
         if self.cooldown_time.fetch_sub(1, Ordering::Relaxed) <= 0 {
             self.cooldown_time.store(0, Ordering::Relaxed);
-            if properties.enabled
-                && let Some(entity) = world.get_block_entity(&self.position)
-                && let Some(hopper) = entity.as_any().downcast_ref::<Self>()
-            {
-                hopper.try_move_items(properties, world);
+            if properties.enabled {
+                self.try_move_items(properties, world);
             }
         }
     }
@@ -286,12 +306,16 @@ impl HopperBlockEntity {
     }
     fn try_move_items(&self, state: HopperLikeProperties, world: &Arc<World>) {
         if self.cooldown_time.load(Ordering::Relaxed) <= 0 && state.enabled {
-            let mut success = if self.is_empty() {
-                false
+            // An empty hopper is not full, so it skips looking again.
+            let (mut success, has_room) = if self.is_empty() {
+                (false, true)
             } else {
-                self.eject_items(world, state.facing)
+                (
+                    self.eject_items(world, state.facing),
+                    !self.inventory_full(),
+                )
             };
-            if !self.inventory_full() {
+            if has_room {
                 success |= self.suck_in_items(world);
             }
             if success {
@@ -330,7 +354,10 @@ impl HopperBlockEntity {
             return false;
         }
 
-        if let Some(container) = container_at(world, *pos_up) {
+        let (block, state) = world.get_block_and_state(pos_up);
+        if let Some(container) = block_container_in(world, pos_up, block, state)
+            .or_else(|| entity_container_at(world, *pos_up))
+        {
             for i in slots_for(container.as_ref(), BlockDirection::Down) {
                 let mut item = container.get_stack(i);
                 if !item.is_empty()
@@ -364,7 +391,6 @@ impl HopperBlockEntity {
             }
             return false;
         }
-        let (block, state) = world.get_block_and_state(pos_up);
         let is_blocked =
             state.is_full_cube() && !block.has_tag(&tag::Block::MINECRAFT_DOES_NOT_BLOCK_HOPPERS);
         if !is_blocked {
@@ -549,8 +575,7 @@ impl HopperBlockEntity {
         mut stack: ItemStack,
         side: Option<BlockDirection>,
     ) -> ItemStack {
-        let slots = side.map_or_else(|| (0..to.size()).collect(), |side| slots_for(to, side));
-        for slot in slots {
+        for slot in face_slots(to, side) {
             if stack.is_empty() {
                 break;
             }
