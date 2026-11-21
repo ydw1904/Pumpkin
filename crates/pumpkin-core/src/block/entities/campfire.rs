@@ -5,11 +5,12 @@ use pumpkin_data::block_properties::CampfireLikeProperties;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::recipes::CookingRecipeKind;
 
-use crate::server::recipe::find_cooking_recipe;
+use crate::server::recipe::{CookingRecipeCheck, find_cooking_recipe};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::chunk::io::Dirtiable;
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
 
 pub struct CampfireBlockEntity {
@@ -17,6 +18,11 @@ pub struct CampfireBlockEntity {
     pub items: [Arc<Mutex<ItemStack>>; Self::SLOT_COUNT],
     pub cooking_times: [Mutex<i32>; Self::SLOT_COUNT],
     pub cooking_total_times: [Mutex<i32>; Self::SLOT_COUNT],
+    /// The `quickCheck` vanilla `CampfireBlock.getTicker` makes for a lit campfire's ticker.
+    recipe_cache: CookingRecipeCheck,
+    /// The state the ticker was made for: vanilla makes a new ticker, and with it a new
+    /// `quickCheck`, whenever the campfire's state changes.
+    ticker_state: AtomicU16,
 }
 
 impl BlockEntity for CampfireBlockEntity {
@@ -77,6 +83,7 @@ impl BlockEntity for CampfireBlockEntity {
         Some(build_campfire_actor(self.position, &items))
     }
 
+    #[expect(clippy::too_many_lines)]
     fn tick(&self, world: &Arc<World>) {
         let block = world.get_block(&self.position);
         if block != &Block::CAMPFIRE && block != &Block::SOUL_CAMPFIRE {
@@ -84,6 +91,9 @@ impl BlockEntity for CampfireBlockEntity {
         }
 
         let state_id = world.get_block_state(&self.position).id;
+        if self.ticker_state.swap(state_id.as_u16(), Ordering::Relaxed) != state_id.as_u16() {
+            self.recipe_cache.reset();
+        }
         let properties = CampfireLikeProperties::from_state_id(state_id);
 
         if !properties.lit {
@@ -105,16 +115,16 @@ impl BlockEntity for CampfireBlockEntity {
                 continue;
             }
 
-            let Some(recipe) = find_cooking_recipe(stack.item, &CookingRecipeKind::CampfireCooking)
-            else {
-                continue;
-            };
-
             let total = {
                 let mut total = self.cooking_total_times[slot]
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
                 if *total <= 0 {
+                    let Some(recipe) =
+                        find_cooking_recipe(stack.item, &CookingRecipeKind::CampfireCooking)
+                    else {
+                        continue;
+                    };
                     let mut cooking_time = recipe.cooking_time;
                     if let Some(server) = world.server.upgrade() {
                         let mut event = crate::plugin::api::events::block::campfire_start::CampfireStartEvent::new(
@@ -148,7 +158,12 @@ impl BlockEntity for CampfireBlockEntity {
                 continue;
             }
 
-            let mut result = recipe.result;
+            // Vanilla `CampfireBlockEntity.cookTick` only looks the recipe up once the item is
+            // done, and drops the item itself when no recipe takes it any more.
+            let mut result = self
+                .recipe_cache
+                .get_recipe_for(&stack)
+                .map_or_else(|| stack.clone(), |recipe| recipe.result.clone());
             if let Some(server) = world.server.upgrade() {
                 let mut event = crate::plugin::api::events::block::block_cook::BlockCookEvent::new(
                     self.position,
@@ -250,6 +265,8 @@ impl CampfireBlockEntity {
             items: std::array::from_fn(|_| Arc::new(Mutex::new(ItemStack::EMPTY.clone()))),
             cooking_times: std::array::from_fn(|_| Mutex::new(0)),
             cooking_total_times: std::array::from_fn(|_| Mutex::new(0)),
+            recipe_cache: CookingRecipeCheck::new(CookingRecipeKind::CampfireCooking),
+            ticker_state: AtomicU16::new(0),
         }
     }
 
