@@ -126,7 +126,7 @@ fn reset_spawner_delay<F: FnOnce()>(
     clippy::too_many_lines,
     reason = "vanilla `BaseSpawner.serverTick` in one piece"
 )]
-pub(crate) fn tick_spawner<F: FnOnce()>(
+pub(crate) fn tick_spawner<F: Fn()>(
     world: &Arc<World>,
     position: BlockPos,
     delay: &AtomicI32,
@@ -148,9 +148,9 @@ pub(crate) fn tick_spawner<F: FnOnce()>(
         return;
     }
 
-    if delay.load(Ordering::Relaxed) < 0 {
-        reset_spawner_delay(delay, params.min_delay, params.max_delay, on_reset);
-        return;
+    // Vanilla counts the new delay down in the same tick.
+    if delay.load(Ordering::Relaxed) == -1 {
+        reset_spawner_delay(delay, params.min_delay, params.max_delay, &on_reset);
     }
     if delay.load(Ordering::Relaxed) > 0 {
         delay.fetch_sub(1, Ordering::Relaxed);
