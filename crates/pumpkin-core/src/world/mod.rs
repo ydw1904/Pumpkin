@@ -378,6 +378,11 @@ pub struct World {
     /// Block entities indexed by chunk, so ticking only visits the currently
     /// active chunks instead of scanning every loaded block entity each tick.
     pub block_entities: DashMap<Vector2<i32>, FxHashMap<BlockPos, Arc<dyn BlockEntity>>>,
+    /// Each live block entity's place in vanilla `Level.blockEntityTickers`, by chunk. A position
+    /// keeps its number while it keeps a block entity, like vanilla's rebindable ticker, and
+    /// gets a new last one once its block entity was removed.
+    block_entity_tick_order: DashMap<Vector2<i32>, FxHashMap<BlockPos, u64>>,
+    next_block_entity_tick_order: std::sync::atomic::AtomicU64,
     /// The positions in `block_entities` whose block entity listens to game events.
     pub(crate) block_listeners: game_event::BlockListenerRegistry,
     pending_block_entity_migrations: crossbeam::queue::SegQueue<Vector2<i32>>,
@@ -635,6 +640,8 @@ impl World {
             timed_tickets: std::sync::Mutex::new(timed_tickets),
             server,
             block_entities: DashMap::with_shard_amount(TICK_SCANNED_MAP_SHARDS),
+            block_entity_tick_order: DashMap::new(),
+            next_block_entity_tick_order: std::sync::atomic::AtomicU64::new(0),
             block_listeners: game_event::BlockListenerRegistry::default(),
             pending_block_entity_migrations: crossbeam::queue::SegQueue::new(),
             custom_data: std::sync::Mutex::new(custom_data),
@@ -2509,45 +2516,71 @@ impl World {
 
         // Vanilla `LevelChunk.isTicking`: block entities tick in block ticking chunks.
         let block_ticking = &active_chunks.block_ticking;
-        let mut block_entities: Vec<Arc<dyn BlockEntity>> = Vec::new();
+        let mut ticking_chunks = Vec::new();
         if self.block_entities.len() < block_ticking.len() {
             for chunk_block_entities in &self.block_entities {
                 let chunk_pos = chunk_block_entities.key();
                 if block_ticking.contains(chunk_pos) && self.level.is_chunk_ticking_ready(chunk_pos)
                 {
-                    block_entities.extend(chunk_block_entities.values().cloned());
+                    ticking_chunks.push(*chunk_pos);
                 }
             }
         } else {
             for chunk_pos in block_ticking {
-                if let Some(chunk_block_entities) = self.block_entities.get(chunk_pos)
+                if self.block_entities.contains_key(chunk_pos)
                     && self.level.is_chunk_ticking_ready(chunk_pos)
                 {
-                    block_entities.extend(chunk_block_entities.values().cloned());
+                    ticking_chunks.push(*chunk_pos);
                 }
             }
         }
+        let mut block_entities: Vec<(u64, Arc<dyn BlockEntity>)> = Vec::new();
+        for chunk_pos in &ticking_chunks {
+            let Some(chunk_block_entities) = self.block_entities.get(chunk_pos) else {
+                continue;
+            };
+            let orders = self.block_entity_tick_order.get(chunk_pos);
+            block_entities.extend(chunk_block_entities.iter().map(|(pos, be)| {
+                let order = orders
+                    .as_ref()
+                    .and_then(|orders| orders.get(pos).copied())
+                    .unwrap_or(u64::MAX);
+                (order, be.clone())
+            }));
+        }
+        // Vanilla `Level.tickBlockEntities` ticks one at a time in `blockEntityTickers` order.
+        // Pistons landing, hoppers moving items and furnaces lighting all write blocks and
+        // containers others read, so neither the order nor the ticks themselves commute.
+        block_entities.sort_unstable_by_key(|(order, _)| *order);
+        let block_entities: Vec<Arc<dyn BlockEntity>> =
+            block_entities.into_iter().map(|(_, be)| be).collect();
         let block_entity_count = block_entities.len();
 
         let t_be = std::time::Instant::now();
-        let batch = tick_step_min_len(block_entity_count, 16);
-        block_entities.par_chunks(batch).for_each(|batch| {
-            for be in batch {
-                // Vanilla's ticking wrapper skips a block entity whose block no longer owns
-                // it. Without this, a leftover (say, a daylight detector under a `fill` of
-                // air) reads the new block through its own property type and panics.
-                if !block_owns_block_entity(
-                    self.get_block(&be.get_position()),
-                    be.resource_location(),
-                ) {
-                    continue;
-                }
-                if let Some(loot) = be.container_loot() {
-                    loot.set_world(self);
-                }
-                be.tick(self);
+        for be in &block_entities {
+            let position = be.get_position();
+            // Vanilla skips a ticker whose block entity was removed earlier this tick.
+            let current = self
+                .block_entities
+                .get(&position.chunk_position())
+                .is_some_and(|entities| {
+                    entities
+                        .get(&position)
+                        .is_some_and(|live| Arc::ptr_eq(live, be))
+                });
+            // Vanilla's ticking wrapper skips a block entity whose block no longer owns
+            // it. Without this, a leftover (say, a daylight detector under a `fill` of
+            // air) reads the new block through its own property type and panics.
+            if !current
+                || !block_owns_block_entity(self.get_block(&position), be.resource_location())
+            {
+                continue;
             }
-        });
+            if let Some(loot) = be.container_loot() {
+                loot.set_world(self);
+            }
+            be.tick(self);
+        }
         // Drained after all ticks, so changes (hopper -> chest) land in the same tick.
         self.flush_comparator_updates(&block_entities);
         let block_entity_elapsed = t_be.elapsed();
@@ -6725,6 +6758,8 @@ impl World {
                     self.unmodelled_block_entity_nbt.remove(position);
                 }
             }
+            // Vanilla `clearAllBlockEntities`: a reloaded chunk's tickers go to the end.
+            self.block_entity_tick_order.remove(chunk_pos);
             self.block_listeners.remove_chunk(chunk_pos);
         }
     }
@@ -8546,8 +8581,19 @@ impl World {
             .entry(chunk_pos)
             .or_default()
             .insert(*block_pos, entity.clone());
+        self.add_block_entity_ticker(*block_pos);
         self.block_listeners.update(entity.as_ref());
         Some(entity)
+    }
+
+    /// Vanilla `LevelChunk.updateBlockEntityTicker`: a position that still has a ticker keeps
+    /// its place (`rebind`), any other goes to the end of `Level.blockEntityTickers`.
+    fn add_block_entity_ticker(&self, block_pos: BlockPos) {
+        self.block_entity_tick_order
+            .entry(block_pos.chunk_position())
+            .or_default()
+            .entry(block_pos)
+            .or_insert_with(|| self.next_block_entity_tick_order.fetch_add(1, Relaxed));
     }
 
     fn bedrock_block_entity_data(
@@ -8666,6 +8712,7 @@ impl World {
             .entry(chunk_pos)
             .or_default()
             .insert(block_pos, block_entity);
+        self.add_block_entity_ticker(block_pos);
 
         self.add_block_entity_nbt(block_pos, &saved_nbt);
 
@@ -8838,6 +8885,12 @@ impl World {
                 .is_some_and(|mut chunk_block_entities| {
                     chunk_block_entities.remove(block_pos).is_some()
                 });
+        // Vanilla `removeBlockEntityTicker`.
+        if let Some(mut orders) = self.block_entity_tick_order.get_mut(&chunk_pos) {
+            orders.remove(block_pos);
+        }
+        self.block_entity_tick_order
+            .remove_if(&chunk_pos, |_, orders| orders.is_empty());
         self.block_listeners.remove(block_pos);
         self.custom_block_entity_data.remove(block_pos);
         self.unmodelled_block_entity_nbt.remove(block_pos);
