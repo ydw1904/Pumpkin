@@ -4,7 +4,7 @@ use crate::server::Server;
 use crate::world::World;
 use core::f32;
 use pumpkin_data::damage::DamageType;
-use pumpkin_data::data_component_impl::{BundleContentsImpl, ContainerImpl};
+use pumpkin_data::data_component_impl::{BundleContentsImpl, ContainerImpl, ItemNameImpl};
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item_stack::ItemStack;
@@ -635,6 +635,21 @@ impl ItemEntity {
 }
 
 impl EntityBase for ItemEntity {
+    /// Vanilla `ItemEntity.getName`: the custom name, or the stack's `item_name`.
+    fn get_name(&self) -> pumpkin_util::text::TextComponent {
+        if let Some(name) = self.entity.custom_name.load().as_ref() {
+            return name.clone();
+        }
+        self.item_stack
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_data_component::<ItemNameImpl>()
+            .map_or_else(
+                || pumpkin_util::text::TextComponent::text(""),
+                |name| pumpkin_util::text::TextComponent::translate(name.name.to_string(), []),
+            )
+    }
+
     /// Vanilla `ItemEntity.shouldPlayLavaHurtSound`: only every 10 ticks until it burns up.
     fn should_play_lava_hurt_sound(&self) -> bool {
         self.health.load(Ordering::Relaxed) <= 0.0
