@@ -77,20 +77,15 @@ impl LightningRodBlock {
 
 impl BlockBehaviour for LightningRodBlock {
     fn placed(&self, args: PlacedArgs<'_>) {
-        if args.block != Block::from_state_id(args.old_state_id) {
-            let mut props = LightningRodLikeProperties::from_state_id(args.state_id);
-            if props.powered
-                && !args
-                    .world
-                    .is_block_tick_scheduled(args.position, args.block)
-            {
-                props.powered = false;
-                args.world.set_block_state(
-                    args.position,
-                    props.to_state_id(args.block),
-                    BlockFlags::NOTIFY_LISTENERS | BlockFlags::FORCE_STATE,
-                );
-            }
+        // Vanilla `LightningRodBlock.onPlace` keeps the rod powered until its tick unpowers it.
+        if args.block != Block::from_state_id(args.old_state_id)
+            && LightningRodLikeProperties::from_state_id(args.state_id).powered
+            && !args
+                .world
+                .is_block_tick_scheduled(args.position, args.block)
+        {
+            args.world
+                .schedule_block_tick(args.block, *args.position, 8, TickPriority::Normal);
         }
     }
 

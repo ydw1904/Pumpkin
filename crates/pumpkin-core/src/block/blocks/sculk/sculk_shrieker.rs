@@ -3,11 +3,11 @@ use std::sync::Arc;
 use crate::block::entities::sculk_shrieker::SculkShriekerBlockEntity;
 use crate::block::{
     BlockBehaviour, BlockMetadata, GetStateForNeighborUpdateArgs, OnEntityStepArgs, OnPlaceArgs,
-    OnScheduledTickArgs, PlacedArgs,
+    OnScheduledTickArgs,
 };
 use crate::world::World;
 use pumpkin_data::{
-    Block, BlockId, BlockStateId, block_properties::SculkShriekerLikeProperties, fluid::Fluid,
+    BlockId, BlockStateId, block_properties::SculkShriekerLikeProperties, fluid::Fluid,
 };
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::tick::TickPriority;
@@ -37,24 +37,6 @@ impl BlockBehaviour for SculkShriekerBlock {
         props.shrieking = false;
         props.waterlogged = args.replacing.water_source();
         props.to_state_id(args.block)
-    }
-
-    fn placed(&self, args: PlacedArgs<'_>) {
-        if Block::from_state_id(args.old_state_id) != args.block {
-            let mut props = SculkShriekerLikeProperties::from_state_id(args.state_id);
-            if props.shrieking
-                && !args
-                    .world
-                    .is_block_tick_scheduled(args.position, args.block)
-            {
-                props.shrieking = false;
-                args.world.set_block_state(
-                    args.position,
-                    props.to_state_id(args.block),
-                    BlockFlags::NOTIFY_LISTENERS | BlockFlags::FORCE_STATE,
-                );
-            }
-        }
     }
 
     fn get_state_for_neighbor_update(
