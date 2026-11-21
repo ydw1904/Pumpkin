@@ -2696,7 +2696,13 @@ impl World {
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             std::mem::take(&mut *guard)
         };
-        for (position, block_state_id) in changes {
+        for (position, queued_state_id) in changes {
+            // Vanilla `ChunkHolder.broadcastChanges` sends the state a changed position has now,
+            // so a later write without the client flag (a piston turning into `moving_piston`)
+            // still reaches the client.
+            let block_state_id = self
+                .get_block_state_id_if_loaded(&position)
+                .unwrap_or(queued_state_id);
             let chunk_section = chunk_section_from_pos(&position);
             block_state_updates_by_chunk_section
                 .entry(chunk_section)
