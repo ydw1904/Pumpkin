@@ -334,10 +334,11 @@ impl Server {
         ));
 
         let cpus = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
+        let simulation_threads = advanced_config.world.simulation_threads.min(cpus);
         let simulation_pool = Arc::new(
             rayon::ThreadPoolBuilder::new()
                 // The ticker loop keeps one of the threads, also between ticks.
-                .num_threads(cpus.max(2))
+                .num_threads(simulation_threads.max(2))
                 .thread_name(|i| format!("Simulation-{i}"))
                 .build()
                 .map_err(|e| WorldInfoError::IoError(std::io::Error::other(e)))?,

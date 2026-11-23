@@ -18,6 +18,10 @@ pub struct LevelConfig {
     /// Margins for ticking entities in parallel islands.
     #[serde(default)]
     pub entity_islands: EntityIslandsConfig,
+    /// Threads that tick the worlds, at most one per CPU. More threads help large worlds with
+    /// many entities, but past about 8 the tick spends more time handing work out than it saves.
+    #[serde(default = "default_simulation_threads")]
+    pub simulation_threads: usize,
     // TODO: More options
 }
 
@@ -74,6 +78,10 @@ const fn default_autosave_ticks() -> u64 {
     6000 // Default to 5 minutes at 20 TPS
 }
 
+const fn default_simulation_threads() -> usize {
+    8
+}
+
 impl Default for LevelConfig {
     fn default() -> Self {
         Self {
@@ -81,6 +89,7 @@ impl Default for LevelConfig {
             lighting: LightingEngineConfig::default(),
             autosave_ticks: default_autosave_ticks(),
             entity_islands: EntityIslandsConfig::default(),
+            simulation_threads: default_simulation_threads(),
         }
     }
 }
