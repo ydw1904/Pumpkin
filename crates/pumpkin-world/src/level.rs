@@ -666,10 +666,12 @@ impl Level {
         let samples_per_section = random_tick_speed.max(0);
 
         // 1. Random ticks and precipitation. Chunks sample in parallel; the samples stay in set
-        // order, and each chunk's in its own order. Each chunk reads several cold cache lines,
-        // so unlike the light steps this one is worth every pool thread.
+        // order, and each chunk's in its own order.
+        let entity_ticking: Vec<_> = entity_ticking.iter().collect();
         let (precipitation, random_ticks) = entity_ticking
             .par_iter()
+            .copied()
+            .with_min_len(crate::chunk_step_min_len(entity_ticking.len(), 1))
             .filter(|pos| ticking.contains(pos) && self.is_chunk_ticking_ready(pos))
             .filter_map(|pos| {
                 self.loaded_chunks
@@ -713,7 +715,7 @@ impl Level {
         // Each chunk steps its own schedulers, so they step in parallel; the ticks are sorted below.
         let stepped: Vec<_> = scheduled_chunk_pos
             .par_iter()
-            .with_min_len(crate::tick_step_min_len(scheduled_chunk_pos.len(), 1))
+            .with_min_len(crate::chunk_step_min_len(scheduled_chunk_pos.len(), 1))
             .filter(|pos| ticking.contains(pos) && self.is_chunk_ticking_ready(pos))
             .map(|pos| {
                 let stepped = self.loaded_chunks.get(pos).map(|chunk| {

@@ -52,6 +52,24 @@ pub const fn tick_step_min_len(len: usize, min: usize) -> usize {
     if bounded > min { bounded } else { min }
 }
 
+/// Fewest chunks a per-tick chunk step needs before it runs in parallel.
+///
+/// A split step makes the tick thread sleep at the join until the stolen half is done, and after
+/// each sleep the OS may wake it on another core. Random tick sampling, the costliest of these
+/// steps at about 3 µs a chunk, only got faster split from about this many chunks on.
+pub const MIN_PARALLEL_TICK_CHUNKS: usize = 64;
+
+/// [`tick_step_min_len`] for a tick step over `len` chunks: below [`MIN_PARALLEL_TICK_CHUNKS`]
+/// the step is not split and runs on the calling thread, in the same order.
+#[must_use]
+pub const fn chunk_step_min_len(len: usize, min: usize) -> usize {
+    if len < MIN_PARALLEL_TICK_CHUNKS {
+        usize::MAX
+    } else {
+        tick_step_min_len(len, min)
+    }
+}
+
 #[macro_export]
 macro_rules! global_path {
     ($path:expr) => {{

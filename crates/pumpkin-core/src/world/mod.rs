@@ -172,7 +172,6 @@ use pumpkin_util::{
     math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3},
 };
 use pumpkin_world::chunk::{CHUNK_WIDTH, ChunkBlockEntity, LiveBlockEntity};
-use pumpkin_world::tick_step_min_len;
 use pumpkin_world::world::{GetBlockError, WorldPortalExt};
 use pumpkin_world::world_info::OVERWORLD_CLOCK;
 use pumpkin_world::{
@@ -180,6 +179,7 @@ use pumpkin_world::{
     chunk::{io::Dirtiable, palette::bedrock_water_state, unpack_offset_coordinates},
 };
 use pumpkin_world::{chunk::ChunkData, world::BlockAccessor};
+use pumpkin_world::{chunk_step_min_len, tick_step_min_len};
 use pumpkin_world::{
     level::Level,
     tick::{TickPriority, order},
@@ -3026,7 +3026,7 @@ impl World {
         let candidates: Vec<_> = active_chunks.spawn_candidates.iter().collect();
         let mut spawning_chunks: Vec<_> = candidates
             .par_iter()
-            .with_min_len(tick_step_min_len(candidates.len(), 1))
+            .with_min_len(chunk_step_min_len(candidates.len(), 1))
             .filter(|pos| {
                 active_chunks.ticking.contains(**pos)
                     && spawn_state.any_player_close_enough_for_spawning(***pos)
@@ -3045,7 +3045,7 @@ impl World {
         let weather = (self.is_raining(), self.is_thundering());
         let decided: Vec<_> = spawning_chunks
             .par_iter()
-            .with_min_len(tick_step_min_len(spawning_chunks.len(), 8))
+            .with_min_len(chunk_step_min_len(spawning_chunks.len(), 8))
             .map(|(pos, chunk)| {
                 chunk.inhabited_time.fetch_add(1, Relaxed);
                 let entity_ticking = active_chunks.entity_ticking.contains(pos);
@@ -3093,7 +3093,7 @@ impl World {
             .collect();
         chunk_samples
             .par_iter()
-            .with_min_len(tick_step_min_len(chunk_samples.len(), 1))
+            .with_min_len(chunk_step_min_len(chunk_samples.len(), 1))
             .for_each(|samples| {
                 let world = world.clone();
                 let _owner = gameplay::is_locked_down().then(|| {
