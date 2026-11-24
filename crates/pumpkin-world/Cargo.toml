@@ -60,6 +60,10 @@ name = "chunk"
 harness = false
 
 [[bench]]
+name = "block_read"
+harness = false
+
+[[bench]]
 name = "chunk_io"
 harness = false
 
